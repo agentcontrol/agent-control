@@ -13,7 +13,7 @@ authors = [
     {name = "Agent Protect Team"}
 ]
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 keywords = ["agent", "protection", "security", "sdk", "llm", "ai-safety"]
 classifiers = [
     "Development Status :: 3 - Alpha",

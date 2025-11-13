@@ -14,7 +14,7 @@ authors = [
     {name = "Agent Protect Team"}
 ]
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 
 [tool.uv]
 dev-dependencies = [
