@@ -29,5 +29,5 @@ jobs:
           file: server/Dockerfile
           push: true
           tags: |
-            galileoai/agent-control:${{ github.ref_name }}
-            galileoai/agent-control:latest
+            galileoai/agent-control-server:${{ github.ref_name }}
+            galileoai/agent-control-server:latest

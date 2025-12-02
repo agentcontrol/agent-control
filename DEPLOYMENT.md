@@ -52,13 +52,13 @@ uv sync
 ```bash
 # Option 1: Using Python module
 cd server
-uv run python -m agent_protect_server.main
+uv run python -m agent_control_server.main
 
 # Option 2: Using the installed command
-uv run agent-protect-server
+uv run agent-control-server
 
 # Option 3: For development with auto-reload
-uv run uvicorn agent_protect_server.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn agent_control_server.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 #### Test the SDK
@@ -139,40 +139,41 @@ pip install git+https://github.com/yourusername/agent-protect.git@v0.1.0#subdire
 Create `server/Dockerfile`:
 
 ```dockerfile
-FROM python:3.11-slim
-
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
-# Copy models package first
-COPY models/ /app/models/
-RUN cd /app/models && uv build && pip install dist/*.whl
+# Configure uv
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
 
-# Copy server package
-COPY server/ /app/server/
-RUN cd /app/server && pip install -e .
+# Copy workspace files
+COPY pyproject.toml uv.lock* ./
+COPY models/ models/
+COPY engine/ engine/
+COPY server/ server/
 
-WORKDIR /app/server
+# Install
+RUN uv sync --package agent-control-server --no-dev
+
+# Path
+ENV PATH="/app/.venv/bin:$PATH"
+ENV HOST=0.0.0.0
+ENV PORT=8000
 
 EXPOSE 8000
 
-CMD ["agent-protect-server"]
+CMD ["agent-control-server"]
 ```
 
 Build and run:
 
 ```bash
-# Build
-docker build -t agent-protect-server:latest -f server/Dockerfile .
+# Build from root
+docker build -t agent-control-server:latest -f server/Dockerfile .
 
 # Run locally
-docker run -p 8000:8000 agent-protect-server:latest
-
-# Push to registry
-docker tag agent-protect-server:latest your-registry/agent-protect-server:latest
-docker push your-registry/agent-protect-server:latest
+docker run -p 8000:8000 agent-control-server:latest
 ```
 
 #### Option 2: Cloud Platform (AWS/GCP/Azure)
