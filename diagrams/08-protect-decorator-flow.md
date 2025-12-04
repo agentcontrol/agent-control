@@ -19,9 +19,6 @@ flowchart LR
 
     call["Function Call"] --> decorator
     decorator --> result["Return Value"]
-
-    style code fill:#e3f2fd,stroke:#1565c0
-    style decorator fill:#f3e5f5,stroke:#7b1fa2
 ```
 
 ## Execution Sequence
@@ -38,21 +35,18 @@ sequenceDiagram
     Dec->>Dec: Bind arguments to parameters
     Dec->>Dec: Extract mapped data sources
 
-    rect rgb(255, 243, 224)
-        Note over Dec,Engine: PRE-execution check
+    Note over Dec,Engine: PRE-execution check
         Dec->>Engine: Evaluate(data, stage="pre")
         Engine-->>Dec: EvaluationResponse
         
         alt is_safe = false
             Dec-->>App: Raise exception or return error
         end
-    end
 
     Dec->>Func: Execute original function
     Func-->>Dec: Return value
 
-    rect rgb(232, 245, 233)
-        Note over Dec,Engine: POST-execution check
+    Note over Dec,Engine: POST-execution check
         Dec->>Dec: Add return value to data
         Dec->>Engine: Evaluate(data, stage="post")
         Engine-->>Dec: EvaluationResponse
@@ -60,7 +54,6 @@ sequenceDiagram
         alt is_safe = false
             Dec-->>App: Raise exception or return error
         end
-    end
 
     Dec-->>App: Return result
 ```
@@ -85,8 +78,6 @@ flowchart TD
 
     decorator --> mapping
     function --> mapping
-
-    style mapping fill:#e8f5e9,stroke:#388e3c
 ```
 
 ## Parameter Binding Process
@@ -109,8 +100,6 @@ flowchart LR
 
     call --> bind
     bind --> result
-
-    style result fill:#fff3e0,stroke:#ef6c00
 ```
 
 ## Data Available at Each Stage
@@ -129,9 +118,6 @@ flowchart TD
 
     pre --> exec
     exec --> post
-
-    style pre fill:#fff3e0,stroke:#ef6c00
-    style post fill:#e8f5e9,stroke:#388e3c
 ```
 
 ## What You CAN and CANNOT Access
@@ -151,9 +137,6 @@ flowchart LR
         n3["Intermediate results"]
         n4["Unmapped parameters"]
     end
-
-    style can fill:#c8e6c9,stroke:#2e7d32
-    style cannot fill:#ffcdd2,stroke:#c62828
 ```
 
 ## Common Patterns
@@ -166,8 +149,6 @@ flowchart LR
     pre -->|Safe| func["Process"]
     pre -->|Unsafe| block["Block"]
     func --> output["Output"]
-
-    style block fill:#ffcdd2,stroke:#c62828
 ```
 
 ### Pattern 2: Output Filtering
@@ -178,8 +159,6 @@ flowchart LR
     func --> post["POST Check"]
     post -->|Safe| output["Return Output"]
     post -->|PII Detected| redact["Redact/Block"]
-
-    style redact fill:#fff3e0,stroke:#ef6c00
 ```
 
 ### Pattern 3: Full Pipeline
@@ -199,9 +178,6 @@ flowchart LR
 
     pre -->|Fail| blocked1["Blocked"]
     post -->|Fail| blocked2["Blocked"]
-
-    style blocked1 fill:#ffcdd2,stroke:#c62828
-    style blocked2 fill:#ffcdd2,stroke:#c62828
 ```
 
 ## LangGraph Integration Example
@@ -222,9 +198,6 @@ flowchart TD
     node1 --> node2
     node2 --> node3
     node3 --> finish
-
-    style node1 fill:#e3f2fd,stroke:#1565c0
-    style node3 fill:#e3f2fd,stroke:#1565c0
 ```
 
 ## Error Handling
@@ -254,8 +227,4 @@ flowchart TD
     deny --> exception
     warn --> log_warning
     log --> log_info
-
-    style exception fill:#ffcdd2,stroke:#c62828
-    style log_warning fill:#fff3e0,stroke:#ef6c00
-    style safe fill:#c8e6c9,stroke:#2e7d32
 ```

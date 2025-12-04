@@ -141,27 +141,21 @@ sequenceDiagram
     participant Server
     participant DB
 
-    rect rgb(227, 242, 253)
-        Note over Client,DB: Agent Registration
+    Note over Client,DB: Agent Registration
         Client->>Server: POST /agents/initAgent<br/>InitAgentRequest
         Server->>DB: Upsert Agent
         Server-->>Client: InitAgentResponse
-    end
 
-    rect rgb(243, 229, 245)
-        Note over Client,DB: Policy Assignment
+    Note over Client,DB: Policy Assignment
         Client->>Server: POST /agents/{id}/policy/{policy_id}
         Server->>DB: Update Agent.policy_id
         Server-->>Client: SetPolicyResponse
-    end
 
-    rect rgb(255, 243, 224)
-        Note over Client,DB: Evaluation
+    Note over Client,DB: Evaluation
         Client->>Server: POST /evaluation<br/>EvaluationRequest
         Server->>DB: Fetch Agent's Controls
         Server->>Server: Run Control Engine
         Server-->>Client: EvaluationResponse
-    end
 ```
 
 ## Payload Discrimination
@@ -180,9 +174,6 @@ flowchart LR
     payload --> check
     check -->|No| llm
     check -->|Yes| tool
-
-    style llm fill:#e8f5e9,stroke:#388e3c
-    style tool fill:#fff3e0,stroke:#ef6c00
 ```
 
 ## Control Model (API Response)

@@ -33,10 +33,6 @@ flowchart TB
     init --> operations
     init --> decorator
     decorator --> evaluation
-
-    style sdk fill:#e3f2fd,stroke:#1565c0
-    style operations fill:#f3e5f5,stroke:#7b1fa2
-    style plugins_pkg fill:#fff3e0,stroke:#ef6c00
 ```
 
 ## Module Responsibilities
@@ -72,9 +68,6 @@ flowchart LR
     m4 --> e3
     m5 --> e4
     m6 --> e5
-
-    style modules fill:#e8f5e9,stroke:#388e3c
-    style endpoints fill:#e3f2fd,stroke:#1565c0
 ```
 
 ## Client Usage Pattern
@@ -134,8 +127,6 @@ flowchart TD
             mo5["EvaluationResponse"]
         end
     end
-
-    style exports fill:#f5f5f5,stroke:#616161
 ```
 
 ## Two Usage Patterns
@@ -148,8 +139,6 @@ flowchart LR
         import["import agent_control"]
         use["agent_control.policies.create_policy(client, name)"]
     end
-
-    style code fill:#c8e6c9,stroke:#2e7d32
 ```
 
 ### Pattern 2: Direct Import
@@ -160,8 +149,6 @@ flowchart LR
         import["from agent_control import policies"]
         use["policies.create_policy(client, name)"]
     end
-
-    style code fill:#e3f2fd,stroke:#1565c0
 ```
 
 ## Plugin Module Structure
@@ -184,9 +171,6 @@ flowchart TB
     init --> registry
     registry --> base
     optional_pkg -.->|lazy load| registry
-
-    style plugins fill:#fff3e0,stroke:#ef6c00
-    style optional_pkg fill:#ffe0b2,stroke:#f57c00
 ```
 
 ## Dependency Graph
@@ -204,11 +188,6 @@ flowchart BT
     server --> engine
     
     sdk -.->|HTTP| server
-
-    style models fill:#c8e6c9,stroke:#2e7d32
-    style sdk fill:#fff3e0,stroke:#ef6c00
-    style engine fill:#e3f2fd,stroke:#1565c0
-    style server fill:#f3e5f5,stroke:#7b1fa2
 ```
 
 ## Initialization Flow
@@ -232,8 +211,6 @@ flowchart TD
     init --> register
     register --> store
     store --> ready
-
-    style ready fill:#c8e6c9,stroke:#2e7d32
 ```
 
 ## Error Handling
@@ -258,9 +235,4 @@ flowchart TD
     check -->|4xx| client_error
     check -->|5xx| server_error
     http -.->|Network| network_error
-
-    style success fill:#c8e6c9,stroke:#2e7d32
-    style client_error fill:#fff3e0,stroke:#ef6c00
-    style server_error fill:#ffcdd2,stroke:#c62828
-    style network_error fill:#ffcdd2,stroke:#c62828
 ```

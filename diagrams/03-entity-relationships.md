@@ -14,11 +14,6 @@ flowchart TD
     agent -->|"has one (optional)"| policy
     policy -->|"has many"| controlset
     controlset -->|"has many"| control
-
-    style agent fill:#e3f2fd,stroke:#1565c0
-    style policy fill:#f3e5f5,stroke:#7b1fa2
-    style controlset fill:#e8f5e9,stroke:#388e3c
-    style control fill:#fff3e0,stroke:#ef6c00
 ```
 
 ## Database Schema (ERD)
@@ -116,11 +111,6 @@ flowchart LR
     cs1 --> c2
     cs2 --> c3
     cs2 --> c4
-
-    style agents fill:#e3f2fd,stroke:#1565c0
-    style policies fill:#f3e5f5,stroke:#7b1fa2
-    style controlsets fill:#e8f5e9,stroke:#388e3c
-    style controls fill:#fff3e0,stroke:#ef6c00
 ```
 
 ## Data Traversal

@@ -36,11 +36,6 @@ flowchart TB
     svc --> deploy
     deploy --> pg
     hpa -.->|scales| deploy
-
-    style k8s fill:#e3f2fd,stroke:#1565c0
-    style ns fill:#fce4ec,stroke:#c2185b
-    style deploy fill:#f3e5f5,stroke:#7b1fa2
-    style db fill:#e8f5e9,stroke:#388e3c
 ```
 
 ## Service Communication
@@ -67,9 +62,6 @@ flowchart LR
     ingress -->|HTTP| service
     service -->|Round Robin| pods
     pods -->|TCP| postgres
-
-    style external fill:#fff3e0,stroke:#ef6c00
-    style cluster fill:#e8eaf6,stroke:#3949ab
 ```
 
 ## Configuration
@@ -91,9 +83,6 @@ flowchart TD
     env --> app
     secrets --> app
     configmap --> app
-
-    style config fill:#fff8e1,stroke:#ff8f00
-    style server fill:#e1f5fe,stroke:#0277bd
 ```
 
 ## Endpoints

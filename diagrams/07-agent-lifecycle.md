@@ -60,8 +60,7 @@ sequenceDiagram
     participant Server as Server
     participant DB as Database
 
-    rect rgb(243, 229, 245)
-        Note over Admin,DB: Setup Phase (One-time)
+    Note over Admin,DB: Setup Phase (One-time)
         Admin->>Server: PUT /controls {name}
         Server->>DB: Create control
         Admin->>Server: PUT /controls/{id}/data {definition}
@@ -76,14 +75,11 @@ sequenceDiagram
         Server->>DB: Create policy
         Admin->>Server: POST /policies/{id}/control_sets/{set_id}
         Server->>DB: Link control set to policy
-    end
 
-    rect rgb(227, 242, 253)
-        Note over Admin,DB: Assignment Phase
+    Note over Admin,DB: Assignment Phase
         Admin->>Server: POST /agents/{agent_id}/policy/{policy_id}
         Server->>DB: Update agent.policy_id
         Server-->>Admin: {success: true}
-    end
 ```
 
 ## Agent Data Model
@@ -138,9 +134,6 @@ flowchart LR
     end
 
     v0 -->|"Tool schema changed"| v1
-
-    style v0 fill:#e0e0e0,stroke:#757575
-    style v1 fill:#c8e6c9,stroke:#2e7d32
 ```
 
 ## Agent States
@@ -188,6 +181,4 @@ flowchart TD
     step3 --> step4
     step4 --> step5
     step5 --> step6
-
-    style step6 fill:#c8e6c9,stroke:#2e7d32
 ```

@@ -30,10 +30,6 @@ flowchart TB
     engine -.->|plugin calls| luna
     engine -.->|plugin calls| guardrails
     engine -.->|plugin calls| custom
-
-    style client fill:#e1f5fe,stroke:#01579b
-    style server fill:#f3e5f5,stroke:#4a148c
-    style external fill:#fff3e0,stroke:#e65100
 ```
 
 ## Package Structure
@@ -55,11 +51,6 @@ flowchart LR
     models --> server
     engine --> server
     sdk -.->|HTTP| server
-
-    style models fill:#c8e6c9,stroke:#2e7d32
-    style engine fill:#bbdefb,stroke:#1565c0
-    style sdk fill:#fff9c4,stroke:#f9a825
-    style server fill:#f8bbd9,stroke:#c2185b
 ```
 
 ## Key Interactions

@@ -25,10 +25,6 @@ flowchart TD
     filter --> loop
     loop --> process
     process --> response
-
-    style request fill:#e3f2fd,stroke:#1565c0
-    style engine fill:#f5f5f5,stroke:#616161
-    style response fill:#e8f5e9,stroke:#388e3c
 ```
 
 ## Control Filtering Logic
@@ -51,9 +47,6 @@ flowchart TD
     c2 -->|Yes| c3
     c3 -->|No| skipped
     c3 -->|Yes| applicable
-
-    style applicable fill:#c8e6c9,stroke:#2e7d32
-    style skipped fill:#ffcdd2,stroke:#c62828
 ```
 
 ## Data Selection
@@ -73,9 +66,6 @@ flowchart LR
 
     payload --> selector
     selector --> data
-
-    style payload fill:#e3f2fd,stroke:#1565c0
-    style data fill:#e8f5e9,stroke:#388e3c
 ```
 
 ## Evaluator Processing
@@ -111,9 +101,6 @@ flowchart TD
     regex --> result
     list --> result
     plugin --> result
-
-    style data fill:#e3f2fd,stroke:#1565c0
-    style result fill:#fff3e0,stroke:#ef6c00
 ```
 
 ## Result Aggregation
@@ -134,9 +121,6 @@ flowchart TD
     check -->|Yes| unsafe
     safe --> response
     unsafe --> response
-
-    style safe fill:#c8e6c9,stroke:#2e7d32
-    style unsafe fill:#ffcdd2,stroke:#c62828
 ```
 
 ## Complete Sequence
@@ -215,7 +199,4 @@ flowchart TD
     
     match_on -->|"match"| result_match
     match_on -->|"no_match"| result_nomatch
-
-    style condition_met fill:#c8e6c9,stroke:#2e7d32
-    style condition_not fill:#ffcdd2,stroke:#c62828
 ```

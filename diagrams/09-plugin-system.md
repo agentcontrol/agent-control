@@ -38,10 +38,6 @@ flowchart TB
     registry --> registered
     luna -.-> luna_api
     guardrails -.-> gr_api
-
-    style engine fill:#e3f2fd,stroke:#1565c0
-    style plugins fill:#f3e5f5,stroke:#7b1fa2
-    style external fill:#fff3e0,stroke:#ef6c00
 ```
 
 ## Plugin Class Hierarchy
@@ -93,20 +89,16 @@ sequenceDiagram
     participant Registry as Plugin Registry
     participant Engine as Control Engine
 
-    rect rgb(243, 229, 245)
-        Note over Plugin,Registry: Registration (at import time)
+    Note over Plugin,Registry: Registration (at import time)
         Plugin->>Registry: @register_plugin decorator
         Registry->>Registry: Store plugin class by name
-    end
 
-    rect rgb(227, 242, 253)
-        Note over Engine,Registry: Usage (at evaluation time)
+    Note over Engine,Registry: Usage (at evaluation time)
         Engine->>Registry: get_plugin("plugin-name")
         Registry-->>Engine: PluginClass
         Engine->>Engine: Instantiate plugin
         Engine->>Plugin: evaluate(data, config)
         Plugin-->>Engine: EvaluatorResult
-    end
 ```
 
 ## Plugin Configuration in ControlDefinition
@@ -122,8 +114,6 @@ flowchart LR
     end
 
     control --> config
-
-    style config fill:#fff3e0,stroke:#ef6c00
 ```
 
 ## Plugin Evaluation Flow
@@ -156,9 +146,6 @@ flowchart TD
     plugin_exec --> external
     external --> result
     plugin_exec -.->|exception| error
-
-    style result fill:#c8e6c9,stroke:#2e7d32
-    style error fill:#ffcdd2,stroke:#c62828
 ```
 
 ## Creating a Custom Plugin
@@ -179,9 +166,6 @@ flowchart TD
     end
 
     steps --> structure
-
-    style steps fill:#e3f2fd,stroke:#1565c0
-    style structure fill:#f3e5f5,stroke:#7b1fa2
 ```
 
 ## Plugin Error Handling
@@ -202,9 +186,6 @@ flowchart TD
     result -->|Yes| success
     result -->|Exception| error
     error --> error_result
-
-    style success fill:#c8e6c9,stroke:#2e7d32
-    style error_result fill:#fff3e0,stroke:#ef6c00
 ```
 
 ## Available Plugins
@@ -230,9 +211,6 @@ flowchart LR
     end
 
     plugin -.->|validates| usage
-
-    style plugin fill:#e3f2fd,stroke:#1565c0
-    style usage fill:#e8f5e9,stroke:#388e3c
 ```
 
 ## Timeout Handling

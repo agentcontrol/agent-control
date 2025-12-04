@@ -133,10 +133,6 @@ flowchart TD
     check_match -->|Yes| action_deny
     check_match -->|Yes| action_warn
     check_match -->|Yes| action_log
-
-    style action_deny fill:#ffcdd2,stroke:#c62828
-    style action_warn fill:#fff9c4,stroke:#f9a825
-    style skip fill:#e0e0e0,stroke:#757575
 ```
 
 ## Example Control Definition
