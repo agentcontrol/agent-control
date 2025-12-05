@@ -159,7 +159,11 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
                 logger.info(f"ℹ️ Control [{matched_control}]: {message}")
 
 
-def control(policy: str | None = None) -> Callable[[F], F]:
+def control(
+    policy: str | None = None,
+    input_selector: Callable[..., str] | None = None,
+    output_selector: Callable[[Any], str] | None = None,
+) -> Callable[[F], F]:
     """
     Decorator to apply server-defined policy at this code location.
 
@@ -170,6 +174,14 @@ def control(policy: str | None = None) -> Callable[[F], F]:
         policy: Optional policy name for documentation. The agent's assigned
                 policy is automatically used. This parameter is for clarity
                 in code when multiple policies exist.
+        input_selector: Optional callable to extract input from function arguments.
+                       Receives the same args/kwargs as the decorated function.
+                       Use this for frameworks like LangGraph where input is in
+                       a state dict. If not provided, auto-extracts from common
+                       parameter names (input, message, query, etc.).
+        output_selector: Optional callable to extract output for post-check.
+                        Receives the function's return value. If not provided,
+                        converts output to string.
 
     Returns:
         Decorated function
@@ -187,18 +199,25 @@ def control(policy: str | None = None) -> Callable[[F], F]:
     Example:
         import agent_control
 
-        # Initialize agent (connects to server, loads policy)
-        agent_control.init(agent_name="my-bot", agent_id="bot-123")
-
-        # Apply the agent's policy (all controls)
-        @agent_control.apply_control()
+        # Simple usage - auto-extracts input from common param names
+        @agent_control.control()
         async def chat(message: str) -> str:
             return await assistant.respond(message)
 
-        # Document which policy this uses (optional, for clarity)
-        @agent_control.apply_control(policy="safety-policy")
-        async def process(input: str) -> str:
-            return await pipeline.run(input)
+        # LangGraph usage - custom input selector for state dict
+        @agent_control.control(
+            input_selector=lambda state: state["messages"][-1].content
+        )
+        async def agent_node(state: AgentState) -> dict:
+            return await process(state)
+
+        # With output selector for custom return types
+        @agent_control.control(
+            input_selector=lambda state: state["messages"][-1].content,
+            output_selector=lambda result: result["messages"][-1].content
+        )
+        async def agent_node(state: AgentState) -> dict:
+            return {"messages": [response]}
 
     Server Setup (separate from agent code):
         1. Create controls via API:
@@ -235,7 +254,15 @@ def control(policy: str | None = None) -> Callable[[F], F]:
             agent_uuid = str(agent.agent_id)
 
             # Extract input from function arguments
-            input_data = _extract_input_from_args(func, args, kwargs)
+            if input_selector is not None:
+                # Use custom selector - pass all args/kwargs
+                try:
+                    input_data = input_selector(*args, **kwargs)
+                except Exception as e:
+                    logger.error(f"input_selector failed: {e}")
+                    input_data = _extract_input_from_args(func, args, kwargs)
+            else:
+                input_data = _extract_input_from_args(func, args, kwargs)
 
             # PRE-EXECUTION: Check controls with check_stage="pre"
             try:
@@ -252,7 +279,17 @@ def control(policy: str | None = None) -> Callable[[F], F]:
 
             # POST-EXECUTION: Check controls with check_stage="post"
             try:
-                payload = {"input": input_data, "output": str(output) if output else ""}
+                # Extract output for post-check
+                if output_selector is not None:
+                    try:
+                        output_data = output_selector(output)
+                    except Exception as e:
+                        logger.error(f"output_selector failed: {e}")
+                        output_data = str(output) if output else ""
+                else:
+                    output_data = str(output) if output else ""
+
+                payload = {"input": input_data, "output": output_data}
                 result = await _evaluate_async(agent_uuid, payload, "post", server_url)
                 _handle_evaluation_result(result)
             except ControlViolationError:
@@ -275,7 +312,15 @@ def control(policy: str | None = None) -> Callable[[F], F]:
             server_url = _get_server_url()
             agent_uuid = str(agent.agent_id)
 
-            input_data = _extract_input_from_args(func, args, kwargs)
+            # Extract input from function arguments
+            if input_selector is not None:
+                try:
+                    input_data = input_selector(*args, **kwargs)
+                except Exception as e:
+                    logger.error(f"input_selector failed: {e}")
+                    input_data = _extract_input_from_args(func, args, kwargs)
+            else:
+                input_data = _extract_input_from_args(func, args, kwargs)
 
             # PRE-EXECUTION
             try:
@@ -292,7 +337,17 @@ def control(policy: str | None = None) -> Callable[[F], F]:
 
             # POST-EXECUTION
             try:
-                payload = {"input": input_data, "output": str(output) if output else ""}
+                # Extract output for post-check
+                if output_selector is not None:
+                    try:
+                        output_data = output_selector(output)
+                    except Exception as e:
+                        logger.error(f"output_selector failed: {e}")
+                        output_data = str(output) if output else ""
+                else:
+                    output_data = str(output) if output else ""
+
+                payload = {"input": input_data, "output": output_data}
                 result = _evaluate_sync(agent_uuid, payload, "post", server_url)
                 _handle_evaluation_result(result)
             except ControlViolationError:
