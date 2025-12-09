@@ -42,8 +42,8 @@ from . import agents, control_sets, controls, evaluation, plugins, policies
 # Import client and operations modules
 from .client import AgentControlClient
 
-# Import control decorator
-from .control_decorators import ControlViolationError, control
+# Import control decorator and registry
+from .control_decorators import DISCOVERED_POLICIES, ControlViolationError, control
 
 # Import models if available
 try:
@@ -241,12 +241,13 @@ def init(
                     print(f"⚠️  Server not available: {e}")
                     return None
 
-                # Register agent with tools
+                # Register agent with tools and discovered policies
                 try:
                     response = await agents.register_agent(
                         client,
                         _current_agent,
-                        tools=tools or []
+                        tools=tools or [],
+                        policies=list(DISCOVERED_POLICIES)
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])

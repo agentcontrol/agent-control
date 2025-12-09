@@ -159,6 +159,12 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
                 logger.info(f"ℹ️ Control [{matched_control}]: {message}")
 
 
+
+# Registry of policies discovered via @control decorator
+# This is populated at import time when decorators are processed
+DISCOVERED_POLICIES: set[str] = set()
+
+
 def control(policy: str | None = None) -> Callable[[F], F]:
     """
     Decorator to apply server-defined policy at this code location.
@@ -167,60 +173,25 @@ def control(policy: str | None = None) -> Callable[[F], F]:
     on the SERVER. This decorator just marks WHERE to apply the policy.
 
     Args:
-        policy: Optional policy name for documentation. The agent's assigned
-                policy is automatically used. This parameter is for clarity
-                in code when multiple policies exist.
-
-    Returns:
-        Decorated function
-
-    Raises:
-        ControlViolationError: If any control triggers with "deny" action
-
-    How it works:
-        1. Before function execution: Calls server with check_stage="pre"
-           - Server evaluates all "pre" controls in the agent's policy
-        2. Function executes
-        3. After function execution: Calls server with check_stage="post"
-           - Server evaluates all "post" controls in the agent's policy
-
-    Example:
-        import agent_control
-
-        # Initialize agent (connects to server, loads policy)
-        agent_control.init(agent_name="my-bot", agent_id="bot-123")
-
-        # Apply the agent's policy (all controls)
-        @agent_control.apply_control()
-        async def chat(message: str) -> str:
-            return await assistant.respond(message)
-
-        # Document which policy this uses (optional, for clarity)
-        @agent_control.apply_control(policy="safety-policy")
-        async def process(input: str) -> str:
-            return await pipeline.run(input)
-
-    Server Setup (separate from agent code):
-        1. Create controls via API:
-           PUT /api/v1/controls {"name": "block-toxic-inputs"}
-           PUT /api/v1/controls/{id}/data {"data": {...}}
-
-        2. Create control set and add controls:
-           PUT /api/v1/control-sets {"name": "safety-controls"}
-           POST /api/v1/control-sets/{set_id}/controls/{control_id}
-
-        3. Create policy and add control set:
-           PUT /api/v1/policies {"name": "safety-policy"}
-           POST /api/v1/policies/{policy_id}/control_sets/{set_id}
-
-        4. Assign policy to agent:
-           POST /api/v1/agents/{agent_id}/policy/{policy_id}
+        policy: Optional policy name. If provided, the SDK will ensure this policy
+                exists on the server (creating it if missing) and the agent
+                will use it for this function.
     """
-    # The policy parameter is for documentation only - the server uses
-    # the agent's assigned policy automatically
-    _ = policy
+    if policy:
+        # Capture location for debugging/logging
+        try:
+            # We want the frame where the decorator is being applied
+            frame = inspect.stack()[1]
+            filename = frame.filename
+            lineno = frame.lineno
+            logger.info(f"Found @control(policy='{policy}') at {filename}:{lineno}")
+            DISCOVERED_POLICIES.add(policy)
+        except Exception:
+            # Fallback if inspection fails
+            DISCOVERED_POLICIES.add(policy)
 
     def decorator(func: F) -> F:
+
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             agent = _get_current_agent()

@@ -28,6 +28,10 @@ class InitAgentRequest(BaseModel):
     tools: list[AgentTool] = Field(
         default_factory=list, description="List of tools available to the agent"
     )
+    policies: list[str] = Field(
+        default_factory=list,
+        description="List of policies required by the agent (auto-created if missing)"
+    )
 
     model_config = {
         "json_schema_extra": {

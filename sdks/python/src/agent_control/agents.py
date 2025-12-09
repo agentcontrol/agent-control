@@ -17,7 +17,8 @@ except ImportError:
 async def register_agent(
     client: AgentControlClient,
     agent: Agent,
-    tools: list[dict[str, Any]] | None = None
+    tools: list[dict[str, Any]] | None = None,
+    policies: list[str] | None = None
 ) -> dict[str, Any]:
     """
     Register an agent with the server via /initAgent endpoint.
@@ -26,20 +27,15 @@ async def register_agent(
         client: AgentControlClient instance
         agent: Agent instance to register
         tools: Optional list of tools with their schemas
+        policies: Optional list of policy names required by the agent
 
     Returns:
         InitAgentResponse with created flag and controls
-
-    Raises:
-        httpx.HTTPError: If request fails
-
-    Example:
-        async with AgentControlClient() as client:
-            response = await register_agent(client, agent, tools=[...])
-            print(f"Created: {response['created']}")
     """
     if tools is None:
         tools = []
+    if policies is None:
+        policies = []
 
     if MODELS_AVAILABLE:
         agent_dict = agent.to_dict()
@@ -48,7 +44,8 @@ async def register_agent(
             agent_dict['agent_id'] = str(agent_dict['agent_id'])
         payload = {
             "agent": agent_dict,
-            "tools": tools
+            "tools": tools,
+            "policies": policies
         }
     else:
         payload = {
@@ -59,7 +56,8 @@ async def register_agent(
                 "agent_version": getattr(agent, 'agent_version', None),
                 "agent_metadata": getattr(agent, 'agent_metadata', None),
             },
-            "tools": tools
+            "tools": tools,
+            "policies": policies
         }
 
     response = await client.http_client.post("/api/v1/agents/initAgent", json=payload)

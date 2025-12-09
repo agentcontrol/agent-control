@@ -195,6 +195,33 @@ async def init_agent(
     if existing.policy_id is not None:
         controls = await list_controls_for_agent(existing.agent_uuid, db)
 
+    # Auto-create policies requested by the agent (e.g. via @control decorators)
+    if request.policies:
+        for policy_name in request.policies:
+            # Check if policy exists
+            p_result = await db.execute(select(Policy).where(Policy.name == policy_name))
+            policy = p_result.scalars().first()
+
+            if not policy:
+                # Create empty policy
+                new_policy = Policy(name=policy_name)
+                db.add(new_policy)
+                _logger.info(
+                    f"Auto-created missing policy '{policy_name}' "
+                    f"requested by agent '{request.agent.agent_name}'"
+                )
+
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            _logger.error(
+                f"Failed to auto-create policies for agent '{request.agent.agent_name}'",
+                exc_info=True
+            )
+            # We don't raise here to allow agent registration to succeed
+            # even if policy creation fails
+
     return InitAgentResponse(created=created, controls=controls)
 
 
