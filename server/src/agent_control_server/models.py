@@ -99,3 +99,36 @@ class Agent(Base):
     )
 
 
+class CustomEvaluator(Base):
+    """Custom evaluator plugin stored in database.
+
+    These are user-defined evaluators with Python code that can be referenced
+    by name in Controls, just like built-in plugins (regex, list).
+    """
+
+    __tablename__ = "custom_evaluators"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    code: Mapped[str] = mapped_column(String, nullable=False)  # Python code
+    config_schema: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb"), nullable=False
+    )
+    entrypoint: Mapped[str] = mapped_column(
+        String(255), server_default=text("'evaluate'"), nullable=False
+    )
+    timeout_ms: Mapped[int] = mapped_column(
+        Integer, server_default=text("5000"), nullable=False
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(),
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=dt.datetime.utcnow,
+        nullable=False,
+    )
+
+

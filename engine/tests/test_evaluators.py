@@ -145,4 +145,3 @@ class TestGetEvaluator:
 
         assert "regex" in plugins
         assert "list" in plugins
-        assert "custom-code" in plugins

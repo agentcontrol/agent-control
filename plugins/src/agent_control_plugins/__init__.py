@@ -2,20 +2,26 @@
 
 This package contains plugin implementations for agent-control.
 Built-in plugins (regex, list) are registered automatically on import.
-Optional plugins can be installed separately.
+Custom evaluators should be registered via PUT /api/v1/evaluators.
 
 Available plugins:
     - regex: Regular expression matching (built-in)
     - list: List-based value matching (built-in)
-    - custom-code: Execute user-provided Python code (built-in)
     - galileo-luna2: Galileo Luna-2 runtime protection (pip install agent-control-plugins[luna2])
+
+Custom evaluators registered via /api/v1/evaluators are dynamically loaded.
 """
 
 from agent_control_models import PluginEvaluator, PluginMetadata, register_plugin
 
 # Import built-in plugins to auto-register them
 from .builtin import ListPlugin, RegexPlugin
-from .custom_code import CustomCodePlugin
+from .dynamic import (
+    clear_caches,
+    create_dynamic_evaluator_class,
+    get_or_create_instance,
+    register_custom_evaluator,
+)
 
 __version__ = "0.1.0"
 
@@ -25,6 +31,10 @@ __all__ = [
     "register_plugin",
     "RegexPlugin",
     "ListPlugin",
-    "CustomCodePlugin",
+    # Dynamic evaluator factory
+    "create_dynamic_evaluator_class",
+    "get_or_create_instance",
+    "register_custom_evaluator",
+    "clear_caches",
 ]
 

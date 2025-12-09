@@ -8,7 +8,6 @@ from .controls import (
     ControlDefinition,
     ControlMatch,
     ControlSelector,
-    CustomCodeConfig,
     EvaluatorConfig,
     EvaluatorResult,
     ListConfig,
@@ -55,7 +54,6 @@ __all__ = [
     # Plugin configs
     "RegexConfig",
     "ListConfig",
-    "CustomCodeConfig",
     # Plugin system
     "PluginEvaluator",
     "PluginMetadata",

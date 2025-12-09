@@ -1,4 +1,5 @@
-
+import jsonschema
+from agent_control_models import get_plugin
 from agent_control_models.server import (
     CreateControlRequest,
     CreateControlResponse,
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_async_db
 from ..logging_utils import get_logger
 from ..models import Control
+from ..services.evaluators import get_evaluator_by_name
 
 router = APIRouter(prefix="/controls", tags=["controls"])
 
@@ -139,6 +141,28 @@ async def set_control_data(
         raise HTTPException(
             status_code=404, detail=f"Control with ID '{control_id}' not found"
         )
+
+    # Validate custom evaluator config against its schema
+    plugin_name = request.data.evaluator.plugin
+    if get_plugin(plugin_name) is None:
+        # Not a built-in plugin - check if it's a custom evaluator
+        custom_eval = await get_evaluator_by_name(plugin_name, db)
+        if custom_eval is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown plugin '{plugin_name}'. Register it via PUT /evaluators first.",
+            )
+        # Validate user_config against the custom evaluator's schema
+        if custom_eval.config_schema:
+            user_config = request.data.evaluator.config.get("user_config", {})
+            try:
+                jsonschema.validate(user_config, custom_eval.config_schema)
+            except jsonschema.ValidationError as e:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Config validation failed for '{plugin_name}': {e.message}",
+                )
+
     control.data = request.data.model_dump(mode="json")
     try:
         await db.commit()

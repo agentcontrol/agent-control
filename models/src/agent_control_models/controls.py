@@ -92,19 +92,6 @@ class ListConfig(BaseModel):
     case_sensitive: bool = Field(False, description="Whether matching is case sensitive")
 
 
-class CustomCodeConfig(BaseModel):
-    """Configuration for custom-code plugin."""
-
-    code: str = Field(..., description="Python code to execute")
-    entrypoint: str = Field(
-        "evaluate", description="Function name to call (must return EvaluatorResult)"
-    )
-    timeout_ms: int = Field(5000, description="Execution timeout in milliseconds")
-    on_error: Literal["allow", "deny"] = Field(
-        "allow", description="Action on error (fail open or closed)"
-    )
-
-
 # =============================================================================
 # Unified Evaluator Config (used in API)
 # =============================================================================

@@ -157,10 +157,3 @@ class TestBuiltInPlugins:
         assert plugin is not None
         assert plugin.metadata.name == "list"
 
-    def test_custom_code_plugin_registered(self):
-        """Test custom-code plugin is registered."""
-        from agent_control_models import get_plugin
-
-        plugin = get_plugin("custom-code")
-        assert plugin is not None
-        assert plugin.metadata.name == "custom-code"
