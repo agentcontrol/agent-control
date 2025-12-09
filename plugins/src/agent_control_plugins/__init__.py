@@ -19,7 +19,9 @@ from .builtin import ListPlugin, RegexPlugin
 from .dynamic import (
     clear_caches,
     create_dynamic_evaluator_class,
+    get_cache_stats,
     get_or_create_instance,
+    invalidate_namespace,
     register_custom_evaluator,
 )
 
@@ -35,6 +37,8 @@ __all__ = [
     "create_dynamic_evaluator_class",
     "get_or_create_instance",
     "register_custom_evaluator",
+    "invalidate_namespace",
+    "get_cache_stats",
     "clear_caches",
 ]
 

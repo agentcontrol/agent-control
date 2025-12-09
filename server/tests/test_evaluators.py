@@ -625,3 +625,62 @@ def evaluate(data, config):
         assert data["is_safe"] is True
         # No matches because error resulted in matched=False
         assert data["matches"] is None or len(data["matches"]) == 0
+
+    def test_module_level_state_persists_across_calls(self, client: TestClient):
+        """Test that module-level state in custom code persists across evaluate() calls."""
+        # Given: Custom evaluator with a counter that increments on each call
+        counter_code = '''
+# Module-level state - persists across calls
+_call_count = 0
+
+def evaluate(data, config):
+    global _call_count
+    _call_count += 1
+    return EvaluatorResult(
+        matched=True,  # Always match so we get result in response
+        confidence=1.0,
+        message=f"Call count: {_call_count}",
+        metadata={"call_count": _call_count}
+    )
+'''
+        eval_name = f"counter-{uuid.uuid4().hex[:8]}"
+        client.put(
+            "/api/v1/evaluators",
+            json={"name": eval_name, "code": counter_code},
+        )
+
+        # And: Control using the counter evaluator with 'log' action (safe)
+        control_data = {
+            "description": "Counter test",
+            "enabled": True,
+            "applies_to": "llm_call",
+            "check_stage": "pre",
+            "selector": {"path": "input"},
+            "evaluator": {
+                "plugin": eval_name,
+                "config": {"user_config": {}},
+            },
+            "action": {"decision": "log"},  # 'log' means is_safe=True even when matched
+        }
+        agent_uuid, _ = create_and_assign_policy(
+            client, control_data, agent_name=f"CounterAgent-{uuid.uuid4().hex[:8]}"
+        )
+
+        # When: Calling evaluate multiple times
+        counts = []
+        for i in range(3):
+            payload = LlmCall(input=f"test {i}", output=None)
+            req = EvaluationRequest(
+                agent_uuid=agent_uuid, payload=payload, check_stage="pre"
+            )
+            resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+            assert resp.status_code == 200
+            data = resp.json()
+            # matched=True so we should have matches
+            assert data.get("matches"), f"Expected matches on call {i}"
+            count = data["matches"][0]["result"]["metadata"]["call_count"]
+            counts.append(count)
+
+        # Then: Call count should increment (state persists)
+        # If state didn't persist, count would be 1 each time
+        assert counts == [1, 2, 3], f"Expected [1, 2, 3], got {counts}"
