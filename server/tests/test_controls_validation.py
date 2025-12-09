@@ -16,7 +16,7 @@ def test_validation_invalid_logic_enum(client: TestClient):
     # Given: Payload with invalid 'logic' value
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
-        "type": "list",
+        "plugin": "list",
         "config": {
             "values": ["a", "b"],
             "logic": "invalid_logic", # Should be 'any' or 'all'
@@ -43,7 +43,7 @@ def test_validation_discriminator_mismatch(client: TestClient):
     # Given: type='list' but config has 'pattern' (RegexConfig)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
-        "type": "list", 
+        "plugin": "list", 
         "config": {
             "pattern": "some_regex", # Invalid for ListConfig
             # Missing 'values'
@@ -70,7 +70,7 @@ def test_validation_regex_flags_list(client: TestClient):
     # Given: regex config with invalid flags type (string instead of list)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
-        "type": "regex",
+        "plugin": "regex",
         "config": {
             "pattern": "abc",
             "flags": "IGNORECASE" # Should be ["IGNORECASE"]
@@ -93,7 +93,7 @@ def test_validation_invalid_regex_pattern(client: TestClient):
     # Given: regex config with invalid pattern (unclosed bracket)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
-        "type": "regex",
+        "plugin": "regex",
         "config": {
             "pattern": "[", # Invalid regex
             "flags": []

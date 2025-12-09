@@ -1,35 +1,11 @@
 """Control definition models for agent protection."""
-from abc import ABC, abstractmethod
-from typing import Any, Literal
+
+from typing import Any, Literal, Self
 
 import re2
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .base import BaseModel
-
-
-class Evaluator(ABC):
-    """Base class for all control evaluators.
-
-    Evaluators are responsible for checking if data matches a control's criteria.
-    All evaluators (regex, list, plugin) implement this interface.
-
-    The pattern is:
-        1. Create evaluator with config: `evaluator = MyEvaluator(config)`
-        2. Evaluate data: `result = evaluator.evaluate(data)`
-    """
-
-    @abstractmethod
-    def evaluate(self, data: Any) -> "EvaluatorResult":
-        """Evaluate the data against the control logic.
-
-        Args:
-            data: The data to evaluate (extracted by selector)
-
-        Returns:
-            EvaluatorResult with matched status, confidence, and metadata
-        """
-        pass
 
 
 class ControlSelector(BaseModel):
@@ -75,8 +51,14 @@ class ControlSelector(BaseModel):
     }
 
 
+# =============================================================================
+# Plugin Config Models (used by plugin implementations)
+# =============================================================================
+
+
 class RegexConfig(BaseModel):
-    """Configuration for regex evaluator."""
+    """Configuration for regex plugin."""
+
     pattern: str = Field(..., description="Regular expression pattern")
     flags: list[str] | None = Field(default=None, description="Regex flags")
 
@@ -92,7 +74,8 @@ class RegexConfig(BaseModel):
 
 
 class ListConfig(BaseModel):
-    """Configuration for list evaluator."""
+    """Configuration for list plugin."""
+
     values: list[str | int | float] = Field(
         ..., description="List of values to match against"
     )
@@ -103,49 +86,62 @@ class ListConfig(BaseModel):
         "match", description="Trigger rule on match or no match"
     )
     match_mode: Literal["exact", "contains"] = Field(
-        "exact", description="'exact' for full string match, 'contains' for keyword/substring match"
+        "exact",
+        description="'exact' for full string match, 'contains' for keyword/substring match",
     )
     case_sensitive: bool = Field(False, description="Whether matching is case sensitive")
 
 
-class RegexControlEvaluator(BaseModel):
-    """Evaluator using Regular Expressions."""
-    type: Literal["regex"] = "regex"
-    config: RegexConfig
+class CustomCodeConfig(BaseModel):
+    """Configuration for custom-code plugin."""
 
-
-class ListControlEvaluator(BaseModel):
-    """Evaluator checking against a list of values."""
-    type: Literal["list"] = "list"
-    config: ListConfig
-
-
-class CustomControlEvaluator(BaseModel):
-    """Custom evaluator configuration."""
-    type: Literal["custom"] = "custom"
-    config: dict[str, Any]
-
-
-class PluginConfig(BaseModel):
-    """Configuration for plugin-based evaluators."""
-    plugin_name: str = Field(..., description="Name of the plugin to use")
-    plugin_config: dict[str, Any] = Field(
-        ..., description="Plugin-specific configuration"
+    code: str = Field(..., description="Python code to execute")
+    entrypoint: str = Field(
+        "evaluate", description="Function name to call (must return EvaluatorResult)"
+    )
+    timeout_ms: int = Field(5000, description="Execution timeout in milliseconds")
+    on_error: Literal["allow", "deny"] = Field(
+        "allow", description="Action on error (fail open or closed)"
     )
 
 
-class PluginControlEvaluator(BaseModel):
-    """Evaluator using external plugins (e.g., Luna-2, Guardrails AI)."""
-    type: Literal["plugin"] = "plugin"
-    config: PluginConfig
+# =============================================================================
+# Unified Evaluator Config (used in API)
+# =============================================================================
 
 
-ControlEvaluator = (
-    RegexControlEvaluator
-    | ListControlEvaluator
-    | CustomControlEvaluator
-    | PluginControlEvaluator
-)
+class EvaluatorConfig(BaseModel):
+    """Evaluator configuration. See GET /plugins for available plugins and schemas.
+
+    All evaluators are plugins - built-in (regex, list) or external (galileo-luna2).
+    """
+
+    plugin: str = Field(
+        ...,
+        description="Plugin name",
+        examples=["regex", "list", "galileo-luna2", "custom-code"],
+    )
+    config: dict[str, Any] = Field(
+        ...,
+        description="Plugin-specific configuration",
+        examples=[
+            {"pattern": r"\d{3}-\d{2}-\d{4}"},
+            {"values": ["admin"], "logic": "any"},
+        ],
+    )
+
+    @model_validator(mode="after")
+    def validate_plugin_config(self) -> Self:
+        """Validate config against plugin's schema if plugin is registered."""
+        # Import here to avoid circular imports
+        from .plugin import get_plugin
+
+        plugin_cls = get_plugin(self.plugin)
+        if plugin_cls:
+            # Validate config against plugin's config_model
+            plugin_cls.config_model(**self.config)
+        # If plugin not found, allow it (might be registered later)
+        return self
 
 
 class ControlAction(BaseModel):
@@ -177,8 +173,8 @@ class ControlDefinition(BaseModel):
     # What to check
     selector: ControlSelector = Field(..., description="What data to select from the payload")
 
-    # How to check
-    evaluator: ControlEvaluator = Field(..., description="How to evaluate the selected data")
+    # How to check (unified plugin-based evaluator)
+    evaluator: EvaluatorConfig = Field(..., description="How to evaluate the selected data")
 
     # What to do
     action: ControlAction = Field(..., description="What action to take when control matches")
@@ -196,10 +192,9 @@ class ControlDefinition(BaseModel):
                     "check_stage": "post",
                     "selector": {"path": "output"},
                     "evaluator": {
-                        "type": "regex",
+                        "plugin": "regex",
                         "config": {
                             "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
-                            "flags": ["IGNORECASE"],
                         },
                     },
                     "action": {

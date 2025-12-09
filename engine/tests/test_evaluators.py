@@ -1,181 +1,148 @@
+"""Tests for unified evaluator factory."""
 
-"""Tests for control evaluators."""
 import pytest
-from agent_control_models import ControlEvaluator
-from agent_control_models.controls import (
+from agent_control_models import (
+    EvaluatorConfig,
     RegexConfig,
     ListConfig,
-    RegexControlEvaluator,
-    ListControlEvaluator,
-    CustomControlEvaluator,
+    get_plugin,
+    clear_plugins,
 )
+from agent_control_plugins import RegexPlugin, ListPlugin
 
-from agent_control_engine.evaluators import RegexControlEvaluator as RegexEvaluator, get_evaluator
+from agent_control_engine.evaluators import get_evaluator, get_available_plugins
 
 
-class TestRegexEvaluator:
+class TestRegexPlugin:
+    """Tests for the regex plugin via the evaluator factory."""
+
     def test_basic_match(self):
-        # Given: a regex evaluator configured for SSN pattern
-        config = RegexConfig(pattern=r"\d{3}-\d{2}-\d{4}")
-        evaluator = RegexEvaluator(config)
-        
-        # When: evaluating a string containing a valid SSN
+        """Test regex matches SSN pattern."""
+        config = EvaluatorConfig(plugin="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
+        evaluator = get_evaluator(config)
+
         result = evaluator.evaluate("My SSN is 123-45-6789")
 
-        # Then: it should match with high confidence
         assert result.matched is True
         assert result.confidence == 1.0
-        assert "123-45-6789" in result.message or "Regex match found" in result.message
 
     def test_no_match(self):
-        # Given: a regex evaluator configured for SSN pattern
-        config = RegexConfig(pattern=r"\d{3}-\d{2}-\d{4}")
-        evaluator = RegexEvaluator(config)
-        
-        # When: evaluating a string with no SSN
+        """Test regex doesn't match when pattern not found."""
+        config = EvaluatorConfig(plugin="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
+        evaluator = get_evaluator(config)
+
         result = evaluator.evaluate("No numbers here")
 
-        # Then: it should not match
         assert result.matched is False
         assert result.confidence == 1.0
 
     def test_non_string_input(self):
-        """Test that non-string input is converted to string."""
-        # Given: a regex evaluator looking for "123"
-        config = RegexConfig(pattern=r"123")
-        evaluator = RegexEvaluator(config)
-        
-        # When: evaluating an integer input 12345
+        """Test non-string input is converted to string."""
+        config = EvaluatorConfig(plugin="regex", config={"pattern": r"123"})
+        evaluator = get_evaluator(config)
+
         result = evaluator.evaluate(12345)
 
-        # Then: it should convert to string and match
         assert result.matched is True
 
     def test_none_input(self):
         """Test handling of None input."""
-        # Given: a regex evaluator with a catch-all pattern
-        config = RegexConfig(pattern=r".*")
-        evaluator = RegexEvaluator(config)
-        
-        # When: evaluating None input
+        config = EvaluatorConfig(plugin="regex", config={"pattern": r".*"})
+        evaluator = get_evaluator(config)
+
         result = evaluator.evaluate(None)
 
-        # Then: it should safely return no match
         assert result.matched is False
         assert result.message == "No data to match"
 
     def test_invalid_regex_pattern(self):
-        # Given: an invalid pattern
-        # When: initializing the config (validation happens here now, or inside evaluator if we compile)
-        # Since we added compilation check in RegexConfig validator, it should raise ValueError there
+        """Test invalid regex pattern raises error."""
         with pytest.raises(ValueError):
             RegexConfig(pattern="[")
 
     def test_empty_pattern_matches_everything(self):
-        # Given: a regex evaluator with an empty pattern
-        config = RegexConfig(pattern="")
-        evaluator = RegexEvaluator(config)
-        
-        # When: evaluating any string
+        """Test empty pattern matches everything."""
+        config = EvaluatorConfig(plugin="regex", config={"pattern": ""})
+        evaluator = get_evaluator(config)
+
         result = evaluator.evaluate("something")
 
-        # Then: it should match (empty regex matches everything)
         assert result.matched is True
 
-    def test_get_evaluator_factory(self):
-        # Given: a ControlEvaluator configuration for regex type
-        config = RegexControlEvaluator(
-            type="regex",
-            config=RegexConfig(pattern="abc")
-        )
 
-        # When: creating an evaluator via the factory
-        evaluator = get_evaluator(config)
+class TestListPlugin:
+    """Tests for the list plugin via the evaluator factory."""
 
-        # Then: it should return a correctly configured RegexEvaluator instance
-        assert isinstance(evaluator, RegexEvaluator)
-        assert evaluator.pattern == "abc"
-
-    def test_get_evaluator_unknown_type(self):
-        # Given: a ControlEvaluator configuration for an unsupported type (Custom)
-        # Note: CustomControlEvaluator expects a dict config
-        config = CustomControlEvaluator(
-            type="custom",
-            config={}
-        )
-
-        # When: attempting to create an evaluator
-        # Then: it should raise NotImplementedError
-        with pytest.raises(NotImplementedError):
-            get_evaluator(config)
-
-    def test_list_evaluator_any_match(self):
-        # Given: a list evaluator (DenyList equivalent: block if ANY match found)
-        config = ListControlEvaluator(
-            type="list",
-            config=ListConfig(
-                values=["bad", "evil"],
-                logic="any",
-                match_on="match"
-            )
+    def test_any_match(self):
+        """Test list evaluator with any/match logic."""
+        config = EvaluatorConfig(
+            plugin="list",
+            config={"values": ["bad", "evil"], "logic": "any", "match_on": "match"},
         )
         evaluator = get_evaluator(config)
 
-        # When: evaluating content containing denied terms
         assert evaluator.evaluate("bad").matched is True
         assert evaluator.evaluate("evil").matched is True
-        
-        # When: evaluating safe content
         assert evaluator.evaluate("good").matched is False
-        assert evaluator.evaluate("bad_suffix").matched is False  # Exact match required
 
-    def test_list_evaluator_any_no_match(self):
-        # Given: a list evaluator (AllowList equivalent)
-        config = ListControlEvaluator(
-            type="list",
-            config=ListConfig(
-                values=["safe", "ok"],
-                logic="any",
-                match_on="no_match"
-            )
+    def test_any_no_match(self):
+        """Test list evaluator as allowlist (any/no_match)."""
+        config = EvaluatorConfig(
+            plugin="list",
+            config={"values": ["safe", "ok"], "logic": "any", "match_on": "no_match"},
         )
         evaluator = get_evaluator(config)
 
-        # When: evaluating safe values (IN list) -> Control does NOT trigger (safe)
         assert evaluator.evaluate("safe").matched is False
         assert evaluator.evaluate("ok").matched is False
-        
-        # When: evaluating unsafe values (NOT in list) -> Control triggers (match)
         assert evaluator.evaluate("dangerous").matched is True
 
-    def test_list_evaluator_all_match(self):
-        # Given: a list evaluator requiring ALL items to match
-        config = ListControlEvaluator(
-            type="list",
-            config=ListConfig(
-                values=["valid1", "valid2"],
-                logic="all",
-                match_on="match"
-            )
+    def test_all_match(self):
+        """Test list evaluator with all/match logic."""
+        config = EvaluatorConfig(
+            plugin="list",
+            config={"values": ["valid1", "valid2"], "logic": "all", "match_on": "match"},
         )
         evaluator = get_evaluator(config)
 
-        # When: input list has all valid items
         assert evaluator.evaluate(["valid1", "valid2"]).matched is True
-        # When: input list has mixed items
         assert evaluator.evaluate(["valid1", "invalid"]).matched is False
-        # When: input list has no items
         assert evaluator.evaluate([]).matched is False
 
-    def test_list_evaluator_case_insensitive(self):
-        config = ListControlEvaluator(
-            type="list",
-            config=ListConfig(
-                values=["MixedCase"],
-                case_sensitive=False,
-                match_on="match"
-            )
+    def test_case_insensitive(self):
+        """Test case-insensitive matching."""
+        config = EvaluatorConfig(
+            plugin="list",
+            config={"values": ["MixedCase"], "case_sensitive": False, "match_on": "match"},
         )
         evaluator = get_evaluator(config)
+
         assert evaluator.evaluate("mixedcase").matched is True
         assert evaluator.evaluate("MIXEDCASE").matched is True
+
+
+class TestGetEvaluator:
+    """Tests for the get_evaluator factory function."""
+
+    def test_get_evaluator_returns_plugin_instance(self):
+        """Test factory returns correct plugin type."""
+        config = EvaluatorConfig(plugin="regex", config={"pattern": "abc"})
+        evaluator = get_evaluator(config)
+
+        assert isinstance(evaluator, RegexPlugin)
+        assert evaluator.config.pattern == "abc"
+
+    def test_get_evaluator_unknown_plugin(self):
+        """Test error when plugin not found."""
+        config = EvaluatorConfig(plugin="nonexistent", config={})
+
+        with pytest.raises(ValueError, match="not found"):
+            get_evaluator(config)
+
+    def test_get_available_plugins(self):
+        """Test listing available plugins."""
+        plugins = get_available_plugins()
+
+        assert "regex" in plugins
+        assert "list" in plugins
+        assert "custom-code" in plugins

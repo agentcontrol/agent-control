@@ -19,16 +19,28 @@ except ImportError:
     Rule = None  # type: ignore
     ainvoke_protect = None  # type: ignore
 
-from agent_control_models.controls import EvaluatorResult
-
-from agent_control_plugins.base import PluginEvaluator, PluginMetadata
+from agent_control_models import (
+    EvaluatorResult,
+    PluginEvaluator,
+    PluginMetadata,
+    register_plugin,
+)
 
 from .config import Luna2Config
 
 logger = logging.getLogger(__name__)
 
 
-class Luna2Plugin(PluginEvaluator):
+# Only register if Galileo SDK is available
+def _maybe_register(cls: type) -> type:
+    """Conditionally register plugin if dependencies available."""
+    if LUNA2_AVAILABLE:
+        return register_plugin(cls)
+    return cls
+
+
+@_maybe_register
+class Luna2Plugin(PluginEvaluator[Luna2Config]):
     """Galileo Luna-2 runtime protection plugin.
 
     This plugin uses Galileo's Luna-2 enterprise model for real-time
@@ -55,9 +67,9 @@ class Luna2Plugin(PluginEvaluator):
             stage_type="local",
             metric="input_toxicity",
             operator="gt",
-            target_value="0.8",
+            target_value=0.8,
             galileo_project="my-project",
-        ).model_dump()
+        )
 
         plugin = Luna2Plugin(config)
         result = plugin.evaluate("some text")
@@ -70,86 +82,18 @@ class Luna2Plugin(PluginEvaluator):
         description="Galileo Luna-2 enterprise runtime protection",
         requires_api_key=True,
         timeout_ms=10000,
-        config_schema={
-            "type": "object",
-            "properties": {
-                "metric": {
-                    "type": "string",
-                    "description": "Luna-2 metric to evaluate",
-                    "enum": [
-                        "input_toxicity",
-                        "output_toxicity",
-                        "input_sexism",
-                        "output_sexism",
-                        "prompt_injection",
-                        "pii_detection",
-                        "hallucination",
-                        "tone",
-                    ],
-                },
-                "operator": {
-                    "type": "string",
-                    "description": "Comparison operator",
-                    "enum": ["gt", "lt", "gte", "lte", "eq", "contains"],
-                },
-                "target_value": {
-                    "anyOf": [
-                        {"type": "number"},
-                        {"type": "string"},
-                        {"type": "array", "items": {"type": "string"}},
-                    ],
-                    "description": "Target value for comparison",
-                },
-                "galileo_project": {
-                    "type": "string",
-                    "description": "Galileo project name for logging",
-                },
-                "stage_type": {
-                    "type": "string",
-                    "enum": ["local", "central"],
-                    "default": "local",
-                    "description": "Use local (runtime) or central (pre-defined) stage",
-                },
-                "stage_name": {
-                    "type": "string",
-                    "description": "Stage name (for central stages)",
-                },
-                "stage_version": {
-                    "type": "integer",
-                    "description": "Stage version (for central stages)",
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "default": 10000,
-                    "description": "Request timeout in milliseconds",
-                },
-                "on_error": {
-                    "type": "string",
-                    "enum": ["allow", "deny"],
-                    "default": "allow",
-                    "description": "Action on error (fail open or closed)",
-                },
-                "payload_field": {
-                    "type": "string",
-                    "enum": ["input", "output"],
-                    "description": "Which field to populate (defaults to input)",
-                },
-            },
-        },
     )
+    config_model = Luna2Config
 
-    # Validated config stored as Luna2Config
-    _validated_config: Luna2Config
-
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: Luna2Config) -> None:
         """Initialize Luna-2 plugin with configuration.
 
         Args:
-            config: Plugin configuration dict (will be validated as Luna2Config)
+            config: Validated Luna2Config instance
 
         Raises:
             ImportError: If Galileo SDK not installed
-            ValueError: If GALILEO_API_KEY not set or config invalid
+            ValueError: If GALILEO_API_KEY not set
         """
         if not LUNA2_AVAILABLE:
             raise ImportError(
@@ -165,11 +109,7 @@ class Luna2Plugin(PluginEvaluator):
                 "Get your API key from: https://app.galileo.ai"
             )
 
-        # Call parent to store raw config
         super().__init__(config)
-
-        # Validate and store typed config
-        self._validated_config = Luna2Config(**config)
 
     def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate data using Galileo Luna-2 (synchronous).
@@ -204,14 +144,14 @@ class Luna2Plugin(PluginEvaluator):
         Returns:
             EvaluatorResult with matched status and metadata
         """
-        if self._validated_config.stage_type == "local":
+        if self.config.stage_type == "local":
             return await self._evaluate_local_stage_async(data)
         else:
             return await self._evaluate_central_stage_async(data)
 
     def _get_numeric_target_value(self) -> float | int | str | None:
         """Get target_value as numeric if possible (for proper Rule comparison)."""
-        target_val = self._validated_config.target_value
+        target_val = self.config.target_value
         if isinstance(target_val, (int, float)):
             return target_val
         if isinstance(target_val, str):
@@ -227,8 +167,8 @@ class Luna2Plugin(PluginEvaluator):
 
         # Create Rule with numeric target_value for proper comparison
         rule = Rule(
-            metric=self._validated_config.metric,
-            operator=self._validated_config.operator,
+            metric=self.config.metric,
+            operator=self.config.operator,
             target_value=self._get_numeric_target_value(),
         )
 
@@ -236,30 +176,30 @@ class Luna2Plugin(PluginEvaluator):
         ruleset = Ruleset(
             rules=[rule],
             action=PassthroughAction(type="PASSTHROUGH"),
-            description=f"Agent-control rule: {self._validated_config.metric}",
+            description=f"Agent-control rule: {self.config.metric}",
         )
 
         try:
-            logger.info(f"[Luna2] Calling ainvoke_protect")
-            logger.info(f"[Luna2] Payload: {payload}")
-            logger.info(f"[Luna2] Ruleset: {ruleset}")
+            logger.debug(f"[Luna2] Calling ainvoke_protect")
+            logger.debug(f"[Luna2] Payload: {payload}")
+            logger.debug(f"[Luna2] Ruleset: {ruleset}")
 
             response = await ainvoke_protect(
                 payload=payload,
                 prioritized_rulesets=[ruleset],
-                project_name=self._validated_config.galileo_project,
+                project_name=self.config.galileo_project,
                 timeout=self.get_timeout_seconds(),
-                metadata=self._validated_config.metadata or {},
+                metadata=self.config.metadata or {},
             )
 
-            logger.info(f"[Luna2] Response: {response}")
+            logger.debug(f"[Luna2] Response: {response}")
             if hasattr(response, 'status'):
-                logger.info(f"[Luna2] Status: {response.status}")
+                logger.debug(f"[Luna2] Status: {response.status}")
             if hasattr(response, 'text'):
-                logger.info(f"[Luna2] Text: {response.text}")
+                logger.debug(f"[Luna2] Text: {response.text}")
 
             result = self._parse_response(response)
-            logger.info(f"[Luna2] Parsed: matched={result.matched}, msg={result.message}")
+            logger.debug(f"[Luna2] Parsed: matched={result.matched}, msg={result.message}")
             return result
         except Exception as e:
             logger.error(f"Luna-2 async evaluation error: {e}", exc_info=True)
@@ -272,11 +212,11 @@ class Luna2Plugin(PluginEvaluator):
         try:
             response = await ainvoke_protect(
                 payload=payload,
-                project_name=self._validated_config.galileo_project,
-                stage_name=self._validated_config.stage_name,
-                stage_version=self._validated_config.stage_version,
+                project_name=self.config.galileo_project,
+                stage_name=self.config.stage_name,
+                stage_version=self.config.stage_version,
                 timeout=self.get_timeout_seconds(),
-                metadata=self._validated_config.metadata or {},
+                metadata=self.config.metadata or {},
             )
             return self._parse_response(response)
         except Exception as e:
@@ -292,14 +232,14 @@ class Luna2Plugin(PluginEvaluator):
         data_str = str(data) if data is not None else ""
 
         # Check explicit payload_field config
-        payload_field = self._validated_config.payload_field
+        payload_field = self.config.payload_field
         if payload_field == "output":
             return Payload(input="", output=data_str)
         elif payload_field == "input":
             return Payload(input=data_str, output="")
 
         # Determine from metric name if provided
-        metric = self._validated_config.metric or ""
+        metric = self.config.metric or ""
         is_output_metric = "output" in metric
 
         if is_output_metric:
@@ -367,7 +307,7 @@ class Luna2Plugin(PluginEvaluator):
             message=text or f"Luna-2 check: {status}",
             metadata={
                 "status": status,
-                "metric": self._validated_config.metric or "unknown",
+                "metric": self.config.metric or "unknown",
                 "trace_id": trace_id,
                 "execution_time_ms": execution_time,
                 "received_at": received_at,
@@ -377,7 +317,7 @@ class Luna2Plugin(PluginEvaluator):
 
     def _handle_error(self, error: Exception) -> EvaluatorResult:
         """Handle errors from Luna-2 evaluation."""
-        error_action = self._validated_config.on_error
+        error_action = self.config.on_error
 
         return EvaluatorResult(
             matched=(error_action == "deny"),  # Fail closed if configured
@@ -386,7 +326,7 @@ class Luna2Plugin(PluginEvaluator):
             metadata={
                 "error": str(error),
                 "error_type": type(error).__name__,
-                "metric": self._validated_config.metric,
+                "metric": self.config.metric,
                 "fallback_action": error_action,
             },
         )

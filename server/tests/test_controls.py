@@ -39,7 +39,7 @@ VALID_CONTROL_DATA = {
     "check_stage": "pre",
     "selector": {"path": "input"},
     "evaluator": {
-        "type": "regex",
+        "plugin": "regex",
         "config": {"pattern": "test", "flags": []}
     },
     "action": {"decision": "deny"},

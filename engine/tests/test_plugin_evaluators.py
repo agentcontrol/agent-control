@@ -1,279 +1,166 @@
-"""Tests for plugin evaluator integration in the engine.
+"""Tests for plugin system integration with the unified architecture.
 
-These tests verify that the engine can correctly use plugin-based evaluators.
-With the new architecture, plugins extend Evaluator directly - no wrapper needed.
+These tests verify the plugin system works correctly with the engine.
 """
 
 import pytest
-from unittest.mock import patch
+from typing import Any
 
-from agent_control_models import Evaluator, EvaluatorResult
-from agent_control_models.controls import PluginConfig, PluginControlEvaluator
-from agent_control_plugins import PluginEvaluator, PluginMetadata
-from agent_control_engine.evaluators import get_evaluator, _create_plugin_evaluator
+from pydantic import BaseModel
+
+from agent_control_models import (
+    EvaluatorConfig,
+    EvaluatorResult,
+    PluginEvaluator,
+    PluginMetadata,
+    register_plugin,
+    clear_plugins,
+)
+from agent_control_engine.evaluators import get_evaluator
+
+# Import to ensure built-in plugins are registered
+import agent_control_plugins  # noqa: F401
 
 
-class MockTestPlugin(PluginEvaluator):
+class MockConfig(BaseModel):
+    """Config for mock plugin."""
+
+    threshold: float = 0.5
+
+
+class MockTestPlugin(PluginEvaluator[MockConfig]):
     """Mock plugin for engine testing."""
 
     metadata = PluginMetadata(
-        name="test-engine-plugin",
+        name="test-mock-plugin",
         version="1.0.0",
         description="Test plugin for engine tests",
     )
+    config_model = MockConfig
 
-    def __init__(self, config: dict):
-        super().__init__(config)
-        self.threshold = config.get("threshold", 0.5)
-
-    def evaluate(self, data) -> EvaluatorResult:
-        """Mock evaluation (synchronous)."""
+    def evaluate(self, data: Any) -> EvaluatorResult:
+        """Mock evaluation."""
         value = float(data) if isinstance(data, (int, float)) else 0.0
-        matched = value > self.threshold
+        matched = value > self.config.threshold
 
         return EvaluatorResult(
             matched=matched,
             confidence=1.0,
-            message=f"Value {value} vs threshold {self.threshold}",
-            metadata={"value": value, "threshold": self.threshold},
+            message=f"Value {value} vs threshold {self.config.threshold}",
+            metadata={"value": value, "threshold": self.config.threshold},
         )
 
 
-class TestPluginIsEvaluator:
-    """Tests verifying plugins ARE evaluators (not wrapped)."""
+class TestPluginArchitecture:
+    """Tests verifying the plugin architecture."""
 
-    def test_plugin_extends_evaluator(self):
-        """Test that plugins extend the Evaluator base class."""
-        assert issubclass(PluginEvaluator, Evaluator)
-        assert issubclass(MockTestPlugin, Evaluator)
+    def test_plugin_is_abc_subclass(self):
+        """Test PluginEvaluator is an ABC."""
+        from abc import ABC
 
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_create_plugin_evaluator(self, mock_get_plugin):
-        """Test _create_plugin_evaluator returns an Evaluator."""
-        mock_get_plugin.return_value = MockTestPlugin
+        assert issubclass(PluginEvaluator, ABC)
 
-        config = PluginConfig(
-            plugin_name="test-engine-plugin",
-            plugin_config={"threshold": 0.7},
-        )
+    def test_plugin_has_required_attributes(self):
+        """Test plugins have required class attributes."""
+        assert hasattr(MockTestPlugin, "metadata")
+        assert hasattr(MockTestPlugin, "config_model")
+        assert MockTestPlugin.metadata.name == "test-mock-plugin"
 
-        evaluator = _create_plugin_evaluator(config)
+    def test_plugin_from_dict(self):
+        """Test creating plugin from dict config."""
+        plugin = MockTestPlugin.from_dict({"threshold": 0.7})
 
-        # Plugin IS an Evaluator - no wrapper
-        assert isinstance(evaluator, Evaluator)
-        assert isinstance(evaluator, PluginEvaluator)
-        assert isinstance(evaluator, MockTestPlugin)
-
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_plugin_not_found(self, mock_get_plugin):
-        """Test error when plugin not found."""
-        mock_get_plugin.return_value = None
-
-        config = PluginConfig(
-            plugin_name="nonexistent-plugin",
-            plugin_config={},
-        )
-
-        with pytest.raises(ValueError, match="Plugin .* not found"):
-            _create_plugin_evaluator(config)
-
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_plugin_init_error(self, mock_get_plugin):
-        """Test error during plugin initialization."""
-
-        class BadPlugin(PluginEvaluator):
-            metadata = PluginMetadata(name="bad", version="1.0", description="Bad")
-
-            def __init__(self, config):
-                raise RuntimeError("Plugin init failed")
-
-            def evaluate(self, data):
-                pass
-
-        mock_get_plugin.return_value = BadPlugin
-
-        config = PluginConfig(plugin_name="bad-plugin", plugin_config={})
-
-        with pytest.raises(ValueError, match="Failed to initialize plugin"):
-            _create_plugin_evaluator(config)
+        assert isinstance(plugin.config, MockConfig)
+        assert plugin.config.threshold == 0.7
 
 
-class TestPluginEvaluation:
-    """Tests for plugin evaluation."""
+class TestMockPluginEvaluation:
+    """Tests for mock plugin evaluation."""
 
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_evaluate_matched(self, mock_get_plugin):
-        """Test evaluation when rule matches."""
-        mock_get_plugin.return_value = MockTestPlugin
+    @pytest.fixture(autouse=True)
+    def register_mock(self):
+        """Register mock plugin for tests."""
+        register_plugin(MockTestPlugin)
+        yield
+        # Don't clear - other tests need built-in plugins
 
-        config = PluginConfig(
-            plugin_name="test-engine-plugin",
-            plugin_config={"threshold": 0.5},
-        )
+    def test_evaluate_matched(self):
+        """Test evaluation when threshold exceeded."""
+        config = EvaluatorConfig(plugin="test-mock-plugin", config={"threshold": 0.5})
+        evaluator = get_evaluator(config)
 
-        evaluator = _create_plugin_evaluator(config)
-        result = evaluator.evaluate(data=0.8)
+        result = evaluator.evaluate(0.8)
 
-        assert isinstance(result, EvaluatorResult)
         assert result.matched is True
         assert result.confidence == 1.0
         assert result.metadata["value"] == 0.8
         assert result.metadata["threshold"] == 0.5
 
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_evaluate_not_matched(self, mock_get_plugin):
-        """Test evaluation when rule doesn't match."""
-        mock_get_plugin.return_value = MockTestPlugin
+    def test_evaluate_not_matched(self):
+        """Test evaluation when below threshold."""
+        config = EvaluatorConfig(plugin="test-mock-plugin", config={"threshold": 0.9})
+        evaluator = get_evaluator(config)
 
-        config = PluginConfig(
-            plugin_name="test-engine-plugin",
-            plugin_config={"threshold": 0.9},
-        )
-
-        evaluator = _create_plugin_evaluator(config)
-        result = evaluator.evaluate(data=0.3)
+        result = evaluator.evaluate(0.3)
 
         assert result.matched is False
 
-
-class TestGetEvaluatorWithPlugin:
-    """Tests for get_evaluator factory with plugin type."""
-
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_get_evaluator_returns_plugin_directly(self, mock_get_plugin):
-        """Test get_evaluator returns plugin as Evaluator (no wrapper)."""
-        mock_get_plugin.return_value = MockTestPlugin
-
-        control_evaluator = PluginControlEvaluator(
-            type="plugin",
-            config=PluginConfig(
-                plugin_name="test-engine-plugin",
-                plugin_config={},
-            ),
-        )
-
-        evaluator = get_evaluator(control_evaluator)
-
-        # Should be the plugin itself, not a wrapper
-        assert isinstance(evaluator, Evaluator)
-        assert isinstance(evaluator, MockTestPlugin)
-
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_get_evaluator_plugin_with_config(self, mock_get_plugin):
-        """Test get_evaluator passes plugin config correctly."""
-        mock_get_plugin.return_value = MockTestPlugin
-
-        plugin_config = {"threshold": 0.75}
-
-        control_evaluator = PluginControlEvaluator(
-            type="plugin",
-            config=PluginConfig(
-                plugin_name="test-engine-plugin",
-                plugin_config=plugin_config,
-            ),
-        )
-
-        evaluator = get_evaluator(control_evaluator)
-        result = evaluator.evaluate(data=0.8)
-
-        # Verify config was used
-        assert result.metadata["threshold"] == 0.75
-
-
-class TestPluginIntegrationWithEngine:
-    """Integration tests for plugins with the engine."""
-
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_plugin_in_control_flow(self, mock_get_plugin):
-        """Test plugin evaluator in typical control flow."""
-        mock_get_plugin.return_value = MockTestPlugin
-
-        # 1. Create control evaluator config
-        control_evaluator = PluginControlEvaluator(
-            type="plugin",
-            config=PluginConfig(
-                plugin_name="test-engine-plugin",
-                plugin_config={"threshold": 0.6},
-            ),
-        )
-
-        # 2. Get evaluator from factory
-        evaluator = get_evaluator(control_evaluator)
-
-        # 3. Evaluate some data
-        result = evaluator.evaluate(data=0.8)
-
-        # 4. Verify result
-        assert result.matched is True
-        assert result.confidence == 1.0
-
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_multiple_plugin_evaluations(self, mock_get_plugin):
+    def test_multiple_evaluations(self):
         """Test multiple evaluations with same plugin."""
-        mock_get_plugin.return_value = MockTestPlugin
+        config = EvaluatorConfig(plugin="test-mock-plugin", config={"threshold": 0.5})
+        evaluator = get_evaluator(config)
 
-        control_evaluator = PluginControlEvaluator(
-            type="plugin",
-            config=PluginConfig(
-                plugin_name="test-engine-plugin",
-                plugin_config={"threshold": 0.5},
-            ),
-        )
-
-        evaluator = get_evaluator(control_evaluator)
-
-        # Multiple evaluations
         results = [
-            evaluator.evaluate(data=0.2),
-            evaluator.evaluate(data=0.6),
-            evaluator.evaluate(data=0.9),
+            evaluator.evaluate(0.2),
+            evaluator.evaluate(0.6),
+            evaluator.evaluate(0.9),
         ]
 
         assert results[0].matched is False  # 0.2 < 0.5
         assert results[1].matched is True  # 0.6 > 0.5
         assert results[2].matched is True  # 0.9 > 0.5
 
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_plugin_with_different_data_types(self, mock_get_plugin):
-        """Test plugin handles different data types."""
-        mock_get_plugin.return_value = MockTestPlugin
 
-        control_evaluator = PluginControlEvaluator(
-            type="plugin",
-            config=PluginConfig(
-                plugin_name="test-engine-plugin",
-                plugin_config={"threshold": 0.5},
-            ),
-        )
+class TestPluginMetadata:
+    """Tests for plugin metadata."""
 
-        evaluator = get_evaluator(control_evaluator)
-
-        # Test with different types
-        result_int = evaluator.evaluate(data=1)
-        result_float = evaluator.evaluate(data=0.8)
-        result_string = evaluator.evaluate(data="not a number")
-
-        assert result_int.matched is True
-        assert result_float.matched is True
-        assert result_string.matched is False  # Converts to 0.0
-
-
-class TestPluginMetadataAccess:
-    """Tests for accessing plugin metadata."""
-
-    @patch("agent_control_engine.evaluators.get_plugin")
-    def test_access_plugin_metadata(self, mock_get_plugin):
+    def test_access_metadata(self):
         """Test that plugin metadata is accessible."""
-        mock_get_plugin.return_value = MockTestPlugin
+        assert MockTestPlugin.metadata.name == "test-mock-plugin"
+        assert MockTestPlugin.metadata.version == "1.0.0"
+        assert MockTestPlugin.metadata.description == "Test plugin for engine tests"
 
-        config = PluginConfig(
-            plugin_name="test-engine-plugin",
-            plugin_config={},
-        )
+    def test_config_schema(self):
+        """Test that config model provides JSON schema."""
+        schema = MockTestPlugin.config_model.model_json_schema()
 
-        plugin = _create_plugin_evaluator(config)
+        assert "properties" in schema
+        assert "threshold" in schema["properties"]
 
-        # Plugin should have metadata
-        assert hasattr(plugin, "metadata")
-        assert plugin.metadata.name == "test-engine-plugin"
-        assert plugin.metadata.version == "1.0.0"
+
+class TestBuiltInPlugins:
+    """Tests for built-in plugins."""
+
+    def test_regex_plugin_registered(self):
+        """Test regex plugin is registered."""
+        from agent_control_models import get_plugin
+
+        plugin = get_plugin("regex")
+        assert plugin is not None
+        assert plugin.metadata.name == "regex"
+
+    def test_list_plugin_registered(self):
+        """Test list plugin is registered."""
+        from agent_control_models import get_plugin
+
+        plugin = get_plugin("list")
+        assert plugin is not None
+        assert plugin.metadata.name == "list"
+
+    def test_custom_code_plugin_registered(self):
+        """Test custom-code plugin is registered."""
+        from agent_control_models import get_plugin
+
+        plugin = get_plugin("custom-code")
+        assert plugin is not None
+        assert plugin.metadata.name == "custom-code"

@@ -14,6 +14,7 @@ from .endpoints.agents import router as agent_router
 from .endpoints.control_sets import router as control_set_router
 from .endpoints.controls import router as control_router
 from .endpoints.evaluation import router as evaluation_router
+from .endpoints.plugins import router as plugin_router
 from .endpoints.policies import router as policy_router
 from .logging_utils import configure_logging
 
@@ -81,6 +82,7 @@ app.include_router(policy_router, prefix=api_v1_prefix)
 app.include_router(control_set_router, prefix=api_v1_prefix)
 app.include_router(control_router, prefix=api_v1_prefix)
 app.include_router(evaluation_router, prefix=api_v1_prefix)
+app.include_router(plugin_router, prefix=api_v1_prefix)
 
 # Health check at root level (common convention)
 @app.get(

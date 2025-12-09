@@ -14,7 +14,7 @@ def test_evaluation_flow_deny(client: TestClient):
         "check_stage": "pre",
         "selector": {"path": "input"},
         "evaluator": {
-            "type": "regex",
+            "plugin": "regex",
             "config": {"pattern": "secret"}
         },
         "action": {"decision": "deny"}
@@ -100,7 +100,7 @@ def test_evaluation_path_failure(client: TestClient):
         "check_stage": "pre",
         "selector": {"path": "input.non_existent_field"}, # Invalid for string input
         "evaluator": {
-            "type": "regex",
+            "plugin": "regex",
             "config": {"pattern": ".*"} # Match anything if found
         },
         "action": {"decision": "deny"}
@@ -133,7 +133,7 @@ def test_evaluation_tool_call_nested(client: TestClient):
         "check_stage": "pre",
         "selector": {"path": "arguments.config.risk_level"},
         "evaluator": {
-            "type": "regex",
+            "plugin": "regex",
             "config": {"pattern": "^critical$"}
         },
         "action": {"decision": "deny"}
@@ -188,7 +188,7 @@ def test_evaluation_deny_precedence(client: TestClient):
         "applies_to": "llm_call",
         "check_stage": "pre",
         "selector": {"path": "input"},
-        "evaluator": {"type": "regex", "config": {"pattern": "keyword"}},
+        "evaluator": {"plugin": "regex", "config": {"pattern": "keyword"}},
         "action": {"decision": "warn"}
     }
     # Use helper to setup agent with first control
@@ -206,7 +206,7 @@ def test_evaluation_deny_precedence(client: TestClient):
         "applies_to": "llm_call",
         "check_stage": "pre",
         "selector": {"path": "input"},
-        "evaluator": {"type": "regex", "config": {"pattern": "keyword"}},
+        "evaluator": {"plugin": "regex", "config": {"pattern": "keyword"}},
         "action": {"decision": "deny"}
     }
     resp = client.put("/api/v1/controls", json={"name": f"deny-control-{uuid.uuid4()}"})
@@ -248,7 +248,7 @@ def test_evaluation_check_stage_filtering(client: TestClient):
         "applies_to": "llm_call",
         "check_stage": "post",
         "selector": {"path": "output"},
-        "evaluator": {"type": "regex", "config": {"pattern": "bad_output"}},
+        "evaluator": {"plugin": "regex", "config": {"pattern": "bad_output"}},
         "action": {"decision": "deny"}
     }
     agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="StageAgent")
@@ -285,7 +285,7 @@ def test_evaluation_applies_to_filtering(client: TestClient):
         "applies_to": "tool_call",
         "check_stage": "pre",
         "selector": {"path": "tool_name"},
-        "evaluator": {"type": "regex", "config": {"pattern": "rm_rf"}},
+        "evaluator": {"plugin": "regex", "config": {"pattern": "rm_rf"}},
         "action": {"decision": "deny"}
     }
     agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="AppliesToAgent")
@@ -321,7 +321,7 @@ def test_evaluation_denylist_tool_name(client: TestClient):
         "check_stage": "pre",
         "selector": {"path": "tool_name"},
         "evaluator": {
-            "type": "list", # Matches if value is IN list (exact match)
+            "plugin": "list", # Matches if value is IN list (exact match)
             "config": {"values": ["dangerous_tool", "rm_rf"], "match_on": "match"}
         },
         "action": {"decision": "deny"}
