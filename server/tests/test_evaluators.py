@@ -464,3 +464,164 @@ class TestEvaluatorConfigValidation:
         # Then: Succeeds
         assert resp.status_code == 200
         assert resp.json()["success"] is True
+
+
+# =============================================================================
+# Test: Custom Code Features
+# =============================================================================
+
+
+class TestCustomCodeFeatures:
+    """Tests for custom evaluator code execution features."""
+
+    def test_import_re2_in_custom_code(self, client: TestClient):
+        """Test that custom code can import re2 for regex matching."""
+        # Given: Custom evaluator that imports re2
+        re2_code = '''
+def evaluate(data, config):
+    import re2
+    pattern = config["pattern"]
+    text = str(data) if data else ""
+    if re2.search(pattern, text):
+        return EvaluatorResult(matched=True, confidence=1.0, message="Pattern matched")
+    return EvaluatorResult(matched=False, confidence=1.0, message="No match")
+'''
+        eval_name = f"re2-matcher-{uuid.uuid4().hex[:8]}"
+        resp = client.put(
+            "/api/v1/evaluators",
+            json={
+                "name": eval_name,
+                "code": re2_code,
+                "config_schema": {
+                    "type": "object",
+                    "properties": {"pattern": {"type": "string"}},
+                    "required": ["pattern"],
+                },
+            },
+        )
+        assert resp.status_code == 200
+
+        # And: Control using the evaluator to match SSN pattern
+        control_data = {
+            "description": "Match SSN with re2",
+            "enabled": True,
+            "applies_to": "llm_call",
+            "check_stage": "pre",
+            "selector": {"path": "input"},
+            "evaluator": {
+                "plugin": eval_name,
+                "config": {"user_config": {"pattern": r"\d{3}-\d{2}-\d{4}"}},
+            },
+            "action": {"decision": "deny"},
+        }
+        agent_uuid, control_name = create_and_assign_policy(
+            client, control_data, agent_name=f"Re2Agent-{uuid.uuid4().hex[:8]}"
+        )
+
+        # When: Evaluating input containing SSN
+        payload = LlmCall(input="My SSN is 123-45-6789", output=None)
+        req = EvaluationRequest(
+            agent_uuid=agent_uuid, payload=payload, check_stage="pre"
+        )
+        resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+
+        # Then: Pattern is matched
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["is_safe"] is False
+        assert data["matches"][0]["control_name"] == control_name
+
+    def test_runtime_error_returns_error_in_result(self, client: TestClient):
+        """Test that runtime errors are captured and returned in the result."""
+        # Given: Custom evaluator that throws an exception
+        error_code = '''
+def evaluate(data, config):
+    raise ValueError("Intentional test error")
+'''
+        eval_name = f"error-thrower-{uuid.uuid4().hex[:8]}"
+        client.put(
+            "/api/v1/evaluators",
+            json={"name": eval_name, "code": error_code},
+        )
+
+        # And: Control using the error-throwing evaluator
+        control_data = {
+            "description": "Error test",
+            "enabled": True,
+            "applies_to": "llm_call",
+            "check_stage": "pre",
+            "selector": {"path": "input"},
+            "evaluator": {
+                "plugin": eval_name,
+                "config": {"user_config": {}, "on_error": "deny"},
+            },
+            "action": {"decision": "deny"},
+        }
+        agent_uuid, control_name = create_and_assign_policy(
+            client, control_data, agent_name=f"ErrorAgent-{uuid.uuid4().hex[:8]}"
+        )
+
+        # When: Evaluating (triggers runtime error)
+        payload = LlmCall(input="test", output=None)
+        req = EvaluationRequest(
+            agent_uuid=agent_uuid, payload=payload, check_stage="pre"
+        )
+        resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+
+        # Then: Request returns 200 but with error info in match
+        assert resp.status_code == 200
+        data = resp.json()
+        # With on_error=deny, matched=True so is_safe=False
+        assert data["is_safe"] is False
+        assert len(data["matches"]) == 1
+        match = data["matches"][0]
+        assert match["control_name"] == control_name
+        # Error details in result metadata
+        result = match["result"]
+        assert "error" in result["message"].lower()
+        assert result["metadata"]["error"] == "Intentional test error"
+        assert result["metadata"]["error_type"] == "ValueError"
+
+    def test_runtime_error_with_on_error_allow(self, client: TestClient):
+        """Test that on_error=allow causes errors to not match."""
+        # Given: Custom evaluator that throws an exception
+        error_code = '''
+def evaluate(data, config):
+    raise RuntimeError("Something went wrong")
+'''
+        eval_name = f"error-allow-{uuid.uuid4().hex[:8]}"
+        client.put(
+            "/api/v1/evaluators",
+            json={"name": eval_name, "code": error_code},
+        )
+
+        # And: Control with on_error=allow (fail open)
+        control_data = {
+            "description": "Error allow test",
+            "enabled": True,
+            "applies_to": "llm_call",
+            "check_stage": "pre",
+            "selector": {"path": "input"},
+            "evaluator": {
+                "plugin": eval_name,
+                "config": {"user_config": {}, "on_error": "allow"},
+            },
+            "action": {"decision": "deny"},
+        }
+        agent_uuid, _ = create_and_assign_policy(
+            client, control_data, agent_name=f"ErrorAllowAgent-{uuid.uuid4().hex[:8]}"
+        )
+
+        # When: Evaluating (triggers runtime error)
+        payload = LlmCall(input="test", output=None)
+        req = EvaluationRequest(
+            agent_uuid=agent_uuid, payload=payload, check_stage="pre"
+        )
+        resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+
+        # Then: With on_error=allow, matched=False so request is safe
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["is_safe"] is True
+        # No matches because error resulted in matched=False
+        assert data["matches"] is None or len(data["matches"]) == 0
