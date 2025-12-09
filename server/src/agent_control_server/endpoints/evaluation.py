@@ -68,10 +68,10 @@ async def evaluate(
             _logger.warning(f"Failed to adapt control '{c.name}': {e}")
             continue
 
-    # 4. Execute Control Engine (async for plugin support)
+    # 4. Execute Control Engine (parallel with cancel-on-deny)
     engine = ControlEngine(engine_controls)
     try:
-        return await engine.process_async(request)
+        return await engine.process(request)
     except ValueError as e:
         # Handle unknown plugin or invalid config errors
         _logger.error(f"Evaluation failed: {e}")

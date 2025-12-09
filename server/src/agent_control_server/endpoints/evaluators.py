@@ -1,8 +1,10 @@
 """Custom evaluator management endpoints."""
 
+import inspect
 from typing import Any
 
-from agent_control_models import get_plugin
+from agent_control_models import EvaluatorResult, get_plugin
+from agent_control_plugins.dynamic import invalidate_namespace
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +20,12 @@ from ..services.evaluators import (
 
 router = APIRouter(prefix="/evaluators", tags=["evaluators"])
 
+# Import engine cache invalidation (if available)
+try:
+    from agent_control_engine.evaluators import invalidate_evaluator_cache
+except ImportError:
+    invalidate_evaluator_cache = None  # type: ignore
+
 
 # Built-in plugin names that cannot be used for custom evaluators
 RESERVED_PLUGIN_NAMES = {"regex", "list"}
@@ -28,14 +36,16 @@ class CreateEvaluatorRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255, description="Unique evaluator name")
     code: str = Field(
-        ..., min_length=1, description="Python code with evaluate(data, config) function"
+        ...,
+        min_length=1,
+        description="Python code with async def evaluate(data, config) function",
     )
     config_schema: dict[str, Any] = Field(
         default_factory=dict,
         description="JSON Schema defining the config structure",
     )
     description: str | None = Field(None, max_length=1000, description="Optional description")
-    entrypoint: str = Field("evaluate", description="Function name to call")
+    entrypoint: str = Field("evaluate", description="Async function name to call")
     timeout_ms: int = Field(5000, ge=100, le=60000, description="Timeout in milliseconds")
 
 
@@ -85,15 +95,15 @@ async def put_evaluator(
     Once registered, they can be referenced by name in Controls, just like
     built-in plugins (regex, list).
 
-    The code must define a function matching the entrypoint (default: "evaluate")
-    with signature: `def evaluate(data, config) -> EvaluatorResult`
+    The code must define an **async** function matching the entrypoint (default: "evaluate")
+    with signature: `async def evaluate(data, config) -> EvaluatorResult`
 
     - `data`: The data extracted by the Control's selector
     - `config`: The config dict provided in the Control's evaluator config
 
     Example code:
     ```python
-    def evaluate(data, config):
+    async def evaluate(data, config):
         target = config["target"]
         if target in str(data):
             return EvaluatorResult(matched=True, confidence=1.0, message="Found")
@@ -121,11 +131,36 @@ async def put_evaluator(
 
     # Validate code compiles
     try:
-        compile(request.code, filename="<custom-evaluator>", mode="exec")
+        compiled = compile(request.code, filename="<custom-evaluator>", mode="exec")
     except SyntaxError as e:
         raise HTTPException(
             status_code=422,
             detail=f"Code syntax error: {e}",
+        )
+
+    # Validate entrypoint exists and is async
+    namespace: dict[str, Any] = {"EvaluatorResult": EvaluatorResult}
+    try:
+        exec(compiled, namespace)
+    except Exception as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Code execution error: {e}",
+        )
+
+    func = namespace.get(request.entrypoint)
+    if func is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Entrypoint '{request.entrypoint}' not found in code",
+        )
+    if not inspect.iscoroutinefunction(func):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Entrypoint '{request.entrypoint}' must be async. "
+                f"Use 'async def {request.entrypoint}(data, config)'"
+            ),
         )
 
     evaluator = await create_or_update_evaluator(
@@ -137,6 +172,11 @@ async def put_evaluator(
         entrypoint=request.entrypoint,
         timeout_ms=request.timeout_ms,
     )
+
+    # Invalidate caches for this evaluator
+    invalidate_namespace(request.name)
+    if invalidate_evaluator_cache is not None:
+        invalidate_evaluator_cache(request.name)
 
     return EvaluatorResponse(evaluator_id=evaluator.id, name=evaluator.name)
 

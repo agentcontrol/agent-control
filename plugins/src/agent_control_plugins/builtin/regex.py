@@ -35,7 +35,7 @@ class RegexPlugin(PluginEvaluator[RegexConfig]):
         # Pre-compile regex for efficiency
         self._regex = re2.compile(config.pattern)
 
-    def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate data against the regex pattern.
 
         Args:

@@ -59,7 +59,7 @@ class ListPlugin(PluginEvaluator[ListConfig]):
 
         return re2.compile(pattern)
 
-    def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate data against the value list.
 
         Args:

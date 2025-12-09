@@ -38,7 +38,7 @@ class MockTestPlugin(PluginEvaluator[MockConfig]):
     )
     config_model = MockConfig
 
-    def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> EvaluatorResult:
         """Mock evaluation."""
         value = float(data) if isinstance(data, (int, float)) else 0.0
         matched = value > self.config.threshold
@@ -84,36 +84,39 @@ class TestMockPluginEvaluation:
         yield
         # Don't clear - other tests need built-in plugins
 
-    def test_evaluate_matched(self):
+    @pytest.mark.asyncio
+    async def test_evaluate_matched(self):
         """Test evaluation when threshold exceeded."""
         config = EvaluatorConfig(plugin="test-mock-plugin", config={"threshold": 0.5})
         evaluator = get_evaluator(config)
 
-        result = evaluator.evaluate(0.8)
+        result = await evaluator.evaluate(0.8)
 
         assert result.matched is True
         assert result.confidence == 1.0
         assert result.metadata["value"] == 0.8
         assert result.metadata["threshold"] == 0.5
 
-    def test_evaluate_not_matched(self):
+    @pytest.mark.asyncio
+    async def test_evaluate_not_matched(self):
         """Test evaluation when below threshold."""
         config = EvaluatorConfig(plugin="test-mock-plugin", config={"threshold": 0.9})
         evaluator = get_evaluator(config)
 
-        result = evaluator.evaluate(0.3)
+        result = await evaluator.evaluate(0.3)
 
         assert result.matched is False
 
-    def test_multiple_evaluations(self):
+    @pytest.mark.asyncio
+    async def test_multiple_evaluations(self):
         """Test multiple evaluations with same plugin."""
         config = EvaluatorConfig(plugin="test-mock-plugin", config={"threshold": 0.5})
         evaluator = get_evaluator(config)
 
         results = [
-            evaluator.evaluate(0.2),
-            evaluator.evaluate(0.6),
-            evaluator.evaluate(0.9),
+            await evaluator.evaluate(0.2),
+            await evaluator.evaluate(0.6),
+            await evaluator.evaluate(0.9),
         ]
 
         assert results[0].matched is False  # 0.2 < 0.5

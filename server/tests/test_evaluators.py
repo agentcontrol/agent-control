@@ -20,9 +20,9 @@ from .utils import create_and_assign_policy
 # Test Data
 # =============================================================================
 
-# Simple string matcher evaluator code
+# Simple string matcher evaluator code (async)
 STRING_MATCHER_CODE = '''
-def evaluate(data, config):
+async def evaluate(data, config):
     """Check if data contains target string."""
     target = config["target"]
     case_sensitive = config.get("case_sensitive", True)
@@ -121,7 +121,7 @@ class TestEvaluatorRegistration:
     def test_reject_invalid_syntax(self, client: TestClient):
         """Test rejecting code with syntax errors."""
         # Given: Invalid Python code
-        bad_code = "def evaluate(data, config):\n    return invalid syntax here"
+        bad_code = "async def evaluate(data, config):\n    return invalid syntax here"
 
         # When: Attempting to register
         resp = client.put(
@@ -132,6 +132,23 @@ class TestEvaluatorRegistration:
         # Then: Rejected with 422
         assert resp.status_code == 422
         assert "syntax error" in resp.json()["detail"].lower()
+
+    def test_reject_sync_evaluate_function(self, client: TestClient):
+        """Test rejecting code with sync def evaluate instead of async def."""
+        # Given: Code with synchronous evaluate function
+        sync_code = '''
+def evaluate(data, config):
+    return EvaluatorResult(matched=True, confidence=1.0, message="sync")
+'''
+        # When: Attempting to register
+        resp = client.put(
+            "/api/v1/evaluators",
+            json={"name": f"sync-{uuid.uuid4().hex[:8]}", "code": sync_code},
+        )
+
+        # Then: Rejected with 422 and helpful message
+        assert resp.status_code == 422
+        assert "must be async" in resp.json()["detail"].lower()
 
 
 # =============================================================================
@@ -478,7 +495,7 @@ class TestCustomCodeFeatures:
         """Test that custom code can import re2 for regex matching."""
         # Given: Custom evaluator that imports re2
         re2_code = '''
-def evaluate(data, config):
+async def evaluate(data, config):
     import re2
     pattern = config["pattern"]
     text = str(data) if data else ""
@@ -535,7 +552,7 @@ def evaluate(data, config):
         """Test that runtime errors are captured and returned in the result."""
         # Given: Custom evaluator that throws an exception
         error_code = '''
-def evaluate(data, config):
+async def evaluate(data, config):
     raise ValueError("Intentional test error")
 '''
         eval_name = f"error-thrower-{uuid.uuid4().hex[:8]}"
@@ -586,7 +603,7 @@ def evaluate(data, config):
         """Test that on_error=allow causes errors to not match."""
         # Given: Custom evaluator that throws an exception
         error_code = '''
-def evaluate(data, config):
+async def evaluate(data, config):
     raise RuntimeError("Something went wrong")
 '''
         eval_name = f"error-allow-{uuid.uuid4().hex[:8]}"
@@ -633,7 +650,7 @@ def evaluate(data, config):
 # Module-level state - persists across calls
 _call_count = 0
 
-def evaluate(data, config):
+async def evaluate(data, config):
     global _call_count
     _call_count += 1
     return EvaluatorResult(

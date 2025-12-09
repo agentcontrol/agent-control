@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -101,7 +100,7 @@ class PluginEvaluator(ABC, Generic[ConfigT]):  # noqa: UP046
         return cls(validated)  # type: ignore[arg-type]
 
     @abstractmethod
-    def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate data and return result.
 
         Args:
@@ -111,19 +110,6 @@ class PluginEvaluator(ABC, Generic[ConfigT]):  # noqa: UP046
             EvaluatorResult with matched status, confidence, and message
         """
         pass
-
-    async def evaluate_async(self, data: Any) -> EvaluatorResult:
-        """Async evaluation - override for true async plugins.
-
-        Default implementation runs sync evaluate() in thread pool.
-
-        Args:
-            data: Data extracted by selector from the payload
-
-        Returns:
-            EvaluatorResult with matched status, confidence, and message
-        """
-        return await asyncio.to_thread(self.evaluate, data)
 
     def get_timeout_seconds(self) -> float:
         """Get timeout in seconds from config or metadata default."""

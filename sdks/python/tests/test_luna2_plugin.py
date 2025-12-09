@@ -397,7 +397,8 @@ class TestLuna2PluginLocalStage:
     @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
     @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
     @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
-    def test_local_stage_triggered(self, mock_ainvoke):
+    @pytest.mark.asyncio
+    async def test_local_stage_triggered(self, mock_ainvoke):
         """Test local stage evaluation when rule is triggered."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
@@ -418,7 +419,7 @@ class TestLuna2PluginLocalStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = plugin.evaluate(data="toxic content here")
+        result = await plugin.evaluate(data="toxic content here")
 
         assert isinstance(result, EvaluatorResult)
         assert result.matched is True
@@ -434,7 +435,8 @@ class TestLuna2PluginLocalStage:
     @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
     @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
     @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
-    def test_local_stage_not_triggered(self, mock_ainvoke):
+    @pytest.mark.asyncio
+    async def test_local_stage_not_triggered(self, mock_ainvoke):
         """Test local stage evaluation when rule is not triggered."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
@@ -454,7 +456,7 @@ class TestLuna2PluginLocalStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = plugin.evaluate(data="hello world")
+        result = await plugin.evaluate(data="hello world")
 
         assert result.matched is False
         assert result.confidence == 0.0
@@ -467,7 +469,8 @@ class TestLuna2PluginLocalStage:
     @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
     @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
     @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
-    def test_local_stage_with_timeout_ms(self, mock_ainvoke):
+    @pytest.mark.asyncio
+    async def test_local_stage_with_timeout_ms(self, mock_ainvoke):
         """Test local stage respects timeout_ms configuration."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
@@ -484,7 +487,7 @@ class TestLuna2PluginLocalStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        plugin.evaluate(data="test")
+        await plugin.evaluate(data="test")
 
         # Check that ainvoke_protect was called with correct timeout
         mock_ainvoke.assert_called_once()
@@ -499,7 +502,8 @@ class TestLuna2PluginCentralStage:
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
     @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
     @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
-    def test_central_stage_evaluation(self, mock_ainvoke):
+    @pytest.mark.asyncio
+    async def test_central_stage_evaluation(self, mock_ainvoke):
         """Test central stage evaluation."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
@@ -518,7 +522,7 @@ class TestLuna2PluginCentralStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = plugin.evaluate(data="test input")
+        result = await plugin.evaluate(data="test input")
 
         assert result.matched is True
         assert result.metadata["status"] == "triggered"
@@ -527,7 +531,8 @@ class TestLuna2PluginCentralStage:
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
     @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
     @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
-    def test_central_stage_without_version(self, mock_ainvoke):
+    @pytest.mark.asyncio
+    async def test_central_stage_without_version(self, mock_ainvoke):
         """Test central stage without pinned version."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
@@ -541,7 +546,7 @@ class TestLuna2PluginCentralStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        plugin.evaluate(data="test")
+        await plugin.evaluate(data="test")
 
         mock_ainvoke.assert_called_once()
         call_kwargs = mock_ainvoke.call_args.kwargs
@@ -624,7 +629,8 @@ class TestLuna2PluginErrorHandling:
     @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
     @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
     @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
-    def test_error_with_fail_open(self, mock_ainvoke):
+    @pytest.mark.asyncio
+    async def test_error_with_fail_open(self, mock_ainvoke):
         """Test error handling with fail open (default)."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
@@ -639,7 +645,7 @@ class TestLuna2PluginErrorHandling:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = plugin.evaluate(data="test")
+        result = await plugin.evaluate(data="test")
 
         assert result.matched is False
         assert result.confidence == 0.0
@@ -653,7 +659,8 @@ class TestLuna2PluginErrorHandling:
     @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
     @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
     @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
-    def test_error_with_fail_closed(self, mock_ainvoke):
+    @pytest.mark.asyncio
+    async def test_error_with_fail_closed(self, mock_ainvoke):
         """Test error handling with fail closed."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
@@ -668,7 +675,7 @@ class TestLuna2PluginErrorHandling:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = plugin.evaluate(data="test")
+        result = await plugin.evaluate(data="test")
 
         assert result.matched is True
         assert result.confidence == 0.0
@@ -682,7 +689,8 @@ class TestLuna2PluginErrorHandling:
     @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
     @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
     @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
-    def test_empty_response_handling(self, mock_ainvoke):
+    @pytest.mark.asyncio
+    async def test_empty_response_handling(self, mock_ainvoke):
         """Test handling of empty/None response."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
@@ -696,7 +704,7 @@ class TestLuna2PluginErrorHandling:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = plugin.evaluate(data="test")
+        result = await plugin.evaluate(data="test")
 
         assert result.matched is False
         assert "No response from Luna-2" in result.message

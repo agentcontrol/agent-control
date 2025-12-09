@@ -72,7 +72,7 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
         )
 
         plugin = Luna2Plugin(config)
-        result = plugin.evaluate("some text")
+        result = await plugin.evaluate("some text")
         ```
     """
 
@@ -111,32 +111,8 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
 
         super().__init__(config)
 
-    def evaluate(self, data: Any) -> EvaluatorResult:
-        """Evaluate data using Galileo Luna-2 (synchronous).
-
-        Args:
-            data: The data to evaluate (from selector)
-
-        Returns:
-            EvaluatorResult with matched status and metadata
-        """
-        # Use async version and run it synchronously
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If we're in an async context, run in a new thread
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(asyncio.run, self.evaluate_async(data))
-                    return future.result(timeout=self.get_timeout_seconds() + 5)
-            else:
-                return loop.run_until_complete(self.evaluate_async(data))
-        except RuntimeError:
-            # No event loop, create one
-            return asyncio.run(self.evaluate_async(data))
-
-    async def evaluate_async(self, data: Any) -> EvaluatorResult:
-        """Evaluate data using Galileo Luna-2 (asynchronous).
+    async def evaluate(self, data: Any) -> EvaluatorResult:
+        """Evaluate data using Galileo Luna-2.
 
         Args:
             data: The data to evaluate (from selector)
@@ -145,9 +121,9 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
             EvaluatorResult with matched status and metadata
         """
         if self.config.stage_type == "local":
-            return await self._evaluate_local_stage_async(data)
+            return await self._evaluate_local_stage(data)
         else:
-            return await self._evaluate_central_stage_async(data)
+            return await self._evaluate_central_stage(data)
 
     def _get_numeric_target_value(self) -> float | int | str | None:
         """Get target_value as numeric if possible (for proper Rule comparison)."""
@@ -161,8 +137,8 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
                 return target_val  # Keep as string for non-numeric operators
         return target_val
 
-    async def _evaluate_local_stage_async(self, data: Any) -> EvaluatorResult:
-        """Async version: Evaluate using a local stage (runtime rulesets)."""
+    async def _evaluate_local_stage(self, data: Any) -> EvaluatorResult:
+        """Evaluate using a local stage (runtime rulesets)."""
         payload = self._prepare_payload(data)
 
         # Create Rule with numeric target_value for proper comparison
@@ -205,8 +181,8 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
             logger.error(f"Luna-2 async evaluation error: {e}", exc_info=True)
             return self._handle_error(e)
 
-    async def _evaluate_central_stage_async(self, data: Any) -> EvaluatorResult:
-        """Async version: Evaluate using a central stage (pre-defined rulesets)."""
+    async def _evaluate_central_stage(self, data: Any) -> EvaluatorResult:
+        """Evaluate using a central stage (pre-defined rulesets)."""
         payload = self._prepare_payload(data)
 
         try:

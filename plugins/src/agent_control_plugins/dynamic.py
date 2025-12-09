@@ -2,6 +2,12 @@
 
 Creates PluginEvaluator subclasses from code strings with namespace caching.
 
+Async-First:
+    Custom evaluators MUST define an async evaluate function:
+        async def evaluate(data, config) -> EvaluatorResult
+
+    Sync functions are rejected at registration time.
+
 Namespace Persistence:
     Custom evaluator code is executed once per evaluator. The resulting namespace
     (including any module-level variables, caches, or compiled patterns) persists
@@ -17,7 +23,7 @@ Namespace Persistence:
                 _pattern_cache[p] = re2.compile(p)
             return _pattern_cache[p]
 
-        def evaluate(data, config):
+        async def evaluate(data, config):
             pattern = _get_pattern(config["pattern"])
             ...
         ```
@@ -30,14 +36,13 @@ LRU Eviction:
     - Environment variable: CUSTOM_EVALUATOR_CACHE_SIZE (default: 100)
 """
 
+import asyncio
+import inspect
 import logging
 import os
-import signal
-import threading
 from collections import OrderedDict
-from contextlib import contextmanager
 from types import CodeType
-from typing import Any, Generator
+from typing import Any
 
 from agent_control_models import EvaluatorResult, PluginEvaluator, PluginMetadata, register_plugin
 from pydantic import BaseModel
@@ -68,30 +73,6 @@ class DynamicConfig(BaseModel):
     user_config: dict[str, Any] = {}
     timeout_ms: int = 5000
     on_error: str = "deny"
-
-
-@contextmanager
-def timeout_context(seconds: float) -> Generator[None, None, None]:
-    """Context manager for execution timeout using SIGALRM."""
-    if not hasattr(signal, "SIGALRM"):
-        yield
-        return
-
-    if threading.current_thread() is not threading.main_thread():
-        yield
-        return
-
-    def handler(signum: int, frame: Any) -> None:
-        raise TimeoutError(f"Execution exceeded {seconds}s timeout")
-
-    old_handler = signal.signal(signal.SIGALRM, handler)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-
-    try:
-        yield
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, old_handler)
 
 
 def _config_hash(config: dict[str, Any]) -> str:
@@ -203,10 +184,11 @@ def create_dynamic_evaluator_class(
         _compiled: CodeType = compiled
         _entrypoint: str = entrypoint
 
-        def evaluate(self, data: Any) -> EvaluatorResult:
-            """Execute custom code to evaluate data.
+        async def evaluate(self, data: Any) -> EvaluatorResult:
+            """Execute custom async code to evaluate data.
 
             The code's namespace is cached, so module-level state persists.
+            Uses asyncio.wait_for() for timeout.
             """
             timeout_sec = self.config.timeout_ms / 1000.0
             user_config = self.config.user_config
@@ -220,14 +202,22 @@ def create_dynamic_evaluator_class(
                 if func is None or not callable(func):
                     raise ValueError(f"Entrypoint '{self._entrypoint}' not found")
 
-                with timeout_context(timeout_sec):
-                    result = func(data, user_config)
-                    if not isinstance(result, EvaluatorResult):
-                        raise TypeError(f"Must return EvaluatorResult, got {type(result).__name__}")
-                    return result
-            except TimeoutError as e:
-                logger.warning(f"Custom evaluator '{name}' timeout: {e}")
-                return self._handle_error(e)
+                if not inspect.iscoroutinefunction(func):
+                    raise TypeError(
+                        f"Entrypoint '{self._entrypoint}' must be async. "
+                        f"Use 'async def {self._entrypoint}(data, config)'"
+                    )
+
+                # Call async function with timeout
+                coro = func(data, user_config)
+                result = await asyncio.wait_for(coro, timeout=timeout_sec)
+
+                if not isinstance(result, EvaluatorResult):
+                    raise TypeError(f"Must return EvaluatorResult, got {type(result).__name__}")
+                return result
+            except asyncio.TimeoutError:
+                logger.warning(f"Custom evaluator '{name}' timeout after {timeout_sec}s")
+                return self._handle_error(TimeoutError(f"Timeout after {timeout_sec}s"))
             except Exception as e:
                 logger.warning(f"Custom evaluator '{name}' error: {e}")
                 return self._handle_error(e)

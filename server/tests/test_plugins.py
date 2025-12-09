@@ -52,7 +52,7 @@ class StringMatchPlugin(PluginEvaluator[StringMatchConfig]):
     )
     config_model = StringMatchConfig
 
-    def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> EvaluatorResult:
         """Check if data contains/matches target string."""
         data_str = str(data) if data is not None else ""
         target = self.config.target
@@ -445,13 +445,14 @@ class TestPluginInstantiation:
         with pytest.raises(Exception):  # ValidationError
             StringMatchPlugin.from_dict({})
 
-    def test_evaluate_returns_result(self):
+    @pytest.mark.asyncio
+    async def test_evaluate_returns_result(self):
         """Test evaluate returns proper EvaluatorResult."""
         # Given: Plugin configured to match 'needle'
         plugin = StringMatchPlugin.from_dict({"target": "needle"})
 
         # When: Evaluating data containing 'needle'
-        result = plugin.evaluate("haystack with needle inside")
+        result = await plugin.evaluate("haystack with needle inside")
 
         # Then: Returns EvaluatorResult with match
         assert isinstance(result, EvaluatorResult)
