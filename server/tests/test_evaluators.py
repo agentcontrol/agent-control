@@ -701,3 +701,79 @@ async def evaluate(data, config):
         # Then: Call count should increment (state persists)
         # If state didn't persist, count would be 1 each time
         assert counts == [1, 2, 3], f"Expected [1, 2, 3], got {counts}"
+
+    def test_module_level_state_resets_when_config_changes(self, client: TestClient):
+        """Test that module-level state is isolated per config.
+
+        Different user_config values should get independent state namespaces.
+        This prevents cross-contamination between different configurations
+        of the same evaluator.
+        """
+        # Given: Custom evaluator with a counter
+        counter_code = '''
+_call_count = 0
+
+async def evaluate(data, config):
+    global _call_count
+    _call_count += 1
+    return EvaluatorResult(
+        matched=True,
+        confidence=1.0,
+        message=f"Call count: {_call_count}",
+        metadata={"call_count": _call_count, "config_id": config.get("id", "none")}
+    )
+'''
+        eval_name = f"counter-isolated-{uuid.uuid4().hex[:8]}"
+        client.put(
+            "/api/v1/evaluators",
+            json={"name": eval_name, "code": counter_code},
+        )
+
+        # Helper to create agent with specific config
+        def create_agent_with_config(config_id: str) -> str:
+            control_data = {
+                "description": f"Counter test config {config_id}",
+                "enabled": True,
+                "applies_to": "llm_call",
+                "check_stage": "pre",
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "plugin": eval_name,
+                    "config": {"user_config": {"id": config_id}},
+                },
+                "action": {"decision": "log"},
+            }
+            agent_uuid, _ = create_and_assign_policy(
+                client, control_data, agent_name=f"CounterAgent-{config_id}-{uuid.uuid4().hex[:8]}"
+            )
+            return agent_uuid
+
+        # Helper to call evaluate and get count
+        def get_count(agent_uuid: str) -> int:
+            payload = LlmCall(input="test", output=None)
+            req = EvaluationRequest(
+                agent_uuid=agent_uuid, payload=payload, check_stage="pre"
+            )
+            resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data.get("matches"), "Expected matches"
+            return data["matches"][0]["result"]["metadata"]["call_count"]
+
+        # Create two agents with different configs
+        agent_a = create_agent_with_config("A")
+        agent_b = create_agent_with_config("B")
+
+        # When: Calling config A multiple times, then config B
+        count_a1 = get_count(agent_a)  # Config A, call 1
+        count_a2 = get_count(agent_a)  # Config A, call 2
+        count_b1 = get_count(agent_b)  # Config B, call 1 (should be independent)
+        count_a3 = get_count(agent_a)  # Config A, call 3
+        count_b2 = get_count(agent_b)  # Config B, call 2
+
+        # Then: Each config should have independent counters
+        assert count_a1 == 1, f"Config A first call should be 1, got {count_a1}"
+        assert count_a2 == 2, f"Config A second call should be 2, got {count_a2}"
+        assert count_b1 == 1, f"Config B first call should be 1 (independent), got {count_b1}"
+        assert count_a3 == 3, f"Config A third call should be 3, got {count_a3}"
+        assert count_b2 == 2, f"Config B second call should be 2, got {count_b2}"

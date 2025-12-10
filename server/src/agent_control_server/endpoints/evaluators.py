@@ -4,7 +4,7 @@ import inspect
 from typing import Any
 
 from agent_control_models import EvaluatorResult, get_plugin
-from agent_control_plugins.dynamic import invalidate_namespace
+from agent_control_plugins.dynamic import invalidate_instances
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -174,7 +174,7 @@ async def put_evaluator(
     )
 
     # Invalidate caches for this evaluator
-    invalidate_namespace(request.name)
+    invalidate_instances(request.name)
     if invalidate_evaluator_cache is not None:
         invalidate_evaluator_cache(request.name)
 

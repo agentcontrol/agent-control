@@ -1,6 +1,6 @@
 """Dynamic evaluator factory for custom evaluators from database.
 
-Creates PluginEvaluator subclasses from code strings with namespace caching.
+Creates PluginEvaluator subclasses from code strings.
 
 Async-First:
     Custom evaluators MUST define an async evaluate function:
@@ -9,9 +9,8 @@ Async-First:
     Sync functions are rejected at registration time.
 
 Namespace Persistence:
-    Custom evaluator code is executed once per evaluator. The resulting namespace
-    (including any module-level variables, caches, or compiled patterns) persists
-    across evaluate() calls. This allows evaluators to maintain state for performance.
+    Each evaluator instance stores its own namespace (executed code globals).
+    Module-level state persists for the lifetime of the instance.
 
     Example:
         ```python
@@ -28,19 +27,14 @@ Namespace Persistence:
             ...
         ```
 
-    WARNING: Module-level state persists for the lifetime of the evaluator.
+    WARNING: Module-level state persists for the lifetime of the instance.
     Be careful with memory usage - don't cache unbounded data.
-
-LRU Eviction:
-    Namespaces are cached with LRU eviction. Configure max cached evaluators via:
-    - Environment variable: CUSTOM_EVALUATOR_CACHE_SIZE (default: 100)
 """
 
 import asyncio
 import inspect
+import json
 import logging
-import os
-from collections import OrderedDict
 from types import CodeType
 from typing import Any
 
@@ -49,21 +43,13 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-# Configuration
-DEFAULT_CACHE_SIZE = 100
-CACHE_SIZE = int(os.environ.get("CUSTOM_EVALUATOR_CACHE_SIZE", DEFAULT_CACHE_SIZE))
-
 # Cache for compiled code objects
 _CODE_CACHE: dict[str, CodeType] = {}
 
 # Cache for dynamically created plugin classes
 _CLASS_CACHE: dict[str, type[PluginEvaluator[Any]]] = {}
 
-# LRU cache for executed namespaces (evaluator name -> exec_globals)
-# This preserves module-level state across evaluate() calls
-_NAMESPACE_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
-
-# Cache for plugin instances (keyed by name + config hash)
+# Cache for plugin instances (keyed by name + code hash + config hash)
 _INSTANCE_CACHE: dict[str, PluginEvaluator[Any]] = {}
 
 
@@ -76,33 +62,12 @@ class DynamicConfig(BaseModel):
 
 
 def _config_hash(config: dict[str, Any]) -> str:
-    """Create a hashable key from config dict."""
-    import json
-
+    """Create a stable hash key from config dict."""
     return json.dumps(config, sort_keys=True, default=str)
 
 
-def _get_or_create_namespace(
-    name: str,
-    code: str,
-    compiled: CodeType,
-) -> dict[str, Any]:
-    """Get or create a cached namespace for an evaluator.
-
-    The namespace contains the executed code's globals, preserving any
-    module-level state (caches, compiled patterns, etc.) across calls.
-
-    Uses LRU eviction when cache is full.
-    """
-    cache_key = f"{name}:{hash(code)}"
-
-    # Check if already cached
-    if cache_key in _NAMESPACE_CACHE:
-        # Move to end (most recently used)
-        _NAMESPACE_CACHE.move_to_end(cache_key)
-        return _NAMESPACE_CACHE[cache_key]
-
-    # Create new namespace with builtins
+def _create_namespace(compiled: CodeType) -> dict[str, Any]:
+    """Create and populate a namespace by executing compiled code."""
     namespace: dict[str, Any] = {
         "__builtins__": __builtins__,
         "EvaluatorResult": EvaluatorResult,
@@ -110,32 +75,19 @@ def _get_or_create_namespace(
         "json": __import__("json"),
         "math": __import__("math"),
     }
-
-    # Execute code once to populate namespace
     exec(compiled, namespace)
-
-    # Evict oldest if cache is full
-    while len(_NAMESPACE_CACHE) >= CACHE_SIZE:
-        evicted_key, _ = _NAMESPACE_CACHE.popitem(last=False)
-        logger.debug(f"Evicted namespace from cache: {evicted_key}")
-
-    # Cache the namespace
-    _NAMESPACE_CACHE[cache_key] = namespace
-    logger.debug(f"Cached namespace for evaluator: {name} (cache size: {len(_NAMESPACE_CACHE)})")
-
     return namespace
 
 
-def invalidate_namespace(name: str) -> None:
-    """Invalidate cached namespace for an evaluator.
+def invalidate_instances(name: str) -> None:
+    """Invalidate cached instances for an evaluator.
 
     Call this when evaluator code is updated.
     """
-    # Remove all cache entries for this evaluator name
-    keys_to_remove = [k for k in _NAMESPACE_CACHE if k.startswith(f"{name}:")]
+    keys_to_remove = [k for k in _INSTANCE_CACHE if k.startswith(f"{name}:")]
     for key in keys_to_remove:
-        del _NAMESPACE_CACHE[key]
-        logger.debug(f"Invalidated namespace: {key}")
+        del _INSTANCE_CACHE[key]
+        logger.debug(f"Invalidated instance: {key}")
 
 
 def create_dynamic_evaluator_class(
@@ -183,21 +135,21 @@ def create_dynamic_evaluator_class(
 
         _compiled: CodeType = compiled
         _entrypoint: str = entrypoint
+        _namespace: dict[str, Any] | None = None
+
+        def _get_namespace(self) -> dict[str, Any]:
+            """Get or create namespace for this instance."""
+            if self._namespace is None:
+                self._namespace = _create_namespace(self._compiled)
+            return self._namespace
 
         async def evaluate(self, data: Any) -> EvaluatorResult:
-            """Execute custom async code to evaluate data.
-
-            The code's namespace is cached, so module-level state persists.
-            Uses asyncio.wait_for() for timeout.
-            """
+            """Execute custom async code to evaluate data."""
             timeout_sec = self.config.timeout_ms / 1000.0
             user_config = self.config.user_config
 
             try:
-                # Get cached namespace (or create and cache it)
-                namespace = _get_or_create_namespace(name, code, self._compiled)
-
-                # Get the entrypoint function from cached namespace
+                namespace = self._get_namespace()
                 func = namespace.get(self._entrypoint)
                 if func is None or not callable(func):
                     raise ValueError(f"Entrypoint '{self._entrypoint}' not found")
@@ -208,7 +160,6 @@ def create_dynamic_evaluator_class(
                         f"Use 'async def {self._entrypoint}(data, config)'"
                     )
 
-                # Call async function with timeout
                 coro = func(data, user_config)
                 result = await asyncio.wait_for(coro, timeout=timeout_sec)
 
@@ -317,7 +268,6 @@ def clear_caches() -> None:
     """Clear all caches. Useful for testing."""
     _CODE_CACHE.clear()
     _CLASS_CACHE.clear()
-    _NAMESPACE_CACHE.clear()
     _INSTANCE_CACHE.clear()
 
 
@@ -326,7 +276,5 @@ def get_cache_stats() -> dict[str, int]:
     return {
         "code_cache_size": len(_CODE_CACHE),
         "class_cache_size": len(_CLASS_CACHE),
-        "namespace_cache_size": len(_NAMESPACE_CACHE),
-        "namespace_cache_limit": CACHE_SIZE,
         "instance_cache_size": len(_INSTANCE_CACHE),
     }
