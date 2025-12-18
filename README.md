@@ -69,7 +69,7 @@ make alembic-upgrade
 
 ```bash
 # From repo root
-make run-server
+make server-run
 ```
 Server is now running at `http://localhost:8000`.
 
