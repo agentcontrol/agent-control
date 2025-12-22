@@ -1,9 +1,10 @@
 """Unit tests for the Luna-2 plugin.
 
-These tests mock the Galileo SDK to test the plugin logic without
+These tests mock the HTTP client to test the plugin logic without
 requiring actual Galileo API access.
 
 New architecture: Plugins take config at __init__, evaluate() only takes data.
+The plugin now uses direct HTTP API calls instead of the galileo SDK.
 """
 
 import os
@@ -15,56 +16,27 @@ from pydantic import ValidationError
 from agent_control_models import EvaluatorResult, PluginEvaluator
 
 
-# Create mock classes for testing (mimic galileo SDK classes)
-class MockPayload:
-    """Mock Payload class that stores input/output values."""
-    def __init__(self, input: str = "", output: str = ""):
-        self.input = input
-        self.output = output
+def create_mock_protect_response(
+    status: str = "success",
+    text: str = "OK",
+    trace_id: str = "trace-123",
+    execution_time: float = 100.0,
+) -> MagicMock:
+    """Create a mock ProtectResponse object for testing."""
+    from agent_control_plugins.luna2.client import ProtectResponse, TraceMetadata
 
-
-class MockRule:
-    """Mock Rule class."""
-    def __init__(self, metric=None, operator=None, target_value=None):
-        self.metric = metric
-        self.operator = operator
-        self.target_value = target_value
-
-
-class MockRuleset:
-    """Mock Ruleset class."""
-    def __init__(self, rules=None, action=None, description=None):
-        self.rules = rules or []
-        self.action = action
-        self.description = description
-
-
-class MockPassthroughAction:
-    """Mock PassthroughAction class."""
-    def __init__(self, type=None):
-        self.type = type
-
-
-def create_mock_response(status="success", text="OK", trace_id="trace-123", execution_time=100):
-    """Create a mock Galileo Response object."""
-    class MockTraceMetadata:
-        def __init__(self):
-            self.id = trace_id
-            self.execution_time = execution_time
-            self.received_at = 1234567890
-            self.response_at = 1234567900
-    
-    class MockStatus:
-        def __init__(self, value):
-            self.value = value
-    
-    class MockResponse:
-        def __init__(self):
-            self.status = MockStatus(status)
-            self.text = text
-            self.trace_metadata = MockTraceMetadata()
-    
-    return MockResponse()
+    return ProtectResponse(
+        status=status,
+        text=text,
+        trace_metadata=TraceMetadata(
+            id=trace_id,
+            execution_time=execution_time,
+            received_at="2024-01-01T00:00:00Z",
+            response_at="2024-01-01T00:00:01Z",
+        ),
+        metric_results={},
+        raw_response={},
+    )
 
 
 class TestLuna2Config:
@@ -305,16 +277,16 @@ class TestLuna2PluginImport:
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
     def test_luna2_plugin_import_success(self):
-        """Test importing Luna-2 plugin with SDK available."""
+        """Test importing Luna-2 plugin with dependencies available."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
         assert Luna2Plugin is not None
         assert Luna2Plugin.metadata.name == "galileo-luna2"
-        assert Luna2Plugin.metadata.version == "1.0.0"
+        assert Luna2Plugin.metadata.version == "2.0.0"
 
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", False)
-    def test_luna2_plugin_init_without_sdk_raises_error(self):
-        """Test that initializing without SDK raises ImportError."""
+    def test_luna2_plugin_init_without_httpx_raises_error(self):
+        """Test that initializing without httpx raises ImportError."""
         from agent_control_plugins.luna2 import Luna2Plugin
 
         config = {
@@ -324,7 +296,7 @@ class TestLuna2PluginImport:
             "target_value": "0.5",
         }
 
-        with pytest.raises(ImportError, match="Galileo SDK"):
+        with pytest.raises(ImportError, match="httpx"):
             Luna2Plugin.from_dict(config)
 
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
@@ -392,23 +364,18 @@ class TestLuna2PluginLocalStage:
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
-    @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
-    @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
-    @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
     @pytest.mark.asyncio
-    async def test_local_stage_triggered(self, mock_ainvoke):
+    async def test_local_stage_triggered(self):
         """Test local stage evaluation when rule is triggered."""
         from agent_control_plugins.luna2 import Luna2Plugin
+        from agent_control_plugins.luna2.client import GalileoProtectClient
 
         # Create mock response with triggered status
-        mock_response = create_mock_response(
+        mock_response = create_mock_protect_response(
             status="triggered",
             text="Toxic content detected",
             trace_id="trace-123",
         )
-        mock_ainvoke.return_value = mock_response
 
         config = {
             "stage_type": "local",
@@ -419,33 +386,35 @@ class TestLuna2PluginLocalStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = await plugin.evaluate(data="toxic content here")
 
-        assert isinstance(result, EvaluatorResult)
-        assert result.matched is True
-        assert result.confidence == 1.0
-        assert result.metadata["trace_id"] == "trace-123"
-        assert result.metadata["metric"] == "input_toxicity"
-        assert result.metadata["status"] == "triggered"
+        # Mock the client's invoke_protect method
+        with patch.object(
+            GalileoProtectClient, "invoke_protect", new_callable=AsyncMock
+        ) as mock_invoke:
+            mock_invoke.return_value = mock_response
+
+            result = await plugin.evaluate(data="toxic content here")
+
+            assert isinstance(result, EvaluatorResult)
+            assert result.matched is True
+            assert result.confidence == 1.0
+            assert result.metadata["trace_id"] == "trace-123"
+            assert result.metadata["metric"] == "input_toxicity"
+            assert result.metadata["status"] == "triggered"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
-    @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
-    @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
-    @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
     @pytest.mark.asyncio
-    async def test_local_stage_not_triggered(self, mock_ainvoke):
+    async def test_local_stage_not_triggered(self):
         """Test local stage evaluation when rule is not triggered."""
         from agent_control_plugins.luna2 import Luna2Plugin
+        from agent_control_plugins.luna2.client import GalileoProtectClient
 
-        mock_response = create_mock_response(
+        mock_response = create_mock_protect_response(
             status="not_triggered",
             text="Content is safe",
             trace_id="trace-456",
         )
-        mock_ainvoke.return_value = mock_response
 
         config = {
             "stage_type": "local",
@@ -456,26 +425,27 @@ class TestLuna2PluginLocalStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = await plugin.evaluate(data="hello world")
 
-        assert result.matched is False
-        assert result.confidence == 0.0
-        assert result.metadata["status"] == "not_triggered"
+        with patch.object(
+            GalileoProtectClient, "invoke_protect", new_callable=AsyncMock
+        ) as mock_invoke:
+            mock_invoke.return_value = mock_response
+
+            result = await plugin.evaluate(data="hello world")
+
+            assert result.matched is False
+            assert result.confidence == 0.0
+            assert result.metadata["status"] == "not_triggered"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
-    @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
-    @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
-    @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
     @pytest.mark.asyncio
-    async def test_local_stage_with_timeout_ms(self, mock_ainvoke):
+    async def test_local_stage_with_timeout_ms(self):
         """Test local stage respects timeout_ms configuration."""
         from agent_control_plugins.luna2 import Luna2Plugin
+        from agent_control_plugins.luna2.client import GalileoProtectClient
 
-        mock_response = create_mock_response()
-        mock_ainvoke.return_value = mock_response
+        mock_response = create_mock_protect_response()
 
         config = {
             "stage_type": "local",
@@ -487,12 +457,18 @@ class TestLuna2PluginLocalStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        await plugin.evaluate(data="test")
 
-        # Check that ainvoke_protect was called with correct timeout
-        mock_ainvoke.assert_called_once()
-        call_kwargs = mock_ainvoke.call_args.kwargs
-        assert call_kwargs["timeout"] == 5.0
+        with patch.object(
+            GalileoProtectClient, "invoke_protect", new_callable=AsyncMock
+        ) as mock_invoke:
+            mock_invoke.return_value = mock_response
+
+            await plugin.evaluate(data="test")
+
+            # Check that invoke_protect was called with correct timeout
+            mock_invoke.assert_called_once()
+            call_kwargs = mock_invoke.call_args.kwargs
+            assert call_kwargs["timeout"] == 5.0
 
 
 class TestLuna2PluginCentralStage:
@@ -500,19 +476,17 @@ class TestLuna2PluginCentralStage:
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
     @pytest.mark.asyncio
-    async def test_central_stage_evaluation(self, mock_ainvoke):
+    async def test_central_stage_evaluation(self):
         """Test central stage evaluation."""
         from agent_control_plugins.luna2 import Luna2Plugin
+        from agent_control_plugins.luna2.client import GalileoProtectClient
 
-        mock_response = create_mock_response(
+        mock_response = create_mock_protect_response(
             status="triggered",
             text="Central stage rule triggered",
             trace_id="trace-central-1",
         )
-        mock_ainvoke.return_value = mock_response
 
         config = {
             "stage_type": "central",
@@ -522,22 +496,26 @@ class TestLuna2PluginCentralStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = await plugin.evaluate(data="test input")
 
-        assert result.matched is True
-        assert result.metadata["status"] == "triggered"
+        with patch.object(
+            GalileoProtectClient, "invoke_protect", new_callable=AsyncMock
+        ) as mock_invoke:
+            mock_invoke.return_value = mock_response
+
+            result = await plugin.evaluate(data="test input")
+
+            assert result.matched is True
+            assert result.metadata["status"] == "triggered"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
     @pytest.mark.asyncio
-    async def test_central_stage_without_version(self, mock_ainvoke):
+    async def test_central_stage_without_version(self):
         """Test central stage without pinned version."""
         from agent_control_plugins.luna2 import Luna2Plugin
+        from agent_control_plugins.luna2.client import GalileoProtectClient
 
-        mock_response = create_mock_response(trace_id="trace-latest")
-        mock_ainvoke.return_value = mock_response
+        mock_response = create_mock_protect_response(trace_id="trace-latest")
 
         config = {
             "stage_type": "central",
@@ -546,11 +524,17 @@ class TestLuna2PluginCentralStage:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        await plugin.evaluate(data="test")
 
-        mock_ainvoke.assert_called_once()
-        call_kwargs = mock_ainvoke.call_args.kwargs
-        assert call_kwargs["stage_name"] == "latest-protection"
+        with patch.object(
+            GalileoProtectClient, "invoke_protect", new_callable=AsyncMock
+        ) as mock_invoke:
+            mock_invoke.return_value = mock_response
+
+            await plugin.evaluate(data="test")
+
+            mock_invoke.assert_called_once()
+            call_kwargs = mock_invoke.call_args.kwargs
+            assert call_kwargs["stage_name"] == "latest-protection"
 
 
 class TestLuna2PluginPayloadPreparation:
@@ -558,7 +542,6 @@ class TestLuna2PluginPayloadPreparation:
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
     def test_input_metric_payload(self):
         """Test payload for input metrics uses _prepare_payload correctly."""
         from agent_control_plugins.luna2 import Luna2Plugin
@@ -571,7 +554,7 @@ class TestLuna2PluginPayloadPreparation:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        
+
         # Test the _prepare_payload method directly
         payload = plugin._prepare_payload("user input text")
         assert payload.input == "user input text"
@@ -579,7 +562,6 @@ class TestLuna2PluginPayloadPreparation:
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
     def test_output_metric_payload(self):
         """Test payload for output metrics uses _prepare_payload correctly."""
         from agent_control_plugins.luna2 import Luna2Plugin
@@ -592,7 +574,7 @@ class TestLuna2PluginPayloadPreparation:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        
+
         # Test the _prepare_payload method directly
         payload = plugin._prepare_payload("llm output text")
         assert payload.input == ""
@@ -600,7 +582,6 @@ class TestLuna2PluginPayloadPreparation:
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
     def test_payload_field_override(self):
         """Test explicit payload_field configuration."""
         from agent_control_plugins.luna2 import Luna2Plugin
@@ -612,7 +593,7 @@ class TestLuna2PluginPayloadPreparation:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        
+
         # Test the _prepare_payload method directly
         payload = plugin._prepare_payload("some data")
         assert payload.input == ""
@@ -624,17 +605,11 @@ class TestLuna2PluginErrorHandling:
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
-    @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
-    @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
-    @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
     @pytest.mark.asyncio
-    async def test_error_with_fail_open(self, mock_ainvoke):
+    async def test_error_with_fail_open(self):
         """Test error handling with fail open (default)."""
         from agent_control_plugins.luna2 import Luna2Plugin
-
-        mock_ainvoke.side_effect = Exception("Luna-2 API unavailable")
+        from agent_control_plugins.luna2.client import GalileoProtectClient
 
         config = {
             "stage_type": "local",
@@ -645,26 +620,26 @@ class TestLuna2PluginErrorHandling:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = await plugin.evaluate(data="test")
 
-        assert result.matched is False
-        assert result.confidence == 0.0
-        assert "error" in result.message.lower()
-        assert result.metadata["fallback_action"] == "allow"
+        with patch.object(
+            GalileoProtectClient, "invoke_protect", new_callable=AsyncMock
+        ) as mock_invoke:
+            mock_invoke.side_effect = Exception("Luna-2 API unavailable")
+
+            result = await plugin.evaluate(data="test")
+
+            assert result.matched is False
+            assert result.confidence == 0.0
+            assert "error" in result.message.lower()
+            assert result.metadata["fallback_action"] == "allow"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
-    @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
-    @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
-    @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
     @pytest.mark.asyncio
-    async def test_error_with_fail_closed(self, mock_ainvoke):
+    async def test_error_with_fail_closed(self):
         """Test error handling with fail closed."""
         from agent_control_plugins.luna2 import Luna2Plugin
-
-        mock_ainvoke.side_effect = Exception("Luna-2 API error")
+        from agent_control_plugins.luna2.client import GalileoProtectClient
 
         config = {
             "stage_type": "local",
@@ -675,26 +650,26 @@ class TestLuna2PluginErrorHandling:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = await plugin.evaluate(data="test")
 
-        assert result.matched is True
-        assert result.confidence == 0.0
-        assert "error" in result.message.lower()
-        assert result.metadata["fallback_action"] == "deny"
+        with patch.object(
+            GalileoProtectClient, "invoke_protect", new_callable=AsyncMock
+        ) as mock_invoke:
+            mock_invoke.side_effect = Exception("Luna-2 API error")
+
+            result = await plugin.evaluate(data="test")
+
+            assert result.matched is True
+            assert result.confidence == 0.0
+            assert "error" in result.message.lower()
+            assert result.metadata["fallback_action"] == "deny"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @patch("agent_control_plugins.luna2.plugin.LUNA2_AVAILABLE", True)
-    @patch("agent_control_plugins.luna2.plugin.ainvoke_protect", new_callable=AsyncMock)
-    @patch("agent_control_plugins.luna2.plugin.Payload", MockPayload)
-    @patch("agent_control_plugins.luna2.plugin.Rule", MockRule)
-    @patch("agent_control_plugins.luna2.plugin.Ruleset", MockRuleset)
-    @patch("agent_control_plugins.luna2.plugin.PassthroughAction", MockPassthroughAction)
     @pytest.mark.asyncio
-    async def test_empty_response_handling(self, mock_ainvoke):
+    async def test_empty_response_handling(self):
         """Test handling of empty/None response."""
         from agent_control_plugins.luna2 import Luna2Plugin
-
-        mock_ainvoke.return_value = None
+        from agent_control_plugins.luna2.client import GalileoProtectClient
 
         config = {
             "stage_type": "local",
@@ -704,11 +679,17 @@ class TestLuna2PluginErrorHandling:
         }
 
         plugin = Luna2Plugin.from_dict(config)
-        result = await plugin.evaluate(data="test")
 
-        assert result.matched is False
-        assert "No response from Luna-2" in result.message
-        assert result.metadata["error"] == "empty_response"
+        with patch.object(
+            GalileoProtectClient, "invoke_protect", new_callable=AsyncMock
+        ) as mock_invoke:
+            mock_invoke.return_value = None
+
+            result = await plugin.evaluate(data="test")
+
+            assert result.matched is False
+            assert "No response from Luna-2" in result.message
+            assert result.metadata["error"] == "empty_response"
 
 
 class TestLuna2PluginTimeoutHelper:
@@ -799,3 +780,97 @@ class TestLuna2PluginNumericTargetValue:
 
         plugin = Luna2Plugin.from_dict(config)
         assert plugin._get_numeric_target_value() == 0.75
+
+
+class TestGalileoProtectClient:
+    """Tests for the GalileoProtectClient HTTP client."""
+
+    def test_client_init_with_api_key(self):
+        """Test client initialization with API key."""
+        from agent_control_plugins.luna2.client import GalileoProtectClient
+
+        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}):
+            client = GalileoProtectClient()
+            assert client.api_key == "test-key"
+
+    def test_client_init_without_api_key_raises(self):
+        """Test client raises error without API key."""
+        from agent_control_plugins.luna2.client import GalileoProtectClient
+
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ValueError, match="GALILEO_API_KEY"):
+                GalileoProtectClient()
+
+    def test_derive_api_url_from_console_url(self):
+        """Test API URL derivation from console URL."""
+        from agent_control_plugins.luna2.client import GalileoProtectClient
+
+        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}):
+            client = GalileoProtectClient(
+                console_url="https://console.demo-v2.galileocloud.io"
+            )
+            assert client.api_base == "https://api.demo-v2.galileocloud.io"
+
+    def test_derive_api_url_default(self):
+        """Test default API URL."""
+        from agent_control_plugins.luna2.client import GalileoProtectClient
+
+        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}):
+            client = GalileoProtectClient()
+            assert client.api_base == "https://api.galileo.ai"
+
+
+class TestPayloadDataClasses:
+    """Tests for the Payload and related data classes."""
+
+    def test_payload_to_dict(self):
+        """Test Payload.to_dict() method."""
+        from agent_control_plugins.luna2.client import Payload
+
+        payload = Payload(input="test input", output="test output")
+        assert payload.to_dict() == {"input": "test input", "output": "test output"}
+
+    def test_rule_to_dict(self):
+        """Test Rule.to_dict() method."""
+        from agent_control_plugins.luna2.client import Rule
+
+        rule = Rule(metric="input_toxicity", operator="gt", target_value=0.5)
+        assert rule.to_dict() == {
+            "metric": "input_toxicity",
+            "operator": "gt",
+            "target_value": 0.5,
+        }
+
+    def test_ruleset_to_dict(self):
+        """Test Ruleset.to_dict() method."""
+        from agent_control_plugins.luna2.client import PassthroughAction, Rule, Ruleset
+
+        ruleset = Ruleset(
+            rules=[Rule(metric="input_toxicity", operator="gt", target_value=0.5)],
+            action=PassthroughAction(),
+            description="Test ruleset",
+        )
+        result = ruleset.to_dict()
+        assert result["description"] == "Test ruleset"
+        assert len(result["rules"]) == 1
+        assert result["action"]["type"] == "PASSTHROUGH"
+
+    def test_protect_response_from_dict(self):
+        """Test ProtectResponse.from_dict() method."""
+        from agent_control_plugins.luna2.client import ProtectResponse
+
+        data = {
+            "status": "triggered",
+            "text": "Test response",
+            "trace_metadata": {
+                "id": "trace-123",
+                "execution_time": 100.5,
+            },
+            "metric_results": {"input_toxicity": {"value": 0.8}},
+        }
+        response = ProtectResponse.from_dict(data)
+        assert response.status == "triggered"
+        assert response.text == "Test response"
+        assert response.trace_metadata.id == "trace-123"
+        assert response.trace_metadata.execution_time == 100.5
+        assert response.metric_results == {"input_toxicity": {"value": 0.8}}

@@ -13,8 +13,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-luna2 = ["galileo>=1.34.0"]
-all = ["galileo>=1.34.0"]
+luna2 = ["httpx>=0.24.0"]
+all = ["httpx>=0.24.0"]
 
 [build-system]
 requires = ["hatchling"]

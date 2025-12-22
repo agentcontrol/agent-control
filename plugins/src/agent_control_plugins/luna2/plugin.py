@@ -1,23 +1,12 @@
-"""Luna-2 plugin implementation."""
+"""Luna-2 plugin implementation using direct API calls.
 
-import asyncio
+This plugin calls the Galileo Protect API directly via HTTP, without requiring
+the full galileo-sdk package. Only httpx is needed as a dependency.
+"""
+
 import logging
 import os
 from typing import Any
-
-try:
-    from galileo.protect import Payload, Ruleset, ainvoke_protect  # type: ignore
-    from galileo_core.schemas.protect.action import PassthroughAction  # type: ignore
-    from galileo_core.schemas.protect.rule import Rule  # type: ignore
-
-    LUNA2_AVAILABLE = True
-except ImportError:
-    LUNA2_AVAILABLE = False
-    Payload = None  # type: ignore
-    Ruleset = None  # type: ignore
-    PassthroughAction = None  # type: ignore
-    Rule = None  # type: ignore
-    ainvoke_protect = None  # type: ignore
 
 from agent_control_models import (
     EvaluatorResult,
@@ -30,8 +19,32 @@ from .config import Luna2Config
 
 logger = logging.getLogger(__name__)
 
+# Check if httpx is available
+try:
+    import httpx
 
-# Only register if Galileo SDK is available
+    from .client import (
+        GalileoProtectClient,
+        PassthroughAction,
+        Payload,
+        ProtectResponse,
+        Rule,
+        Ruleset,
+    )
+
+    LUNA2_AVAILABLE = True
+except ImportError:
+    LUNA2_AVAILABLE = False
+    httpx = None  # type: ignore
+    GalileoProtectClient = None  # type: ignore
+    PassthroughAction = None  # type: ignore
+    Payload = None  # type: ignore
+    ProtectResponse = None  # type: ignore
+    Rule = None  # type: ignore
+    Ruleset = None  # type: ignore
+
+
+# Only register if dependencies are available
 def _maybe_register(cls: type) -> type:
     """Conditionally register plugin if dependencies available."""
     if LUNA2_AVAILABLE:
@@ -44,7 +57,8 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
     """Galileo Luna-2 runtime protection plugin.
 
     This plugin uses Galileo's Luna-2 enterprise model for real-time
-    safety and quality checks on agent inputs and outputs.
+    safety and quality checks on agent inputs and outputs. It calls
+    the Galileo Protect API directly via HTTP.
 
     Supported Metrics:
         - input_toxicity, output_toxicity
@@ -74,12 +88,16 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
         plugin = Luna2Plugin(config)
         result = await plugin.evaluate("some text")
         ```
+
+    Environment Variables:
+        GALILEO_API_KEY: Your Galileo API key (required).
+        GALILEO_CONSOLE_URL: Galileo Console URL (optional).
     """
 
     metadata = PluginMetadata(
         name="galileo-luna2",
-        version="1.0.0",
-        description="Galileo Luna-2 enterprise runtime protection",
+        version="2.0.0",
+        description="Galileo Luna-2 enterprise runtime protection (direct API)",
         requires_api_key=True,
         timeout_ms=10000,
     )
@@ -89,17 +107,17 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
         """Initialize Luna-2 plugin with configuration.
 
         Args:
-            config: Validated Luna2Config instance
+            config: Validated Luna2Config instance.
 
         Raises:
-            ImportError: If Galileo SDK not installed
-            ValueError: If GALILEO_API_KEY not set
+            ImportError: If httpx is not installed.
+            ValueError: If GALILEO_API_KEY is not set.
         """
         if not LUNA2_AVAILABLE:
             raise ImportError(
-                "Luna-2 plugin requires the Galileo SDK.\n"
+                "Luna-2 plugin requires httpx.\n"
                 "Install with: pip install agent-control-plugins[luna2]\n"
-                "Or: pip install galileo>=1.34.0"
+                "Or: pip install httpx>=0.24.0"
             )
 
         # Verify API key is configured
@@ -111,14 +129,27 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
 
         super().__init__(config)
 
+        # Initialize the HTTP client
+        self._client: GalileoProtectClient | None = None
+
+    def _get_client(self) -> GalileoProtectClient:
+        """Get or create the Galileo Protect client.
+
+        Returns:
+            The GalileoProtectClient instance.
+        """
+        if self._client is None:
+            self._client = GalileoProtectClient()
+        return self._client
+
     async def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate data using Galileo Luna-2.
 
         Args:
-            data: The data to evaluate (from selector)
+            data: The data to evaluate (from selector).
 
         Returns:
-            EvaluatorResult with matched status and metadata
+            EvaluatorResult with matched status and metadata.
         """
         if self.config.stage_type == "local":
             return await self._evaluate_local_stage(data)
@@ -126,7 +157,11 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
             return await self._evaluate_central_stage(data)
 
     def _get_numeric_target_value(self) -> float | int | str | None:
-        """Get target_value as numeric if possible (for proper Rule comparison)."""
+        """Get target_value as numeric if possible (for proper Rule comparison).
+
+        Returns:
+            The target value as a numeric type if possible, otherwise as-is.
+        """
         target_val = self.config.target_value
         if isinstance(target_val, (int, float)):
             return target_val
@@ -138,14 +173,21 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
         return target_val
 
     async def _evaluate_local_stage(self, data: Any) -> EvaluatorResult:
-        """Evaluate using a local stage (runtime rulesets)."""
+        """Evaluate using a local stage (runtime rulesets).
+
+        Args:
+            data: The data to evaluate.
+
+        Returns:
+            EvaluatorResult with evaluation results.
+        """
         payload = self._prepare_payload(data)
 
         # Create Rule with numeric target_value for proper comparison
         rule = Rule(
-            metric=self.config.metric,
-            operator=self.config.operator,
-            target_value=self._get_numeric_target_value(),
+            metric=self.config.metric or "",
+            operator=self.config.operator or "",
+            target_value=self._get_numeric_target_value() or 0,
         )
 
         # Create proper Ruleset with PassthroughAction
@@ -156,11 +198,12 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
         )
 
         try:
-            logger.debug(f"[Luna2] Calling ainvoke_protect")
+            logger.debug("[Luna2] Calling Galileo Protect API (local stage)")
             logger.debug(f"[Luna2] Payload: {payload}")
             logger.debug(f"[Luna2] Ruleset: {ruleset}")
 
-            response = await ainvoke_protect(
+            client = self._get_client()
+            response = await client.invoke_protect(
                 payload=payload,
                 prioritized_rulesets=[ruleset],
                 project_name=self.config.galileo_project,
@@ -168,25 +211,38 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
                 metadata=self.config.metadata or {},
             )
 
-            logger.debug(f"[Luna2] Response: {response}")
-            if hasattr(response, 'status'):
-                logger.debug(f"[Luna2] Status: {response.status}")
-            if hasattr(response, 'text'):
-                logger.debug(f"[Luna2] Text: {response.text}")
+            # Check for None response before accessing attributes
+            if response is None:
+                return self._parse_response(None)
+
+            logger.debug(f"[Luna2] Response status: {response.status}")
+            logger.debug(f"[Luna2] Response text: {response.text}")
 
             result = self._parse_response(response)
             logger.debug(f"[Luna2] Parsed: matched={result.matched}, msg={result.message}")
             return result
+
         except Exception as e:
             logger.error(f"Luna-2 async evaluation error: {e}", exc_info=True)
             return self._handle_error(e)
 
     async def _evaluate_central_stage(self, data: Any) -> EvaluatorResult:
-        """Evaluate using a central stage (pre-defined rulesets)."""
+        """Evaluate using a central stage (pre-defined rulesets).
+
+        Args:
+            data: The data to evaluate.
+
+        Returns:
+            EvaluatorResult with evaluation results.
+        """
         payload = self._prepare_payload(data)
 
         try:
-            response = await ainvoke_protect(
+            logger.debug("[Luna2] Calling Galileo Protect API (central stage)")
+            logger.debug(f"[Luna2] Stage: {self.config.stage_name}")
+
+            client = self._get_client()
+            response = await client.invoke_protect(
                 payload=payload,
                 project_name=self.config.galileo_project,
                 stage_name=self.config.stage_name,
@@ -194,16 +250,23 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
                 timeout=self.get_timeout_seconds(),
                 metadata=self.config.metadata or {},
             )
+
             return self._parse_response(response)
+
         except Exception as e:
             logger.error(f"Luna-2 async central stage error: {e}", exc_info=True)
             return self._handle_error(e)
 
-    def _prepare_payload(self, data: Any) -> Any:
-        """Prepare the Payload for Galileo protect.
+    def _prepare_payload(self, data: Any) -> Payload:
+        """Prepare the Payload for Galileo Protect.
 
         Payload has 'input' and 'output' fields based on what we're checking.
-        Returns a Galileo Payload object.
+
+        Args:
+            data: The raw data to prepare.
+
+        Returns:
+            A Payload object ready for the API call.
         """
         data_str = str(data) if data is not None else ""
 
@@ -224,15 +287,16 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
             # Default to input for central stages or input metrics
             return Payload(input=data_str, output="")
 
-    def _parse_response(self, response: Any) -> EvaluatorResult:
-        """Parse Galileo protect response into EvaluatorResult.
+    def _parse_response(self, response: ProtectResponse | None) -> EvaluatorResult:
+        """Parse Galileo Protect response into EvaluatorResult.
 
-        Response is a Pydantic model with attributes:
-            - status: ExecutionStatus enum (triggered, success, skipped, paused)
-            - text: Response message
-            - trace_metadata: TraceMetadata object with id, execution_time, etc.
+        Args:
+            response: The ProtectResponse from the API, or None if no response.
+
+        Returns:
+            EvaluatorResult with matched status and metadata.
         """
-        if not response:
+        if response is None:
             return EvaluatorResult(
                 matched=False,
                 confidence=0.0,
@@ -240,47 +304,19 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
                 metadata={"error": "empty_response"},
             )
 
-        # Handle Pydantic Response model from Galileo SDK
-        if hasattr(response, "status"):
-            raw_status = response.status
-            if hasattr(raw_status, "value"):
-                raw_status = raw_status.value
-            status = str(raw_status).lower()
-        else:
-            status_val = response.get("status", "") if isinstance(response, dict) else ""
-            status = str(status_val).lower()
-
+        status = response.status.lower() if response.status else "unknown"
         triggered = status == "triggered"
 
-        # Extract text
-        if hasattr(response, "text"):
-            text = response.text
-        else:
-            text = response.get("text", "") if isinstance(response, dict) else str(response)
-
         # Extract trace metadata
-        trace_id = None
-        execution_time = None
-        received_at = None
-        response_at = None
-
-        if hasattr(response, "trace_metadata") and response.trace_metadata:
-            tm = response.trace_metadata
-            trace_id = str(tm.id) if hasattr(tm, "id") else None
-            execution_time = tm.execution_time if hasattr(tm, "execution_time") else None
-            received_at = tm.received_at if hasattr(tm, "received_at") else None
-            response_at = tm.response_at if hasattr(tm, "response_at") else None
-        elif isinstance(response, dict):
-            trace_metadata = response.get("trace_metadata", {})
-            trace_id = trace_metadata.get("id")
-            execution_time = trace_metadata.get("execution_time")
-            received_at = trace_metadata.get("received_at")
-            response_at = trace_metadata.get("response_at")
+        trace_id = response.trace_metadata.id if response.trace_metadata else None
+        execution_time = response.trace_metadata.execution_time if response.trace_metadata else None
+        received_at = response.trace_metadata.received_at if response.trace_metadata else None
+        response_at = response.trace_metadata.response_at if response.trace_metadata else None
 
         return EvaluatorResult(
             matched=triggered,
             confidence=1.0 if triggered else 0.0,
-            message=text or f"Luna-2 check: {status}",
+            message=response.text or f"Luna-2 check: {status}",
             metadata={
                 "status": status,
                 "metric": self.config.metric or "unknown",
@@ -292,7 +328,14 @@ class Luna2Plugin(PluginEvaluator[Luna2Config]):
         )
 
     def _handle_error(self, error: Exception) -> EvaluatorResult:
-        """Handle errors from Luna-2 evaluation."""
+        """Handle errors from Luna-2 evaluation.
+
+        Args:
+            error: The exception that occurred.
+
+        Returns:
+            EvaluatorResult indicating error state.
+        """
         error_action = self.config.on_error
 
         return EvaluatorResult(

@@ -1,10 +1,10 @@
-# Contributing to Agent Protect
+# Contributing to Agent Control
 
 Thanks for contributing! This document covers conventions, setup, and workflows for all contributors.
 
 ## Project Architecture
 
-Agent Protect is a **uv workspace monorepo** with these components:
+Agent Control is a **uv workspace monorepo** with these components:
 
 ```
 agent-protect/
@@ -186,7 +186,7 @@ make test  # Starts server automatically
 
 ### Engine (`engine/`)
 
-Control evaluation logic (regex, list matching, plugin execution).
+Core control evaluation logic. The engine loads plugins and executes evaluations.
 
 ```bash
 # Location
@@ -194,9 +194,14 @@ engine/src/agent_control_engine/
 
 # Key files
 ├── core.py        # Main ControlEngine class
-├── evaluators.py  # RegexEvaluator, ListEvaluator, PluginEvaluator
+├── evaluators.py  # Plugin loader and caching
 └── selectors.py   # Data selection from payloads
 ```
+
+**How it works:**
+- The engine uses the plugin registry to find evaluators
+- Plugins are cached for performance (LRU cache)
+- Selectors extract data from payloads before evaluation
 
 **Testing:**
 ```bash
@@ -204,34 +209,110 @@ cd engine
 make test
 ```
 
-**Adding a new evaluator:**
-1. Create class in `evaluators.py` inheriting from `Evaluator`
-2. Implement `evaluate(data: str, config: dict) -> EvaluatorResult`
-3. Register in `core.py` evaluator registry
-4. Add tests in `tests/test_evaluators.py`
+> **Note:** To add new evaluators, create a plugin in `plugins/` rather than modifying the engine directly. See the Plugins section above.
 
 ---
 
 ### Plugins (`plugins/`)
 
-External integrations (e.g., Galileo Luna-2).
+Extensible evaluator plugins for custom detection logic.
 
 ```bash
 # Location
 plugins/src/agent_control_plugins/
 
-# Key files
+# Key directories
 ├── base.py        # PluginEvaluator base class
+├── builtin/       # Built-in evaluators
+│   ├── regex.py   # RegexPlugin - pattern matching
+│   └── list.py    # ListPlugin - value matching
 └── luna2/         # Galileo Luna-2 integration
     ├── plugin.py  # Luna2Plugin implementation
-    └── config.py  # Luna2Config model
+    ├── config.py  # Luna2Config model
+    └── client.py  # Direct HTTP client (no SDK dependency)
 ```
 
 **Adding a new plugin:**
-1. Create directory under `plugins/src/agent_control_plugins/`
-2. Implement `PluginEvaluator` interface
-3. Register via entry points or manual registration
-4. Add optional dependencies in `plugins/pyproject.toml`
+
+1. **Create plugin directory:**
+   ```bash
+   mkdir plugins/src/agent_control_plugins/my_plugin/
+   ```
+
+2. **Define configuration model (`config.py`):**
+   ```python
+   from pydantic import BaseModel, Field
+
+   class MyPluginConfig(BaseModel):
+       """Configuration for MyPlugin."""
+       threshold: float = Field(0.5, ge=0.0, le=1.0)
+       api_endpoint: str = Field(default="https://api.example.com")
+   ```
+
+3. **Implement plugin (`plugin.py`):**
+   ```python
+   from typing import Any
+   from agent_control_models import (
+       EvaluatorResult,
+       PluginEvaluator,
+       PluginMetadata,
+       register_plugin,
+   )
+   from .config import MyPluginConfig
+
+   @register_plugin
+   class MyPlugin(PluginEvaluator[MyPluginConfig]):
+       """My custom evaluator plugin."""
+       
+       metadata = PluginMetadata(
+           name="my-plugin",
+           version="1.0.0",
+           description="Custom detection logic",
+           requires_api_key=False,
+           timeout_ms=5000,
+       )
+       config_model = MyPluginConfig
+
+       def __init__(self, config: MyPluginConfig) -> None:
+           super().__init__(config)
+           # Initialize any clients or resources
+
+       async def evaluate(self, data: Any) -> EvaluatorResult:
+           # Your detection logic here
+           score = await self._analyze(str(data))
+           
+           return EvaluatorResult(
+               matched=score > self.config.threshold,
+               confidence=score,
+               message=f"Analysis score: {score:.2f}",
+               metadata={"score": score},
+           )
+   ```
+
+4. **Export in `__init__.py`:**
+   ```python
+   from .config import MyPluginConfig
+   from .plugin import MyPlugin
+
+   __all__ = ["MyPlugin", "MyPluginConfig"]
+   ```
+
+5. **Add optional dependencies in `plugins/pyproject.toml`:**
+   ```toml
+   [project.optional-dependencies]
+   my-plugin = ["httpx>=0.24.0"]  # Add your dependencies
+   all = ["httpx>=0.24.0", ...]   # Include in 'all' extra
+   ```
+
+6. **Add tests in `plugins/tests/`**
+
+**Plugin Best Practices:**
+- Use Pydantic for config validation
+- Make API calls async with httpx
+- Return confidence scores (0.0-1.0)
+- Include helpful metadata for debugging
+- Handle errors gracefully (respect `on_error` config)
+- Avoid storing request-scoped state (plugins are cached)
 
 ---
 
@@ -374,13 +455,22 @@ test: add control set integration tests
 5. Add tests for both server and SDK
 6. Update examples if user-facing
 
-### Add a new control evaluator type
+### Add a new evaluator plugin
 
-1. Add evaluator class in `engine/src/agent_control_engine/evaluators.py`
-2. Register in engine's evaluator registry
-3. Add server support in evaluation endpoint
-4. Add SDK convenience methods if needed
-5. Add comprehensive tests
+1. Create plugin directory in `plugins/src/agent_control_plugins/`
+2. Implement `PluginEvaluator` interface (see Plugins section above)
+3. Add `@register_plugin` decorator to your plugin class
+4. Add optional dependencies in `plugins/pyproject.toml`
+5. Export from `plugins/src/agent_control_plugins/__init__.py`
+6. Add tests in `plugins/tests/`
+7. Update `docs/OVERVIEW.md` with usage examples
+
+### Add a built-in evaluator (regex/list style)
+
+1. Add evaluator class in `plugins/src/agent_control_plugins/builtin/`
+2. Add config model in `models/src/agent_control_models/controls.py`
+3. Register with `@register_plugin` decorator
+4. Add comprehensive tests in `plugins/tests/`
 
 ### Update shared models
 
@@ -403,3 +493,49 @@ test: add control set integration tests
 | Run all checks | `make check` |
 | Build packages | `make build` |
 | Database migration | `cd server && make alembic-migrate MSG="..."` |
+
+---
+
+## Plugin Development Quick Reference
+
+| Task | Location |
+|------|----------|
+| Plugin base class | `agent_control_models.PluginEvaluator` |
+| Plugin metadata | `agent_control_models.PluginMetadata` |
+| Evaluator result | `agent_control_models.EvaluatorResult` |
+| Register decorator | `@agent_control_models.register_plugin` |
+| Built-in plugins | `plugins/src/agent_control_plugins/builtin/` |
+| Plugin tests | `plugins/tests/` |
+
+**Plugin config model fields:**
+```python
+from pydantic import BaseModel, Field
+
+class MyConfig(BaseModel):
+    # Required field
+    pattern: str = Field(..., description="Pattern to match")
+    
+    # Optional with default
+    threshold: float = Field(0.5, ge=0.0, le=1.0)
+    
+    # List field
+    values: list[str] = Field(default_factory=list)
+```
+
+**EvaluatorResult fields:**
+```python
+EvaluatorResult(
+    matched=True,           # Did this trigger the control?
+    confidence=0.95,        # How confident (0.0-1.0)?
+    message="Explanation",  # Human-readable message
+    metadata={"key": "val"} # Additional context
+)
+```
+
+---
+
+## Need Help?
+
+- **Documentation:** See `docs/OVERVIEW.md` for architecture overview
+- **Examples:** Check `examples/` for usage patterns
+- **Tests:** Look at existing tests for patterns to follow

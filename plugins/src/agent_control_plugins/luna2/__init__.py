@@ -1,6 +1,7 @@
 """Galileo Luna-2 plugin for agent-control.
 
-This plugin integrates with Galileo's Luna-2 enterprise runtime protection system.
+This plugin integrates with Galileo's Luna-2 enterprise runtime protection system
+using direct HTTP API calls (no SDK dependency required).
 
 Installation:
     pip install agent-control-plugins[luna2]
@@ -25,3 +26,24 @@ __all__ = [
     "LUNA2_AVAILABLE",
 ]
 
+# Export client classes when available
+if LUNA2_AVAILABLE:
+    from .client import (
+        GalileoProtectClient,
+        PassthroughAction,
+        Payload,
+        ProtectResponse,
+        Rule,
+        Ruleset,
+        TraceMetadata,
+    )
+
+    __all__.extend([
+        "GalileoProtectClient",
+        "PassthroughAction",
+        "Payload",
+        "ProtectResponse",
+        "Rule",
+        "Ruleset",
+        "TraceMetadata",
+    ])

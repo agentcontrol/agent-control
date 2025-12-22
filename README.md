@@ -1,61 +1,82 @@
-# 🛡️ Agent Protect
+# 🛡️ Agent Control
 
-**A modular, type-safe protection system for AI Agents.**
+**Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
-Agent Protect allows you to define, validate, and enforce safety rules for your AI agents (LLM calls and tool executions). It isolates protection logic from your agent's business logic, providing a dedicated server and SDK to manage safety policies.
+Agent Control provides a policy-based control layer that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules, blocking harmful content, prompt injections, PII leakage, and other risks — all without changing your agent's code.
 
 ---
 
 ## 🏗 Architecture
 
-Agent Protect is built as a monorepo with four distinct components:
+Agent Control is built as a monorepo with five distinct components:
 
-```mermaid
-graph TD
-    subgraph "Agent Protect"
-        Models[📦 agent-protect-models]
-        Engine[⚙️ agent-protect-engine]
-        Server[🚀 agent-protect-server]
-        SDK[🔧 agent-protect-sdk]
-    end
-
-    Models --> Engine
-    Models --> Server
-    Models --> SDK
-    Engine --> Server
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                         Your Application                          │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │                     @control() decorator                    │  │
+│  │                            │                                │  │
+│  │                            ▼                                │  │
+│  │  ┌──────────┐    ┌─────────────────┐    ┌──────────────┐   │  │
+│  │  │  Input   │───▶│  Agent Control  │───▶│    Output    │   │  │
+│  │  │          │    │     Engine      │    │              │   │  │
+│  │  └──────────┘    └─────────────────┘    └──────────────┘   │  │
+│  └────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                      Agent Control Server                         │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
+│  │  Controls  │  │  Policies  │  │  Plugins   │  │   Agents   │  │
+│  │    API     │  │    API     │  │  Registry  │  │    API     │  │
+│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                         Plugin Ecosystem                          │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
+│  │   Regex    │  │    List    │  │   Luna-2   │  │   Custom   │  │
+│  │ Evaluator  │  │ Evaluator  │  │   Plugin   │  │  Plugins   │  │
+│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 | Package | Description |
 | :--- | :--- |
-| **`agent-protect-models`** | Shared **Pydantic v2** models for strict type safety across the stack. |
-| **`agent-protect-engine`** | Core execution logic. Uses `google-re2` for safe regex and specialized evaluators. |
-| **`agent-protect-server`** | FastAPI server that hosts the engine and provides a Rule Management API. |
-| **`agent-protect-sdk`** | Python SDK for agents to register themselves and check protection status. |
+| **`agent-control-models`** | Shared **Pydantic v2** models for strict type safety across the stack. |
+| **`agent-control-engine`** | Core evaluation logic. Uses `google-re2` for safe regex and plugin system. |
+| **`agent-control-server`** | FastAPI server that hosts the engine and provides a Control Management API. |
+| **`agent-control`** | Python SDK for agents to register and enforce controls via decorators. |
+| **`agent-control-plugins`** | Extensible evaluator plugins (regex, list, Luna-2, custom). |
 
 ---
 
 ## ✨ Key Features
 
-- **Strict "Schema-on-Write" Rules**: Rules are defined using strict Pydantic models (`RegexConfig`, `ListConfig`). Invalid rules (e.g., bad regex patterns) are rejected by the API instantly.
-- **Safe Execution**: Uses `google-re2` for linear-time regex matching, preventing ReDoS attacks.
-- **Flexible Selectors**: Target any part of your data using dot-notation selectors (e.g., `arguments.query`, `context.user_id`).
-- **Unified List Logic**: One evaluator handles both "AllowList" (only allow X) and "DenyList" (block Y) logic via simple configuration.
-- **Type-Safe Payloads**: Differentiates between `LlmCall` (text in/out) and `ToolCall` (arguments/output), enabling precise rule targeting.
+- **🛡️ Safety Without Code Changes**: Add guardrails with a simple `@control()` decorator.
+- **⚡ Runtime Configuration**: Update controls without redeploying your application.
+- **🎯 Centralized Policies**: Define controls once, apply to multiple agents.
+- **📊 Full Observability**: Every evaluation logged with trace IDs and metadata.
+- **🔌 Pluggable Evaluators**: Regex, list matching, AI-powered detection (Luna-2), or custom plugins.
+- **⚖️ Configurable Risk**: Choose fail-open or fail-closed behavior.
 
 ---
 
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
+- **Python 3.12+**
 - **uv**: Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- **Docker**: For running the database (PostgreSQL).
+- **Docker**: For running the database (PostgreSQL)
 
 ### 2. Setup
 
 ```bash
-# clone repo
-git clone https://github.com/yourusername/agent-protect.git
-cd agent-protect
+# Clone repo
+git clone https://github.com/rungalileo/agent-control.git
+cd agent-control
 
 # Sync dependencies for all workspaces
 make sync
@@ -73,15 +94,33 @@ make server-run
 ```
 Server is now running at `http://localhost:8000`.
 
+### 4. Use the SDK
+
+```python
+import agent_control
+from agent_control import control
+
+# Initialize at startup
+agent_control.init(
+    agent_name="my-agent",
+    server_url="http://localhost:8000"
+)
+
+# Protect your agent with a decorator
+@control()
+async def chat(message: str) -> str:
+    return await llm.generate(message)
+```
+
 ---
 
 ## 📖 Usage Guide
 
-### 1. Defining Rules
+### Defining Controls
 
-Rules are defined via the API (or DB directly) using a JSON structure that matches our Pydantic models.
+Controls are defined via the API using JSON that matches our Pydantic models.
 
-#### Example: Deny usage of "rm" command (DenyList)
+#### Example: Block dangerous commands (List evaluator)
 ```json
 {
   "description": "Block dangerous commands",
@@ -90,7 +129,7 @@ Rules are defined via the API (or DB directly) using a JSON structure that match
   "check_stage": "pre",
   "selector": { "path": "arguments.cmd" },
   "evaluator": {
-    "type": "list",
+    "plugin": "list",
     "config": {
       "values": ["rm", "shutdown", "reboot"],
       "logic": "any",
@@ -101,26 +140,6 @@ Rules are defined via the API (or DB directly) using a JSON structure that match
 }
 ```
 
-#### Example: Allow ONLY specific regions (AllowList)
-```json
-{
-  "description": "Enforce allowed regions",
-  "applies_to": "tool_call",
-  "check_stage": "pre",
-  "selector": { "path": "arguments.region" },
-  "evaluator": {
-    "type": "list",
-    "config": {
-      "values": ["us-east-1", "eu-central-1"],
-      "logic": "any",
-      "match_on": "no_match"  
-    }
-  },
-  "action": { "decision": "deny" }
-}
-```
-*Note: `match_on: "no_match"` triggers the rule (Deny) if the value is **NOT** found in the list.*
-
 #### Example: Detect PII via Regex
 ```json
 {
@@ -129,117 +148,61 @@ Rules are defined via the API (or DB directly) using a JSON structure that match
   "check_stage": "post",
   "selector": { "path": "output" },
   "evaluator": {
-    "type": "regex",
+    "plugin": "regex",
     "config": {
-      "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
-      "flags": ["IGNORECASE"]
+      "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"
     }
   },
   "action": { "decision": "deny" }
 }
 ```
 
-#### Agent-scoped custom evaluators
-
-To reference an agent's custom evaluator in a control, use `{agent_name}:{evaluator_name}` in the `plugin` field.
-
-- Built-in plugins: `"plugin": "regex"`, `"plugin": "list"`
-- Agent-scoped plugin: `"plugin": "my-agent:pii-detector"`
-
-Example:
+#### Example: Block toxic content (Luna-2 plugin)
 ```json
 {
-  "description": "PII check via custom agent evaluator",
+  "description": "Block toxic inputs",
   "applies_to": "llm_call",
-  "check_stage": "post",
-  "selector": { "path": "output" },
+  "check_stage": "pre",
+  "selector": { "path": "input" },
   "evaluator": {
-    "plugin": "my-agent:pii-detector",
-    "config": { "sensitivity": "high", "types": ["ssn", "email"] }
+    "plugin": "galileo-luna2",
+    "config": {
+      "metric": "input_toxicity",
+      "operator": "gt",
+      "target_value": 0.5
+    }
   },
   "action": { "decision": "deny" }
 }
 ```
 
-#### Selector scoping by tool (and path defaults)
+### Built-in Evaluators
 
-- `selector.path` is optional and defaults to `"*"` (entire payload). Use a concrete path (e.g., `"arguments.query"`) for evaluators that expect primitives.
-- To scope a control to specific tools:
-  - Exact names: `selector.tool_names: ["copy_file", "aws_cli"]`
-  - Regex (RE2 search): `selector.tool_name_regex: "^db_.*"`
-- Semantics when both are present: OR (any match applies). Applies only to `applies_to = "tool_call"`.
+| Evaluator | Description | Use Case |
+|-----------|-------------|----------|
+| `regex` | Pattern matching (RE2) | PII detection, secret scanning |
+| `list` | Value matching with flexible logic | Blocklists, allowlists, keywords |
+| `galileo-luna2` | AI-powered detection | Toxicity, prompt injection, hallucination |
 
-Examples:
+### Selector Options
 
-Only for copy_file and aws_cli, check destination path:
-```json
-{
-  "applies_to": "tool_call",
-  "check_stage": "pre",
-  "selector": { "path": "arguments.dest", "tool_names": ["copy_file", "aws_cli"] },
-  "evaluator": { "plugin": "regex", "config": { "pattern": "^/tmp/" } },
-  "action": { "decision": "deny" }
-}
-```
+| Path | Description |
+|------|-------------|
+| `input` | User input text |
+| `output` | Agent response |
+| `arguments.query` | Tool argument |
+| `tool_name` | Name of tool being called |
+| `context.user_id` | Context field |
+| `*` | Entire payload (default) |
 
-Any tool named db_* and evaluate full payload (path omitted → "*"):
-```json
-{
-  "applies_to": "tool_call",
-  "check_stage": "post",
-  "selector": { "tool_name_regex": "^db_.*" },
-  "evaluator": { "plugin": "list", "config": { "values": ["error"], "logic": "any", "match_on": "match" } },
-  "action": { "decision": "warn" }
-}
-```
+### Action Options
 
-### 2. Using the SDK
-
-Install the SDK in your agent's environment (currently via local path or built wheel).
-
-#### Initialization
-```python
-import agent_protect
-
-# Initialize at startup
-agent_protect.init(
-    agent_name="CustomerSupportBot",
-    agent_id="bot-prod-v1",
-    server_url="http://localhost:8000"
-)
-```
-
-#### Checking Safety
-The SDK provides the `check_protection` method, which now accepts typed payloads:
-
-```python
-from agent_protect import AgentProtectClient
-from agent_control_models import LlmCall, ToolCall
-
-async with AgentProtectClient() as client:
-    
-    # 1. Check an LLM Input (Pre-execution)
-    result = await client.check_protection(
-        agent_uuid=agent.agent_id,
-        payload=LlmCall(input="User's message here", output=None),
-        check_stage="pre"
-    )
-    
-    if not result.is_safe:
-        print(f"Blocked: {result.matches[0].rule_name}")
-        return
-
-    # 2. Check a Tool Call (Pre-execution)
-    tool_result = await client.check_protection(
-        agent_uuid=agent.agent_id,
-        payload=ToolCall(
-            tool_name="aws_cli",
-            arguments={"cmd": "rm -rf /"},
-            context={"user_id": "123"}
-        ),
-        check_stage="pre"
-    )
-```
+| Action | Behavior |
+|--------|----------|
+| `deny` | Block the request/response |
+| `allow` | Explicitly permit |
+| `warn` | Log warning but allow |
+| `log` | Silent logging only |
 
 ---
 
@@ -249,24 +212,46 @@ async with AgentProtectClient() as client:
 
 | Command | Description |
 | :--- | :--- |
-| `make sync` | Sync dependencies (`uv sync`) for all packages. |
-| `make test` | Run tests across Server, Engine, and SDK. |
-| `make lint` | Run `ruff` linting. |
-| `make typecheck` | Run `mypy` static type checking. |
-| `make check` | Run all quality checks (Test + Lint + Typecheck). |
+| `make sync` | Sync dependencies for all packages |
+| `make test` | Run tests across all packages |
+| `make lint` | Run `ruff` linting |
+| `make typecheck` | Run `mypy` static type checking |
+| `make check` | Run all quality checks (test + lint + typecheck) |
+| `make server-run` | Start the server |
 
 ### Directory Structure
 
-- **`models/`**: Source of truth. All Pydantic models live here. Changes here propagate to Server and SDK.
-- **`engine/`**: Pure logic. No API dependencies. Just input -> rules -> result.
-- **`server/`**: API layer. Handles database, rule management, and calls the Engine.
-- **`sdks/python/`**: Client library for agent developers.
+```
+agent-control/
+├── models/          # Shared Pydantic models (agent-control-models)
+├── engine/          # Control evaluation engine (agent-control-engine)
+├── server/          # FastAPI server (agent-control-server)
+├── sdks/python/     # Python SDK (agent-control)
+├── plugins/         # Plugin implementations (agent-control-plugins)
+└── examples/        # Usage examples
+```
+
+---
+
+## 📚 Documentation
+
+- **[Overview](docs/OVERVIEW.md)** — Detailed architecture and concepts
+- **[Contributing](CONTRIBUTING.md)** — Development setup and guidelines
+- **[Testing](docs/testing.md)** — Testing conventions
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repo.
-2. Create a feature branch.
-3. Make changes (ensure `make check` passes).
-4. Submit a Pull Request.
+1. Fork the repo
+2. Create a feature branch
+3. Make changes (ensure `make check` passes)
+4. Submit a Pull Request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+---
+
+## 📄 License
+
+Apache 2.0 — See [LICENSE](LICENSE) for details.

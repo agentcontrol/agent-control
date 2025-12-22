@@ -12,8 +12,8 @@ Prerequisites:
     2. Start the server WITH these env vars:
        cd server && GALILEO_API_KEY=$GALILEO_API_KEY GALILEO_CONSOLE_URL=$GALILEO_CONSOLE_URL make run
 
-    3. Galileo SDK installed in server environment:
-       pip install galileo>=1.34.0
+    3. Install server with Luna2 support:
+       pip install agent-control-server[luna2]
 
 Usage:
     # First, run the setup to create Luna2 controls
