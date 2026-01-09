@@ -5,6 +5,7 @@ This workspace contains all SDK implementations for Agent Protect.
 ## Available SDKs
 
 - **Python SDK** (`python/`) - Python client for interacting with Agent Protect services
+- **Go SDK** (`go/`) - Go client for interacting with Agent Protect services
 
 ## Development
 
