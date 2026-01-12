@@ -3,7 +3,6 @@ import {
   Alert,
   Badge,
   Box,
-  Button,
   Center,
   Group,
   Loader,
@@ -13,7 +12,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { Switch, Table } from "@rungalileo/jupiter-ds";
+import { Button, Switch, Table } from "@rungalileo/jupiter-ds";
 import {
   IconAlertCircle,
   IconInbox,
@@ -27,6 +26,7 @@ import type { Control } from "@/core/api/types";
 import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
 
+import { ControlStoreModal } from "./control-store-modal";
 import { EditControlSet } from "./edit-control-set";
 
 interface AgentDetailPageProps {
@@ -35,8 +35,8 @@ interface AgentDetailPageProps {
 
 const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   const [activeTab, setActiveTab] = useState<string | null>("controls");
-  const [timeFilter, setTimeFilter] = useState("12H");
-  const [modalOpened, setModalOpened] = useState(false);
+  const [editModalOpened, setEditModalOpened] = useState(false);
+  const [controlStoreOpened, setControlStoreOpened] = useState(false);
   const [selectedControl, setSelectedControl] = useState<Control | null>(null);
 
   // Fetch agent details and controls
@@ -160,18 +160,18 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
 
   const handleEditControl = (control: Control) => {
     setSelectedControl(control);
-    setModalOpened(true);
+    setEditModalOpened(true);
   };
 
-  const handleCloseModal = () => {
-    setModalOpened(false);
+  const handleCloseEditModal = () => {
+    setEditModalOpened(false);
     setSelectedControl(null);
   };
 
   const handleSaveControl = (data: any) => {
     // Here you would typically save the edited data to your backend
     console.log("Saving control:", data);
-    setModalOpened(false);
+    setEditModalOpened(false);
     setSelectedControl(null);
   };
 
@@ -192,34 +192,60 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
 
         {/* Tabs */}
         <Tabs value={activeTab} onChange={setActiveTab}>
-          <Tabs.List>
-            <Tabs.Tab value='controls' leftSection={<Text size='sm'>🎛️</Text>}>
-              Controls
-            </Tabs.Tab>
-            <Tabs.Tab value='charts' leftSection={<Text size='sm'>📊</Text>}>
-              Charts
-            </Tabs.Tab>
-            <Tabs.Tab
-              value='agent-graph'
-              leftSection={<Text size='sm'>🔗</Text>}
-            >
-              Agent graph
-            </Tabs.Tab>
-            <Tabs.Tab value='logs' leftSection={<Text size='sm'>📋</Text>}>
-              Logs
-            </Tabs.Tab>
-          </Tabs.List>
+          <Box
+            // pb='xs'
+            mb='md'
+          >
+            <Group justify='space-between' style={{ position: "relative" }}>
+              <Tabs.List>
+                <Tabs.Tab
+                  value='controls'
+                  leftSection={<Text size='sm'>🎛️</Text>}
+                >
+                  Controls
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value='charts'
+                  leftSection={<Text size='sm'>📊</Text>}
+                >
+                  Charts
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value='agent-graph'
+                  leftSection={<Text size='sm'>🔗</Text>}
+                >
+                  Agent graph
+                </Tabs.Tab>
+                <Tabs.Tab value='logs' leftSection={<Text size='sm'>📋</Text>}>
+                  Logs
+                </Tabs.Tab>
+              </Tabs.List>
+
+              <Group
+                gap='md'
+                style={{ position: "absolute", right: 0, top: "-8px" }}
+              >
+                <TextInput
+                  placeholder='Search or apply filter...'
+                  leftSection={<IconSearch size={16} />}
+                  style={{ width: 300, height: 32 }}
+                  size='xs'
+                />
+                <Button
+                  variant='filled'
+                  color='violet'
+                  size='sm'
+                  data-testid='add-control-button'
+                  style={{ height: 32 }}
+                  onClick={() => setControlStoreOpened(true)}
+                >
+                  Add Control
+                </Button>
+              </Group>
+            </Group>
+          </Box>
 
           <Tabs.Panel value='controls' pt='lg'>
-            {/* Filter Bar */}
-            <Group justify='space-between' mb='md'>
-              <TextInput
-                placeholder='Search or apply filter...'
-                leftSection={<IconSearch size={16} />}
-                style={{ flex: 1, maxWidth: 400 }}
-              />
-            </Group>
-
             {/* Loading state for controls */}
             {controlsLoading ? (
               <Center py='xl'>
@@ -255,7 +281,12 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                       This agent doesn&apos;t have any controls set up yet.
                     </Text>
                   </Stack>
-                  <Button variant='light' mt='md'>
+                  <Button
+                    variant='filled'
+                    mt='md'
+                    data-testid='add-control-button'
+                    onClick={() => setControlStoreOpened(true)}
+                  >
                     Add Control
                   </Button>
                 </Stack>
@@ -284,11 +315,17 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
         </Tabs>
       </Stack>
 
+      {/* Control Store Modal */}
+      <ControlStoreModal
+        opened={controlStoreOpened}
+        onClose={() => setControlStoreOpened(false)}
+      />
+
       {/* Edit Control Modal */}
       <EditControlSet
-        opened={modalOpened}
+        opened={editModalOpened}
         control={selectedControl}
-        onClose={handleCloseModal}
+        onClose={handleCloseEditModal}
         onSave={handleSaveControl}
       />
     </Box>
