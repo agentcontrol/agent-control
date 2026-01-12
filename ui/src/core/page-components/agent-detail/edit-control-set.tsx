@@ -1,6 +1,5 @@
 import {
   Box,
-  Button,
   Checkbox,
   Divider,
   Grid,
@@ -10,10 +9,10 @@ import {
   Stack,
   Text,
 } from "@mantine/core";
-import { Switch } from "@rungalileo/jupiter-ds";
-import { JsonEditor } from "json-edit-react";
-import { useEffect,useState } from "react";
+import { Button, Switch } from "@rungalileo/jupiter-ds";
+import { useEffect, useState } from "react";
 
+import { JsonEditor } from "@/components/json-editor";
 import type { Control } from "@/core/api/types";
 
 interface EditControlSetProps {
@@ -195,27 +194,18 @@ export const EditControlSet = ({
             </Group>
 
             {editedControlData && (
-              <Box
-                style={{
-                  border: "1px solid #e0e0e0",
-                  borderRadius: "4px",
-                  padding: "12px",
-                  backgroundColor: "#fafafa",
-                  minHeight: "400px",
-                  maxHeight: "500px",
-                  overflow: "auto",
-                }}
-              >
-                <JsonEditor
-                  data={editedControlData}
-                  setData={setEditedControlData}
-                  rootName='control'
-                  restrictEdit={false}
-                  restrictDelete={false}
-                  restrictAdd={false}
-                  collapse={false}
-                />
-              </Box>
+              <JsonEditor
+                data={editedControlData}
+                setData={setEditedControlData}
+                rootName='control'
+                restrictEdit={false}
+                restrictDelete={false}
+                restrictAdd={false}
+                collapse={false}
+                rootFontSize={12}
+                minHeight='400px'
+                maxHeight='500px'
+              />
             )}
           </Stack>
         </Grid.Col>
@@ -224,10 +214,10 @@ export const EditControlSet = ({
       <Divider mt='xl' mb='md' />
 
       <Group justify='flex-end'>
-        <Button variant='default' onClick={onClose}>
+        <Button variant='outline' onClick={onClose} data-testid='cancel-button'>
           Cancel
         </Button>
-        <Button onClick={handleSave} color='violet'>
+        <Button variant='filled' onClick={handleSave} data-testid='save-button'>
           Save
         </Button>
       </Group>
