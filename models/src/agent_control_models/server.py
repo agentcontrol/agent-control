@@ -233,3 +233,54 @@ class ListAgentsResponse(BaseModel):
 
     agents: list[AgentSummary] = Field(..., description="List of agent summaries")
     pagination: PaginationInfo = Field(..., description="Pagination metadata")
+
+
+# =============================================================================
+# Control List/Update/Delete Models
+# =============================================================================
+
+
+class ControlSummary(BaseModel):
+    """Summary of a control for list responses."""
+
+    id: int = Field(..., description="Control ID")
+    name: str = Field(..., description="Control name")
+    description: str | None = Field(None, description="Control description")
+    enabled: bool = Field(True, description="Whether control is enabled")
+    applies_to: str | None = Field(None, description="'llm_call' or 'tool_call'")
+    check_stage: str | None = Field(None, description="'pre' or 'post'")
+    tags: list[str] = Field(default_factory=list, description="Control tags")
+
+
+class ListControlsResponse(BaseModel):
+    """Response for listing controls."""
+
+    controls: list[ControlSummary] = Field(..., description="List of control summaries")
+    pagination: PaginationInfo = Field(..., description="Pagination metadata")
+
+
+class DeleteControlResponse(BaseModel):
+    """Response for deleting a control."""
+
+    success: bool = Field(..., description="Whether the control was deleted")
+    dissociated_from: list[int] = Field(
+        default_factory=list,
+        description="Control set IDs the control was removed from before deletion",
+    )
+
+
+class PatchControlRequest(BaseModel):
+    """Request to update control metadata (name, enabled status)."""
+
+    name: str | None = Field(None, description="New name for the control")
+    enabled: bool | None = Field(None, description="Enable or disable the control")
+
+
+class PatchControlResponse(BaseModel):
+    """Response from control metadata update."""
+
+    success: bool = Field(..., description="Whether the update succeeded")
+    name: str = Field(..., description="Current control name (may have changed)")
+    enabled: bool | None = Field(
+        None, description="Current enabled status (if control has data configured)"
+    )
