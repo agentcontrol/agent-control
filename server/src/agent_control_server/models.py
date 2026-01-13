@@ -21,46 +21,25 @@ class AgentData(BaseModel):
     tools: list[AgentTool] = Field(default_factory=list)
     evaluators: list[EvaluatorSchema] = Field(default_factory=list)
 
+
+# Association table for Policy <> Control many-to-many relationship
+policy_controls: Table = Table(
+    "policy_controls",
+    Base.metadata,
+    Column("policy_id", ForeignKey("policies.id"), primary_key=True, index=True),
+    Column("control_id", ForeignKey("controls.id"), primary_key=True, index=True),
+)
+
+
 class Policy(Base):
     __tablename__ = "policies"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     agents: Mapped[list["Agent"]] = relationship("Agent", back_populates="policy")
-    # Many-to-many: Policy <> ControlSet
-    control_sets: Mapped[list["ControlSet"]] = relationship(
-        "ControlSet", secondary=lambda: policy_control_sets, back_populates="policies"
-    )
-
-
-# Association tables for many-to-many relationships
-policy_control_sets: Table = Table(
-    "policy_control_sets",
-    Base.metadata,
-    Column("policy_id", ForeignKey("policies.id"), primary_key=True, index=True),
-    Column("control_set_id", ForeignKey("control_sets.id"), primary_key=True, index=True),
-)
-
-control_set_controls: Table = Table(
-    "control_set_controls",
-    Base.metadata,
-    Column("control_set_id", ForeignKey("control_sets.id"), primary_key=True, index=True),
-    Column("control_id", ForeignKey("controls.id"), primary_key=True, index=True),
-)
-
-
-class ControlSet(Base):
-    __tablename__ = "control_sets"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    # Many-to-many: ControlSet <> Policy
-    policies: Mapped[list["Policy"]] = relationship(
-        "Policy", secondary=lambda: policy_control_sets, back_populates="control_sets"
-    )
-    # Many-to-many: ControlSet <> Control
+    # Many-to-many: Policy <> Control (direct relationship, no ControlSet layer)
     controls: Mapped[list["Control"]] = relationship(
-        "Control", secondary=lambda: control_set_controls, back_populates="control_sets"
+        "Control", secondary=lambda: policy_controls, back_populates="policies"
     )
 
 
@@ -73,9 +52,9 @@ class Control(Base):
     data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
-    # Many-to-many backref: Control <> ControlSet
-    control_sets: Mapped[list["ControlSet"]] = relationship(
-        "ControlSet", secondary=lambda: control_set_controls, back_populates="controls"
+    # Many-to-many backref: Control <> Policy
+    policies: Mapped[list["Policy"]] = relationship(
+        "Policy", secondary=lambda: policy_controls, back_populates="controls"
     )
 
 

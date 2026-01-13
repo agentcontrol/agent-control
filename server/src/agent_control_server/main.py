@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 from .auth import require_api_key
 from .config import settings
 from .endpoints.agents import router as agent_router
-from .endpoints.control_sets import router as control_set_router
 from .endpoints.controls import router as control_router
 from .endpoints.evaluation import router as evaluation_router
 from .endpoints.plugins import router as plugin_router
@@ -37,26 +36,24 @@ app = FastAPI(
 
 ## Architecture
 
-The system uses a hierarchical model:
+The system uses a simple hierarchical model:
 - **Agents**: AI systems that need control
-- **Policies**: Collections of control sets assigned to agents
-- **Control Sets**: Groups of related controls
+- **Policies**: Collections of controls assigned to agents
 - **Controls**: Individual control configurations
 
 ## Hierarchy
 
 ```
-Agent → Policy → Control Set(s) → Control(s)
+Agent → Policy → Control(s)
 ```
 
 ## Quick Start
 
 1. Register your agent with `/api/v1/agents/initAgent`
 2. Create controls with `/api/v1/controls` and configure them
-3. Create control sets and add controls to them
-4. Create a policy and add control sets to it
-5. Assign the policy to your agent
-6. Query agent's active controls with `/api/v1/agents/{agent_id}/controls`
+3. Create a policy and add controls to it
+4. Assign the policy to your agent
+5. Query agent's active controls with `/api/v1/agents/{agent_id}/controls`
     """,
     version="0.1.0",
     lifespan=lifespan,
@@ -96,11 +93,6 @@ app.include_router(
 )
 app.include_router(
     policy_router,
-    prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
-)
-app.include_router(
-    control_set_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(require_api_key)],
 )

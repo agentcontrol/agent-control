@@ -240,20 +240,15 @@ def test_patch_agent_empty_request_is_noop(client: TestClient) -> None:
 
 def _create_policy_with_control(
     client: TestClient, policy_name: str, control_name: str, control_data: dict
-) -> tuple[int, int, int]:
+) -> tuple[int, int]:
     """Helper to create a policy with a control.
 
-    Returns (policy_id, control_set_id, control_id).
+    Returns (policy_id, control_id).
     """
     # Create policy
     pol_resp = client.put("/api/v1/policies", json={"name": policy_name})
     assert pol_resp.status_code == 200
     policy_id = pol_resp.json()["policy_id"]
-
-    # Create control set
-    cs_resp = client.put("/api/v1/control-sets", json={"name": f"cs-{policy_name}"})
-    assert cs_resp.status_code == 200
-    control_set_id = cs_resp.json()["control_set_id"]
 
     # Create control
     ctl_resp = client.put("/api/v1/controls", json={"name": control_name})
@@ -267,13 +262,10 @@ def _create_policy_with_control(
     )
     assert data_resp.status_code == 200
 
-    # Add control to control set
-    client.post(f"/api/v1/control-sets/{control_set_id}/controls/{control_id}")
+    # Add control to policy
+    client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
 
-    # Add control set to policy
-    client.post(f"/api/v1/policies/{policy_id}/control_sets/{control_set_id}")
-
-    return policy_id, control_set_id, control_id
+    return policy_id, control_id
 
 
 def test_policy_assignment_with_builtin_plugin(client: TestClient) -> None:
@@ -284,7 +276,7 @@ def test_policy_assignment_with_builtin_plugin(client: TestClient) -> None:
     payload = make_agent_payload(agent_id=agent_id, name=name)
     client.post("/api/v1/agents/initAgent", json=payload)
 
-    policy_id, _, _ = _create_policy_with_control(
+    policy_id, _ = _create_policy_with_control(
         client,
         f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
@@ -316,7 +308,7 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
     )
     client.post("/api/v1/agents/initAgent", json=payload)
 
-    policy_id, _, _ = _create_policy_with_control(
+    policy_id, _ = _create_policy_with_control(
         client,
         f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
@@ -383,7 +375,7 @@ def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> No
     payload_b = make_agent_payload(agent_id=agent_b_id, name=agent_b_name)
     client.post("/api/v1/agents/initAgent", json=payload_b)
 
-    policy_id, _, _ = _create_policy_with_control(
+    policy_id, _ = _create_policy_with_control(
         client,
         f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
@@ -544,7 +536,7 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
     client.post("/api/v1/agents/initAgent", json=payload)
 
     # And: A control set up to use that evaluator
-    policy_id, _, _ = _create_policy_with_control(
+    policy_id, _ = _create_policy_with_control(
         client,
         f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",

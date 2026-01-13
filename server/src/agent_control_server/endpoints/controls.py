@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
 from ..logging_utils import get_logger
-from ..models import Agent, AgentData, Control, control_set_controls
+from ..models import Agent, AgentData, Control, policy_controls
 from ..services.evaluator_utils import parse_evaluator_ref, validate_config_against_schema
 
 # Pagination constants
@@ -471,23 +471,23 @@ async def delete_control(
             status_code=404, detail=f"Control with ID '{control_id}' not found"
         )
 
-    # Check for associations with control sets
+    # Check for associations with policies
     assoc_result = await db.execute(
-        select(control_set_controls.c.control_set_id).where(
-            control_set_controls.c.control_id == control_id
+        select(policy_controls.c.policy_id).where(
+            policy_controls.c.control_id == control_id
         )
     )
-    associated_control_set_ids = [row[0] for row in assoc_result.all()]
+    associated_policy_ids = [row[0] for row in assoc_result.all()]
 
-    if associated_control_set_ids and not force:
+    if associated_policy_ids and not force:
         raise HTTPException(
             status_code=409,
             detail={
                 "message": (
                     f"Control '{control.name}' is associated with "
-                    f"{len(associated_control_set_ids)} control set(s)"
+                    f"{len(associated_policy_ids)} policy/policies"
                 ),
-                "control_set_ids": associated_control_set_ids,
+                "policy_ids": associated_policy_ids,
                 "hint": "Use force=true to dissociate and delete, "
                 "or remove associations manually first",
             },
@@ -495,16 +495,16 @@ async def delete_control(
 
     # Remove associations if force=true
     dissociated_from: list[int] = []
-    if associated_control_set_ids:
+    if associated_policy_ids:
         await db.execute(
-            delete(control_set_controls).where(
-                control_set_controls.c.control_id == control_id
+            delete(policy_controls).where(
+                policy_controls.c.control_id == control_id
             )
         )
-        dissociated_from = associated_control_set_ids
+        dissociated_from = associated_policy_ids
         _logger.info(
             f"Dissociated control '{control.name}' ({control_id}) "
-            f"from {len(dissociated_from)} control set(s)"
+            f"from {len(dissociated_from)} policy/policies"
         )
 
     # Delete the control

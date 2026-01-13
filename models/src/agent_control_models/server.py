@@ -27,10 +27,6 @@ class CreatePolicyRequest(BaseModel):
     name: str = Field(description="Unique policy name")
 
 
-class CreateControlSetRequest(BaseModel):
-    name: str = Field(description="Unique control set name")
-
-
 class CreateControlRequest(BaseModel):
     name: str = Field(description="Unique control name")
 
@@ -131,10 +127,6 @@ class AgentControlsResponse(BaseModel):
     )
 
 
-class CreateControlSetResponse(BaseModel):
-    control_set_id: int = Field(description="Identifier of the created control set")
-
-
 class CreateControlResponse(BaseModel):
     control_id: int = Field(description="Identifier of the created control")
 
@@ -149,15 +141,11 @@ class GetControlResponse(BaseModel):
     )
 
 
-class GetPolicyControlSetsResponse(BaseModel):
-    control_set_ids: list[int] = Field(
-        description="List of control set ids associated with the policy"
-    )
+class GetPolicyControlsResponse(BaseModel):
+    """Response containing control IDs associated with a policy."""
 
-
-class GetControlSetControlsResponse(BaseModel):
     control_ids: list[int] = Field(
-        description="List of control ids associated with the control set"
+        description="List of control IDs associated with the policy"
     )
 
 
@@ -265,7 +253,7 @@ class DeleteControlResponse(BaseModel):
     success: bool = Field(..., description="Whether the control was deleted")
     dissociated_from: list[int] = Field(
         default_factory=list,
-        description="Control set IDs the control was removed from before deletion",
+        description="Policy IDs the control was removed from before deletion",
     )
 
 

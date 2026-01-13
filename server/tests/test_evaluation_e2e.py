@@ -213,13 +213,8 @@ def test_evaluation_deny_precedence(client: TestClient):
     deny_control_id = resp.json()["control_id"]
     client.put(f"/api/v1/controls/{deny_control_id}/data", json={"data": control_deny})
 
-    # Create Control Set for Deny Control
-    resp = client.put("/api/v1/control-sets", json={"name": f"deny-cs-{uuid.uuid4()}"})
-    deny_cs_id = resp.json()["control_set_id"]
-    client.post(f"/api/v1/control-sets/{deny_cs_id}/controls/{deny_control_id}")
-
-    # Add Control Set to Agent's Policy
-    client.post(f"/api/v1/policies/{policy_id}/control_sets/{deny_cs_id}")
+    # Add Control to Agent's Policy
+    client.post(f"/api/v1/policies/{policy_id}/controls/{deny_control_id}")
 
     # When: Sending request matching "keyword"
     req = EvaluationRequest(

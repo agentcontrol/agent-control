@@ -29,10 +29,8 @@ from ..logging_utils import get_logger
 from ..models import (
     Agent,
     AgentData,
-    ControlSet,
     Policy,
-    control_set_controls,
-    policy_control_sets,
+    policy_controls,
 )
 from ..services.controls import list_controls_for_agent, list_controls_for_policy
 from ..services.evaluator_utils import parse_evaluator_ref, validate_config_against_schema
@@ -210,19 +208,17 @@ async def list_agents(
         next_cursor = str(agents[-1].agent_uuid)
 
     # Batch query: Get control counts for all agents at once
-    # Join: Agent -> Policy -> ControlSets -> control_set_controls (junction table)
+    # Join: Agent -> Policy -> policy_controls (junction table)
     # Group by agent_uuid and count distinct control IDs from junction table
     control_counts_map: dict[UUID, int] = {}
     if agents:
         control_counts_query = (
             select(
                 Agent.agent_uuid,
-                func.count(func.distinct(control_set_controls.c.control_id)).label("count"),
+                func.count(func.distinct(policy_controls.c.control_id)).label("count"),
             )
             .outerjoin(Policy, Agent.policy_id == Policy.id)
-            .outerjoin(policy_control_sets, Policy.id == policy_control_sets.c.policy_id)
-            .outerjoin(ControlSet, policy_control_sets.c.control_set_id == ControlSet.id)
-            .outerjoin(control_set_controls, ControlSet.id == control_set_controls.c.control_set_id)
+            .outerjoin(policy_controls, Policy.id == policy_controls.c.policy_id)
             .where(Agent.agent_uuid.in_([agent.agent_uuid for agent in agents]))
             .group_by(Agent.agent_uuid)
         )

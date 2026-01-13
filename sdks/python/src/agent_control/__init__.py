@@ -37,7 +37,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from uuid import UUID
 
-from . import agents, control_sets, controls, evaluation, plugins, policies
+from . import agents, controls, evaluation, plugins, policies
 
 # Import client and operations modules
 from .client import AgentControlClient
@@ -504,6 +504,66 @@ async def list_controls(
         )
 
 
+async def create_control(
+    name: str,
+    data: dict[str, Any] | ControlDefinition | None = None,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Create a new control, optionally with configuration.
+
+    If `data` is provided, the control is created and configured in one call.
+    Otherwise, use `agent_control.controls.set_control_data()` to configure it later.
+
+    Args:
+        name: Unique name for the control
+        data: Optional control definition with selector, evaluator, action, etc.
+        server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
+        api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
+
+    Returns:
+        Dictionary containing:
+            - control_id: ID of the created control
+            - configured: True if data was set, False if only name was created
+
+    Raises:
+        httpx.HTTPError: If request fails
+        HTTPException 409: Control with this name already exists
+        HTTPException 422: If data doesn't match schema
+
+    Example:
+        import asyncio
+        import agent_control
+
+        async def main():
+            # Create and configure in one call
+            result = await agent_control.create_control(
+                name="ssn-blocker",
+                data={
+                    "applies_to": "llm_call",
+                    "check_stage": "post",
+                    "selector": {"path": "output"},
+                    "evaluator": {
+                        "plugin": "regex",
+                        "config": {"pattern": r"\\d{3}-\\d{2}-\\d{4}"}
+                    },
+                    "action": {"decision": "deny"}
+                }
+            )
+            print(f"Created control {result['control_id']}")
+
+            # Or create without config (configure later)
+            result = await agent_control.create_control(name="my-control")
+
+        asyncio.run(main())
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await controls.create_control(client, name, data=data)
+
+
 async def get_control(
     control_id: int,
     server_url: str | None = None,
@@ -563,7 +623,7 @@ async def delete_control(
     Returns:
         Dictionary containing:
             - success: True if control was deleted
-            - dissociated_from: List of control set IDs the control was removed from
+            - dissociated_from: List of policy IDs the control was removed from
 
     Raises:
         httpx.HTTPError: If request fails
@@ -577,7 +637,7 @@ async def delete_control(
         async def main():
             # Force delete
             result = await agent_control.delete_control(5, force=True)
-            print(f"Deleted, removed from {len(result['dissociated_from'])} control sets")
+            print(f"Deleted, removed from {len(result['dissociated_from'])} policies")
 
         asyncio.run(main())
     """
@@ -637,6 +697,132 @@ async def update_control(
         return await controls.update_control(client, control_id, name=name, enabled=enabled)
 
 
+# ============================================================================
+# Policy-Control Management Convenience Functions
+# ============================================================================
+
+
+async def add_control_to_policy(
+    policy_id: int,
+    control_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Add a control to a policy.
+
+    This operation is idempotent - adding the same control multiple times has no effect.
+    Agents with this policy will immediately see the added control.
+
+    Args:
+        policy_id: ID of the policy
+        control_id: ID of the control to add
+        server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
+        api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
+
+    Returns:
+        Dictionary containing:
+            - success: True if operation succeeded
+
+    Raises:
+        httpx.HTTPError: If request fails
+        HTTPException 404: Policy or control not found
+
+    Example:
+        import asyncio
+        import agent_control
+
+        async def main():
+            await agent_control.add_control_to_policy(policy_id=1, control_id=5)
+            print("Control added to policy")
+
+        asyncio.run(main())
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await policies.add_control_to_policy(client, policy_id, control_id)
+
+
+async def remove_control_from_policy(
+    policy_id: int,
+    control_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Remove a control from a policy.
+
+    This operation is idempotent - removing a non-associated control has no effect.
+    Agents with this policy will immediately lose the removed control.
+
+    Args:
+        policy_id: ID of the policy
+        control_id: ID of the control to remove
+        server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
+        api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
+
+    Returns:
+        Dictionary containing:
+            - success: True if operation succeeded
+
+    Raises:
+        httpx.HTTPError: If request fails
+        HTTPException 404: Policy or control not found
+
+    Example:
+        import asyncio
+        import agent_control
+
+        async def main():
+            await agent_control.remove_control_from_policy(policy_id=1, control_id=5)
+            print("Control removed from policy")
+
+        asyncio.run(main())
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await policies.remove_control_from_policy(client, policy_id, control_id)
+
+
+async def list_policy_controls(
+    policy_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    List all controls associated with a policy.
+
+    Args:
+        policy_id: ID of the policy
+        server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
+        api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
+
+    Returns:
+        Dictionary containing:
+            - control_ids: List of control IDs associated with the policy
+
+    Raises:
+        httpx.HTTPError: If request fails
+        HTTPException 404: Policy not found
+
+    Example:
+        import asyncio
+        import agent_control
+
+        async def main():
+            result = await agent_control.list_policy_controls(policy_id=1)
+            print(f"Policy has {len(result['control_ids'])} controls")
+
+        asyncio.run(main())
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await policies.list_policy_controls(client, policy_id)
+
+
 # Note: The @control decorator is imported from control_decorators.py
 # It applies server-defined policies to agent functions.
 # See: from agent_control import control
@@ -656,6 +842,7 @@ __all__ = [
     "list_agents",
 
     # Control management
+    "create_control",
     "list_controls",
     "get_control",
     "delete_control",
@@ -675,9 +862,13 @@ __all__ = [
     "agents",
     "policies",
     "controls",
-    "control_sets",
     "evaluation",
     "plugins",
+
+    # Policy-Control management
+    "add_control_to_policy",
+    "remove_control_from_policy",
+    "list_policy_controls",
 
     # Tool inference utilities
     "tool",

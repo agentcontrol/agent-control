@@ -378,14 +378,10 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
 
-    # Create policy, control set, control, and wire them
+    # Create policy, control, and wire them
     pol_name = f"pol-{uuid.uuid4()}"
     pol = client.put("/api/v1/policies", json={"name": pol_name})
     policy_id = pol.json()["policy_id"]
-
-    cs_name = f"cs-{uuid.uuid4()}"
-    cs = client.put("/api/v1/control-sets", json={"name": cs_name})
-    control_set_id = cs.json()["control_set_id"]
 
     ctl_name = f"control-{uuid.uuid4()}"
     ctl = client.put("/api/v1/controls", json={"name": ctl_name})
@@ -396,9 +392,8 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
     data_payload = VALID_CONTROL_PAYLOAD
     client.put(f"/api/v1/controls/{control_id}/data", json={"data": data_payload})
 
-    # Associate control -> control set and control set -> policy; assign policy to agent
-    client.post(f"/api/v1/control-sets/{control_set_id}/controls/{control_id}")
-    client.post(f"/api/v1/policies/{policy_id}/control_sets/{control_set_id}")
+    # Associate control -> policy; assign policy to agent
+    client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
 
     # When: listing controls

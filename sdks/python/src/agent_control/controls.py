@@ -116,39 +116,71 @@ async def get_control(
 
 async def create_control(
     client: AgentControlClient,
-    name: str
+    name: str,
+    data: dict[str, Any] | ControlDefinition | None = None,
 ) -> dict[str, Any]:
     """
-    Create a new control with a unique name.
+    Create a new control with a unique name, optionally with configuration.
 
-    Controls group related rules together and can be added to policies.
-    A newly created control has no rules until they are explicitly added.
+    If `data` is provided, the control is created and configured in one call.
+    Otherwise, use `set_control_data()` to configure it later.
 
     Args:
         client: AgentControlClient instance
         name: Unique name for the control
+        data: Optional control definition (selector, evaluator, action, etc.)
 
     Returns:
         Dictionary containing:
             - control_id: ID of the created control
+            - configured: True if data was set, False if only name was created
 
     Raises:
         httpx.HTTPError: If request fails
         HTTPException 409: Control with this name already exists
+        HTTPException 422: If data doesn't match schema
         HTTPException 500: Database error during creation
 
     Example:
         async with AgentControlClient() as client:
+            # Create without configuration (configure later)
             result = await create_control(client, "pii-protection")
             control_id = result["control_id"]
-            print(f"Created control with ID: {control_id}")
+
+            # Or create with configuration in one call
+            result = await create_control(
+                client,
+                name="ssn-blocker",
+                data={
+                    "applies_to": "llm_call",
+                    "check_stage": "post",
+                    "selector": {"path": "output"},
+                    "evaluator": {
+                        "plugin": "regex",
+                        "config": {"pattern": r"\\d{3}-\\d{2}-\\d{4}"}
+                    },
+                    "action": {"decision": "deny"}
+                }
+            )
+            print(f"Created and configured control: {result['control_id']}")
     """
+    # Step 1: Create the control with name
     response = await client.http_client.put(
         "/api/v1/controls",
         json={"name": name}
     )
     response.raise_for_status()
-    return cast(dict[str, Any], response.json())
+    result = cast(dict[str, Any], response.json())
+
+    # Step 2: If data provided, configure the control
+    if data is not None:
+        control_id = result["control_id"]
+        await set_control_data(client, control_id, data)
+        result["configured"] = True
+    else:
+        result["configured"] = False
+
+    return result
 
 
 async def set_control_data(

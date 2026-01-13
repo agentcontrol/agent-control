@@ -147,25 +147,6 @@ def test_create_policy_rollback_on_failure(
         app.dependency_overrides.clear()
 
 
-def test_create_control_set_rollback_on_failure(
-    app: FastAPI, client: TestClient
-) -> None:
-    """Test that create_control_set rolls back transaction when commit fails."""
-    # Given: a valid control set creation request
-    control_set_name = f"test-cs-{uuid.uuid4()}"
-
-    # When: commit fails during control set creation
-    app.dependency_overrides[get_async_db] = mock_db_with_commit_failure
-    try:
-        resp = client.put("/api/v1/control-sets", json={"name": control_set_name})
-
-        # Then: rollback is called and 500 error is returned
-        assert resp.status_code == 500
-        assert "database error" in resp.json()["detail"].lower()
-    finally:
-        app.dependency_overrides.clear()
-
-
 def test_create_control_rollback_on_failure(
     app: FastAPI, client: TestClient
 ) -> None:
@@ -260,83 +241,6 @@ def test_set_agent_policy_rollback_on_failure(
         app.dependency_overrides[get_async_db] = mock_db_for_policy_assignment
         try:
             resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-
-            # Then: rollback is called and 500 error is returned
-            assert resp.status_code == 500
-            assert "database error" in resp.json()["detail"].lower()
-        finally:
-            app.dependency_overrides.clear()
-
-
-def test_add_control_set_to_policy_rollback_on_failure(
-    app: FastAPI, client: TestClient, db_engine: object
-) -> None:
-    """Test that add_control_set_to_policy rolls back transaction when commit fails."""
-    # Given: an existing policy and control set
-    policy_name = f"test-policy-{uuid.uuid4()}"
-    r1 = client.put("/api/v1/policies", json={"name": policy_name})
-    assert r1.status_code == 200
-    policy_id = r1.json()["policy_id"]
-
-    control_set_name = f"test-cs-{uuid.uuid4()}"
-    r2 = client.put("/api/v1/control-sets", json={"name": control_set_name})
-    assert r2.status_code == 200
-    control_set_id = r2.json()["control_set_id"]
-
-    # When: commit fails during association
-    from agent_control_server.models import ControlSet, Policy
-    from sqlalchemy.orm import Session
-
-    with Session(db_engine) as session:
-        existing_policy = (
-            session.query(Policy)
-            .filter(Policy.id == int(policy_id))
-            .first()
-        )
-        existing_control_set = (
-            session.query(ControlSet)
-            .filter(ControlSet.id == int(control_set_id))
-            .first()
-        )
-        assert existing_policy is not None
-        assert existing_control_set is not None
-
-        async def mock_db_for_association() -> AsyncGenerator[AsyncSession, None]:
-            from unittest.mock import MagicMock
-            
-            mock_session = AsyncMock(spec=AsyncSession)
-            mock_session.commit.side_effect = Exception("Database error")
-
-            # Mock the policy query
-            mock_policy_result = MagicMock()
-            mock_policy_result.scalars.return_value.first.return_value = (
-                existing_policy
-            )
-
-            # Mock the control set query
-            mock_cs_result = MagicMock()
-            mock_cs_result.scalars.return_value.first.return_value = (
-                existing_control_set
-            )
-
-            # Mock the exists check (should return None to indicate no existing association)
-            mock_exists_result = MagicMock()
-            mock_exists_result.first.return_value = None
-
-            # Return different results for different queries
-            mock_session.execute = AsyncMock(side_effect=[
-                mock_policy_result,
-                mock_cs_result,
-                mock_exists_result,
-                MagicMock(),  # for the insert
-            ])
-            yield mock_session
-
-        app.dependency_overrides[get_async_db] = mock_db_for_association
-        try:
-            resp = client.post(
-                f"/api/v1/policies/{policy_id}/control_sets/{control_set_id}"
-            )
 
             # Then: rollback is called and 500 error is returned
             assert resp.status_code == 500
