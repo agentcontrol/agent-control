@@ -11,6 +11,10 @@ export type Agent = components["schemas"]["Agent"];
 export type AgentTool = components["schemas"]["AgentTool"];
 export type EvaluatorSchema = components["schemas"]["EvaluatorSchema"];
 
+// Plugin types
+export type PluginInfo = components["schemas"]["PluginInfo"];
+export type PluginsResponse = Record<string, PluginInfo>;
+
 // Request/Response types
 export type InitAgentRequest = components["schemas"]["InitAgentRequest"];
 export type InitAgentResponse = components["schemas"]["InitAgentResponse"];

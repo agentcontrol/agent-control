@@ -74,5 +74,7 @@ export const api = {
         params: { path: { agent_id: agentId } },
       }),
   },
-  // Add other resources as needed
+  plugins: {
+    list: () => apiClient.GET("/api/v1/plugins"),
+  },
 };

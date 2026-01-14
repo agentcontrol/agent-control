@@ -1,6 +1,7 @@
 import {
   Box,
   Group,
+  Loader,
   Modal,
   Stack,
   Text,
@@ -10,57 +11,46 @@ import {
 } from "@mantine/core";
 import { Button, Table } from "@rungalileo/jupiter-ds";
 import {
+  IconAlertCircle,
   IconSearch,
   IconSettings,
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-interface Control {
-  id: string;
-  name: string;
-  controls: number;
-  description: string;
-  tag: string;
-}
+import type { PluginInfo } from "@/core/api/types";
+import { usePlugins } from "@/core/hooks/query-hooks/use-plugins";
 
 interface ControlStoreModalProps {
   opened: boolean;
   onClose: () => void;
 }
 
-const GALILEO_STANDARD_CONTROLS: Control[] = [
-  {
-    id: "sql",
-    name: "SQL",
-    controls: 1,
-    description: "Validates SQL queries for syntax and security",
-    tag: "security",
-  },
-  {
-    id: "regex",
-    name: "Regex",
-    controls: 1,
-    description: "Pattern matching and validation for text",
-    tag: "validation",
-  },
-];
-
 export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
   const [selectedSource, setSelectedSource] = useState<"galileo" | "custom">(
     "galileo"
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const { data: pluginsData, isLoading, error } = usePlugins();
 
-  const columns: ColumnDef<Control>[] = [
+  // Transform plugins record to array for table display
+  const plugins = useMemo(() => {
+    if (!pluginsData) return [];
+    return Object.entries(pluginsData).map(([key, plugin]) => ({
+      ...plugin,
+      id: key,
+    }));
+  }, [pluginsData]);
+
+  const columns: ColumnDef<PluginInfo & { id: string }>[] = [
     {
       id: "name",
       header: "Name",
       accessorKey: "name",
       size: 80,
-      cell: ({ row }: { row: any }) => (
+      cell: ({ row }) => (
         <Group gap='xs'>
           <Text size='sm' fw={500}>
             {row.original.name}
@@ -69,20 +59,18 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
       ),
     },
     {
-      id: "controls",
-      header: "Controls",
-      accessorKey: "controls",
+      id: "version",
+      header: "Version",
+      accessorKey: "version",
       size: 80,
-      cell: ({ row }: { row: any }) => (
-        <Text size='sm'>{row.original.controls}</Text>
-      ),
+      cell: ({ row }) => <Text size='sm'>{row.original.version}</Text>,
     },
     {
       id: "description",
       header: "Description",
       accessorKey: "description",
       size: 200,
-      cell: ({ row }: { row: any }) => (
+      cell: ({ row }) => (
         <Tooltip label={row.original.description} withArrow>
           <Text size='sm' c='dimmed' lineClamp={1}>
             {row.original.description}
@@ -102,10 +90,10 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
     },
   ];
 
-  const filteredControls =
+  const filteredPlugins =
     selectedSource === "galileo"
-      ? GALILEO_STANDARD_CONTROLS.filter((control) =>
-          control.name.toLowerCase().includes(searchQuery.toLowerCase())
+      ? plugins.filter((plugin) =>
+          plugin.name.toLowerCase().includes(searchQuery.toLowerCase())
         )
       : [];
 
@@ -237,10 +225,38 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
 
               {/* Table or Empty State */}
               {selectedSource === "galileo" ? (
-                filteredControls.length > 0 ? (
+                isLoading ? (
+                  <Box
+                    p='xl'
+                    style={{
+                      textAlign: "center",
+                      border: "1px solid var(--mantine-color-gray-3)",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Loader size='sm' />
+                  </Box>
+                ) : error ? (
+                  <Box
+                    p='xl'
+                    style={{
+                      textAlign: "center",
+                      border: "1px solid var(--mantine-color-gray-3)",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Stack gap='xs' align='center'>
+                      <IconAlertCircle
+                        size={48}
+                        color='var(--mantine-color-red-5)'
+                      />
+                      <Text c='red'>Failed to load plugins</Text>
+                    </Stack>
+                  </Box>
+                ) : filteredPlugins.length > 0 ? (
                   <Table
                     columns={columns}
-                    data={filteredControls}
+                    data={filteredPlugins}
                     highlightOnHover
                   />
                 ) : (
@@ -252,7 +268,7 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
                       borderRadius: 8,
                     }}
                   >
-                    <Text c='dimmed'>No controls found</Text>
+                    <Text c='dimmed'>No plugins found</Text>
                   </Box>
                 )
               ) : (
