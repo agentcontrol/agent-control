@@ -16,7 +16,7 @@ from agent_control_models.server import (
 from fastapi import APIRouter, Depends, HTTPException, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import ValidationError
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
@@ -354,15 +354,49 @@ async def list_controls(
         query = query.where(Control.name.ilike(f"%{name}%"))
         # Don't apply to count_query - total should be pre-filter
 
+    # Apply JSONB filters at database level
+    if enabled is not None:
+        if enabled:
+            # enabled=True: include if enabled is true OR key doesn't exist (default is True)
+            query = query.where(
+                or_(
+                    Control.data["enabled"].astext == "true",
+                    ~Control.data.has_key("enabled"),
+                )
+            )
+        else:
+            # enabled=False: only include if explicitly false
+            query = query.where(Control.data["enabled"].astext == "false")
+
+    if applies_to is not None:
+        query = query.where(Control.data["applies_to"].astext == applies_to)
+
+    if tag is not None:
+        query = query.where(Control.data["tags"].contains([tag]))
+
     # Fetch limit + 1 to check for more pages
     query = query.limit(limit + 1)
     result = await db.execute(query)
     controls = list(result.scalars().all())
 
-    # Get total count (without cursor/limit, but we need a separate query for total)
+    # Get total count (with same filters, but without cursor/limit)
     total_query = select(func.count()).select_from(Control)
     if name is not None:
         total_query = total_query.where(Control.name.ilike(f"%{name}%"))
+    if enabled is not None:
+        if enabled:
+            total_query = total_query.where(
+                or_(
+                    Control.data["enabled"].astext == "true",
+                    ~Control.data.has_key("enabled"),
+                )
+            )
+        else:
+            total_query = total_query.where(Control.data["enabled"].astext == "false")
+    if applies_to is not None:
+        total_query = total_query.where(Control.data["applies_to"].astext == applies_to)
+    if tag is not None:
+        total_query = total_query.where(Control.data["tags"].contains([tag]))
     total_result = await db.execute(total_query)
     total = total_result.scalar() or 0
 
@@ -371,45 +405,20 @@ async def list_controls(
     if has_more:
         controls = controls[:-1]
 
-    # Build summaries with filtering
+    # Build summaries (filtering already done at DB level)
     summaries: list[ControlSummary] = []
     for ctrl in controls:
-        # Parse control data to extract summary fields
-        ctrl_enabled: bool = True
-        ctrl_applies_to: str | None = None
-        ctrl_check_stage: str | None = None
-        ctrl_description: str | None = None
-        ctrl_tags: list[str] = []
-
-        if ctrl.data:
-            try:
-                ctrl_def = ControlDefinition.model_validate(ctrl.data)
-                ctrl_enabled = ctrl_def.enabled
-                ctrl_applies_to = ctrl_def.applies_to
-                ctrl_check_stage = ctrl_def.check_stage
-                ctrl_description = ctrl_def.description
-                ctrl_tags = ctrl_def.tags
-            except Exception:
-                # Data corrupted, use defaults
-                pass
-
-        # Apply post-fetch filters (for fields in JSONB data)
-        if enabled is not None and ctrl_enabled != enabled:
-            continue
-        if applies_to is not None and ctrl_applies_to != applies_to:
-            continue
-        if tag is not None and tag not in ctrl_tags:
-            continue
-
+        # Extract summary fields from JSONB data
+        data = ctrl.data or {}
         summaries.append(
             ControlSummary(
                 id=ctrl.id,
                 name=ctrl.name,
-                description=ctrl_description,
-                enabled=ctrl_enabled,
-                applies_to=ctrl_applies_to,
-                check_stage=ctrl_check_stage,
-                tags=ctrl_tags,
+                description=data.get("description"),
+                enabled=data.get("enabled", True),
+                applies_to=data.get("applies_to"),
+                check_stage=data.get("check_stage"),
+                tags=data.get("tags", []),
             )
         )
 
