@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Agent Control Server",
-    "description": "Server component for Agent Control - policy-based control for AI agents.\n\n## Architecture\n\nThe system uses a hierarchical model:\n- **Agents**: AI systems that need control\n- **Policies**: Collections of control sets assigned to agents\n- **Control Sets**: Groups of related controls\n- **Controls**: Individual control configurations\n\n## Hierarchy\n\n```\nAgent → Policy → Control Set(s) → Control(s)\n```\n\n## Quick Start\n\n1. Register your agent with `/api/v1/agents/initAgent`\n2. Create controls with `/api/v1/controls` and configure them\n3. Create control sets and add controls to them\n4. Create a policy and add control sets to it\n5. Assign the policy to your agent\n6. Query agent's active controls with `/api/v1/agents/{agent_id}/controls`\n    ",
+    "description": "Server component for Agent Control - policy-based control for AI agents.\n\n## Architecture\n\nThe system uses a simple hierarchical model:\n- **Agents**: AI systems that need control\n- **Policies**: Collections of controls assigned to agents\n- **Controls**: Individual control configurations\n\n## Hierarchy\n\n```\nAgent → Policy → Control(s)\n```\n\n## Quick Start\n\n1. Register your agent with `/api/v1/agents/initAgent`\n2. Create controls with `/api/v1/controls` and configure them\n3. Create a policy and add controls to it\n4. Assign the policy to your agent\n5. Query agent's active controls with `/api/v1/agents/{agent_id}/controls`\n    ",
     "version": "0.1.0"
   },
   "paths": {
@@ -10,14 +10,18 @@
       "get": {
         "tags": ["agents"],
         "summary": "List all agents",
-        "description": "List all registered agents with summary information.\n\nReturns all agents including:\n- Agent ID and name\n- Description\n- Count of active controls\n\nArgs:\n    offset: Pagination offset (default 0)\n    limit: Pagination limit (default 20, max 100)\n    db: Database session (injected)\n\nReturns:\n    ListAgentsResponse with agent summaries and pagination info",
+        "description": "List all registered agents with cursor-based pagination.\n\nReturns a summary of each agent including ID, name, policy assignment,\nand counts of registered tools and evaluators.\n\nArgs:\n    cursor: Optional cursor for pagination (UUID of last agent from previous page)\n    limit: Pagination limit (default 20, max 100)\n    db: Database session (injected)\n\nReturns:\n    ListAgentsResponse with agent summaries and pagination info",
         "operationId": "list_agents_api_v1_agents_get",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Cursor"
+            }
           },
           {
             "name": "limit",
@@ -28,7 +32,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of all registered agents with summary information",
+            "description": "Paginated list of agent summaries",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ListAgentsResponse" }
@@ -77,7 +81,8 @@
               }
             }
           }
-        }
+        },
+        "security": [{ "APIKeyHeader": [] }]
       }
     },
     "/api/v1/agents/{agent_id}": {
@@ -86,6 +91,7 @@
         "summary": "Get agent details",
         "description": "Retrieve agent metadata and all registered tools.\n\nReturns the latest version of each tool (tools are deduplicated by name).\n\nArgs:\n    agent_id: UUID of the agent\n    db: Database session (injected)\n\nReturns:\n    GetAgentResponse with agent metadata and tool list\n\nRaises:\n    HTTPException 404: Agent not found\n    HTTPException 422: Agent data is corrupted",
         "operationId": "get_agent_api_v1_agents__agent_id__get",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -122,6 +128,7 @@
         "summary": "Modify agent (remove tools/evaluators)",
         "description": "Remove tools and/or evaluators from an agent.\n\nThis is the complement to initAgent which only adds items.\nRemovals are idempotent - attempting to remove non-existent items is not an error.\n\nArgs:\n    agent_id: UUID of the agent\n    request: Lists of tool/evaluator names to remove\n    db: Database session (injected)\n\nReturns:\n    PatchAgentResponse with lists of actually removed items\n\nRaises:\n    HTTPException 404: Agent not found\n    HTTPException 500: Database error during update",
         "operationId": "patch_agent_api_v1_agents__agent_id__patch",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -168,6 +175,7 @@
         "summary": "Assign policy to agent",
         "description": "Assign a policy to an agent, replacing any existing policy assignment.\n\nThe agent will immediately inherit all controls from control sets in the assigned policy.\n\nArgs:\n    agent_id: UUID of the agent\n    policy_id: ID of the policy to assign\n    db: Database session (injected)\n\nReturns:\n    SetPolicyResponse with success flag and previous policy ID (if any)\n\nRaises:\n    HTTPException 404: Agent or policy not found\n    HTTPException 500: Database error during assignment",
         "operationId": "set_agent_policy_api_v1_agents__agent_id__policy__policy_id__post",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -212,6 +220,7 @@
         "summary": "Get agent's assigned policy",
         "description": "Retrieve the policy currently assigned to an agent.\n\nArgs:\n    agent_id: UUID of the agent\n    db: Database session (injected)\n\nReturns:\n    GetPolicyResponse with policy ID\n\nRaises:\n    HTTPException 404: Agent not found or agent has no policy assigned",
         "operationId": "get_agent_policy_api_v1_agents__agent_id__policy_get",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -248,6 +257,7 @@
         "summary": "Remove agent's policy assignment",
         "description": "Remove the policy assignment from an agent.\n\nThe agent will no longer have any protection controls active.\n\nArgs:\n    agent_id: UUID of the agent\n    db: Database session (injected)\n\nReturns:\n    DeletePolicyResponse with success flag\n\nRaises:\n    HTTPException 404: Agent not found or agent has no policy assigned\n    HTTPException 500: Database error during removal",
         "operationId": "delete_agent_policy_api_v1_agents__agent_id__policy_delete",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -288,6 +298,7 @@
         "summary": "List agent's active controls",
         "description": "List all protection controls active for an agent.\n\nControls are inherited from all control sets in the agent's assigned policy.\nReturns an empty list if the agent has no policy.\n\nArgs:\n    agent_id: UUID of the agent\n    db: Database session (injected)\n\nReturns:\n    AgentControlsResponse with list of controls (empty if no policy)\n\nRaises:\n    HTTPException 404: Agent not found",
         "operationId": "list_agent_controls_api_v1_agents__agent_id__controls_get",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -326,8 +337,9 @@
       "get": {
         "tags": ["agents"],
         "summary": "List agent's registered evaluator schemas",
-        "description": "List all evaluator schemas registered with an agent.\n\nEvaluator schemas are registered via initAgent and used for:\n- Config validation when creating Controls\n- UI to display available config options\n\nArgs:\n    agent_id: UUID of the agent\n    offset: Pagination offset (default 0)\n    limit: Pagination limit (default 20, max 100)\n    db: Database session (injected)\n\nReturns:\n    ListEvaluatorsResponse with evaluator schemas and pagination\n\nRaises:\n    HTTPException 404: Agent not found",
+        "description": "List all evaluator schemas registered with an agent.\n\nEvaluator schemas are registered via initAgent and used for:\n- Config validation when creating Controls\n- UI to display available config options\n\nArgs:\n    agent_id: UUID of the agent\n    cursor: Optional cursor for pagination (name of last evaluator from previous page)\n    limit: Pagination limit (default 20, max 100)\n    db: Database session (injected)\n\nReturns:\n    ListEvaluatorsResponse with evaluator schemas and pagination\n\nRaises:\n    HTTPException 404: Agent not found",
         "operationId": "list_agent_evaluators_api_v1_agents__agent_id__evaluators_get",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -340,10 +352,13 @@
             }
           },
           {
-            "name": "offset",
+            "name": "cursor",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Cursor"
+            }
           },
           {
             "name": "limit",
@@ -380,6 +395,7 @@
         "summary": "Get specific evaluator schema",
         "description": "Get a specific evaluator schema registered with an agent.\n\nArgs:\n    agent_id: UUID of the agent\n    evaluator_name: Name of the evaluator\n    db: Database session (injected)\n\nReturns:\n    EvaluatorSchemaItem with schema details\n\nRaises:\n    HTTPException 404: Agent or evaluator not found",
         "operationId": "get_agent_evaluator_api_v1_agents__agent_id__evaluators__evaluator_name__get",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "agent_id",
@@ -422,7 +438,7 @@
       "put": {
         "tags": ["policies"],
         "summary": "Create a new policy",
-        "description": "Create a new empty policy with a unique name.\n\nPolicies group control sets together and can be assigned to agents.\nA newly created policy has no control sets until they are explicitly added.\n\nArgs:\n    request: Policy creation request with unique name\n    db: Database session (injected)\n\nReturns:\n    CreatePolicyResponse with the new policy's ID\n\nRaises:\n    HTTPException 409: Policy with this name already exists\n    HTTPException 500: Database error during creation",
+        "description": "Create a new empty policy with a unique name.\n\nPolicies contain controls and can be assigned to agents.\nA newly created policy has no controls until they are explicitly added.\n\nArgs:\n    request: Policy creation request with unique name\n    db: Database session (injected)\n\nReturns:\n    CreatePolicyResponse with the new policy's ID\n\nRaises:\n    HTTPException 409: Policy with this name already exists\n    HTTPException 500: Database error during creation",
         "operationId": "create_policy_api_v1_policies_put",
         "requestBody": {
           "content": {
@@ -451,173 +467,23 @@
               }
             }
           }
-        }
-      }
-    },
-    "/api/v1/policies/{policy_id}/control_sets/{control_set_id}": {
-      "post": {
-        "tags": ["policies"],
-        "summary": "Add control set to policy",
-        "description": "Associate a control set with a policy.\n\nThis operation is idempotent - adding the same control set multiple times has no effect.\nAgents with this policy will immediately see controls from the added control set.\n\nArgs:\n    policy_id: ID of the policy\n    control_set_id: ID of the control set to add\n    db: Database session (injected)\n\nReturns:\n    AssocResponse with success flag\n\nRaises:\n    HTTPException 404: Policy or control set not found\n    HTTPException 500: Database error",
-        "operationId": "add_control_set_to_policy_api_v1_policies__policy_id__control_sets__control_set_id__post",
-        "parameters": [
-          {
-            "name": "policy_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer", "title": "Policy Id" }
-          },
-          {
-            "name": "control_set_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer", "title": "Control Set Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success confirmation",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/AssocResponse" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": ["policies"],
-        "summary": "Remove control set from policy",
-        "description": "Remove a control set from a policy.\n\nThis operation is idempotent - removing a non-associated control set has no effect.\nAgents with this policy will immediately lose controls from the removed control set.\n\nArgs:\n    policy_id: ID of the policy\n    control_set_id: ID of the control set to remove\n    db: Database session (injected)\n\nReturns:\n    AssocResponse with success flag\n\nRaises:\n    HTTPException 404: Policy or control set not found\n    HTTPException 500: Database error",
-        "operationId": "remove_control_set_from_policy_api_v1_policies__policy_id__control_sets__control_set_id__delete",
-        "parameters": [
-          {
-            "name": "policy_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer", "title": "Policy Id" }
-          },
-          {
-            "name": "control_set_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer", "title": "Control Set Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success confirmation",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/AssocResponse" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/policies/{policy_id}/control_sets": {
-      "get": {
-        "tags": ["policies"],
-        "summary": "List policy's control sets",
-        "description": "List all control sets associated with a policy.\n\nArgs:\n    policy_id: ID of the policy\n    db: Database session (injected)\n\nReturns:\n    GetPolicyControlSetsResponse with list of control set IDs\n\nRaises:\n    HTTPException 404: Policy not found",
-        "operationId": "list_policy_control_sets_api_v1_policies__policy_id__control_sets_get",
-        "parameters": [
-          {
-            "name": "policy_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer", "title": "Policy Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of control set IDs",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GetPolicyControlSetsResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/control-sets": {
-      "put": {
-        "tags": ["control-sets"],
-        "summary": "Create a new control set",
-        "description": "Create a new control set with a unique name.\n\nControl sets group multiple atomic controls together.\nExample: \"Input Sanitization\" control set might contain\n\"SQL Injection\" and \"XSS\" controls.\n\nArgs:\n    request: Control set creation request\n    db: Database session (injected)\n\nReturns:\n    CreateControlSetResponse with the new ID\n\nRaises:\n    HTTPException 409: Control set with this name already exists\n    HTTPException 500: Database error",
-        "operationId": "create_control_set_api_v1_control_sets_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateControlSetRequest"
-              }
-            }
-          },
-          "required": true
         },
-        "responses": {
-          "200": {
-            "description": "Created control set ID",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreateControlSetResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
+        "security": [{ "APIKeyHeader": [] }]
       }
     },
-    "/api/v1/control-sets/{control_set_id}/controls/{control_id}": {
+    "/api/v1/policies/{policy_id}/controls/{control_id}": {
       "post": {
-        "tags": ["control-sets"],
-        "summary": "Add a control to a control set",
-        "description": "Associate an atomic control with a control set.\n\nThis operation is idempotent.\n\nArgs:\n    control_set_id: ID of the control set\n    control_id: ID of the control to add\n    db: Database session\n\nReturns:\n    AssocResponse(success=True)\n\nRaises:\n    HTTPException 404: Control set or control not found",
-        "operationId": "add_control_to_control_set_api_v1_control_sets__control_set_id__controls__control_id__post",
+        "tags": ["policies"],
+        "summary": "Add control to policy",
+        "description": "Associate a control with a policy.\n\nThis operation is idempotent - adding the same control multiple times has no effect.\nAgents with this policy will immediately see the added control.\n\nArgs:\n    policy_id: ID of the policy\n    control_id: ID of the control to add\n    db: Database session (injected)\n\nReturns:\n    AssocResponse with success flag\n\nRaises:\n    HTTPException 404: Policy or control not found\n    HTTPException 500: Database error",
+        "operationId": "add_control_to_policy_api_v1_policies__policy_id__controls__control_id__post",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
-            "name": "control_set_id",
+            "name": "policy_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer", "title": "Control Set Id" }
+            "schema": { "type": "integer", "title": "Policy Id" }
           },
           {
             "name": "control_id",
@@ -646,16 +512,17 @@
         }
       },
       "delete": {
-        "tags": ["control-sets"],
-        "summary": "Remove a control from a control set",
-        "description": "Remove an atomic control from a control set.\n\nArgs:\n    control_set_id: ID of the control set\n    control_id: ID of the control to remove\n    db: Database session\n\nReturns:\n    AssocResponse(success=True)\n\nRaises:\n    HTTPException 404: Control set or control not found",
-        "operationId": "remove_control_from_control_set_api_v1_control_sets__control_set_id__controls__control_id__delete",
+        "tags": ["policies"],
+        "summary": "Remove control from policy",
+        "description": "Remove a control from a policy.\n\nThis operation is idempotent - removing a non-associated control has no effect.\nAgents with this policy will immediately lose the removed control.\n\nArgs:\n    policy_id: ID of the policy\n    control_id: ID of the control to remove\n    db: Database session (injected)\n\nReturns:\n    AssocResponse with success flag\n\nRaises:\n    HTTPException 404: Policy or control not found\n    HTTPException 500: Database error",
+        "operationId": "remove_control_from_policy_api_v1_policies__policy_id__controls__control_id__delete",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
-            "name": "control_set_id",
+            "name": "policy_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer", "title": "Control Set Id" }
+            "schema": { "type": "integer", "title": "Policy Id" }
           },
           {
             "name": "control_id",
@@ -684,18 +551,19 @@
         }
       }
     },
-    "/api/v1/control-sets/{control_set_id}/controls": {
+    "/api/v1/policies/{policy_id}/controls": {
       "get": {
-        "tags": ["control-sets"],
-        "summary": "List controls in a control set",
-        "description": "List all atomic controls associated with a control set.\n\nArgs:\n    control_set_id: ID of the control set\n    db: Database session\n\nReturns:\n    GetControlSetControlsResponse with list of control IDs\n\nRaises:\n    HTTPException 404: Control set not found",
-        "operationId": "list_control_set_controls_api_v1_control_sets__control_set_id__controls_get",
+        "tags": ["policies"],
+        "summary": "List policy's controls",
+        "description": "List all controls associated with a policy.\n\nArgs:\n    policy_id: ID of the policy\n    db: Database session (injected)\n\nReturns:\n    GetPolicyControlsResponse with list of control IDs\n\nRaises:\n    HTTPException 404: Policy not found",
+        "operationId": "list_policy_controls_api_v1_policies__policy_id__controls_get",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
-            "name": "control_set_id",
+            "name": "policy_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer", "title": "Control Set Id" }
+            "schema": { "type": "integer", "title": "Policy Id" }
           }
         ],
         "responses": {
@@ -704,7 +572,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetControlSetControlsResponse"
+                  "$ref": "#/components/schemas/GetPolicyControlsResponse"
                 }
               }
             }
@@ -726,13 +594,14 @@
         "summary": "Create a new control",
         "description": "Create a new control with a unique name and empty data.\n\nControls define protection logic and can be added to control sets.\nUse the PUT /{control_id}/data endpoint to set control configuration.\n\nArgs:\n    request: Control creation request with unique name\n    db: Database session (injected)\n\nReturns:\n    CreateControlResponse with the new control's ID\n\nRaises:\n    HTTPException 409: Control with this name already exists\n    HTTPException 500: Database error during creation",
         "operationId": "create_control_api_v1_controls_put",
+        "security": [{ "APIKeyHeader": [] }],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/CreateControlRequest" }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -754,6 +623,227 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": ["controls"],
+        "summary": "List all controls",
+        "description": "List all controls with optional filtering and cursor-based pagination.\n\nControls are returned ordered by ID descending (newest first).\n\nArgs:\n    cursor: ID of the last control from the previous page (for pagination)\n    limit: Maximum number of controls to return (default 20, max 100)\n    name: Optional filter by name (partial, case-insensitive match)\n    enabled: Optional filter by enabled status\n    applies_to: Optional filter by type ('llm_call' or 'tool_call')\n    tag: Optional filter by tag\n    db: Database session (injected)\n\nReturns:\n    ListControlsResponse with control summaries and pagination info\n\nExample:\n    GET /controls?limit=10&enabled=true&applies_to=llm_call",
+        "operationId": "list_controls_api_v1_controls_get",
+        "security": [{ "APIKeyHeader": [] }],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "description": "Control ID to start after",
+              "title": "Cursor"
+            },
+            "description": "Control ID to start after"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by name (partial, case-insensitive)",
+              "title": "Name"
+            },
+            "description": "Filter by name (partial, case-insensitive)"
+          },
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+              "description": "Filter by enabled status",
+              "title": "Enabled"
+            },
+            "description": "Filter by enabled status"
+          },
+          {
+            "name": "applies_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by 'llm_call' or 'tool_call'",
+              "title": "Applies To"
+            },
+            "description": "Filter by 'llm_call' or 'tool_call'"
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by tag",
+              "title": "Tag"
+            },
+            "description": "Filter by tag"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of controls",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListControlsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/controls/{control_id}": {
+      "get": {
+        "tags": ["controls"],
+        "summary": "Get control details",
+        "description": "Retrieve a control by ID including its name and configuration data.\n\nArgs:\n    control_id: ID of the control\n    db: Database session (injected)\n\nReturns:\n    GetControlResponse with control id, name, and data\n\nRaises:\n    HTTPException 404: Control not found",
+        "operationId": "get_control_api_v1_controls__control_id__get",
+        "security": [{ "APIKeyHeader": [] }],
+        "parameters": [
+          {
+            "name": "control_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Control Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Control metadata and configuration",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GetControlResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["controls"],
+        "summary": "Delete a control",
+        "description": "Delete a control by ID.\n\nBy default, deletion fails if the control is associated with any control set.\nUse force=true to automatically dissociate and delete.\n\nArgs:\n    control_id: ID of the control to delete\n    force: If true, remove associations before deleting\n    db: Database session (injected)\n\nReturns:\n    DeleteControlResponse with success flag and list of dissociated control sets\n\nRaises:\n    HTTPException 404: Control not found\n    HTTPException 409: Control is in use (and force=false)\n    HTTPException 500: Database error during deletion",
+        "operationId": "delete_control_api_v1_controls__control_id__delete",
+        "security": [{ "APIKeyHeader": [] }],
+        "parameters": [
+          {
+            "name": "control_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Control Id" }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, dissociate from all control sets before deleting. If false, fail if control is associated with any control set.",
+              "default": false,
+              "title": "Force"
+            },
+            "description": "If true, dissociate from all control sets before deleting. If false, fail if control is associated with any control set."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion confirmation with dissociation info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteControlResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["controls"],
+        "summary": "Update control metadata",
+        "description": "Update control metadata (name and/or enabled status).\n\nThis endpoint allows partial updates:\n- To rename: provide 'name' field\n- To enable/disable: provide 'enabled' field (updates the control's data)\n\nArgs:\n    control_id: ID of the control to update\n    request: Fields to update (name, enabled)\n    db: Database session (injected)\n\nReturns:\n    PatchControlResponse with current control state\n\nRaises:\n    HTTPException 404: Control not found\n    HTTPException 409: New name conflicts with existing control\n    HTTPException 422: Cannot update enabled status (control has no data configured)\n    HTTPException 500: Database error during update",
+        "operationId": "patch_control_api_v1_controls__control_id__patch",
+        "security": [{ "APIKeyHeader": [] }],
+        "parameters": [
+          {
+            "name": "control_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Control Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PatchControlRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated control information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchControlResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/controls/{control_id}/data": {
@@ -762,6 +852,7 @@
         "summary": "Get control configuration data",
         "description": "Retrieve the configuration data for a control.\n\nControl data is a JSONB field that must follow the ControlDefinition schema.\n\nArgs:\n    control_id: ID of the control\n    db: Database session (injected)\n\nReturns:\n    GetControlDataResponse with validated ControlDefinition\n\nRaises:\n    HTTPException 404: Control not found\n    HTTPException 422: Control data is corrupted",
         "operationId": "get_control_data_api_v1_controls__control_id__data_get",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "control_id",
@@ -796,6 +887,7 @@
         "summary": "Update control configuration data",
         "description": "Update the configuration data for a control.\n\nThis replaces the entire data payload. The data is validated against\nthe ControlDefinition schema.\n\nArgs:\n    control_id: ID of the control\n    request: New control data (replaces existing)\n    db: Database session (injected)\n\nReturns:\n    SetControlDataResponse with success flag\n\nRaises:\n    HTTPException 404: Control not found\n    HTTPException 500: Database error during update",
         "operationId": "set_control_data_api_v1_controls__control_id__data_put",
+        "security": [{ "APIKeyHeader": [] }],
         "parameters": [
           {
             "name": "control_id",
@@ -865,7 +957,8 @@
               }
             }
           }
-        }
+        },
+        "security": [{ "APIKeyHeader": [] }]
       }
     },
     "/api/v1/plugins": {
@@ -889,7 +982,8 @@
               }
             }
           }
-        }
+        },
+        "security": [{ "APIKeyHeader": [] }]
       }
     },
     "/health": {
@@ -990,24 +1084,47 @@
         "properties": {
           "agent_id": {
             "type": "string",
-            "format": "uuid",
-            "title": "Agent Id"
+            "title": "Agent Id",
+            "description": "UUID of the agent"
           },
-          "name": { "type": "string", "title": "Name" },
-          "description": {
+          "agent_name": {
+            "type": "string",
+            "title": "Agent Name",
+            "description": "Human-readable name of the agent"
+          },
+          "policy_id": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Policy Id",
+            "description": "ID of assigned policy, if any"
+          },
+          "created_at": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
+            "title": "Created At",
+            "description": "ISO 8601 timestamp when agent was created"
+          },
+          "tool_count": {
+            "type": "integer",
+            "title": "Tool Count",
+            "description": "Number of tools registered with the agent",
+            "default": 0
+          },
+          "evaluator_count": {
+            "type": "integer",
+            "title": "Evaluator Count",
+            "description": "Number of evaluators registered with the agent",
+            "default": 0
           },
           "active_controls_count": {
             "type": "integer",
             "title": "Active Controls Count",
+            "description": "Number of active controls from agent's policy",
             "default": 0
           }
         },
         "type": "object",
-        "required": ["agent_id", "name"],
+        "required": ["agent_id", "agent_name"],
         "title": "AgentSummary",
-        "description": "Summary information for an agent in list view."
+        "description": "Summary of an agent for list responses."
       },
       "AgentTool": {
         "properties": {
@@ -1222,6 +1339,51 @@
           { "path": "output", "tool_name_regex": "^db_.*" }
         ]
       },
+      "ControlSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "Control ID"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Control name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description",
+            "description": "Control description"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Whether control is enabled",
+            "default": true
+          },
+          "applies_to": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Applies To",
+            "description": "'llm_call' or 'tool_call'"
+          },
+          "check_stage": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Check Stage",
+            "description": "'pre' or 'post'"
+          },
+          "tags": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Tags",
+            "description": "Control tags"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "ControlSummary",
+        "description": "Summary of a control for list responses."
+      },
       "CreateControlRequest": {
         "properties": {
           "name": {
@@ -1246,30 +1408,6 @@
         "required": ["control_id"],
         "title": "CreateControlResponse"
       },
-      "CreateControlSetRequest": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "Unique control set name"
-          }
-        },
-        "type": "object",
-        "required": ["name"],
-        "title": "CreateControlSetRequest"
-      },
-      "CreateControlSetResponse": {
-        "properties": {
-          "control_set_id": {
-            "type": "integer",
-            "title": "Control Set Id",
-            "description": "Identifier of the created control set"
-          }
-        },
-        "type": "object",
-        "required": ["control_set_id"],
-        "title": "CreateControlSetResponse"
-      },
       "CreatePolicyRequest": {
         "properties": {
           "name": {
@@ -1293,6 +1431,25 @@
         "type": "object",
         "required": ["policy_id"],
         "title": "CreatePolicyResponse"
+      },
+      "DeleteControlResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the control was deleted"
+          },
+          "dissociated_from": {
+            "items": { "type": "integer" },
+            "type": "array",
+            "title": "Dissociated From",
+            "description": "Policy IDs the control was removed from before deletion"
+          }
+        },
+        "type": "object",
+        "required": ["success"],
+        "title": "DeleteControlResponse",
+        "description": "Response for deleting a control."
       },
       "DeletePolicyResponse": {
         "properties": {
@@ -1563,31 +1720,44 @@
         "required": ["data"],
         "title": "GetControlDataResponse"
       },
-      "GetControlSetControlsResponse": {
+      "GetControlResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "Control ID"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Control name"
+          },
+          "data": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ControlDefinition" },
+              { "type": "null" }
+            ],
+            "description": "Control configuration data (None if not yet configured)"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "GetControlResponse",
+        "description": "Response containing control details."
+      },
+      "GetPolicyControlsResponse": {
         "properties": {
           "control_ids": {
             "items": { "type": "integer" },
             "type": "array",
             "title": "Control Ids",
-            "description": "List of control ids associated with the control set"
+            "description": "List of control IDs associated with the policy"
           }
         },
         "type": "object",
         "required": ["control_ids"],
-        "title": "GetControlSetControlsResponse"
-      },
-      "GetPolicyControlSetsResponse": {
-        "properties": {
-          "control_set_ids": {
-            "items": { "type": "integer" },
-            "type": "array",
-            "title": "Control Set Ids",
-            "description": "List of control set ids associated with the policy"
-          }
-        },
-        "type": "object",
-        "required": ["control_set_ids"],
-        "title": "GetPolicyControlSetsResponse"
+        "title": "GetPolicyControlsResponse",
+        "description": "Response containing control IDs associated with a policy."
       },
       "GetPolicyResponse": {
         "properties": {
@@ -1703,14 +1873,36 @@
           "agents": {
             "items": { "$ref": "#/components/schemas/AgentSummary" },
             "type": "array",
-            "title": "Agents"
+            "title": "Agents",
+            "description": "List of agent summaries"
           },
-          "pagination": { "$ref": "#/components/schemas/PaginationInfo" }
+          "pagination": {
+            "$ref": "#/components/schemas/PaginationInfo",
+            "description": "Pagination metadata"
+          }
         },
         "type": "object",
         "required": ["agents", "pagination"],
         "title": "ListAgentsResponse",
-        "description": "Response for listing all agents."
+        "description": "Response for listing agents."
+      },
+      "ListControlsResponse": {
+        "properties": {
+          "controls": {
+            "items": { "$ref": "#/components/schemas/ControlSummary" },
+            "type": "array",
+            "title": "Controls",
+            "description": "List of control summaries"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PaginationInfo",
+            "description": "Pagination metadata"
+          }
+        },
+        "type": "object",
+        "required": ["controls", "pagination"],
+        "title": "ListControlsResponse",
+        "description": "Response for listing controls."
       },
       "ListEvaluatorsResponse": {
         "properties": {
@@ -1761,14 +1953,31 @@
       },
       "PaginationInfo": {
         "properties": {
-          "offset": { "type": "integer", "title": "Offset" },
-          "limit": { "type": "integer", "title": "Limit" },
-          "total": { "type": "integer", "title": "Total" }
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Number of items per page"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Total number of items"
+          },
+          "next_cursor": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Cursor",
+            "description": "Cursor for fetching the next page (null if no more pages)"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether there are more pages available"
+          }
         },
         "type": "object",
-        "required": ["offset", "limit", "total"],
+        "required": ["limit", "total", "has_more"],
         "title": "PaginationInfo",
-        "description": "Pagination metadata."
+        "description": "Pagination metadata for cursor-based pagination."
       },
       "PatchAgentRequest": {
         "properties": {
@@ -1807,6 +2016,46 @@
         "type": "object",
         "title": "PatchAgentResponse",
         "description": "Response from agent modification."
+      },
+      "PatchControlRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name",
+            "description": "New name for the control"
+          },
+          "enabled": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Enabled",
+            "description": "Enable or disable the control"
+          }
+        },
+        "type": "object",
+        "title": "PatchControlRequest",
+        "description": "Request to update control metadata (name, enabled status)."
+      },
+      "PatchControlResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether the update succeeded"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Current control name (may have changed)"
+          },
+          "enabled": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Enabled",
+            "description": "Current enabled status (if control has data configured)"
+          }
+        },
+        "type": "object",
+        "required": ["success", "name"],
+        "title": "PatchControlResponse",
+        "description": "Response from control metadata update."
       },
       "PluginInfo": {
         "properties": {
@@ -1944,6 +2193,14 @@
         "type": "object",
         "required": ["loc", "msg", "type"],
         "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "description": "API key for authentication. Required for all protected endpoints.",
+        "in": "header",
+        "name": "X-API-Key"
       }
     }
   }
