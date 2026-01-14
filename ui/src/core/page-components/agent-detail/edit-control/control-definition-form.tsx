@@ -93,19 +93,10 @@ export const ControlDefinitionForm = ({
           ]}
           size='sm'
           searchable
-          creatable
           allowDeselect={false}
-          getCreateLabel={(query) => `Use custom path: ${query}`}
-          onCreate={(query) => {
-            const item = { value: query, label: query };
-            return item;
-          }}
           {...form.getInputProps("selectorPath")}
           onChange={(value) => form.setFieldValue("selectorPath", value || "*")}
         />
-        <Text size='xs' c='dimmed' mt={4}>
-          You can select a preset or type a custom path (e.g., arguments.query)
-        </Text>
       </Box>
 
       <Box>

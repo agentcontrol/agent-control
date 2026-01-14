@@ -92,4 +92,12 @@ export const api = {
         body: data,
       }),
   },
+  policies: {
+    create: (name: string) =>
+      apiClient.PUT("/api/v1/policies", { body: { name } }),
+    addControl: (policyId: number, controlId: number) =>
+      apiClient.POST("/api/v1/policies/{policy_id}/controls/{control_id}", {
+        params: { path: { policy_id: policyId, control_id: controlId } },
+      }),
+  },
 };

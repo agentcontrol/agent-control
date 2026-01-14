@@ -12,6 +12,7 @@ export type JsonViewMode = "tree" | "raw";
 
 // Form values type for control definition
 export interface ControlDefinitionFormValues {
+  name: string;
   enabled: boolean;
   appliesTo: ControlAppliesTo;
   checkStage: ControlCheckStage;

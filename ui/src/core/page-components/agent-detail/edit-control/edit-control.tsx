@@ -7,6 +7,7 @@ import {
   SegmentedControl,
   Stack,
   Text,
+  TextInput,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { Button } from "@rungalileo/jupiter-ds";
@@ -42,6 +43,7 @@ export const EditControl = ({
   // Form state using Mantine useForm
   const form = useForm<ControlDefinitionFormValues>({
     initialValues: {
+      name: "",
       enabled: true,
       appliesTo: "llm_call",
       checkStage: "post",
@@ -50,6 +52,12 @@ export const EditControl = ({
       local: false,
     },
     validate: {
+      name: (value) => {
+        if (!value || value.trim() === "") {
+          return "Control name is required";
+        }
+        return null;
+      },
       selectorPath: (value) => {
         if (!value || value.trim() === "") {
           return "Selector path is required";
@@ -202,6 +210,7 @@ export const EditControl = ({
   useEffect(() => {
     if (control) {
       form.setValues({
+        name: control.name,
         enabled: control.control.enabled,
         appliesTo: control.control.applies_to,
         checkStage: control.control.check_stage,
@@ -276,6 +285,7 @@ export const EditControl = ({
 
     const updatedControl: Control = {
       ...control,
+      name: values.name,
       control: {
         ...control.control,
         enabled: values.enabled,
@@ -300,7 +310,7 @@ export const EditControl = ({
     <Modal
       opened={opened}
       onClose={onClose}
-      title={control?.name}
+      title='Configure Control'
       size='xl'
       styles={{
         body: {
@@ -318,6 +328,15 @@ export const EditControl = ({
       }}
     >
       <form onSubmit={form.onSubmit(handleSubmit)}>
+        {/* Control Name Field */}
+        <TextInput
+          label='Control name'
+          placeholder='Enter control name'
+          mb='lg'
+          size='sm'
+          {...form.getInputProps("name")}
+        />
+
         <Grid gutter='xl'>
           {/* Left Column - Control Definition Fields */}
           <Grid.Col span={4}>

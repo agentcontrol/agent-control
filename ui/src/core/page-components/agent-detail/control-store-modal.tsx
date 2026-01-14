@@ -21,7 +21,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
 import type { Control, PluginInfo } from "@/core/api/types";
-import { useCreateControl } from "@/core/hooks/query-hooks/use-create-control";
+import { useAddControlToAgent } from "@/core/hooks/query-hooks/use-add-control-to-agent";
 import { usePlugins } from "@/core/hooks/query-hooks/use-plugins";
 
 import { EditControl } from "./edit-control";
@@ -52,9 +52,14 @@ function getDefaultConfigForPlugin(pluginId: string): Record<string, unknown> {
 interface ControlStoreModalProps {
   opened: boolean;
   onClose: () => void;
+  agentId: string;
 }
 
-export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
+export function ControlStoreModal({
+  opened,
+  onClose,
+  agentId,
+}: ControlStoreModalProps) {
   const [selectedSource, setSelectedSource] = useState<"galileo" | "custom">(
     "galileo"
   );
@@ -64,7 +69,7 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
   );
   const [editModalOpened, setEditModalOpened] = useState(false);
   const { data: pluginsData, isLoading, error } = usePlugins();
-  const createControl = useCreateControl();
+  const addControlToAgent = useAddControlToAgent();
 
   const handleAddClick = (plugin: PluginWithId) => {
     setSelectedPlugin(plugin);
@@ -77,9 +82,10 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
   };
 
   const handleEditModalSave = (data: Control) => {
-    createControl.mutate(
+    addControlToAgent.mutate(
       {
-        name: data.name,
+        agentId,
+        controlName: data.name,
         definition: data.control,
       },
       {
@@ -88,7 +94,7 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
           onClose();
         },
         onError: (err) => {
-          console.error("Failed to create control:", err);
+          console.error("Failed to add control to agent:", err);
         },
       }
     );

@@ -25,6 +25,7 @@ import { useState } from "react";
 import type { Control } from "@/core/api/types";
 import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
+import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 
 import { ControlStoreModal } from "./control-store-modal";
 import { EditControl } from "./edit-control";
@@ -50,6 +51,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
     isLoading: controlsLoading,
     error: controlsError,
   } = useAgentControls(agentId);
+  const updateControl = useUpdateControl();
 
   const controls = controlsResponse?.controls || [];
 
@@ -92,6 +94,17 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
         <Switch
           checked={row.original.control?.enabled ?? false}
           color='violet'
+          onChange={(e) => {
+            const control = row.original as Control;
+            updateControl.mutate({
+              agentId,
+              controlId: control.id,
+              definition: {
+                ...control.control,
+                enabled: e.currentTarget.checked,
+              },
+            });
+          }}
         />
       ),
     },
@@ -168,11 +181,23 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
     setSelectedControl(null);
   };
 
-  const handleSaveControl = (data: any) => {
-    // Here you would typically save the edited data to your backend
-    console.log("Saving control:", data);
-    setEditModalOpened(false);
-    setSelectedControl(null);
+  const handleSaveControl = (data: Control) => {
+    updateControl.mutate(
+      {
+        agentId,
+        controlId: data.id,
+        definition: data.control,
+      },
+      {
+        onSuccess: () => {
+          setEditModalOpened(false);
+          setSelectedControl(null);
+        },
+        onError: (err) => {
+          console.error("Failed to update control:", err);
+        },
+      }
+    );
   };
 
   return (
@@ -319,6 +344,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
       <ControlStoreModal
         opened={controlStoreOpened}
         onClose={() => setControlStoreOpened(false)}
+        agentId={agentId}
       />
 
       {/* Edit Control Modal */}
