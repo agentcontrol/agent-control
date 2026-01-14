@@ -27,7 +27,7 @@ import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
 
 import { ControlStoreModal } from "./control-store-modal";
-import { EditControlSet } from "./edit-control-set";
+import { EditControl } from "./edit-control";
 
 interface AgentDetailPageProps {
   agentId: string;
@@ -322,7 +322,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
       />
 
       {/* Edit Control Modal */}
-      <EditControlSet
+      <EditControl
         opened={editModalOpened}
         control={selectedControl}
         onClose={handleCloseEditModal}

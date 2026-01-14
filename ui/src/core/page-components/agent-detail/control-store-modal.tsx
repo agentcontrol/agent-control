@@ -20,8 +20,34 @@ import {
 import { type ColumnDef } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
-import type { PluginInfo } from "@/core/api/types";
+import type { Control, PluginInfo } from "@/core/api/types";
+import { useCreateControl } from "@/core/hooks/query-hooks/use-create-control";
 import { usePlugins } from "@/core/hooks/query-hooks/use-plugins";
+
+import { EditControl } from "./edit-control";
+
+type PluginWithId = PluginInfo & { id: string };
+
+/**
+ * Default evaluator configs for each plugin type
+ * Based on backend models in agent_control_models/controls.py
+ */
+const DEFAULT_PLUGIN_CONFIGS: Record<string, Record<string, unknown>> = {
+  regex: {
+    pattern: "^.*$",
+  },
+  list: {
+    values: [],
+    logic: "any",
+    match_on: "match",
+    match_mode: "exact",
+    case_sensitive: false,
+  },
+};
+
+function getDefaultConfigForPlugin(pluginId: string): Record<string, unknown> {
+  return DEFAULT_PLUGIN_CONFIGS[pluginId] ?? {};
+}
 
 interface ControlStoreModalProps {
   opened: boolean;
@@ -33,7 +59,40 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
     "galileo"
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedPlugin, setSelectedPlugin] = useState<PluginWithId | null>(
+    null
+  );
+  const [editModalOpened, setEditModalOpened] = useState(false);
   const { data: pluginsData, isLoading, error } = usePlugins();
+  const createControl = useCreateControl();
+
+  const handleAddClick = (plugin: PluginWithId) => {
+    setSelectedPlugin(plugin);
+    setEditModalOpened(true);
+  };
+
+  const handleEditModalClose = () => {
+    setEditModalOpened(false);
+    setSelectedPlugin(null);
+  };
+
+  const handleEditModalSave = (data: Control) => {
+    createControl.mutate(
+      {
+        name: data.name,
+        definition: data.control,
+      },
+      {
+        onSuccess: () => {
+          handleEditModalClose();
+          onClose();
+        },
+        onError: (err) => {
+          console.error("Failed to create control:", err);
+        },
+      }
+    );
+  };
 
   // Transform plugins record to array for table display
   const plugins = useMemo(() => {
@@ -82,8 +141,13 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
       id: "actions",
       header: "",
       size: 80,
-      cell: () => (
-        <Button variant='outline' size='sm' data-testid='add-control-button'>
+      cell: ({ row }) => (
+        <Button
+          variant='outline'
+          size='sm'
+          data-testid='add-control-button'
+          onClick={() => handleAddClick(row.original)}
+        >
           Add
         </Button>
       ),
@@ -298,6 +362,36 @@ export function ControlStoreModal({ opened, onClose }: ControlStoreModalProps) {
           </Box>
         </Group>
       </Box>
+
+      {/* Edit Control Modal */}
+      <EditControl
+        opened={editModalOpened}
+        control={
+          selectedPlugin
+            ? {
+                id: 0,
+                name: selectedPlugin.name,
+                control: {
+                  description: selectedPlugin.description,
+                  enabled: true,
+                  local: false,
+                  applies_to: "llm_call" as const,
+                  check_stage: "post" as const,
+                  selector: {
+                    path: "*",
+                  },
+                  evaluator: {
+                    plugin: selectedPlugin.id,
+                    config: getDefaultConfigForPlugin(selectedPlugin.id),
+                  },
+                  action: { decision: "deny" as const },
+                },
+              }
+            : null
+        }
+        onClose={handleEditModalClose}
+        onSave={handleEditModalSave}
+      />
     </Modal>
   );
 }

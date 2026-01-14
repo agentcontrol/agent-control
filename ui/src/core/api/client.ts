@@ -2,10 +2,12 @@ import createClient from "openapi-fetch";
 
 import type { paths } from "./generated/api-types";
 import type {
+  CreateControlRequest,
   GetAgentControlsPathParams,
   GetAgentPathParams,
   InitAgentRequestBody,
   ListAgentsQueryParams,
+  SetControlDataRequest,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -76,5 +78,18 @@ export const api = {
   },
   plugins: {
     list: () => apiClient.GET("/api/v1/plugins"),
+  },
+  controls: {
+    create: (data: CreateControlRequest) =>
+      apiClient.PUT("/api/v1/controls", { body: data }),
+    getData: (controlId: number) =>
+      apiClient.GET("/api/v1/controls/{control_id}/data", {
+        params: { path: { control_id: controlId } },
+      }),
+    setData: (controlId: number, data: SetControlDataRequest) =>
+      apiClient.PUT("/api/v1/controls/{control_id}/data", {
+        params: { path: { control_id: controlId } },
+        body: data,
+      }),
   },
 };
