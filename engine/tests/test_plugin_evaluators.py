@@ -181,7 +181,7 @@ class TestBuiltInPlugins:
         assert plugin.metadata.name == "list"
 
 
-class TestRegexPluginFlags:
+class TestRegexControlEvaluatorPluginFlags:
     """Tests for regex plugin flag handling."""
 
     @pytest.mark.asyncio

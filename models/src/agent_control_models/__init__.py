@@ -11,8 +11,8 @@ from .controls import (
     EvaluatorConfig,
     EvaluatorResult,
     JSONControlEvaluatorPluginConfig,
-    ListConfig,
-    RegexConfig,
+    ListControlEvaluatorPluginConfig,
+    RegexControlEvaluatorPluginConfig,
     SQLControlEvaluatorPluginConfig,
 )
 from .evaluation import (
@@ -67,8 +67,8 @@ __all__ = [
     "EvaluatorResult",
     # Plugin configs
     "JSONControlEvaluatorPluginConfig",
-    "ListConfig",
-    "RegexConfig",
+    "ListControlEvaluatorPluginConfig",
+    "RegexControlEvaluatorPluginConfig",
     "SQLControlEvaluatorPluginConfig",
     # Plugin system
     "PluginEvaluator",

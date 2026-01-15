@@ -40,12 +40,12 @@ def test_validation_discriminator_mismatch(client: TestClient):
     """Test that config must match the evaluator type."""
     control_id = create_control(client)
     
-    # Given: type='list' but config has 'pattern' (RegexConfig)
+    # Given: type='list' but config has 'pattern' (RegexControlEvaluatorPluginConfig)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
         "plugin": "list", 
         "config": {
-            "pattern": "some_regex", # Invalid for ListConfig
+            "pattern": "some_regex", # Invalid for ListControlEvaluatorPluginConfig
             # Missing 'values'
         }
     }
@@ -56,7 +56,7 @@ def test_validation_discriminator_mismatch(client: TestClient):
     # Then: 422 Unprocessable Entity
     assert resp.status_code == 422
     
-    # Verify error mentions missing required field for ListConfig
+    # Verify error mentions missing required field for ListControlEvaluatorPluginConfig
     errors = resp.json()["detail"]
     # Expecting 'values' field missing
     assert any("values" in str(e["loc"]) for e in errors)

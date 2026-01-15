@@ -99,7 +99,7 @@ class ControlSelector(BaseModel):
 # =============================================================================
 
 
-class RegexConfig(BaseModel):
+class RegexControlEvaluatorPluginConfig(BaseModel):
     """Configuration for regex plugin."""
 
     pattern: str = Field(..., description="Regular expression pattern")
@@ -116,7 +116,7 @@ class RegexConfig(BaseModel):
         return v
 
 
-class ListConfig(BaseModel):
+class ListControlEvaluatorPluginConfig(BaseModel):
     """Configuration for list plugin."""
 
     values: list[str | int | float] = Field(

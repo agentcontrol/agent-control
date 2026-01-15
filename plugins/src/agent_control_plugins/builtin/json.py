@@ -85,13 +85,10 @@ class JSONControlEvaluatorPlugin(PluginEvaluator[JSONControlEvaluatorPluginConfi
                     pattern = pattern_config["pattern"]
                     flags = pattern_config.get("flags")
 
-                # Compile with flags
+                # Compile with flags (use inline (?i) prefix for case-insensitive)
                 if flags and "IGNORECASE" in flags:
-                    opts = re2.Options()
-                    opts.case_sensitive = False
-                    compiled = re2.compile(pattern, opts)
-                else:
-                    compiled = re2.compile(pattern)
+                    pattern = f"(?i){pattern}"
+                compiled = re2.compile(pattern)
 
                 self._compiled_patterns[path] = compiled
         else:
@@ -111,8 +108,17 @@ class JSONControlEvaluatorPlugin(PluginEvaluator[JSONControlEvaluatorPluginConfi
         Note: Validation is offloaded to a thread executor to avoid blocking
         the event loop for large payloads, since all validation logic is synchronous.
         """
-        # Offload synchronous validation to thread to avoid blocking event loop
-        return await asyncio.to_thread(self._evaluate_sync, data)
+        try:
+            # Offload synchronous validation to thread to avoid blocking event loop
+            return await asyncio.to_thread(self._evaluate_sync, data)
+        except Exception as e:
+            # Unexpected plugin error - fail open with error field set
+            return EvaluatorResult(
+                matched=False,
+                confidence=0.0,
+                message="JSON plugin encountered an unexpected error",
+                error=f"{type(e).__name__}: {str(e)[:200]}",
+            )
 
     def _evaluate_sync(self, data: Any) -> EvaluatorResult:
         """Synchronous validation logic (called via thread executor)."""
@@ -193,7 +199,6 @@ class JSONControlEvaluatorPlugin(PluginEvaluator[JSONControlEvaluatorPluginConfi
                 matched=True,
                 confidence=1.0,
                 message=f"Invalid JSON blocked: {error}",
-                error=error,
             )
 
     def _check_schema(self, data: dict | list) -> EvaluatorResult | None:

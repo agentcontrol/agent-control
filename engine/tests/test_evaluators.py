@@ -8,12 +8,12 @@ from agent_control_engine.evaluators import (
 )
 from agent_control_models import (
     EvaluatorConfig,
-    RegexConfig,
+    RegexControlEvaluatorPluginConfig,
 )
-from agent_control_plugins import ListPlugin, RegexPlugin
+from agent_control_plugins import ListControlEvaluatorPlugin, RegexControlEvaluatorPlugin
 
 
-class TestRegexPlugin:
+class TestRegexControlEvaluatorPlugin:
     """Tests for the regex plugin via the evaluator factory."""
 
     @pytest.mark.asyncio
@@ -76,7 +76,7 @@ class TestRegexPlugin:
         # Given/When: Creating config with invalid pattern
         # Then: Should raise ValueError
         with pytest.raises(ValueError):
-            RegexConfig(pattern="[")
+            RegexControlEvaluatorPluginConfig(pattern="[")
 
     @pytest.mark.asyncio
     async def test_empty_pattern_matches_everything(self):
@@ -92,7 +92,7 @@ class TestRegexPlugin:
         assert result.matched is True
 
 
-class TestListPlugin:
+class TestListControlEvaluatorPlugin:
     """Tests for the list plugin via the evaluator factory."""
 
     @pytest.mark.asyncio
@@ -166,7 +166,7 @@ class TestGetEvaluator:
         evaluator = get_evaluator(config)
 
         # Then: Returns correct plugin type
-        assert isinstance(evaluator, RegexPlugin)
+        assert isinstance(evaluator, RegexControlEvaluatorPlugin)
         assert evaluator.config.pattern == "abc"
 
     def test_get_evaluator_unknown_plugin(self):
@@ -237,8 +237,8 @@ class TestEvaluatorCache:
 
         # Then: Should return different plugin types
         assert evaluator1 is not evaluator2
-        assert isinstance(evaluator1, RegexPlugin)
-        assert isinstance(evaluator2, ListPlugin)
+        assert isinstance(evaluator1, RegexControlEvaluatorPlugin)
+        assert isinstance(evaluator2, ListControlEvaluatorPlugin)
 
     def test_evaluator_cache_clear_all(self):
         """Test that clear_evaluator_cache clears all entries."""

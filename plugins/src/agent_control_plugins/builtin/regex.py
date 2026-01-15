@@ -7,13 +7,13 @@ from agent_control_models import (
     EvaluatorResult,
     PluginEvaluator,
     PluginMetadata,
-    RegexConfig,
+    RegexControlEvaluatorPluginConfig,
     register_plugin,
 )
 
 
 @register_plugin
-class RegexPlugin(PluginEvaluator[RegexConfig]):
+class RegexControlEvaluatorPlugin(PluginEvaluator[RegexControlEvaluatorPluginConfig]):
     """Regular expression pattern matching plugin.
 
     Matches data against a regex pattern using Google RE2 for safety
@@ -32,9 +32,9 @@ class RegexPlugin(PluginEvaluator[RegexConfig]):
         version="1.0.0",
         description="Regular expression pattern matching (RE2)",
     )
-    config_model = RegexConfig
+    config_model = RegexControlEvaluatorPluginConfig
 
-    def __init__(self, config: RegexConfig) -> None:
+    def __init__(self, config: RegexControlEvaluatorPluginConfig) -> None:
         super().__init__(config)
         # Build pattern with flags
         pattern = config.pattern

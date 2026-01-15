@@ -5,7 +5,6 @@ Supports multi-statement, operation, table, column, and limit checking.
 
 import asyncio
 import hashlib
-import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,8 +17,6 @@ from agent_control_models import (
     register_plugin,
 )
 from sqlglot import exp
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -699,11 +696,6 @@ class SQLControlEvaluatorPlugin(PluginEvaluator[SQLControlEvaluatorPluginConfig]
             return await asyncio.to_thread(self._evaluate_sync, data)
         except Exception as e:
             # Unexpected plugin error - fail open with error field set
-            logger.error(
-                "SQL plugin unexpected error",
-                exc_info=True,
-                extra={"error_type": type(e).__name__},
-            )
             return EvaluatorResult(
                 matched=False,
                 confidence=0.0,
@@ -773,19 +765,6 @@ class SQLControlEvaluatorPlugin(PluginEvaluator[SQLControlEvaluatorPluginConfig]
         try:
             parsed = sqlglot.parse(query, read=self.config.dialect, error_level=None)
         except Exception as e:
-            # Parsing failed - log the error with stack trace
-            query_hash = hashlib.sha256(query.encode()).hexdigest()[:16]
-            logger.warning(
-                "SQL parsing failed",
-                exc_info=True,  # Include full stack trace
-                extra={
-                    "query_hash": query_hash,
-                    "query_length": len(query),
-                    "dialect": self.config.dialect,
-                    "error_type": type(e).__name__,
-                },
-            )
-
             # Invalid SQL fails validation (not a plugin error, just bad input)
             return EvaluatorResult(
                 matched=True,

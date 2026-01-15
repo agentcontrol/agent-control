@@ -6,7 +6,7 @@ from typing import Any
 import re2
 from agent_control_models import (
     EvaluatorResult,
-    ListConfig,
+    ListControlEvaluatorPluginConfig,
     PluginEvaluator,
     PluginMetadata,
     register_plugin,
@@ -14,7 +14,7 @@ from agent_control_models import (
 
 
 @register_plugin
-class ListPlugin(PluginEvaluator[ListConfig]):
+class ListControlEvaluatorPlugin(PluginEvaluator[ListControlEvaluatorPluginConfig]):
     """List-based value matching plugin.
 
     Checks if data matches values in a list. Supports:
@@ -33,9 +33,9 @@ class ListPlugin(PluginEvaluator[ListConfig]):
         version="1.0.0",
         description="List-based value matching with flexible logic",
     )
-    config_model = ListConfig
+    config_model = ListControlEvaluatorPluginConfig
 
-    def __init__(self, config: ListConfig) -> None:
+    def __init__(self, config: ListControlEvaluatorPluginConfig) -> None:
         super().__init__(config)
         self._values = [str(v) for v in config.values]
         self._regex: Any = self._build_regex()

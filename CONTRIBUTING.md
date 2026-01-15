@@ -224,8 +224,8 @@ plugins/src/agent_control_plugins/
 # Key directories
 ├── base.py        # PluginEvaluator base class
 ├── builtin/       # Built-in evaluators
-│   ├── regex.py   # RegexPlugin - pattern matching
-│   └── list.py    # ListPlugin - value matching
+│   ├── regex.py   # RegexControlEvaluatorPlugin - pattern matching
+│   └── list.py    # ListControlEvaluatorPlugin - value matching
 └── luna2/         # Galileo Luna-2 integration
     ├── plugin.py  # Luna2Plugin implementation
     ├── config.py  # Luna2Config model

@@ -27,7 +27,6 @@ class MockPlugin(PluginEvaluator[MockConfig]):
         description="A mock plugin for testing",
         requires_api_key=False,
         timeout_ms=5000,
-        config_schema={"type": "object"},
     )
     config_model = MockConfig
 
@@ -57,7 +56,6 @@ class TestPluginMetadata:
         assert metadata.description == "Test plugin"
         assert metadata.requires_api_key is False
         assert metadata.timeout_ms == 10000
-        assert metadata.config_schema is None
 
     def test_metadata_with_all_fields(self):
         """Test metadata with all fields specified."""
@@ -67,14 +65,12 @@ class TestPluginMetadata:
             description="Full plugin",
             requires_api_key=True,
             timeout_ms=15000,
-            config_schema={"type": "object", "properties": {}},
         )
 
         assert metadata.name == "full-plugin"
         assert metadata.version == "2.0.0"
         assert metadata.requires_api_key is True
         assert metadata.timeout_ms == 15000
-        assert metadata.config_schema is not None
 
 
 class TestPluginEvaluator:
