@@ -5,6 +5,7 @@ import {
   Center,
   Group,
   Loader,
+  ScrollArea,
   Stack,
   Text,
   TextInput,
@@ -92,7 +93,7 @@ const HomePage = () => {
   // Loading state
   if (isLoading) {
     return (
-      <Box p='xl' style={{ maxWidth: 1400, margin: "0 auto" }}>
+      <Box p='xl' maw={1400} mx='auto' my={0}>
         <Center h={400}>
           <Stack align='center' gap='md'>
             <Loader size='lg' />
@@ -106,7 +107,7 @@ const HomePage = () => {
   // Error state
   if (error) {
     return (
-      <Box p='xl' style={{ maxWidth: 1400, margin: "0 auto" }}>
+      <Box p='xl' maw={1400} mx='auto' my={0}>
         <Alert
           icon={<IconAlertCircle size={16} />}
           title='Error loading agents'
@@ -182,13 +183,7 @@ const HomePage = () => {
       accessorKey: "passRate",
       size: 120,
       cell: ({ row }: { row: any }) => (
-        <Text
-          size='sm'
-          fw={500}
-          style={{
-            color: getPassRateColor(row.original.passRate),
-          }}
-        >
+        <Text size='sm' fw={500} c={getPassRateColor(row.original.passRate)}>
           {row.original.passRate}%
         </Text>
       ),
@@ -208,16 +203,13 @@ const HomePage = () => {
   ];
 
   return (
-    <Box
+    <Stack
       p='xl'
-      style={{
-        maxWidth: 1400,
-        margin: "0 auto",
-        height: "calc(100vh - 54px)", // 54px = header height
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden", // Prevent page scroll
-      }}
+      maw={1400}
+      mx='auto'
+      my={0}
+      h='calc(100vh - 54px)' // 54px = header height
+      gap={0}
     >
       {/* Header */}
       <Group justify='space-between' mb='lg'>
@@ -234,28 +226,15 @@ const HomePage = () => {
         <TextInput
           placeholder='Search or apply filter...'
           leftSection={
-            <Box
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
+            <Center>
               <IconSearch size={16} />
-            </Box>
+            </Center>
           }
         />
       </Group>
 
       {/* Scrollable Table Container */}
-      <Box
-        style={{
-          flex: 1,
-          overflow: "auto",
-          position: "relative",
-          minHeight: 0, // Allow flex child to shrink
-        }}
-      >
+      <ScrollArea flex={1} pos='relative' mih={0} type='auto'>
         <Table
           columns={columns}
           data={agents}
@@ -265,9 +244,7 @@ const HomePage = () => {
         />
 
         {/* Intersection observer trigger */}
-        {hasNextPage && (
-          <Box ref={loadMoreRef} style={{ height: 20, margin: "16px 0" }} />
-        )}
+        {hasNextPage && <Box ref={loadMoreRef} h={20} my={16} mx={0} />}
 
         {/* Loading indicator for next page */}
         {isFetchingNextPage && (
@@ -275,8 +252,8 @@ const HomePage = () => {
             <Loader size='sm' />
           </Center>
         )}
-      </Box>
-    </Box>
+      </ScrollArea>
+    </Stack>
   );
 };
 

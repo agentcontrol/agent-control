@@ -1,9 +1,11 @@
 import {
-  Box,
+  Anchor,
   Divider,
   Grid,
   Group,
   Modal,
+  Paper,
+  ScrollArea,
   SegmentedControl,
   Stack,
   Text,
@@ -352,21 +354,17 @@ export const EditControl = ({
                   <Text size='sm' fw={500}>
                     Evaluator configuration
                   </Text>
-                  <Text
-                    component='a'
+                  <Anchor
                     href='https://docs.galileo.ai/controls'
                     target='_blank'
                     size='xs'
                     c='blue'
-                    style={{
-                      textDecoration: "none",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 2,
-                    }}
+                    underline='never'
                   >
-                    Docs <IconExternalLink size={12} />
-                  </Text>
+                    <Group gap={2} align='center'>
+                      Docs <IconExternalLink size={12} />
+                    </Group>
+                  </Anchor>
                 </Group>
                 <SegmentedControl
                   value={configViewMode}
@@ -381,22 +379,15 @@ export const EditControl = ({
 
               {/* Form View */}
               {configViewMode === "form" && (
-                <Box
-                  style={{
-                    border: "1px solid var(--mantine-color-gray-3)",
-                    borderRadius: 8,
-                    padding: 16,
-                    minHeight: 400,
-                    maxHeight: 500,
-                    overflow: "auto",
-                  }}
-                >
-                  <EvaluatorConfigForm
-                    pluginId={pluginId}
-                    regexForm={regexForm}
-                    listForm={listForm}
-                  />
-                </Box>
+                <Paper withBorder radius='sm' p={16}>
+                  <ScrollArea mah={500} mih={400} type='auto'>
+                    <EvaluatorConfigForm
+                      pluginId={pluginId}
+                      regexForm={regexForm}
+                      listForm={listForm}
+                    />
+                  </ScrollArea>
+                </Paper>
               )}
 
               {/* JSON View */}

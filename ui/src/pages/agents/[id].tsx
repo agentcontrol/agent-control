@@ -13,7 +13,7 @@ const AgentPage: NextPageWithLayout = () => {
   // Show loading while router is initializing
   if (!id) {
     return (
-      <Box p='xl' style={{ maxWidth: 1400, margin: "0 auto" }}>
+      <Box p='xl' maw={1400} mx='auto' my={0}>
         <Center h={400}>
           <Stack align='center' gap='md'>
             <Loader size='lg' />

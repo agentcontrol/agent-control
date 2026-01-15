@@ -1,4 +1,4 @@
-import { Box, useMantineColorScheme } from "@mantine/core";
+import { Paper, ScrollArea, useMantineColorScheme } from "@mantine/core";
 import { JsonEditor as JsonEditReactEditor } from "json-edit-react";
 
 import { DARK_THEME, LIGHT_THEME } from "./theme";
@@ -31,28 +31,25 @@ export const JsonEditor = ({
   const { colorScheme } = useMantineColorScheme();
 
   return (
-    <Box
-      style={{
-        border: `1px solid ${colorScheme === "dark" ? "#373A40" : "#e0e0e0"}`,
-        borderRadius: "4px",
-        padding: "12px",
-        backgroundColor: colorScheme === "dark" ? "#25262B" : "#fafafa",
-        minHeight,
-        maxHeight,
-        overflow: "auto",
-      }}
+    <Paper
+      bd={`1px solid ${colorScheme === "dark" ? "#373A40" : "#e0e0e0"}`}
+      radius='sm'
+      p={12}
+      bg={colorScheme === "dark" ? "#25262B" : "#fafafa"}
     >
-      <JsonEditReactEditor
-        data={data}
-        setData={setData}
-        rootName={rootName}
-        restrictEdit={restrictEdit}
-        restrictDelete={restrictDelete}
-        restrictAdd={restrictAdd}
-        collapse={collapse}
-        rootFontSize={rootFontSize}
-        theme={colorScheme === "dark" ? DARK_THEME : LIGHT_THEME}
-      />
-    </Box>
+      <ScrollArea mah={maxHeight} mih={minHeight} type='auto'>
+        <JsonEditReactEditor
+          data={data}
+          setData={setData}
+          rootName={rootName}
+          restrictEdit={restrictEdit}
+          restrictDelete={restrictDelete}
+          restrictAdd={restrictAdd}
+          collapse={collapse}
+          rootFontSize={rootFontSize}
+          theme={colorScheme === "dark" ? DARK_THEME : LIGHT_THEME}
+        />
+      </ScrollArea>
+    </Paper>
   );
 };

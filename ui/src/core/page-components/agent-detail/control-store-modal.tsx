@@ -1,8 +1,10 @@
 import {
   Box,
+  Divider,
   Group,
   Loader,
   Modal,
+  Paper,
   Stack,
   Text,
   TextInput,
@@ -183,10 +185,7 @@ export function ControlStoreModal({
     >
       <Box>
         {/* Header */}
-        <Box
-          p='md'
-          style={{ borderBottom: "1px solid var(--mantine-color-gray-3)" }}
-        >
+        <Box p='md'>
           <Group justify='space-between' mb='xs'>
             <Title order={3} fw={600}>
               Control store
@@ -203,91 +202,104 @@ export function ControlStoreModal({
             Browse and add controls to your agent
           </Text>
         </Box>
+        <Divider />
 
         {/* Content */}
-        <Group align='stretch' gap={0} style={{ minHeight: 500 }}>
+        <Group align='stretch' gap={0} mih={500}>
           {/* Left Sidebar */}
-          <Box
-            w={175}
-            p='md'
-            style={{
-              borderRight: "1px solid var(--mantine-color-gray-3)",
-            }}
-          >
+          <Box w={175} p='md'>
             <Stack gap='lg'>
               <Stack gap='xs'>
                 <Text size='xs' fw={600} c='dimmed' tt='uppercase'>
                   Source
                 </Text>
                 <Stack gap={4}>
-                  <Group
-                    gap='xs'
-                    p='xs'
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 6,
-                      backgroundColor:
-                        selectedSource === "galileo"
-                          ? "var(--mantine-color-blue-0)"
-                          : "transparent",
-                    }}
+                  <Paper
+                    component='button'
+                    type='button'
                     onClick={() => setSelectedSource("galileo")}
-                  >
-                    <IconSparkles size={18} />
-                    <Text
-                      size='sm'
-                      fw={selectedSource === "galileo" ? 600 : 400}
-                    >
-                      OOB standard
-                    </Text>
-                  </Group>
-                  <Group
-                    gap='xs'
+                    w='100%'
                     p='xs'
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 6,
-                      backgroundColor:
-                        selectedSource === "custom"
-                          ? "var(--mantine-color-blue-0)"
-                          : "transparent",
-                    }}
-                    onClick={() => setSelectedSource("custom")}
+                    radius='sm'
+                    withBorder
+                    bg={
+                      selectedSource === "galileo"
+                        ? "var(--mantine-color-blue-0)"
+                        : "transparent"
+                    }
                   >
-                    <IconSettings size={18} />
-                    <Text
-                      size='sm'
-                      fw={selectedSource === "custom" ? 600 : 400}
-                    >
-                      Custom
-                    </Text>
-                  </Group>
+                    <Group gap='xs'>
+                      <IconSparkles
+                        size={18}
+                        color={
+                          selectedSource === "galileo"
+                            ? "var(--mantine-color-dark-9)"
+                            : "var(--mantine-color-gray-2)"
+                        }
+                      />
+                      <Text
+                        size='sm'
+                        fw={selectedSource === "galileo" ? 600 : 400}
+                        c={selectedSource === "galileo" ? "dark" : "gray.2"}
+                      >
+                        OOB standard
+                      </Text>
+                    </Group>
+                  </Paper>
+                  <Paper
+                    component='button'
+                    type='button'
+                    onClick={() => setSelectedSource("custom")}
+                    w='100%'
+                    p='xs'
+                    radius='sm'
+                    withBorder
+                    bg={
+                      selectedSource === "custom"
+                        ? "var(--mantine-color-blue-0)"
+                        : "transparent"
+                    }
+                  >
+                    <Group gap='xs'>
+                      <IconSettings
+                        size={18}
+                        color={
+                          selectedSource === "custom"
+                            ? "var(--mantine-color-dark-9)"
+                            : "var(--mantine-color-gray-2)"
+                        }
+                      />
+                      <Text
+                        size='sm'
+                        fw={selectedSource === "custom" ? 600 : 400}
+                        c={selectedSource === "custom" ? "dark" : "gray.2"}
+                      >
+                        Custom
+                      </Text>
+                    </Group>
+                  </Paper>
                 </Stack>
               </Stack>
             </Stack>
           </Box>
+          <Divider orientation='vertical' />
 
           {/* Right Content */}
-          <Box style={{ flex: 1 }} p='md'>
+          <Box flex={1} p='md'>
             <Stack gap='md'>
               {/* Search and Docs Link */}
               <Group justify='space-between'>
                 <TextInput
                   placeholder='Search or apply filter...'
                   leftSection={<IconSearch size={16} />}
-                  style={{ flex: 1, maxWidth: "250px" }}
+                  flex={1}
+                  maw={250}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
                 <Text size='sm' c='dimmed'>
                   Looking to add custom control?{" "}
-                  <Text
-                    component='a'
-                    href='#'
-                    c='blue'
-                    size='sm'
-                    style={{ textDecoration: "none" }}
-                  >
+                  <Text component='a' href='#' c='blue' size='sm' td='none'>
                     Check our Docs ↗
                   </Text>
                 </Text>
@@ -296,25 +308,11 @@ export function ControlStoreModal({
               {/* Table or Empty State */}
               {selectedSource === "galileo" ? (
                 isLoading ? (
-                  <Box
-                    p='xl'
-                    style={{
-                      textAlign: "center",
-                      border: "1px solid var(--mantine-color-gray-3)",
-                      borderRadius: 8,
-                    }}
-                  >
+                  <Paper p='xl' ta='center' withBorder radius='sm'>
                     <Loader size='sm' />
-                  </Box>
+                  </Paper>
                 ) : error ? (
-                  <Box
-                    p='xl'
-                    style={{
-                      textAlign: "center",
-                      border: "1px solid var(--mantine-color-gray-3)",
-                      borderRadius: 8,
-                    }}
-                  >
+                  <Paper p='xl' ta='center' withBorder radius='sm'>
                     <Stack gap='xs' align='center'>
                       <IconAlertCircle
                         size={48}
@@ -322,7 +320,7 @@ export function ControlStoreModal({
                       />
                       <Text c='red'>Failed to load plugins</Text>
                     </Stack>
-                  </Box>
+                  </Paper>
                 ) : filteredPlugins.length > 0 ? (
                   <Table
                     columns={columns}
@@ -330,26 +328,12 @@ export function ControlStoreModal({
                     highlightOnHover
                   />
                 ) : (
-                  <Box
-                    p='xl'
-                    style={{
-                      textAlign: "center",
-                      border: "1px solid var(--mantine-color-gray-3)",
-                      borderRadius: 8,
-                    }}
-                  >
+                  <Paper p='xl' withBorder radius='sm' ta='center'>
                     <Text c='dimmed'>No plugins found</Text>
-                  </Box>
+                  </Paper>
                 )
               ) : (
-                <Box
-                  p='xl'
-                  style={{
-                    textAlign: "center",
-                    border: "1px solid var(--mantine-color-gray-3)",
-                    borderRadius: 8,
-                  }}
-                >
+                <Paper p='xl' withBorder radius='sm' ta='center'>
                   <Stack gap='xs' align='center'>
                     <IconSettings
                       size={48}
@@ -362,7 +346,7 @@ export function ControlStoreModal({
                       Create your first custom control to get started
                     </Text>
                   </Stack>
-                </Box>
+                </Paper>
               )}
             </Stack>
           </Box>

@@ -1,4 +1,4 @@
-import { Box, Text } from "@mantine/core";
+import { Paper, Text } from "@mantine/core";
 
 import type { EvaluatorConfigFormProps } from "../types";
 import { ListForm } from "./list-form";
@@ -16,18 +16,11 @@ export const EvaluatorConfigForm = ({
       return <ListForm form={listForm} />;
     default:
       return (
-        <Box
-          p='xl'
-          style={{
-            textAlign: "center",
-            border: "1px solid var(--mantine-color-gray-3)",
-            borderRadius: 8,
-          }}
-        >
+        <Paper p='xl' withBorder radius='sm' ta='center'>
           <Text c='dimmed'>
             No form available for this plugin. Use JSON view to configure.
           </Text>
-        </Box>
+        </Paper>
       );
   }
 };

@@ -6,6 +6,7 @@ import {
   Center,
   Group,
   Loader,
+  Paper,
   Stack,
   Tabs,
   Text,
@@ -58,7 +59,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   // Loading state
   if (agentLoading) {
     return (
-      <Box p='xl' style={{ maxWidth: 1400, margin: "0 auto" }}>
+      <Box p='xl' maw={1400} mx='auto' my={0}>
         <Center h={400}>
           <Stack align='center' gap='md'>
             <Loader size='lg' />
@@ -72,7 +73,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   // Error state
   if (agentError || !agent) {
     return (
-      <Box p='xl' style={{ maxWidth: 1400, margin: "0 auto" }}>
+      <Box p='xl' maw={1400} mx='auto' my={0}>
         <Alert
           icon={<IconAlertCircle size={16} />}
           title='Error loading agent'
@@ -201,7 +202,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   };
 
   return (
-    <Box p='xl' style={{ maxWidth: 1400, margin: "0 auto" }}>
+    <Box p='xl' maw={1400} mx='auto' my={0}>
       <Stack gap='lg'>
         {/* Header */}
         <Stack gap={4}>
@@ -217,11 +218,8 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
 
         {/* Tabs */}
         <Tabs value={activeTab} onChange={setActiveTab}>
-          <Box
-            // pb='xs'
-            mb='md'
-          >
-            <Group justify='space-between' style={{ position: "relative" }}>
+          <Box mb='md'>
+            <Group justify='space-between' pos='relative'>
               <Tabs.List>
                 <Tabs.Tab
                   value='controls'
@@ -246,14 +244,12 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                 </Tabs.Tab>
               </Tabs.List>
 
-              <Group
-                gap='md'
-                style={{ position: "absolute", right: 0, top: "-8px" }}
-              >
+              <Group gap='md' pos='absolute' right={0} top='-8px'>
                 <TextInput
                   placeholder='Search or apply filter...'
                   leftSection={<IconSearch size={16} />}
-                  style={{ width: 300, height: 32 }}
+                  w={300}
+                  h={32}
                   size='xs'
                 />
                 <Button
@@ -261,7 +257,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                   color='violet'
                   size='sm'
                   data-testid='add-control-button'
-                  style={{ height: 32 }}
+                  h={32}
                   onClick={() => setControlStoreOpened(true)}
                 >
                   Add Control
@@ -288,14 +284,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                 Failed to fetch controls. Please try again later.
               </Alert>
             ) : controls.length === 0 ? (
-              <Box
-                p='xl'
-                style={{
-                  border: "1px solid var(--mantine-color-gray-3)",
-                  borderRadius: "8px",
-                  textAlign: "center",
-                }}
-              >
+              <Paper p='xl' withBorder radius='sm' ta='center'>
                 <Stack align='center' gap='md' py='xl'>
                   <IconInbox size={48} color='var(--mantine-color-gray-4)' />
                   <Stack gap='xs' align='center'>
@@ -315,7 +304,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                     Add Control
                   </Button>
                 </Stack>
-              </Box>
+              </Paper>
             ) : (
               <Table
                 columns={columns}
