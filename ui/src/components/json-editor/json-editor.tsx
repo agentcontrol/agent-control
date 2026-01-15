@@ -31,12 +31,7 @@ export const JsonEditor = ({
   const { colorScheme } = useMantineColorScheme();
 
   return (
-    <Paper
-      bd={`1px solid ${colorScheme === "dark" ? "#373A40" : "#e0e0e0"}`}
-      radius='sm'
-      p={12}
-      bg={colorScheme === "dark" ? "#25262B" : "#fafafa"}
-    >
+    <Paper withBorder radius='sm' p={12}>
       <ScrollArea mah={maxHeight} mih={minHeight} type='auto'>
         <JsonEditReactEditor
           data={data}
