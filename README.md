@@ -12,11 +12,11 @@ Agent Control is built as a monorepo with five distinct components:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                         Your Application                          │
+│                         Your Application                         │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │                     @control() decorator                    │  │
-│  │                            │                                │  │
-│  │                            ▼                                │  │
+│  │                     @control() decorator                   │  │
+│  │                            │                               │  │
+│  │                            ▼                               │  │
 │  │  ┌──────────┐    ┌─────────────────┐    ┌──────────────┐   │  │
 │  │  │  Input   │───▶│  Agent Control  │───▶│    Output    │   │  │
 │  │  │          │    │     Engine      │    │              │   │  │
@@ -26,7 +26,7 @@ Agent Control is built as a monorepo with five distinct components:
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      Agent Control Server                         │
+│                      Agent Control Server                        │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
 │  │  Controls  │  │  Policies  │  │  Plugins   │  │   Agents   │  │
 │  │    API     │  │    API     │  │  Registry  │  │    API     │  │
@@ -35,7 +35,7 @@ Agent Control is built as a monorepo with five distinct components:
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                         Plugin Ecosystem                          │
+│                         Plugin Ecosystem                         │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
 │  │   Regex    │  │    List    │  │   Luna-2   │  │   Custom   │  │
 │  │ Evaluator  │  │ Evaluator  │  │   Plugin   │  │  Plugins   │  │
