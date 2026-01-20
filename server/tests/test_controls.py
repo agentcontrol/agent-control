@@ -22,6 +22,39 @@ def test_create_control_returns_id(client: TestClient) -> None:
     assert isinstance(resp.json()["control_id"], int)
 
 
+def test_create_control_with_data_sets_config(client: TestClient) -> None:
+    name = f"control-{uuid.uuid4()}"
+    resp = client.put(
+        "/api/v1/controls", json={"name": name, "data": VALID_CONTROL_DATA}
+    )
+    assert resp.status_code == 200, resp.text
+    control_id = resp.json()["control_id"]
+
+    data_resp = client.get(f"/api/v1/controls/{control_id}/data")
+    assert data_resp.status_code == 200, data_resp.text
+    data = data_resp.json()["data"]
+    assert data["description"] == VALID_CONTROL_DATA["description"]
+    assert data["applies_to"] == VALID_CONTROL_DATA["applies_to"]
+    assert data["check_stage"] == VALID_CONTROL_DATA["check_stage"]
+    assert data["evaluator"] == VALID_CONTROL_DATA["evaluator"]
+    assert data["action"] == VALID_CONTROL_DATA["action"]
+
+
+def test_create_control_with_invalid_data_does_not_create(client: TestClient) -> None:
+    name = f"control-{uuid.uuid4()}"
+    invalid_data = VALID_CONTROL_DATA.copy()
+    invalid_data["evaluator"] = {
+        "plugin": "regex",
+        "config": {"pattern": "["},
+    }
+    resp = client.put("/api/v1/controls", json={"name": name, "data": invalid_data})
+    assert resp.status_code == 422, resp.text
+
+    # Creating again with same name should succeed (nothing was created)
+    retry = client.put("/api/v1/controls", json={"name": name})
+    assert retry.status_code == 200, retry.text
+
+
 def test_get_control_data_initially_unconfigured(client: TestClient) -> None:
     # Given: a newly created control (no data set yet)
     control_id = create_control(client)

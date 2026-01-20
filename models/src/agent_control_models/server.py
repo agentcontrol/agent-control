@@ -41,6 +41,10 @@ class CreateControlRequest(BaseModel):
         pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
         description="Unique control name (letters, numbers, hyphens, underscores)",
     )
+    data: ControlDefinition | None = Field(
+        default=None,
+        description="Optional control configuration data (validated if provided)",
+    )
 
 
 class InitAgentRequest(BaseModel):
