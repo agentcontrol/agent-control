@@ -153,7 +153,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def init(
     agent_name: str,
-    agent_id: str,
+    agent_id: str | None = None,
     agent_description: str | None = None,
     agent_version: str | None = None,
     server_url: str | None = None,
@@ -178,6 +178,7 @@ def init(
         agent_id: Unique identifier for your agent. Can be:
                  - A UUID string (e.g., "550e8400-e29b-41d4-a716-446655440000")
                  - Any string (e.g., "csbot-prod-v1") - will be converted to UUID
+                 - None - will be generated from agent_name
         agent_description: Optional description of what your agent does
         agent_version: Optional version string (e.g., "1.0.0")
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var
@@ -196,29 +197,17 @@ def init(
 
         agent_control.init(
             agent_name="Customer Service Bot",
-            agent_id="csbot-prod-v1",
+            # agent_id is optional - will be generated from name if omitted
             agent_description="Handles customer inquiries and support tickets",
-            agent_version="2.1.0",
-            tools=[
-                {
-                    "tool_name": "search_knowledge_base",
-                    "arguments": {"query": {"type": "string"}},
-                    "output_schema": {"results": {"type": "array"}}
-                }
-            ]
+            agent_version="2.1.0"
         )
-
-        # Now use @control decorator to apply the agent's policy
-        from agent_control import control
-
-        @control()  # Applies agent's assigned policy
-        async def handle(message: str):
-            return message
-
-    Environment Variables:
-        AGENT_CONTROL_URL: Server URL (default: http://localhost:8000)
     """
     global _current_agent, _control_engine, _client, _server_controls
+
+    # Use agent_name as fallback for agent_id if not provided
+    if agent_id is None:
+        agent_id = agent_name
+        print(f"ℹ️  No agent_id provided, using agent_name '{agent_name}' as ID seed.")
 
     # Create agent instance with metadata
     # Convert agent_id to UUID (accept UUID string or generate from regular string)
