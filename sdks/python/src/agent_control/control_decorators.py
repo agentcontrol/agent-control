@@ -190,6 +190,12 @@ def _create_evaluation_payload(
 
 def _handle_evaluation_result(result: dict[str, Any]) -> None:
     """Handle evaluation result from server - raise on deny."""
+    def _get_attr(obj: Any, attr: str, default: Any = None) -> Any:
+        """Get attribute from object or dict."""
+        if isinstance(obj, dict):
+            return obj.get(attr, default)
+        return getattr(obj, attr, default)
+
     if not result:
         logger.warning("Received empty evaluation result from server")
         return
@@ -203,10 +209,10 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
     if errors:
         error_messages = []
         for error in errors:
-            if isinstance(error, dict):
-                control_name = error.get("control_name", "unknown")
-                error_msg = error.get("result", {}).get("message", "Unknown error")
-                error_messages.append(f"[{control_name}] {error_msg}")
+            control_name = _get_attr(error, "control_name", "unknown")
+            error_result = _get_attr(error, "result", {})
+            error_msg = _get_attr(error_result, "message", "Unknown error")
+            error_messages.append(f"[{control_name}] {error_msg}")
 
         raise RuntimeError(
             f"Control evaluation failed on server. Execution blocked for safety.\n"
@@ -217,18 +223,15 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
     if human_review_required:
         # Try to find the specific control that triggered human review
         for match in matches:
-            if isinstance(match, dict) and match.get("action") == "human_review":
-                result_data = match.get("result") or {}
-                if isinstance(result_data, dict):
-                    message = result_data.get("message", "Control triggered")
-                    metadata = result_data.get("metadata", {})
-                else:
-                    message = "Control triggered"
-                    metadata = {}
+            action = _get_attr(match, "action")
+            if action == "human_review":
+                result_data = _get_attr(match, "result") or {}
+                message = _get_attr(result_data, "message", "Control triggered")
+                metadata = _get_attr(result_data, "metadata", {})
 
                 raise HumanReviewRequiredError(
-                    control_id=match.get("control_id"),
-                    control_name=match.get("control_name", "unknown"),
+                    control_id=_get_attr(match, "control_id"),
+                    control_name=_get_attr(match, "control_name", "unknown"),
                     message=f"Human review required: {message}",
                     metadata=metadata,
                 )
@@ -241,22 +244,14 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
     # Check if unsafe (deny actions)
     if not is_safe:
         for match in matches:
-            if not isinstance(match, dict):
-                logger.warning(f"Invalid match format: {match}")
-                continue
-
-            action = match.get("action", "deny")
-            control_id = match.get("control_id")
-            matched_control = match.get("control_name", "unknown")
+            action = _get_attr(match, "action", "deny")
+            control_id = _get_attr(match, "control_id")
+            matched_control = _get_attr(match, "control_name", "unknown")
 
             # Safely extract result message and metadata
-            result_data = match.get("result") or {}
-            if isinstance(result_data, dict):
-                message = result_data.get("message", "Control triggered")
-                metadata = result_data.get("metadata", {})
-            else:
-                message = "Control triggered"
-                metadata = {}
+            result_data = _get_attr(match, "result") or {}
+            message = _get_attr(result_data, "message", "Control triggered")
+            metadata = _get_attr(result_data, "metadata", {})
 
             if action == "deny":
                 raise ControlViolationError(

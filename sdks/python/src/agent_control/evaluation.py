@@ -53,24 +53,27 @@ def _raise_on_control_violation(result: "EvaluationResult") -> None:
         ControlViolationError: If result.is_safe is False and action is "deny"
         HumanReviewRequiredError: If result.human_review_required is True
     """
+    def _get_attr(obj: Any, attr: str, default: Any = None) -> Any:
+        """Get attribute from object or dict."""
+        if isinstance(obj, dict):
+            return obj.get(attr, default)
+        return getattr(obj, attr, default)
+
     # Check human_review_required at the top level - must raise regardless of matches
     if result.human_review_required:
         matches = result.matches or []
 
         # Try to find the specific control that triggered human review
         for match in matches:
-            if isinstance(match, dict) and match.get("action") == "human_review":
-                result_data = match.get("result") or {}
-                if isinstance(result_data, dict):
-                    message = result_data.get("message", "Control triggered")
-                    metadata = result_data.get("metadata", {})
-                else:
-                    message = "Control triggered"
-                    metadata = {}
+            action = _get_attr(match, "action")
+            if action == "human_review":
+                result_data = _get_attr(match, "result") or {}
+                message = _get_attr(result_data, "message", "Control triggered")
+                metadata = _get_attr(result_data, "metadata", {})
 
                 raise HumanReviewRequiredError(
-                    control_id=match.get("control_id"),
-                    control_name=match.get("control_name", "unknown"),
+                    control_id=_get_attr(match, "control_id"),
+                    control_name=_get_attr(match, "control_name", "unknown"),
                     message=f"Human review required: {message}",
                     metadata=metadata,
                 )
@@ -85,21 +88,14 @@ def _raise_on_control_violation(result: "EvaluationResult") -> None:
         matches = result.matches or []
 
         for match in matches:
-            if not isinstance(match, dict):
-                continue
-
-            action = match.get("action", "deny")
-            control_id = match.get("control_id")
-            control_name = match.get("control_name", "unknown")
+            action = _get_attr(match, "action", "deny")
+            control_id = _get_attr(match, "control_id")
+            control_name = _get_attr(match, "control_name", "unknown")
 
             # Safely extract result message and metadata
-            result_data = match.get("result") or {}
-            if isinstance(result_data, dict):
-                message = result_data.get("message", "Control triggered")
-                metadata = result_data.get("metadata", {})
-            else:
-                message = "Control triggered"
-                metadata = {}
+            result_data = _get_attr(match, "result") or {}
+            message = _get_attr(result_data, "message", "Control triggered")
+            metadata = _get_attr(result_data, "metadata", {})
 
             if action == "deny":
                 raise ControlViolationError(

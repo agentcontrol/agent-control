@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_control.control_decorators import ControlViolationError, control
+from agent_control.control_decorators import ControlViolationError, HumanReviewRequiredError, control
 
 # =============================================================================
 # FIXTURES
@@ -67,6 +67,40 @@ def mock_warn_response():
                 }
             }
         ]
+    }
+
+
+@pytest.fixture
+def mock_human_review_response():
+    """Response when evaluation requires human review."""
+    return {
+        "is_safe": False,
+        "human_review_required": True,
+        "confidence": 0.85,
+        "matches": [
+            {
+                "control_id": 2,
+                "control_name": "human-review-control",
+                "action": "human_review",
+                "result": {
+                    "matched": True,
+                    "confidence": 0.85,
+                    "message": "Sensitive operation requires approval",
+                    "metadata": {"risk_level": "high"}
+                }
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def mock_human_review_no_match_response():
+    """Response when human_review_required is True but no explicit match."""
+    return {
+        "is_safe": False,
+        "human_review_required": True,
+        "confidence": 0.9,
+        "matches": []
     }
 
 
@@ -412,3 +446,187 @@ class TestControlViolationError:
 
         with pytest.raises(ControlViolationError):
             raise violation
+
+
+# =============================================================================
+# HUMAN REVIEW REQUIRED TESTS
+# =============================================================================
+
+class TestHumanReviewRequiredError:
+    """Tests for HumanReviewRequiredError exception."""
+
+    def test_exception_creation(self):
+        """Test HumanReviewRequiredError can be created with all fields."""
+        error = HumanReviewRequiredError(
+            control_id=123,
+            control_name="sensitive-data-control",
+            message="Human review required: PII detected",
+            metadata={"pii_types": ["ssn", "email"]}
+        )
+
+        assert error.control_id == 123
+        assert error.control_name == "sensitive-data-control"
+        assert error.message == "Human review required: PII detected"
+        assert error.metadata == {"pii_types": ["ssn", "email"]}
+
+    def test_exception_creation_minimal(self):
+        """Test HumanReviewRequiredError can be created with just message."""
+        error = HumanReviewRequiredError(message="Human review required")
+
+        assert error.message == "Human review required"
+        assert error.control_id is None
+        assert error.control_name is None
+        assert error.metadata == {}
+
+    def test_exception_string(self):
+        """Test HumanReviewRequiredError string representation."""
+        error = HumanReviewRequiredError(
+            control_name="review-control",
+            message="Approval needed"
+        )
+
+        assert "review-control" in str(error)
+        assert "Approval needed" in str(error)
+
+    def test_is_exception(self):
+        """Test HumanReviewRequiredError is an Exception."""
+        error = HumanReviewRequiredError(message="test")
+        assert isinstance(error, Exception)
+
+        with pytest.raises(HumanReviewRequiredError):
+            raise error
+
+    @pytest.mark.asyncio
+    async def test_decorator_raises_human_review_error(self, mock_agent, mock_human_review_response):
+        """Test that decorator raises HumanReviewRequiredError when control requires review."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate_async", return_value=mock_human_review_response):
+
+            @control()
+            async def sensitive_operation(data: str) -> str:
+                return f"Processed: {data}"
+
+            with pytest.raises(HumanReviewRequiredError) as exc_info:
+                await sensitive_operation("sensitive data")
+
+            assert exc_info.value.control_name == "human-review-control"
+            assert "Sensitive operation requires approval" in exc_info.value.message
+            assert exc_info.value.metadata == {"risk_level": "high"}
+            assert exc_info.value.control_id == 2
+
+    @pytest.mark.asyncio
+    async def test_decorator_raises_human_review_without_match(self, mock_agent, mock_human_review_no_match_response):
+        """Test that decorator raises HumanReviewRequiredError even without explicit match."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate_async", return_value=mock_human_review_no_match_response):
+
+            @control()
+            async def operation(data: str) -> str:
+                return f"Result: {data}"
+
+            with pytest.raises(HumanReviewRequiredError) as exc_info:
+                await operation("test data")
+
+            # Should raise with generic message when no match found
+            assert "Human review required" in exc_info.value.message
+
+    @pytest.mark.asyncio
+    async def test_pre_check_human_review_prevents_execution(self, mock_agent, mock_human_review_response):
+        """Test that pre-check human review prevents function execution."""
+        function_executed = False
+
+        async def mock_evaluate(agent_uuid, payload, check_stage, server_url):
+            if check_stage == "pre":
+                return mock_human_review_response
+            return {"is_safe": True, "confidence": 1.0, "matches": []}
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate_async", side_effect=mock_evaluate):
+
+            @control()
+            async def operation(input: str) -> str:
+                nonlocal function_executed
+                function_executed = True
+                return f"Result: {input}"
+
+            with pytest.raises(HumanReviewRequiredError):
+                await operation("test")
+
+            assert not function_executed
+
+    @pytest.mark.asyncio
+    async def test_post_check_human_review_allows_execution(self, mock_agent, mock_safe_response, mock_human_review_response):
+        """Test that post-check human review allows execution but raises after."""
+        function_executed = False
+
+        async def mock_evaluate(agent_uuid, payload, check_stage, server_url):
+            if check_stage == "pre":
+                return mock_safe_response
+            # Post-check triggers human review
+            return mock_human_review_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate_async", side_effect=mock_evaluate):
+
+            @control()
+            async def operation(input: str) -> str:
+                nonlocal function_executed
+                function_executed = True
+                return f"Result: {input}"
+
+            with pytest.raises(HumanReviewRequiredError):
+                await operation("test")
+
+            # Function should have executed before post-check
+            assert function_executed
+
+    def test_sync_function_raises_human_review(self, mock_agent, mock_human_review_response):
+        """Test that sync functions raise HumanReviewRequiredError."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate_sync", return_value=mock_human_review_response):
+
+            @control()
+            def process(input: str) -> str:
+                return input.upper()
+
+            with pytest.raises(HumanReviewRequiredError) as exc_info:
+                process("sensitive")
+
+            assert exc_info.value.control_name == "human-review-control"
+
+    @pytest.mark.asyncio
+    async def test_human_review_takes_precedence_over_deny(self, mock_agent):
+        """Test that human_review_required=True raises HumanReviewRequiredError even with deny action."""
+        # Response with human_review_required=True should raise HumanReviewRequiredError first
+        response = {
+            "is_safe": False,
+            "human_review_required": True,
+            "confidence": 0.8,
+            "matches": [
+                {
+                    "control_id": 1,
+                    "control_name": "review-control",
+                    "action": "human_review",
+                    "result": {"message": "Review needed"}
+                },
+                {
+                    "control_id": 2,
+                    "control_name": "deny-control",
+                    "action": "deny",
+                    "result": {"message": "Blocked"}
+                }
+            ]
+        }
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate_async", return_value=response):
+
+            @control()
+            async def operation(input: str) -> str:
+                return f"Result: {input}"
+
+            with pytest.raises(HumanReviewRequiredError) as exc_info:
+                await operation("test")
+
+            # Should raise HumanReviewRequiredError, not ControlViolationError
+            assert exc_info.value.control_name == "review-control"
