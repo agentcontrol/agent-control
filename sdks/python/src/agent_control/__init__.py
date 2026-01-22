@@ -43,7 +43,7 @@ from . import agents, controls, evaluation, plugins, policies
 from .client import AgentControlClient
 
 # Import control decorator
-from .control_decorators import ControlViolationError, control
+from .control_decorators import ControlViolationError, control, HumanReviewRequiredError
 from .evaluation import check_evaluation_with_local
 
 # Import models if available
@@ -861,6 +861,7 @@ __all__ = [
     # Control Decorator
     "control",
     "ControlViolationError",
+    "HumanReviewRequiredError"
 
     # Client
     "AgentControlClient",
