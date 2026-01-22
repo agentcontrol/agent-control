@@ -133,8 +133,10 @@ async def check_evaluation(
 
     Raises:
         httpx.HTTPError: If request fails
-        ControlViolationError: If any control triggers with "deny" action (when raise_on_violation=True)
-        HumanReviewRequiredError: If any control triggers with "human_review" action (when raise_on_violation=True)
+        ControlViolationError: If any control triggers with "deny" action
+        (when raise_on_violation=True)
+        HumanReviewRequiredError: If any control triggers with
+        "human_review" action (when raise_on_violation=True)
 
     Example:
         # Pre-check before LLM call (raises exceptions on control violations)

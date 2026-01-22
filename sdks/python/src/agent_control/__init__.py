@@ -43,7 +43,7 @@ from . import agents, controls, evaluation, plugins, policies
 from .client import AgentControlClient
 
 # Import control decorator
-from .control_decorators import ControlViolationError, control, HumanReviewRequiredError
+from .control_decorators import ControlViolationError, HumanReviewRequiredError, control
 from .evaluation import check_evaluation_with_local
 
 # Import models if available
