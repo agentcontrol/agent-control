@@ -400,14 +400,14 @@ class TestControlViolationError:
 
     def test_exception_string(self):
         """Test ControlViolationError string representation."""
-        violation = ControlViolationError("my-control", "Something bad")
-
+        violation = ControlViolationError(control_name="my-control", message="Something bad")
+        
         assert "my-control" in str(violation)
         assert "Something bad" in str(violation)
 
     def test_is_exception(self):
         """Test ControlViolationError is an Exception."""
-        violation = ControlViolationError("test", "message")
+        violation = ControlViolationError(control_name="test", message="message")
         assert isinstance(violation, Exception)
 
         with pytest.raises(ControlViolationError):

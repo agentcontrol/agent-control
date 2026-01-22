@@ -45,14 +45,16 @@ class ControlViolationError(Exception):
 
     def __init__(
         self,
-        control_name: str,
-        message: str,
+        control_id: int | str | None = None,
+        control_name: str | None = None,
+        message: str = "Control violation",
         metadata: dict[str, Any] | None = None
     ):
-        self.control_name = control_name
+        self.control_id = control_id
+        self.control_name = control_name or (str(control_id) if control_id else "unknown")
         self.message = message
         self.metadata = metadata or {}
-        super().__init__(f"Control violation [{control_name}]: {message}")
+        super().__init__(f"Control violation [{self.control_name}]: {message}")
 
 class HumanReviewRequiredError(Exception):
     """Raised when a control is triggered with 'human_review' action."""
@@ -149,18 +151,84 @@ def _extract_input_from_args(func: Callable, args: tuple, kwargs: dict) -> str:
     return str(bound.arguments)
 
 
+def _create_evaluation_payload(
+    func: Callable,
+    args: tuple,
+    kwargs: dict,
+    output: Any = None
+) -> dict[str, Any]:
+    """
+    Create evaluation payload for server, detecting if it's a tool call or LLM call.
+
+    Returns either a ToolCall or LlmCall payload structure.
+    """
+    sig = inspect.signature(func)
+    bound = sig.bind(*args, **kwargs)
+    bound.apply_defaults()
+
+    # Check if this function is a tool (has tool_name attribute from @tool decorator)
+    tool_name = getattr(func, "name", None) or getattr(func, "tool_name", None)
+
+    if tool_name:
+        # This is a TOOL CALL - create ToolCall payload
+        return {
+            "tool_name": tool_name,
+            "arguments": dict(bound.arguments),
+            "tool_call_id": None,
+            "tool_output": str(output) if output is not None else None
+        }
+    else:
+        # This is an LLM CALL - create LlmCall payload
+        input_data = _extract_input_from_args(func, args, kwargs)
+        return {
+            "input": input_data,
+            "output": str(output) if output is not None else None
+        }
+
+
 def _handle_evaluation_result(result: dict[str, Any]) -> None:
     """Handle evaluation result from server - raise on deny."""
+    if not result:
+        logger.warning("Received empty evaluation result from server")
+        return
+
     is_safe = result.get("is_safe", True)
     human_review_required = result.get("human_review_required", False)
     matches = result.get("matches", [])
+    errors = result.get("errors") or []  # Handle server-side evaluation errors
+
+    # CRITICAL: Check errors array FIRST - server-side failures must block execution
+    if errors:
+        error_messages = []
+        for error in errors:
+            if isinstance(error, dict):
+                control_name = error.get("control_name", "unknown")
+                error_msg = error.get("result", {}).get("message", "Unknown error")
+                error_messages.append(f"[{control_name}] {error_msg}")
+
+        raise RuntimeError(
+            f"Control evaluation failed on server. Execution blocked for safety.\n"
+            f"Errors: {'; '.join(error_messages)}"
+        )
 
     if not is_safe or human_review_required:
         for match in matches:
+            if not isinstance(match, dict):
+                logger.warning(f"Invalid match format: {match}")
+                continue
+
             action = match.get("action", "deny")
+            control_id = match.get("control_id")
             matched_control = match.get("control_name", "unknown")
-            message = match.get("result", {}).get("message", "Control triggered")
-            metadata = match.get("result", {}).get("metadata", {})
+
+            # Safely extract result message and metadata
+            result_data = match.get("result") or {}
+            if isinstance(result_data, dict):
+                message = result_data.get("message", "Control triggered")
+                metadata = result_data.get("metadata", {})
+            else:
+                message = "Control triggered"
+                metadata = {}
 
             if action == "human_review":
                 raise HumanReviewRequiredError(
@@ -170,6 +238,7 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
                 )
             elif action == "deny":
                 raise ControlViolationError(
+                    control_id=control_id,
                     control_name=matched_control,
                     message=message,
                     metadata=metadata
@@ -251,25 +320,26 @@ def control(policy: str | None = None) -> Callable[[F], F]:
             server_url = _get_server_url()
             agent_uuid = str(agent.agent_id)
 
-            # Extract input from function arguments
-            input_data = _extract_input_from_args(func, args, kwargs)
-
             # PRE-EXECUTION: Check controls with check_stage="pre"
             try:
-                payload = {"input": input_data}
+                payload = _create_evaluation_payload(func, args, kwargs, output=None)
                 result = await _evaluate_async(agent_uuid, payload, "pre", server_url)
                 _handle_evaluation_result(result)
             except ControlViolationError:
                 raise
             except Exception as e:
+                # FAIL-SAFE: If control check fails, DO NOT execute the function
                 logger.error(f"Pre-execution control check failed: {e}")
+                raise RuntimeError(
+                    f"Control check failed unexpectedly. Execution blocked for safety. Error: {e}"
+                ) from e
 
             # Execute the function
             output = await func(*args, **kwargs)
 
             # POST-EXECUTION: Check controls with check_stage="post"
             try:
-                payload = {"input": input_data, "output": str(output) if output else ""}
+                payload = _create_evaluation_payload(func, args, kwargs, output=output)
                 result = await _evaluate_async(agent_uuid, payload, "post", server_url)
                 _handle_evaluation_result(result)
             except ControlViolationError:
@@ -278,6 +348,14 @@ def control(policy: str | None = None) -> Callable[[F], F]:
                 logger.error(f"Post-execution control check failed: {e}")
 
             return output
+
+        # Copy over ALL attributes from the original function (important for LangChain tools)
+        for attr in dir(func):
+            if not attr.startswith('_') and attr not in ('__call__', '__wrapped__'):
+                try:
+                    setattr(async_wrapper, attr, getattr(func, attr))
+                except (AttributeError, TypeError):
+                    pass
 
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -292,24 +370,26 @@ def control(policy: str | None = None) -> Callable[[F], F]:
             server_url = _get_server_url()
             agent_uuid = str(agent.agent_id)
 
-            input_data = _extract_input_from_args(func, args, kwargs)
-
             # PRE-EXECUTION
             try:
-                payload = {"input": input_data}
+                payload = _create_evaluation_payload(func, args, kwargs, output=None)
                 result = _evaluate_sync(agent_uuid, payload, "pre", server_url)
                 _handle_evaluation_result(result)
             except ControlViolationError:
                 raise
             except Exception as e:
+                # FAIL-SAFE: If control check fails, DO NOT execute the function
                 logger.error(f"Pre-execution control check failed: {e}")
+                raise RuntimeError(
+                    f"Control check failed unexpectedly. Execution blocked for safety. Error: {e}"
+                ) from e
 
             # Execute
             output = func(*args, **kwargs)
 
             # POST-EXECUTION
             try:
-                payload = {"input": input_data, "output": str(output) if output else ""}
+                payload = _create_evaluation_payload(func, args, kwargs, output=output)
                 result = _evaluate_sync(agent_uuid, payload, "post", server_url)
                 _handle_evaluation_result(result)
             except ControlViolationError:

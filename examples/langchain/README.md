@@ -1,0 +1,182 @@
+# LangChain SQL Agent with Agent Control
+
+This example demonstrates integrating Agent Control with a LangChain SQL agent to block dangerous SQL operations.
+
+## Prerequisites
+
+### 1. Start the Agent Control Server
+
+**IMPORTANT: You must start/restart the server to load the SQL plugin!**
+
+```bash
+# From the repo root
+cd /Users/nachiketparanjape/Documents/Galileo/Hub/agent-protect
+
+# Kill any old servers
+pkill -f "uvicorn agent_control_server"
+
+# Start the server
+cd server
+make run
+# OR: uv run --package agent-control-server uvicorn agent_control_server.main:app --port 8000
+```
+
+**Verify plugins are loaded:**
+```bash
+curl http://localhost:8000/api/v1/plugins | python -m json.tool
+# Should show: {"sql": {"name": "sql", "version": "1.0.0", ...}, ...}
+```
+
+### 2. Set OpenAI API Key
+
+```bash
+export OPENAI_API_KEY="your-key-here"
+```
+
+### 3. Setup SQL Controls (One-Time)
+
+```bash
+cd examples/langchain
+uv run setup_sql_controls.py
+```
+
+This creates:
+- SQL safety control (blocks DROP, DELETE, TRUNCATE, ALTER, GRANT)
+- Policy with the control
+- Assigns policy to the SQL agent
+
+## Running the Example
+
+```bash
+cd examples/langchain
+uv run sql_agent_protection.py
+```
+
+### Expected Behavior
+
+**Safe Query (SELECT with LIMIT):**
+```
+✅ Safety check passed for: SELECT * FROM Track LIMIT 3
+[Query executes successfully]
+```
+
+**Dangerous Query (DROP TABLE):**
+```
+✗ Execution blocked!
+Error: Control evaluation failed...
+[Query is blocked, table is NOT dropped]
+```
+
+## How It Works
+
+### 1. The `@control()` Decorator
+
+```python
+async def _execute_query(query: str):
+    return query_tool.invoke(query)
+
+# Set tool name (required for tool call detection)
+_execute_query.name = "sql_db_query"
+_execute_query.tool_name = "sql_db_query"
+
+# Apply decorators
+safe_query_tool = tool(
+    "sql_db_query",
+    description="Execute SQL query with safety checks"
+)(control()(_execute_query))
+```
+
+### 2. Automatic Tool Call Detection
+
+The `@control()` decorator:
+1. Detects this is a tool (via `name` attribute)
+2. Creates a `ToolCall` payload with `tool_name` and `arguments`
+3. Sends to server for evaluation **before** execution
+4. Blocks execution if control triggers deny action
+
+### 3. Server-Side SQL Control
+
+The server evaluates the SQL using the `sql` plugin:
+- Parses the query
+- Checks for blocked operations (DROP, DELETE, etc.)
+- Validates LIMIT clauses
+- Returns deny/allow decision
+
+### 4. Fail-Safe Error Handling
+
+If the control check fails with an error:
+- ✅ Execution is BLOCKED (fail-safe)
+- ✅ RuntimeError is raised
+- ❌ Query never executes
+
+## Troubleshooting
+
+### "Plugin 'sql' not found"
+
+**Cause:** Server was started before plugins were installed, or using old code.
+
+**Fix:**
+```bash
+# Kill old server
+pkill -f "uvicorn agent_control_server"
+
+# Restart server
+cd server && make run
+```
+
+### "Policy 'sql-protection-policy' already exists"
+
+**Cause:** Setup script was run multiple times.
+
+**Fix:** Either delete the policy via the API or use a different name in `setup_sql_controls.py`.
+
+### DROP TABLE still executes
+
+**Causes:**
+1. Server not running or plugins not loaded
+2. Control not assigned to agent's policy
+3. Using old decorator code
+
+**Fix:**
+1. Restart server with `make run`
+2. Re-run `setup_sql_controls.py`
+3. Verify decorator code is up-to-date
+
+## Architecture
+
+```
+LangChain Agent
+    ↓
+@tool("sql_db_query")  ← Marks as LangChain tool
+@control()            ← Applies server-side validation
+    ↓
+ToolCall Payload: {
+  "tool_name": "sql_db_query",
+  "arguments": {"query": "DROP TABLE..."}
+}
+    ↓
+Agent Control Server
+    ↓
+SQL Plugin Evaluation
+    ↓
+DENY (blocks DROP) or ALLOW (safe query)
+    ↓
+Back to Decorator
+    ↓
+Raise ControlViolationError (DENY) or Execute (ALLOW)
+```
+
+## Files
+
+- `sql_agent_protection.py` - Main SQL agent with `@control()` decorator
+- `setup_sql_controls.py` - One-time setup script for controls/policy
+- `pyproject.toml` - Dependencies and configuration
+- `README.md` - This file
+
+## Key Security Features
+
+1. **Fail-Safe by Default**: Errors block execution
+2. **Server-Side Validation**: Can't be bypassed by client
+3. **No Client-Side Logic**: Just use `@control()` decorator
+4. **Automatic Detection**: Decorator auto-detects tool vs LLM calls
+
