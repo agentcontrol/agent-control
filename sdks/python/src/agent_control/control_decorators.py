@@ -33,7 +33,7 @@ import os
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from agent_control import AgentControlClient
+from .client import AgentControlClient
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +213,33 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
             f"Errors: {'; '.join(error_messages)}"
         )
 
-    if not is_safe or human_review_required:
+    # Check human_review_required at the top level - must raise regardless of matches
+    if human_review_required:
+        # Try to find the specific control that triggered human review
+        for match in matches:
+            if isinstance(match, dict) and match.get("action") == "human_review":
+                result_data = match.get("result") or {}
+                if isinstance(result_data, dict):
+                    message = result_data.get("message", "Control triggered")
+                    metadata = result_data.get("metadata", {})
+                else:
+                    message = "Control triggered"
+                    metadata = {}
+
+                raise HumanReviewRequiredError(
+                    control_id=match.get("control_id"),
+                    control_name=match.get("control_name", "unknown"),
+                    message=f"Human review required: {message}",
+                    metadata=metadata,
+                )
+
+        # If no specific match found, still raise with generic message
+        raise HumanReviewRequiredError(
+            message="Human review required by policy"
+        )
+
+    # Check if unsafe (deny actions)
+    if not is_safe:
         for match in matches:
             if not isinstance(match, dict):
                 logger.warning(f"Invalid match format: {match}")
@@ -232,14 +258,7 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
                 message = "Control triggered"
                 metadata = {}
 
-            if action == "human_review":
-                raise HumanReviewRequiredError(
-                    control_id=control_id,
-                    message=f"Human review required: {message}",
-                    control_name=match.get("control_name"),
-                    metadata=metadata,
-                )
-            elif action == "deny":
+            if action == "deny":
                 raise ControlViolationError(
                     control_id=control_id,
                     control_name=matched_control,
@@ -269,6 +288,7 @@ def control(policy: str | None = None) -> Callable[[F], F]:
 
     Raises:
         ControlViolationError: If any control triggers with "deny" action
+        HumanReviewRequiredError: If any control triggers with "human_review" action
 
     How it works:
         1. Before function execution: Calls server with check_stage="pre"
@@ -328,7 +348,7 @@ def control(policy: str | None = None) -> Callable[[F], F]:
                 payload = _create_evaluation_payload(func, args, kwargs, output=None)
                 result = await _evaluate_async(agent_uuid, payload, "pre", server_url)
                 _handle_evaluation_result(result)
-            except ControlViolationError:
+            except (ControlViolationError, HumanReviewRequiredError):
                 raise
             except Exception as e:
                 # FAIL-SAFE: If control check fails, DO NOT execute the function
@@ -345,7 +365,7 @@ def control(policy: str | None = None) -> Callable[[F], F]:
                 payload = _create_evaluation_payload(func, args, kwargs, output=output)
                 result = await _evaluate_async(agent_uuid, payload, "post", server_url)
                 _handle_evaluation_result(result)
-            except ControlViolationError:
+            except (ControlViolationError, HumanReviewRequiredError):
                 raise
             except Exception as e:
                 logger.error(f"Post-execution control check failed: {e}")
@@ -378,7 +398,7 @@ def control(policy: str | None = None) -> Callable[[F], F]:
                 payload = _create_evaluation_payload(func, args, kwargs, output=None)
                 result = _evaluate_sync(agent_uuid, payload, "pre", server_url)
                 _handle_evaluation_result(result)
-            except ControlViolationError:
+            except (ControlViolationError, HumanReviewRequiredError):
                 raise
             except Exception as e:
                 # FAIL-SAFE: If control check fails, DO NOT execute the function
@@ -395,7 +415,7 @@ def control(policy: str | None = None) -> Callable[[F], F]:
                 payload = _create_evaluation_payload(func, args, kwargs, output=output)
                 result = _evaluate_sync(agent_uuid, payload, "post", server_url)
                 _handle_evaluation_result(result)
-            except ControlViolationError:
+            except (ControlViolationError, HumanReviewRequiredError):
                 raise
             except Exception as e:
                 logger.error(f"Post-execution control check failed: {e}")
@@ -416,4 +436,5 @@ def control(policy: str | None = None) -> Callable[[F], F]:
 __all__ = [
     "control",
     "ControlViolationError",
+    "HumanReviewRequiredError",
 ]

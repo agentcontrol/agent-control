@@ -855,13 +855,10 @@ __all__ = [
     "delete_control",
     "update_control",
 
-    # Decorator (server-side policy evaluation)
-    "control",
-
-    # Control Decorator
+    # Control Decorator (server-side policy evaluation)
     "control",
     "ControlViolationError",
-    "HumanReviewRequiredError"
+    "HumanReviewRequiredError",
 
     # Client
     "AgentControlClient",

@@ -6,6 +6,7 @@ from typing import Any, Literal, cast
 from uuid import UUID
 
 from .client import AgentControlClient
+from .control_decorators import ControlViolationError, HumanReviewRequiredError
 
 _logger = logging.getLogger(__name__)
 
@@ -41,11 +42,80 @@ except ImportError:
     ControlEngine = Any  # type: ignore
 
 
+def _raise_on_control_violation(result: "EvaluationResult") -> None:
+    """
+    Check evaluation result and raise appropriate exceptions.
+
+    Args:
+        result: EvaluationResult to check
+
+    Raises:
+        ControlViolationError: If result.is_safe is False and action is "deny"
+        HumanReviewRequiredError: If result.human_review_required is True
+    """
+    # Check human_review_required at the top level - must raise regardless of matches
+    if result.human_review_required:
+        matches = result.matches or []
+
+        # Try to find the specific control that triggered human review
+        for match in matches:
+            if isinstance(match, dict) and match.get("action") == "human_review":
+                result_data = match.get("result") or {}
+                if isinstance(result_data, dict):
+                    message = result_data.get("message", "Control triggered")
+                    metadata = result_data.get("metadata", {})
+                else:
+                    message = "Control triggered"
+                    metadata = {}
+
+                raise HumanReviewRequiredError(
+                    control_id=match.get("control_id"),
+                    control_name=match.get("control_name", "unknown"),
+                    message=f"Human review required: {message}",
+                    metadata=metadata,
+                )
+
+        # If no specific match found, still raise with generic message
+        raise HumanReviewRequiredError(
+            message="Human review required by policy"
+        )
+
+    # Check if unsafe (deny actions)
+    if not result.is_safe:
+        matches = result.matches or []
+
+        for match in matches:
+            if not isinstance(match, dict):
+                continue
+
+            action = match.get("action", "deny")
+            control_id = match.get("control_id")
+            control_name = match.get("control_name", "unknown")
+
+            # Safely extract result message and metadata
+            result_data = match.get("result") or {}
+            if isinstance(result_data, dict):
+                message = result_data.get("message", "Control triggered")
+                metadata = result_data.get("metadata", {})
+            else:
+                message = "Control triggered"
+                metadata = {}
+
+            if action == "deny":
+                raise ControlViolationError(
+                    control_id=control_id,
+                    control_name=control_name,
+                    message=message,
+                    metadata=metadata
+                )
+
+
 async def check_evaluation(
     client: AgentControlClient,
     agent_uuid: UUID,
     payload: "ToolCall | LlmCall",
     check_stage: Literal["pre", "post"],
+    raise_on_violation: bool = True,
 ) -> EvaluationResult:
     """
     Check if agent interaction is safe.
@@ -55,24 +125,34 @@ async def check_evaluation(
         agent_uuid: UUID of the agent making the request
         payload: Either a ToolCall or LlmCall instance
         check_stage: 'pre' for pre-execution check, 'post' for post-execution check
+        raise_on_violation: If True (default), raise exceptions when controls trigger.
+                           If False, return the result without raising.
 
     Returns:
         EvaluationResult with safety analysis
 
     Raises:
         httpx.HTTPError: If request fails
+        ControlViolationError: If any control triggers with "deny" action (when raise_on_violation=True)
+        HumanReviewRequiredError: If any control triggers with "human_review" action (when raise_on_violation=True)
 
     Example:
-        # Pre-check before LLM call
+        # Pre-check before LLM call (raises exceptions on control violations)
         async with AgentControlClient() as client:
-            result = await check_evaluation(
-                client=client,
-                agent_uuid=agent.agent_id,
-                payload=LlmCall(input="User question", output=None),
-                check_stage="pre"
-            )
+            try:
+                result = await check_evaluation(
+                    client=client,
+                    agent_uuid=agent.agent_id,
+                    payload=LlmCall(input="User question", output=None),
+                    check_stage="pre"
+                )
+            except HumanReviewRequiredError as e:
+                print(f"Human review required: {e.message}")
+                # Handle human review workflow
+            except ControlViolationError as e:
+                print(f"Denied by control: {e.message}")
 
-        # Post-check after tool execution
+        # Post-check after tool execution (without raising exceptions)
         async with AgentControlClient() as client:
             result = await check_evaluation(
                 client=client,
@@ -82,8 +162,11 @@ async def check_evaluation(
                     arguments={"query": "test"},
                     output={"results": []}
                 ),
-                check_stage="post"
+                check_stage="post",
+                raise_on_violation=False
             )
+            if not result.is_safe:
+                print("Control violation detected")
     """
     if MODELS_AVAILABLE:
         request = EvaluationRequest(
@@ -114,7 +197,7 @@ async def check_evaluation(
     response.raise_for_status()
 
     if MODELS_AVAILABLE:
-        return cast(EvaluationResult, EvaluationResult.from_dict(response.json()))
+        result = cast(EvaluationResult, EvaluationResult.from_dict(response.json()))
     else:
         data = response.json()
         # Create a simple result object
@@ -129,7 +212,13 @@ async def check_evaluation(
                 self.human_review_required = human_review_required
                 self.matches = matches
                 self.errors = errors
-        return cast(EvaluationResult, _EvaluationResult(**data))
+        result = cast(EvaluationResult, _EvaluationResult(**data))
+
+    # Raise exceptions if controls triggered and raise_on_violation is True
+    if raise_on_violation:
+        _raise_on_control_violation(result)
+
+    return result
 
 
 @dataclass
