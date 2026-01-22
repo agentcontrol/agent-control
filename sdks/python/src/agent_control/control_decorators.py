@@ -61,10 +61,12 @@ class HumanReviewRequiredError(Exception):
 
     def __init__(
         self,
-        control_name: str,
-        message: str,
+        control_id: int | str | None = None,
+        control_name: str | None = None,
+        message: str = "Human Review Required",
         metadata: dict[str, Any] | None = None
     ):
+        self.control_id = control_id
         self.control_name = control_name
         self.message = message
         self.metadata = metadata or {}
@@ -232,6 +234,7 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
 
             if action == "human_review":
                 raise HumanReviewRequiredError(
+                    control_id=control_id,
                     message=f"Human review required: {message}",
                     control_name=match.get("control_name"),
                     metadata=metadata,
