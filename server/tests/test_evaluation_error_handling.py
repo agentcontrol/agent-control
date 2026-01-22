@@ -1,7 +1,9 @@
 """End-to-end tests for evaluator error handling."""
 import uuid
-from fastapi.testclient import TestClient
+
 from agent_control_models import EvaluationRequest, LlmCall
+from fastapi.testclient import TestClient
+
 from .utils import create_and_assign_policy
 
 
@@ -91,7 +93,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     When: Evaluation is requested
     Then: Response has errors field populated and is_safe=False (for deny)
     """
-    from unittest.mock import MagicMock, AsyncMock
+    from unittest.mock import AsyncMock, MagicMock
 
     # Given: Setup agent with a working control
     control_data = {

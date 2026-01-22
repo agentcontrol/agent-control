@@ -2,7 +2,6 @@
 
 import uuid
 
-import pytest
 from fastapi.testclient import TestClient
 
 from agent_control_server.services.schema_compat import check_schema_compatibility

@@ -16,7 +16,6 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
-
 AGENT_ID = "langgraph-demo-agent"
 AGENT_NAME = "LangGraph Demo Agent"
 AGENT_DESCRIPTION = "LangGraph agent with Agent Control safety checks"

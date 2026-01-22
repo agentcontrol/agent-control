@@ -9,9 +9,9 @@ Usage:
     python scripts/build.py [models|sdk|server|all]
 """
 
+import re
 import shutil
 import subprocess
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent

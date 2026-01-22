@@ -3,10 +3,9 @@
 from unittest.mock import patch
 
 import pytest
-from pydantic import ValidationError
-
 from agent_control_models import EvaluatorResult, SQLControlEvaluatorPluginConfig
 from agent_control_plugins.builtin.sql import SQLControlEvaluatorPlugin
+from pydantic import ValidationError
 
 
 class TestEvaluatorResultValidator:

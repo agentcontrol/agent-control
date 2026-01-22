@@ -181,10 +181,10 @@ class ControlEngine:
                         timeout=timeout,
                     )
 
-                    # Signal if this is a deny match
+                    # Signal if this is a blocking match match (deny or human_review)
                     if (
                         eval_task.result.matched
-                        and eval_task.item.control.action.decision == "deny"
+                        and eval_task.item.control.action.decision in ["deny", "human_review"]
                     ):
                         deny_found.set()
                 except asyncio.CancelledError:
@@ -251,6 +251,7 @@ class ControlEngine:
         evaluated_count = 0  # Controls that ran (not cancelled)
         deny_errored = False
         deny_matched = False
+        human_review_matched = False # track human review separately
 
         for eval_task in eval_tasks:
             if eval_task.result is None:
@@ -269,8 +270,8 @@ class ControlEngine:
                         result=eval_task.result,
                     )
                 )
-                # Track if a deny control errored (fail closed)
-                if eval_task.item.control.action.decision == "deny":
+                # Track if a deny or human_review control errored (fail closed)
+                if eval_task.item.control.action.decision in ["deny", "human_review"]:
                     deny_errored = True
                 continue
 
@@ -291,6 +292,9 @@ class ControlEngine:
                 if eval_task.item.control.action.decision == "deny":
                     is_safe = False
                     deny_matched = True
+                elif eval_task.item.control.action.decision == "human_review":
+                    is_safe = False
+                    human_review_matched = True
 
         # Fail closed if a deny control errored (couldn't verify safety)
         if deny_errored:
@@ -318,4 +322,5 @@ class ControlEngine:
             confidence=confidence,
             matches=matches if matches else None,
             errors=errors if errors else None,
+            human_review_required=human_review_matched
         )

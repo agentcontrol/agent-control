@@ -252,7 +252,7 @@ async def setup_policy_chain(client: AgentControlClient, agent_uuid: str, contro
     await client.http_client.post(
         f"/api/v1/agents/{agent_uuid}/policy/{policy_id}"
     )
-    print(f"   ✓ Policy assigned to agent")
+    print("   ✓ Policy assigned to agent")
 
 
 async def verify_controls(client: AgentControlClient, agent_uuid: str):

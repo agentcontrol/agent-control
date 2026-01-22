@@ -7,8 +7,9 @@ These tests verify policy management workflows:
 3. Listing policy controls
 """
 
-import agent_control
 import pytest
+
+import agent_control
 
 
 @pytest.mark.asyncio

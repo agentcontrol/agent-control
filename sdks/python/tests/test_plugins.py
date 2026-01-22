@@ -7,9 +7,12 @@ New architecture: Plugins take config at __init__, evaluate() only takes data.
 Registry is now in agent_control_models, discovery in agent_control_engine.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+from agent_control_engine.discovery import reset_discovery
+from agent_control_models import clear_plugins
+from agent_control_models.controls import EvaluatorResult
 from pydantic import BaseModel
 
 from agent_control.plugins import (
@@ -19,9 +22,6 @@ from agent_control.plugins import (
     list_plugins,
     register_plugin,
 )
-from agent_control_models import clear_plugins
-from agent_control_engine.discovery import reset_discovery
-from agent_control_models.controls import EvaluatorResult
 
 
 class MockConfig(BaseModel):

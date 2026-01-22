@@ -88,6 +88,7 @@ class EvaluationResponse(BaseModel):
         reason: Optional explanation for the decision
         matches: List of control matches detected (if any)
         errors: List of control matches that failed during evaluation (if any)
+        human_review_required: Whether human review is required (blocks but not hard deny)
     """
 
     is_safe: bool = Field(..., description="Whether content is safe")
@@ -108,6 +109,13 @@ class EvaluationResponse(BaseModel):
     errors: list[ControlMatch] | None = Field(
         default=None,
         description="List of controls that failed during evaluation (if any)",
+    )
+    human_review_required: bool = Field(
+        default=False,
+        description=(
+            "Whether human review is required before allowing this action. "
+            "When True, is_safe will be False, but the action can proceed after approval."
+        ),
     )
 
 

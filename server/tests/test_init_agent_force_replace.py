@@ -1,5 +1,6 @@
 """Tests for force_replace behavior in initAgent endpoint."""
 import uuid
+
 from fastapi.testclient import TestClient
 
 
@@ -68,7 +69,7 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
     # Given: Create agent with tools
     agent_id = str(uuid.uuid4())
     agent_name = f"TestAgent-{uuid.uuid4().hex[:8]}"
-    
+
     resp = client.post("/api/v1/agents/initAgent", json={
         "agent": {
             "agent_id": agent_id,
@@ -110,7 +111,7 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
 # which is complex in the test environment. The force_replace logic is tested via:
 # 1. Normal operation with force_replace=true (above)
 # 2. The error path is covered by exception handling in the endpoint
-# 
+#
 # The corruption scenario would look like:
 # 1. Agent data in DB has invalid structure (e.g., tools is a string instead of list)
 # 2. initAgent without force_replace → 422 error

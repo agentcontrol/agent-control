@@ -1,8 +1,8 @@
 """Test utilities for server tests."""
 import uuid
 from typing import Any
-from fastapi.testclient import TestClient
 
+from fastapi.testclient import TestClient
 
 VALID_CONTROL_PAYLOAD = {
     "description": "Valid Control",

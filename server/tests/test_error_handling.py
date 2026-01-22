@@ -4,7 +4,6 @@ import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,16 +14,16 @@ from agent_control_server.db import get_async_db
 async def mock_db_with_commit_failure() -> AsyncGenerator[AsyncSession, None]:
     """Mock database session that fails on commit."""
     from unittest.mock import MagicMock
-    
+
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.commit.side_effect = Exception("Database error")
-    
+
     # Mock execute to return an awaitable that resolves to a result with scalars/first
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = None
     mock_result.first.return_value = None
     mock_session.execute = AsyncMock(return_value=mock_result)
-    
+
     yield mock_session
 
 
@@ -96,8 +95,9 @@ def test_init_agent_rollback_on_update_failure(
         ],
     }
 
-    from agent_control_server.models import Agent
     from sqlalchemy.orm import Session
+
+    from agent_control_server.models import Agent
 
     with Session(db_engine) as session:
         existing_agent = (
@@ -107,14 +107,14 @@ def test_init_agent_rollback_on_update_failure(
 
         async def mock_db_returns_agent() -> AsyncGenerator[AsyncSession, None]:
             from unittest.mock import MagicMock
-            
+
             mock_session = AsyncMock(spec=AsyncSession)
             mock_session.commit.side_effect = Exception("Database error")
-            
+
             mock_result = MagicMock()
             mock_result.scalars.return_value.first.return_value = existing_agent
             mock_session.execute = AsyncMock(return_value=mock_result)
-            
+
             yield mock_session
 
         app.dependency_overrides[get_async_db] = mock_db_returns_agent
@@ -191,8 +191,9 @@ def test_set_agent_policy_rollback_on_failure(
     policy_id = r2.json()["policy_id"]
 
     # When: commit fails during policy assignment
-    from agent_control_server.models import Agent, Policy
     from sqlalchemy.orm import Session
+
+    from agent_control_server.models import Agent, Policy
 
     with Session(db_engine) as session:
         existing_agent = (
@@ -210,7 +211,7 @@ def test_set_agent_policy_rollback_on_failure(
 
         async def mock_db_for_policy_assignment() -> AsyncGenerator[AsyncSession, None]:
             from unittest.mock import MagicMock
-            
+
             mock_session = AsyncMock(spec=AsyncSession)
             mock_session.commit.side_effect = Exception("Database error")
 
@@ -260,8 +261,9 @@ def test_set_control_data_rollback_on_failure(
     control_id = r1.json()["control_id"]
 
     # When: commit fails during data update
-    from agent_control_server.models import Control
     from sqlalchemy.orm import Session
+
+    from agent_control_server.models import Control
 
     with Session(db_engine) as session:
         existing_control = (
@@ -271,14 +273,14 @@ def test_set_control_data_rollback_on_failure(
 
         async def mock_db_returns_control() -> AsyncGenerator[AsyncSession, None]:
             from unittest.mock import MagicMock
-            
+
             mock_session = AsyncMock(spec=AsyncSession)
             mock_session.commit.side_effect = Exception("Database error")
-            
+
             mock_result = MagicMock()
             mock_result.scalars.return_value.first.return_value = existing_control
             mock_session.execute = AsyncMock(return_value=mock_result)
-            
+
             yield mock_session
 
         app.dependency_overrides[get_async_db] = mock_db_returns_control

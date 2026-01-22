@@ -3,12 +3,11 @@
 New architecture: Plugins take config at __init__, evaluate() only takes data.
 """
 
-import pytest
 from typing import Any
 
-from pydantic import BaseModel
-
+import pytest
 from agent_control_models import EvaluatorResult, PluginEvaluator, PluginMetadata
+from pydantic import BaseModel
 
 
 class MockConfig(BaseModel):

@@ -7,8 +7,9 @@ These tests verify basic server functionality:
 3. Error handling
 """
 
-import agent_control
 import pytest
+
+import agent_control
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,3 @@
-from typing import Any
 import uuid
 
 from fastapi.testclient import TestClient
@@ -84,11 +83,11 @@ def test_set_control_data_with_empty_dict_fails(client: TestClient) -> None:
 def test_set_control_data_validates_nested_schema(client: TestClient) -> None:
     # Given: a control
     control_id = create_control(client)
-    
+
     # When: setting invalid data (missing required fields)
-    invalid_data = {"conditions": "test"} 
+    invalid_data = {"conditions": "test"}
     r = client.put(f"/api/v1/controls/{control_id}/data", json={"data": invalid_data})
-    
+
     # Then: 422 Validation Error
     assert r.status_code == 422
     # Given: a non-existent control id

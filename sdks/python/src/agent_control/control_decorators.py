@@ -54,6 +54,20 @@ class ControlViolationError(Exception):
         self.metadata = metadata or {}
         super().__init__(f"Control violation [{control_name}]: {message}")
 
+class HumanReviewRequiredError(Exception):
+    """Raised when a control is triggered with 'human_review' action."""
+
+    def __init__(
+        self,
+        control_name: str,
+        message: str,
+        metadata: dict[str, Any] | None = None
+    ):
+        self.control_name = control_name
+        self.message = message
+        self.metadata = metadata or {}
+        super().__init__(f"Control interrupt [{control_name}]: {message}")
+
 
 def _get_current_agent() -> Any | None:
     """Get the current agent from agent_control module."""
@@ -138,16 +152,23 @@ def _extract_input_from_args(func: Callable, args: tuple, kwargs: dict) -> str:
 def _handle_evaluation_result(result: dict[str, Any]) -> None:
     """Handle evaluation result from server - raise on deny."""
     is_safe = result.get("is_safe", True)
+    human_review_required = result.get("human_review_required", False)
     matches = result.get("matches", [])
 
-    if not is_safe:
+    if not is_safe or human_review_required:
         for match in matches:
             action = match.get("action", "deny")
             matched_control = match.get("control_name", "unknown")
             message = match.get("result", {}).get("message", "Control triggered")
             metadata = match.get("result", {}).get("metadata", {})
 
-            if action == "deny":
+            if action == "human_review":
+                raise HumanReviewRequiredError(
+                    message=f"Human review required: {message}",
+                    control_name=match.get("control_name"),
+                    metadata=metadata,
+                )
+            elif action == "deny":
                 raise ControlViolationError(
                     control_name=matched_control,
                     message=message,

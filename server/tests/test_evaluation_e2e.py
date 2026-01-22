@@ -1,7 +1,9 @@
 """End-to-end tests for evaluation flow."""
 import uuid
-from fastapi.testclient import TestClient
+
 from agent_control_models import EvaluationRequest, LlmCall, ToolCall
+from fastapi.testclient import TestClient
+
 from .utils import create_and_assign_policy
 
 
@@ -54,7 +56,7 @@ def test_evaluation_no_policy(client: TestClient):
         check_stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
-    
+
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
     assert not resp.json()["matches"]
@@ -84,7 +86,7 @@ def test_evaluation_empty_policy(client: TestClient):
         check_stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
-    
+
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
     assert not resp.json()["matches"]
@@ -153,7 +155,7 @@ def test_evaluation_tool_call_nested(client: TestClient):
         check_stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
-    
+
     # Then: Allowed
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
@@ -251,7 +253,7 @@ def test_evaluation_check_stage_filtering(client: TestClient):
     # 1. Pre-check (Should be Safe even if pattern exists in input/output placeholder)
     req_pre = EvaluationRequest(
         agent_uuid=agent_uuid,
-        # Even if we provide output, the control shouldn't run in 'pre' stage? 
+        # Even if we provide output, the control shouldn't run in 'pre' stage?
         # Actually the control says check_stage='post'. If we send request with check_stage='pre', it skips.
         payload=LlmCall(input="bad_output", output="bad_output"),
         check_stage="pre"

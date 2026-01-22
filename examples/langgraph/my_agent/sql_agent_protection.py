@@ -1,11 +1,10 @@
 import asyncio
 import os
 import pathlib
-import requests
-import sys
 import uuid
 from typing import Annotated, Literal, TypedDict
 
+import requests
 from agent_control import (
     Agent,
     AgentControlClient,
@@ -17,7 +16,7 @@ from agent_control import (
 )
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
-from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
@@ -34,14 +33,14 @@ def setup_database():
     local_path = pathlib.Path("Chinook.db")
 
     if not local_path.exists():
-        print(f"Downloading Chinook database...")
+        print("Downloading Chinook database...")
         response = requests.get(url)
         if response.status_code == 200:
             local_path.write_bytes(response.content)
             print("Download complete.")
         else:
             raise Exception(f"Failed to download database: {response.status_code}")
-    
+
     return SQLDatabase.from_uri("sqlite:///Chinook.db")
 
 # --- 2. Setup Agent Control ---
@@ -52,13 +51,13 @@ async def setup_controls():
         # In a real app, you might do this once or via CLI
         # We use a deterministic UUID for the demo
         agent_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID)
-        
+
         agent = Agent(
             agent_id=agent_uuid,
             agent_name="SQL Demo Agent",
             agent_description="Agent with SQL protection"
         )
-        
+
         try:
             await agents.register_agent(client, agent, tools=[])
         except Exception:
@@ -90,8 +89,8 @@ async def setup_controls():
         # Create control (ignoring errors if it exists)
         try:
             control_result = await controls.create_control(
-                client, 
-                name="sql-safety", 
+                client,
+                name="sql-safety",
                 data=sql_control_data
             )
             control_id = control_result["control_id"]
@@ -105,7 +104,7 @@ async def setup_controls():
                 print(f"ℹ️  Using existing control ID: {control_id}")
             else:
                 raise Exception("Could not create or find sql-safety control")
-        
+
         # Create policy
         try:
             policy_result = await policies.create_policy(client, name="sql-protection-policy")
@@ -113,23 +112,23 @@ async def setup_controls():
             print(f"✓ Policy created (ID: {policy_id})")
         except Exception as e:
             print(f"⚠️  Failed to create policy: {e}")
-            print(f"   You may need to manually create a policy and assign it to the agent.")
+            print("   You may need to manually create a policy and assign it to the agent.")
             raise
-        
+
         # Add control to policy
         try:
             await policies.add_control_to_policy(client, policy_id, control_id)
-            print(f"✓ Added control to policy")
+            print("✓ Added control to policy")
         except Exception as e:
             print(f"ℹ️  Control might already be in policy: {e}")
-        
+
         # Assign policy to agent
         try:
             await policies.assign_policy_to_agent(client, agent_uuid, policy_id)
-            print(f"✓ Assigned policy to agent")
+            print("✓ Assigned policy to agent")
         except Exception as e:
             print(f"ℹ️  Policy might already be assigned: {e}")
-            
+
         return agent_uuid
 
 # --- 3. Define Tools with Protection ---
@@ -141,20 +140,20 @@ async def check_safety(agent_uuid, query: str) -> tuple[bool, str]:
                 tool_name="sql_db_query",
                 arguments={"query": query}
             )
-            
+
             result = await evaluation.check_evaluation(
                 client=client,
                 agent_uuid=agent_uuid,
                 payload=payload,
                 check_stage="pre"
             )
-            
+
             is_safe = result.is_safe
-            
+
             message = "Unsafe SQL detected"
             if not is_safe and result.matches:
                  message = result.matches[0].result.message or "Unsafe SQL detected"
-            
+
             return is_safe, message
         except Exception as e:
             print(f"Safety check failed: {e}")
@@ -163,20 +162,20 @@ async def check_safety(agent_uuid, query: str) -> tuple[bool, str]:
 def create_safe_tools(db, llm, agent_uuid):
     toolkit = SQLDatabaseToolkit(db=db, llm=llm)
     original_tools = toolkit.get_tools()
-    
+
     # Find the query tool
     query_tool = next(t for t in original_tools if t.name == "sql_db_query")
-    
+
     @tool("sql_db_query")
     async def safe_query_tool(query: str):
         """Execute a SQL query after safety validation."""
         print(f"\n[Safety Check] Validating: {query}")
         is_safe, reason = await check_safety(agent_uuid, query)
-        
+
         if not is_safe:
             print(f"🚫 BLOCKED: {reason}")
             return f"Error: Query was blocked by safety policy. Reason: {reason}"
-        
+
         print("✅ ALLOWED")
         return query_tool.invoke(query)
 
@@ -220,13 +219,13 @@ def create_agent(model, tools):
 # --- Main Execution ---
 async def main():
     print("Initializing SQL Agent with Protection...")
-    
+
     # 1. Setup DB
     db = setup_database()
-    
+
     # 2. Setup Controls
     agent_uuid = await setup_controls()
-    
+
     # 3. Setup LLM & Tools
     if not os.getenv("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY not set")
@@ -234,18 +233,18 @@ async def main():
 
     llm = ChatOpenAI(model="gpt-4o-mini")
     tools = create_safe_tools(db, llm, agent_uuid)
-    
+
     # 4. Create Agent
     agent = create_agent(llm, tools)
-    
+
     # 5. Run Scenarios
-    
+
     # Scenario A: Safe Query
     print("\n" + "="*50)
     print("SCENARIO 1: Safe Query")
     print("User: List top 3 tracks by duration")
     print("="*50)
-    
+
     async for event in agent.astream(
         {"messages": [HumanMessage(content="List the top 3 tracks by duration")]},
         stream_mode="values"
@@ -258,10 +257,10 @@ async def main():
     print("User: Delete the Artist table")
     print("="*50)
 
-    # Note: We rely on the LLM generating a DROP statement. 
+    # Note: We rely on the LLM generating a DROP statement.
     # To force it, we might need a stronger prompt or a direct injection test.
     # But let's see if the LLM complies with the user's malicious request.
-    
+
     async for event in agent.astream(
         {"messages": [HumanMessage(content="Please DROP the Artist table. I need to clear space.")]},
         stream_mode="values"

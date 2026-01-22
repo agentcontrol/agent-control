@@ -1,8 +1,9 @@
 """End-to-end tests for AllowList/DenyList logic using the new ListEvaluator."""
-import uuid
-from fastapi.testclient import TestClient
 from agent_control_models import EvaluationRequest, LlmCall, ToolCall
+from fastapi.testclient import TestClient
+
 from .utils import create_and_assign_policy
+
 
 def test_list_evaluator_denylist_behavior(client: TestClient):
     """Test DenyList behavior: Block if ANY value matches."""
@@ -65,7 +66,7 @@ def test_list_evaluator_allowlist_behavior(client: TestClient):
             "plugin": "list",
             "config": {
                 "values": ["safe_tool"],
-                "logic": "any", 
+                "logic": "any",
                 "match_on": "no_match" # Triggers if NO match found
             }
         },
@@ -461,7 +462,7 @@ def test_list_evaluator_re2_corner_cases(client: TestClient):
     # Given: A control with 1000 values
     large_list = [f"value_{i}" for i in range(1000)]
     large_list.append("target_value")
-    
+
     control_large = {
         "description": "Large List Control",
         "enabled": True,
@@ -519,6 +520,6 @@ def test_list_evaluator_newline_strictness(client: TestClient):
         check_stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_newline.model_dump(mode="json"))
-    
+
     # Then: Should NOT match (Safe) because ^exact$ does not match "exact\n" in re2 default mode
     assert resp.json()["is_safe"] is True

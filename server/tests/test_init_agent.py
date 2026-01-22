@@ -1,9 +1,7 @@
-import json
 import logging
 import uuid
 from typing import Any
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
@@ -256,7 +254,6 @@ def test_init_agent_logs_warning_on_bad_existing_data(client: TestClient, caplog
         assert any("Failed to parse existing agent data" in m for m in messages)
 
 
-import uuid
 
 def _create_policy(client: TestClient) -> int:
     # Helper: create a policy via API and return id
@@ -406,7 +403,7 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
     assert isinstance(body.get("controls"), list)
     # Verify control data is present and matches description
     assert any(
-        item.get("control", {}).get("description") == data_payload["description"] 
+        item.get("control", {}).get("description") == data_payload["description"]
         for item in body["controls"]
     )
 

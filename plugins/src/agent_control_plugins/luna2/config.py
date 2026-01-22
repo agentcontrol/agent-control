@@ -1,6 +1,6 @@
 """Configuration models for Luna-2 plugin."""
 
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -65,7 +65,7 @@ class Luna2Config(BaseModel):
         default=None,
         description="Comparison operator (required for local stage)",
     )
-    target_value: Union[str, float, int, None] = Field(
+    target_value: str | float | int | None = Field(
         default=None,
         description="Target value for comparison (required for local stage). Can be string or number.",
     )

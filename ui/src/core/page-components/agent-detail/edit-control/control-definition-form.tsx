@@ -118,7 +118,12 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
           <Text size='sm' fw={500}>
             Action
           </Text>
-          <Tooltip label='What action to take when the control matches'>
+          <Tooltip label='What action to take when the control matches:
+            • Allow: Permit the action
+            • Deny: Block immediately (hard rejection)
+            • Warn: Allow but alert
+            • Log: Record for audit
+            • Human Review: Block pending manual approval'>
             <IconInfoCircle size={14} color='gray' />
           </Tooltip>
         </Group>
@@ -128,6 +133,11 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
             { value: "deny", label: "Deny" },
             { value: "warn", label: "Warn" },
             { value: "log", label: "Log" },
+            { 
+              value: "human_review", 
+              label: "Human Review",
+              // Optional: Add description/tooltip
+            },
           ]}
           size='sm'
           {...form.getInputProps("action_decision")}

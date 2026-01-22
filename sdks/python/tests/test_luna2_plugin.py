@@ -11,9 +11,8 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import ValidationError
-
 from agent_control_models import EvaluatorResult, PluginEvaluator
+from pydantic import ValidationError
 
 
 def create_mock_protect_response(

@@ -3,8 +3,6 @@
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from pydantic import BaseModel
-
 from agent_control_engine import discover_plugins, ensure_plugins_discovered, list_plugins
 from agent_control_engine.discovery import reset_discovery
 from agent_control_models import (
@@ -15,6 +13,7 @@ from agent_control_models import (
     get_plugin,
     register_plugin,
 )
+from pydantic import BaseModel
 
 
 class TestDiscoverPlugins:

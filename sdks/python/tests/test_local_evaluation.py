@@ -9,15 +9,13 @@ These tests verify the check_evaluation_with_local function:
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
-
 from agent_control_models import (
     ControlMatch,
     EvaluationResponse,
-    EvaluationResult,
     EvaluatorResult,
     LlmCall,
     ToolCall,
@@ -28,7 +26,6 @@ from agent_control.evaluation import (
     _merge_results,
     check_evaluation_with_local,
 )
-
 
 # =============================================================================
 # Test Fixtures

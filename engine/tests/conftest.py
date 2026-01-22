@@ -1,7 +1,6 @@
 """Pytest configuration and fixtures for engine tests."""
 
 import pytest
-
 from agent_control_engine.discovery import reset_discovery
 from agent_control_engine.evaluators import clear_evaluator_cache
 from agent_control_models import clear_plugins

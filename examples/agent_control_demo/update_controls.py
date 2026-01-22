@@ -73,8 +73,8 @@ async def allow_ssn(client: AgentControlClient, control_id: int) -> None:
     }
 
     print(f"  Control ID: {control_id}")
-    print(f"  Setting enabled: False")
-    print(f"  Result: SSNs will now pass through")
+    print("  Setting enabled: False")
+    print("  Result: SSNs will now pass through")
 
     try:
         response = await client.http_client.put(
@@ -82,7 +82,7 @@ async def allow_ssn(client: AgentControlClient, control_id: int) -> None:
             json={"data": updated_definition}
         )
         response.raise_for_status()
-        print(f"\n✓ SSN control disabled - SSNs are now ALLOWED")
+        print("\n✓ SSN control disabled - SSNs are now ALLOWED")
     except Exception as e:
         print(f"\n✗ Failed to update control: {e}")
         raise
@@ -113,8 +113,8 @@ async def block_ssn(client: AgentControlClient, control_id: int) -> None:
     }
 
     print(f"  Control ID: {control_id}")
-    print(f"  Setting enabled: True")
-    print(f"  Result: SSNs will now be BLOCKED")
+    print("  Setting enabled: True")
+    print("  Result: SSNs will now be BLOCKED")
 
     try:
         response = await client.http_client.put(
@@ -122,7 +122,7 @@ async def block_ssn(client: AgentControlClient, control_id: int) -> None:
             json={"data": updated_definition}
         )
         response.raise_for_status()
-        print(f"\n✓ SSN control enabled - SSNs are now BLOCKED")
+        print("\n✓ SSN control enabled - SSNs are now BLOCKED")
     except Exception as e:
         print(f"\n✗ Failed to update control: {e}")
         raise

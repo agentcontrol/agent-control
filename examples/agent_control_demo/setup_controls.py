@@ -24,13 +24,11 @@ Usage:
 import asyncio
 import os
 import sys
-from uuid import UUID
 
 # Add the SDK to path for development
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../sdks/python/src"))
 
 from agent_control import AgentControlClient
-
 
 # Configuration
 AGENT_NAME = "demo-chatbot"
@@ -139,8 +137,8 @@ async def create_regex_control(client: AgentControlClient) -> int:
         "tags": ["pii", "ssn", "output-filter"]
     }
 
-    print(f"Creating control: block-ssn-output")
-    print(f"  Type: Regex")
+    print("Creating control: block-ssn-output")
+    print("  Type: Regex")
     print(f"  Pattern: {control_definition['evaluator']['config']['pattern']}")
     print(f"  Check Stage: {control_definition['check_stage']}")
     print(f"  Action: {control_definition['action']['decision']}")
@@ -174,8 +172,8 @@ async def create_list_control(client: AgentControlClient) -> int:
         "tags": ["sql-injection", "input-filter", "security"]
     }
 
-    print(f"Creating control: block-dangerous-sql")
-    print(f"  Type: List")
+    print("Creating control: block-dangerous-sql")
+    print("  Type: List")
     print(f"  Values: {control_definition['evaluator']['config']['values']}")
     print(f"  Logic: {control_definition['evaluator']['config']['logic']}")
     print(f"  Check Stage: {control_definition['check_stage']}")
@@ -184,6 +182,41 @@ async def create_list_control(client: AgentControlClient) -> int:
     return await create_control(client, "block-dangerous-sql", control_definition)
 
 
+async def create_high_risk_sql_review_control(client: AgentControlClient) -> int:
+    """Create a control that requires human review for high-risk SQL operations."""
+    print("\n" + "=" * 60)
+    print("STEP 3b: Creating High-Risk SQL Review Control")
+    print("=" * 60)
+
+    control_definition = {
+        "description": "Require human approval for UPDATE operations on tool calls",
+        "enabled": True,
+        "applies_to": "tool_call",
+        "check_stage": "pre",
+        "selector": {
+            "path": "arguments.query",
+            "tool_names": ["sql_db_query", "execute_sql", "run_query"]
+        },
+        "evaluator": {
+            "plugin": "regex",
+            "config": {
+                "pattern": r"\bUPDATE\b",
+                "flags": ["IGNORECASE"]
+            }
+        },
+        "action": {"decision": "human_review"},
+        "tags": ["sql", "high-risk", "review", "update"]
+    }
+
+    print("Creating control: high-risk-sql-review")
+    print("  Type: Regex")
+    print(f"  Pattern: {control_definition['evaluator']['config']['pattern']}")
+    print(f"  Applies To: {control_definition['applies_to']}")
+    print(f"  Check Stage: {control_definition['check_stage']}")
+    print(f"  Action: {control_definition['action']['decision']} ⏳")
+    print(f"  Tool Names: {control_definition['selector']['tool_names']}")
+
+    return await create_control(client, "high-risk-sql-review", control_definition)
 
 
 async def create_policy(client: AgentControlClient, name: str) -> int:
@@ -321,7 +354,7 @@ async def update_control(client: AgentControlClient, control_id: int) -> None:
     }
 
     print(f"Updating control ID: {control_id}")
-    print(f"  Adding keywords: REVOKE, EXECUTE, SHUTDOWN, BACKUP")
+    print("  Adding keywords: REVOKE, EXECUTE, SHUTDOWN, BACKUP")
 
     try:
         response = await client.http_client.put(
@@ -452,9 +485,10 @@ async def main():
         # 2. Create controls
         regex_control_id = await create_regex_control(client)
         list_control_id = await create_list_control(client)
+        review_control_id = await create_high_risk_sql_review_control(client)
 
         # Skip remaining steps if controls already existed
-        if regex_control_id == -1 or list_control_id == -1:
+        if regex_control_id == -1 or list_control_id == -1 or review_control_id == -1:
             print("\n⚠️  Some controls already exist. Running verification...")
             await verify_full_chain(client, agent_uuid)
             return
@@ -470,7 +504,8 @@ async def main():
         print("\n  Adding controls to policy...")
         ok1 = await add_control_to_policy(client, policy_id, regex_control_id)
         ok2 = await add_control_to_policy(client, policy_id, list_control_id)
-        if not (ok1 and ok2):
+        ok3 = await add_control_to_policy(client, policy_id, review_control_id)
+        if not (ok1 and ok2 and ok3):
             print("\n⚠️  Failed to add controls to policy!")
 
         # Verify: List controls in policy
@@ -525,17 +560,26 @@ Controls created for agent '{AGENT_NAME}':
 1. block-ssn-output (Regex)
    - Blocks SSN patterns like 123-45-6789 in OUTPUT
    - Check Stage: post (after function execution)
+   - Action: deny (hard block)
 
 2. block-dangerous-sql (List)
-   - Blocks dangerous SQL keywords in INPUT
+   - Blocks dangerous SQL keywords in INPUT for LLM calls
    - Check Stage: pre (before function execution)
    - Keywords: DROP, DELETE, TRUNCATE, ALTER, GRANT, REVOKE, EXECUTE, SHUTDOWN, BACKUP
+   - Action: deny (hard block)
+
+3. high-risk-sql-review (Regex)
+   - Requires human approval for UPDATE operations in tool calls
+   - Applies To: tool_call (sql_db_query, execute_sql, run_query)
+   - Check Stage: pre (before tool execution)
+   - Action: human_review (block pending approval) ⏳
 
 API Flow:
   Agent → Policy → Controls
 
-Now run the agent demo:
+Now run the demos:
   uv run python examples/agent_control_demo/demo_agent.py
+  uv run python examples/agent_control_demo/demo_human_review.py
 """)
 
 

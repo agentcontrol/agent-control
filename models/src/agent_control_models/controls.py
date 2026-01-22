@@ -716,7 +716,7 @@ class EvaluatorConfig(BaseModel):
 class ControlAction(BaseModel):
     """What to do when control matches."""
 
-    decision: Literal["allow", "deny", "warn", "log"] = Field(
+    decision: Literal["allow", "deny", "warn", "log", "human_review"] = Field(
         ..., description="Action to take when control is triggered"
     )
 
@@ -821,11 +821,11 @@ class EvaluatorResult(BaseModel):
 
 
 class ControlMatch(BaseModel):
-    """Represents a control match (could be allow, deny, warn, or log)."""
+    """Represents a control match (could be allow, deny, warn, log or human_review)."""
 
     control_id: int = Field(..., description="Database ID of the control that matched")
     control_name: str = Field(..., description="Name of the control that matched")
-    action: Literal["allow", "deny", "warn", "log"] = Field(
+    action: Literal["allow", "deny", "warn", "log", "human_review"] = Field(
         ..., description="Action to take for this match"
     )
     result: EvaluatorResult = Field(

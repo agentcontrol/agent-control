@@ -9,7 +9,7 @@ This demonstrates the SDK approach for server-side control evaluation:
 import asyncio
 
 import agent_control
-from agent_control import control, ControlViolationError
+from agent_control import ControlViolationError, control
 
 # ============================================================================
 # STEP 1: Initialize at the base of your agent

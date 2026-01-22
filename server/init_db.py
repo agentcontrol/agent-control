@@ -12,9 +12,9 @@ from src.agent_control_server.models import Base
 async def init_db():
     """Create all database tables."""
     db_url = db_config.get_url()
-    
+
     engine = create_engine(db_url, echo=True)
-    
+
     print(f"Creating tables in database: {db_url}")
     Base.metadata.create_all(engine)
     print("✓ Database tables created successfully!")

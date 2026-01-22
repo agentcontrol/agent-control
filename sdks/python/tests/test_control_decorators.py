@@ -6,7 +6,6 @@ import pytest
 
 from agent_control.control_decorators import ControlViolationError, control
 
-
 # =============================================================================
 # FIXTURES
 # =============================================================================
@@ -195,7 +194,7 @@ class TestPrePostExecution:
                 return f"Response to: {message}"
 
             await chat("Hello!")
-            
+
             assert "pre" in call_stages
             assert "post" in call_stages
 
@@ -241,7 +240,7 @@ class TestPrePostExecution:
                 return "Generated response"
 
             await chat("Hello!")
-            
+
             assert "output" in captured_payload
             assert "Generated response" in captured_payload["output"]
 
@@ -271,7 +270,7 @@ class TestInputExtraction:
                 return input.upper()
 
             await process("hello world")
-            
+
             assert captured_payload["input"] == "hello world"
 
     @pytest.mark.asyncio
@@ -292,7 +291,7 @@ class TestInputExtraction:
                 return f"Response: {message}"
 
             await chat("Hello!", {"user": "test"})
-            
+
             assert captured_payload["input"] == "Hello!"
 
     @pytest.mark.asyncio
@@ -313,7 +312,7 @@ class TestInputExtraction:
                 return [query]
 
             await search("test query")
-            
+
             assert captured_payload["input"] == "test query"
 
 
@@ -375,7 +374,7 @@ class TestStackedDecorators:
                 return input
 
             await process("test")
-            
+
             # Each decorator calls pre + post = 4 total
             assert call_count == 4
 
@@ -394,7 +393,7 @@ class TestControlViolationError:
             message="Test violation",
             metadata={"key": "value"}
         )
-        
+
         assert violation.control_name == "test-control"
         assert violation.message == "Test violation"
         assert violation.metadata == {"key": "value"}
@@ -402,7 +401,7 @@ class TestControlViolationError:
     def test_exception_string(self):
         """Test ControlViolationError string representation."""
         violation = ControlViolationError("my-control", "Something bad")
-        
+
         assert "my-control" in str(violation)
         assert "Something bad" in str(violation)
 

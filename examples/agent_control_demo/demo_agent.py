@@ -21,8 +21,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../sdks/python/src"))
 
 import agent_control
-from agent_control import control, ControlViolationError
-
+from agent_control import ControlViolationError, control
 
 # Configuration
 AGENT_NAME = "demo-chatbot"
@@ -42,11 +41,11 @@ def simulate_llm_response(query: str) -> str:
         "safe": "I'd be happy to help you with that question!",
         "help": "Here are some things I can assist you with...",
     }
-    
+
     for key, response in responses.items():
         if key in query.lower():
             return response
-    
+
     return f"I processed your query: {query}"
 
 
@@ -111,10 +110,10 @@ async def test_scenario(name: str, func, input_text: str):
     print(f"{'─' * 60}")
     print(f"Input: \"{input_text}\"")
     print()
-    
+
     try:
         result = await func(input_text)
-        print(f"\n✅ SUCCESS - Response returned:")
+        print("\n✅ SUCCESS - Response returned:")
         print(f"   \"{result[:100]}{'...' if len(result) > 100 else ''}\"")
     except ControlViolationError as e:
         print(f"\n🚫 BLOCKED by control: {e.control_name}")
@@ -130,11 +129,11 @@ async def run_demo():
     print("\n" + "=" * 60)
     print("AGENT CONTROL DEMO: Running Agent")
     print("=" * 60)
-    
+
     # Initialize the agent
     print(f"\n🤖 Initializing agent: {AGENT_NAME}")
     print(f"   Server: {SERVER_URL}")
-    
+
     try:
         agent_control.init(
             agent_name=AGENT_NAME,

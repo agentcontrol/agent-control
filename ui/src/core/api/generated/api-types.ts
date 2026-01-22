@@ -872,7 +872,7 @@ export interface components {
              * @description Action to take when control is triggered
              * @enum {string}
              */
-            decision: "allow" | "deny" | "warn" | "log";
+            decision: "allow" | "deny" | "warn" | "log" | "human_review";
         };
         /**
          * ControlDefinition
@@ -947,7 +947,7 @@ export interface components {
         };
         /**
          * ControlMatch
-         * @description Represents a control match (could be allow, deny, warn, or log).
+         * @description Represents a control match (could be allow, deny, warn, log or human_review).
          */
         ControlMatch: {
             /**
@@ -965,7 +965,7 @@ export interface components {
              * @description Action to take for this match
              * @enum {string}
              */
-            action: "allow" | "deny" | "warn" | "log";
+            action: "allow" | "deny" | "warn" | "log" | "human_review";
             /** @description Evaluator result (confidence, message, metadata) */
             result: components["schemas"]["EvaluatorResult"];
         };
@@ -1215,6 +1215,7 @@ export interface components {
          *         reason: Optional explanation for the decision
          *         matches: List of control matches detected (if any)
          *         errors: List of control matches that failed during evaluation (if any)
+         *         human_review_required: Whether human review is required (blocks but not hard deny)
          */
         EvaluationResponse: {
             /**
@@ -1242,6 +1243,12 @@ export interface components {
              * @description List of controls that failed during evaluation (if any)
              */
             errors?: components["schemas"]["ControlMatch"][] | null;
+            /**
+             * Human Review Required
+             * @description Whether human review is required before allowing this action. When True, is_safe will be False, but the action can proceed after approval.
+             * @default false
+             */
+            human_review_required: boolean;
         };
         /**
          * EvaluatorConfig

@@ -5,8 +5,6 @@ from fastapi.testclient import TestClient
 
 from agent_control_server.config import auth_settings
 
-from .conftest import TEST_ADMIN_API_KEY, TEST_API_KEY
-
 
 class TestHealthEndpoint:
     """Health endpoint should always be accessible without authentication."""

@@ -119,10 +119,16 @@ async def check_evaluation(
         data = response.json()
         # Create a simple result object
         class _EvaluationResult:
-            def __init__(self, is_safe: bool, confidence: float, reason: str | None = None):
+            def __init__(self, is_safe: bool, confidence: float, reason: str | None = None,
+                        human_review_required: bool = False,
+                        matches: list | None = None,
+                        errors: list | None = None):
                 self.is_safe = is_safe
                 self.confidence = confidence
                 self.reason = reason
+                self.human_review_required = human_review_required
+                self.matches = matches
+                self.errors = errors
         return cast(EvaluationResult, _EvaluationResult(**data))
 
 
@@ -143,11 +149,18 @@ def _merge_results(
 
     Merge semantics:
     - is_safe: False if either is False (deny from either → deny)
+    - human_review_required: True if either requires review
     - confidence: min of both (most conservative)
     - matches: combined from both
     - errors: combined from both
     """
     is_safe = local_result.is_safe and server_result.is_safe
+
+    # If either requires human review, flag it
+    human_review_required = (
+        local_result.human_review_required
+        or server_result.human_review_required
+    )
 
     # Use minimum confidence (most conservative)
     confidence = min(local_result.confidence, server_result.confidence)
@@ -175,6 +188,7 @@ def _merge_results(
         is_safe=is_safe,
         confidence=confidence,
         reason=reason,
+        human_review_required=human_review_required,
         matches=matches if matches else None,
         errors=errors if errors else None,
     )
@@ -308,6 +322,7 @@ async def check_evaluation_with_local(
             is_safe=result.is_safe,
             confidence=result.confidence,
             reason=result.reason,
+            human_review_required=result.human_review_required,
             matches=result.matches,
             errors=combined_errors,
         )
@@ -332,6 +347,7 @@ async def check_evaluation_with_local(
                     is_safe=local_result.is_safe,
                     confidence=local_result.confidence,
                     reason=local_result.reason,
+                    human_review_required=local_result.human_review_required,
                     matches=local_result.matches,
                     errors=local_result.errors,
                 )
@@ -353,6 +369,7 @@ async def check_evaluation_with_local(
                 is_safe=server_result.is_safe,
                 confidence=server_result.confidence,
                 reason=server_result.reason,
+                human_review_required=server_result.human_review_required,
                 matches=server_result.matches,
                 errors=server_result.errors,
             )
@@ -365,6 +382,7 @@ async def check_evaluation_with_local(
                 is_safe=local_result.is_safe,
                 confidence=local_result.confidence,
                 reason=local_result.reason,
+                human_review_required=local_result.human_review_required,
                 matches=local_result.matches,
                 errors=local_result.errors,
             )
