@@ -50,14 +50,30 @@ def _raise_on_control_violation(result: "EvaluationResult") -> None:
         result: EvaluationResult to check
 
     Raises:
-        ControlViolationError: If result.is_safe is False and action is "deny"
+        RuntimeError: If evaluation errors occurred (fail-closed behavior)
         HumanReviewRequiredError: If result.human_review_required is True
+        ControlViolationError: If result.is_safe is False and action is "deny"
     """
     def _get_attr(obj: Any, attr: str, default: Any = None) -> Any:
         """Get attribute from object or dict."""
         if isinstance(obj, dict):
             return obj.get(attr, default)
         return getattr(obj, attr, default)
+
+    # CRITICAL: Check errors array FIRST - server-side failures must block execution
+    errors = result.errors if hasattr(result, 'errors') else _get_attr(result, "errors", [])
+    if errors:
+        error_messages = []
+        for error in errors:
+            control_name = _get_attr(error, "control_name", "unknown")
+            error_result = _get_attr(error, "result", {})
+            error_msg = _get_attr(error_result, "message", "Unknown error")
+            error_messages.append(f"[{control_name}] {error_msg}")
+
+        raise RuntimeError(
+            f"Control evaluation failed on server. Execution blocked for safety.\n"
+            f"Errors: {'; '.join(error_messages)}"
+        )
 
     # Check human_review_required at the top level - must raise regardless of matches
     if result.human_review_required:

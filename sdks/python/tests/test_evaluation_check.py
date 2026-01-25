@@ -433,6 +433,201 @@ class TestExceptionPrecedence:
 
 
 # =============================================================================
+# ERROR HANDLING TESTS (FAIL-CLOSED BEHAVIOR)
+# =============================================================================
+
+class TestErrorHandling:
+    """Tests for fail-closed behavior when evaluation errors occur."""
+
+    @pytest.mark.asyncio
+    async def test_errors_raise_runtime_error(
+        self, mock_client, agent_uuid, tool_call_payload
+    ):
+        """Test that evaluation errors raise RuntimeError (fail-closed)."""
+        error_response = {
+            "is_safe": True,  # Even if safe, errors should raise
+            "confidence": 0.0,
+            "human_review_required": False,
+            "matches": [],
+            "errors": [
+                {
+                    "control_id": 99,
+                    "control_name": "regex-control",
+                    "action": "deny",
+                    "result": {
+                        "matched": False,
+                        "confidence": 0.0,
+                        "message": "Regex pattern compilation failed"
+                    }
+                }
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = error_response
+        mock_response.raise_for_status = MagicMock()
+        mock_client.http_client.post.return_value = mock_response
+
+        with pytest.raises(RuntimeError) as exc_info:
+            await check_evaluation(
+                client=mock_client,
+                agent_uuid=agent_uuid,
+                payload=tool_call_payload,
+                check_stage="pre"
+            )
+
+        assert "Control evaluation failed on server" in str(exc_info.value)
+        assert "regex-control" in str(exc_info.value)
+        assert "Regex pattern compilation failed" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_multiple_errors_all_included(
+        self, mock_client, agent_uuid, tool_call_payload
+    ):
+        """Test that multiple errors are all included in the exception message."""
+        error_response = {
+            "is_safe": False,
+            "confidence": 0.0,
+            "human_review_required": False,
+            "matches": [],
+            "errors": [
+                {
+                    "control_id": 100,
+                    "control_name": "control-1",
+                    "action": "deny",
+                    "result": {
+                        "matched": False,
+                        "confidence": 0.0,
+                        "message": "Error 1"
+                    }
+                },
+                {
+                    "control_id": 101,
+                    "control_name": "control-2",
+                    "action": "deny",
+                    "result": {
+                        "matched": False,
+                        "confidence": 0.0,
+                        "message": "Error 2"
+                    }
+                }
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = error_response
+        mock_response.raise_for_status = MagicMock()
+        mock_client.http_client.post.return_value = mock_response
+
+        with pytest.raises(RuntimeError) as exc_info:
+            await check_evaluation(
+                client=mock_client,
+                agent_uuid=agent_uuid,
+                payload=tool_call_payload,
+                check_stage="pre"
+            )
+
+        error_message = str(exc_info.value)
+        assert "control-1" in error_message
+        assert "Error 1" in error_message
+        assert "control-2" in error_message
+        assert "Error 2" in error_message
+
+    @pytest.mark.asyncio
+    async def test_errors_take_precedence_over_all(
+        self, mock_client, agent_uuid, tool_call_payload
+    ):
+        """Test that errors take precedence over human_review and deny."""
+        error_response = {
+            "is_safe": False,
+            "confidence": 0.8,
+            "human_review_required": True,  # Even with human review
+            "matches": [
+                {
+                    "control_id": 1,
+                    "control_name": "deny-control",
+                    "action": "deny",
+                    "result": {
+                        "matched": True,
+                        "confidence": 0.9,
+                        "message": "Denied"
+                    }
+                }
+            ],
+            "errors": [
+                {
+                    "control_id": 102,
+                    "control_name": "failed-control",
+                    "action": "deny",
+                    "result": {
+                        "matched": False,
+                        "confidence": 0.0,
+                        "message": "Control failed"
+                    }
+                }
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = error_response
+        mock_response.raise_for_status = MagicMock()
+        mock_client.http_client.post.return_value = mock_response
+
+        # Should raise RuntimeError, not HumanReviewRequiredError or ControlViolationError
+        with pytest.raises(RuntimeError) as exc_info:
+            await check_evaluation(
+                client=mock_client,
+                agent_uuid=agent_uuid,
+                payload=tool_call_payload,
+                check_stage="pre"
+            )
+
+        assert "Control evaluation failed" in str(exc_info.value)
+        assert "failed-control" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_no_raise_on_violation_still_returns_errors(
+        self, mock_client, agent_uuid, tool_call_payload
+    ):
+        """Test that raise_on_violation=False returns result with errors (doesn't raise)."""
+        error_response = {
+            "is_safe": False,
+            "confidence": 0.0,
+            "human_review_required": False,
+            "matches": [],
+            "errors": [
+                {
+                    "control_id": 103,
+                    "control_name": "failed-control",
+                    "action": "deny",
+                    "result": {
+                        "matched": False,
+                        "confidence": 0.0,
+                        "message": "Control failed"
+                    }
+                }
+            ]
+        }
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = error_response
+        mock_response.raise_for_status = MagicMock()
+        mock_client.http_client.post.return_value = mock_response
+
+        # With raise_on_violation=False, should return result (not raise)
+        result = await check_evaluation(
+            client=mock_client,
+            agent_uuid=agent_uuid,
+            payload=tool_call_payload,
+            check_stage="pre",
+            raise_on_violation=False
+        )
+
+        assert len(result.errors) == 1
+        assert result.is_safe is False
+
+
+# =============================================================================
 # PAYLOAD TYPE TESTS
 # =============================================================================
 
