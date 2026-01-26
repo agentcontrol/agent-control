@@ -1,7 +1,7 @@
 .PHONY: help test lint lint-fix typecheck build publish
 
 help:
-	@echo "Agent Protect SDK - Makefile commands"
+	@echo "Agent Control SDK - Makefile commands"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make lint            - run ruff check (using root config)"

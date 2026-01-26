@@ -17,8 +17,7 @@ from agent_control_models import (
     ControlMatch,
     EvaluationResponse,
     EvaluatorResult,
-    LlmCall,
-    ToolCall,
+    Step,
 )
 
 from agent_control.client import AgentControlClient
@@ -39,42 +38,41 @@ def agent_uuid() -> UUID:
 
 
 @pytest.fixture
-def llm_payload() -> LlmCall:
+def llm_payload() -> Step:
     """Sample LLM call payload."""
-    return LlmCall(input="test input", output=None)
+    return Step(type="llm_inference", name="test-step", input="test input", output=None)
 
 
 @pytest.fixture
-def tool_payload() -> ToolCall:
-    """Sample tool call payload."""
-    return ToolCall(tool_name="test_tool", arguments={"query": "test"}, output=None)
+def tool_payload() -> Step:
+    """Sample tool step payload."""
+    return Step(type="tool", name="test_tool", input={"query": "test"}, output=None)
 
 
 def make_control_dict(
     control_id: int,
     name: str,
     *,
-    local: bool = False,
+    execution: str = "server",
     plugin: str = "regex",
     pattern: str = r"test",
     action: str = "deny",
-    applies_to: str = "llm_call",
-    check_stage: str = "pre",
+    step_type: str = "llm_inference",
+    stage: str = "pre",
     path: str | None = None,
 ) -> dict[str, Any]:
     """Create a control dict like what initAgent returns."""
     # Default path based on payload type
     if path is None:
-        path = "arguments" if applies_to == "tool_call" else "input"
+        path = "input"
     return {
         "id": control_id,
         "name": name,
         "control": {
             "description": f"Test control {name}",
             "enabled": True,
-            "local": local,
-            "applies_to": applies_to,
-            "check_stage": check_stage,
+            "execution": execution,
+            "scope": {"step_types": [step_type], "stages": [stage]},
             "selector": {"path": path},
             "evaluator": {
                 "plugin": plugin,
@@ -203,7 +201,7 @@ class TestCheckEvaluationWithLocal:
     async def test_local_only_controls_no_server_call(self, agent_uuid, llm_payload):
         """When only local controls exist, server should not be called."""
         controls = [
-            make_control_dict(1, "local_ctrl", local=True, pattern=r"never_match"),
+            make_control_dict(1, "local_ctrl", execution="sdk", pattern=r"never_match"),
         ]
 
         # Mock client
@@ -214,8 +212,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -229,7 +227,7 @@ class TestCheckEvaluationWithLocal:
     async def test_server_only_controls_calls_server(self, agent_uuid, llm_payload):
         """When only server controls exist, server should be called."""
         controls = [
-            make_control_dict(1, "server_ctrl", local=False),
+            make_control_dict(1, "server_ctrl", execution="server"),
         ]
 
         # Mock client with server response
@@ -243,8 +241,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -259,9 +257,9 @@ class TestCheckEvaluationWithLocal:
         """Local deny should return immediately without calling server."""
         controls = [
             # Local control that will match (deny)
-            make_control_dict(1, "local_deny", local=True, pattern=r"test"),
+            make_control_dict(1, "local_deny", execution="sdk", pattern=r"test"),
             # Server control (should not be called)
-            make_control_dict(2, "server_ctrl", local=False),
+            make_control_dict(2, "server_ctrl", execution="server"),
         ]
 
         # Mock client
@@ -272,8 +270,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -291,9 +289,9 @@ class TestCheckEvaluationWithLocal:
         """When local controls pass, server controls should still be called."""
         controls = [
             # Local control that won't match
-            make_control_dict(1, "local_allow", local=True, pattern=r"never_match"),
+            make_control_dict(1, "local_allow", execution="sdk", pattern=r"never_match"),
             # Server control
-            make_control_dict(2, "server_ctrl", local=False),
+            make_control_dict(2, "server_ctrl", execution="server"),
         ]
 
         # Mock client with server response
@@ -307,8 +305,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -330,8 +328,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -347,9 +345,9 @@ class TestCheckEvaluationWithLocal:
         """Invalid local controls should be skipped."""
         controls = [
             # Invalid control (missing required fields)
-            {"id": 1, "name": "invalid", "control": {"local": True}},
+            {"id": 1, "name": "invalid", "control": {"execution": "sdk"}},
             # Valid server control
-            make_control_dict(2, "server_ctrl", local=False),
+            make_control_dict(2, "server_ctrl", execution="server"),
         ]
 
         # Mock client with server response
@@ -364,8 +362,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -374,15 +372,15 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
 
     @pytest.mark.asyncio
-    async def test_tool_call_local_evaluation(self, agent_uuid, tool_payload):
-        """Local evaluation should work with ToolCall payloads."""
+    async def test_tool_step_local_evaluation(self, agent_uuid, tool_payload):
+        """Local evaluation should work with Step payloads."""
         controls = [
             make_control_dict(
                 1,
                 "local_tool_ctrl",
-                local=True,
+                execution="sdk",
                 pattern=r"test",
-                applies_to="tool_call",
+                step_type="tool",
             ),
         ]
 
@@ -393,15 +391,15 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=tool_payload,
-            check_stage="pre",
+            step=tool_payload,
+            stage="pre",
             controls=controls,
         )
 
         # No server call
         client.http_client.post.assert_not_called()
 
-        # Local control should have matched on ToolCall arguments
+        # Local control should have matched on Step input
         assert result.is_safe is False
 
     @pytest.mark.asyncio
@@ -409,9 +407,9 @@ class TestCheckEvaluationWithLocal:
         """Results from local and server should be merged."""
         controls = [
             # Local control (action=log, will match but not deny)
-            make_control_dict(1, "local_log", local=True, pattern=r"test", action="log"),
+            make_control_dict(1, "local_log", execution="sdk", pattern=r"test", action="log"),
             # Server control
-            make_control_dict(2, "server_ctrl", local=False),
+            make_control_dict(2, "server_ctrl", execution="server"),
         ]
 
         # Mock server response with a match
@@ -435,8 +433,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -449,10 +447,10 @@ class TestCheckEvaluationWithLocal:
         assert len(result.matches) == 2
 
     @pytest.mark.asyncio
-    async def test_tool_call_mixed_local_and_server_controls(self, agent_uuid, tool_payload):
-        """Test mixed local/server controls for same tool_call.
+    async def test_tool_step_mixed_local_and_server_controls(self, agent_uuid, tool_payload):
+        """Test mixed local/server controls for same tool step.
 
-        Given: A tool_call with both local and server controls
+        Given: A tool step with both local and server controls
         When: Local control passes (no deny)
         Then: Server is called, results merged
         """
@@ -461,19 +459,19 @@ class TestCheckEvaluationWithLocal:
             make_control_dict(
                 1,
                 "local_tool_ctrl",
-                local=True,
+                execution="sdk",
                 pattern=r"never_match_xyz",
                 action="deny",
-                applies_to="tool_call",
+                step_type="tool",
             ),
             # Server control
             make_control_dict(
                 2,
                 "server_tool_ctrl",
-                local=False,
+                execution="server",
                 pattern=r"test",
                 action="log",
-                applies_to="tool_call",
+                step_type="tool",
             ),
         ]
 
@@ -498,8 +496,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=tool_payload,
-            check_stage="pre",
+            step=tool_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -513,10 +511,10 @@ class TestCheckEvaluationWithLocal:
         assert result.matches[0].control_name == "server_tool_ctrl"
 
     @pytest.mark.asyncio
-    async def test_tool_call_local_deny_skips_server(self, agent_uuid, tool_payload):
-        """Test that local deny on tool_call short-circuits server call.
+    async def test_tool_step_local_deny_skips_server(self, agent_uuid, tool_payload):
+        """Test that local deny on tool step short-circuits server call.
 
-        Given: A tool_call with local deny control that matches
+        Given: A tool step with local deny control that matches
         When: Local control matches and denies
         Then: Server is NOT called, result is unsafe
         """
@@ -525,19 +523,19 @@ class TestCheckEvaluationWithLocal:
             make_control_dict(
                 1,
                 "local_deny_ctrl",
-                local=True,
-                pattern=r"test",  # matches tool_payload arguments
+                execution="sdk",
+                pattern=r"test",  # matches tool_payload input
                 action="deny",
-                applies_to="tool_call",
+                step_type="tool",
             ),
             # Server control (should not be called)
             make_control_dict(
                 2,
                 "server_tool_ctrl",
-                local=False,
+                execution="server",
                 pattern=r"test",
                 action="deny",
-                applies_to="tool_call",
+                step_type="tool",
             ),
         ]
 
@@ -548,8 +546,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=tool_payload,
-            check_stage="pre",
+            step=tool_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -574,7 +572,7 @@ class TestCheckEvaluationWithLocal:
             make_control_dict(
                 1,
                 "local_missing_plugin",
-                local=True,
+                execution="sdk",
                 plugin="nonexistent-plugin-xyz",
                 pattern=r"test",
             ),
@@ -587,8 +585,8 @@ class TestCheckEvaluationWithLocal:
             await check_evaluation_with_local(
                 client=client,
                 agent_uuid=agent_uuid,
-                payload=llm_payload,
-                check_stage="pre",
+                step=llm_payload,
+                stage="pre",
                 controls=controls,
             )
 
@@ -608,7 +606,7 @@ class TestCheckEvaluationWithLocal:
             make_control_dict(
                 1,
                 "local_agent_scoped",
-                local=True,
+                execution="sdk",
                 plugin="my-agent:custom-evaluator",
                 pattern=r"test",
             ),
@@ -621,8 +619,8 @@ class TestCheckEvaluationWithLocal:
             await check_evaluation_with_local(
                 client=client,
                 agent_uuid=agent_uuid,
-                payload=llm_payload,
-                check_stage="pre",
+                step=llm_payload,
+                stage="pre",
                 controls=controls,
             )
 
@@ -634,7 +632,7 @@ class TestCheckEvaluationWithLocal:
     async def test_server_control_with_missing_plugin_allowed(self, agent_uuid, llm_payload):
         """Test that server control with unavailable plugin is allowed (server handles it).
 
-        Given: A server control (local=False) referencing a plugin that doesn't exist locally
+        Given: A server control (execution="server") referencing a plugin that doesn't exist locally
         When: check_evaluation_with_local is called
         Then: No error, server is called to handle it
         """
@@ -642,7 +640,7 @@ class TestCheckEvaluationWithLocal:
             make_control_dict(
                 1,
                 "server_custom_plugin",
-                local=False,
+                execution="server",
                 plugin="server-only-plugin",
                 pattern=r"test",
             ),
@@ -660,8 +658,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -679,7 +677,7 @@ class TestCheckEvaluationWithLocal:
         """
         controls = [
             # Invalid control (missing required evaluator field)
-            {"id": 999, "name": "bad_control", "control": {"local": True}},
+            {"id": 999, "name": "bad_control", "control": {"execution": "sdk"}},
         ]
 
         client = MagicMock(spec=AgentControlClient)
@@ -689,8 +687,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 
@@ -710,7 +708,7 @@ class TestCheckEvaluationWithLocal:
     async def test_malformed_server_control_still_calls_server(self, agent_uuid, llm_payload):
         """Test that malformed server control data still triggers server call.
 
-        Given: A server control (local=False) with missing/malformed 'control' data
+        Given: A server control (execution="server") with missing/malformed 'control' data
         When: check_evaluation_with_local is called
         Then: Server is still called (server will handle parsing)
 
@@ -721,7 +719,7 @@ class TestCheckEvaluationWithLocal:
         controls = [
             # Malformed server control - missing 'control' key entirely
             {"id": 1, "name": "malformed_server"},
-            # Malformed server control - empty control dict (local defaults to False)
+            # Malformed server control - empty control dict (execution defaults to server)
             {"id": 2, "name": "empty_server", "control": {}},
         ]
 
@@ -736,8 +734,8 @@ class TestCheckEvaluationWithLocal:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,
-            payload=llm_payload,
-            check_stage="pre",
+            step=llm_payload,
+            stage="pre",
             controls=controls,
         )
 

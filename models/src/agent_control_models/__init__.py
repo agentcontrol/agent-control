@@ -2,11 +2,21 @@
 
 __version__ = "0.1.0"
 
-from .agent import Agent, AgentContext, AgentTool, LlmCall, ToolCall
+from .agent import (
+    BUILTIN_STEP_TYPES,
+    STEP_TYPE_LLM_INFERENCE,
+    STEP_TYPE_TOOL,
+    Agent,
+    JSONObject,
+    JSONValue,
+    Step,
+    StepSchema,
+)
 from .controls import (
     ControlAction,
     ControlDefinition,
     ControlMatch,
+    ControlScope,
     ControlSelector,
     EvaluatorConfig,
     EvaluatorResult,
@@ -32,6 +42,16 @@ from .evaluation import (
     EvaluationResult,
 )
 from .health import HealthResponse
+from .observability import (
+    BatchEventsRequest,
+    BatchEventsResponse,
+    ControlExecutionEvent,
+    ControlStats,
+    EventQueryRequest,
+    EventQueryResponse,
+    StatsRequest,
+    StatsResponse,
+)
 from .plugin import (
     PluginEvaluator,
     PluginMetadata,
@@ -52,6 +72,7 @@ from .server import (
     PaginationInfo,
     PatchControlRequest,
     PatchControlResponse,
+    StepKey,
 )
 
 __all__ = [
@@ -59,10 +80,13 @@ __all__ = [
     "HealthResponse",
     # Agent
     "Agent",
-    "AgentTool",
-    "AgentContext",
-    "LlmCall",
-    "ToolCall",
+    "StepSchema",
+    "JSONValue",
+    "JSONObject",
+    "Step",
+    "STEP_TYPE_TOOL",
+    "STEP_TYPE_LLM_INFERENCE",
+    "BUILTIN_STEP_TYPES",
     # Policy
     "Policy",
     # Evaluation
@@ -73,6 +97,7 @@ __all__ = [
     "ControlDefinition",
     "ControlAction",
     "ControlMatch",
+    "ControlScope",
     "ControlSelector",
     "EvaluatorConfig",
     "EvaluatorResult",
@@ -109,5 +134,14 @@ __all__ = [
     "PaginationInfo",
     "PatchControlRequest",
     "PatchControlResponse",
+    "StepKey",
+    # Observability models
+    "ControlExecutionEvent",
+    "BatchEventsRequest",
+    "BatchEventsResponse",
+    "EventQueryRequest",
+    "EventQueryResponse",
+    "ControlStats",
+    "StatsRequest",
+    "StatsResponse",
 ]
-

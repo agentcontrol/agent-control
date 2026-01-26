@@ -184,17 +184,17 @@ def test_get_control_data_returns_typed_response(client: TestClient):
     assert "evaluator" in data
     assert "action" in data
     assert "selector" in data
-    assert "applies_to" in data
-    assert "check_stage" in data
+    assert "execution" in data
+    assert "scope" in data
 
 
-def test_validation_empty_tool_names_rejected(client: TestClient):
-    """Test that empty tool_names list is rejected."""
+def test_validation_empty_step_names_rejected(client: TestClient):
+    """Test that empty step_names list is rejected."""
     control_id = create_control(client)
 
-    # Given: Payload with empty tool_names list
+    # Given: Payload with empty step_names list
     payload = VALID_CONTROL_PAYLOAD.copy()
-    payload["selector"] = {"path": "arguments", "tool_names": []}
+    payload["scope"] = {"step_names": []}
 
     # When: Setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
@@ -202,8 +202,8 @@ def test_validation_empty_tool_names_rejected(client: TestClient):
     # Then: 422 Unprocessable Entity (RFC 7807 format)
     assert resp.status_code == 422
 
-    # Verify error message mentions tool_names
+    # Verify error message mentions step_names
     response_data = resp.json()
     errors = response_data.get("errors", [])
-    assert any("tool_names" in str(e.get("field", "")) for e in errors)
+    assert any("step_names" in str(e.get("field", "")) for e in errors)
     assert any("empty list" in e.get("message", "") for e in errors)

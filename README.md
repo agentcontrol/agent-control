@@ -14,8 +14,8 @@ from agent_control import control, ControlViolationError
 
 # Initialize once at startup
 agent_control.init(
-    agent_name="my-agent",
-    agent_id="my-agent-v1",
+    agent_name="Customer Support Agent",
+    agent_id="support-agent-v1",
     server_url="http://localhost:8000"
 )
 
@@ -28,7 +28,7 @@ async def chat(message: str) -> str:
 try:
     response = await chat(user_input)
 except ControlViolationError as e:
-    print(f"Blocked by {e.control_name}: {e.message}")
+    print(f"Blocked by control '{e.control_name}': {e.message}")
 ```
 
 ---
@@ -77,27 +77,38 @@ Server is now running at `http://localhost:8000`.
 ### 3. Start the Dashboard (Optional)
 
 ```bash
-cd ui && npm install && npm run dev
+cd ui
+pnpm install
+pnpm dev
 ```
 
 Dashboard is now running at `http://localhost:4000`.
 
 ### 4. Use the SDK
 
+Install the SDK:
+
+```bash
+pip install agent-control
+```
+
+Use in your code:
+
 ```python
 import agent_control
 from agent_control import control, ControlViolationError
 
-# Initialize — connects to server and loads assigned policy
+# Initialize — connects to server and registers agent
 agent_control.init(
-    agent_name="my-agent",
-    agent_id="my-agent-v1",
+    agent_name="Customer Support Agent",
+    agent_id="support-agent-v1",
     server_url="http://localhost:8000"
 )
 
-# Apply the agent's policy to any function
+# Apply controls to any function
 @control()
 async def chat(message: str) -> str:
+    """This function is protected by server-defined controls"""
     return await llm.generate(message)
 
 # Handle violations gracefully
@@ -106,7 +117,7 @@ async def main():
         response = await chat("Hello!")
         print(response)
     except ControlViolationError as e:
-        print(f"Blocked by {e.control_name}: {e.message}")
+        print(f"Blocked by control '{e.control_name}': {e.message}")
 ```
 
 > **Note**: Authentication is disabled by default for local development. See [docs/REFERENCE.md](docs/REFERENCE.md#authentication) for production setup.
@@ -115,12 +126,23 @@ async def main():
 
 ## Configuration
 
+### Environment Variables
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AGENT_CONTROL_URL` | `http://localhost:8000` | Server URL for SDK |
-| `AGENT_CONTROL_API_KEY` | — | API key for authentication |
-| `AGENT_CONTROL_API_KEY_ENABLED` | `false` | Enable API key auth on server |
-| `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator |
+| `AGENT_CONTROL_API_KEY` | — | API key for authentication (if enabled) |
+| `DB_URL` | `sqlite+aiosqlite:///./agent_control.db` | Database connection string |
+| `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator plugin |
+
+### Server Configuration
+
+The server supports additional environment variables:
+
+- `AGENT_CONTROL_API_KEY_ENABLED` - Enable API key authentication (default: `false`)
+- `LOG_LEVEL` - Logging level (default: `INFO`)
+
+See [server/README.md](server/README.md) for complete server configuration.
 
 ---
 
@@ -135,8 +157,8 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "name": "block-ssn-output",
   "description": "Block Social Security Numbers in responses",
   "enabled": true,
-  "applies_to": "llm_call",
-  "check_stage": "post",
+  "execution": "server",
+  "scope": { "step_types": ["llm_inference"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
     "plugin": "regex",
@@ -153,8 +175,8 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "name": "block-toxic-input",
   "description": "Block toxic or harmful user messages",
   "enabled": true,
-  "applies_to": "llm_call",
-  "check_stage": "pre",
+  "execution": "server",
+  "scope": { "step_types": ["llm_inference"], "stages": ["pre"] },
   "selector": { "path": "input" },
   "evaluator": {
     "plugin": "galileo-luna2",
@@ -237,35 +259,61 @@ agent-control/
 
 ### Makefile Commands
 
+The project uses a Makefile for common tasks:
+
 | Command | Description |
 |:--------|:------------|
-| `make sync` | Install dependencies for all packages |
+| `make sync` | Install dependencies for all workspace packages |
 | `make test` | Run tests across all packages |
 | `make lint` | Run ruff linting |
+| `make lint-fix` | Run ruff with auto-fix |
 | `make typecheck` | Run mypy type checking |
-| `make check` | Run all quality checks |
+| `make check` | Run all quality checks (test + lint + typecheck) |
 | `make server-run` | Start the server |
+| `make server-<target>` | Forward commands to server (e.g., `make server-alembic-upgrade`) |
+| `make sdk-<target>` | Forward commands to SDK (e.g., `make sdk-test`) |
+| `make engine-<target>` | Forward commands to engine (e.g., `make engine-test`) |
+
+For detailed development workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## Documentation
 
-- **[Reference](docs/REFERENCE.md)** — Concepts, evaluators, SDK, API, configuration
-- **[Examples](examples/README.md)** — Working code examples and patterns
-- **[Contributing](CONTRIBUTING.md)** — Development setup and guidelines
-- **[SDK Documentation](sdks/python/README.md)** — Python SDK details
-- **[UI Documentation](ui/README.md)** — Dashboard setup and usage
+### Core Documentation
+
+- **[Reference Guide](docs/REFERENCE.md)** — Complete reference for concepts, evaluators, SDK, and API
+- **[Contributing Guide](CONTRIBUTING.md)** — Development setup and contribution guidelines
+- **[Testing Guide](docs/testing.md)** — Testing conventions and best practices
+
+### Component Documentation
+
+- **[Python SDK](sdks/python/README.md)** — SDK installation, usage, and API reference
+- **[Server](server/README.md)** — Server setup, configuration, and deployment
+- **[UI Dashboard](ui/README.md)** — Web dashboard setup and usage
+- **[Plugins](plugins/README.md)** — Available evaluator plugins and custom plugin development
+
+### Examples
+
+- **[Examples Overview](examples/README.md)** — Working code examples and integration patterns
+- **[Customer Support Agent](examples/customer_support_agent/)** — Full example with multiple tools
+- **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection with LangChain
+- **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
 
 ---
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make changes (ensure `make check` passes)
-4. Submit a Pull Request
+We welcome contributions! To get started:
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Make your changes
+4. Run quality checks (`make check`)
+5. Commit using conventional commits (`feat:`, `fix:`, `docs:`, etc.)
+6. Submit a Pull Request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines, code conventions, and development workflow.
 
 ---
 

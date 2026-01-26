@@ -23,7 +23,7 @@ def test_init_agent_force_replace_default_false_works_normally(client: TestClien
             "agent_description": "Test",
             "agent_version": "1.0"
         },
-        "tools": []
+        "steps": []
     })
 
     # Then: Should succeed
@@ -50,7 +50,7 @@ def test_init_agent_force_replace_false_explicit_works_normally(client: TestClie
             "agent_description": "Test",
             "agent_version": "1.0"
         },
-        "tools": [],
+        "steps": [],
         "force_replace": False
     })
 
@@ -66,7 +66,7 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
     When: Updating with force_replace=true
     Then: Updates normally without data loss
     """
-    # Given: Create agent with tools
+    # Given: Create agent with steps
     agent_id = str(uuid.uuid4())
     agent_name = f"TestAgent-{uuid.uuid4().hex[:8]}"
 
@@ -77,14 +77,14 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
             "agent_description": "Test",
             "agent_version": "1.0"
         },
-        "tools": [
-            {"tool_name": "tool1", "arguments": {}, "output_schema": {}},
-            {"tool_name": "tool2", "arguments": {}, "output_schema": {}}
+        "steps": [
+            {"type": "tool", "name": "tool1", "input_schema": {}, "output_schema": {}},
+            {"type": "tool", "name": "tool2", "input_schema": {}, "output_schema": {}}
         ]
     })
     assert resp.status_code == 200
 
-    # When: Update with force_replace=true and add a new tool
+    # When: Update with force_replace=true and add a new step
     resp = client.post("/api/v1/agents/initAgent", json={
         "agent": {
             "agent_id": agent_id,
@@ -92,19 +92,19 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
             "agent_description": "Updated",
             "agent_version": "2.0"
         },
-        "tools": [
-            {"tool_name": "tool1", "arguments": {}, "output_schema": {}},
-            {"tool_name": "tool2", "arguments": {}, "output_schema": {}},
-            {"tool_name": "tool3", "arguments": {}, "output_schema": {}}
+        "steps": [
+            {"type": "tool", "name": "tool1", "input_schema": {}, "output_schema": {}},
+            {"type": "tool", "name": "tool2", "input_schema": {}, "output_schema": {}},
+            {"type": "tool", "name": "tool3", "input_schema": {}, "output_schema": {}}
         ],
         "force_replace": True
     })
 
-    # Then: Should succeed and all tools should be present
+    # Then: Should succeed and all steps should be present
     assert resp.status_code == 200
     get_resp = client.get(f"/api/v1/agents/{agent_id}")
-    tools = [t["tool_name"] for t in get_resp.json()["tools"]]
-    assert set(tools) == {"tool1", "tool2", "tool3"}
+    steps = [s["name"] for s in get_resp.json()["steps"]]
+    assert set(steps) == {"tool1", "tool2", "tool3"}
 
 
 # Note: Testing actual corrupted data scenario requires direct database manipulation
@@ -113,7 +113,7 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
 # 2. The error path is covered by exception handling in the endpoint
 #
 # The corruption scenario would look like:
-# 1. Agent data in DB has invalid structure (e.g., tools is a string instead of list)
+# 1. Agent data in DB has invalid structure (e.g., steps is a string instead of list)
 # 2. initAgent without force_replace → 422 error
 # 3. initAgent with force_replace=true → replaces corrupted data
 #

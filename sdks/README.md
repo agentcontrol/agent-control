@@ -1,10 +1,10 @@
-# Agent Protect SDKs
+# Agent Control SDKs
 
-This workspace contains all SDK implementations for Agent Protect.
+This workspace contains all SDK implementations for Agent Control.
 
 ## Available SDKs
 
-- **Python SDK** (`python/`) - Python client for interacting with Agent Protect services
+- **Python SDK** (`python/`) - Python client for interacting with Agent Control services
 
 ## Development
 

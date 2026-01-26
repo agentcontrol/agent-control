@@ -1,2 +1,2 @@
-"""Integration tests for Agent Protect SDK."""
+"""Integration tests for Agent Control SDK."""
 

@@ -18,7 +18,6 @@ from agent_control_models import (
     EvaluationRequest,
     EvaluationResponse,
     EvaluatorResult,
-    ToolCall,
 )
 
 from .evaluators import get_evaluator
@@ -68,8 +67,8 @@ class ControlEngine:
 
     Args:
         controls: Sequence of controls to evaluate.
-        context: Execution context. 'sdk' runs only local=True controls,
-                 'server' runs only local=False controls.
+        context: Execution context. 'sdk' runs controls with execution="sdk",
+                 'server' runs controls with execution="server".
     """
 
     def __init__(
@@ -85,7 +84,9 @@ class ControlEngine:
     ) -> list[ControlWithIdentity]:
         """Get all controls that apply to the current request."""
         applicable = []
-        payload_is_tool = isinstance(request.payload, ToolCall)
+        step = request.step
+        step_type = step.type
+        step_name = step.name
 
         for item in self.controls:
             control_def = item.control
@@ -93,43 +94,31 @@ class ControlEngine:
             if not control_def.enabled:
                 continue
 
-            if control_def.check_stage != request.check_stage:
+            scope = control_def.scope
+            if scope.stages and request.stage not in scope.stages:
                 continue
-
-            if control_def.applies_to == "tool_call" and not payload_is_tool:
-                continue
-            if control_def.applies_to == "llm_call" and payload_is_tool:
+            if scope.step_types and step_type not in scope.step_types:
                 continue
 
             # Filter by locality based on context
-            control_local = getattr(control_def, "local", False)
-            if self.context == "sdk" and not control_local:
-                continue
-            if self.context == "server" and control_local:
+            if control_def.execution != self.context:
                 continue
 
-            # Optional tool scoping for ToolCall payloads
-            if payload_is_tool:
-                sel = control_def.selector
-                names = getattr(sel, "tool_names", None)
-                pattern = getattr(sel, "tool_name_regex", None)
-                if names or pattern:
-                    tool_name = getattr(request.payload, "tool_name", None)
-                    if tool_name is None:
+            # Optional step name scoping
+            if scope.step_names or scope.step_name_regex:
+                match = False
+                if scope.step_names and step_name in scope.step_names:
+                    match = True
+                if not match and scope.step_name_regex:
+                    try:
+                        if _compile_regex(scope.step_name_regex).search(step_name) is not None:
+                            match = True
+                    except re2.error:
+                        # Invalid pattern should have been caught at model validation;
+                        # skip defensively.
                         continue
-                    match = False
-                    if names and tool_name in names:
-                        match = True
-                    if not match and pattern:
-                        try:
-                            if _compile_regex(pattern).search(tool_name) is not None:
-                                match = True
-                        except re2.error:
-                            # Invalid pattern should have been caught at model validation;
-                            # skip defensively.
-                            continue
-                    if not match:
-                        continue
+                if not match:
+                    continue
 
             applicable.append(item)
 
@@ -142,7 +131,7 @@ class ControlEngine:
         matches with action=deny, remaining evaluations are cancelled.
 
         Args:
-            request: The evaluation request containing payload and context
+            request: The evaluation request containing step and context
 
         Returns:
             EvaluationResponse with is_safe status and any matches
@@ -157,7 +146,7 @@ class ControlEngine:
         for item in applicable:
             control_def = item.control
             sel_path = control_def.selector.path or "*"
-            data = select_data(request.payload, sel_path)
+            data = select_data(request.step, sel_path)
             eval_tasks.append(_EvalTask(item=item, data=data))
 
         # Run evaluations in parallel with cancel-on-deny
@@ -247,6 +236,7 @@ class ControlEngine:
 
         # Collect results and errors
         errors: list[ControlMatch] = []
+        non_matches: list[ControlMatch] = []
         successful_count = 0
         evaluated_count = 0  # Controls that ran (not cancelled)
         deny_errored = False
@@ -295,6 +285,16 @@ class ControlEngine:
                 elif eval_task.item.control.action.decision == "human_review":
                     is_safe = False
                     human_review_matched = True
+            else:
+                # Collect non-matches (evaluated but did not match)
+                non_matches.append(
+                    ControlMatch(
+                        control_id=eval_task.item.id,
+                        control_name=eval_task.item.name,
+                        action=eval_task.item.control.action.decision,
+                        result=eval_task.result,
+                    )
+                )
 
         # Fail closed if a deny control errored (couldn't verify safety)
         if deny_errored:
@@ -322,5 +322,6 @@ class ControlEngine:
             confidence=confidence,
             matches=matches if matches else None,
             errors=errors if errors else None,
-            human_review_required=human_review_matched
+            human_review_required=human_review_matched,
+            non_matches=non_matches if non_matches else None,
         )

@@ -22,8 +22,8 @@ def generate_openapi_spec(output_path: str = "openapi.json") -> None:
 
     # Add additional metadata for SDK generation
     openapi_schema["info"]["x-sdk-settings"] = {
-        "packageName": "agent-protect-sdk",
-        "projectName": "agent-protect",
+        "packageName": "agent-control-sdk",
+        "projectName": "agent-control",
     }
 
     output_file = Path(output_path)

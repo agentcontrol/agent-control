@@ -2,11 +2,20 @@ import datetime as dt
 import uuid as _uuid
 from typing import Any, Optional
 
-from agent_control_models.agent import AgentTool
+from agent_control_models.agent import StepSchema
 from agent_control_models.base import BaseModel
 from agent_control_models.server import EvaluatorSchema
 from pydantic import Field
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Table, text
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Table,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -18,7 +27,7 @@ class AgentData(BaseModel):
     """Agent metadata stored in JSONB."""
 
     agent_metadata: dict[str, Any]
-    tools: list[AgentTool] = Field(default_factory=list)
+    steps: list[StepSchema] = Field(default_factory=list)
     evaluators: list[EvaluatorSchema] = Field(default_factory=list)
 
 
@@ -77,4 +86,48 @@ class Agent(Base):
     )
 
 
+# =============================================================================
+# Observability Models
+# =============================================================================
 
+
+class ControlExecutionEventDB(Base):
+    """
+    Raw control execution events with minimal indexed columns + JSONB.
+
+    Schema designed for simplicity and flexibility:
+    - Only 4 columns: control_execution_id, timestamp, agent_uuid, data
+    - Full event stored in JSONB 'data' column
+    - Query-time aggregation from JSONB fields
+    - No migrations needed for new event fields
+
+    Primary access pattern: (agent_uuid, timestamp DESC) for stats queries.
+    Expression index on (data->>'control_id') for grouping.
+    """
+
+    __tablename__ = "control_execution_events"
+
+    # Primary key
+    control_execution_id: Mapped[str] = mapped_column(
+        String(36), primary_key=True
+    )
+
+    # Minimal indexed columns for efficient queries
+    timestamp: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+    agent_uuid: Mapped[_uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=False,
+    )
+
+    # Full event data as JSONB
+    data: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False,
+    )
+
+    # Composite index for agent + time queries (primary access pattern)
+    __table_args__ = (
+        Index("ix_events_agent_time", "agent_uuid", timestamp.desc()),
+    )

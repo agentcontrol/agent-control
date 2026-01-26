@@ -155,6 +155,7 @@ async def get_control(
 @router.get(
     "/{control_id}/data",
     response_model=GetControlDataResponse,
+    response_model_exclude_none=True,
     summary="Get control configuration data",
     response_description="Control data payload",
 )
@@ -416,7 +417,11 @@ async def list_controls(
     limit: int = Query(_DEFAULT_PAGINATION_LIMIT, ge=1, le=_MAX_PAGINATION_LIMIT),
     name: str | None = Query(None, description="Filter by name (partial, case-insensitive)"),
     enabled: bool | None = Query(None, description="Filter by enabled status"),
-    applies_to: str | None = Query(None, description="Filter by 'llm_call' or 'tool_call'"),
+    step_type: str | None = Query(
+        None, description="Filter by step type (built-ins: 'tool', 'llm_inference')"
+    ),
+    stage: str | None = Query(None, description="Filter by stage ('pre' or 'post')"),
+    execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
     tag: str | None = Query(None, description="Filter by tag"),
     db: AsyncSession = Depends(get_async_db),
 ) -> ListControlsResponse:
@@ -430,7 +435,9 @@ async def list_controls(
         limit: Maximum number of controls to return (default 20, max 100)
         name: Optional filter by name (partial, case-insensitive match)
         enabled: Optional filter by enabled status
-        applies_to: Optional filter by type ('llm_call' or 'tool_call')
+        step_type: Optional filter by step type (built-ins: 'tool', 'llm_inference')
+        stage: Optional filter by stage ('pre' or 'post')
+        execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag
         db: Database session (injected)
 
@@ -438,7 +445,7 @@ async def list_controls(
         ListControlsResponse with control summaries and pagination info
 
     Example:
-        GET /controls?limit=10&enabled=true&applies_to=llm_call
+        GET /controls?limit=10&enabled=true&step_type=tool
     """
     # Get total count (with filters applied)
     count_query = select(func.count()).select_from(Control)
@@ -468,8 +475,24 @@ async def list_controls(
             # enabled=False: only include if explicitly false
             query = query.where(Control.data["enabled"].astext == "false")
 
-    if applies_to is not None:
-        query = query.where(Control.data["applies_to"].astext == applies_to)
+    if step_type is not None:
+        query = query.where(
+            or_(
+                Control.data["scope"]["step_types"].contains([step_type]),
+                ~Control.data.has_key("scope"),
+                ~Control.data["scope"].has_key("step_types"),
+            )
+        )
+    if stage is not None:
+        query = query.where(
+            or_(
+                Control.data["scope"]["stages"].contains([stage]),
+                ~Control.data.has_key("scope"),
+                ~Control.data["scope"].has_key("stages"),
+            )
+        )
+    if execution is not None:
+        query = query.where(Control.data["execution"].astext == execution)
 
     if tag is not None:
         query = query.where(Control.data["tags"].contains([tag]))
@@ -493,8 +516,24 @@ async def list_controls(
             )
         else:
             total_query = total_query.where(Control.data["enabled"].astext == "false")
-    if applies_to is not None:
-        total_query = total_query.where(Control.data["applies_to"].astext == applies_to)
+    if step_type is not None:
+        total_query = total_query.where(
+            or_(
+                Control.data["scope"]["step_types"].contains([step_type]),
+                ~Control.data.has_key("scope"),
+                ~Control.data["scope"].has_key("step_types"),
+            )
+        )
+    if stage is not None:
+        total_query = total_query.where(
+            or_(
+                Control.data["scope"]["stages"].contains([stage]),
+                ~Control.data.has_key("scope"),
+                ~Control.data["scope"].has_key("stages"),
+            )
+        )
+    if execution is not None:
+        total_query = total_query.where(Control.data["execution"].astext == execution)
     if tag is not None:
         total_query = total_query.where(Control.data["tags"].contains([tag]))
     total_result = await db.execute(total_query)
@@ -510,14 +549,16 @@ async def list_controls(
     for ctrl in controls:
         # Extract summary fields from JSONB data
         data = ctrl.data or {}
+        scope = data.get("scope") or {}
         summaries.append(
             ControlSummary(
                 id=ctrl.id,
                 name=ctrl.name,
                 description=data.get("description"),
                 enabled=data.get("enabled", True),
-                applies_to=data.get("applies_to"),
-                check_stage=data.get("check_stage"),
+                execution=data.get("execution"),
+                step_types=scope.get("step_types"),
+                stages=scope.get("stages"),
                 tags=data.get("tags", []),
             )
         )

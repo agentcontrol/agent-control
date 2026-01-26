@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 def make_agent_payload(
     agent_id: str | None = None,
     name: str | None = None,
-    tools: list | None = None,
+    steps: list | None = None,
     evaluators: list | None = None,
 ):
     """Helper to create agent payload."""
@@ -23,7 +23,7 @@ def make_agent_payload(
             "agent_description": "desc",
             "agent_version": "1.0",
         },
-        "tools": tools or [],
+        "steps": steps or [],
         "evaluators": evaluators or [],
     }
 
@@ -71,17 +71,17 @@ def test_get_plugins_schema_has_properties(client: TestClient) -> None:
 # =============================================================================
 
 
-def test_patch_agent_remove_tool(client: TestClient) -> None:
-    """Given an agent with multiple tools, when removing one tool, then only that tool is removed."""
+def test_patch_agent_remove_step(client: TestClient) -> None:
+    """Given an agent with multiple steps, when removing one step, then only that step is removed."""
     # Given
     agent_id = str(uuid.uuid4())
     name = f"Test Agent {uuid.uuid4().hex[:8]}"
     payload = make_agent_payload(
         agent_id=agent_id,
         name=name,
-        tools=[
-            {"tool_name": "tool1", "arguments": {}, "output_schema": {}},
-            {"tool_name": "tool2", "arguments": {}, "output_schema": {}},
+        steps=[
+            {"type": "tool", "name": "tool1", "input_schema": {}, "output_schema": {}},
+            {"type": "tool", "name": "tool2", "input_schema": {}, "output_schema": {}},
         ],
     )
     client.post("/api/v1/agents/initAgent", json=payload)
@@ -89,19 +89,19 @@ def test_patch_agent_remove_tool(client: TestClient) -> None:
     # When
     patch_resp = client.patch(
         f"/api/v1/agents/{agent_id}",
-        json={"remove_tools": ["tool1"]},
+        json={"remove_steps": [{"type": "tool", "name": "tool1"}]},
     )
 
     # Then
     assert patch_resp.status_code == 200
     data = patch_resp.json()
-    assert data["tools_removed"] == ["tool1"]
+    assert data["steps_removed"] == [{"type": "tool", "name": "tool1"}]
     assert data["evaluators_removed"] == []
 
     get_resp = client.get(f"/api/v1/agents/{agent_id}")
-    tools = [t["tool_name"] for t in get_resp.json()["tools"]]
-    assert "tool1" not in tools
-    assert "tool2" in tools
+    steps = [s["name"] for s in get_resp.json()["steps"]]
+    assert "tool1" not in steps
+    assert "tool2" in steps
 
 
 def test_patch_agent_remove_evaluator(client: TestClient) -> None:
@@ -147,13 +147,16 @@ def test_patch_agent_remove_nonexistent_is_idempotent(client: TestClient) -> Non
     # When
     patch_resp = client.patch(
         f"/api/v1/agents/{agent_id}",
-        json={"remove_tools": ["nonexistent"], "remove_evaluators": ["also_nonexistent"]},
+        json={
+            "remove_steps": [{"type": "tool", "name": "nonexistent"}],
+            "remove_evaluators": ["also_nonexistent"],
+        },
     )
 
     # Then
     assert patch_resp.status_code == 200
     data = patch_resp.json()
-    assert data["tools_removed"] == []
+    assert data["steps_removed"] == []
     assert data["evaluators_removed"] == []
 
 
@@ -165,7 +168,7 @@ def test_patch_agent_not_found(client: TestClient) -> None:
     # When
     patch_resp = client.patch(
         f"/api/v1/agents/{fake_id}",
-        json={"remove_tools": ["tool1"]},
+        json={"remove_steps": [{"type": "tool", "name": "tool1"}]},
     )
 
     # Then
@@ -173,14 +176,14 @@ def test_patch_agent_not_found(client: TestClient) -> None:
 
 
 def test_patch_agent_remove_both(client: TestClient) -> None:
-    """Given an agent with tools and evaluators, when removing both, then both are removed."""
+    """Given an agent with steps and evaluators, when removing both, then both are removed."""
     # Given
     agent_id = str(uuid.uuid4())
     name = f"Test Agent {uuid.uuid4().hex[:8]}"
     payload = make_agent_payload(
         agent_id=agent_id,
         name=name,
-        tools=[{"tool_name": "my_tool", "arguments": {}, "output_schema": {}}],
+        steps=[{"type": "tool", "name": "my_tool", "input_schema": {}, "output_schema": {}}],
         evaluators=[{"name": "my_eval", "config_schema": {}}],
     )
     client.post("/api/v1/agents/initAgent", json=payload)
@@ -188,13 +191,16 @@ def test_patch_agent_remove_both(client: TestClient) -> None:
     # When
     patch_resp = client.patch(
         f"/api/v1/agents/{agent_id}",
-        json={"remove_tools": ["my_tool"], "remove_evaluators": ["my_eval"]},
+        json={
+            "remove_steps": [{"type": "tool", "name": "my_tool"}],
+            "remove_evaluators": ["my_eval"],
+        },
     )
 
     # Then
     assert patch_resp.status_code == 200
     data = patch_resp.json()
-    assert data["tools_removed"] == ["my_tool"]
+    assert data["steps_removed"] == [{"type": "tool", "name": "my_tool"}]
     assert data["evaluators_removed"] == ["my_eval"]
 
 
@@ -206,7 +212,7 @@ def test_patch_agent_empty_request_is_noop(client: TestClient) -> None:
     payload = make_agent_payload(
         agent_id=agent_id,
         name=name,
-        tools=[{"tool_name": "keep_me", "arguments": {}, "output_schema": {}}],
+        steps=[{"type": "tool", "name": "keep_me", "input_schema": {}, "output_schema": {}}],
         evaluators=[{"name": "keep_me_too", "config_schema": {}}],
     )
     client.post("/api/v1/agents/initAgent", json=payload)
@@ -214,19 +220,19 @@ def test_patch_agent_empty_request_is_noop(client: TestClient) -> None:
     # When
     patch_resp = client.patch(
         f"/api/v1/agents/{agent_id}",
-        json={"remove_tools": [], "remove_evaluators": []},
+        json={"remove_steps": [], "remove_evaluators": []},
     )
 
     # Then
     assert patch_resp.status_code == 200
     data = patch_resp.json()
-    assert data["tools_removed"] == []
+    assert data["steps_removed"] == []
     assert data["evaluators_removed"] == []
 
     # Verify nothing was removed
     get_resp = client.get(f"/api/v1/agents/{agent_id}")
-    tools = [t["tool_name"] for t in get_resp.json()["tools"]]
-    assert "keep_me" in tools
+    steps = [s["name"] for s in get_resp.json()["steps"]]
+    assert "keep_me" in steps
 
     get_evals = client.get(f"/api/v1/agents/{agent_id}/evaluators")
     evals = [e["name"] for e in get_evals.json()["evaluators"]]
@@ -281,8 +287,8 @@ def test_policy_assignment_with_builtin_plugin(client: TestClient) -> None:
         f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
         {
-            "applies_to": "llm_call",
-            "check_stage": "pre",
+            "execution": "server",
+            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {"plugin": "regex", "config": {"pattern": "test.*"}},
             "action": {"decision": "deny"},
@@ -313,8 +319,8 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
         f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
         {
-            "applies_to": "llm_call",
-            "check_stage": "pre",
+            "execution": "server",
+            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {"plugin": f"{agent_name}:custom-eval", "config": {}},
             "action": {"decision": "deny"},
@@ -344,8 +350,8 @@ def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) 
         f"/api/v1/controls/{control_id}/data",
         json={
             "data": {
-                "applies_to": "llm_call",
-                "check_stage": "pre",
+                "execution": "server",
+                "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
                 "selector": {"path": "input"},
                 "evaluator": {"plugin": f"{agent_name}:nonexistent-eval", "config": {}},
                 "action": {"decision": "deny"},
@@ -382,8 +388,8 @@ def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> No
         f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
         {
-            "applies_to": "llm_call",
-            "check_stage": "pre",
+            "execution": "server",
+            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {"plugin": f"{agent_a_name}:shared-eval", "config": {}},
             "action": {"decision": "deny"},
@@ -544,8 +550,8 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
         f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
         {
-            "applies_to": "llm_call",
-            "check_stage": "pre",
+            "execution": "server",
+            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {"plugin": f"{agent_name}:my-eval", "config": {}},
             "action": {"decision": "deny"},

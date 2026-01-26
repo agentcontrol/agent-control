@@ -1,4 +1,4 @@
-# Agent Protect: instructions for coding agents
+# Agent Control: instructions for coding agents
 
 This repo is a Python monorepo managed as a `uv` workspace. Use the existing `make` targets and follow the conventions in `CONTRIBUTING.md`.
 

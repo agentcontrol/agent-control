@@ -1,14 +1,18 @@
-# Agent Protect Server
+# Agent Control Server
 
-Server component for Agent Protect - provides agent protection services via REST API.
+FastAPI server for Agent Control - provides centralized control management, policy enforcement, and evaluation services via REST API.
 
 ## Features
 
-- FastAPI-based REST API
-- Health check endpoint
-- Content protection analysis endpoint
-- Configurable via environment variables
-- Async/await support
+- **Control Management** - CRUD operations for controls
+- **Policy Management** - Group controls into reusable policies
+- **Agent Registration** - Register and manage agents
+- **Evaluation Engine** - Server-side control evaluation with plugin support
+- **Observability** - Event tracking and control execution metrics
+- **API Key Authentication** - Secure production deployments
+- **Plugin System** - Extensible evaluators (Regex, List, SQL, Luna-2 AI)
+- **Prometheus Metrics** - Built-in monitoring and observability
+- **PostgreSQL/SQLite** - Production and development database support
 
 ## Installation
 
@@ -18,9 +22,16 @@ Server component for Agent Protect - provides agent protection services via REST
 # From the root directory
 uv sync
 
-# Run the server
+# Start database (PostgreSQL)
 cd server
-uv run python -m agent_protect_server.main
+docker-compose up -d
+
+# Run migrations
+make alembic-upgrade
+
+# Run the server
+make run
+# Or: uv run uvicorn agent_control_server.main:app --reload
 ```
 
 ### For Production Deployment
@@ -31,10 +42,10 @@ cd server
 uv build
 
 # Install the built package
-uv pip install dist/agent_protect_server-0.1.0-py3-none-any.whl
+uv pip install dist/agent_control_server-*.whl
 
 # Run the server
-agent-protect-server
+agent-control-server
 ```
 
 ## Configuration
@@ -42,17 +53,29 @@ agent-protect-server
 Create a `.env` file in the server directory:
 
 ```env
+# Database
+DB_URL=postgresql+psycopg://user:password@localhost/agent_control
+# Or for development:
+# DB_URL=sqlite+aiosqlite:///./agent_control.db
+
 # Server settings
 HOST=0.0.0.0
 PORT=8000
 DEBUG=false
-API_VERSION=v1
-API_PREFIX=/api
 
 # Authentication
 AGENT_CONTROL_API_KEY_ENABLED=true
-AGENT_CONTROL_API_KEYS=your-api-key-here
-AGENT_CONTROL_ADMIN_API_KEYS=your-admin-key-here
+AGENT_CONTROL_API_KEYS=your-api-key-here,another-key-here
+
+# Observability
+OBSERVABILITY_ENABLED=true
+OBSERVABILITY_FLUSH_INTERVAL_SECONDS=10
+
+# Luna-2 Plugin (optional)
+GALILEO_API_KEY=your-galileo-api-key
+
+# Prometheus metrics
+PROMETHEUS_METRICS_PREFIX=agent_control_server
 ```
 
 ## Authentication
@@ -113,67 +136,192 @@ AGENT_CONTROL_API_KEY_ENABLED=false
 
 ## API Endpoints
 
-### Health Check
+All protected endpoints require `X-API-Key` header when authentication is enabled.
+
+### System Endpoints
 
 ```bash
+# Health check (public)
 GET /health
+
+# Prometheus metrics (public)
+GET /metrics
+
+# List available plugins
+GET /api/v1/plugins
 ```
 
-Response:
-```json
-{
-  "status": "healthy",
-  "version": "0.1.0"
-}
-```
-
-### Protection Check
+### Agent Management
 
 ```bash
-POST /protect
-Content-Type: application/json
+# Register or update agent
+POST /api/v1/agents/init
+Body: { "agent": {...}, "tools": [...], "force_replace": false }
 
-{
-  "content": "Text to analyze",
-  "context": {
-    "source": "user_input"
-  }
+# Get agent
+GET /api/v1/agents/{agent_id}
+
+# List controls for agent (based on assigned policy)
+GET /api/v1/agents/{agent_id}/controls
+```
+
+### Control Management
+
+```bash
+# Create control
+POST /api/v1/controls
+Body: { "control": {...} }
+
+# List controls
+GET /api/v1/controls?skip=0&limit=100
+
+# Get control
+GET /api/v1/controls/{control_id}
+
+# Update control
+PUT /api/v1/controls/{control_id}
+Body: { "control": {...} }
+
+# Delete control
+DELETE /api/v1/controls/{control_id}
+```
+
+### Policy Management
+
+```bash
+# Create policy
+POST /api/v1/policies
+Body: { "name": "my-policy", "description": "..." }
+
+# List policies
+GET /api/v1/policies
+
+# Assign policy to agent
+POST /api/v1/policies/{policy_id}/agents/{agent_id}
+
+# Add control to policy
+POST /api/v1/policies/{policy_id}/controls/{control_id}
+```
+
+### Evaluation
+
+```bash
+# Evaluate step against controls
+POST /api/v1/evaluation/check
+Body: {
+  "agent_uuid": "uuid",
+  "step": { "type": "llm_inference", "input": "..." },
+  "stage": "pre"
+}
+
+Response: {
+  "allowed": true,
+  "violated_controls": [],
+  "evaluation_results": [...]
 }
 ```
 
-Response:
-```json
-{
-  "is_safe": true,
-  "confidence": 0.95,
-  "reason": "Content appears safe"
-}
+### Observability
+
+```bash
+# Submit events
+POST /api/v1/observability/events
+Body: { "events": [...] }
+
+# Query events
+POST /api/v1/observability/query
+Body: { "agent_id": "...", "start_time": "...", ... }
+
+# Get control stats
+GET /api/v1/observability/controls/{control_id}/stats
 ```
+
+See [docs/REFERENCE.md](../docs/REFERENCE.md) for complete API documentation.
 
 ## Development
+
+### Database Migrations
+
+```bash
+# Create a new migration
+make alembic-revision MESSAGE="description"
+
+# Run migrations
+make alembic-upgrade
+
+# Rollback migration
+make alembic-downgrade
+```
 
 ### Running Tests
 
 ```bash
-cd server
-uv run pytest
+# Run all tests
+make test
+
+# Run specific test file
+uv run pytest tests/test_controls.py
+
+# Run with coverage
+uv run pytest --cov=agent_control_server
 ```
 
-### Type Checking
+### Code Quality
 
 ```bash
-cd server
-uv run mypy src/
+# Lint
+make lint
+
+# Auto-fix linting issues
+make lint-fix
+
+# Type checking
+make typecheck
 ```
 
-### Linting
+### Available Make Commands
+
+From the `server/` directory:
+
+| Command | Description |
+|---------|-------------|
+| `make run` | Start development server |
+| `make test` | Run tests |
+| `make lint` | Run ruff linting |
+| `make lint-fix` | Auto-fix linting issues |
+| `make typecheck` | Run mypy type checking |
+| `make alembic-upgrade` | Run database migrations |
+| `make alembic-downgrade` | Rollback last migration |
+| `make alembic-revision MESSAGE="..."` | Create new migration |
+
+## Production Deployment
+
+### Docker
 
 ```bash
-cd server
-uv run ruff check src/
+# Build image (from repo root)
+docker build -f server/Dockerfile -t agent-control-server .
+
+# Run container
+docker run -p 8000:8000 \
+  -e DB_URL=postgresql://... \
+  -e AGENT_CONTROL_API_KEY_ENABLED=true \
+  -e AGENT_CONTROL_API_KEYS=your-key-here \
+  agent-control-server
 ```
 
-## Deployment
+### Direct Installation
 
-See [DEPLOYMENT.md](../DEPLOYMENT.md) for detailed deployment instructions.
+```bash
+# Build wheel
+cd server
+uv build
 
+# Install on target system
+pip install dist/agent_control_server-*.whl
+
+# Run with CLI
+agent-control-server
+```
+
+See [docs/REFERENCE.md](../docs/REFERENCE.md) for complete deployment documentation.

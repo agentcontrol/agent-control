@@ -36,8 +36,8 @@ Example: *"If the output contains an SSN pattern, block the response."*
 ```json
 {
   "name": "block-ssn-in-output",
-  "applies_to": "llm_call",
-  "check_stage": "post",
+  "execution": "server",
+  "scope": { "step_types": ["llm_inference"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
     "plugin": "regex",
@@ -74,19 +74,22 @@ A **Selector** defines *what data* to extract from the payload for evaluation.
 
 | Path | Description | Example Use |
 |------|-------------|-------------|
-| `input` | User's input text | Check for prompt injection |
-| `output` | Agent's response | Check for PII leakage |
-| `arguments.query` | Tool argument | Block SQL injection |
-| `tool_name` | Name of tool being called | Restrict tool usage |
+| `input` | Step input (tool args or LLM input) | Check for prompt injection |
+| `output` | Step output | Check for PII leakage |
+| `input.query` | Tool input field | Block SQL injection |
+| `name` | Step name (tool name or model/chain id, required) | Restrict step usage |
 | `context.user_id` | Context field | User-based rules |
-| `*` | Entire payload | Full payload analysis |
+| `*` | Entire step | Full payload analysis |
 
-**Tool Filtering:** Selectors can also filter by tool name:
+**Step scoping:** Controls can also scope by step type/name/stage:
 ```json
 {
-  "path": "arguments.query",
-  "tool_names": ["search_database", "execute_sql"],
-  "tool_name_regex": "^db_.*"
+  "scope": {
+    "step_types": ["tool"],
+    "step_names": ["search_database", "execute_sql"],
+    "step_name_regex": "^db_.*",
+    "stages": ["pre"]
+  }
 }
 ```
 
@@ -107,7 +110,7 @@ An **Action** defines *what to do* when a control matches:
 
 ### 🔄 Check Stages
 
-Controls run at different stages:
+Controls run at different stages (configured via `scope.stages`):
 
 | Stage | When | Use Case |
 |-------|------|----------|

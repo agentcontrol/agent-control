@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 VALID_CONTROL_PAYLOAD = {
     "description": "Valid Control",
     "enabled": True,
-    "applies_to": "llm_call",
-    "check_stage": "pre",
+    "execution": "server",
+    "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
     "selector": {"path": "input"},
     "evaluator": {"plugin": "regex", "config": {"pattern": "x"}},
     "action": {"decision": "deny"}
@@ -60,7 +60,7 @@ def create_and_assign_policy(
             "agent_id": str(agent_uuid),
             "agent_name": agent_name
         },
-        "tools": []
+        "steps": []
     })
     assert resp.status_code == 200
 

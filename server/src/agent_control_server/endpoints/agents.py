@@ -3,7 +3,7 @@ from uuid import UUID
 
 from agent_control_engine import list_plugins
 from agent_control_models.agent import Agent as APIAgent
-from agent_control_models.agent import AgentTool
+from agent_control_models.agent import StepSchema
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentControlsResponse,
@@ -19,6 +19,7 @@ from agent_control_models.server import (
     PatchAgentRequest,
     PatchAgentResponse,
     SetPolicyResponse,
+    StepKey,
 )
 from fastapi import APIRouter, Depends
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
@@ -59,6 +60,8 @@ _BUILTIN_PLUGIN_NAMES: set[str] | None = None
 _DEFAULT_PAGINATION_OFFSET = 0
 _DEFAULT_PAGINATION_LIMIT = 20
 _MAX_PAGINATION_LIMIT = 100
+
+type StepKeyTuple = tuple[str, str]
 
 
 # =============================================================================
@@ -158,7 +161,7 @@ async def list_agents(
     List all registered agents with cursor-based pagination.
 
     Returns a summary of each agent including ID, name, policy assignment,
-    and counts of registered tools and evaluators.
+    and counts of registered steps and evaluators.
 
     Args:
         cursor: Optional cursor for pagination (UUID of last agent from previous page)
@@ -237,13 +240,13 @@ async def list_agents(
     # Build summaries
     summaries: list[AgentSummary] = []
     for agent in agents:
-        tool_count = 0
+        step_count = 0
         evaluator_count = 0
 
         # Parse agent data to get counts
         try:
             data_model = AgentData.model_validate(agent.data)
-            tool_count = len(data_model.tools or [])
+            step_count = len(data_model.steps or [])
             evaluator_count = len(data_model.evaluators or [])
         except ValidationError:
             # If data is corrupted, log and use zero counts
@@ -258,7 +261,7 @@ async def list_agents(
                 agent_name=agent.name,
                 policy_id=agent.policy_id,
                 created_at=agent.created_at.isoformat() if agent.created_at else None,
-                tool_count=tool_count,
+                step_count=step_count,
                 evaluator_count=evaluator_count,
                 active_controls_count=active_controls,
             )
@@ -285,18 +288,18 @@ async def init_agent(
     request: InitAgentRequest, db: AsyncSession = Depends(get_async_db)
 ) -> InitAgentResponse:
     """
-    Register a new agent or update an existing agent's tools and metadata.
+    Register a new agent or update an existing agent's steps and metadata.
 
     This endpoint is idempotent:
     - If the agent name doesn't exist, creates a new agent
-    - If the agent name exists with the same UUID, updates tool schemas
+    - If the agent name exists with the same UUID, updates step schemas
     - If the agent name exists with a different UUID, returns 409 Conflict
 
-    Tool versioning: When tool schemas change (arguments or output_schema),
+    Step versioning: When step schemas change (input_schema or output_schema),
     a new version is created automatically.
 
     Args:
-        request: Agent metadata and tool schemas
+        request: Agent metadata and step schemas
         db: Database session (injected)
 
     Returns:
@@ -327,9 +330,15 @@ async def init_agent(
                 ],
             )
 
-    # Look up by name only; name is unique
+    # Look up by UUID first (primary key), then by name
+    result = await db.execute(select(Agent).where(Agent.agent_uuid == request.agent.agent_id))
+    existing_by_uuid: Agent | None = result.scalars().first()
+
     result = await db.execute(select(Agent).where(Agent.name == request.agent.agent_name))
-    existing: Agent | None = result.scalars().first()
+    existing_by_name: Agent | None = result.scalars().first()
+
+    # Use existing_by_uuid if found, otherwise existing_by_name
+    existing = existing_by_uuid or existing_by_name
 
     created = False
 
@@ -338,7 +347,7 @@ async def init_agent(
 
         data_model = AgentData(
             agent_metadata=request.agent.model_dump(mode="json"),
-            tools=list(request.tools),
+            steps=list(request.steps),
             evaluators=list(request.evaluators),
         )
 
@@ -351,7 +360,7 @@ async def init_agent(
         try:
             await db.commit()
             _logger.info(
-                f"Created agent '{request.agent.agent_name}' with {len(request.tools)} tools, "
+                f"Created agent '{request.agent.agent_name}' with {len(request.steps)} steps, "
                 f"{len(request.evaluators)} evaluators"
             )
         except Exception:
@@ -417,9 +426,9 @@ async def init_agent(
             f"Force-replacing corrupted data for agent '{request.agent.agent_name}' "
             f"due to force_replace=true. Original error: {e}"
         )
-        data_model = AgentData(agent_metadata={}, tools=[], evaluators=[])
+        data_model = AgentData(agent_metadata={}, steps=[], evaluators=[])
 
-    tools_changed = False
+    steps_changed = False
     evaluators_changed = False
     force_write = request.force_replace  # Always persist when force_replace=true
 
@@ -429,29 +438,31 @@ async def init_agent(
     if metadata_changed:
         data_model.agent_metadata = new_metadata
 
-    # --- Process tools ---
-    incoming_tools_by_name: dict[str, AgentTool] = {t.tool_name: t for t in request.tools}
-    new_tools: list[AgentTool] = []
-    seen_tools: set[str] = set()
+    # --- Process steps ---
+    incoming_steps_by_key: dict[StepKeyTuple, StepSchema] = {
+        (s.type, s.name): s for s in request.steps
+    }
+    new_steps: list[StepSchema] = []
+    seen_steps: set[StepKeyTuple] = set()
 
-    for tool in data_model.tools or []:
-        name = tool.tool_name
-        if name in incoming_tools_by_name:
-            if name not in seen_tools:
-                incoming_tool = incoming_tools_by_name[name]
-                if tool.model_dump(mode="json") != incoming_tool.model_dump(mode="json"):
-                    tools_changed = True
-                new_tools.append(incoming_tool)
-                seen_tools.add(name)
+    for step in data_model.steps or []:
+        key: StepKeyTuple = (step.type, step.name)
+        if key in incoming_steps_by_key:
+            if key not in seen_steps:
+                incoming_step = incoming_steps_by_key[key]
+                if step.model_dump(mode="json") != incoming_step.model_dump(mode="json"):
+                    steps_changed = True
+                new_steps.append(incoming_step)
+                seen_steps.add(key)
         else:
-            new_tools.append(tool)
+            new_steps.append(step)
 
-    for name, t in incoming_tools_by_name.items():
-        if name not in seen_tools:
-            new_tools.append(t)
-            tools_changed = True
+    for key, step in incoming_steps_by_key.items():
+        if key not in seen_steps:
+            new_steps.append(step)
+            steps_changed = True
 
-    data_model.tools = new_tools
+    data_model.steps = new_steps
 
     # --- Process evaluators with schema compatibility check ---
     incoming_evals_by_name: dict[str, EvaluatorSchema] = {
@@ -505,13 +516,13 @@ async def init_agent(
 
     data_model.evaluators = new_evaluators
 
-    if tools_changed or evaluators_changed or metadata_changed or force_write:
+    if steps_changed or evaluators_changed or metadata_changed or force_write:
         existing.data = data_model.model_dump(mode="json")
 
         try:
             await db.commit()
             _logger.info(
-                f"Updated agent '{request.agent.agent_name}' with {len(new_tools)} tools, "
+                f"Updated agent '{request.agent.agent_name}' with {len(new_steps)} steps, "
                 f"{len(new_evaluators)} evaluators"
             )
         except Exception:
@@ -538,20 +549,20 @@ async def init_agent(
     "/{agent_id}",
     response_model=GetAgentResponse,
     summary="Get agent details",
-    response_description="Agent metadata and registered tools",
+    response_description="Agent metadata and registered steps",
 )
 async def get_agent(agent_id: UUID, db: AsyncSession = Depends(get_async_db)) -> GetAgentResponse:
     """
-    Retrieve agent metadata and all registered tools.
+    Retrieve agent metadata and all registered steps.
 
-    Returns the latest version of each tool (tools are deduplicated by name).
+    Returns the latest version of each step (deduplicated by type+name).
 
     Args:
         agent_id: UUID of the agent
         db: Database session (injected)
 
     Returns:
-        GetAgentResponse with agent metadata and tool list
+        GetAgentResponse with agent metadata and step list
 
     Raises:
         HTTPException 404: Agent not found
@@ -583,10 +594,11 @@ async def get_agent(agent_id: UUID, db: AsyncSession = Depends(get_async_db)) ->
         )
 
     try:
-        tools_by_name: dict[str, AgentTool] = {}
-        for tool in data_model.tools or []:
-            tools_by_name[tool.tool_name] = tool
-        latest_tools: list[AgentTool] = list(tools_by_name.values())
+        steps_by_key: dict[StepKeyTuple, StepSchema] = {}
+        for step in data_model.steps or []:
+            key: StepKeyTuple = (step.type, step.name)
+            steps_by_key[key] = step
+        latest_steps: list[StepSchema] = list(steps_by_key.values())
         agent_meta = APIAgent.model_validate(data_model.agent_metadata)
     except ValidationError:
         _logger.error(
@@ -601,7 +613,7 @@ async def get_agent(agent_id: UUID, db: AsyncSession = Depends(get_async_db)) ->
         )
 
     return GetAgentResponse(
-        agent=agent_meta, tools=latest_tools, evaluators=data_model.evaluators
+        agent=agent_meta, steps=latest_steps, evaluators=data_model.evaluators
     )
 
 
@@ -936,7 +948,7 @@ async def list_agent_evaluators(
     try:
         data_model = AgentData.model_validate(agent.data)
     except ValidationError:
-        data_model = AgentData(agent_metadata={}, tools=[], evaluators=[])
+        data_model = AgentData(agent_metadata={}, steps=[], evaluators=[])
 
     all_evaluators = data_model.evaluators or []
     total = len(all_evaluators)
@@ -1050,7 +1062,7 @@ async def get_agent_evaluator(
 @router.patch(
     "/{agent_id}",
     response_model=PatchAgentResponse,
-    summary="Modify agent (remove tools/evaluators)",
+    summary="Modify agent (remove steps/evaluators)",
     response_description="Lists of removed items",
 )
 async def patch_agent(
@@ -1059,14 +1071,14 @@ async def patch_agent(
     db: AsyncSession = Depends(get_async_db),
 ) -> PatchAgentResponse:
     """
-    Remove tools and/or evaluators from an agent.
+    Remove steps and/or evaluators from an agent.
 
     This is the complement to initAgent which only adds items.
     Removals are idempotent - attempting to remove non-existent items is not an error.
 
     Args:
         agent_id: UUID of the agent
-        request: Lists of tool/evaluator names to remove
+        request: Lists of step/evaluator identifiers to remove
         db: Database session (injected)
 
     Returns:
@@ -1097,23 +1109,26 @@ async def patch_agent(
             hint="Re-register the agent with initAgent using force_replace=true.",
         )
 
-    tools_removed: list[str] = []
+    steps_removed: list[StepKey] = []
     evaluators_removed: list[str] = []
 
-    # Remove tools
-    if request.remove_tools:
-        remove_set = set(request.remove_tools)
-        new_tools = []
-        for tool in data_model.tools or []:
-            if tool.tool_name in remove_set:
-                tools_removed.append(tool.tool_name)
+    # Remove steps
+    if request.remove_steps:
+        remove_step_set: set[StepKeyTuple] = {
+            (s.type, s.name) for s in request.remove_steps
+        }
+        new_steps: list[StepSchema] = []
+        for step in data_model.steps or []:
+            key: StepKeyTuple = (step.type, step.name)
+            if key in remove_step_set:
+                steps_removed.append(StepKey(type=step.type, name=step.name))
             else:
-                new_tools.append(tool)
-        data_model.tools = new_tools
+                new_steps.append(step)
+        data_model.steps = new_steps
 
     # Remove evaluators (with dependency check)
     if request.remove_evaluators:
-        remove_set = set(request.remove_evaluators)
+        remove_evaluator_set = set(request.remove_evaluators)
 
         # Check if any controls reference evaluators being removed
         if agent.policy_id is not None:
@@ -1127,7 +1142,7 @@ async def patch_agent(
                     ref_agent, ref_eval = evaluator_ref.split(":", 1)
                     # Check if this control references an evaluator we're removing
                     # AND it's scoped to this agent (by name match)
-                    if ref_agent == agent.name and ref_eval in remove_set:
+                    if ref_agent == agent.name and ref_eval in remove_evaluator_set:
                         referencing_controls.append((ctrl.name, ref_eval))
 
             if referencing_controls:
@@ -1149,19 +1164,19 @@ async def patch_agent(
 
         new_evaluators = []
         for ev in data_model.evaluators or []:
-            if ev.name in remove_set:
+            if ev.name in remove_evaluator_set:
                 evaluators_removed.append(ev.name)
             else:
                 new_evaluators.append(ev)
         data_model.evaluators = new_evaluators
 
     # Only update if something changed
-    if tools_removed or evaluators_removed:
+    if steps_removed or evaluators_removed:
         agent.data = data_model.model_dump(mode="json")
         try:
             await db.commit()
             _logger.info(
-                f"Patched agent '{agent.name}': removed {len(tools_removed)} tools, "
+                f"Patched agent '{agent.name}': removed {len(steps_removed)} steps, "
                 f"{len(evaluators_removed)} evaluators"
             )
         except Exception:
@@ -1177,6 +1192,6 @@ async def patch_agent(
             )
 
     return PatchAgentResponse(
-        tools_removed=tools_removed,
+        steps_removed=steps_removed,
         evaluators_removed=evaluators_removed,
     )

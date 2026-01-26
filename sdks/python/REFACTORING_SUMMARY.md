@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Agent Protect SDK has been successfully refactored from a monolithic `__init__.py` file into a modular structure that mirrors the server's endpoint organization.
+The Agent Control SDK has been successfully refactored from a monolithic `__init__.py` file into a modular structure that mirrors the server's endpoint organization.
 
 ## Changes Made
 
@@ -133,7 +133,7 @@ All checks passed!  # models, server, SDK
 
 ### ✅ Type Checking
 ```bash
-$ uv run --package agent-protect mypy --config-file pyproject.toml sdks/python/src
+$ uv run --package agent-control mypy --config-file pyproject.toml sdks/python/src
 Success: no issues found in 6 source files
 ```
 

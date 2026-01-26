@@ -19,7 +19,7 @@ except ImportError:
 async def register_agent(
     client: AgentControlClient,
     agent: Agent,
-    tools: list[dict[str, Any]] | None = None
+    steps: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
     """
     Register an agent with the server via /initAgent endpoint.
@@ -27,7 +27,7 @@ async def register_agent(
     Args:
         client: AgentControlClient instance
         agent: Agent instance to register
-        tools: Optional list of tools with their schemas
+        steps: Optional list of step schemas
 
     Returns:
         InitAgentResponse with created flag and controls
@@ -37,14 +37,14 @@ async def register_agent(
 
     Example:
         async with AgentControlClient() as client:
-            response = await register_agent(client, agent, tools=[...])
+            response = await register_agent(client, agent, steps=[...])
             print(f"Created: {response['created']}")
     """
     # Ensure plugins are discovered for local evaluation support
     ensure_plugins_discovered()
 
-    if tools is None:
-        tools = []
+    if steps is None:
+        steps = []
 
     if MODELS_AVAILABLE:
         agent_dict = agent.to_dict()
@@ -53,7 +53,7 @@ async def register_agent(
             agent_dict['agent_id'] = str(agent_dict['agent_id'])
         payload = {
             "agent": agent_dict,
-            "tools": tools
+            "steps": steps
         }
     else:
         payload = {
@@ -64,7 +64,7 @@ async def register_agent(
                 "agent_version": getattr(agent, 'agent_version', None),
                 "agent_metadata": getattr(agent, 'agent_metadata', None),
             },
-            "tools": tools
+            "steps": steps
         }
 
     response = await client.http_client.post("/api/v1/agents/initAgent", json=payload)
@@ -86,7 +86,7 @@ async def get_agent(
     Returns:
         Dictionary containing:
             - agent: Agent metadata
-            - tools: List of tools registered with the agent
+            - steps: List of steps registered with the agent
 
     Raises:
         httpx.HTTPError: If request fails or agent not found (404)
@@ -95,7 +95,7 @@ async def get_agent(
         async with AgentControlClient() as client:
             agent_data = await get_agent(client, "550e8400-e29b-41d4-a716-446655440000")
             print(f"Agent: {agent_data['agent']['agent_name']}")
-            print(f"Tools: {len(agent_data['tools'])}")
+            print(f"Steps: {len(agent_data['steps'])}")
     """
     response = await client.http_client.get(f"/api/v1/agents/{agent_id}")
     response.raise_for_status()
@@ -118,7 +118,7 @@ async def list_agents(
     Returns:
         Dictionary containing:
             - agents: List of agent summaries with agent_id, agent_name,
-                      policy_id, created_at, tool_count, evaluator_count
+                      policy_id, created_at, step_count, evaluator_count
             - pagination: Object with limit, total, next_cursor, has_more
 
     Raises:
@@ -142,4 +142,3 @@ async def list_agents(
     response = await client.http_client.get("/api/v1/agents", params=params)
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
-

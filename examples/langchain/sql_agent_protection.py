@@ -14,7 +14,7 @@ PREREQUISITE:
         $ uv run sql_agent_protection.py
 
 The @control() decorator automatically:
-1. Detects this is a tool call (from @tool decorator)
+1. Detects this is a tool step (from @tool decorator)
 2. Sends the query to the server for evaluation
 3. Blocks dangerous operations (DROP, DELETE, TRUNCATE, etc.)
 4. Requires LIMIT clauses on SELECT statements
@@ -228,4 +228,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

@@ -1,6 +1,6 @@
-# Agent Protect Models
+# Agent Control Models
 
-Shared data models for Agent Protect server and SDK. This package contains all the Pydantic models used for API requests, responses, and data validation.
+Shared data models for Agent Control server and SDK. This package contains all the Pydantic models used for API requests, responses, and data validation.
 
 ## Why Shared Models?
 
@@ -33,175 +33,223 @@ This package is typically installed as a dependency:
 ```bash
 # Server depends on it
 cd server
-uv add agent-protect-models
+uv add agent-control-models
 
 # SDK depends on it
 cd sdk
-uv add agent-protect-models
+uv add agent-control-models
 ```
 
 ## Usage
 
-### Basic Usage
+### Agent Models
 
 ```python
-from agent_control_models import ProtectionRequest, ProtectionResponse
+from agent_control_models import Agent, Step
 
-# Create a request
-request = ProtectionRequest(
-    content="Hello, world!",
-    context={"source": "user_input"}
+# Create an agent
+agent = Agent(
+    agent_name="Customer Support Bot",
+    agent_id="support-bot-v1",
+    agent_description="Handles customer inquiries",
+    agent_version="1.0.0"
 )
 
-# Serialize to JSON
-json_str = request.to_json()
-print(json_str)
-# {"content": "Hello, world!", "context": {"source": "user_input"}}
-
-# Deserialize from JSON
-request_copy = ProtectionRequest.from_json(json_str)
+# Create a step
+step = Step(
+    type="llm_inference",
+    name="chat",
+    input="Hello, how can I help?",
+    output="I'm here to assist you!"
+)
 ```
 
-### Dictionary Conversion
+### Control Models
 
 ```python
-from agent_control_models import ProtectionResponse
+from agent_control_models import ControlDefinition, ControlScope, ControlAction
 
-# Create from dict
-response = ProtectionResponse.from_dict({
-    "is_safe": True,
-    "confidence": 0.95,
-    "reason": "Content appears safe"
-})
-
-# Convert to dict
-data = response.to_dict()
-print(data)
-# {'is_safe': True, 'confidence': 0.95, 'reason': 'Content appears safe'}
+# Define a control
+control = ControlDefinition(
+    name="block-toxic-input",
+    description="Block toxic user messages",
+    enabled=True,
+    execution="server",
+    scope=ControlScope(
+        step_types=["llm_inference"],
+        stages=["pre"]
+    ),
+    action=ControlAction(decision="deny")
+)
 ```
 
-### Client-Side Result
+### Evaluation Models
 
 ```python
-from agent_control_models import ProtectionResult
+from agent_control_models import EvaluationRequest, EvaluationResponse
 
-result = ProtectionResult(
-    is_safe=True,
-    confidence=0.92,
-    reason="All checks passed"
+# Create evaluation request
+request = EvaluationRequest(
+    agent_uuid="agent-uuid-here",
+    step=Step(
+        type="llm_inference",
+        name="chat",
+        input="User message"
+    ),
+    stage="pre"
 )
 
-# Boolean evaluation
-if result:
-    print("Content is safe!")
-
-# Confidence check
-if result.is_confident(threshold=0.9):
-    print("High confidence result")
-
-# String representation
-print(result)
-# [SAFE] Confidence: 92% - All checks passed
+# Evaluation response
+response = EvaluationResponse(
+    allowed=True,
+    violated_controls=[]
+)
 ```
 
 ## Models
 
-### BaseModel
+### Core Models
+
+#### BaseModel
 
 Base class for all models with common utilities:
 
-- `to_dict()`: Convert to Python dictionary
-- `to_json()`: Convert to JSON string
-- `from_dict(data)`: Create from dictionary
-- `from_json(json_str)`: Create from JSON string
+- `model_dump()`: Convert to Python dictionary (Pydantic v2)
+- `model_dump_json()`: Convert to JSON string (Pydantic v2)
+- `model_validate()`: Create from dictionary (Pydantic v2)
 
 Configuration:
 - Accepts both snake_case and camelCase fields
-- Ignores extra fields (forward compatibility)
 - Validates on assignment
-- Excludes None values in serialization
+- JSON-compatible serialization
 
-### HealthResponse
+#### Agent
+
+Agent metadata and configuration.
+
+**Fields:**
+- `agent_name` (str): Human-readable agent name
+- `agent_id` (str): Unique identifier
+- `agent_description` (Optional[str]): Agent description
+- `agent_version` (Optional[str]): Agent version
+- `tools` (Optional[List[str]]): List of available tools
+- `metadata` (Optional[Dict]): Additional metadata
+
+#### Step
+
+Represents a single step in agent execution.
+
+**Fields:**
+- `type` (str): Step type (e.g., "llm_inference", "tool")
+- `name` (str): Step name
+- `input` (Optional[Any]): Step input data
+- `output` (Optional[Any]): Step output data
+- `context` (Optional[Dict]): Additional context
+
+#### ControlDefinition
+
+Complete control specification.
+
+**Fields:**
+- `name` (str): Control name
+- `description` (Optional[str]): Control description
+- `enabled` (bool): Whether control is active
+- `execution` (str): Execution mode ("server" or "local")
+- `scope` (ControlScope): When to apply the control
+- `selector` (ControlSelector): What data to evaluate
+- `evaluator` (EvaluatorConfig): How to evaluate
+- `action` (ControlAction): What to do on match
+
+#### EvaluationRequest
+
+Request for evaluating controls.
+
+**Fields:**
+- `agent_uuid` (str): Agent identifier
+- `step` (Step): Step to evaluate
+- `stage` (str): Evaluation stage ("pre" or "post")
+
+#### EvaluationResponse
+
+Response from control evaluation.
+
+**Fields:**
+- `allowed` (bool): Whether the step is allowed
+- `violated_controls` (List[str]): Names of violated controls
+- `evaluation_results` (Optional[List]): Detailed evaluation results
+
+#### HealthResponse
 
 Health check response.
 
 **Fields:**
-- `status` (str): Health status
-- `version` (str): Application version
-
-### ProtectionRequest
-
-Request for content protection analysis.
-
-**Fields:**
-- `content` (str): Content to analyze (required, min length 1)
-- `context` (Optional[Dict[str, str]]): Optional context information
-
-### ProtectionResponse
-
-Server response from protection analysis.
-
-**Fields:**
-- `is_safe` (bool): Whether content is safe
-- `confidence` (float): Confidence score (0.0 to 1.0)
-- `reason` (Optional[str]): Explanation for the decision
-
-### ProtectionResult
-
-Client-side result extending ProtectionResponse.
-
-**Additional Methods:**
-- `is_confident(threshold=0.8)`: Check if confidence exceeds threshold
-- `__bool__()`: Enables `if result:` checks
-- `__str__()`: Human-readable representation
+- `status` (str): Health status ("healthy")
+- `version` (str): Server version
 
 ## Design Patterns
 
-### 1. Pydantic + JSON
+### 1. Pydantic v2
 
-All models support both Pydantic validation and JSON serialization:
+All models use Pydantic v2 for validation and serialization:
 
 ```python
-# Pydantic validation
-request = ProtectionRequest(content="test")  # Validates automatically
+from agent_control_models import Agent
 
-# JSON round-trip
-json_str = request.to_json()
-request_copy = ProtectionRequest.from_json(json_str)
-assert request == request_copy
+# Create with validation
+agent = Agent(
+    agent_name="My Agent",
+    agent_id="my-agent-v1"
+)
+
+# Serialize to dict
+agent_dict = agent.model_dump()
+
+# Serialize to JSON
+agent_json = agent.model_dump_json()
+
+# Deserialize from dict
+agent_copy = Agent.model_validate(agent_dict)
 ```
 
-### 2. Inheritance for Specialization
+### 2. Type Safety
 
-`ProtectionResult` extends `ProtectionResponse` with client-side conveniences:
+Models provide strong typing throughout the stack:
 
 ```python
-# Server uses ProtectionResponse
-response = ProtectionResponse(is_safe=True, confidence=0.95)
+from agent_control_models import Step, EvaluationRequest
 
-# SDK transforms to ProtectionResult
-result = ProtectionResult(**response.to_dict())
+# Type-safe step creation
+step = Step(
+    type="llm_inference",
+    name="chat",
+    input="Hello"
+)
 
-# Now has extra methods
-if result.is_confident():
-    print("Confident result!")
+# Type-safe evaluation request
+request = EvaluationRequest(
+    agent_uuid="uuid-here",
+    step=step,
+    stage="pre"
+)
 ```
 
-### 3. Forward Compatibility
+### 3. Extensibility
 
-Models ignore extra fields, allowing server updates without breaking clients:
+Models support additional metadata for extensibility:
 
 ```python
-# Server adds new field in v2
-response_data = {
-    "is_safe": True,
-    "confidence": 0.95,
-    "new_field": "future_feature"  # Will be ignored by v1 clients
-}
+from agent_control_models import Agent
 
-# V1 client still works
-result = ProtectionResponse.from_dict(response_data)
-# No error, new_field is simply ignored
+# Add custom metadata
+agent = Agent(
+    agent_name="Support Bot",
+    agent_id="support-v1",
+    metadata={
+        "team": "customer-success",
+        "environment": "production",
+        "custom_field": "value"
+    }
+)
 ```
 
 ## Development

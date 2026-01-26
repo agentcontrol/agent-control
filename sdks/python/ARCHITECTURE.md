@@ -1,8 +1,8 @@
-# Agent Protect SDK Architecture
+# Agent Control SDK Architecture
 
 ## Overview
 
-The Agent Protect SDK has been refactored to follow a modular architecture that mirrors the server's endpoint structure. This makes the codebase more maintainable, easier to navigate, and follows the single responsibility principle.
+The Agent Control SDK has been refactored to follow a modular architecture that mirrors the server's endpoint structure. This makes the codebase more maintainable, easier to navigate, and follows the single responsibility principle.
 
 ## Directory Structure
 
@@ -131,19 +131,19 @@ async with agent_protect.AgentProtectClient() as client:
 - `POST /api/v1/protect` - Check if an operation is safe
 
 **Functions**:
-- `async def check_protection(client, agent_uuid, payload, check_stage)` - Validate operation
+- `async def check_protection(client, agent_uuid, step, stage)` - Validate operation
 
 **Usage**:
 ```python
 import agent_protect
-from agent_control_models import LlmCall
+from agent_control_models import Step
 
 async with agent_protect.AgentProtectClient() as client:
     result = await agent_protect.protection.check_protection(
         client=client,
         agent_uuid=agent.agent_id,
-        payload=LlmCall(input="User question", output=None),
-        check_stage="pre"
+        step=Step(type="llm_inference", name="chat", input="User question", output=None),
+        stage="pre"
     )
     print(f"Safe: {result.is_safe}")
 ```
@@ -153,16 +153,16 @@ async with agent_protect.AgentProtectClient() as client:
 **Purpose**: Public API, convenience functions, and initialization.
 
 **Key Functions**:
-- `init(agent_name, agent_id, ...)` - Initialize Agent Protect
+- `init(agent_name, agent_id, ...)` - Initialize Agent Control
 - `get_agent(agent_id, server_url)` - Convenience function for fetching agents
 - `current_agent()` - Get the currently initialized agent
-- `protect(step_id, **data_sources)` - Decorator for rule enforcement
+- `protect(step_name, **data_sources)` - Decorator for rule enforcement
 
 **Exports**:
 - Core functions: `init`, `current_agent`, `get_agent`, `protect`
 - Client class: `AgentProtectClient`
 - Operation modules: `agents`, `policies`, `controls`, `protection`
-- Models (if available): `Agent`, `LlmCall`, `ToolCall`, etc.
+- Models (if available): `Agent`, `Step`, `StepSchema`, etc.
 
 ## Design Principles
 
@@ -282,4 +282,3 @@ The refactored SDK architecture provides:
 - ✅ **Scalability** for future endpoint additions
 - ✅ **Type safety** preserved throughout
 - ✅ **Backwards compatibility** maintained
-

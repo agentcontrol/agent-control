@@ -1,8 +1,8 @@
 """
-Pytest configuration and fixtures for Agent Protect SDK integration tests.
+Pytest configuration and fixtures for Agent Control SDK integration tests.
 
 These fixtures provide shared setup and teardown for integration tests
-that run against a live Agent Protect server.
+that run against a live Agent Control server.
 """
 
 import os
@@ -138,10 +138,11 @@ async def test_agent(
     response = await agent_control.agents.register_agent(
         client,
         agent,
-        tools=[
+        steps=[
             {
-                "tool_name": "test_search",
-                "arguments": {"query": {"type": "string"}},
+                "type": "tool",
+                "name": "test_search",
+                "input_schema": {"query": {"type": "string"}},
                 "output_schema": {"results": {"type": "array"}}
             }
         ]
@@ -199,12 +200,13 @@ async def test_control(
 
 
 @pytest.fixture
-def sample_tools() -> list[dict[str, Any]]:
-    """Provide sample tool definitions for testing."""
+def sample_steps() -> list[dict[str, Any]]:
+    """Provide sample step definitions for testing."""
     return [
         {
-            "tool_name": "search_database",
-            "arguments": {
+            "type": "tool",
+            "name": "search_database",
+            "input_schema": {
                 "query": {"type": "string", "required": True},
                 "limit": {"type": "integer", "default": 10}
             },
@@ -214,8 +216,9 @@ def sample_tools() -> list[dict[str, Any]]:
             }
         },
         {
-            "tool_name": "send_email",
-            "arguments": {
+            "type": "tool",
+            "name": "send_email",
+            "input_schema": {
                 "to": {"type": "string", "required": True},
                 "subject": {"type": "string"},
                 "body": {"type": "string"}
@@ -226,4 +229,3 @@ def sample_tools() -> list[dict[str, Any]]:
             }
         }
     ]
-

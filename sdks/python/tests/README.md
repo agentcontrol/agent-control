@@ -1,8 +1,8 @@
-# Agent Protect SDK Integration Tests
+# Agent Control SDK Integration Tests
 
 ## Overview
 
-These integration tests verify actual user workflows against a running Agent Protect server. They ensure that the SDK functionality remains stable over time and that all operations work correctly end-to-end.
+These integration tests verify actual user workflows against a running Agent Control server. They ensure that the SDK functionality remains stable over time and that all operations work correctly end-to-end.
 
 ## Test Categories
 
@@ -53,7 +53,7 @@ test = [
 ]
 ```
 
-### 2. Start the Agent Protect Server
+### 2. Start the Agent Control Server
 
 The server must be running before executing tests:
 
@@ -156,7 +156,7 @@ PASSED
 - `test_agent`: Registered test agent
 - `test_policy`: Created test policy
 - `test_control`: Created test control
-- `sample_tools`: Sample tool definitions
+- `sample_steps`: Sample step definitions
 
 ## Environment Variables
 
@@ -260,10 +260,10 @@ For clean testing:
 ### Tests are skipped
 
 ```
-SKIPPED [1] tests/conftest.py:32: Agent Protect server not available
+SKIPPED [1] tests/conftest.py:32: Agent Control server not available
 ```
 
-**Solution**: Start the Agent Protect server before running tests.
+**Solution**: Start the Agent Control server before running tests.
 
 ### Connection refused errors
 
@@ -345,4 +345,3 @@ For issues or questions:
 1. Check server logs: `cd server && uv run uvicorn ... --log-level debug`
 2. Run tests with verbose output: `pytest -vv`
 3. Check test fixtures in `conftest.py`
-

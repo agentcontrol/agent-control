@@ -20,7 +20,9 @@ async def list_controls(
     limit: int = 20,
     name: str | None = None,
     enabled: bool | None = None,
-    applies_to: Literal["llm_call", "tool_call"] | None = None,
+    step_type: str | None = None,
+    stage: Literal["pre", "post"] | None = None,
+    execution: Literal["server", "sdk"] | None = None,
     tag: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -34,13 +36,15 @@ async def list_controls(
         limit: Maximum number of controls to return (default 20, max 100)
         name: Optional filter by name (partial, case-insensitive match)
         enabled: Optional filter by enabled status
-        applies_to: Optional filter by type ('llm_call' or 'tool_call')
+        step_type: Optional filter by step type (built-ins: 'tool', 'llm_inference')
+        stage: Optional filter by stage ('pre' or 'post')
+        execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag
 
     Returns:
         Dictionary containing:
             - controls: List of control summaries with id, name, description,
-                       enabled, applies_to, check_stage, tags
+                       enabled, execution, step_types, stages, tags
             - pagination: Object with limit, total, next_cursor, has_more
 
     Raises:
@@ -53,7 +57,7 @@ async def list_controls(
             print(f"Total: {result['pagination']['total']}")
 
             # Filter by type
-            llm_controls = await list_controls(client, applies_to="llm_call")
+            llm_controls = await list_controls(client, step_type="llm_inference")
 
             # Paginate
             page1 = await list_controls(client, limit=10)
@@ -71,8 +75,12 @@ async def list_controls(
         params["name"] = name
     if enabled is not None:
         params["enabled"] = enabled
-    if applies_to is not None:
-        params["applies_to"] = applies_to
+    if step_type is not None:
+        params["step_type"] = step_type
+    if stage is not None:
+        params["stage"] = stage
+    if execution is not None:
+        params["execution"] = execution
     if tag is not None:
         params["tag"] = tag
 
@@ -107,7 +115,7 @@ async def get_control(
             control = await get_control(client, control_id=5)
             print(f"Control: {control['name']}")
             if control['data']:
-                print(f"Applies to: {control['data']['applies_to']}")
+                print(f"Execution: {control['data']['execution']}")
     """
     response = await client.http_client.get(f"/api/v1/controls/{control_id}")
     response.raise_for_status()
@@ -152,8 +160,8 @@ async def create_control(
                 client,
                 name="ssn-blocker",
                 data={
-                    "applies_to": "llm_call",
-                    "check_stage": "post",
+                    "execution": "server",
+                    "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
                     "selector": {"path": "output"},
                     "evaluator": {
                         "plugin": "regex",
@@ -429,4 +437,3 @@ async def update_control(
     )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
-

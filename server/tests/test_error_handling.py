@@ -41,7 +41,7 @@ def test_init_agent_rollback_on_create_failure(
             "agent_version": "1.0",
             "agent_metadata": {},
         },
-        "tools": [],
+        "steps": [],
     }
 
     # When: commit fails during agent creation
@@ -71,10 +71,11 @@ def test_init_agent_rollback_on_update_failure(
             "agent_version": "1.0",
             "agent_metadata": {},
         },
-        "tools": [
+        "steps": [
             {
-                "tool_name": "tool_a",
-                "arguments": {"a": "int"},
+                "type": "tool",
+                "name": "tool_a",
+                "input_schema": {"a": "int"},
                 "output_schema": {"ok": "bool"},
             }
         ],
@@ -86,10 +87,11 @@ def test_init_agent_rollback_on_update_failure(
     # When: updating with new tool and commit fails
     updated_payload = {
         **payload,
-        "tools": [
+        "steps": [
             {
-                "tool_name": "tool_a",
-                "arguments": {"a": "str"},  # changed
+                "type": "tool",
+                "name": "tool_a",
+                "input_schema": {"a": "str"},  # changed
                 "output_schema": {"ok": "bool"},
             }
         ],
@@ -179,7 +181,7 @@ def test_set_agent_policy_rollback_on_failure(
             "agent_version": "1.0",
             "agent_metadata": {},
         },
-        "tools": [],
+        "steps": [],
     }
     r1 = client.post("/api/v1/agents/initAgent", json=agent_payload)
     assert r1.status_code == 200
@@ -288,8 +290,8 @@ def test_set_control_data_rollback_on_failure(
             valid_payload = {
                 "description": "Valid Control",
                 "enabled": True,
-                "applies_to": "llm_call",
-                "check_stage": "pre",
+                "execution": "server",
+                "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
                 "selector": {"path": "input"},
                 "evaluator": {"plugin": "regex", "config": {"pattern": "x"}},
                 "action": {"decision": "deny"}

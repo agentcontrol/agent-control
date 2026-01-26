@@ -24,7 +24,7 @@ def make_agent_payload(
             "agent_description": "desc",
             "agent_version": "1.0",
         },
-        "tools": [],
+        "steps": [],
         "evaluators": evaluators or [],
     }
 

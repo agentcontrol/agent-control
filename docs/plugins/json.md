@@ -1,12 +1,12 @@
 # JSON Plugin Quickstart Guide
 
-A practical guide for configuring JSON validation controls for LLM outputs and tool calls.
+A practical guide for configuring JSON validation controls for LLM outputs and tool steps.
 
 ---
 
 ## What is the JSON Plugin?
 
-The JSON Validator Plugin validates JSON data from LLM responses and tool calls before they're used or executed. It acts as a quality and safety layer, ensuring structured outputs meet your requirements, preventing malformed data, and enforcing business rules.
+The JSON Validator Plugin validates JSON data from LLM responses and tool steps before they're used or executed. It acts as a quality and safety layer, ensuring structured outputs meet your requirements, preventing malformed data, and enforcing business rules.
 
 **Technical Foundation**: Uses [jsonschema](https://python-jsonschema.readthedocs.io/) for JSON Schema validation (Draft 7+) with custom field-level validators for simpler checks.
 
@@ -51,12 +51,12 @@ The JSON Validator Plugin validates JSON data from LLM responses and tool calls 
 - **LLM Feedback Loops**: Clear error messages enable automatic retry and self-correction
 - **Debugging**: Clear error messages pinpoint validation failures
 
-**When to use:** Any application where LLM outputs or tool call arguments need validation before use, especially in production with business-critical data or API integrations.
+**When to use:** Any application where LLM outputs or tool step input needs validation before use, especially in production with business-critical data or API integrations.
 
 **Common Use Cases:**
 - **Structured LLM Outputs**: Ensure LLMs return properly formatted JSON responses matching API contracts
 - **LLM Self-Correction**: Feed validation errors back to LLM for automatic retry and correction
-- **Tool Input Validation**: Block tool calls with invalid parameters before execution
+- **Tool Input Validation**: Block tool steps with invalid parameters before execution
 - **Multi-Tenant Apps**: Validate tenant_id is always present to prevent data leakage
 - **API Integrations**: Verify data conforms to third-party API schemas
 - **Form Validation**: Ensure user data meets requirements (email format, age range, etc.)

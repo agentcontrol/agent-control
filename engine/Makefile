@@ -1,10 +1,10 @@
 .PHONY: help sync test lint lint-fix typecheck build publish
 
 # Package name
-PACKAGE := agent-protect-engine
+PACKAGE := agent-control-engine
 
 help:
-	@echo "Agent Protect Engine - Makefile commands"
+	@echo "Agent Control Engine - Makefile commands"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make sync            - uv sync dependencies"

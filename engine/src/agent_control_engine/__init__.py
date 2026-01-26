@@ -1,4 +1,4 @@
-"""Agent Protect Engine - Rule execution logic and plugin system."""
+"""Agent Control Engine - Rule execution logic and plugin system."""
 
 from .discovery import (
     discover_plugins,

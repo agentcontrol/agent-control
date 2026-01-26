@@ -13,7 +13,7 @@ SDK_DIR    := sdks/python
 ENGINE_DIR := engine
 
 help:
-	@echo "Agent Protect - Makefile commands"
+	@echo "Agent Control - Makefile commands"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make sync            - uv sync all workspace packages at root (single .venv for all)"

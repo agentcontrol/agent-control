@@ -5,7 +5,7 @@ This module provides a decorator that applies server-defined policies to agent f
 Policies contain multiple controls (regex, list, Luna2, etc.) that are managed server-side.
 
 Architecture:
-    SERVER defines: Policies -> Controls (check_stage, selector, evaluator, action)
+    SERVER defines: Policies -> Controls (stage, selector, evaluator, action)
     SDK decorator: just marks WHERE the policy applies
 
 Usage:
@@ -19,7 +19,7 @@ Usage:
         return await assistant.respond(message)
 
     # The server's policy contains controls that define:
-    # - check_stage: "pre" or "post"
+    # - stage: "pre" or "post"
     # - selector.path: "input" or "output"
     # - evaluator: regex, list, Luna2 plugin, etc.
     # - action: deny, warn, or log
@@ -29,15 +29,119 @@ import asyncio
 import functools
 import inspect
 import logging
-import os
+import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from .client import AgentControlClient
+from agent_control.client import AgentControlClient
+from agent_control.observability import log_control_evaluation, log_span_end, log_span_start
+from agent_control.settings import get_settings
+from agent_control.tracing import _generate_span_id, get_current_trace_id, get_trace_and_span_ids
 
 logger = logging.getLogger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+@dataclass
+class ControlContext:
+    """
+    Holds state during control execution.
+
+    This class encapsulates all the shared logic between async and sync
+    control wrappers, including stats tracking, result processing, and logging.
+    """
+
+    agent_uuid: str
+    agent_name: str
+    server_url: str
+    func: Callable
+    args: tuple
+    kwargs: dict
+    trace_id: str
+    span_id: str
+    start_time: float
+
+    # Stats (mutually exclusive: errors vs matches vs non_matches)
+    total_executions: int = 0
+    total_matches: int = 0
+    total_non_matches: int = 0
+    total_errors: int = 0
+    actions: dict[str, int] = field(default_factory=dict)
+
+    def log_start(self) -> None:
+        """Log span start."""
+        log_span_start(self.trace_id, self.span_id, self.func.__name__, self.agent_name)
+
+    def log_end(self) -> None:
+        """Log span end with accumulated stats."""
+        duration_ms = (time.perf_counter() - self.start_time) * 1000
+        log_span_end(
+            self.trace_id,
+            self.span_id,
+            self.func.__name__,
+            duration_ms,
+            executions=self.total_executions,
+            matches=self.total_matches,
+            non_matches=self.total_non_matches,
+            errors=self.total_errors,
+            actions=self.actions if self.actions else None,
+        )
+
+    def pre_payload(self) -> dict[str, Any]:
+        """Build payload for pre-execution check (supports tool call detection)."""
+        return _create_evaluation_payload(self.func, self.args, self.kwargs, output=None)
+
+    def post_payload(self, output: Any) -> dict[str, Any]:
+        """Build payload for post-execution check (supports tool call detection)."""
+        return _create_evaluation_payload(self.func, self.args, self.kwargs, output=output)
+
+    def process_result(self, result: dict[str, Any], check_stage: str) -> None:
+        """
+        Process evaluation result: log, handle actions, update stats.
+
+        Args:
+            result: Server evaluation response
+            check_stage: "pre" or "post"
+
+        Raises:
+            ControlViolationError: If any control triggers with "deny" action
+        """
+        # Log each control evaluation
+        _log_control_evaluations(result, self.trace_id, self.span_id, check_stage)
+
+        # Handle deny/warn/log actions (may raise ControlViolationError)
+        _handle_evaluation_result(result)
+
+        # Update stats in place
+        self._update_stats(result)
+
+    def _update_stats(self, result: dict[str, Any]) -> None:
+        """
+        Update stats in place from evaluation result.
+
+        The server returns three mutually exclusive lists:
+        - matches: controls where condition matched
+        - non_matches: controls that were evaluated but didn't match
+        - errors: controls that failed during evaluation
+        """
+        # Process matches (controls that matched)
+        for match in result.get("matches") or []:
+            self.total_executions += 1
+            self.total_matches += 1
+            action = match.get("action", "allow")
+            self.actions[action] = self.actions.get(action, 0) + 1
+
+        # Process non-matches (controls evaluated but didn't match)
+        for _ in result.get("non_matches") or []:
+            self.total_executions += 1
+            self.total_non_matches += 1
+
+        # Process errors (controls that failed evaluation)
+        for _ in result.get("errors") or []:
+            self.total_executions += 1
+            self.total_errors += 1
 
 
 class ControlViolationError(Exception):
@@ -83,46 +187,39 @@ def _get_current_agent() -> Any | None:
 
 
 def _get_server_url() -> str:
-    """Get the server URL from environment or default."""
-    return os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
+    """Get the server URL from settings."""
+    return get_settings().url
 
 
-async def _evaluate_async(
+async def _evaluate(
     agent_uuid: str,
-    payload: dict[str, Any],
-    check_stage: str,
-    server_url: str
+    step: dict[str, Any],
+    stage: str,
+    server_url: str,
+    trace_id: str | None = None,
+    span_id: str | None = None,
 ) -> dict[str, Any]:
     """Call server evaluation endpoint asynchronously."""
+    # Build headers with trace/span IDs for distributed tracing
+    headers = {}
+    if trace_id:
+        headers["X-Trace-Id"] = trace_id
+    if span_id:
+        headers["X-Span-Id"] = span_id
 
     async with AgentControlClient(base_url=server_url) as client:
         response = await client.http_client.post(
             "/api/v1/evaluation",
             json={
                 "agent_uuid": str(agent_uuid),
-                "payload": payload,
-                "check_stage": check_stage
-            }
+                "step": step,
+                "stage": stage
+            },
+            headers=headers,
         )
         response.raise_for_status()
         result: dict[str, Any] = response.json()
         return result
-
-
-def _evaluate_sync(
-    agent_uuid: str,
-    payload: dict[str, Any],
-    check_stage: str,
-    server_url: str
-) -> dict[str, Any]:
-    """Call server evaluation endpoint synchronously."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    result = loop.run_until_complete(
-        _evaluate_async(agent_uuid, payload, check_stage, server_url)
-    )
-    loop.close()
-    return result
 
 
 def _extract_input_from_args(func: Callable, args: tuple, kwargs: dict) -> str:
@@ -160,9 +257,9 @@ def _create_evaluation_payload(
     output: Any = None
 ) -> dict[str, Any]:
     """
-    Create evaluation payload for server, detecting if it's a tool call or LLM call.
+    Create evaluation payload for server, detecting if it's a tool step or LLM step.
 
-    Returns either a ToolCall or LlmCall payload structure.
+    Returns a Step payload structure.
     """
     sig = inspect.signature(func)
     bound = sig.bind(*args, **kwargs)
@@ -172,20 +269,26 @@ def _create_evaluation_payload(
     tool_name = getattr(func, "name", None) or getattr(func, "tool_name", None)
 
     if tool_name:
-        # This is a TOOL CALL - create ToolCall payload
+        # This is a tool step
         return {
-            "tool_name": tool_name,
-            "arguments": dict(bound.arguments),
-            "tool_call_id": None,
-            "tool_output": str(output) if output is not None else None
+            "type": "tool",
+            "name": tool_name,
+            "input": dict(bound.arguments),
+            "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
+                None if output is None else str(output)
+            ),
         }
-    else:
-        # This is an LLM CALL - create LlmCall payload
-        input_data = _extract_input_from_args(func, args, kwargs)
-        return {
-            "input": input_data,
-            "output": str(output) if output is not None else None
-        }
+
+    # This is an LLM inference step
+    input_data = _extract_input_from_args(func, args, kwargs)
+    return {
+        "type": "llm_inference",
+        "name": func.__name__,
+        "input": input_data,
+        "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
+            None if output is None else str(output)
+        ),
+    }
 
 
 def _handle_evaluation_result(result: dict[str, Any]) -> None:
@@ -266,11 +369,149 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
                 logger.info(f"ℹ️ Control [{matched_control}]: {message}")
 
 
+def _log_control_evaluations(
+    result: dict[str, Any],
+    trace_id: str,
+    span_id: str,
+    check_stage: str,
+) -> None:
+    """Log each control evaluation from the result for debugging."""
+    # Log matches
+    for match in result.get("matches") or []:
+        _log_single_control(match, trace_id, span_id, check_stage, matched=True)
+
+    # Log errors
+    for error in result.get("errors") or []:
+        _log_single_control(error, trace_id, span_id, check_stage, matched=False)
+
+    # Log non-matches
+    for non_match in result.get("non_matches") or []:
+        _log_single_control(non_match, trace_id, span_id, check_stage, matched=False)
+
+
+def _log_single_control(
+    control_data: dict[str, Any],
+    trace_id: str,
+    span_id: str,
+    check_stage: str,
+    matched: bool,
+) -> None:
+    """Log a single control evaluation."""
+    log_control_evaluation(
+        trace_id=trace_id,
+        span_id=span_id,
+        control_name=control_data.get("control_name", "unknown"),
+        matched=matched,
+        action=control_data.get("action", "allow"),
+        confidence=control_data.get("result", {}).get("confidence", 0.0),
+        duration_ms=control_data.get("result", {}).get("execution_duration_ms"),
+        control_execution_id=control_data.get("control_execution_id"),
+        check_stage=check_stage,
+    )
+
+
+async def _execute_with_control(
+    func: Callable,
+    args: tuple,
+    kwargs: dict,
+    is_async: bool,
+) -> Any:
+    """
+    Core control execution logic for both async and sync functions.
+
+    This function is always called in an async context (either directly with await
+    for async functions, or inside asyncio.run() for sync functions), so it can
+    always use await _evaluate() directly.
+
+    Args:
+        func: The wrapped function to execute
+        args: Positional arguments for the function
+        kwargs: Keyword arguments for the function
+        is_async: Whether the wrapped function is async
+
+    Returns:
+        The result of the wrapped function
+
+    Raises:
+        ControlViolationError: If any control triggers with "deny" action
+    """
+    agent = _get_current_agent()
+    if agent is None:
+        logger.warning(
+            "No agent initialized. Call agent_control.init() first. "
+            "Running without protection."
+        )
+        if is_async:
+            return await func(*args, **kwargs)
+        return func(*args, **kwargs)
+
+    # Get trace context: inherit trace_id if set, always generate new span_id
+    # This allows multiple @control() calls to share the same trace but have unique spans
+    existing_trace_id = get_current_trace_id()
+    if existing_trace_id:
+        trace_id = existing_trace_id
+        span_id = _generate_span_id()  # New span for this function
+    else:
+        trace_id, span_id = get_trace_and_span_ids()  # New trace and span
+
+    ctx = ControlContext(
+        agent_uuid=str(agent.agent_id),
+        agent_name=agent.agent_name,
+        server_url=_get_server_url(),
+        func=func,
+        args=args,
+        kwargs=kwargs,
+        trace_id=trace_id,
+        span_id=span_id,
+        start_time=time.perf_counter(),
+    )
+    ctx.log_start()
+
+    try:
+        # PRE-EXECUTION: Check controls with check_stage="pre"
+        try:
+            result = await _evaluate(
+                ctx.agent_uuid, ctx.pre_payload(), "pre",
+                ctx.server_url, ctx.trace_id, ctx.span_id
+            )
+            ctx.process_result(result, "pre")
+        except (ControlViolationError, HumanReviewRequiredError):
+            raise
+        except Exception as e:
+            # FAIL-SAFE: If control check fails, DO NOT execute the function
+            logger.error(f"Pre-execution control check failed: {e}")
+            raise RuntimeError(
+                f"Control check failed unexpectedly. Execution blocked for safety. Error: {e}"
+            ) from e
+
+        # Execute the function
+        if is_async:
+            output = await func(*args, **kwargs)
+        else:
+            output = func(*args, **kwargs)
+
+        # POST-EXECUTION: Check controls with check_stage="post"
+        try:
+            result = await _evaluate(
+                ctx.agent_uuid, ctx.post_payload(output), "post",
+                ctx.server_url, ctx.trace_id, ctx.span_id
+            )
+            ctx.process_result(result, "post")
+        except (ControlViolationError, HumanReviewRequiredError):
+            raise
+        except Exception as e:
+            logger.error(f"Post-execution control check failed: {e}")
+
+        return output
+    finally:
+        ctx.log_end()
+
+
 def control(policy: str | None = None) -> Callable[[F], F]:
     """
     Decorator to apply server-defined policy at this code location.
 
-    The policy's controls (check_stage, selector, evaluator, action) are defined
+    The policy's controls (stage, selector, evaluator, action) are defined
     on the SERVER. This decorator just marks WHERE to apply the policy.
 
     Args:
@@ -286,10 +527,10 @@ def control(policy: str | None = None) -> Callable[[F], F]:
         HumanReviewRequiredError: If any control triggers with "human_review" action
 
     How it works:
-        1. Before function execution: Calls server with check_stage="pre"
+        1. Before function execution: Calls server with stage="pre"
            - Server evaluates all "pre" controls in the agent's policy
         2. Function executes
-        3. After function execution: Calls server with check_stage="post"
+        3. After function execution: Calls server with stage="post"
            - Server evaluates all "post" controls in the agent's policy
 
     Example:
@@ -327,45 +568,7 @@ def control(policy: str | None = None) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            agent = _get_current_agent()
-            if agent is None:
-                logger.warning(
-                    "No agent initialized. Call agent_control.init() first. "
-                    "Running without protection."
-                )
-                return await func(*args, **kwargs)
-
-            server_url = _get_server_url()
-            agent_uuid = str(agent.agent_id)
-
-            # PRE-EXECUTION: Check controls with check_stage="pre"
-            try:
-                payload = _create_evaluation_payload(func, args, kwargs, output=None)
-                result = await _evaluate_async(agent_uuid, payload, "pre", server_url)
-                _handle_evaluation_result(result)
-            except (ControlViolationError, HumanReviewRequiredError):
-                raise
-            except Exception as e:
-                # FAIL-SAFE: If control check fails, DO NOT execute the function
-                logger.error(f"Pre-execution control check failed: {e}")
-                raise RuntimeError(
-                    f"Control check failed unexpectedly. Execution blocked for safety. Error: {e}"
-                ) from e
-
-            # Execute the function
-            output = await func(*args, **kwargs)
-
-            # POST-EXECUTION: Check controls with check_stage="post"
-            try:
-                payload = _create_evaluation_payload(func, args, kwargs, output=output)
-                result = await _evaluate_async(agent_uuid, payload, "post", server_url)
-                _handle_evaluation_result(result)
-            except (ControlViolationError, HumanReviewRequiredError):
-                raise
-            except Exception as e:
-                logger.error(f"Post-execution control check failed: {e}")
-
-            return output
+            return await _execute_with_control(func, args, kwargs, is_async=True)
 
         # Copy over ALL attributes from the original function (important for LangChain tools)
         for attr in dir(func):
@@ -377,45 +580,9 @@ def control(policy: str | None = None) -> Callable[[F], F]:
 
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            agent = _get_current_agent()
-            if agent is None:
-                logger.warning(
-                    "No agent initialized. Call agent_control.init() first. "
-                    "Running without protection."
-                )
-                return func(*args, **kwargs)
-
-            server_url = _get_server_url()
-            agent_uuid = str(agent.agent_id)
-
-            # PRE-EXECUTION
-            try:
-                payload = _create_evaluation_payload(func, args, kwargs, output=None)
-                result = _evaluate_sync(agent_uuid, payload, "pre", server_url)
-                _handle_evaluation_result(result)
-            except (ControlViolationError, HumanReviewRequiredError):
-                raise
-            except Exception as e:
-                # FAIL-SAFE: If control check fails, DO NOT execute the function
-                logger.error(f"Pre-execution control check failed: {e}")
-                raise RuntimeError(
-                    f"Control check failed unexpectedly. Execution blocked for safety. Error: {e}"
-                ) from e
-
-            # Execute
-            output = func(*args, **kwargs)
-
-            # POST-EXECUTION
-            try:
-                payload = _create_evaluation_payload(func, args, kwargs, output=output)
-                result = _evaluate_sync(agent_uuid, payload, "post", server_url)
-                _handle_evaluation_result(result)
-            except (ControlViolationError, HumanReviewRequiredError):
-                raise
-            except Exception as e:
-                logger.error(f"Post-execution control check failed: {e}")
-
-            return output
+            return asyncio.run(
+                _execute_with_control(func, args, kwargs, is_async=False)
+            )
 
         if inspect.iscoroutinefunction(func):
             return async_wrapper  # type: ignore

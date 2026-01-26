@@ -486,7 +486,7 @@ async def validation_exception_handler(
             # Map common prefixes to resources
             prefix_map = {
                 "agent": "Agent",
-                "tools": "Tool",
+                "steps": "Step",
                 "evaluators": "Evaluator",
                 "data": "Control",
                 "policy": "Policy",
@@ -525,4 +525,3 @@ async def validation_exception_handler(
 
 # Type hint import for the handler
 from fastapi.exceptions import RequestValidationError  # noqa: E402
-

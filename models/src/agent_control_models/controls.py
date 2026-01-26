@@ -2,6 +2,7 @@
 
 import warnings
 from typing import Any, Literal, Self
+from uuid import uuid4
 
 import re2
 from pydantic import Field, field_validator, model_validator
@@ -10,27 +11,18 @@ from .base import BaseModel
 
 
 class ControlSelector(BaseModel):
-    """Selects data from payload and optionally scopes applicability by tool.
+    """Selects data from a Step payload.
 
-    - path: which slice of the payload to feed into the evaluator. Optional, defaults to "*"
-      meaning the entire payload object (ToolCall or LlmCall).
-    - tool_names/tool_name_regex: optional applicability filters for ToolCall payloads.
+    - path: which slice of the Step to feed into the evaluator. Optional, defaults to "*"
+      meaning the entire Step object.
     """
 
     path: str | None = Field(
         default="*",
         description=(
             "Path to data using dot notation. "
-            "Examples: 'input', 'output', 'arguments.query', 'context.user_id', 'tool_name', '*'"
+            "Examples: 'input', 'output', 'context.user_id', 'name', 'type', '*'"
         ),
-    )
-    tool_names: list[str] | None = Field(
-        default=None,
-        description="Exact tool names this control applies to (ToolCall only)",
-    )
-    tool_name_regex: str | None = Field(
-        default=None,
-        description="RE2 pattern matched with search() against tool_name (ToolCall only)",
     )
 
     @field_validator("path")
@@ -45,7 +37,7 @@ class ControlSelector(BaseModel):
             )
 
         # Valid root fields
-        valid_roots = {"input", "output", "arguments", "tool_name", "context", "*"}
+        valid_roots = {"input", "output", "name", "type", "context", "*"}
         root = v.split(".")[0]
 
         if root not in valid_roots:
@@ -55,40 +47,102 @@ class ControlSelector(BaseModel):
             )
         return v
 
-    @field_validator("tool_names")
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"path": "output"},
+                {"path": "context.user_id"},
+                {"path": "input"},
+                {"path": "*"},
+                {"path": "name"},
+                {"path": "output"},
+            ]
+        }
+    }
+
+
+class ControlScope(BaseModel):
+    """Defines when a control applies to a Step."""
+
+    step_types: list[str] | None = Field(
+        default=None,
+        description=(
+            "Step types this control applies to (omit to apply to all types). "
+            "Built-in types are 'tool' and 'llm_inference'."
+        ),
+    )
+    step_names: list[str] | None = Field(
+        default=None,
+        description="Exact step names this control applies to",
+    )
+    step_name_regex: str | None = Field(
+        default=None,
+        description="RE2 pattern matched with search() against step name",
+    )
+    stages: list[Literal["pre", "post"]] | None = Field(
+        default=None,
+        description="Evaluation stages this control applies to",
+    )
+
+    @field_validator("step_types")
     @classmethod
-    def validate_tool_names(cls, v: list[str] | None) -> list[str] | None:
+    def validate_step_types(
+        cls, v: list[str] | None
+    ) -> list[str] | None:
         if v is None:
             return v
         if len(v) == 0:
             raise ValueError(
-                "tool_names cannot be an empty list. Use None/omit the field to apply to all tools."
+                "step_types cannot be an empty list. Use None/omit the field to apply to all types."
             )
         if any((not isinstance(x, str) or not x) for x in v):
-            raise ValueError("tool_names must be a list of non-empty strings")
+            raise ValueError("step_types must be a list of non-empty strings")
         return v
 
-    @field_validator("tool_name_regex")
+    @field_validator("step_names")
     @classmethod
-    def validate_tool_name_regex(cls, v: str | None) -> str | None:
+    def validate_step_names(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        if len(v) == 0:
+            raise ValueError(
+                "step_names cannot be an empty list. Use None/omit the field to apply to all steps."
+            )
+        if any((not isinstance(x, str) or not x) for x in v):
+            raise ValueError("step_names must be a list of non-empty strings")
+        return v
+
+    @field_validator("step_name_regex")
+    @classmethod
+    def validate_step_name_regex(cls, v: str | None) -> str | None:
         if v is None:
             return v
         try:
             re2.compile(v)
         except re2.error as e:
-            raise ValueError(f"Invalid tool_name_regex: {e}") from e
+            raise ValueError(f"Invalid step_name_regex: {e}") from e
+        return v
+
+    @field_validator("stages")
+    @classmethod
+    def validate_stages(
+        cls, v: list[Literal["pre", "post"]] | None
+    ) -> list[Literal["pre", "post"]] | None:
+        if v is None:
+            return v
+        if len(v) == 0:
+            raise ValueError(
+                "stages cannot be an empty list. Use None/omit the field to apply to all stages."
+            )
         return v
 
     model_config = {
         "json_schema_extra": {
             "examples": [
-                {"path": "output"},
-                {"path": "arguments.query"},
-                {"path": "context.user_id"},
-                {"path": "input"},
-                {"path": "*"},
-                {"path": "arguments.dest", "tool_names": ["copy_file", "aws_cli"]},
-                {"path": "output", "tool_name_regex": "^db_.*"},
+                {"step_types": ["tool"], "stages": ["pre"]},
+                {"step_names": ["search_db", "fetch_user"]},
+                {"step_name_regex": "^db_.*"},
+                {"step_types": ["llm_inference"], "stages": ["post"]},
             ]
         }
     }
@@ -730,20 +784,14 @@ class ControlDefinition(BaseModel):
 
     description: str | None = Field(None, description="Detailed description of the control")
     enabled: bool = Field(True, description="Whether this control is active")
-    local: bool = Field(
-        False,
-        description=(
-            "If True, this control runs locally in the SDK. "
-            "If False (default), it runs on the server."
-        ),
+    execution: Literal["server", "sdk"] = Field(
+        ..., description="Where this control executes"
     )
 
     # When to apply
-    applies_to: Literal["llm_call", "tool_call"] = Field(
-        ..., description="Which type of interaction this control applies to"
-    )
-    check_stage: Literal["pre", "post"] = Field(
-        ..., description="When to execute this control"
+    scope: ControlScope = Field(
+        default_factory=ControlScope,
+        description="Which steps and stages this control applies to",
     )
 
     # What to check
@@ -764,8 +812,8 @@ class ControlDefinition(BaseModel):
                 {
                     "description": "Block outputs containing US Social Security Numbers",
                     "enabled": True,
-                    "applies_to": "llm_call",
-                    "check_stage": "post",
+                    "execution": "server",
+                    "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
                     "selector": {"path": "output"},
                     "evaluator": {
                         "plugin": "regex",
@@ -821,15 +869,17 @@ class EvaluatorResult(BaseModel):
 
 
 class ControlMatch(BaseModel):
-    """Represents a control match (could be allow, deny, warn, log or human_review)."""
+    """Represents a control evaluation result (match, non-match, or error)."""
 
-    control_id: int = Field(..., description="Database ID of the control that matched")
-    control_name: str = Field(..., description="Name of the control that matched")
+    control_execution_id: str = Field(
+        default_factory=lambda: str(uuid4()),
+        description="Unique ID for this control execution (generated by engine)",
+    )
+    control_id: int = Field(..., description="Database ID of the control")
+    control_name: str = Field(..., description="Name of the control")
     action: Literal["allow", "deny", "warn", "log", "human_review"] = Field(
-        ..., description="Action to take for this match"
+        ..., description="Action configured for this control"
     )
     result: EvaluatorResult = Field(
         ..., description="Evaluator result (confidence, message, metadata)"
     )
-
-

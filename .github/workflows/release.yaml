@@ -42,6 +42,22 @@ jobs:
           uv sync
           uv run python scripts/build.py all
 
+      - name: Publish agent-control-models to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: models/dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Publish agent-control-sdk to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdks/python/dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
       - name: Upload to GitHub Release
         if: steps.release.outputs.released == 'true'
         uses: python-semantic-release/upload-to-gh-release@main

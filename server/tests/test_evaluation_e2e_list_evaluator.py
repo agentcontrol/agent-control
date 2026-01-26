@@ -1,7 +1,7 @@
 """End-to-end tests for AllowList/DenyList logic using the new ListEvaluator."""
-from agent_control_models import EvaluationRequest, LlmCall, ToolCall
+import uuid
 from fastapi.testclient import TestClient
-
+from agent_control_models import EvaluationRequest, Step
 from .utils import create_and_assign_policy
 
 
@@ -11,9 +11,9 @@ def test_list_evaluator_denylist_behavior(client: TestClient):
     control_data = {
         "description": "DenyList Control",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "arguments.cmd"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input.cmd"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -27,11 +27,11 @@ def test_list_evaluator_denylist_behavior(client: TestClient):
     agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="DenyListAgent")
 
     # Case 1: Safe Value
-    # When: Sending a tool call with a safe command "ls"
+    # When: Sending a tool step with a safe command "ls"
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="shell", arguments={"cmd": "ls"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="shell", input={"cmd": "ls"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
 
@@ -39,11 +39,11 @@ def test_list_evaluator_denylist_behavior(client: TestClient):
     assert resp.json()["is_safe"] is True
 
     # Case 2: Unsafe Value
-    # When: Sending a tool call with a forbidden command "rm"
+    # When: Sending a tool step with a forbidden command "rm"
     req_unsafe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="shell", arguments={"cmd": "rm"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="shell", input={"cmd": "rm"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_unsafe.model_dump(mode="json"))
 
@@ -59,9 +59,9 @@ def test_list_evaluator_allowlist_behavior(client: TestClient):
     control_data = {
         "description": "AllowList Control",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "tool_name"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "name"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -75,11 +75,11 @@ def test_list_evaluator_allowlist_behavior(client: TestClient):
     agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="AllowListAgent")
 
     # Case 1: Allowed Value
-    # When: Sending a tool call with the allowed tool "safe_tool"
+    # When: Sending a tool step with the allowed tool "safe_tool"
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="safe_tool", arguments={}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="safe_tool", input={}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
 
@@ -87,11 +87,11 @@ def test_list_evaluator_allowlist_behavior(client: TestClient):
     assert resp.json()["is_safe"] is True
 
     # Case 2: Disallowed Value
-    # When: Sending a tool call with a tool NOT in the list ("unknown_tool")
+    # When: Sending a tool step with a tool NOT in the list ("unknown_tool")
     req_unsafe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="unknown_tool", arguments={}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="unknown_tool", input={}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_unsafe.model_dump(mode="json"))
 
@@ -106,8 +106,8 @@ def test_list_evaluator_case_insensitive(client: TestClient):
     control_data = {
         "description": "Case Insensitive Control",
         "enabled": True,
-        "applies_to": "llm_call",
-        "check_stage": "pre",
+        "execution": "server",
+        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "plugin": "list",
@@ -124,8 +124,8 @@ def test_list_evaluator_case_insensitive(client: TestClient):
     # When: Sending input "blockme" (lowercase)
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=LlmCall(input="blockme", output=None),
-        check_stage="pre"
+        step=Step(type="llm_inference", name="test-step", input="blockme", output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
 
@@ -139,9 +139,9 @@ def test_list_evaluator_list_input_any_match(client: TestClient):
     control_data = {
         "description": "Restricted Tags",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "arguments.tags"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input.tags"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -158,8 +158,8 @@ def test_list_evaluator_list_input_any_match(client: TestClient):
     # When: Sending tags ["public", "restricted"]
     req_unsafe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="update", arguments={"tags": ["public", "restricted"]}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="update", input={"tags": ["public", "restricted"]}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_unsafe.model_dump(mode="json"))
 
@@ -170,8 +170,8 @@ def test_list_evaluator_list_input_any_match(client: TestClient):
     # When: Sending tags ["public", "internal"]
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="update", arguments={"tags": ["public", "internal"]}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="update", input={"tags": ["public", "internal"]}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
 
@@ -186,9 +186,9 @@ def test_list_evaluator_list_input_all_match(client: TestClient):
     control_data = {
         "description": "Enforce Safe Tags",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "arguments.tags"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input.tags"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -205,8 +205,8 @@ def test_list_evaluator_list_input_all_match(client: TestClient):
     # When: Sending only safe tags
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="update", arguments={"tags": ["safe_tag", "audit_approved"]}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="update", input={"tags": ["safe_tag", "audit_approved"]}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
 
@@ -217,8 +217,8 @@ def test_list_evaluator_list_input_all_match(client: TestClient):
     # When: Sending tags with one risky item
     req_unsafe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="update", arguments={"tags": ["safe_tag", "risky"]}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="update", input={"tags": ["safe_tag", "risky"]}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_unsafe.model_dump(mode="json"))
 
@@ -226,21 +226,21 @@ def test_list_evaluator_list_input_all_match(client: TestClient):
     assert resp.json()["is_safe"] is False
 
 
-def test_list_evaluator_disallow_tool_name(client: TestClient):
-    """Test Disallowing specific tool names (DenyList on tool_name)."""
+def test_list_evaluator_disallow_name(client: TestClient):
+    """Test Disallowing specific tool names (DenyList on name)."""
     # Given: A control blocking "delete_user" and "drop_db" tools
     control_data = {
         "description": "Block Dangerous Tools",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "tool_name"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "name"},
         "evaluator": {
             "plugin": "list",
             "config": {
                 "values": ["delete_user", "drop_db"],
                 "logic": "any",
-                "match_on": "match" # Trigger if tool_name is in list
+                "match_on": "match" # Trigger if name is in list
             }
         },
         "action": {"decision": "deny"}
@@ -251,8 +251,8 @@ def test_list_evaluator_disallow_tool_name(client: TestClient):
     # When: Calling a safe tool
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="get_user", arguments={"id": "123"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="get_user", input={"id": "123"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
     assert resp.json()["is_safe"] is True
@@ -261,8 +261,8 @@ def test_list_evaluator_disallow_tool_name(client: TestClient):
     # When: Calling a dangerous tool
     req_unsafe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="delete_user", arguments={"id": "123"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="delete_user", input={"id": "123"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_unsafe.model_dump(mode="json"))
     assert resp.json()["is_safe"] is False
@@ -275,9 +275,9 @@ def test_list_evaluator_allow_only_argument_values(client: TestClient):
     control_data = {
         "description": "Enforce Allowed Regions",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "arguments.region"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input.region"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -294,8 +294,8 @@ def test_list_evaluator_allow_only_argument_values(client: TestClient):
     # When: Using an allowed region
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="deploy", arguments={"region": "us-east-1"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="deploy", input={"region": "us-east-1"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
     assert resp.json()["is_safe"] is True
@@ -304,8 +304,8 @@ def test_list_evaluator_allow_only_argument_values(client: TestClient):
     # When: Using a disallowed region
     req_unsafe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="deploy", arguments={"region": "eu-central-1"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="deploy", input={"region": "eu-central-1"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_unsafe.model_dump(mode="json"))
     assert resp.json()["is_safe"] is False
@@ -319,9 +319,9 @@ def test_list_evaluator_edge_cases(client: TestClient):
     control_empty = {
         "description": "Empty Values Control",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "tool_name"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "name"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -337,8 +337,8 @@ def test_list_evaluator_edge_cases(client: TestClient):
     # When: Calling any tool
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="something", arguments={}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="something", input={}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
     # Then: Should be safe (empty list matches nothing)
@@ -349,9 +349,9 @@ def test_list_evaluator_edge_cases(client: TestClient):
     control_types = {
         "description": "Type Coercion Control",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "arguments.count"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input.count"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -367,8 +367,8 @@ def test_list_evaluator_edge_cases(client: TestClient):
     # When: Input is integer 10
     req_int = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="count", arguments={"count": 10}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="count", input={"count": 10}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_int.model_dump(mode="json"))
     # Then: Should match (deny)
@@ -377,8 +377,8 @@ def test_list_evaluator_edge_cases(client: TestClient):
     # When: Input is string "20"
     req_str = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="count", arguments={"count": "20"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="count", input={"count": "20"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_str.model_dump(mode="json"))
     # Then: Should match (deny) - coercion works
@@ -389,9 +389,9 @@ def test_list_evaluator_edge_cases(client: TestClient):
     control_special = {
         "description": "Special Chars Control",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "arguments.query"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input.query"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -407,8 +407,8 @@ def test_list_evaluator_edge_cases(client: TestClient):
     # When: Input exactly matches "(test)"
     req_special = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="search", arguments={"query": "(test)"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="search", input={"query": "(test)"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_special.model_dump(mode="json"))
     # Then: Should match (deny)
@@ -417,8 +417,8 @@ def test_list_evaluator_edge_cases(client: TestClient):
     # When: Input is "test" (without parens)
     req_normal = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="search", arguments={"query": "test"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="search", input={"query": "test"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_normal.model_dump(mode="json"))
     # Then: Should NOT match (safe)
@@ -430,9 +430,9 @@ def test_list_evaluator_edge_cases(client: TestClient):
     control_null = {
         "description": "Null Input Control",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "arguments.missing_arg"}, # Will be None
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input.missing_arg"}, # Will be None
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -448,8 +448,8 @@ def test_list_evaluator_edge_cases(client: TestClient):
     # When: Selector returns None
     req_null = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="check", arguments={}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="check", input={}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_null.model_dump(mode="json"))
     # Then: Should be safe (None input -> empty list -> no match)
@@ -466,9 +466,9 @@ def test_list_evaluator_re2_corner_cases(client: TestClient):
     control_large = {
         "description": "Large List Control",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "arguments.item"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input.item"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -484,8 +484,8 @@ def test_list_evaluator_re2_corner_cases(client: TestClient):
     # When: Matching the last item
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="check", arguments={"item": "target_value"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="check", input={"item": "target_value"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
     # Then: Should match
@@ -498,9 +498,9 @@ def test_list_evaluator_newline_strictness(client: TestClient):
     control_strict = {
         "description": "Strict Match Control",
         "enabled": True,
-        "applies_to": "tool_call",
-        "check_stage": "pre",
-        "selector": {"path": "arguments.val"},
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input.val"},
         "evaluator": {
             "plugin": "list",
             "config": {
@@ -516,8 +516,8 @@ def test_list_evaluator_newline_strictness(client: TestClient):
     # When: Sending "exact\n" (trailing newline)
     req_newline = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="check", arguments={"val": "exact\n"}, output=None),
-        check_stage="pre"
+        step=Step(type="tool", name="check", input={"val": "exact\n"}, output=None),
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_newline.model_dump(mode="json"))
 

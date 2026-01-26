@@ -17,7 +17,7 @@ def _create_agent(client: TestClient, name: str | None = None) -> tuple[str, str
             "agent_version": "1.0",
             "agent_metadata": {},
         },
-        "tools": [],
+        "steps": [],
     }
     resp = client.post("/api/v1/agents/initAgent", json=payload)
     assert resp.status_code == 200

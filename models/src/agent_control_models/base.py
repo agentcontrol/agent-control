@@ -1,4 +1,4 @@
-"""Base models and utilities for Agent Protect."""
+"""Base models and utilities for Agent Control."""
 
 from typing import Any
 
@@ -8,7 +8,7 @@ from pydantic import ConfigDict
 
 class BaseModel(PydanticBaseModel):
     """
-    Base model for all Agent Protect models.
+    Base model for all Agent Control models.
 
     Provides common configuration and utilities for JSON serialization
     and Pydantic compatibility.

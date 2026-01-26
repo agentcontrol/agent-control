@@ -53,8 +53,8 @@ Example: *"If the output contains an SSN pattern, block the response."*
 ```json
 {
   "name": "block-ssn-in-output",
-  "applies_to": "llm_call",
-  "check_stage": "post",
+  "execution": "server",
+  "scope": { "step_types": ["llm_inference"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
     "plugin": "regex",
@@ -91,20 +91,23 @@ A **Selector** defines what data to extract from the payload for evaluation.
 
 | Path | Description | Example Use |
 |------|-------------|-------------|
-| `input` | User's input text | Check for prompt injection |
-| `output` | Agent's response | Check for PII leakage |
-| `arguments.query` | Tool argument | Block SQL injection |
-| `tool_name` | Name of tool being called | Restrict tool usage |
+| `input` | Step input (tool args or LLM input) | Check for prompt injection |
+| `output` | Step output | Check for PII leakage |
+| `input.query` | Tool input field | Block SQL injection |
+| `name` | Step name (tool name or model/chain id, required) | Restrict step usage |
 | `context.user_id` | Context field | User-based rules |
-| `*` | Entire payload | Full payload analysis |
+| `*` | Entire step | Full payload analysis |
 
-**Tool Filtering**: Selectors can filter by tool name:
+**Step Scoping**: Controls can scope by step type/name/stage:
 
 ```json
 {
-  "path": "arguments.query",
-  "tool_names": ["search_database", "execute_sql"],
-  "tool_name_regex": "^db_.*"
+  "scope": {
+    "step_types": ["tool"],
+    "step_names": ["search_database", "execute_sql"],
+    "step_name_regex": "^db_.*",
+    "stages": ["pre"]
+  }
 }
 ```
 
@@ -121,14 +124,14 @@ An **Action** defines what to do when a control matches:
 
 > **Note**: Agent Control uses "deny wins" semantics. If any enabled control with `deny` action matches, the request is blocked regardless of other control results.
 
-### Applies To
+### Step Types
 
-Controls can apply to different interaction types:
+Controls can scope to different step types:
 
 | Type | Description |
 |------|-------------|
-| `llm_call` | LLM interactions (input/output text) |
-| `tool_call` | Tool executions (arguments/output) |
+| `llm_inference` | LLM interactions (input/output text) |
+| `tool` | Tool executions (input/output) |
 
 ---
 
@@ -500,10 +503,11 @@ agent_control.init(
     agent_name="my-agent",           # Required: human-readable name
     agent_id="my-agent-v1",          # Required: unique identifier
     server_url="http://localhost:8000",  # Optional: defaults to env var
-    tools=[                          # Optional: register available tools
+    steps=[                          # Optional: register available steps
         {
-            "tool_name": "search",
-            "arguments": {"query": {"type": "string"}},
+            "type": "tool",
+            "name": "search",
+            "input_schema": {"query": {"type": "string"}},
             "output_schema": {"results": {"type": "array"}}
         }
     ]
@@ -573,8 +577,8 @@ async with AgentControlClient() as client:
         client,
         name="block-pii",
         data={
-            "applies_to": "llm_call",
-            "check_stage": "post",
+            "execution": "server",
+            "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
             "selector": {"path": "output"},
             "evaluator": {
                 "plugin": "regex",
@@ -584,16 +588,19 @@ async with AgentControlClient() as client:
         }
     )
 
-    # Create a control for tool calls
+    # Create a control for tool steps
     tool_ctrl = await controls.create_control(
         client,
         name="block-dangerous-paths",
         data={
-            "applies_to": "tool_call",
-            "check_stage": "pre",
+            "execution": "server",
+            "scope": {
+                "step_types": ["tool"],
+                "step_names": ["read_file", "write_file", "delete_file"],
+                "stages": ["pre"]
+            },
             "selector": {
-                "path": "arguments.path",
-                "tool_names": ["read_file", "write_file", "delete_file"]
+                "path": "input.path"
             },
             "evaluator": {
                 "plugin": "regex",
@@ -865,8 +872,8 @@ make alembic-upgrade
 ### Control Not Triggering
 
 1. Verify the control is enabled
-2. Check `applies_to` matches your call type (`llm_call` vs `tool_call`)
-3. Check `check_stage` is correct (`pre` for input, `post` for output)
+2. Check `scope.step_types` matches your step type (`llm_inference` vs `tool`)
+3. Check `scope.stages` is correct (`pre` for input, `post` for output)
 4. Verify the selector path matches your data structure
 5. Test the evaluator pattern/values independently
 

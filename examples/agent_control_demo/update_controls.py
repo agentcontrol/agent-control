@@ -58,11 +58,11 @@ async def allow_ssn(client: AgentControlClient, control_id: int) -> None:
     updated_definition = {
         "description": "SSN control - DISABLED (SSNs allowed)",
         "enabled": False,  # Disabled = SSNs allowed
-        "applies_to": "llm_call",
-        "check_stage": "post",
+        "execution": "server",
+        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
-            "type": "regex",
+            "plugin": "regex",
             "config": {
                 "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
                 "flags": []
@@ -98,11 +98,11 @@ async def block_ssn(client: AgentControlClient, control_id: int) -> None:
     updated_definition = {
         "description": "Block SSN patterns in output to prevent PII leakage",
         "enabled": True,  # Enabled = SSNs blocked
-        "applies_to": "llm_call",
-        "check_stage": "post",
+        "execution": "server",
+        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
-            "type": "regex",
+            "plugin": "regex",
             "config": {
                 "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
                 "flags": []
@@ -213,4 +213,3 @@ Then test with the demo agent:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

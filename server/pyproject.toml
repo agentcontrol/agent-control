@@ -1,16 +1,18 @@
 [project]
 name = "agent-control-server"
-version = "1.0.1"
+version = "2.0.0"
 description = "Server for Agent Control - manage and evaluate controls for AI agents"
 requires-python = ">=3.12"
 # Note: agent-control-models, agent-control-engine, and agent-control-plugins are bundled at build time
 dependencies = [
     "fastapi>=0.109.0",
+    "starlette-exporter>=0.23.0",
     "uvicorn[standard]>=0.27.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "SQLAlchemy>=2.0.0",
     "psycopg[binary]>=3.1",
+    "asyncpg>=0.29.0",
     "greenlet>=3.0",
     "alembic>=1.13.0",
     "jsonschema>=4.25.1",
@@ -37,6 +39,9 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.8.0",
     "types-jsonschema>=4.23.0",
+    "agent-control-models",
+    "agent-control-engine",
+    "agent-control-plugins",
 ]
 
 [project.scripts]

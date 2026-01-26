@@ -10,12 +10,15 @@ from agent_control_models import HealthResponse
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from .auth import require_api_key
-from .config import settings
+from .config import observability_settings, settings
+from .db import AsyncSessionLocal
 from .endpoints.agents import router as agent_router
 from .endpoints.controls import router as control_router
 from .endpoints.evaluation import router as evaluation_router
+from .endpoints.observability import router as observability_router
 from .endpoints.plugins import router as plugin_router
 from .endpoints.policies import router as policy_router
 from .errors import (
@@ -26,9 +29,44 @@ from .errors import (
     validation_exception_handler,
 )
 from .logging_utils import configure_logging
+from .observability.ingest import DirectEventIngestor
+from .observability.store import PostgresEventStore
 
 logger = logging.getLogger(__name__)
 
+METRICS_PATH = "/metrics"
+PROMETHEUS_BUCKETS = [
+    0.1,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    30.0,
+    60.0,
+    float("inf"),
+]
+PROMETHEUS_SKIP_PATHS = [
+    METRICS_PATH,
+    "/health",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+]
+
+
+def add_prometheus_metrics(app: FastAPI, metrics_prefix: str) -> None:
+    """Configure Prometheus metrics for the FastAPI app."""
+    app.add_middleware(
+        PrometheusMiddleware,
+        app_name="agent-control-server",
+        prefix=metrics_prefix,
+        group_paths=True,
+        filter_unhandled_paths=True,
+        buckets=PROMETHEUS_BUCKETS,
+        skip_paths=PROMETHEUS_SKIP_PATHS,
+    )
+    app.add_route(METRICS_PATH, handle_metrics)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -42,7 +80,34 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     available = list(list_plugins().keys())
     logger.info(f"Plugin discovery complete. Available plugins: {available}")
 
+    # Initialize observability components (stored on app.state)
+    if observability_settings.enabled:
+        logger.info("Initializing observability components...")
+
+        # 1. Create event store
+        store = PostgresEventStore(AsyncSessionLocal)
+        app.state.event_store = store
+        logger.info("PostgresEventStore initialized")
+
+        # 2. Create event ingestor
+        ingestor = DirectEventIngestor(
+            store=store,
+            log_to_stdout=observability_settings.stdout,
+        )
+        app.state.event_ingestor = ingestor
+        logger.info(
+            f"DirectEventIngestor initialized (stdout={observability_settings.stdout})"
+        )
+
+        logger.info("Observability initialization complete")
+
     yield
+
+    # Shutdown: Clean up observability
+    if observability_settings.enabled and hasattr(app.state, "event_store"):
+        logger.info("Shutting down observability components...")
+        await app.state.event_store.close()
+        logger.info("EventStore closed")
 
 
 app = FastAPI(
@@ -73,6 +138,8 @@ Agent → Policy → Control(s)
     version="0.1.0",
     lifespan=lifespan,
 )
+
+add_prometheus_metrics(app, settings.prometheus_metrics_prefix)
 
 # Configure CORS
 app.add_middleware(
@@ -133,6 +200,12 @@ app.include_router(
     plugin_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(require_api_key)],
+)
+
+# Observability routes (already has auth dependency in router)
+app.include_router(
+    observability_router,
+    prefix=api_v1_prefix,
 )
 
 # Health check at root level (common convention)

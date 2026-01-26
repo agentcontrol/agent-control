@@ -126,6 +126,7 @@ from agent_control import (
     AgentControlClient,
     ControlDefinition,
     ControlSelector,
+    ControlScope,
     ControlAction,
     EvaluatorConfig,
     controls,
@@ -139,8 +140,8 @@ async with AgentControlClient() as client:
     control_data = ControlDefinition(
         description="Block PII in output",
         enabled=True,
-        applies_to="llm_call",
-        check_stage="post",
+        execution="server",
+        scope=ControlScope(step_types=["llm_inference"], stages=["post"]),
         selector=ControlSelector(path="output"),
         evaluator=EvaluatorConfig(
             plugin="regex",

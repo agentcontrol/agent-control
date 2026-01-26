@@ -54,13 +54,13 @@ Guidelines:
 Examples below are illustrative; adjust imports/names and fill in placeholders to match the concrete code under test.
 
 ```python
-def test_selector_rejects_invalid_tool_regex() -> None:
-    # Given: a selector with an invalid regex
-    selector = {"tool_name_regex": "("}
+def test_scope_rejects_invalid_step_name_regex() -> None:
+    # Given: a scope with an invalid regex
+    scope = {"step_name_regex": "("}
 
     # When: constructing the model
     with pytest.raises(ValueError):
-        ControlSelector.model_validate(selector)
+        ControlScope.model_validate(scope)
 
     # Then: a clear validation error is raised (asserted by pytest)
 ```
@@ -86,14 +86,14 @@ def test_create_control_returns_id(client: TestClient) -> None:
 async def test_sdk_denies_on_local_control() -> None:
     # Given: an SDK client and a local deny control
     client = AgentControlClient(base_url="http://localhost:8000")
-    controls = [{"local": True, "action": {"decision": "deny"}, ...}]
+    controls = [{"execution": "sdk", "action": {"decision": "deny"}, ...}]
 
     # When: evaluating via the SDK public API
     result = await check_evaluation_with_local(
         client=client,
         agent_uuid=agent_uuid,
-        payload=ToolCall(tool_name="db_query", arguments={"sql": "SELECT 1"}, output=None),
-        check_stage="pre",
+        step=Step(type="tool", name="db_query", input={"sql": "SELECT 1"}, output=None),
+        stage="pre",
         controls=controls,
     )
 

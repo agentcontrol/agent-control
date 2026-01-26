@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from .agent import LlmCall, ToolCall
+from .agent import Step
 from .base import BaseModel
 from .controls import ControlMatch
 
@@ -18,17 +18,17 @@ class EvaluationRequest(BaseModel):
 
     Attributes:
         agent_uuid: UUID of the agent making the request
-        payload: Either a ToolCall or LlmCall
-        check_stage: 'pre' (before execution) or 'post' (after execution)
+        step: Step payload for evaluation
+        stage: 'pre' (before execution) or 'post' (after execution)
     """
     agent_uuid: UUID = Field(
         ..., description="UUID of the agent making the evaluation request"
     )
-    payload: ToolCall | LlmCall = Field(
-        ..., description="Agent interaction payload - either a tool call or LLM call"
+    step: Step = Field(
+        ..., description="Agent step payload to evaluate"
     )
-    check_stage: Literal["pre", "post"] = Field(
-        ..., description="Check stage: 'pre' or 'post'"
+    stage: Literal["pre", "post"] = Field(
+        ..., description="Evaluation stage: 'pre' or 'post'"
     )
 
     model_config = {
@@ -36,39 +36,45 @@ class EvaluationRequest(BaseModel):
             "examples": [
                 {
                     "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
-                    "payload": {
+                    "step": {
+                        "type": "llm_inference",
+                        "name": "support-answer",
                         "input": "What is the customer's credit card number?",
-                        "context": {"user_id": "user123", "session_id": "abc123"}
+                        "context": {"user_id": "user123", "session_id": "abc123"},
                     },
-                    "check_stage": "pre"
+                    "stage": "pre"
                 },
                 {
                     "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
-                    "payload": {
+                    "step": {
+                        "type": "llm_inference",
+                        "name": "support-answer",
                         "input": "What is the customer's credit card number?",
                         "output": "I cannot share sensitive payment information.",
-                        "context": {"user_id": "user123", "session_id": "abc123"}
+                        "context": {"user_id": "user123", "session_id": "abc123"},
                     },
-                    "check_stage": "post"
+                    "stage": "post"
                 },
                 {
                     "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
-                    "payload": {
-                        "tool_name": "search_database",
-                        "arguments": {"query": "SELECT * FROM users"},
-                        "context": {"user_id": "user123"}
+                    "step": {
+                        "type": "tool",
+                        "name": "search_database",
+                        "input": {"query": "SELECT * FROM users"},
+                        "context": {"user_id": "user123"},
                     },
-                    "check_stage": "pre"
+                    "stage": "pre"
                 },
                 {
                     "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
-                    "payload": {
-                        "tool_name": "search_database",
-                        "arguments": {"query": "SELECT * FROM users"},
+                    "step": {
+                        "type": "tool",
+                        "name": "search_database",
+                        "input": {"query": "SELECT * FROM users"},
                         "output": {"results": []},
-                        "context": {"user_id": "user123"}
+                        "context": {"user_id": "user123"},
                     },
-                    "check_stage": "post"
+                    "stage": "post"
                 }
             ]
         }
@@ -86,8 +92,9 @@ class EvaluationResponse(BaseModel):
         is_safe: Whether the content is considered safe
         confidence: Confidence score between 0.0 and 1.0
         reason: Optional explanation for the decision
-        matches: List of control matches detected (if any)
-        errors: List of control matches that failed during evaluation (if any)
+        matches: List of controls that matched/triggered (if any)
+        errors: List of controls that failed during evaluation (if any)
+        non_matches: List of controls that were evaluated but did not match (if any)
         human_review_required: Whether human review is required (blocks but not hard deny)
     """
 
@@ -104,7 +111,7 @@ class EvaluationResponse(BaseModel):
     )
     matches: list[ControlMatch] | None = Field(
         default=None,
-        description="List of control matches detected (if any)",
+        description="List of controls that matched/triggered (if any)",
     )
     errors: list[ControlMatch] | None = Field(
         default=None,
@@ -116,6 +123,10 @@ class EvaluationResponse(BaseModel):
             "Whether human review is required before allowing this action. "
             "When True, is_safe will be False, but the action can proceed after approval."
         ),
+    )
+    non_matches: list[ControlMatch] | None = Field(
+        default=None,
+        description="List of controls that were evaluated but did not match (if any)",
     )
 
 

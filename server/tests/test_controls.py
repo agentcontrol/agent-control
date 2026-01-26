@@ -35,8 +35,8 @@ def test_get_control_data_initially_unconfigured(client: TestClient) -> None:
 VALID_CONTROL_DATA = {
     "description": "Test Control",
     "enabled": True,
-    "applies_to": "llm_call",
-    "check_stage": "pre",
+    "execution": "server",
+    "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
     "selector": {"path": "input"},
     "evaluator": {
         "plugin": "regex",
@@ -64,8 +64,8 @@ def test_set_control_data_replaces_existing(client: TestClient) -> None:
     # Core fields should match
     assert data["description"] == payload["description"]
     assert data["enabled"] == payload["enabled"]
-    assert data["applies_to"] == payload["applies_to"]
-    assert data["check_stage"] == payload["check_stage"]
+    assert data["execution"] == payload["execution"]
+    assert data["scope"] == payload["scope"]
     assert data["evaluator"] == payload["evaluator"]
     assert data["action"] == payload["action"]
     assert data["selector"]["path"] == payload["selector"]["path"]
@@ -172,7 +172,7 @@ def test_get_control_with_data(client: TestClient) -> None:
     assert body["id"] == control_id
     assert body["data"] is not None
     assert body["data"]["description"] == VALID_CONTROL_DATA["description"]
-    assert body["data"]["applies_to"] == VALID_CONTROL_DATA["applies_to"]
+    assert body["data"]["execution"] == VALID_CONTROL_DATA["execution"]
 
 
 def test_get_control_not_found(client: TestClient) -> None:

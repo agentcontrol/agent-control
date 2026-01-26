@@ -18,13 +18,13 @@ import agent_control
 async def test_agent_registration_workflow(
     client: agent_control.AgentControlClient,
     test_agent_id: str,
-    sample_tools: list
+    sample_steps: list
 ) -> None:
     """
     Test complete agent registration workflow.
 
     Verifies:
-    - Agent can be registered with tools
+    - Agent can be registered with steps
     - Response includes created flag
     - Response includes rules (may be empty)
     """
@@ -49,7 +49,7 @@ async def test_agent_registration_workflow(
     response = await agent_control.agents.register_agent(
         client,
         agent,
-        tools=sample_tools
+        steps=sample_steps
     )
 
     # Verify response structure
@@ -78,7 +78,7 @@ async def test_agent_retrieval_workflow(
     Verifies:
     - Registered agent can be retrieved
     - Response includes agent metadata
-    - Response includes registered tools
+    - Response includes registered steps
     """
     agent_id = test_agent["agent_id"]
 
@@ -87,7 +87,7 @@ async def test_agent_retrieval_workflow(
 
     # Verify response structure
     assert "agent" in agent_data
-    assert "tools" in agent_data
+    assert "steps" in agent_data
 
     # Verify agent metadata
     agent = agent_data["agent"]
@@ -95,20 +95,20 @@ async def test_agent_retrieval_workflow(
     assert agent["agent_name"] is not None
     assert "agent_description" in agent
 
-    # Verify tools
-    tools = agent_data["tools"]
-    assert isinstance(tools, list)
-    assert len(tools) > 0  # Should have at least the test_search tool
+    # Verify steps
+    steps = agent_data["steps"]
+    assert isinstance(steps, list)
+    assert len(steps) > 0  # Should have at least the test_search step
 
     print(f"✓ Agent retrieved: {agent['agent_name']}")
-    print(f"✓ Tools found: {len(tools)}")
+    print(f"✓ Steps found: {len(steps)}")
 
 
 @pytest.mark.asyncio
 async def test_agent_update_workflow(
     client: agent_control.AgentControlClient,
     test_agent: dict,
-    sample_tools: list
+    sample_steps: list
 ) -> None:
     """
     Test agent update workflow (re-registration).
@@ -116,23 +116,23 @@ async def test_agent_update_workflow(
     Verifies:
     - Existing agent can be updated via re-registration
     - Response indicates update (created=False)
-    - Tools are updated
+    - Steps are updated
     """
     agent = test_agent["agent"]
 
-    # Update agent (re-register with different tools)
-    updated_tools = sample_tools[:1]  # Use only first tool
+    # Update agent (re-register with different steps)
+    updated_steps = sample_steps[:1]  # Use only first step
     response = await agent_control.agents.register_agent(
         client,
         agent,
-        tools=updated_tools
+        steps=updated_steps
     )
 
     # Verify this was an update, not a new creation
     assert response["created"] is False
 
     print("✓ Agent updated successfully")
-    print(f"✓ Updated with {len(updated_tools)} tool(s)")
+    print(f"✓ Updated with {len(updated_steps)} step(s)")
 
 
 @pytest.mark.asyncio
@@ -165,7 +165,7 @@ async def test_init_function_workflow(
     test_agent_id: str,
     server_url: str,
     api_key: str | None,
-    sample_tools: list,
+    sample_steps: list,
 ) -> None:
     """
     Test the init() function workflow.
@@ -183,7 +183,7 @@ async def test_init_function_workflow(
         agent_version="1.0.0",
         server_url=server_url,
         api_key=api_key,
-        tools=sample_tools,
+        steps=sample_steps,
         environment="test"
     )
 
@@ -199,4 +199,3 @@ async def test_init_function_workflow(
 
     print("✓ init() function works")
     print("✓ current_agent() returns initialized agent")
-

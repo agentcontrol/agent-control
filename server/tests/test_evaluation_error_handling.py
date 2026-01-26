@@ -1,9 +1,7 @@
 """End-to-end tests for evaluator error handling."""
 import uuid
-
-from agent_control_models import EvaluationRequest, LlmCall
 from fastapi.testclient import TestClient
-
+from agent_control_models import EvaluationRequest, Step
 from .utils import create_and_assign_policy
 
 
@@ -21,7 +19,7 @@ def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
             "agent_id": str(agent_uuid),
             "agent_name": f"TestAgent-{uuid.uuid4().hex[:8]}"
         },
-        "tools": [],
+        "steps": [],
         "evaluators": []
     })
 
@@ -30,8 +28,8 @@ def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
     control_data = {
         "description": "Test control",
         "enabled": True,
-        "applies_to": "llm_call",
-        "check_stage": "pre",
+        "execution": "server",
+        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "plugin": f"{agent_name}:missing-evaluator",
@@ -67,8 +65,8 @@ def test_evaluation_control_with_invalid_config_caught_early(client: TestClient)
     control_data = {
         "description": "Test control",
         "enabled": True,
-        "applies_to": "llm_call",
-        "check_stage": "pre",
+        "execution": "server",
+        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "plugin": "regex",
@@ -99,8 +97,8 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     control_data = {
         "description": "Test control",
         "enabled": True,
-        "applies_to": "llm_call",
-        "check_stage": "pre",
+        "execution": "server",
+        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "plugin": "regex",
@@ -124,11 +122,11 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     monkeypatch.setattr(core_module, "get_evaluator", mock_get_evaluator)
 
     # When: Sending evaluation request
-    payload = LlmCall(input="test content", output=None)
+    payload = Step(type="llm_inference", name="test-step", input="test content", output=None)
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
-        payload=payload,
-        check_stage="pre"
+        step=payload,
+        stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
 

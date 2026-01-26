@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-# Agent Protect UV Environment Setup Script
+# Agent Control UV Environment Setup Script
 # This script automates the setup of all workspaces
 
 echo "=================================================="
-echo "  Agent Protect - UV Environment Setup"
+echo "  Agent Control - UV Environment Setup"
 echo "=================================================="
 echo ""
 
@@ -72,7 +72,7 @@ echo "=================================================="
 echo ""
 
 echo -e "${BLUE}Verifying models...${NC}"
-if cd models && uv run python -c "from agent_protect_models import Agent; print('✓ Models OK')" 2>/dev/null; then
+if cd models && uv run python -c "from agent_control_models import Agent; print('✓ Models OK')" 2>/dev/null; then
     echo -e "${GREEN}✓ Models verified${NC}"
 else
     echo -e "${YELLOW}⚠ Models import failed (may need to check dependencies)${NC}"
@@ -81,7 +81,7 @@ cd "$SCRIPT_DIR"
 echo ""
 
 echo -e "${BLUE}Verifying server...${NC}"
-if cd server && uv run python -c "from agent_protect_server.main import app; print('✓ Server OK')" 2>/dev/null; then
+if cd server && uv run python -c "from agent_control_server.main import app; print('✓ Server OK')" 2>/dev/null; then
     echo -e "${GREEN}✓ Server verified${NC}"
 else
     echo -e "${YELLOW}⚠ Server import failed (may need to check dependencies)${NC}"
@@ -90,7 +90,7 @@ cd "$SCRIPT_DIR"
 echo ""
 
 echo -e "${BLUE}Verifying SDK...${NC}"
-if cd sdks && uv run python -c "from agent_protect import AgentProtectClient; print('✓ SDK OK')" 2>/dev/null; then
+if cd sdks && uv run python -c "from agent_control import AgentControlClient; print('✓ SDK OK')" 2>/dev/null; then
     echo -e "${GREEN}✓ SDK verified${NC}"
 else
     echo -e "${YELLOW}⚠ SDK import failed (may need to check dependencies)${NC}"
@@ -106,7 +106,7 @@ echo "Next steps:"
 echo ""
 echo "1. Start the server:"
 echo "   ${GREEN}cd server${NC}"
-echo "   ${GREEN}uv run uvicorn agent_protect_server.main:app --reload${NC}"
+echo "   ${GREEN}uv run uvicorn agent_control_server.main:app --reload${NC}"
 echo ""
 echo "2. Test the SDK (in another terminal):"
 echo "   ${GREEN}cd examples${NC}"
@@ -114,9 +114,9 @@ echo "   ${GREEN}export PYTHONPATH=\"\${PYTHONPATH}:\$(pwd)/../sdks/python/src\"
 echo "   ${GREEN}python basic_usage.py${NC}"
 echo ""
 echo "3. Run LangGraph example:"
-echo "   ${GREEN}cd examples/langgraph/my_agent${NC}"
+echo "   ${GREEN}cd examples/customer_support_agent${NC}"
 echo "   ${GREEN}uv sync${NC}"
-echo "   ${GREEN}uv run python example_with_agent_protect.py${NC}"
+echo "   ${GREEN}uv run python run_demo.py${NC}"
 echo ""
 echo "For more details, see:"
 echo "  - ${BLUE}UV_SETUP_GUIDE.md${NC} - Complete UV guide"

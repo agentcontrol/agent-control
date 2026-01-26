@@ -18,10 +18,9 @@ from agent_control_models import (
     EvaluationRequest,
     EvaluatorConfig,
     EvaluatorResult,
-    LlmCall,
     PluginEvaluator,
     PluginMetadata,
-    ToolCall,
+    Step,
     register_plugin,
 )
 from pydantic import BaseModel
@@ -176,19 +175,29 @@ def make_control(
     action: str = "deny",
     config_value: str = "default",
     *,
-    applies_to: str = "llm_call",
+    step_types: list[str] | None = None,
+    stages: list[str] | None = None,
     path: str | None = "input",
-    tool_names: list[str] | None = None,
-    tool_name_regex: str | None = None,
+    step_names: list[str] | None = None,
+    step_name_regex: str | None = None,
+    execution: str = "server",
 ) -> MockControlWithIdentity:
     """Create a mock control for testing."""
     selector: dict[str, Any] = {}
     if path is not None:
         selector["path"] = path
-    if tool_names is not None:
-        selector["tool_names"] = tool_names
-    if tool_name_regex is not None:
-        selector["tool_name_regex"] = tool_name_regex
+    scope: dict[str, Any] = {}
+    if step_types is None:
+        step_types = ["llm_inference"]
+    scope["step_types"] = step_types
+    if step_names is not None:
+        scope["step_names"] = step_names
+    if step_name_regex is not None:
+        scope["step_name_regex"] = step_name_regex
+    if stages is None:
+        stages = ["pre"]
+    if stages is not None:
+        scope["stages"] = stages
 
     return MockControlWithIdentity(
         id=control_id,
@@ -196,8 +205,8 @@ def make_control(
         control=ControlDefinition(
             description=f"Test control {name}",
             enabled=True,
-            applies_to=applies_to,
-            check_stage="pre",
+            execution=execution,
+            scope=scope,
             selector=selector or {"path": "*"},
             evaluator=EvaluatorConfig(
                 plugin=plugin,
@@ -230,8 +239,8 @@ class TestParallelExecution:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         await engine.process(request)
 
@@ -262,8 +271,8 @@ class TestParallelExecution:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         start = time.monotonic()
         await engine.process(request)
@@ -297,8 +306,8 @@ class TestCancelOnDeny:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -332,8 +341,8 @@ class TestCancelOnDeny:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -358,8 +367,8 @@ class TestCancelOnDeny:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -384,8 +393,8 @@ class TestCancelOnDeny:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -418,8 +427,8 @@ class TestResultCollection:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -441,8 +450,8 @@ class TestResultCollection:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -529,8 +538,8 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -565,8 +574,8 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -603,8 +612,8 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -635,8 +644,8 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -672,8 +681,8 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -718,8 +727,8 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -759,8 +768,8 @@ class TestConfidenceCalculation:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -793,8 +802,8 @@ class TestConfidenceCalculation:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -825,8 +834,8 @@ class TestConfidenceCalculation:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -854,8 +863,8 @@ class TestConfidenceCalculation:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -874,7 +883,7 @@ class TestConfidenceCalculation:
 
 
 # =============================================================================
-# Test: Selector Tool Scoping and Optional Path
+# Test: Selector Step Scoping and Optional Path
 # =============================================================================
 
 
@@ -889,16 +898,17 @@ class PayloadEchoPlugin(PluginEvaluator[SimpleConfig]):
     config_model = SimpleConfig
 
     async def evaluate(self, data: Any) -> EvaluatorResult:
-        # If we received the full ToolCall payload, it has .tool_name
-        tool_name = getattr(data, "tool_name", None)
-        if tool_name:
-            _execution_log.append(f"payload_tool:{tool_name}")
+        # If we received the full Step payload, it has .type and .name
+        step_type = getattr(data, "type", None)
+        step_name = getattr(data, "name", None)
+        if step_type and step_name:
+            _execution_log.append(f"payload_step:{step_type}:{step_name}")
         else:
-            _execution_log.append("payload_tool:<none>")
+            _execution_log.append("payload_step:<none>")
         return EvaluatorResult(matched=False, confidence=1.0, message="ok")
 
 
-class TestSelectorToolScoping:
+class TestSelectorStepScoping:
     @pytest.fixture(autouse=True)
     def register_payload_plugin(self):
         try:
@@ -907,8 +917,8 @@ class TestSelectorToolScoping:
             pass
 
     @pytest.mark.asyncio
-    async def test_tool_names_filters_tasks(self):
-        # Given: two controls scoped to different tools
+    async def test_step_names_filters_tasks(self):
+        # Given: two controls scoped to different steps
         controls = [
             make_control(
                 1,
@@ -916,9 +926,9 @@ class TestSelectorToolScoping:
                 "test-allow",
                 action="log",
                 config_value="copy",
-                applies_to="tool_call",
+                step_types=["tool"],
                 path="input",
-                tool_names=["copy_file"],
+                step_names=["copy_file"],
             ),
             make_control(
                 2,
@@ -926,16 +936,16 @@ class TestSelectorToolScoping:
                 "test-allow",
                 action="log",
                 config_value="aws",
-                applies_to="tool_call",
+                step_types=["tool"],
                 path="input",
-                tool_names=["aws_cli"],
+                step_names=["aws_cli"],
             ),
         ]
         engine = ControlEngine(controls)
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=ToolCall(tool_name="copy_file", arguments={}, output=None),
-            check_stage="pre",
+            step=Step(type="tool", name="copy_file", input={}, output=None),
+            stage="pre",
         )
         await engine.process(request)
         # Then: only copy control ran
@@ -944,7 +954,7 @@ class TestSelectorToolScoping:
         assert "allow:aws:start" not in log and "allow:aws:end" not in log
 
     @pytest.mark.asyncio
-    async def test_tool_name_regex_filters_tasks(self):
+    async def test_step_name_regex_filters_tasks(self):
         # Given: regex scoping for db_*
         controls = [
             make_control(
@@ -953,9 +963,9 @@ class TestSelectorToolScoping:
                 "test-allow",
                 action="log",
                 config_value="db",
-                applies_to="tool_call",
+                step_types=["tool"],
                 path="input",
-                tool_name_regex=r"^db_.*",
+                step_name_regex=r"^db_.*",
             ),
             make_control(
                 2,
@@ -963,16 +973,16 @@ class TestSelectorToolScoping:
                 "test-allow",
                 action="log",
                 config_value="web",
-                applies_to="tool_call",
+                step_types=["tool"],
                 path="input",
-                tool_name_regex=r"^web_.*",
+                step_name_regex=r"^web_.*",
             ),
         ]
         engine = ControlEngine(controls)
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=ToolCall(tool_name="db_query", arguments={}, output=None),
-            check_stage="pre",
+            step=Step(type="tool", name="db_query", input={}, output=None),
+            stage="pre",
         )
         await engine.process(request)
         log = "|".join(_execution_log)
@@ -989,18 +999,18 @@ class TestSelectorToolScoping:
                 "test-allow",
                 action="log",
                 config_value="mixed",
-                applies_to="tool_call",
+                step_types=["tool"],
                 path="input",
-                tool_names=["build"],
-                tool_name_regex=r"^db_.*",
+                step_names=["build"],
+                step_name_regex=r"^db_.*",
             ),
         ]
         engine = ControlEngine(controls)
         # Matches by regex despite name mismatch
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=ToolCall(tool_name="db_export", arguments={}, output=None),
-            check_stage="pre",
+            step=Step(type="tool", name="db_export", input={}, output=None),
+            stage="pre",
         )
         await engine.process(request)
         log = "|".join(_execution_log)
@@ -1016,29 +1026,29 @@ class TestSelectorToolScoping:
                 "test-payload-echo",
                 action="log",
                 config_value="p",
-                applies_to="tool_call",
+                step_types=["tool"],
                 path=None,  # omit path to use "*"
-                tool_names=["copy_file"],
+                step_names=["copy_file"],
             )
         ]
         engine = ControlEngine(controls)
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=ToolCall(tool_name="copy_file", arguments={}, output=None),
-            check_stage="pre",
+            step=Step(type="tool", name="copy_file", input={}, output=None),
+            stage="pre",
         )
         await engine.process(request)
-        assert any(s.startswith("payload_tool:") for s in _execution_log)
+        assert any(s.startswith("payload_step:") for s in _execution_log)
 
-    def test_invalid_tool_name_regex_rejected(self):
+    def test_invalid_step_name_regex_rejected(self):
         # ControlDefinition should reject invalid regex during validation
         with pytest.raises(Exception):
             ControlDefinition(
                 description="bad regex",
                 enabled=True,
-                applies_to="tool_call",
-                check_stage="pre",
-                selector={"tool_name_regex": "("},
+                execution="server",
+                scope={"step_types": ["tool"], "stages": ["pre"], "step_name_regex": "("},
+                selector={"path": "input"},
                 evaluator=EvaluatorConfig(plugin="test-allow", config={"value": "x"}),
                 action={"decision": "log"},
             )
@@ -1073,8 +1083,8 @@ class TestTimeoutEnforcement:
                 control=ControlDefinition(
                     description="Test timeout",
                     enabled=True,
-                    applies_to="llm_call",
-                    check_stage="pre",
+                    execution="server",
+                    scope={"step_types": ["llm_inference"], "stages": ["pre"]},
                     selector={"path": "input"},
                     evaluator=EvaluatorConfig(
                         plugin="test-timeout",
@@ -1089,8 +1099,8 @@ class TestTimeoutEnforcement:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         start = time.monotonic()
         result = await engine.process(request)
@@ -1131,8 +1141,8 @@ class TestTimeoutEnforcement:
                 control=ControlDefinition(
                     description="Test timeout",
                     enabled=True,
-                    applies_to="llm_call",
-                    check_stage="pre",
+                    execution="server",
+                    scope={"step_types": ["llm_inference"], "stages": ["pre"]},
                     selector={"path": "input"},
                     evaluator=EvaluatorConfig(
                         plugin="test-timeout",
@@ -1147,8 +1157,8 @@ class TestTimeoutEnforcement:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -1232,8 +1242,8 @@ class TestConcurrencyLimit:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         await engine.process(request)
 
@@ -1246,27 +1256,39 @@ class TestConcurrencyLimit:
 # =============================================================================
 
 
-def make_control_with_local(
+def make_control_with_execution(
     control_id: int,
     name: str,
     plugin: str,
     action: str = "deny",
     config_value: str = "default",
     *,
-    local: bool = False,
-    applies_to: str = "llm_call",
+    execution: str = "server",
+    step_types: list[str] | None = None,
+    stages: list[str] | None = None,
+    step_names: list[str] | None = None,
+    step_name_regex: str | None = None,
     path: str = "input",
 ) -> MockControlWithIdentity:
-    """Create a mock control with the local flag set."""
+    """Create a mock control with the execution field set."""
+    if step_types is None:
+        step_types = ["llm_inference"]
+    if stages is None:
+        stages = ["pre"]
+    scope: dict[str, Any] = {"step_types": step_types, "stages": stages}
+    if step_names is not None:
+        scope["step_names"] = step_names
+    if step_name_regex is not None:
+        scope["step_name_regex"] = step_name_regex
+
     return MockControlWithIdentity(
         id=control_id,
         name=name,
         control=ControlDefinition(
             description=f"Test control {name}",
             enabled=True,
-            local=local,
-            applies_to=applies_to,
-            check_stage="pre",
+            execution=execution,
+            scope=scope,
             selector={"path": path},
             evaluator=EvaluatorConfig(
                 plugin=plugin,
@@ -1278,30 +1300,30 @@ def make_control_with_local(
 
 
 class TestContextFiltering:
-    """Tests for context-based filtering (local vs server execution)."""
+    """Tests for context-based filtering (execution vs server)."""
 
     @pytest.mark.asyncio
-    async def test_server_context_only_runs_non_local_controls(self):
-        """Test that server context only runs local=False controls.
+    async def test_server_context_only_runs_server_controls(self):
+        """Test that server context only runs execution='server' controls.
 
-        Given: Controls with local=True and local=False
+        Given: Controls with execution='sdk' and execution='server'
         When: Engine runs with context='server'
-        Then: Only local=False controls are executed
+        Then: Only execution='server' controls are executed
         """
         controls = [
-            make_control_with_local(
-                1, "local_ctrl", "test-allow", action="log", config_value="loc", local=True
+            make_control_with_execution(
+                1, "local_ctrl", "test-allow", action="log", config_value="loc", execution="sdk"
             ),
-            make_control_with_local(
-                2, "server_ctrl", "test-allow", action="log", config_value="srv", local=False
+            make_control_with_execution(
+                2, "server_ctrl", "test-allow", action="log", config_value="srv", execution="server"
             ),
         ]
         engine = ControlEngine(controls, context="server")
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         await engine.process(request)
 
@@ -1311,27 +1333,27 @@ class TestContextFiltering:
         assert "allow:loc:start" not in log and "allow:loc:end" not in log
 
     @pytest.mark.asyncio
-    async def test_sdk_context_only_runs_local_controls(self):
-        """Test that SDK context only runs local=True controls.
+    async def test_sdk_context_only_runs_sdk_controls(self):
+        """Test that SDK context only runs execution='sdk' controls.
 
-        Given: Controls with local=True and local=False
+        Given: Controls with execution='sdk' and execution='server'
         When: Engine runs with context='sdk'
-        Then: Only local=True controls are executed
+        Then: Only execution='sdk' controls are executed
         """
         controls = [
-            make_control_with_local(
-                1, "local_ctrl", "test-allow", action="log", config_value="loc", local=True
+            make_control_with_execution(
+                1, "local_ctrl", "test-allow", action="log", config_value="loc", execution="sdk"
             ),
-            make_control_with_local(
-                2, "server_ctrl", "test-allow", action="log", config_value="srv", local=False
+            make_control_with_execution(
+                2, "server_ctrl", "test-allow", action="log", config_value="srv", execution="server"
             ),
         ]
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         await engine.process(request)
 
@@ -1344,24 +1366,24 @@ class TestContextFiltering:
     async def test_default_context_is_server(self):
         """Test that default context is 'server'.
 
-        Given: Controls with local=True and local=False
+        Given: Controls with execution='sdk' and execution='server'
         When: Engine runs with default context (no context param)
-        Then: Only local=False controls are executed
+        Then: Only execution='server' controls are executed
         """
         controls = [
-            make_control_with_local(
-                1, "local_ctrl", "test-allow", action="log", config_value="loc", local=True
+            make_control_with_execution(
+                1, "local_ctrl", "test-allow", action="log", config_value="loc", execution="sdk"
             ),
-            make_control_with_local(
-                2, "server_ctrl", "test-allow", action="log", config_value="srv", local=False
+            make_control_with_execution(
+                2, "server_ctrl", "test-allow", action="log", config_value="srv", execution="server"
             ),
         ]
         engine = ControlEngine(controls)  # No context param
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         await engine.process(request)
 
@@ -1374,24 +1396,24 @@ class TestContextFiltering:
     async def test_sdk_context_empty_when_no_local_controls(self):
         """Test that SDK context returns early when no local controls exist.
 
-        Given: Controls that are all local=False
+        Given: Controls that are all execution='server'
         When: Engine runs with context='sdk'
         Then: No controls are executed, result is safe with full confidence
         """
         controls = [
-            make_control_with_local(
-                1, "server1", "test-deny", action="deny", config_value="s1", local=False
+            make_control_with_execution(
+                1, "server1", "test-deny", action="deny", config_value="s1", execution="server"
             ),
-            make_control_with_local(
-                2, "server2", "test-deny", action="deny", config_value="s2", local=False
+            make_control_with_execution(
+                2, "server2", "test-deny", action="deny", config_value="s2", execution="server"
             ),
         ]
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -1406,24 +1428,24 @@ class TestContextFiltering:
     async def test_server_context_empty_when_all_local_controls(self):
         """Test that server context returns early when all controls are local.
 
-        Given: Controls that are all local=True
+        Given: Controls that are all execution='sdk'
         When: Engine runs with context='server'
         Then: No controls are executed, result is safe with full confidence
         """
         controls = [
-            make_control_with_local(
-                1, "local1", "test-deny", action="deny", config_value="l1", local=True
+            make_control_with_execution(
+                1, "local1", "test-deny", action="deny", config_value="l1", execution="sdk"
             ),
-            make_control_with_local(
-                2, "local2", "test-deny", action="deny", config_value="l2", local=True
+            make_control_with_execution(
+                2, "local2", "test-deny", action="deny", config_value="l2", execution="sdk"
             ),
         ]
         engine = ControlEngine(controls, context="server")
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -1435,24 +1457,24 @@ class TestContextFiltering:
         assert result.matches is None
 
     @pytest.mark.asyncio
-    async def test_local_deny_works_in_sdk_context(self):
-        """Test that local deny controls work correctly in SDK context.
+    async def test_sdk_deny_works_in_sdk_context(self):
+        """Test that execution='sdk' deny controls work correctly in SDK context.
 
-        Given: A local deny control that matches
+        Given: A deny control that runs in the SDK
         When: Engine runs with context='sdk'
         Then: The deny is detected and is_safe=False
         """
         controls = [
-            make_control_with_local(
-                1, "local_deny", "test-deny", action="deny", config_value="ld", local=True
+            make_control_with_execution(
+                1, "local_deny", "test-deny", action="deny", config_value="ld", execution="sdk"
             ),
         ]
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=LlmCall(input="test", output=None),
-            check_stage="pre",
+            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            stage="pre",
         )
         result = await engine.process(request)
 
@@ -1465,37 +1487,42 @@ class TestContextFiltering:
         assert result.matches[0].control_name == "local_deny"
 
     @pytest.mark.asyncio
-    async def test_context_filtering_combined_with_tool_scoping(self):
-        """Test that context filtering works together with tool_names scoping.
+    async def test_context_filtering_combined_with_step_scoping(self):
+        """Test that context filtering works together with step name scoping.
 
-        Given: Controls with both local flag and tool_names scoping
-        When: Engine runs with context='sdk' and a specific tool
-        Then: Only matching local controls for that tool are executed
+        Given: Controls with execution='sdk' and step_names scoping
+        When: Engine runs with context='sdk' and a matching tool step
+        Then: Only matching SDK controls for that step are executed
         """
         controls = [
-            make_control_with_local(
+            make_control_with_execution(
                 1, "local_copy", "test-allow",
-                action="log", config_value="lc", local=True, applies_to="tool_call"
+                action="log",
+                config_value="lc",
+                execution="sdk",
+                step_types=["tool"],
+                step_names=["copy_file"],
             ),
-            make_control_with_local(
+            make_control_with_execution(
                 2, "server_copy", "test-allow",
-                action="log", config_value="sc", local=False, applies_to="tool_call"
+                action="log",
+                config_value="sc",
+                execution="server",
+                step_types=["tool"],
+                step_names=["copy_file"],
             ),
         ]
-        # Add tool_names to controls via patching
-        controls[0].control.selector.tool_names = ["copy_file"]
-        controls[1].control.selector.tool_names = ["copy_file"]
 
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            payload=ToolCall(tool_name="copy_file", arguments={}, output=None),
-            check_stage="pre",
+            step=Step(type="tool", name="copy_file", input={}, output=None),
+            stage="pre",
         )
         await engine.process(request)
 
-        # Only local_copy should run (sdk context + matching tool)
+        # Only local_copy should run (sdk context + matching step)
         log = "|".join(_execution_log)
         assert "allow:lc:start" in log and "allow:lc:end" in log
         assert "allow:sc:start" not in log and "allow:sc:end" not in log

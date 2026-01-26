@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import Field
 
-from .agent import Agent, AgentTool
+from .agent import Agent, StepSchema
 from .base import BaseModel
 from .controls import ControlDefinition
 from .policy import Control
@@ -47,8 +47,8 @@ class InitAgentRequest(BaseModel):
     """Request to initialize or update an agent registration."""
 
     agent: Agent = Field(..., description="Agent metadata including ID, name, and version")
-    tools: list[AgentTool] = Field(
-        default_factory=list, description="List of tools available to the agent"
+    steps: list[StepSchema] = Field(
+        default_factory=list, description="List of steps available to the agent"
     )
     evaluators: list[EvaluatorSchema] = Field(
         default_factory=list,
@@ -72,10 +72,11 @@ class InitAgentRequest(BaseModel):
                         "agent_description": "Handles customer inquiries",
                         "agent_version": "1.0.0",
                     },
-                    "tools": [
+                    "steps": [
                         {
-                            "tool_name": "search_kb",
-                            "arguments": {"query": {"type": "string"}},
+                            "type": "tool",
+                            "name": "search_kb",
+                            "input_schema": {"query": {"type": "string"}},
                             "output_schema": {"results": {"type": "array"}},
                         }
                     ],
@@ -106,9 +107,9 @@ class InitAgentResponse(BaseModel):
 
 
 class GetAgentResponse(BaseModel):
-    """Response containing agent details and registered tools."""
+    """Response containing agent details and registered steps."""
     agent: Agent = Field(..., description="Agent metadata")
-    tools: list[AgentTool] = Field(..., description="Tools registered with this agent")
+    steps: list[StepSchema] = Field(..., description="Steps registered with this agent")
     evaluators: list[EvaluatorSchema] = Field(
         default_factory=list, description="Custom evaluators registered with this agent"
     )
@@ -181,11 +182,18 @@ class SetControlDataResponse(BaseModel):
     success: bool = Field(description="Whether the control data was updated")
 
 
-class PatchAgentRequest(BaseModel):
-    """Request to modify an agent (remove tools/evaluators)."""
+class StepKey(BaseModel):
+    """Identifies a registered step schema by type and name."""
 
-    remove_tools: list[str] = Field(
-        default_factory=list, description="Tool names to remove from the agent"
+    type: str = Field(..., min_length=1, description="Step type")
+    name: str = Field(..., description="Registered step name")
+
+
+class PatchAgentRequest(BaseModel):
+    """Request to modify an agent (remove steps/evaluators)."""
+
+    remove_steps: list[StepKey] = Field(
+        default_factory=list, description="Step identifiers to remove from the agent"
     )
     remove_evaluators: list[str] = Field(
         default_factory=list, description="Evaluator names to remove from the agent"
@@ -195,8 +203,8 @@ class PatchAgentRequest(BaseModel):
 class PatchAgentResponse(BaseModel):
     """Response from agent modification."""
 
-    tools_removed: list[str] = Field(
-        default_factory=list, description="Tool names that were removed"
+    steps_removed: list[StepKey] = Field(
+        default_factory=list, description="Step identifiers that were removed"
     )
     evaluators_removed: list[str] = Field(
         default_factory=list, description="Evaluator names that were removed"
@@ -210,7 +218,7 @@ class AgentSummary(BaseModel):
     agent_name: str = Field(..., description="Human-readable name of the agent")
     policy_id: int | None = Field(None, description="ID of assigned policy, if any")
     created_at: str | None = Field(None, description="ISO 8601 timestamp when agent was created")
-    tool_count: int = Field(0, description="Number of tools registered with the agent")
+    step_count: int = Field(0, description="Number of steps registered with the agent")
     evaluator_count: int = Field(0, description="Number of evaluators registered with the agent")
     active_controls_count: int = Field(
         0, description="Number of active controls from agent's policy"
@@ -247,8 +255,9 @@ class ControlSummary(BaseModel):
     name: str = Field(..., description="Control name")
     description: str | None = Field(None, description="Control description")
     enabled: bool = Field(True, description="Whether control is enabled")
-    applies_to: str | None = Field(None, description="'llm_call' or 'tool_call'")
-    check_stage: str | None = Field(None, description="'pre' or 'post'")
+    execution: str | None = Field(None, description="'server' or 'sdk'")
+    step_types: list[str] | None = Field(None, description="Step types in scope")
+    stages: list[str] | None = Field(None, description="Evaluation stages in scope")
     tags: list[str] = Field(default_factory=list, description="Control tags")
 
 

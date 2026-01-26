@@ -14,14 +14,19 @@ from agent_control_server.models import Agent
 engine = create_engine(db_config.get_url(), echo=False)
 
 
-def make_agent_payload(agent_id: str | None = None, name: str = "Test Agent", tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def make_agent_payload(
+    agent_id: str | None = None,
+    name: str = "Test Agent",
+    steps: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     if agent_id is None:
         agent_id = str(uuid.uuid4())
-    if tools is None:
-        tools = [
+    if steps is None:
+        steps = [
             {
-                "tool_name": "tool_a",
-                "arguments": {"a": "int"},
+                "type": "tool",
+                "name": "tool_a",
+                "input_schema": {"a": "int"},
                 "output_schema": {"ok": "bool"},
             }
         ]
@@ -33,7 +38,7 @@ def make_agent_payload(agent_id: str | None = None, name: str = "Test Agent", to
             "agent_version": "1.0",
             "agent_metadata": {"env": "test"},
         },
-        "tools": tools,
+        "steps": steps,
     }
 
 
@@ -64,10 +69,10 @@ def test_init_agent_creates_and_gets_agent(client: TestClient) -> None:
     # Then: stored agent fields match the request
     assert data["agent"]["agent_id"] == agent_id
     assert data["agent"]["agent_name"] == payload["agent"]["agent_name"]
-    assert {t["tool_name"] for t in data["tools"]} == {payload["tools"][0]["tool_name"]}
+    assert {s["name"] for s in data["steps"]} == {payload["steps"][0]["name"]}
 
 
-def test_init_agent_idempotent_same_tools(client: TestClient) -> None:
+def test_init_agent_idempotent_same_steps(client: TestClient) -> None:
     # Given: an init payload
     payload = make_agent_payload()
     # When: initializing the agent the first time
@@ -100,7 +105,7 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
             "agent_version": "1.0.0",
             "agent_metadata": {"env": "dev"},
         },
-        "tools": [],
+        "steps": [],
     }
     r1 = client.post("/api/v1/agents/initAgent", json=initial_payload)
     assert r1.status_code == 200
@@ -115,7 +120,7 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
             "agent_version": "2.0.0",
             "agent_metadata": {"env": "prod", "new_field": "value"},
         },
-        "tools": [],
+        "steps": [],
     }
     r2 = client.post("/api/v1/agents/initAgent", json=updated_payload)
     assert r2.status_code == 200
@@ -130,7 +135,7 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
     assert agent_data["agent_metadata"] == {"env": "prod", "new_field": "value"}
 
 
-def test_init_agent_adds_new_tool(client: TestClient) -> None:
+def test_init_agent_adds_new_step(client: TestClient) -> None:
     # Given: an agent id and base payload
     agent_id = str(uuid.uuid4())
     base = make_agent_payload(agent_id=agent_id)
@@ -138,15 +143,19 @@ def test_init_agent_adds_new_tool(client: TestClient) -> None:
     r1 = client.post("/api/v1/agents/initAgent", json=base)
     assert r1.status_code == 200
 
-    # When: sending an additional tool
-    tools = base["tools"] + [
+    # When: sending an additional step
+    steps = base["steps"] + [
         {
-            "tool_name": "tool_b",
-            "arguments": {"b": "str"},
+            "type": "tool",
+            "name": "tool_b",
+            "input_schema": {"b": "str"},
             "output_schema": {"ok": "bool"},
         }
     ]
-    r2 = client.post("/api/v1/agents/initAgent", json=make_agent_payload(agent_id=agent_id, tools=tools))
+    r2 = client.post(
+        "/api/v1/agents/initAgent",
+        json=make_agent_payload(agent_id=agent_id, steps=steps),
+    )
     assert r2.status_code == 200
     # Then: the agent is not newly created
     assert r2.json()["created"] is False
@@ -154,12 +163,12 @@ def test_init_agent_adds_new_tool(client: TestClient) -> None:
     # When: fetching the agent
     g = client.get(f"/api/v1/agents/{agent_id}")
     assert g.status_code == 200
-    names = {t["tool_name"] for t in g.json()["tools"]}
-    # Then: both tools are present
+    names = {s["name"] for s in g.json()["steps"]}
+    # Then: both steps are present
     assert names == {"tool_a", "tool_b"}
 
 
-def test_init_agent_overwrites_tool_on_signature_change(client: TestClient) -> None:
+def test_init_agent_overwrites_step_on_signature_change(client: TestClient) -> None:
     # Given: a base payload for an agent
     agent_id = str(uuid.uuid4())
     base = make_agent_payload(agent_id=agent_id)
@@ -167,13 +176,14 @@ def test_init_agent_overwrites_tool_on_signature_change(client: TestClient) -> N
     r1 = client.post("/api/v1/agents/initAgent", json=base)
     assert r1.status_code == 200
 
-    # When: updating tool_a signature
+    # When: updating tool_a schema
     changed = make_agent_payload(
         agent_id=agent_id,
-        tools=[
+        steps=[
             {
-                "tool_name": "tool_a",
-                "arguments": {"a": "str"},  # changed type
+                "type": "tool",
+                "name": "tool_a",
+                "input_schema": {"a": "str"},  # changed type
                 "output_schema": {"ok": "bool"},
             }
         ],
@@ -183,14 +193,14 @@ def test_init_agent_overwrites_tool_on_signature_change(client: TestClient) -> N
     # Then: it's an update, not a create
     assert r2.json()["created"] is False
 
-    # Then: verify overwrite in raw JSONB (single entry for tool_a with updated signature)
+    # Then: verify overwrite in raw JSONB (single entry for tool_a with updated schema)
     with engine.begin() as conn:
         row = conn.execute(text("SELECT data FROM agents WHERE agent_uuid = :id"), {"id": agent_id}).first()
         assert row is not None
-        tools = row[0].get("tools", [])
-        tool_a_entries = [t for t in tools if t.get("tool_name") == "tool_a"]
+        steps = row[0].get("steps", [])
+        tool_a_entries = [s for s in steps if s.get("name") == "tool_a" and s.get("type") == "tool"]
         assert len(tool_a_entries) == 1
-        assert tool_a_entries[0]["arguments"] == {"a": "str"}
+        assert tool_a_entries[0]["input_schema"] == {"a": "str"}
 
 
 def test_get_agent_returns_evaluators(client: TestClient) -> None:
@@ -426,7 +436,7 @@ def test_init_agent_rejects_non_uuid_agent_id(client: TestClient) -> None:
             "agent_description": "desc",
             "agent_version": "1.0",
         },
-        "tools": [],
+        "steps": [],
     }
     # When: calling initAgent
     resp = client.post("/api/v1/agents/initAgent", json=payload)
@@ -455,7 +465,7 @@ def test_list_agents_empty(client: TestClient) -> None:
 
 def test_list_agents_returns_created_agents(client: TestClient) -> None:
     """Test listing agents returns created agents with correct summaries."""
-    # Given: two agents with different tools/evaluators
+    # Given: two agents with different steps/evaluators
     agent1_id = str(uuid.uuid4())
     payload1 = make_agent_payload(agent_id=agent1_id, name="Agent One")
     payload1["evaluators"] = [
@@ -466,9 +476,9 @@ def test_list_agents_returns_created_agents(client: TestClient) -> None:
 
     agent2_id = str(uuid.uuid4())
     payload2 = make_agent_payload(agent_id=agent2_id, name="Agent Two")
-    payload2["tools"] = [
-        {"tool_name": "tool_x", "arguments": {}, "output_schema": {}},
-        {"tool_name": "tool_y", "arguments": {}, "output_schema": {}},
+    payload2["steps"] = [
+        {"type": "tool", "name": "tool_x", "input_schema": {}, "output_schema": {}},
+        {"type": "tool", "name": "tool_y", "input_schema": {}, "output_schema": {}},
     ]
     r2 = client.post("/api/v1/agents/initAgent", json=payload2)
     assert r2.status_code == 200
@@ -487,14 +497,14 @@ def test_list_agents_returns_created_agents(client: TestClient) -> None:
     assert agent1_id in agent_map
     agent1 = agent_map[agent1_id]
     assert agent1["agent_name"] == "Agent One"
-    assert agent1["tool_count"] == 1  # from make_agent_payload
+    assert agent1["step_count"] == 1  # from make_agent_payload
     assert agent1["evaluator_count"] == 1
     assert agent1["policy_id"] is None
 
     assert agent2_id in agent_map
     agent2 = agent_map[agent2_id]
     assert agent2["agent_name"] == "Agent Two"
-    assert agent2["tool_count"] == 2
+    assert agent2["step_count"] == 2
     assert agent2["evaluator_count"] == 0
     assert agent2["policy_id"] is None
 

@@ -61,7 +61,7 @@ async def setup_sql_controls():
         )
         
         try:
-            await agents.register_agent(client, agent, tools=[])
+            await agents.register_agent(client, agent, steps=[])
             print(f"✓ Agent registered: {AGENT_ID}")
         except Exception as e:
             print(f"ℹ️  Agent might already exist: {e}")
@@ -70,11 +70,14 @@ async def setup_sql_controls():
         sql_control_data = {
             "description": "Prevent dangerous SQL operations",
             "enabled": True,
-            "applies_to": "tool_call",
-            "check_stage": "pre",
+            "execution": "server",
+            "scope": {
+                "step_types": ["tool"],
+                "step_names": ["sql_db_query"],
+                "stages": ["pre"]
+            },
             "selector": {
-                "path": "arguments.query",
-                "tool_names": ["sql_db_query"]
+                "path": "input.query"
             },
             "evaluator": {
                 "plugin": "sql",
@@ -168,4 +171,3 @@ if __name__ == "__main__":
     
     # Step 2: Setup controls and policies
     asyncio.run(setup_sql_controls())
-

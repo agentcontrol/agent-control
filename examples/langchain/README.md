@@ -10,7 +10,7 @@ This example demonstrates integrating Agent Control with a LangChain SQL agent t
 
 ```bash
 # From the repo root
-cd /Users/nachiketparanjape/Documents/Galileo/Hub/agent-protect
+cd /Users/nachiketparanjape/Documents/Galileo/Hub/agent-control
 
 # Kill any old servers
 pkill -f "uvicorn agent_control_server"
@@ -75,7 +75,7 @@ Error: Control evaluation failed...
 async def _execute_query(query: str):
     return query_tool.invoke(query)
 
-# Set tool name (required for tool call detection)
+# Set tool name (required for tool step detection)
 _execute_query.name = "sql_db_query"
 _execute_query.tool_name = "sql_db_query"
 
@@ -90,7 +90,7 @@ safe_query_tool = tool(
 
 The `@control()` decorator:
 1. Detects this is a tool (via `name` attribute)
-2. Creates a `ToolCall` payload with `tool_name` and `arguments`
+2. Creates a `Step` payload with `type="tool"`, `name`, and `input`
 3. Sends to server for evaluation **before** execution
 4. Blocks execution if control triggers deny action
 
@@ -150,9 +150,10 @@ LangChain Agent
 @tool("sql_db_query")  ← Marks as LangChain tool
 @control()            ← Applies server-side validation
     ↓
-ToolCall Payload: {
-  "tool_name": "sql_db_query",
-  "arguments": {"query": "DROP TABLE..."}
+Step Payload: {
+  "type": "tool",
+  "name": "sql_db_query",
+  "input": {"query": "DROP TABLE..."}
 }
     ↓
 Agent Control Server
@@ -179,4 +180,3 @@ Raise ControlViolationError (DENY) or Execute (ALLOW)
 2. **Server-Side Validation**: Can't be bypassed by client
 3. **No Client-Side Logic**: Just use `@control()` decorator
 4. **Automatic Detection**: Decorator auto-detects tool vs LLM calls
-

@@ -55,7 +55,7 @@ async def create_agent(client: AgentControlClient) -> str:
                     "agent_name": AGENT_NAME,
                     "agent_description": "Demo chatbot for testing controls",
                 },
-                "tools": []
+                "steps": []
             }
         )
         response.raise_for_status()
@@ -123,8 +123,8 @@ async def create_regex_control(client: AgentControlClient) -> int:
     control_definition = {
         "description": "Block SSN patterns in output to prevent PII leakage",
         "enabled": True,
-        "applies_to": "llm_call",
-        "check_stage": "post",  # Check AFTER function execution (output)
+        "execution": "server",
+        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},  # Check AFTER
         "selector": {"path": "output"},
         "evaluator": {
             "plugin": "regex",
@@ -140,7 +140,7 @@ async def create_regex_control(client: AgentControlClient) -> int:
     print("Creating control: block-ssn-output")
     print("  Type: Regex")
     print(f"  Pattern: {control_definition['evaluator']['config']['pattern']}")
-    print(f"  Check Stage: {control_definition['check_stage']}")
+    print(f"  Stages: {', '.join(control_definition['scope']['stages'])}")
     print(f"  Action: {control_definition['action']['decision']}")
 
     return await create_control(client, "block-ssn-output", control_definition)
@@ -155,8 +155,8 @@ async def create_list_control(client: AgentControlClient) -> int:
     control_definition = {
         "description": "Block dangerous SQL operations in input",
         "enabled": True,
-        "applies_to": "llm_call",
-        "check_stage": "pre",  # Check BEFORE function execution (input)
+        "execution": "server",
+        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},  # Check BEFORE
         "selector": {"path": "input"},
         "evaluator": {
             "plugin": "list",
@@ -176,7 +176,7 @@ async def create_list_control(client: AgentControlClient) -> int:
     print("  Type: List")
     print(f"  Values: {control_definition['evaluator']['config']['values']}")
     print(f"  Logic: {control_definition['evaluator']['config']['logic']}")
-    print(f"  Check Stage: {control_definition['check_stage']}")
+    print(f"  Stages: {', '.join(control_definition['scope']['stages'])}")
     print(f"  Action: {control_definition['action']['decision']}")
 
     return await create_control(client, "block-dangerous-sql", control_definition)
@@ -312,7 +312,10 @@ async def list_agent_controls(client: AgentControlClient, agent_uuid: str) -> li
             ctrl_def = ctrl.get("control", {})
             print(f"     Enabled: {ctrl_def.get('enabled', True)}")
             print(f"     Type: {ctrl_def.get('evaluator', {}).get('type', 'unknown')}")
-            print(f"     Check Stage: {ctrl_def.get('check_stage', 'unknown')}")
+            scope = ctrl_def.get("scope", {}) or {}
+            stages = scope.get("stages", [])
+            stage_label = ", ".join(stages) if stages else "unknown"
+            print(f"     Stages: {stage_label}")
             print(f"     Action: {ctrl_def.get('action', {}).get('decision', 'unknown')}")
             print(f"     Tags: {ctrl_def.get('tags', [])}")
             print()
@@ -333,8 +336,8 @@ async def update_control(client: AgentControlClient, control_id: int) -> None:
     updated_definition = {
         "description": "Block dangerous SQL operations (UPDATED - more keywords)",
         "enabled": True,
-        "applies_to": "llm_call",
-        "check_stage": "pre",
+        "execution": "server",
+        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "plugin": "list",

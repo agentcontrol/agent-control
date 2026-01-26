@@ -1,6 +1,6 @@
-# Agent Protect - Python SDK
+# Agent Control - Python SDK
 
-Unified Python SDK for Agent Protect - providing agent protection, monitoring, and rule enforcement in one clean package.
+Unified Python SDK for Agent Control - providing agent protection, monitoring, and rule enforcement in one clean package.
 
 ## Installation
 
@@ -13,18 +13,18 @@ pip install agent-control
 ### Simple Initialization
 
 ```python
-import agent_protect
+import agent_control
 
 # Initialize at the base of your agent
-agent_protect.init(
+agent_control.init(
     agent_name="My Customer Service Bot",
     agent_id="csbot-prod-v1"
 )
 
-# Use the protect decorator
-from agent_protect import protect
+# Use the control decorator
+from agent_control import control
 
-@protect('input-validation', input='message')
+@control()
 async def handle_message(message: str):
     return f"Processed: {message}"
 ```
@@ -32,14 +32,14 @@ async def handle_message(message: str):
 ### With Full Metadata
 
 ```python
-import agent_protect
+import agent_control
 
-agent_protect.init(
+agent_control.init(
     agent_name="Customer Service Bot",
     agent_id="csbot-prod-v1",
     agent_description="Handles customer inquiries and support",
     agent_version="2.1.0",
-    server_url="https://protect.example.com",
+    server_url="http://localhost:8000",
     # Add any custom metadata
     team="customer-success",
     environment="production"
@@ -53,21 +53,21 @@ agent_protect.init(
 One line to set up your agent with full protection:
 
 ```python
-agent_protect.init(agent_name="...", agent_id="...")
+agent_control.init(agent_name="...", agent_id="...")
 ```
 
 This automatically:
 - Creates an Agent instance with your metadata
 - Discovers and loads `rules.yaml`
-- Registers with the Agent Protect server
-- Enables the `@protect` decorator
+- Registers with the Agent Control server
+- Enables the `@control()` decorator
 
 ### 2. Decorator-Based Protection
 
-Protect any function with YAML-defined rules:
+Protect any function with server-defined controls:
 
 ```python
-@protect('input-check', input='user_text')
+@control()
 async def process(user_text: str):
     return user_text
 ```
@@ -77,19 +77,20 @@ async def process(user_text: str):
 Use the client directly for custom workflows:
 
 ```python
-async with agent_protect.AgentProtectClient() as client:
-    # Check content safety
-    result = await client.check_protection(
-        content="User input here",
-        context={"user_id": "123"}
-    )
-    
-    if result.is_safe:
-        print("Safe to process!")
-    
+from agent_control import AgentControlClient
+
+async with AgentControlClient() as client:
     # Check server health
     health = await client.health_check()
     print(f"Server status: {health['status']}")
+    
+    # Evaluate a step
+    result = await agent_control.evaluation.check_evaluation(
+        client,
+        agent_uuid="your-agent-uuid",
+        step={"type": "llm_inference", "input": "User input here"},
+        stage="pre"
+    )
 ```
 
 ### 4. Agent Metadata
@@ -97,7 +98,7 @@ async with agent_protect.AgentProtectClient() as client:
 Access your agent information:
 
 ```python
-agent = agent_protect.get_agent()
+agent = agent_control.current_agent()
 print(f"Agent: {agent.agent_name}")
 print(f"ID: {agent.agent_id}")
 print(f"Version: {agent.agent_version}")
@@ -107,44 +108,40 @@ print(f"Version: {agent.agent_version}")
 
 ```python
 import asyncio
-import agent_protect
-from agent_protect import protect
+import agent_control
+from agent_control import control, ControlViolationError
 
 # Initialize
-agent_protect.init(
+agent_control.init(
     agent_name="Customer Support Bot",
     agent_id="support-bot-v1",
     agent_version="1.0.0"
 )
 
-# Protect input
-@protect('input-validation', input='message', context='ctx')
-async def handle_message(message: str, ctx: dict):
-    # Input is automatically checked against rules.yaml
+# Protect with server-defined controls
+@control()
+async def handle_message(message: str) -> str:
+    # Automatically checked against server-side controls
     return f"Processed: {message}"
 
-# Protect output
-@protect('output-filter', output='response')
+@control()
 async def generate_response(query: str) -> str:
-    # Output is automatically filtered (e.g., PII redaction)
+    # Output is automatically evaluated
     return f"Response with SSN: 123-45-6789"
 
 # Use the functions
 async def main():
     try:
         # Safe input
-        result1 = await handle_message(
-            "Hello, I need help",
-            {"user_id": "123"}
-        )
+        result1 = await handle_message("Hello, I need help")
         print(result1)
         
-        # Output with PII (will be redacted)
+        # Output with PII (may be blocked by controls)
         result2 = await generate_response("Get user info")
-        print(result2)  # SSN will be [REDACTED]
+        print(result2)
         
-    except Exception as e:
-        print(f"Blocked: {e}")
+    except ControlViolationError as e:
+        print(f"Blocked by control '{e.control_name}': {e.message}")
 
 asyncio.run(main())
 ```
@@ -153,7 +150,7 @@ asyncio.run(main())
 
 ### Initialization
 
-#### `agent_protect.init()`
+#### `agent_control.init()`
 
 ```python
 def init(
@@ -167,14 +164,14 @@ def init(
 ) -> Agent:
 ```
 
-Initialize Agent Protect with your agent's information.
+Initialize Agent Control with your agent's information.
 
 **Parameters:**
 - `agent_name`: Human-readable name
 - `agent_id`: Unique identifier (user-defined)
 - `agent_description`: Optional description
 - `agent_version`: Optional version string
-- `server_url`: Optional server URL (defaults to `AGENT_PROTECT_URL` env var)
+- `server_url`: Optional server URL (defaults to `AGENT_CONTROL_URL` env var)
 - `rules_file`: Optional rules file path (auto-discovered if not provided)
 - `**kwargs`: Additional metadata
 
@@ -182,50 +179,58 @@ Initialize Agent Protect with your agent's information.
 
 ### Decorator
 
-#### `@protect()`
+#### `@control()`
 
 ```python
-def protect(step_id: str, **data_sources):
+def control(policy: Optional[str] = None):
 ```
 
-Decorator to protect a function with rules from `rules.yaml`.
+Decorator to protect a function with server-defined controls.
 
 **Parameters:**
-- `step_id`: Step identifier matching rules.yaml
-- `**data_sources`: Mapping of data types to parameter names
+- `policy`: Optional policy name to use (defaults to agent's assigned policy)
 
 **Example:**
 ```python
-@protect('input-check', input='text', context='ctx')
-async def my_func(text: str, ctx: dict):
+@control()
+async def my_func(text: str):
     return text
+
+# Or with specific policy
+@control(policy="strict-policy")
+async def sensitive_func(data: str):
+    return data
 ```
 
 ### Client
 
-#### `AgentProtectClient`
+#### `AgentControlClient`
 
 ```python
-class AgentProtectClient:
+class AgentControlClient:
     def __init__(
         self,
         base_url: str = "http://localhost:8000",
+        api_key: Optional[str] = None,
         timeout: float = 30.0
     ):
 ```
 
-Async HTTP client for Agent Protect server.
+Async HTTP client for Agent Control server.
 
 **Methods:**
 
 - `health_check()` - Check server health
-- `check_protection(content, context=None)` - Check content safety
-- `register_agent(agent)` - Register an agent
+- Use with module functions like `agent_control.agents.*`, `agent_control.controls.*`, etc.
 
 **Example:**
 ```python
-async with AgentProtectClient(base_url="http://server") as client:
-    result = await client.check_protection("content")
+from agent_control import AgentControlClient
+import agent_control
+
+async with AgentControlClient(base_url="http://server") as client:
+    health = await client.health_check()
+    agent = await agent_control.agents.init_agent(client, agent_data, tools)
 ```
 
 ### Models
@@ -241,49 +246,36 @@ If `agent-control-models` is installed, these classes are available:
 
 ### Environment Variables
 
-- `AGENT_PROTECT_URL` - Server URL (default: `http://localhost:8000`)
-- `AGENT_ID` - Agent identifier (optional)
+- `AGENT_CONTROL_URL` - Server URL (default: `http://localhost:8000`)
+- `AGENT_CONTROL_API_KEY` - API key for authentication (optional)
 
-### Rules File
+### Server-Defined Controls
 
-Create a `rules.yaml` in your project:
+Controls are defined on the server via the API or web dashboard, not in code. This keeps security policies centrally managed and allows updating controls without redeploying your application.
 
-```yaml
-input-validation:
-  step_id: "input-check"
-  description: "Validate user inputs"
-  rules:
-    - match:
-        string: ["forbidden", "blocked"]
-      action: deny
-      data: input
-  default_action: allow
-```
-
-See the [Rules Guide](../../examples/langgraph/my_agent/RULES_GUIDE.md) for complete documentation.
+See the [Reference Guide](../../docs/REFERENCE.md) for complete control configuration documentation.
 
 ## Package Name
 
-This package is named `agent-control` (with hyphen in PyPI) but imported as `agent_protect` (with underscore in Python):
+This package is named `agent-control` (with hyphen in PyPI) and imported as `agent_control` (with underscore in Python):
 
 ```bash
 # Install (uses hyphen)
 pip install agent-control
 
 # Import (uses underscore)
-import agent_protect
+import agent_control
 ```
 
-Or use the simpler decorator approach:
+Basic usage:
 
 ```python
-import agent_protect
+import agent_control
+from agent_control import control, ControlViolationError
 
-agent_protect.init(agent_name="...", agent_id="...")
+agent_control.init(agent_name="...", agent_id="...")
 
-from agent_protect import protect
-
-@protect('input-check', input='message')
+@control()
 async def handle(message: str):
     return message
 ```
@@ -304,18 +296,17 @@ uv run ruff check .
 
 ## Examples
 
-See the [examples directory](../../examples/langgraph/my_agent/) for complete examples:
+See the examples directory for complete examples:
 
-- `example_with_agent_protect.py` - Using `agent_protect.init()`
-- `simple_example.py` - Minimal example
-- `agent_with_rules.py` - LangGraph integration
+- [Customer Support Agent](../../examples/customer_support_agent/) - Full example with multiple tools
+- [LangChain SQL Agent](../../examples/langchain/) - SQL injection protection
+- [Galileo Luna-2 Integration](../../examples/galileo/) - AI-powered toxicity detection
 
 ## Documentation
 
-- [Quick Start](../../examples/langgraph/my_agent/QUICK_START.md)
-- [Rules Guide](../../examples/langgraph/my_agent/RULES_GUIDE.md)
-- [Decorator Explained](../../examples/langgraph/my_agent/DECORATOR_EXPLAINED.md)
-- [How Data Flows](../../examples/langgraph/my_agent/HOW_DATA_FLOWS.md)
+- [Reference Guide](../../docs/REFERENCE.md) - Complete API and configuration reference
+- [Examples Overview](../../examples/README.md) - Working code examples and patterns
+- [Architecture](./ARCHITECTURE.md) - SDK architecture and design patterns
 
 ## License
 

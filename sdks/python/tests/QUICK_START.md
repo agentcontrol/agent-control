@@ -77,7 +77,7 @@ tests/test_integration_policies.py::test_policy_creation_workflow PASSED
 
 **Problem**: Tests are skipped
 ```
-SKIPPED [1] tests/conftest.py:32: Agent Protect server not available
+SKIPPED [1] tests/conftest.py:32: Agent Control server not available
 ```
 
 **Solution**: Start the server first!
