@@ -48,6 +48,7 @@ from .client import AgentControlClient
 # Import control decorator
 from .control_decorators import ControlViolationError, control
 from .evaluation import check_evaluation_with_local
+from .local_server import LocalServerHandle, run_local_server
 from .observability import (
     LogConfig,
     add_event,
@@ -959,6 +960,10 @@ __all__ = [
     "get_log_config",
     "log_control_evaluation",
     "LogConfig",
+
+    # Local server helper
+    "run_local_server",
+    "LocalServerHandle",
 
     # Models (if available)
     "Agent",

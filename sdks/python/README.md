@@ -29,6 +29,23 @@ async def handle_message(message: str):
     return f"Processed: {message}"
 ```
 
+### Local Server (Docker)
+
+Start the server locally with a single SDK call:
+
+```python
+import agent_control
+
+server = agent_control.run_local_server()
+print(server.base_url)  # http://127.0.0.1:8000
+
+agent_control.init(
+    agent_name="My Customer Service Bot",
+    agent_id="csbot-prod-v1",
+    server_url=server.base_url,
+)
+```
+
 ### With Full Metadata
 
 ```python
