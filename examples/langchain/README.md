@@ -4,13 +4,13 @@ This example demonstrates integrating Agent Control with a LangChain SQL agent t
 
 ## Prerequisites
 
-### 1. Start the Agent Control Server
+### 1. Start the Agent Control Server (for remote execution)
 
 **IMPORTANT: You must start/restart the server to load the SQL plugin!**
 
 ```bash
 # From the repo root
-cd /Users/nachiketparanjape/Documents/Galileo/Hub/agent-control
+cd /Users/nachiketparanjape/Documents/Galileo/Hub/agent-protect
 
 # Kill any old servers
 pkill -f "uvicorn agent_control_server"
@@ -45,10 +45,32 @@ This creates:
 - Policy with the control
 - Assigns policy to the SQL agent
 
+> For local execution, create the control with `execution: "sdk"` in
+> `setup_sql_controls.py` (see `sql_control_data_sdk`) and enable
+> `AGENT_CONTROL_LOCAL_EVAL=true` when running the agent.
+
 ## Running the Example
 
 ```bash
 cd examples/langchain
+uv run sql_agent_protection.py
+```
+
+### Local vs Remote Control Execution
+
+**Remote (server-side) controls**:
+- Default mode
+- Requires running the Agent Control server
+- Uses `@control()` to call `/api/v1/evaluation` on the server
+
+**Local (SDK-side) controls**:
+- Set `AGENT_CONTROL_LOCAL_EVAL=true`
+- Controls must be configured with `execution: "sdk"`
+- Uses `agent_control.check_evaluation_with_local(...)` before executing the tool
+
+Example:
+```bash
+export AGENT_CONTROL_LOCAL_EVAL=true
 uv run sql_agent_protection.py
 ```
 
@@ -94,9 +116,9 @@ The `@control()` decorator:
 3. Sends to server for evaluation **before** execution
 4. Blocks execution if control triggers deny action
 
-### 3. Server-Side SQL Control
+### 3. SQL Control Execution
 
-The server evaluates the SQL using the `sql` plugin:
+The SQL is evaluated using the `sql` plugin:
 - Parses the query
 - Checks for blocked operations (DROP, DELETE, etc.)
 - Validates LIMIT clauses
@@ -133,9 +155,10 @@ cd server && make run
 ### DROP TABLE still executes
 
 **Causes:**
-1. Server not running or plugins not loaded
+1. Server not running or plugins not loaded (remote mode)
 2. Control not assigned to agent's policy
-3. Using old decorator code
+3. Control data missing/invalid (control not returned to agent)
+4. Local mode enabled but control is still `execution: "server"`
 
 **Fix:**
 1. Restart server with `make run`
@@ -177,6 +200,6 @@ Raise ControlViolationError (DENY) or Execute (ALLOW)
 ## Key Security Features
 
 1. **Fail-Safe by Default**: Errors block execution
-2. **Server-Side Validation**: Can't be bypassed by client
-3. **No Client-Side Logic**: Just use `@control()` decorator
+2. **Server-Side Validation**: Remote controls enforced centrally
+3. **SDK-Side Validation**: Local controls run before tool execution
 4. **Automatic Detection**: Decorator auto-detects tool vs LLM calls

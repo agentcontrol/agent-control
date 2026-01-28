@@ -5,7 +5,7 @@ Unified Python SDK for Agent Control - providing agent protection, monitoring, a
 ## Installation
 
 ```bash
-pip install agent-control
+pip install agent-control-sdk
 ```
 
 ## Quick Start
@@ -257,11 +257,11 @@ See the [Reference Guide](../../docs/REFERENCE.md) for complete control configur
 
 ## Package Name
 
-This package is named `agent-control` (with hyphen in PyPI) and imported as `agent_control` (with underscore in Python):
+This package is named `agent-control-sdk` (with hyphen in PyPI) and imported as `agent_control` (with underscore in Python):
 
 ```bash
 # Install (uses hyphen)
-pip install agent-control
+pip install agent-control-sdk
 
 # Import (uses underscore)
 import agent_control
