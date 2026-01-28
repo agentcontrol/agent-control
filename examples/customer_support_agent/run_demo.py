@@ -31,7 +31,7 @@ import logging
 import os
 import sys
 
-import httpx
+from agent_control import AgentControlClient, agents
 
 # Configure logging to see SDK debug output
 logging.basicConfig(
@@ -57,28 +57,25 @@ async def reset_agent():
     print(f"Resetting agent '{AGENT_ID}' (UUID: {agent_uuid})...")
     print()
 
-    async with httpx.AsyncClient(base_url=server_url) as client:
+    async with AgentControlClient(base_url=server_url) as client:
         # Check if agent exists
         try:
-            resp = await client.get(f"/api/v1/agents/{agent_uuid}")
-            if resp.status_code == 404:
+            await agents.get_agent(client, agent_uuid)
+        except Exception as e:
+            if "404" in str(e):
                 print("Agent not found - nothing to reset.")
                 return
-            resp.raise_for_status()
-        except httpx.HTTPError as e:
             print(f"Error checking agent: {e}")
             return
 
         # Remove policy from agent (disconnects all controls)
         try:
-            resp = await client.delete(f"/api/v1/agents/{agent_uuid}/policy")
-            if resp.status_code == 404:
+            await agents.remove_agent_policy(client, agent_uuid)
+            print("Removed policy from agent (all controls disconnected).")
+        except Exception as e:
+            if "404" in str(e):
                 print("Agent has no policy - already clean.")
-            elif resp.status_code == 200:
-                print("Removed policy from agent (all controls disconnected).")
-            else:
-                resp.raise_for_status()
-        except httpx.HTTPError as e:
+                return
             print(f"Error removing policy: {e}")
             return
 

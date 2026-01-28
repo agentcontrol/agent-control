@@ -170,3 +170,25 @@ async def get_agent_policy(
     response = await client.http_client.get(f"/api/v1/agents/{agent_id}/policy")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
+
+
+async def remove_agent_policy(
+    client: AgentControlClient,
+    agent_id: str,
+) -> dict[str, Any]:
+    """
+    Remove the policy assignment from an agent.
+
+    Args:
+        client: AgentControlClient instance
+        agent_id: UUID or string identifier of the agent
+
+    Returns:
+        Dictionary containing success flag/details
+
+    Raises:
+        httpx.HTTPError: If request fails or agent has no policy
+    """
+    response = await client.http_client.delete(f"/api/v1/agents/{agent_id}/policy")
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())

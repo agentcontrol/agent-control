@@ -262,8 +262,9 @@ The demo setup creates three controls automatically. Here are examples of additi
 ### PII Detection (Post-check on output)
 ```yaml
 name: block-pii-in-output
-applies_to: llm_call
-check_stage: post
+scope:
+  step_types: ["llm_inference"]
+  stages: ["post"]
 selector:
   path: output
 evaluator:
@@ -278,8 +279,9 @@ action:
 ### Prompt Injection (Pre-check on input)
 ```yaml
 name: block-prompt-injection
-applies_to: llm_call
-check_stage: pre
+scope:
+  step_types: ["llm_inference"]
+  stages: ["pre"]
 selector:
   path: input
 evaluator:
@@ -294,8 +296,9 @@ action:
 ### Toxic Content (Pre-check on input)
 ```yaml
 name: block-toxic-input
-applies_to: llm_call
-check_stage: pre
+scope:
+  step_types: ["llm_inference"]
+  stages: ["pre"]
 selector:
   path: input
 evaluator:

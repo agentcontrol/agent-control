@@ -15,7 +15,7 @@ import asyncio
 import os
 import uuid
 
-import httpx
+from agent_control import Agent, AgentControlClient, agents, controls, policies
 
 # Same agent ID as in support_agent.py
 AGENT_ID = "customer-support-agent"
@@ -34,9 +34,10 @@ DEMO_CONTROLS = [
         "name": "block-ssn-in-output",
         "description": "Blocks responses containing SSN patterns (path: output)",
         "definition": {
-            "applies_to": "llm_call",
-            "check_stage": "post",
+            "description": "Blocks responses containing SSN patterns (path: output)",
             "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
             "selector": {"path": "output"},
             "evaluator": {
                 "plugin": "regex",
@@ -52,9 +53,10 @@ DEMO_CONTROLS = [
         "name": "block-prompt-injection",
         "description": "Blocks common prompt injection attempts (path: input)",
         "definition": {
-            "applies_to": "llm_call",
-            "check_stage": "pre",
+            "description": "Blocks common prompt injection attempts (path: input)",
             "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {
                 "plugin": "regex",
@@ -72,9 +74,10 @@ DEMO_CONTROLS = [
         "name": "block-credit-card",
         "description": "Blocks messages containing credit card numbers (path: input)",
         "definition": {
-            "applies_to": "llm_call",
-            "check_stage": "pre",
+            "description": "Blocks messages containing credit card numbers (path: input)",
             "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {
                 "plugin": "regex",
@@ -93,11 +96,12 @@ DEMO_CONTROLS = [
         "name": "block-sql-injection-customer-lookup",
         "description": "Blocks SQL injection in customer lookup (tool_names: exact match)",
         "definition": {
-            "applies_to": "tool_call",
-            "check_stage": "pre",
+            "description": "Blocks SQL injection in customer lookup (tool_names: exact match)",
             "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["tool"], "stages": ["pre"]},
             "selector": {
-                "path": "arguments.query",
+                "path": "input.query",
                 "tool_names": ["lookup_customer"],  # Only applies to this exact tool
             },
             "evaluator": {
@@ -116,9 +120,10 @@ DEMO_CONTROLS = [
         "name": "log-ticket-creation",
         "description": "Logs all ticket creation for audit (tool_names: exact match)",
         "definition": {
-            "applies_to": "tool_call",
-            "check_stage": "pre",
+            "description": "Logs all ticket creation for audit (tool_names: exact match)",
             "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["tool"], "stages": ["pre"]},
             "selector": {
                 "path": "*",  # Log entire payload
                 "tool_names": ["create_ticket"],
@@ -140,11 +145,12 @@ DEMO_CONTROLS = [
         "name": "block-profanity-in-search",
         "description": "Blocks profanity in any search/lookup tool (tool_name_regex: pattern)",
         "definition": {
-            "applies_to": "tool_call",
-            "check_stage": "pre",
+            "description": "Blocks profanity in any search/lookup tool (tool_name_regex: pattern)",
             "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["tool"], "stages": ["pre"]},
             "selector": {
-                "path": "arguments.query",
+                "path": "input.query",
                 # Applies to any tool containing 'search' or 'lookup'
                 "tool_name_regex": r"(search|lookup)",
             },
@@ -165,11 +171,12 @@ DEMO_CONTROLS = [
         "name": "warn-high-priority-ticket",
         "description": "Warns on high priority tickets (path: arguments.priority)",
         "definition": {
-            "applies_to": "tool_call",
-            "check_stage": "pre",
+            "description": "Warns on high priority tickets (path: input.priority)",
             "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["tool"], "stages": ["pre"]},
             "selector": {
-                "path": "arguments.priority",
+                "path": "input.priority",
                 "tool_name_regex": r".*ticket.*",  # Any tool with 'ticket' in name
             },
             "evaluator": {
@@ -195,11 +202,12 @@ DEMO_CONTROLS = [
         "name": "block-pii-in-ticket-description",
         "description": "Blocks PII in ticket descriptions (path: arguments.description)",
         "definition": {
-            "applies_to": "tool_call",
-            "check_stage": "pre",
+            "description": "Blocks PII in ticket descriptions (path: input.description)",
             "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["tool"], "stages": ["pre"]},
             "selector": {
-                "path": "arguments.description",
+                "path": "input.description",
                 "tool_names": ["create_ticket"],
             },
             "evaluator": {
@@ -223,12 +231,11 @@ async def setup_demo(quiet: bool = False):
     # Generate the same UUID5 that the SDK generates
     agent_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
 
-    async with httpx.AsyncClient(base_url=SERVER_URL, timeout=30.0) as client:
+    async with AgentControlClient(base_url=SERVER_URL, timeout=30.0) as client:
         # Check server health
         try:
-            resp = await client.get("/health")
-            resp.raise_for_status()
-        except httpx.HTTPError as e:
+            await client.health_check()
+        except Exception as e:
             print(f"Error: Cannot connect to server at {SERVER_URL}")
             print(f"  {e}")
             print("\nMake sure the server is running: ./demo.sh start")
@@ -236,22 +243,15 @@ async def setup_demo(quiet: bool = False):
 
         # Register the agent
         try:
-            resp = await client.post(
-                "/api/v1/agents/initAgent",
-                json={
-                    "agent": {
-                        "agent_id": agent_uuid,
-                        "agent_name": AGENT_NAME,
-                        "agent_description": AGENT_DESCRIPTION,
-                    },
-                    "tools": [],
-                },
+            agent = Agent(
+                agent_id=agent_uuid,
+                agent_name=AGENT_NAME,
+                agent_description=AGENT_DESCRIPTION,
             )
-            resp.raise_for_status()
-            result = resp.json()
+            result = await agents.register_agent(client, agent, steps=[])
             status = "Created" if result.get("created") else "Updated"
             print(f"  {status} agent: {AGENT_NAME}")
-        except httpx.HTTPError as e:
+        except Exception as e:
             print(f"  Error registering agent: {e}")
             return False
 
@@ -261,36 +261,32 @@ async def setup_demo(quiet: bool = False):
 
         # Check if agent already has a policy
         try:
-            resp = await client.get(f"/api/v1/agents/{agent_uuid}/policy")
-            if resp.status_code == 200:
-                policy_id = resp.json().get("policy_id")
-        except httpx.HTTPError:
-            pass  # No policy yet
+            policy_info = await agents.get_agent_policy(client, agent_uuid)
+            policy_id = policy_info.get("policy_id")
+        except Exception:
+            policy_id = None  # No policy yet
 
         # Create policy if needed
         if not policy_id:
             try:
-                resp = await client.put(
-                    "/api/v1/policies",
-                    json={"name": policy_name},
-                )
-                if resp.status_code == 409:
-                    # Policy name exists but not assigned - create with unique name
+                policy_result = await policies.create_policy(client, policy_name)
+                policy_id = policy_result["policy_id"]
+                print(f"  Created policy: {policy_name}")
+            except Exception as e:
+                if "409" in str(e):
                     import time
                     policy_name = f"policy-{AGENT_ID}-{int(time.time())}"
-                    resp = await client.put(
-                        "/api/v1/policies",
-                        json={"name": policy_name},
-                    )
-                resp.raise_for_status()
-                policy_id = resp.json()["policy_id"]
-                print(f"  Created policy: {policy_name}")
+                    policy_result = await policies.create_policy(client, policy_name)
+                    policy_id = policy_result["policy_id"]
+                    print(f"  Created policy: {policy_name}")
+                else:
+                    print(f"  Error setting up policy: {e}")
+                    return False
 
-                # Assign policy to agent
-                resp = await client.post(f"/api/v1/agents/{agent_uuid}/policy/{policy_id}")
-                resp.raise_for_status()
-            except httpx.HTTPError as e:
-                print(f"  Error setting up policy: {e}")
+            try:
+                await policies.assign_policy_to_agent(client, agent_uuid, policy_id)
+            except Exception as e:
+                print(f"  Error assigning policy: {e}")
                 return False
 
         # Create controls and add to policy
@@ -300,38 +296,28 @@ async def setup_demo(quiet: bool = False):
             definition = control_spec["definition"]
 
             try:
-                # Create control
-                resp = await client.put(
-                    "/api/v1/controls",
-                    json={"name": control_name},
+                control_result = await controls.create_control(
+                    client, name=control_name, data=definition
                 )
-                if resp.status_code == 409:
-                    # Control exists, get its ID
-                    resp = await client.get("/api/v1/controls", params={"name": control_name})
-                    resp.raise_for_status()
-                    controls = resp.json().get("controls", [])
-                    if controls:
-                        control_id = controls[0]["id"]
-                    else:
-                        continue
-                else:
-                    resp.raise_for_status()
-                    control_id = resp.json()["control_id"]
+                control_id = control_result["control_id"]
+                if control_result.get("configured"):
                     controls_created += 1
+            except Exception as e:
+                if "409" in str(e):
+                    control_list = await controls.list_controls(client, name=control_name, limit=1)
+                    existing = control_list.get("controls", [])
+                    if not existing:
+                        continue
+                    control_id = existing[0]["id"]
+                    await controls.set_control_data(client, control_id, definition)
+                else:
+                    print(f"  Error with control '{control_name}': {e}")
+                    continue
 
-                # Set control definition
-                resp = await client.put(
-                    f"/api/v1/controls/{control_id}/data",
-                    json={"data": definition},
-                )
-                resp.raise_for_status()
-
-                # Add control to policy
-                resp = await client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-                resp.raise_for_status()
-
-            except httpx.HTTPError as e:
-                print(f"  Error with control '{control_name}': {e}")
+            try:
+                await policies.add_control_to_policy(client, policy_id, control_id)
+            except Exception as e:
+                print(f"  Error adding control '{control_name}' to policy: {e}")
                 continue
 
         if controls_created > 0:

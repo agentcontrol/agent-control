@@ -21,8 +21,13 @@ export GALILEO_API_KEY="your-api-key-here"
 # 2. (Optional) Set custom console URL
 export GALILEO_CONSOLE_URL="https://console.demo-v2.galileocloud.io"
 
-# 3. Run the demo
+# 3. (Optional) Override project/stage names
+export GALILEO_PROJECT_NAME="protect-demo"
+export GALILEO_STAGE_NAME="luna2-toxicity-stage"
+
+# 4. Install deps and run the demo
 cd examples/galileo
+uv sync
 uv run luna2_demo.py
 ```
 
@@ -71,8 +76,8 @@ Testing toxicity detection with Central Stage...
 ### Troubleshooting
 
 - **"GALILEO_API_KEY environment variable is required"**: Export your API key
-- **"Project not found"**: Update `PROJECT_NAME` in the script to match your Galileo project
-- **"Stage not found"**: Update `STAGE_NAME` to match a stage in your project
+- **"Project not found"**: Set `GALILEO_PROJECT_NAME` to match your Galileo project
+- **"Stage not found"**: Set `GALILEO_STAGE_NAME` to match a stage in your project
 - **Import errors**: Ensure you installed with `[luna2]` extra: `pip install agent-control-plugins[luna2]`
 
 ### Documentation

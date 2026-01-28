@@ -14,7 +14,7 @@ Setup:
        python luna2_demo.py
 
 Requirements:
-    pip install httpx>=0.24.0
+    pip install agent-control-plugins[luna2]
 """
 
 import asyncio
@@ -50,8 +50,8 @@ except ImportError as e:
 
 
 # Configuration - using the CENTRAL stage we created
-PROJECT_NAME = "protect-demo"
-STAGE_NAME = "luna2-toxicity-stage"
+PROJECT_NAME = os.getenv("GALILEO_PROJECT_NAME", "protect-demo")
+STAGE_NAME = os.getenv("GALILEO_STAGE_NAME", "luna2-toxicity-stage")
 
 
 async def test_luna2_central_stage() -> None:

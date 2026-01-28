@@ -195,8 +195,7 @@ async def respond_to_customer(message: str) -> str:
     return response
 
 
-@control()
-async def lookup_customer(query: str) -> dict[str, Any]:
+async def _lookup_customer(query: str) -> dict[str, Any]:
     """
     Look up customer information - protected tool call.
 
@@ -210,8 +209,12 @@ async def lookup_customer(query: str) -> dict[str, Any]:
     return {"found": False, "message": f"No customer found for: {query}"}
 
 
-@control()
-async def search_knowledge_base(query: str) -> dict[str, Any]:
+_lookup_customer.name = "lookup_customer"  # type: ignore[attr-defined]
+_lookup_customer.tool_name = "lookup_customer"  # type: ignore[attr-defined]
+lookup_customer = control()(_lookup_customer)
+
+
+async def _search_knowledge_base(query: str) -> dict[str, Any]:
     """
     Search the knowledge base - protected tool call.
 
@@ -227,8 +230,14 @@ async def search_knowledge_base(query: str) -> dict[str, Any]:
     }
 
 
-@control()
-async def create_ticket(subject: str, description: str, priority: str = "medium") -> dict[str, Any]:
+_search_knowledge_base.name = "search_knowledge_base"  # type: ignore[attr-defined]
+_search_knowledge_base.tool_name = "search_knowledge_base"  # type: ignore[attr-defined]
+search_knowledge_base = control()(_search_knowledge_base)
+
+
+async def _create_ticket(
+    subject: str, description: str, priority: str = "medium"
+) -> dict[str, Any]:
     """
     Create a support ticket - protected tool call.
 
@@ -238,6 +247,11 @@ async def create_ticket(subject: str, description: str, priority: str = "medium"
     """
     ticket = TicketSystem.create(subject, description, priority)
     return {"success": True, "ticket": ticket}
+
+
+_create_ticket.name = "create_ticket"  # type: ignore[attr-defined]
+_create_ticket.tool_name = "create_ticket"  # type: ignore[attr-defined]
+create_ticket = control()(_create_ticket)
 
 
 # =============================================================================
