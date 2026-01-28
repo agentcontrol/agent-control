@@ -11,7 +11,7 @@ from .policy import Control
 class EvaluatorSchema(BaseModel):
     """Schema for a custom evaluator registered with an agent.
 
-    Custom evaluators are PluginEvaluator classes deployed with the engine.
+    Custom evaluators are Evaluator classes deployed with the engine.
     This schema is registered via initAgent for validation and UI purposes.
     """
 
@@ -314,8 +314,8 @@ class EvaluatorConfigItem(BaseModel):
     description: str | None = Field(
         None, max_length=1000, description="Optional description"
     )
-    plugin: str = Field(..., min_length=1, description="Plugin name (built-in or custom)")
-    config: dict[str, Any] = Field(..., description="Plugin-specific configuration")
+    evaluator: str = Field(..., min_length=1, description="Evaluator name (built-in or custom)")
+    config: dict[str, Any] = Field(..., description="Evaluator-specific configuration")
     created_at: str | None = Field(None, description="ISO 8601 created timestamp")
     updated_at: str | None = Field(None, description="ISO 8601 updated timestamp")
 
@@ -333,8 +333,8 @@ class CreateEvaluatorConfigRequest(BaseModel):
     description: str | None = Field(
         None, max_length=1000, description="Optional description"
     )
-    plugin: str = Field(..., min_length=1, description="Plugin name (built-in or custom)")
-    config: dict[str, Any] = Field(..., description="Plugin-specific configuration")
+    evaluator: str = Field(..., min_length=1, description="Evaluator name (built-in or custom)")
+    config: dict[str, Any] = Field(..., description="Evaluator-specific configuration")
 
 
 class UpdateEvaluatorConfigRequest(BaseModel):
@@ -350,8 +350,8 @@ class UpdateEvaluatorConfigRequest(BaseModel):
     description: str | None = Field(
         None, max_length=1000, description="Optional description"
     )
-    plugin: str = Field(..., min_length=1, description="Plugin name (built-in or custom)")
-    config: dict[str, Any] = Field(..., description="Plugin-specific configuration")
+    evaluator: str = Field(..., min_length=1, description="Evaluator name (built-in or custom)")
+    config: dict[str, Any] = Field(..., description="Evaluator-specific configuration")
 
 
 class ListEvaluatorConfigsResponse(BaseModel):

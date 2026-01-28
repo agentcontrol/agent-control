@@ -77,31 +77,31 @@ class TestProtectedEndpoints:
         assert response.status_code == 404
 
 
-class TestPluginsEndpoint:
-    """Plugins endpoint requires valid API key (regular or admin)."""
+class TestEvaluatorsEndpoint:
+    """Evaluators endpoint requires valid API key (regular or admin)."""
 
-    def test_regular_key_works_on_plugins(self, client: TestClient) -> None:
-        """Given regular API key, when listing plugins, then returns 200."""
+    def test_regular_key_works_on_evaluators(self, client: TestClient) -> None:
+        """Given regular API key, when listing evaluators, then returns 200."""
         # When
-        response = client.get("/api/v1/plugins")
+        response = client.get("/api/v1/evaluators")
 
         # Then
         assert response.status_code == 200
 
-    def test_admin_key_works_on_plugins(self, admin_client: TestClient) -> None:
-        """Given admin API key, when listing plugins, then returns 200."""
+    def test_admin_key_works_on_evaluators(self, admin_client: TestClient) -> None:
+        """Given admin API key, when listing evaluators, then returns 200."""
         # When
-        response = admin_client.get("/api/v1/plugins")
+        response = admin_client.get("/api/v1/evaluators")
 
         # Then
         assert response.status_code == 200
 
-    def test_missing_key_returns_401_on_plugins(
+    def test_missing_key_returns_401_on_evaluators(
         self, unauthenticated_client: TestClient
     ) -> None:
-        """Given no API key, when listing plugins, then returns 401."""
+        """Given no API key, when listing evaluators, then returns 401."""
         # When
-        response = unauthenticated_client.get("/api/v1/plugins")
+        response = unauthenticated_client.get("/api/v1/evaluators")
 
         # Then
         assert response.status_code == 401
@@ -127,12 +127,12 @@ class TestAuthDisabled:
         # Then (404 for non-existent resource, but NOT 401)
         assert response.status_code == 404
 
-    def test_plugins_accessible_when_disabled(
+    def test_evaluators_accessible_when_disabled(
         self, unauthenticated_client: TestClient
     ) -> None:
-        """Given auth disabled, when listing plugins without API key, then returns 200."""
+        """Given auth disabled, when listing evaluators without API key, then returns 200."""
         # When
-        response = unauthenticated_client.get("/api/v1/plugins")
+        response = unauthenticated_client.get("/api/v1/evaluators")
 
         # Then
         assert response.status_code == 200

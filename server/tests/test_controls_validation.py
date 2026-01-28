@@ -16,7 +16,7 @@ def test_validation_invalid_logic_enum(client: TestClient):
     # Given: Payload with invalid 'logic' value
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
-        "plugin": "list",
+        "name": "list",
         "config": {
             "values": ["a", "b"],
             "logic": "invalid_logic", # Should be 'any' or 'all'
@@ -41,23 +41,23 @@ def test_validation_discriminator_mismatch(client: TestClient):
     """Test that config must match the evaluator type."""
     control_id = create_control(client)
     
-    # Given: type='list' but config has 'pattern' (RegexConfig)
+    # Given: type='list' but config has 'pattern' (RegexEvaluatorConfig)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
-        "plugin": "list", 
+        "name": "list",
         "config": {
-            "pattern": "some_regex", # Invalid for ListConfig
+            "pattern": "some_regex", # Invalid for ListEvaluatorConfig
             # Missing 'values'
         }
     }
-    
+
     # When: Setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
-    
+
     # Then: 422 Unprocessable Entity
     assert resp.status_code == 422
-    
-    # Verify error mentions missing required field for ListConfig (RFC 7807 format)
+
+    # Verify error mentions missing required field for ListEvaluatorConfig (RFC 7807 format)
     response_data = resp.json()
     errors = response_data.get("errors", [])
     # Expecting 'values' field missing
@@ -72,7 +72,7 @@ def test_validation_regex_flags_list(client: TestClient):
     # Given: regex config with invalid flags type (string instead of list)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
-        "plugin": "regex",
+        "name": "regex",
         "config": {
             "pattern": "abc",
             "flags": "IGNORECASE" # Should be ["IGNORECASE"]
@@ -96,7 +96,7 @@ def test_validation_invalid_regex_pattern(client: TestClient):
     # Given: regex config with invalid pattern (unclosed bracket)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
-        "plugin": "regex",
+        "name": "regex",
         "config": {
             "pattern": "[", # Invalid regex
             "flags": []

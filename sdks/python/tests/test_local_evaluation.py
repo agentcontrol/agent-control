@@ -57,7 +57,7 @@ def make_control_dict(
     name: str,
     *,
     execution: str = "server",
-    plugin: str = "regex",
+    evaluator: str = "regex",
     pattern: str = r"test",
     action: str = "deny",
     step_type: str = "llm_inference",
@@ -78,7 +78,7 @@ def make_control_dict(
             "scope": {"step_types": [step_type], "stages": [stage]},
             "selector": {"path": path},
             "evaluator": {
-                "plugin": plugin,
+                "name": evaluator,
                 "config": {"pattern": pattern},
             },
             "action": {"decision": action},
@@ -564,19 +564,19 @@ class TestCheckEvaluationWithLocal:
         assert result.matches[0].control_name == "local_deny_ctrl"
 
     @pytest.mark.asyncio
-    async def test_local_control_with_missing_plugin_raises(self, agent_uuid, llm_payload):
-        """Test that local control with unavailable plugin raises RuntimeError.
+    async def test_local_control_with_missing_evaluator_raises(self, agent_uuid, llm_payload):
+        """Test that local control with unavailable evaluator raises RuntimeError.
 
-        Given: A local control referencing a plugin that doesn't exist
+        Given: A local control referencing an evaluator that doesn't exist
         When: check_evaluation_with_local is called
         Then: RuntimeError is raised with helpful message
         """
         controls = [
             make_control_dict(
                 1,
-                "local_missing_plugin",
+                "local_missing_evaluator",
                 execution="sdk",
-                plugin="nonexistent-plugin-xyz",
+                evaluator="nonexistent-evaluator-xyz",
                 pattern=r"test",
             ),
         ]
@@ -593,24 +593,24 @@ class TestCheckEvaluationWithLocal:
                 controls=controls,
             )
 
-        assert "local_missing_plugin" in str(exc_info.value)
-        assert "nonexistent-plugin-xyz" in str(exc_info.value)
+        assert "local_missing_evaluator" in str(exc_info.value)
+        assert "nonexistent-evaluator-xyz" in str(exc_info.value)
         assert "not available" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_local_control_with_agent_scoped_plugin_raises(self, agent_uuid, llm_payload):
-        """Test that local control with agent-scoped plugin raises RuntimeError.
+    async def test_local_control_with_agent_scoped_evaluator_raises(self, agent_uuid, llm_payload):
+        """Test that local control with agent-scoped evaluator raises RuntimeError.
 
-        Given: A local control referencing an agent-scoped plugin (agent:evaluator)
+        Given: A local control referencing an agent-scoped evaluator (agent:evaluator)
         When: check_evaluation_with_local is called
-        Then: RuntimeError is raised explaining agent-scoped plugins are server-only
+        Then: RuntimeError is raised explaining agent-scoped evaluators are server-only
         """
         controls = [
             make_control_dict(
                 1,
                 "local_agent_scoped",
                 execution="sdk",
-                plugin="my-agent:custom-evaluator",
+                evaluator="my-agent:custom-evaluator",
                 pattern=r"test",
             ),
         ]
@@ -632,19 +632,19 @@ class TestCheckEvaluationWithLocal:
         assert "server-only" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_server_control_with_missing_plugin_allowed(self, agent_uuid, llm_payload):
-        """Test that server control with unavailable plugin is allowed (server handles it).
+    async def test_server_control_with_missing_evaluator_allowed(self, agent_uuid, llm_payload):
+        """Test that server control with unavailable evaluator is allowed (server handles it).
 
-        Given: A server control (execution="server") referencing a plugin that doesn't exist locally
+        Given: A server control (execution="server") referencing an evaluator that doesn't exist locally
         When: check_evaluation_with_local is called
         Then: No error, server is called to handle it
         """
         controls = [
             make_control_dict(
                 1,
-                "server_custom_plugin",
+                "server_custom_evaluator",
                 execution="server",
-                plugin="server-only-plugin",
+                evaluator="server-only-evaluator",
                 pattern=r"test",
             ),
         ]
@@ -657,7 +657,7 @@ class TestCheckEvaluationWithLocal:
         client.http_client = AsyncMock()
         client.http_client.post = AsyncMock(return_value=mock_response)
 
-        # Should not raise - server handles unavailable plugins
+        # Should not raise - server handles unavailable evaluators
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent_uuid,

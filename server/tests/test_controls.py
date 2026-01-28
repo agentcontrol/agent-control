@@ -40,7 +40,7 @@ VALID_CONTROL_DATA = {
     "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
     "selector": {"path": "input"},
     "evaluator": {
-        "plugin": "regex",
+        "name": "regex",
         "config": {"pattern": "test", "flags": []}
     },
     "action": {"decision": "deny"},

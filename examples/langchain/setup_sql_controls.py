@@ -80,7 +80,7 @@ async def setup_sql_controls():
                 "path": "input.query"
             },
             "evaluator": {
-                "plugin": "sql",
+                "name": "sql",
                 "config": {
                     "blocked_operations": ["DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT"],
                     "allow_multi_statements": False,

@@ -73,7 +73,7 @@ class EvaluatorConfigDB(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    plugin: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    evaluator: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),

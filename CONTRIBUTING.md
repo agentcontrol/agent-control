@@ -12,7 +12,7 @@ agent-control/
 ├── server/          # FastAPI server (agent-control-server)
 ├── sdks/python/     # Python SDK (agent-control)
 ├── engine/          # Control evaluation engine (agent-control-engine)
-├── plugins/         # Plugin implementations (agent-control-plugins)
+├── evaluators/      # Evaluator implementations (agent-control-evaluators)
 └── examples/        # Usage examples
 ```
 
@@ -20,7 +20,7 @@ agent-control/
 ```
 SDK ──────────────────────────────────────┐
                                           ▼
-Server ──► Engine ──► Models ◄── Plugins
+Server ──► Engine ──► Models ◄── Evaluators
 ```
 
 ---
@@ -151,7 +151,7 @@ sdks/python/src/agent_control/
 ├── control_sets.py       # Control set management
 ├── evaluation.py         # Evaluation checks
 ├── control_decorators.py # @control decorator
-└── plugins/              # Plugin system
+└── evaluators/           # Evaluator system
 ```
 
 **Key exports:**
@@ -186,7 +186,7 @@ make test  # Starts server automatically
 
 ### Engine (`engine/`)
 
-Core control evaluation logic. The engine loads plugins and executes evaluations.
+Core control evaluation logic. The engine loads evaluators and executes evaluations.
 
 ```bash
 # Location
@@ -194,13 +194,13 @@ engine/src/agent_control_engine/
 
 # Key files
 ├── core.py        # Main ControlEngine class
-├── evaluators.py  # Plugin loader and caching
+├── evaluators.py  # Evaluator loader and caching
 └── selectors.py   # Data selection from payloads
 ```
 
 **How it works:**
-- The engine uses the plugin registry to find evaluators
-- Plugins are cached for performance (LRU cache)
+- The engine uses the evaluator registry to find evaluators
+- Evaluators are cached for performance (LRU cache)
 - Selectors extract data from payloads before evaluation
 
 **Testing:**
@@ -209,78 +209,77 @@ cd engine
 make test
 ```
 
-> **Note:** To add new evaluators, create a plugin in `plugins/` rather than modifying the engine directly. See the Plugins section above.
+> **Note:** To add new evaluators, create an evaluator in `evaluators/` rather than modifying the engine directly. See the Evaluators section below.
 
 ---
 
-### Plugins (`plugins/`)
+### Evaluators (`evaluators/`)
 
-Extensible evaluator plugins for custom detection logic.
+Extensible evaluators for custom detection logic.
 
 ```bash
 # Location
-plugins/src/agent_control_plugins/
+evaluators/src/agent_control_evaluators/
 
 # Key directories
-├── base.py        # PluginEvaluator base class
 ├── builtin/       # Built-in evaluators
-│   ├── regex.py   # RegexPlugin - pattern matching
-│   └── list.py    # ListPlugin - value matching
+│   ├── regex.py   # RegexEvaluator - pattern matching
+│   └── list.py    # ListEvaluator - value matching
 └── luna2/         # Galileo Luna-2 integration
-    ├── plugin.py  # Luna2Plugin implementation
-    ├── config.py  # Luna2Config model
-    └── client.py  # Direct HTTP client (no SDK dependency)
+    ├── evaluator.py  # Luna2Evaluator implementation
+    ├── config.py     # Luna2Config model
+    └── client.py     # Direct HTTP client (no SDK dependency)
 ```
 
-**Adding a new plugin:**
+**Adding a new evaluator:**
 
-1. **Create plugin directory:**
+1. **Create evaluator directory:**
    ```bash
-   mkdir plugins/src/agent_control_plugins/my_plugin/
+   mkdir evaluators/src/agent_control_evaluators/my_evaluator/
    ```
 
 2. **Define configuration model (`config.py`):**
    ```python
    from pydantic import BaseModel, Field
 
-   class MyPluginConfig(BaseModel):
-       """Configuration for MyPlugin."""
+   class MyEvaluatorConfig(BaseModel):
+       """Configuration for MyEvaluator."""
        threshold: float = Field(0.5, ge=0.0, le=1.0)
        api_endpoint: str = Field(default="https://api.example.com")
    ```
 
-3. **Implement plugin (`plugin.py`):**
+3. **Implement evaluator (`evaluator.py`):**
    ```python
    from typing import Any
    from agent_control_models import (
        EvaluatorResult,
-       PluginEvaluator,
-       PluginMetadata,
-       register_plugin,
+       Evaluator,
+       EvaluatorMetadata,
+       register_evaluator,
    )
-   from .config import MyPluginConfig
+   from .config import MyEvaluatorConfig
 
-   @register_plugin
-   class MyPlugin(PluginEvaluator[MyPluginConfig]):
-       """My custom evaluator plugin."""
-       
-       metadata = PluginMetadata(
-           name="my-plugin",
+   @register_evaluator
+   class MyEvaluator(Evaluator[MyEvaluatorConfig]):
+       """My custom evaluator."""
+
+       metadata = EvaluatorMetadata(
+           name="my-evaluator",
            version="1.0.0",
            description="Custom detection logic",
            requires_api_key=False,
            timeout_ms=5000,
        )
-       config_model = MyPluginConfig
+       config_model = MyEvaluatorConfig
 
-       def __init__(self, config: MyPluginConfig) -> None:
+       def __init__(self, config: MyEvaluatorConfig) -> None:
            super().__init__(config)
            # Initialize any clients or resources
 
        async def evaluate(self, data: Any) -> EvaluatorResult:
            # Your detection logic here
            score = await self._analyze(str(data))
-           
+
            return EvaluatorResult(
                matched=score > self.config.threshold,
                confidence=score,
@@ -291,28 +290,28 @@ plugins/src/agent_control_plugins/
 
 4. **Export in `__init__.py`:**
    ```python
-   from .config import MyPluginConfig
-   from .plugin import MyPlugin
+   from .config import MyEvaluatorConfig
+   from .evaluator import MyEvaluator
 
-   __all__ = ["MyPlugin", "MyPluginConfig"]
+   __all__ = ["MyEvaluator", "MyEvaluatorConfig"]
    ```
 
-5. **Add optional dependencies in `plugins/pyproject.toml`:**
+5. **Add optional dependencies in `evaluators/pyproject.toml`:**
    ```toml
    [project.optional-dependencies]
-   my-plugin = ["httpx>=0.24.0"]  # Add your dependencies
-   all = ["httpx>=0.24.0", ...]   # Include in 'all' extra
+   my-evaluator = ["httpx>=0.24.0"]  # Add your dependencies
+   all = ["httpx>=0.24.0", ...]      # Include in 'all' extra
    ```
 
-6. **Add tests in `plugins/tests/`**
+6. **Add tests in `evaluators/tests/`**
 
-**Plugin Best Practices:**
+**Evaluator Best Practices:**
 - Use Pydantic for config validation
 - Make API calls async with httpx
 - Return confidence scores (0.0-1.0)
 - Include helpful metadata for debugging
 - Handle errors gracefully (respect `on_error` config)
-- Avoid storing request-scoped state (plugins are cached)
+- Avoid storing request-scoped state (evaluators are cached)
 
 ---
 
@@ -411,7 +410,7 @@ Update `version` in respective `pyproject.toml` files:
 - `server/pyproject.toml`
 - `sdks/python/pyproject.toml`
 - `engine/pyproject.toml`
-- `plugins/pyproject.toml`
+- `evaluators/pyproject.toml`
 
 ---
 
@@ -455,22 +454,22 @@ test: add control set integration tests
 5. Add tests for both server and SDK
 6. Update examples if user-facing
 
-### Add a new evaluator plugin
+### Add a new evaluator
 
-1. Create plugin directory in `plugins/src/agent_control_plugins/`
-2. Implement `PluginEvaluator` interface (see Plugins section above)
-3. Add `@register_plugin` decorator to your plugin class
-4. Add optional dependencies in `plugins/pyproject.toml`
-5. Export from `plugins/src/agent_control_plugins/__init__.py`
-6. Add tests in `plugins/tests/`
+1. Create evaluator directory in `evaluators/src/agent_control_evaluators/`
+2. Implement `Evaluator` interface (see Evaluators section above)
+3. Add `@register_evaluator` decorator to your evaluator class
+4. Add optional dependencies in `evaluators/pyproject.toml`
+5. Export from `evaluators/src/agent_control_evaluators/__init__.py`
+6. Add tests in `evaluators/tests/`
 7. Update `docs/OVERVIEW.md` with usage examples
 
 ### Add a built-in evaluator (regex/list style)
 
-1. Add evaluator class in `plugins/src/agent_control_plugins/builtin/`
+1. Add evaluator class in `evaluators/src/agent_control_evaluators/builtin/`
 2. Add config model in `models/src/agent_control_models/controls.py`
-3. Register with `@register_plugin` decorator
-4. Add comprehensive tests in `plugins/tests/`
+3. Register with `@register_evaluator` decorator
+4. Add comprehensive tests in `evaluators/tests/`
 
 ### Update shared models
 
@@ -496,18 +495,18 @@ test: add control set integration tests
 
 ---
 
-## Plugin Development Quick Reference
+## Evaluator Development Quick Reference
 
 | Task | Location |
 |------|----------|
-| Plugin base class | `agent_control_models.PluginEvaluator` |
-| Plugin metadata | `agent_control_models.PluginMetadata` |
+| Evaluator base class | `agent_control_models.Evaluator` |
+| Evaluator metadata | `agent_control_models.EvaluatorMetadata` |
 | Evaluator result | `agent_control_models.EvaluatorResult` |
-| Register decorator | `@agent_control_models.register_plugin` |
-| Built-in plugins | `plugins/src/agent_control_plugins/builtin/` |
-| Plugin tests | `plugins/tests/` |
+| Register decorator | `@agent_control_models.register_evaluator` |
+| Built-in evaluators | `evaluators/src/agent_control_evaluators/builtin/` |
+| Evaluator tests | `evaluators/tests/` |
 
-**Plugin config model fields:**
+**Evaluator config model fields:**
 ```python
 from pydantic import BaseModel, Field
 

@@ -22,11 +22,11 @@ Forwarded targets:
 
 ## Repo layout (uv workspace members)
 
-- `models/`: shared Pydantic v2 models and plugin base classes (`models/src/agent_control_models/`)
-- `engine/`: **control evaluation engine and plugin system** — all evaluation logic, plugin discovery, and plugin orchestration lives here (`engine/src/agent_control_engine/`)
+- `models/`: shared Pydantic v2 models and evaluator base classes (`models/src/agent_control_models/`)
+- `engine/`: **control evaluation engine and evaluator system** — all evaluation logic, evaluator discovery, and evaluator orchestration lives here (`engine/src/agent_control_engine/`)
 - `server/`: FastAPI server (`server/src/agent_control_server/`)
 - `sdks/python/`: Python SDK — uses engine for evaluation (`sdks/python/src/agent_control/`)
-- `plugins/`: plugin implementations (`plugins/src/agent_control_plugins/`)
+- `evaluators/`: evaluator implementations (`evaluators/src/agent_control_evaluators/`)
 - `ui/`: Nextjs based web app to manage agent controls 
 - `examples/`: runnable examples (ruff has relaxed import rules here)
 
@@ -66,12 +66,12 @@ All testing guidance (including “behavior changes require tests”) lives in `
   4) add SDK wrapper in `sdks/python/src/agent_control/`
   5) add tests (server + SDK) and update docs/examples if user-facing
 
-- Add a new evaluator plugin:
-  1) implement plugin class extending `PluginEvaluator` in `plugins/src/agent_control_plugins/`
-  2) use `@register_plugin` decorator (from `agent_control_models`)
-  3) add entry point in `plugins/pyproject.toml` for auto-discovery
-  4) add tests in the plugins package
-  5) plugin is automatically available to server and SDK via `discover_plugins()`
+- Add a new evaluator:
+  1) implement evaluator class extending `Evaluator` in `evaluators/src/agent_control_evaluators/`
+  2) use `@register_evaluator` decorator (from `agent_control_models`)
+  3) add entry point in `evaluators/pyproject.toml` for auto-discovery
+  4) add tests in the evaluators package
+  5) evaluator is automatically available to server and SDK via `discover_evaluators()`
 
 ## Git/PR workflow
 

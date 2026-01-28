@@ -450,7 +450,7 @@ curl -X POST "http://localhost:8000/api/v1/observability/events/query" \
             "confidence": 1.0,
             "timestamp": "2026-01-20T16:04:59.004038Z",
             "execution_duration_ms": null,
-            "evaluator_plugin": "regex",
+            "evaluator": "regex",
             "selector_path": null,
             "error_message": null,
             "metadata": {

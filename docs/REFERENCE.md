@@ -57,7 +57,7 @@ Example: *"If the output contains an SSN pattern, block the response."*
   "scope": { "step_types": ["llm_inference"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
-    "plugin": "regex",
+    "name": "regex",
     "config": { "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b" }
   },
   "action": { "decision": "deny" }
@@ -141,11 +141,11 @@ Agent Control is built as a monorepo with these components:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                         Your Application                          │
+│                         Your Application                         │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │                     @control() decorator                    │  │
-│  │                            │                                │  │
-│  │                            ▼                                │  │
+│  │                     @control() decorator                   │  │
+│  │                            │                               │  │
+│  │                            ▼                               │  │
 │  │  ┌──────────┐    ┌─────────────────┐    ┌──────────────┐   │  │
 │  │  │  Input   │───▶│  Agent Control  │───▶│    Output    │   │  │
 │  │  │          │    │     Engine      │    │              │   │  │
@@ -155,19 +155,19 @@ Agent Control is built as a monorepo with these components:
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      Agent Control Server                         │
+│                      Agent Control Server                        │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │  Plugins   │  │   Agents   │  │
+│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
 │  │    API     │  │    API     │  │  Registry  │  │    API     │  │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                         Plugin Ecosystem                          │
+│                       Evaluator Ecosystem                        │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
 │  │   Regex    │  │    List    │  │   Luna-2   │  │   Custom   │  │
-│  │ Evaluator  │  │ Evaluator  │  │   Plugin   │  │  Plugins   │  │
+│  │ Evaluator  │  │ Evaluator  │  │ Evaluator  │  │ Evaluators │  │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -179,7 +179,7 @@ Agent Control is built as a monorepo with these components:
 | SDK | `agent-control` | Python client library with `@control()` decorator |
 | Server | `agent-control-server` | FastAPI service that stores and evaluates controls |
 | Engine | `agent-control-engine` | Core evaluation logic (can run locally or server-side) |
-| Plugins | `agent-control-plugins` | Extensible evaluators for different detection methods |
+| Evaluators | `agent-control-evaluators` | Extensible evaluators for different detection methods |
 | Models | `agent-control-models` | Shared Pydantic models for type-safe communication |
 | UI | `ui/` | Next.js web dashboard for control management |
 
@@ -202,7 +202,7 @@ Agent Control includes powerful evaluators out of the box.
 
 Pattern matching using Google RE2 (safe from ReDoS attacks).
 
-**Plugin name**: `regex`
+**Evaluator name**: `regex`
 
 **Configuration**:
 
@@ -216,7 +216,7 @@ Pattern matching using Google RE2 (safe from ReDoS attacks).
 ```json
 // Block Social Security Numbers
 {
-  "plugin": "regex",
+  "name": "regex",
   "config": {
     "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"
   }
@@ -224,7 +224,7 @@ Pattern matching using Google RE2 (safe from ReDoS attacks).
 
 // Block credit card numbers (case-insensitive)
 {
-  "plugin": "regex",
+  "name": "regex",
   "config": {
     "pattern": "card.*\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}",
     "flags": ["IGNORECASE"]
@@ -233,7 +233,7 @@ Pattern matching using Google RE2 (safe from ReDoS attacks).
 
 // Block AWS access keys
 {
-  "plugin": "regex",
+  "name": "regex",
   "config": {
     "pattern": "AKIA[0-9A-Z]{16}"
   }
@@ -248,7 +248,7 @@ Pattern matching using Google RE2 (safe from ReDoS attacks).
 
 Flexible value matching with multiple modes and logic options.
 
-**Plugin name**: `list`
+**Evaluator name**: `list`
 
 **Configuration**:
 
@@ -267,7 +267,7 @@ Flexible value matching with multiple modes and logic options.
 ```json
 // Block admin/root keywords
 {
-  "plugin": "list",
+  "name": "list",
   "config": {
     "values": ["admin", "root", "sudo", "superuser"],
     "logic": "any",
@@ -278,7 +278,7 @@ Flexible value matching with multiple modes and logic options.
 
 // Require approval keyword (trigger if NOT found)
 {
-  "plugin": "list",
+  "name": "list",
   "config": {
     "values": ["APPROVED", "VERIFIED"],
     "match_on": "no_match",
@@ -288,7 +288,7 @@ Flexible value matching with multiple modes and logic options.
 
 // Allowlist: only permit specific tools
 {
-  "plugin": "list",
+  "name": "list",
   "config": {
     "values": ["search", "calculate", "lookup"],
     "match_on": "no_match"
@@ -300,16 +300,16 @@ Flexible value matching with multiple modes and logic options.
 
 ---
 
-### Luna-2 Plugin
+### Luna-2 Evaluator
 
 AI-powered detection using Galileo's Luna-2 small language models. Provides real-time, low-latency evaluation for complex patterns that can't be caught with regex or lists.
 
-**Plugin name**: `galileo-luna2`
+**Evaluator name**: `galileo-luna2`
 
 **Installation**: Luna-2 requires an optional dependency:
 
 ```bash
-pip install agent-control-plugins[luna2]
+pip install agent-control-evaluators[luna2]
 ```
 
 **Requirements**: Set `GALILEO_API_KEY` environment variable where evaluations run (on the server for server-side controls, or in the client environment for local controls).
@@ -348,7 +348,7 @@ pip install agent-control-plugins[luna2]
 ```json
 // Block toxic inputs (score > 0.5)
 {
-  "plugin": "galileo-luna2",
+  "name": "galileo-luna2",
   "config": {
     "metric": "input_toxicity",
     "operator": "gt",
@@ -359,7 +359,7 @@ pip install agent-control-plugins[luna2]
 
 // Block prompt injection attempts
 {
-  "plugin": "galileo-luna2",
+  "name": "galileo-luna2",
   "config": {
     "metric": "prompt_injection",
     "operator": "gt",
@@ -370,7 +370,7 @@ pip install agent-control-plugins[luna2]
 
 // Flag potential hallucinations (warn but allow)
 {
-  "plugin": "galileo-luna2",
+  "name": "galileo-luna2",
   "config": {
     "metric": "hallucination",
     "operator": "gt",
@@ -380,7 +380,7 @@ pip install agent-control-plugins[luna2]
 
 // Using central stage (pre-defined in Galileo)
 {
-  "plugin": "galileo-luna2",
+  "name": "galileo-luna2",
   "config": {
     "stage_type": "central",
     "stage_name": "production-safety",
@@ -393,43 +393,43 @@ pip install agent-control-plugins[luna2]
 
 ---
 
-### Custom Plugins
+### Custom Evaluators
 
-You can create custom plugins to extend Agent Control with your own detection capabilities.
+You can create custom evaluators to extend Agent Control with your own detection capabilities.
 
-**Plugin Interface**:
+**Evaluator Interface**:
 
 ```python
 from typing import Any
 from pydantic import BaseModel
 from agent_control_models import (
     EvaluatorResult,
-    PluginEvaluator,
-    PluginMetadata,
-    register_plugin,
+    Evaluator,
+    EvaluatorMetadata,
+    register_evaluator,
 )
 
 
-class MyPluginConfig(BaseModel):
-    """Configuration schema for your plugin."""
+class MyEvaluatorConfig(BaseModel):
+    """Configuration schema for your evaluator."""
     threshold: float = 0.5
     custom_option: str = "default"
 
 
-@register_plugin
-class MyCustomPlugin(PluginEvaluator[MyPluginConfig]):
-    """Your custom evaluator plugin."""
+@register_evaluator
+class MyCustomEvaluator(Evaluator[MyEvaluatorConfig]):
+    """Your custom evaluator."""
 
-    metadata = PluginMetadata(
-        name="my-custom-plugin",
+    metadata = EvaluatorMetadata(
+        name="my-custom-evaluator",
         version="1.0.0",
         description="Detects custom patterns using proprietary logic",
         requires_api_key=True,
         timeout_ms=5000,
     )
-    config_model = MyPluginConfig
+    config_model = MyEvaluatorConfig
 
-    def __init__(self, config: MyPluginConfig) -> None:
+    def __init__(self, config: MyEvaluatorConfig) -> None:
         super().__init__(config)
         # Set up clients, load models, etc.
 
@@ -454,18 +454,18 @@ class MyCustomPlugin(PluginEvaluator[MyPluginConfig]):
         )
 ```
 
-**Registration**: Plugins are discovered via Python entry points. Add to your `pyproject.toml`:
+**Registration**: Evaluators are discovered via Python entry points. Add to your `pyproject.toml`:
 
 ```toml
-[project.entry-points."agent_control.plugins"]
-my-plugin = "my_package.plugin:MyCustomPlugin"
+[project.entry-points."agent_control.evaluators"]
+my-evaluator = "my_package.evaluator:MyCustomEvaluator"
 ```
 
-**Optional Dependencies**: Override `is_available()` if your plugin has optional dependencies:
+**Optional Dependencies**: Override `is_available()` if your evaluator has optional dependencies:
 
 ```python
-@register_plugin
-class MyPlugin(PluginEvaluator[MyConfig]):
+@register_evaluator
+class MyEvaluator(Evaluator[MyConfig]):
     @classmethod
     def is_available(cls) -> bool:
         try:
@@ -475,14 +475,14 @@ class MyPlugin(PluginEvaluator[MyConfig]):
             return False
 ```
 
-When `is_available()` returns `False`, the plugin is silently skipped during registration.
+When `is_available()` returns `False`, the evaluator is silently skipped during registration.
 
 **Best Practices**:
 
 | Practice | Why |
 |----------|-----|
 | Use Pydantic for config | Automatic validation and documentation |
-| Implement timeouts | Prevent slow plugins from blocking agents |
+| Implement timeouts | Prevent slow evaluators from blocking agents |
 | Return confidence scores | Enable threshold-based filtering |
 | Include metadata | Helps with debugging and observability |
 | Handle errors gracefully | Respect the `on_error` configuration |
@@ -581,7 +581,7 @@ async with AgentControlClient() as client:
             "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
             "selector": {"path": "output"},
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {"pattern": r"\d{3}-\d{2}-\d{4}"}
             },
             "action": {"decision": "deny"}
@@ -603,7 +603,7 @@ async with AgentControlClient() as client:
                 "path": "input.path"
             },
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {"pattern": r"^/(etc|var|usr|root)/"}
             },
             "action": {"decision": "deny"}
@@ -791,11 +791,11 @@ Agent Control supports multiple API keys for zero-downtime rotation:
 | `AGENT_CONTROL_API_KEYS` | — | Valid API keys (comma-separated) |
 | `AGENT_CONTROL_ADMIN_API_KEYS` | — | Admin API keys (comma-separated) |
 
-**Plugins**:
+**Evaluators**:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GALILEO_API_KEY` | — | API key for Luna-2 plugin |
+| `GALILEO_API_KEY` | — | API key for Luna-2 evaluator |
 
 ### SDK Environment Variables
 
@@ -877,14 +877,14 @@ make alembic-upgrade
 4. Verify the selector path matches your data structure
 5. Test the evaluator pattern/values independently
 
-### Luna-2 Plugin Errors
+### Luna-2 Evaluator Errors
 
-1. Ensure `httpx` is installed: `pip install agent-control-plugins[luna2]`
+1. Ensure `httpx` is installed: `pip install agent-control-evaluators[luna2]`
 2. Ensure `GALILEO_API_KEY` is set
 3. Check network connectivity to Galileo API
 4. Verify the metric name is valid
 5. Check `on_error` setting if failures are silently allowed
 
-**Plugin Not Found**: If `galileo-luna2` doesn't appear in `list_plugins()`:
+**Evaluator Not Found**: If `galileo-luna2` doesn't appear in `list_evaluators()`:
 - Verify `httpx` is installed (Luna-2's `is_available()` returns `False` without it)
-- Check server logs for plugin discovery messages
+- Check server logs for evaluator discovery messages

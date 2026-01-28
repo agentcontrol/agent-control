@@ -11,7 +11,7 @@ _logger = get_logger(__name__)
 
 # Import models if available
 try:
-    from agent_control_engine import list_plugins
+    from agent_control_engine import list_evaluators
     from agent_control_engine.core import ControlEngine
     from agent_control_models import (
         ControlDefinition,
@@ -257,20 +257,20 @@ async def check_evaluation_with_local(
         try:
             control_def = ControlDefinition.model_validate(control_data)
 
-            # Validate plugin is available locally
-            plugin_name = control_def.evaluator.plugin
-            # Agent-scoped plugins (agent:evaluator) are server-only
-            if ":" in plugin_name:
+            # Validate evaluator is available locally
+            evaluator_name = control_def.evaluator.name
+            # Agent-scoped evaluators (agent:evaluator) are server-only
+            if ":" in evaluator_name:
                 raise RuntimeError(
                     f"Control '{c['name']}' is marked execution='sdk' but uses "
-                    f"agent-scoped evaluator '{plugin_name}' which is server-only. "
-                    "Set execution='server' or use a built-in plugin."
+                    f"agent-scoped evaluator '{evaluator_name}' which is server-only. "
+                    "Set execution='server' or use a built-in evaluator."
                 )
-            if plugin_name not in list_plugins():
+            if evaluator_name not in list_evaluators():
                 raise RuntimeError(
-                    f"Control '{c['name']}' is marked execution='sdk' but plugin "
-                    f"'{plugin_name}' is not available in the SDK. "
-                    "Install the plugin or set execution='server'."
+                    f"Control '{c['name']}' is marked execution='sdk' but evaluator "
+                    f"'{evaluator_name}' is not available in the SDK. "
+                    "Install the evaluator or set execution='server'."
                 )
 
             local_controls.append(_ControlAdapter(

@@ -3,7 +3,7 @@
 # This monorepo contains:
 # - models/ - Shared data models (published as agent-control-models)
 # - engine/ - Evaluation engine (bundled into SDK and server)
-# - plugins/ - Plugin implementations (bundled into server)
+# - evaluators/ - Evaluator implementations (bundled into server)
 # - sdks/python/ - Python SDK (published as agent-control-sdk)
 # - server/ - FastAPI server (published as agent-control-server)
 
@@ -14,7 +14,7 @@ description = "Agent Control - protect your AI agents with controls"
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["models", "server", "sdks/python", "engine", "plugins"]
+members = ["models", "server", "sdks/python", "engine", "evaluators"]
 
 [tool.uv]
 # Require resolution to be compatible with the following environments so that CI and local dev
@@ -28,7 +28,7 @@ required-environments = [
 [tool.uv.sources]
 agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
-agent-control-plugins = { workspace = true }
+agent-control-evaluators = { workspace = true }
 
 [tool.ruff]
 line-length = 100

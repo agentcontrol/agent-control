@@ -20,7 +20,7 @@ COPY pyproject.toml uv.lock* ./
 # Copy shared dependencies (Workspaces)
 COPY models/ models/
 COPY engine/ engine/
-COPY plugins/ plugins/
+COPY evaluators/ evaluators/
 
 # Copy server application
 COPY server/ server/

@@ -39,7 +39,7 @@ uv run python examples/agent_control_demo/update_controls.py --block-ssn
 - `setup_controls.py` - Create and configure controls via SDK
 - `demo_agent.py` - Agent that uses `@control` decorator with server-side policies
 - `update_controls.py` - Dynamically update controls without code changes
-- `agent_luna_demo.py` - Luna-2 plugin integration for AI safety checks
+- `agent_luna_demo.py` - Luna-2 evaluator integration for AI safety checks
 
 ### 💬 Simple Chatbot (`demo_chatbot.py`)
 
@@ -144,7 +144,7 @@ async with AgentControlClient() as client:
         scope=ControlScope(step_types=["llm_inference"], stages=["post"]),
         selector=ControlSelector(path="output"),
         evaluator=EvaluatorConfig(
-            plugin="regex",
+            name="regex",
             config={"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
         ),
         action=ControlAction(decision="deny")

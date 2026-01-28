@@ -149,12 +149,12 @@ class ControlScope(BaseModel):
 
 
 # =============================================================================
-# Plugin Config Models (used by plugin implementations)
+# Evaluator Config Models (used by evaluator implementations)
 # =============================================================================
 
 
-class RegexConfig(BaseModel):
-    """Configuration for regex plugin."""
+class RegexEvaluatorConfig(BaseModel):
+    """Configuration for regex evaluator."""
 
     pattern: str = Field(..., description="Regular expression pattern")
     flags: list[str] | None = Field(default=None, description="Regex flags")
@@ -170,8 +170,8 @@ class RegexConfig(BaseModel):
         return v
 
 
-class ListConfig(BaseModel):
-    """Configuration for list plugin."""
+class ListEvaluatorConfig(BaseModel):
+    """Configuration for list evaluator."""
 
     values: list[str | int | float] = Field(
         ..., description="List of values to match against"
@@ -189,8 +189,8 @@ class ListConfig(BaseModel):
     case_sensitive: bool = Field(False, description="Whether matching is case sensitive")
 
 
-class JSONControlEvaluatorPluginConfig(BaseModel):
-    """Configuration for JSON validation plugin.
+class JSONEvaluatorConfig(BaseModel):
+    """Configuration for JSON validation evaluator.
 
     Multiple validation checks can be combined. Checks are evaluated in this order (fail-fast):
     1. JSON syntax/validity (always - ensures data is valid JSON)
@@ -426,8 +426,8 @@ class JSONControlEvaluatorPluginConfig(BaseModel):
         return self
 
 
-class SQLControlEvaluatorPluginConfig(BaseModel):
-    """Configuration for comprehensive SQL control plugin.
+class SQLEvaluatorConfig(BaseModel):
+    """Configuration for comprehensive SQL control evaluator.
 
     Validates SQL query strings using AST-based analysis via sqlglot.
     Controls are evaluated in order:
@@ -725,21 +725,21 @@ class SQLControlEvaluatorPluginConfig(BaseModel):
 
 
 class EvaluatorConfig(BaseModel):
-    """Evaluator configuration. See GET /plugins for available plugins and schemas.
+    """Evaluator configuration. See GET /evaluators for available evaluators and schemas.
 
-    Plugin reference formats:
+    Evaluator reference formats:
     - Built-in: "regex", "list"
     - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
     """
 
-    plugin: str = Field(
+    name: str = Field(
         ...,
-        description="Plugin name or agent-scoped reference (agent:evaluator)",
+        description="Evaluator name or agent-scoped reference (agent:evaluator)",
         examples=["regex", "list", "my-agent:pii-detector"],
     )
     config: dict[str, Any] = Field(
         ...,
-        description="Plugin-specific configuration",
+        description="Evaluator-specific configuration",
         examples=[
             {"pattern": r"\d{3}-\d{2}-\d{4}"},
             {"values": ["admin"], "logic": "any"},
@@ -747,23 +747,23 @@ class EvaluatorConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_plugin_config(self) -> Self:
-        """Validate config against plugin's schema if plugin is registered.
+    def validate_evaluator_config(self) -> Self:
+        """Validate config against evaluator's schema if evaluator is registered.
 
         Agent-scoped evaluators (format: agent:evaluator) are validated in the
         endpoint where we have database access to look up the agent's schema.
         """
         # Agent-scoped evaluators: defer validation to endpoint (needs DB access)
-        if ":" in self.plugin:
+        if ":" in self.name:
             return self
 
-        # Built-in plugins: validate config against plugin's config_model
-        from .plugin import get_plugin
+        # Built-in evaluators: validate config against evaluator's config_model
+        from .evaluator import get_evaluator
 
-        plugin_cls = get_plugin(self.plugin)
-        if plugin_cls:
-            plugin_cls.config_model(**self.config)
-        # If plugin not found, allow it (might be a server-side registered plugin)
+        evaluator_cls = get_evaluator(self.name)
+        if evaluator_cls:
+            evaluator_cls.config_model(**self.config)
+        # If evaluator not found, allow it (might be a server-side registered evaluator)
         return self
 
 
@@ -797,7 +797,7 @@ class ControlDefinition(BaseModel):
     # What to check
     selector: ControlSelector = Field(..., description="What data to select from the payload")
 
-    # How to check (unified plugin-based evaluator)
+    # How to check (unified evaluator-based system)
     evaluator: EvaluatorConfig = Field(..., description="How to evaluate the selected data")
 
     # What to do
@@ -816,7 +816,7 @@ class ControlDefinition(BaseModel):
                     "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
                     "selector": {"path": "output"},
                     "evaluator": {
-                        "plugin": "regex",
+                        "name": "regex",
                         "config": {
                             "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
                         },
@@ -834,16 +834,16 @@ class ControlDefinition(BaseModel):
 class EvaluatorResult(BaseModel):
     """Result from a control evaluator.
 
-    The `error` field indicates plugin failures, NOT validation failures:
-    - Set `error` for: plugin crashes, timeouts, missing dependencies, external service errors
+    The `error` field indicates evaluator failures, NOT validation failures:
+    - Set `error` for: evaluator crashes, timeouts, missing dependencies, external service errors
     - Do NOT set `error` for: invalid input, syntax errors, schema violations, constraint failures
 
-    When `error` is set, `matched` must be False (fail-open on plugin errors).
+    When `error` is set, `matched` must be False (fail-open on evaluator errors).
     When `error` is None, `matched` reflects the actual validation result.
 
     This distinction allows:
-    - Clients to distinguish "data violated rules" from "plugin is broken"
-    - Observability systems to monitor plugin health separately from validation outcomes
+    - Clients to distinguish "data violated rules" from "evaluator is broken"
+    - Observability systems to monitor evaluator health separately from validation outcomes
     """
 
     matched: bool = Field(..., description="Whether the pattern matched")

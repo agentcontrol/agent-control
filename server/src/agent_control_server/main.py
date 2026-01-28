@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import uvicorn
-from agent_control_engine import discover_plugins, list_plugins
+from agent_control_engine import discover_evaluators, list_evaluators
 from agent_control_models import HealthResponse
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -19,8 +19,8 @@ from .endpoints.agents import router as agent_router
 from .endpoints.controls import router as control_router
 from .endpoints.evaluation import router as evaluation_router
 from .endpoints.evaluator_configs import router as evaluator_config_router
+from .endpoints.evaluators import router as evaluator_router
 from .endpoints.observability import router as observability_router
-from .endpoints.plugins import router as plugin_router
 from .endpoints.policies import router as policy_router
 from .errors import (
     APIError,
@@ -76,10 +76,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log_level = "DEBUG" if settings.debug else "INFO"
     configure_logging(level=log_level)
 
-    # Discover plugins at startup
-    discover_plugins()
-    available = list(list_plugins().keys())
-    logger.info(f"Plugin discovery complete. Available plugins: {available}")
+    # Discover evaluators at startup
+    discover_evaluators()
+    available = list(list_evaluators().keys())
+    logger.info(f"Evaluator discovery complete. Available evaluators: {available}")
 
     # Initialize observability components (stored on app.state)
     if observability_settings.enabled:
@@ -203,7 +203,7 @@ app.include_router(
 )
 
 app.include_router(
-    plugin_router,
+    evaluator_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(require_api_key)],
 )

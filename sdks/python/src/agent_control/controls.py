@@ -164,7 +164,7 @@ async def create_control(
                     "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
                     "selector": {"path": "output"},
                     "evaluator": {
-                        "plugin": "regex",
+                        "name": "regex",
                         "config": {"pattern": r"\\d{3}-\\d{2}-\\d{4}"}
                     },
                     "action": {"decision": "deny"}

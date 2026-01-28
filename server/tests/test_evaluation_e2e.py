@@ -14,7 +14,7 @@ def test_evaluation_flow_deny(client: TestClient):
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
-            "plugin": "regex",
+            "name": "regex",
             "config": {"pattern": "secret"}
         },
         "action": {"decision": "deny"}
@@ -100,7 +100,7 @@ def test_evaluation_path_failure(client: TestClient):
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input.non_existent_field"}, # Invalid for string input
         "evaluator": {
-            "plugin": "regex",
+            "name": "regex",
             "config": {"pattern": ".*"} # Match anything if found
         },
         "action": {"decision": "deny"}
@@ -133,7 +133,7 @@ def test_evaluation_tool_step_nested(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.config.risk_level"},
         "evaluator": {
-            "plugin": "regex",
+            "name": "regex",
             "config": {"pattern": "^critical$"}
         },
         "action": {"decision": "deny"}
@@ -188,7 +188,7 @@ def test_evaluation_deny_precedence(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {"plugin": "regex", "config": {"pattern": "keyword"}},
+        "evaluator": {"name": "regex", "config": {"pattern": "keyword"}},
         "action": {"decision": "warn"}
     }
     # Use helper to setup agent with first control
@@ -206,7 +206,7 @@ def test_evaluation_deny_precedence(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {"plugin": "regex", "config": {"pattern": "keyword"}},
+        "evaluator": {"name": "regex", "config": {"pattern": "keyword"}},
         "action": {"decision": "deny"}
     }
     resp = client.put("/api/v1/controls", json={"name": f"deny-control-{uuid.uuid4()}"})
@@ -243,7 +243,7 @@ def test_evaluation_stage_filtering(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
         "selector": {"path": "output"},
-        "evaluator": {"plugin": "regex", "config": {"pattern": "bad_output"}},
+        "evaluator": {"name": "regex", "config": {"pattern": "bad_output"}},
         "action": {"decision": "deny"}
     }
     agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="StageAgent")
@@ -280,7 +280,7 @@ def test_evaluation_step_type_filtering(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "name"},
-        "evaluator": {"plugin": "regex", "config": {"pattern": "rm_rf"}},
+        "evaluator": {"name": "regex", "config": {"pattern": "rm_rf"}},
         "action": {"decision": "deny"}
     }
     agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="AppliesToAgent")
@@ -315,7 +315,7 @@ def test_evaluation_denylist_step_name(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "name"},
         "evaluator": {
-            "plugin": "list", # Matches if value is IN list (exact match)
+            "name": "list", # Matches if value is IN list (exact match)
             "config": {"values": ["dangerous_tool", "rm_rf"], "match_on": "match"}
         },
         "action": {"decision": "deny"}

@@ -40,8 +40,8 @@ except ControlViolationError as e:
 - **Centralized Policies** — Define controls once, apply to multiple agents
 - **Web Dashboard** — Manage agents and controls through the UI
 - **API Key Authentication** — Secure your control server in production
-- **Pluggable Evaluators** — Regex, list matching, AI-powered detection (Luna-2), or custom plugins
-- **Fail-Safe Defaults** — Deny controls fail closed on error; plugins like Luna-2 support configurable error handling
+- **Pluggable Evaluators** — Regex, list matching, AI-powered detection (Luna-2), or custom evaluators
+- **Fail-Safe Defaults** — Deny controls fail closed on error; evaluators like Luna-2 support configurable error handling
 
 ---
 
@@ -133,7 +133,7 @@ async def main():
 | `AGENT_CONTROL_URL` | `http://localhost:8000` | Server URL for SDK |
 | `AGENT_CONTROL_API_KEY` | — | API key for authentication (if enabled) |
 | `DB_URL` | `sqlite+aiosqlite:///./agent_control.db` | Database connection string |
-| `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator plugin |
+| `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator |
 
 ### Server Configuration
 
@@ -161,7 +161,7 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "scope": { "step_types": ["llm_inference"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
-    "plugin": "regex",
+    "name": "regex",
     "config": { "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b" }
   },
   "action": { "decision": "deny" }
@@ -179,7 +179,7 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "scope": { "step_types": ["llm_inference"], "stages": ["pre"] },
   "selector": { "path": "input" },
   "evaluator": {
-    "plugin": "galileo-luna2",
+    "name": "galileo-luna2",
     "config": {
       "metric": "input_toxicity",
       "operator": "gt",
@@ -200,11 +200,11 @@ Agent Control is built as a monorepo with these components:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                         Your Application                          │
+│                         Your Application                         │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │                     @control() decorator                    │  │
-│  │                            │                                │  │
-│  │                            ▼                                │  │
+│  │                     @control() decorator                   │  │
+│  │                            │                               │  │
+│  │                            ▼                               │  │
 │  │  ┌──────────┐    ┌─────────────────┐    ┌──────────────┐   │  │
 │  │  │  Input   │───▶│  Agent Control  │───▶│    Output    │   │  │
 │  │  │          │    │     Engine      │    │              │   │  │
@@ -214,19 +214,19 @@ Agent Control is built as a monorepo with these components:
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      Agent Control Server                         │
+│                      Agent Control Server                        │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │  Plugins   │  │   Agents   │  │
+│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
 │  │    API     │  │    API     │  │  Registry  │  │    API     │  │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                         Plugin Ecosystem                          │
+│                       Evaluator Ecosystem                        │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
 │  │   Regex    │  │    List    │  │   Luna-2   │  │   Custom   │  │
-│  │ Evaluator  │  │ Evaluator  │  │   Plugin   │  │  Plugins   │  │
+│  │ Evaluator  │  │ Evaluator  │  │ Evaluator  │  │ Evaluators │  │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -235,9 +235,9 @@ Agent Control is built as a monorepo with these components:
 |:--------|:------------|
 | `agent-control` | Python SDK with `@control()` decorator |
 | `agent-control-server` | FastAPI server with Control Management API |
-| `agent-control-engine` | Core evaluation logic and plugin system |
+| `agent-control-engine` | Core evaluation logic and evaluator system |
 | `agent-control-models` | Shared Pydantic v2 models |
-| `agent-control-plugins` | Built-in evaluator plugins |
+| `agent-control-evaluators` | Built-in evaluators |
 | `ui` | Next.js web dashboard |
 
 ---
@@ -252,7 +252,7 @@ agent-control/
 ├── server/          # FastAPI server (agent-control-server)
 ├── engine/          # Evaluation engine (agent-control-engine)
 ├── models/          # Shared models (agent-control-models)
-├── plugins/         # Plugin implementations (agent-control-plugins)
+├── evaluators/      # Evaluator implementations (agent-control-evaluators)
 ├── ui/              # Next.js dashboard
 └── examples/        # Usage examples
 ```
@@ -291,7 +291,7 @@ For detailed development workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 - **[Python SDK](sdks/python/README.md)** — SDK installation, usage, and API reference
 - **[Server](server/README.md)** — Server setup, configuration, and deployment
 - **[UI Dashboard](ui/README.md)** — Web dashboard setup and usage
-- **[Plugins](plugins/README.md)** — Available evaluator plugins and custom plugin development
+- **[Evaluators](evaluators/README.md)** — Available evaluators and custom evaluator development
 
 ### Examples
 

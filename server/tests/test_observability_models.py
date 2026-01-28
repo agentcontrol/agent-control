@@ -184,13 +184,13 @@ class TestControlExecutionEvent:
             matched=False,
             confidence=0.5,
             execution_duration_ms=15.3,
-            evaluator_plugin="regex",
+            evaluator_name="regex",
             selector_path="input",
             error_message=None,
             metadata={"key": "value"},
         )
         assert event.execution_duration_ms == 15.3
-        assert event.evaluator_plugin == "regex"
+        assert event.evaluator_name == "regex"
         assert event.selector_path == "input"
         assert event.metadata == {"key": "value"}
 

@@ -3,15 +3,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from agent_control_engine import discover_plugins
+from agent_control_engine import discover_evaluators
 from agent_control_server.config import auth_settings, db_config
 from agent_control_server.db import Base
 from agent_control_server.main import app as fastapi_app
 
 import agent_control_server.models  # ensure models are imported so tables are registered
 
-# Discover plugins at test session start
-discover_plugins()
+# Discover evaluators at test session start
+discover_evaluators()
 
 # Test API keys
 TEST_API_KEY = "test-api-key-12345"

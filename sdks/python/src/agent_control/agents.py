@@ -3,7 +3,7 @@
 from typing import Any, cast
 from uuid import UUID
 
-from agent_control_engine import ensure_plugins_discovered
+from agent_control_engine import ensure_evaluators_discovered
 
 from .client import AgentControlClient
 
@@ -40,8 +40,8 @@ async def register_agent(
             response = await register_agent(client, agent, steps=[...])
             print(f"Created: {response['created']}")
     """
-    # Ensure plugins are discovered for local evaluation support
-    ensure_plugins_discovered()
+    # Ensure evaluators are discovered for local evaluation support
+    ensure_evaluators_discovered()
 
     if steps is None:
         steps = []

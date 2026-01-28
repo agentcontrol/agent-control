@@ -16,12 +16,12 @@ from agent_control_engine.evaluators import clear_evaluator_cache
 from agent_control_models import (
     ControlDefinition,
     EvaluationRequest,
+    Evaluator,
     EvaluatorConfig,
+    EvaluatorMetadata,
     EvaluatorResult,
-    PluginEvaluator,
-    PluginMetadata,
     Step,
-    register_plugin,
+    register_evaluator,
 )
 from pydantic import BaseModel
 
@@ -31,12 +31,12 @@ from pydantic import BaseModel
 
 
 class SimpleConfig(BaseModel):
-    """Simple config for test plugins."""
+    """Simple config for test evaluators."""
 
     value: str = "default"
 
 
-# Shared state for coordination between test plugins
+# Shared state for coordination between test evaluators
 _execution_log: list[str] = []
 _blocker_event: asyncio.Event | None = None
 
@@ -48,10 +48,10 @@ def reset_test_state() -> None:
     _blocker_event = asyncio.Event()
 
 
-class AllowPlugin(PluginEvaluator[SimpleConfig]):
-    """Plugin that always allows (matched=False)."""
+class AllowEvaluator(Evaluator[SimpleConfig]):
+    """Evaluator that always allows (matched=False)."""
 
-    metadata = PluginMetadata(
+    metadata = EvaluatorMetadata(
         name="test-allow",
         version="1.0.0",
         description="Always allows",
@@ -69,10 +69,10 @@ class AllowPlugin(PluginEvaluator[SimpleConfig]):
         return result
 
 
-class DenyPlugin(PluginEvaluator[SimpleConfig]):
-    """Plugin that always denies (matched=True)."""
+class DenyEvaluator(Evaluator[SimpleConfig]):
+    """Evaluator that always denies (matched=True)."""
 
-    metadata = PluginMetadata(
+    metadata = EvaluatorMetadata(
         name="test-deny",
         version="1.0.0",
         description="Always denies",
@@ -90,13 +90,13 @@ class DenyPlugin(PluginEvaluator[SimpleConfig]):
         return result
 
 
-class BlockerPlugin(PluginEvaluator[SimpleConfig]):
-    """Plugin that blocks until cancelled or event is set.
+class BlockerEvaluator(Evaluator[SimpleConfig]):
+    """Evaluator that blocks until cancelled or event is set.
 
     Used to test cancellation behavior.
     """
 
-    metadata = PluginMetadata(
+    metadata = EvaluatorMetadata(
         name="test-blocker",
         version="1.0.0",
         description="Blocks until cancelled",
@@ -119,10 +119,10 @@ class BlockerPlugin(PluginEvaluator[SimpleConfig]):
             raise
 
 
-class SlowPlugin(PluginEvaluator[SimpleConfig]):
-    """Plugin that sleeps briefly before returning."""
+class SlowEvaluator(Evaluator[SimpleConfig]):
+    """Evaluator that sleeps briefly before returning."""
 
-    metadata = PluginMetadata(
+    metadata = EvaluatorMetadata(
         name="test-slow",
         version="1.0.0",
         description="Sleeps then allows",
@@ -150,15 +150,15 @@ class MockControlWithIdentity:
 
 
 @pytest.fixture(autouse=True)
-def setup_test_plugins():
-    """Register test plugins and reset state before each test."""
+def setup_test_evaluators():
+    """Register test evaluators and reset state before each test."""
     reset_test_state()
     clear_evaluator_cache()
 
-    # Register plugins (may already be registered)
-    for plugin_cls in [AllowPlugin, DenyPlugin, BlockerPlugin, SlowPlugin]:
+    # Register evaluators (may already be registered)
+    for evaluator_cls in [AllowEvaluator, DenyEvaluator, BlockerEvaluator, SlowEvaluator]:
         try:
-            register_plugin(plugin_cls)
+            register_evaluator(evaluator_cls)
         except ValueError:
             pass  # Already registered
 
@@ -171,7 +171,7 @@ def setup_test_plugins():
 def make_control(
     control_id: int,
     name: str,
-    plugin: str,
+    evaluator: str,
     action: str = "deny",
     config_value: str = "default",
     *,
@@ -209,7 +209,7 @@ def make_control(
             scope=scope,
             selector=selector or {"path": "*"},
             evaluator=EvaluatorConfig(
-                plugin=plugin,
+                name=evaluator,
                 config={"value": config_value},
             ),
             action={"decision": action},
@@ -465,10 +465,10 @@ class TestResultCollection:
 # =============================================================================
 
 
-class ErrorPlugin(PluginEvaluator[SimpleConfig]):
-    """Plugin that always raises an exception."""
+class ErrorEvaluator(Evaluator[SimpleConfig]):
+    """Evaluator that always raises an exception."""
 
-    metadata = PluginMetadata(
+    metadata = EvaluatorMetadata(
         name="test-error",
         version="1.0.0",
         description="Always raises an error",
@@ -481,16 +481,16 @@ class ErrorPlugin(PluginEvaluator[SimpleConfig]):
 
 
 class TimeoutConfig(BaseModel):
-    """Config for timeout plugin with custom timeout."""
+    """Config for timeout evaluator with custom timeout."""
 
     value: str = "default"
     timeout_ms: int = 100  # Very short timeout for testing
 
 
-class TimeoutPlugin(PluginEvaluator[TimeoutConfig]):
-    """Plugin that sleeps longer than its timeout."""
+class TimeoutEvaluator(Evaluator[TimeoutConfig]):
+    """Evaluator that sleeps longer than its timeout."""
 
-    metadata = PluginMetadata(
+    metadata = EvaluatorMetadata(
         name="test-timeout",
         version="1.0.0",
         description="Sleeps longer than timeout",
@@ -514,10 +514,10 @@ class TestErrorHandling:
     """Tests for error handling - fail-closed for deny controls, error field."""
 
     @pytest.fixture(autouse=True)
-    def register_error_plugin(self):
-        """Register ErrorPlugin for these tests."""
+    def register_error_evaluator(self):
+        """Register ErrorEvaluator for these tests."""
         try:
-            register_plugin(ErrorPlugin)
+            register_evaluator(ErrorEvaluator)
         except ValueError:
             pass  # Already registered
 
@@ -525,11 +525,11 @@ class TestErrorHandling:
     async def test_evaluator_error_fails_closed_for_deny(self):
         """Test that deny controls fail closed when they error.
 
-        Given: A deny control with a plugin that throws an exception
+        Given: A deny control with an evaluator that throws an exception
         When: The engine processes the request
         Then: The request is marked unsafe (fail-closed) and confidence is 0
         """
-        # Given: A deny control with an error-throwing plugin
+        # Given: A deny control with an error-throwing evaluator
         controls = [
             make_control(1, "error_control", "test-error", action="deny", config_value="err"),
         ]
@@ -552,7 +552,7 @@ class TestErrorHandling:
         # Error should be captured
         assert result.errors is not None
         assert len(result.errors) == 1
-        # The plugin should have started
+        # The evaluator should have started
         assert "error:err:start" in _execution_log
 
     @pytest.mark.asyncio
@@ -626,17 +626,17 @@ class TestErrorHandling:
         assert result.errors is not None
 
     @pytest.mark.asyncio
-    async def test_missing_plugin_error_sets_error_field(self):
-        """Test that missing plugin error sets error field in result.
+    async def test_missing_evaluator_error_sets_error_field(self):
+        """Test that missing evaluator error sets error field in result.
 
-        Given: A deny control with a plugin that doesn't exist
+        Given: A deny control with an evaluator that doesn't exist
         When: The engine processes the request
         Then: The error field is set, is_safe=False (deny fails closed)
         """
-        # Given: A deny control with non-existent plugin
+        # Given: A deny control with non-existent evaluator
         controls = [
             make_control(
-                1, "missing_plugin", "nonexistent-plugin", action="deny", config_value="m"
+                1, "missing_evaluator", "nonexistent-evaluator", action="deny", config_value="m"
             ),
         ]
         engine = ControlEngine(controls)
@@ -657,9 +657,9 @@ class TestErrorHandling:
         # Error should be captured
         assert result.errors is not None
         assert len(result.errors) == 1
-        assert result.errors[0].control_name == "missing_plugin"
+        assert result.errors[0].control_name == "missing_evaluator"
         assert result.errors[0].result.error is not None
-        assert "nonexistent-plugin" in result.errors[0].result.error.lower()
+        assert "nonexistent-evaluator" in result.errors[0].result.error.lower()
 
     @pytest.mark.asyncio
     async def test_errors_array_exposes_evaluator_failures(self):
@@ -887,10 +887,10 @@ class TestConfidenceCalculation:
 # =============================================================================
 
 
-class PayloadEchoPlugin(PluginEvaluator[SimpleConfig]):
-    """Plugin that inspects full payload when path is omitted ("*")."""
+class PayloadEchoEvaluator(Evaluator[SimpleConfig]):
+    """Evaluator that inspects full payload when path is omitted ("*")."""
 
-    metadata = PluginMetadata(
+    metadata = EvaluatorMetadata(
         name="test-payload-echo",
         version="1.0.0",
         description="Echo payload info",
@@ -910,9 +910,9 @@ class PayloadEchoPlugin(PluginEvaluator[SimpleConfig]):
 
 class TestSelectorStepScoping:
     @pytest.fixture(autouse=True)
-    def register_payload_plugin(self):
+    def register_payload_evaluator(self):
         try:
-            register_plugin(PayloadEchoPlugin)
+            register_evaluator(PayloadEchoEvaluator)
         except ValueError:
             pass
 
@@ -1018,7 +1018,7 @@ class TestSelectorStepScoping:
 
     @pytest.mark.asyncio
     async def test_path_optional_defaults_to_star(self):
-        # Given: path omitted; plugin should receive full payload
+        # Given: path omitted; evaluator should receive full payload
         controls = [
             make_control(
                 1,
@@ -1049,7 +1049,7 @@ class TestSelectorStepScoping:
                 execution="server",
                 scope={"step_types": ["tool"], "stages": ["pre"], "step_name_regex": "("},
                 selector={"path": "input"},
-                evaluator=EvaluatorConfig(plugin="test-allow", config={"value": "x"}),
+                evaluator=EvaluatorConfig(name="test-allow", config={"value": "x"}),
                 action={"decision": "log"},
             )
 
@@ -1058,10 +1058,10 @@ class TestTimeoutEnforcement:
     """Tests for per-evaluator timeout enforcement."""
 
     @pytest.fixture(autouse=True)
-    def register_timeout_plugin(self):
-        """Register TimeoutPlugin for these tests."""
+    def register_timeout_evaluator(self):
+        """Register TimeoutEvaluator for these tests."""
         try:
-            register_plugin(TimeoutPlugin)
+            register_evaluator(TimeoutEvaluator)
         except ValueError:
             pass  # Already registered
 
@@ -1069,13 +1069,13 @@ class TestTimeoutEnforcement:
     async def test_evaluator_timeout_is_enforced(self):
         """Test that evaluators are killed after their timeout expires.
 
-        Given: A control with a plugin that sleeps longer than its timeout
+        Given: A control with an evaluator that sleeps longer than its timeout
         When: The engine processes the request
         Then: The evaluation times out and error is captured
         """
         import time
 
-        # Given: A control with a timeout plugin (100ms timeout, 5s sleep)
+        # Given: A control with a timeout evaluator (100ms timeout, 5s sleep)
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1087,7 +1087,7 @@ class TestTimeoutEnforcement:
                     scope={"step_types": ["llm_inference"], "stages": ["pre"]},
                     selector={"path": "input"},
                     evaluator=EvaluatorConfig(
-                        plugin="test-timeout",
+                        name="test-timeout",
                         config={"value": "t1", "timeout_ms": 100},
                     ),
                     action={"decision": "deny"},
@@ -1109,7 +1109,7 @@ class TestTimeoutEnforcement:
         # Then: Should complete quickly (timeout, not full 5s sleep)
         assert elapsed < 1.0, f"Expected timeout ~0.1s but took {elapsed:.2f}s"
 
-        # And: Plugin should have started
+        # And: Evaluator should have started
         assert "timeout:t1:start" in _execution_log
         # But not finished (was killed)
         assert "timeout:t1:end" not in _execution_log
@@ -1125,8 +1125,8 @@ class TestTimeoutEnforcement:
         assert result.confidence == 0.0
 
     @pytest.mark.asyncio
-    async def test_timeout_does_not_affect_fast_plugins(self):
-        """Test that fast plugins complete normally without timeout issues.
+    async def test_timeout_does_not_affect_fast_evaluators(self):
+        """Test that fast evaluators complete normally without timeout issues.
 
         Given: A mix of fast and slow (timing out) controls
         When: The engine processes the request
@@ -1145,7 +1145,7 @@ class TestTimeoutEnforcement:
                     scope={"step_types": ["llm_inference"], "stages": ["pre"]},
                     selector={"path": "input"},
                     evaluator=EvaluatorConfig(
-                        plugin="test-timeout",
+                        name="test-timeout",
                         config={"value": "slow", "timeout_ms": 100},
                     ),
                     action={"decision": "log"},  # Log, not deny - so fails open
@@ -1162,11 +1162,11 @@ class TestTimeoutEnforcement:
         )
         result = await engine.process(request)
 
-        # Then: Fast plugin should have completed normally
+        # Then: Fast evaluator should have completed normally
         assert "allow:f1:start" in _execution_log
         assert "allow:f1:end" in _execution_log
 
-        # And: Slow plugin should have timed out
+        # And: Slow evaluator should have timed out
         assert "timeout:slow:start" in _execution_log
         assert "timeout:slow:end" not in _execution_log
 
@@ -1207,10 +1207,10 @@ class TestConcurrencyLimit:
         _max_concurrent = 0
         _lock = asyncio.Lock()
 
-        class ConcurrencyTracker(PluginEvaluator[SimpleConfig]):
-            """Plugin that tracks concurrent execution count."""
+        class ConcurrencyTracker(Evaluator[SimpleConfig]):
+            """Evaluator that tracks concurrent execution count."""
 
-            metadata = PluginMetadata(
+            metadata = EvaluatorMetadata(
                 name="test-concurrency",
                 version="1.0.0",
                 description="Tracks concurrency",
@@ -1228,7 +1228,7 @@ class TestConcurrencyLimit:
                 return EvaluatorResult(matched=False, confidence=1.0, message="ok")
 
         try:
-            register_plugin(ConcurrencyTracker)
+            register_evaluator(ConcurrencyTracker)
         except ValueError:
             pass
 
@@ -1259,7 +1259,7 @@ class TestConcurrencyLimit:
 def make_control_with_execution(
     control_id: int,
     name: str,
-    plugin: str,
+    evaluator: str,
     action: str = "deny",
     config_value: str = "default",
     *,
@@ -1291,7 +1291,7 @@ def make_control_with_execution(
             scope=scope,
             selector={"path": path},
             evaluator=EvaluatorConfig(
-                plugin=plugin,
+                name=evaluator,
                 config={"value": config_value},
             ),
             action={"decision": action},

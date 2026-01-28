@@ -1,4 +1,4 @@
-"""Tests for new features: plugins endpoint, policy validation, PATCH agents."""
+"""Tests for new features: evaluators endpoint, policy validation, PATCH agents."""
 
 import uuid
 
@@ -29,23 +29,23 @@ def make_agent_payload(
 
 
 # =============================================================================
-# GET /plugins endpoint
+# GET /evaluators endpoint
 # =============================================================================
 
 
-def test_get_plugins(client: TestClient) -> None:
-    """Given built-in plugins are registered, when listing plugins, then returns all with schemas."""
+def test_get_evaluators(client: TestClient) -> None:
+    """Given built-in evaluators are registered, when listing evaluators, then returns all with schemas."""
     # When
-    resp = client.get("/api/v1/plugins")
+    resp = client.get("/api/v1/evaluators")
 
     # Then
     assert resp.status_code == 200
-    plugins = resp.json()
-    assert isinstance(plugins, dict)
-    assert "regex" in plugins
-    assert "list" in plugins
+    evaluators = resp.json()
+    assert isinstance(evaluators, dict)
+    assert "regex" in evaluators
+    assert "list" in evaluators
 
-    regex = plugins["regex"]
+    regex = evaluators["regex"]
     assert regex["name"] == "regex"
     assert "version" in regex
     assert "description" in regex
@@ -53,15 +53,15 @@ def test_get_plugins(client: TestClient) -> None:
     assert isinstance(regex["config_schema"], dict)
 
 
-def test_get_plugins_schema_has_properties(client: TestClient) -> None:
-    """Given the regex plugin is registered, when listing plugins, then schema has pattern property."""
+def test_get_evaluators_schema_has_properties(client: TestClient) -> None:
+    """Given the regex evaluator is registered, when listing evaluators, then schema has pattern property."""
     # When
-    resp = client.get("/api/v1/plugins")
+    resp = client.get("/api/v1/evaluators")
 
     # Then
     assert resp.status_code == 200
-    plugins = resp.json()
-    regex_schema = plugins["regex"]["config_schema"]
+    evaluators = resp.json()
+    regex_schema = evaluators["regex"]["config_schema"]
     assert "properties" in regex_schema
     assert "pattern" in regex_schema["properties"]
 
@@ -274,8 +274,8 @@ def _create_policy_with_control(
     return policy_id, control_id
 
 
-def test_policy_assignment_with_builtin_plugin(client: TestClient) -> None:
-    """Given an agent and a policy with built-in plugin control, when assigning policy, then succeeds."""
+def test_policy_assignment_with_builtin_evaluator(client: TestClient) -> None:
+    """Given an agent and a policy with built-in evaluator control, when assigning policy, then succeeds."""
     # Given
     agent_id = str(uuid.uuid4())
     name = f"Test Agent {uuid.uuid4().hex[:8]}"
@@ -290,7 +290,7 @@ def test_policy_assignment_with_builtin_plugin(client: TestClient) -> None:
             "execution": "server",
             "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
-            "evaluator": {"plugin": "regex", "config": {"pattern": "test.*"}},
+            "evaluator": {"name": "regex", "config": {"pattern": "test.*"}},
             "action": {"decision": "deny"},
         },
     )
@@ -322,7 +322,7 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
             "execution": "server",
             "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
-            "evaluator": {"plugin": f"{agent_name}:custom-eval", "config": {}},
+            "evaluator": {"name": f"{agent_name}:custom-eval", "config": {}},
             "action": {"decision": "deny"},
         },
     )
@@ -353,7 +353,7 @@ def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) 
                 "execution": "server",
                 "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
                 "selector": {"path": "input"},
-                "evaluator": {"plugin": f"{agent_name}:nonexistent-eval", "config": {}},
+                "evaluator": {"name": f"{agent_name}:nonexistent-eval", "config": {}},
                 "action": {"decision": "deny"},
             }
         },
@@ -391,7 +391,7 @@ def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> No
             "execution": "server",
             "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
-            "evaluator": {"plugin": f"{agent_a_name}:shared-eval", "config": {}},
+            "evaluator": {"name": f"{agent_a_name}:shared-eval", "config": {}},
             "action": {"decision": "deny"},
         },
     )
@@ -553,7 +553,7 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
             "execution": "server",
             "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
             "selector": {"path": "input"},
-            "evaluator": {"plugin": f"{agent_name}:my-eval", "config": {}},
+            "evaluator": {"name": f"{agent_name}:my-eval", "config": {}},
             "action": {"decision": "deny"},
         },
     )

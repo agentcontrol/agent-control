@@ -7,10 +7,10 @@ FastAPI server for Agent Control - provides centralized control management, poli
 - **Control Management** - CRUD operations for controls
 - **Policy Management** - Group controls into reusable policies
 - **Agent Registration** - Register and manage agents
-- **Evaluation Engine** - Server-side control evaluation with plugin support
+- **Evaluation Engine** - Server-side control evaluation with evaluator support
 - **Observability** - Event tracking and control execution metrics
 - **API Key Authentication** - Secure production deployments
-- **Plugin System** - Extensible evaluators (Regex, List, SQL, Luna-2 AI)
+- **Evaluator System** - Extensible evaluators (Regex, List, SQL, Luna-2 AI)
 - **Prometheus Metrics** - Built-in monitoring and observability
 - **PostgreSQL/SQLite** - Production and development database support
 
@@ -71,7 +71,7 @@ AGENT_CONTROL_API_KEYS=your-api-key-here,another-key-here
 OBSERVABILITY_ENABLED=true
 OBSERVABILITY_FLUSH_INTERVAL_SECONDS=10
 
-# Luna-2 Plugin (optional)
+# Luna-2 Evaluator (optional)
 GALILEO_API_KEY=your-galileo-api-key
 
 # Prometheus metrics
@@ -147,8 +147,8 @@ GET /health
 # Prometheus metrics (public)
 GET /metrics
 
-# List available plugins
-GET /api/v1/plugins
+# List available evaluators
+GET /api/v1/evaluators
 ```
 
 ### Agent Management

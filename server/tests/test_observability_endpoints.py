@@ -178,7 +178,7 @@ class TestControlExecutionEvent:
             confidence=0.99,
             timestamp=datetime.now(timezone.utc),
             execution_duration_ms=15.5,
-            evaluator_plugin="regex",
+            evaluator_name="regex",
             selector_path="input",
             error_message=None,
             metadata={"key": "value"},

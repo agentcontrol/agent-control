@@ -7,23 +7,23 @@ from typing import Any
 from jsonschema_rs import validator_for
 
 
-def parse_evaluator_ref(plugin: str) -> tuple[str | None, str]:
-    """Parse plugin reference into (agent_name, evaluator_name).
+def parse_evaluator_ref(evaluator_ref: str) -> tuple[str | None, str]:
+    """Parse evaluator reference into (agent_name, evaluator_name).
 
-    Built-in plugins have no prefix, agent-scoped evaluators use {agent}:{name} format.
+    Built-in evaluators have no prefix, agent-scoped evaluators use {agent}:{name} format.
 
     Args:
-        plugin: Plugin reference string (e.g., "regex" or "my-agent:pii-detector")
+        evaluator_ref: Evaluator reference string (e.g., "regex" or "my-agent:pii-detector")
 
     Returns:
         Tuple of (agent_name, evaluator_name):
-        - (None, "regex") for built-in plugins
+        - (None, "regex") for built-in evaluators
         - ("my-agent", "pii-detector") for agent-scoped evaluators
     """
-    if ":" in plugin:
-        agent, name = plugin.split(":", 1)
+    if ":" in evaluator_ref:
+        agent, name = evaluator_ref.split(":", 1)
         return agent, name
-    return None, plugin
+    return None, evaluator_ref
 
 
 def _canonicalize_schema(schema: dict[str, Any]) -> str:

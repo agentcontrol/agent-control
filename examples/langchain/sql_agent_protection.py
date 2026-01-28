@@ -124,7 +124,7 @@ def create_safe_tools(db, llm):
             print(error_msg)
             return error_msg
         except RuntimeError as e:
-            # Server-side error (e.g., plugin not loaded)
+            # Server-side error (e.g., evaluator not loaded)
             error_msg = f"⚠️ Safety check unavailable: {str(e)}"
             print(error_msg)
             return error_msg

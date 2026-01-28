@@ -9,30 +9,30 @@ from datetime import datetime
 from fastapi.testclient import TestClient
 
 
-def _default_config_for_plugin(plugin: str) -> dict:
-    if plugin == "list":
+def _default_config_for_evaluator(evaluator: str) -> dict:
+    if evaluator == "list":
         return {"values": ["blocked"], "logic": "any", "match_on": "match"}
-    if plugin == "regex":
+    if evaluator == "regex":
         return {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
     return {}
 
 
 def _create_config_payload(
     name: str,
-    plugin: str = "regex",
+    evaluator: str = "regex",
     config: dict | None = None,
     description: str | None = None,
 ) -> dict:
     return {
         "name": name,
         "description": description,
-        "plugin": plugin,
-        "config": config if config is not None else _default_config_for_plugin(plugin),
+        "evaluator": evaluator,
+        "config": config if config is not None else _default_config_for_evaluator(evaluator),
     }
 
 
-def _create_config(client: TestClient, name: str, plugin: str = "regex") -> dict:
-    payload = _create_config_payload(name=name, plugin=plugin)
+def _create_config(client: TestClient, name: str, evaluator: str = "regex") -> dict:
+    payload = _create_config_payload(name=name, evaluator=evaluator)
     resp = client.post("/api/v1/evaluator-configs", json=payload)
     assert resp.status_code == 201
     return resp.json()
@@ -51,7 +51,7 @@ def test_create_evaluator_config_success(client: TestClient) -> None:
     data = resp.json()
     assert data["id"] is not None
     assert data["name"] == name
-    assert data["plugin"] == "regex"
+    assert data["evaluator"] == "regex"
     assert data["config"]["pattern"] == payload["config"]["pattern"]
     assert data["created_at"] is not None
     assert data["updated_at"] is not None
@@ -71,10 +71,10 @@ def test_create_evaluator_config_duplicate_name_409(client: TestClient) -> None:
     assert data["error_code"] == "EVALUATOR_CONFIG_NAME_CONFLICT"
 
 
-def test_create_evaluator_config_unknown_plugin_allowed(client: TestClient) -> None:
-    # Given: A payload with an unknown plugin name
+def test_create_evaluator_config_unknown_evaluator_allowed(client: TestClient) -> None:
+    # Given: A payload with an unknown evaluator name
     name = f"config-{uuid.uuid4().hex}"
-    payload = _create_config_payload(name=name, plugin="unknown-plugin", config={})
+    payload = _create_config_payload(name=name, evaluator="unknown-evaluator", config={})
 
     # When: Creating the evaluator config
     resp = client.post("/api/v1/evaluator-configs", json=payload)
@@ -82,13 +82,13 @@ def test_create_evaluator_config_unknown_plugin_allowed(client: TestClient) -> N
     # Then: It succeeds (validation skipped)
     assert resp.status_code == 201
     data = resp.json()
-    assert data["plugin"] == "unknown-plugin"
+    assert data["evaluator"] == "unknown-evaluator"
 
 
 def test_create_evaluator_config_agent_scoped_rejected(client: TestClient) -> None:
-    # Given: A payload referencing an agent-scoped plugin
+    # Given: A payload referencing an agent-scoped evaluator
     name = f"config-{uuid.uuid4().hex}"
-    payload = _create_config_payload(name=name, plugin="agent:custom", config={})
+    payload = _create_config_payload(name=name, evaluator="agent:custom", config={})
 
     # When: Creating the evaluator config
     resp = client.post("/api/v1/evaluator-configs", json=payload)
@@ -97,13 +97,13 @@ def test_create_evaluator_config_agent_scoped_rejected(client: TestClient) -> No
     assert resp.status_code == 422
     data = resp.json()
     assert data["error_code"] == "VALIDATION_ERROR"
-    assert any(err.get("field") == "plugin" for err in data.get("errors", []))
+    assert any(err.get("field") == "evaluator" for err in data.get("errors", []))
 
 
 def test_create_evaluator_config_invalid_config_422(client: TestClient) -> None:
-    # Given: A payload with invalid config for regex plugin
+    # Given: A payload with invalid config for regex evaluator
     name = f"config-{uuid.uuid4().hex}"
-    payload = _create_config_payload(name=name, plugin="regex", config={"flags": ["IGNORECASE"]})
+    payload = _create_config_payload(name=name, evaluator="regex", config={"flags": ["IGNORECASE"]})
 
     # When: Creating the evaluator config
     resp = client.post("/api/v1/evaluator-configs", json=payload)
@@ -128,7 +128,7 @@ def test_update_evaluator_config_replaces_fields_and_updates_timestamp(
     # When: Updating the evaluator config via PUT
     payload = _create_config_payload(
         name=f"{name}-v2",
-        plugin="regex",
+        evaluator="regex",
         config={"pattern": r"\b\d{4}\b"},
         description="Updated description",
     )
@@ -157,7 +157,7 @@ def test_update_evaluator_config_name_conflict_409(client: TestClient) -> None:
     # When: Updating second to use first's name
     payload = _create_config_payload(
         name=first["name"],
-        plugin="regex",
+        evaluator="regex",
         config={"pattern": r"\btest\b"},
     )
     resp = client.put(f"/api/v1/evaluator-configs/{second['id']}", json=payload)
@@ -186,15 +186,15 @@ def test_list_evaluator_configs_with_filters_and_pagination(
 ) -> None:
     # Given: Multiple evaluator configs
     base = f"config-{uuid.uuid4().hex}"
-    _create_config(client, name=f"{base}-a", plugin="regex")
-    _create_config(client, name=f"{base}-b", plugin="regex")
-    _create_config(client, name=f"{base}-c", plugin="regex")
-    _create_config(client, name=f"{base}-d", plugin="list")
+    _create_config(client, name=f"{base}-a", evaluator="regex")
+    _create_config(client, name=f"{base}-b", evaluator="regex")
+    _create_config(client, name=f"{base}-c", evaluator="regex")
+    _create_config(client, name=f"{base}-d", evaluator="list")
 
-    # When: Listing with limit and plugin filter
+    # When: Listing with limit and evaluator filter
     resp = client.get(
         "/api/v1/evaluator-configs",
-        params={"limit": 2, "plugin": "regex", "name": base},
+        params={"limit": 2, "evaluator": "regex", "name": base},
     )
 
     # Then: Pagination metadata is correct
@@ -203,7 +203,7 @@ def test_list_evaluator_configs_with_filters_and_pagination(
     assert data["pagination"]["limit"] == 2
     assert data["pagination"]["has_more"] is True
     assert len(data["evaluator_configs"]) == 2
-    assert all(cfg["plugin"] == "regex" for cfg in data["evaluator_configs"])
+    assert all(cfg["evaluator"] == "regex" for cfg in data["evaluator_configs"])
 
 
 def test_delete_evaluator_config_success(client: TestClient) -> None:
@@ -236,7 +236,7 @@ def test_delete_evaluator_config_not_found(client: TestClient) -> None:
 def test_create_evaluator_config_empty_config_allowed(client: TestClient) -> None:
     # Given: A payload with an empty config object
     name = f"config-{uuid.uuid4().hex}"
-    payload = _create_config_payload(name=name, plugin="unknown-plugin", config={})
+    payload = _create_config_payload(name=name, evaluator="unknown-evaluator", config={})
 
     # When: Creating the evaluator config
     resp = client.post("/api/v1/evaluator-configs", json=payload)

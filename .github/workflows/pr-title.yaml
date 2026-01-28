@@ -32,7 +32,7 @@ jobs:
             server
             models
             engine
-            plugins
+            evaluators
             ci
             docs
             infra

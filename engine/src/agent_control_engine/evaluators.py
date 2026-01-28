@@ -1,4 +1,4 @@
-"""Unified evaluator factory using plugin registry with caching."""
+"""Unified evaluator factory using evaluator registry with caching."""
 
 import json
 import logging
@@ -6,9 +6,9 @@ import os
 from collections import OrderedDict
 from typing import Any
 
-from agent_control_models import EvaluatorConfig, PluginEvaluator
+from agent_control_models import Evaluator, EvaluatorConfig
 
-from .discovery import list_plugins
+from .discovery import list_evaluators
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ def _parse_cache_size() -> int:
 
 EVALUATOR_CACHE_SIZE = max(_parse_cache_size(), MIN_CACHE_SIZE)
 
-# LRU cache for evaluator instances: cache_key -> PluginEvaluator instance
-_EVALUATOR_CACHE: OrderedDict[str, PluginEvaluator[Any]] = OrderedDict()
+# LRU cache for evaluator instances: cache_key -> Evaluator instance
+_EVALUATOR_CACHE: OrderedDict[str, Evaluator[Any]] = OrderedDict()
 
 
 def _config_hash(config: dict[str, Any]) -> str:
@@ -42,48 +42,48 @@ def _config_hash(config: dict[str, Any]) -> str:
     return json.dumps(config, sort_keys=True, default=str)
 
 
-def get_evaluator(evaluator_config: EvaluatorConfig) -> PluginEvaluator[Any]:
+def get_evaluator_instance(evaluator_config: EvaluatorConfig) -> Evaluator[Any]:
     """Get or create a cached evaluator instance from configuration.
 
     Uses LRU caching to reuse evaluator instances with the same config.
-    Cache key is: {plugin_name}:{config_hash}
+    Cache key is: {evaluator_name}:{config_hash}
 
-    WARNING: Plugin instances are cached and reused across requests!
-    Plugin implementations MUST be stateless - do not store mutable
-    request-scoped state on the plugin instance. See PluginEvaluator
+    WARNING: Evaluator instances are cached and reused across requests!
+    Evaluator implementations MUST be stateless - do not store mutable
+    request-scoped state on the evaluator instance. See Evaluator
     docstring for details on safe patterns.
 
     Args:
-        evaluator_config: The evaluator configuration with plugin name and config
+        evaluator_config: The evaluator configuration with evaluator name and config
 
     Returns:
-        PluginEvaluator instance (cached or new)
+        Evaluator instance (cached or new)
 
     Raises:
-        ValueError: If plugin not found
+        ValueError: If evaluator not found
     """
     # Build cache key
-    cache_key = f"{evaluator_config.plugin}:{_config_hash(evaluator_config.config)}"
+    cache_key = f"{evaluator_config.name}:{_config_hash(evaluator_config.config)}"
 
     # Check cache
     if cache_key in _EVALUATOR_CACHE:
         # Move to end (most recently used)
         _EVALUATOR_CACHE.move_to_end(cache_key)
-        logger.debug(f"Cache hit for evaluator: {evaluator_config.plugin}")
+        logger.debug(f"Cache hit for evaluator: {evaluator_config.name}")
         return _EVALUATOR_CACHE[cache_key]
 
     # Cache miss - create new instance
-    plugins = list_plugins()
-    plugin_cls = plugins.get(evaluator_config.plugin)
+    evaluators = list_evaluators()
+    evaluator_cls = evaluators.get(evaluator_config.name)
 
-    if plugin_cls is None:
+    if evaluator_cls is None:
         raise ValueError(
-            f"Plugin '{evaluator_config.plugin}' not found. "
-            f"Available plugins: {', '.join(plugins.keys())}"
+            f"Evaluator '{evaluator_config.name}' not found. "
+            f"Available evaluators: {', '.join(evaluators.keys())}"
         )
 
-    logger.debug(f"Cache miss, creating evaluator: {evaluator_config.plugin}")
-    instance = plugin_cls.from_dict(evaluator_config.config)
+    logger.debug(f"Cache miss, creating evaluator: {evaluator_config.name}")
+    instance = evaluator_cls.from_dict(evaluator_config.config)
 
     # Evict oldest if cache is full
     while len(_EVALUATOR_CACHE) >= EVALUATOR_CACHE_SIZE:
@@ -98,3 +98,5 @@ def get_evaluator(evaluator_config: EvaluatorConfig) -> PluginEvaluator[Any]:
 def clear_evaluator_cache() -> None:
     """Clear all cached evaluator instances. Useful for testing."""
     _EVALUATOR_CACHE.clear()
+
+

@@ -191,7 +191,7 @@ async def require_admin_key(
     """
     Dependency that requires an admin API key.
 
-    Use for sensitive operations like plugin management or configuration:
+    Use for sensitive operations like evaluator management or configuration:
 
         @router.delete("/dangerous", dependencies=[Depends(require_admin_key)])
         async def dangerous_op():

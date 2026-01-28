@@ -1,4 +1,4 @@
-"""End-to-end tests for SQL evaluator plugin."""
+"""End-to-end tests for SQL evaluator."""
 
 from agent_control_models import EvaluationRequest, Step
 from fastapi.testclient import TestClient
@@ -21,7 +21,7 @@ def test_sql_read_only_agent(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.query"},
         "evaluator": {
-            "plugin": "sql",
+            "name": "sql",
             "config": {
                 "allowed_operations": ["SELECT"],
                 "require_limit": True,
@@ -102,7 +102,7 @@ def test_sql_multi_tenant_security(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.query"},
         "evaluator": {
-            "plugin": "sql",
+            "name": "sql",
             "config": {
                 "required_columns": ["tenant_id"],
                 "column_context": "where"
@@ -168,7 +168,7 @@ def test_sql_block_destructive_operations(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.query"},
         "evaluator": {
-            "plugin": "sql",
+            "name": "sql",
             "config": {
                 "blocked_operations": ["DROP", "TRUNCATE", "DELETE"]
             }
@@ -261,7 +261,7 @@ def test_sql_table_restrictions(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.query"},
         "evaluator": {
-            "plugin": "sql",
+            "name": "sql",
             "config": {
                 "allowed_tables": ["users", "orders"]
             }
@@ -340,7 +340,7 @@ def test_sql_multi_statement_blocking(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.query"},
         "evaluator": {
-            "plugin": "sql",
+            "name": "sql",
             "config": {
                 "allow_multi_statements": False
             }
@@ -391,7 +391,7 @@ def test_sql_limit_enforcement(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.query"},
         "evaluator": {
-            "plugin": "sql",
+            "name": "sql",
             "config": {
                 "require_limit": True,
                 "max_limit": 1000
@@ -491,7 +491,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
         "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
-            "plugin": "sql",
+            "name": "sql",
             "config": {
                 "allowed_operations": ["SELECT"],
                 "require_limit": True
@@ -554,7 +554,7 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
         "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
-            "plugin": "sql",
+            "name": "sql",
             "config": {
                 "allow_multi_statements": False
             }
@@ -603,7 +603,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
         "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
-            "plugin": "sql",
+            "name": "sql",
             "config": {
                 "allowed_tables": ["analytics", "reports"]
             }

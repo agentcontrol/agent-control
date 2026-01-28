@@ -21,7 +21,7 @@ Usage:
     # The server's policy contains controls that define:
     # - stage: "pre" or "post"
     # - selector.path: "input" or "output"
-    # - evaluator: regex, list, Luna2 plugin, etc.
+    # - evaluator: regex, list, Luna2 evaluator, etc.
     # - action: deny, warn, or log
 """
 

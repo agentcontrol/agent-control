@@ -39,7 +39,7 @@ DEMO_CONTROLS = [
             "enabled": True,
             "selector": {"path": "output"},
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {"pattern": r"\d{3}-\d{2}-\d{4}"},
             },
             "action": {
@@ -57,7 +57,7 @@ DEMO_CONTROLS = [
             "enabled": True,
             "selector": {"path": "input"},
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {
                     "pattern": r"(?i)(ignore.{0,20}(previous|prior|above).{0,20}instructions|you are now|system:|forget everything|disregard)"
                 },
@@ -77,7 +77,7 @@ DEMO_CONTROLS = [
             "enabled": True,
             "selector": {"path": "input"},
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {"pattern": r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b"},
             },
             "action": {
@@ -101,7 +101,7 @@ DEMO_CONTROLS = [
                 "tool_names": ["lookup_customer"],  # Only applies to this exact tool
             },
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {
                     "pattern": r"(?i)(select|insert|update|delete|drop|union|--|;)"
                 },
@@ -124,7 +124,7 @@ DEMO_CONTROLS = [
                 "tool_names": ["create_ticket"],
             },
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {"pattern": r".*"},  # Always matches
             },
             "action": {
@@ -149,7 +149,7 @@ DEMO_CONTROLS = [
                 "tool_name_regex": r"(search|lookup)",
             },
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {
                     # Simple profanity pattern for demo
                     "pattern": r"(?i)\b(badword|offensive|inappropriate)\b"
@@ -173,7 +173,7 @@ DEMO_CONTROLS = [
                 "tool_name_regex": r".*ticket.*",  # Any tool with 'ticket' in name
             },
             "evaluator": {
-                "plugin": "list",
+                "name": "list",
                 "config": {
                     "values": ["high", "critical", "urgent"],
                     "logic": "any",
@@ -203,7 +203,7 @@ DEMO_CONTROLS = [
                 "tool_names": ["create_ticket"],
             },
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {
                     # Email pattern
                     "pattern": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"

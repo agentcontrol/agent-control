@@ -2,7 +2,7 @@ import datetime as dt
 from http import HTTPStatus
 from typing import Any
 
-from agent_control_engine import list_plugins
+from agent_control_engine import list_evaluators
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     CreateEvaluatorConfigRequest,
@@ -38,28 +38,28 @@ def _to_item(config: EvaluatorConfigDB) -> EvaluatorConfigItem:
         id=config.id,
         name=config.name,
         description=config.description,
-        plugin=config.plugin,
+        evaluator=config.evaluator,
         config=config.config,
         created_at=config.created_at.isoformat() if config.created_at else None,
         updated_at=config.updated_at.isoformat() if config.updated_at else None,
     )
 
 
-def _ensure_not_agent_scoped(plugin: str) -> None:
-    agent_name, _ = parse_evaluator_ref(plugin)
+def _ensure_not_agent_scoped(evaluator: str) -> None:
+    agent_name, _ = parse_evaluator_ref(evaluator)
     if agent_name is not None:
         raise APIValidationError(
             error_code=ErrorCode.VALIDATION_ERROR,
             detail="Agent-scoped evaluators are not supported for evaluator configs",
             resource="EvaluatorConfig",
-            hint="Use a built-in plugin name without an agent prefix.",
+            hint="Use a built-in evaluator name without an agent prefix.",
             errors=[
                 ValidationErrorItem(
                     resource="EvaluatorConfig",
-                    field="plugin",
+                    field="evaluator",
                     code="agent_scoped_not_supported",
                     message="Agent-scoped evaluator references are not supported",
-                    value=plugin,
+                    value=evaluator,
                 )
             ],
         )
@@ -80,13 +80,13 @@ def _raise_invalid_config(
     )
 
 
-def _validate_known_plugin_config(plugin: str, config: dict[str, Any]) -> None:
-    plugin_cls = list_plugins().get(plugin)
-    if plugin_cls is None:
+def _validate_known_evaluator_config(evaluator: str, config: dict[str, Any]) -> None:
+    evaluator_cls = list_evaluators().get(evaluator)
+    if evaluator_cls is None:
         return
 
     try:
-        plugin_cls.config_model(**config)
+        evaluator_cls.config_model(**config)
     except ValidationError as e:
         _raise_invalid_config(
             [
@@ -98,8 +98,8 @@ def _validate_known_plugin_config(plugin: str, config: dict[str, Any]) -> None:
                 )
                 for err in e.errors()
             ],
-            detail=f"Config validation failed for plugin '{plugin}'",
-            hint="Check the plugin's config schema for required fields and types.",
+            detail=f"Config validation failed for evaluator '{evaluator}'",
+            hint="Check the evaluator's config schema for required fields and types.",
         )
     except TypeError as e:
         _raise_invalid_config(
@@ -111,14 +111,14 @@ def _validate_known_plugin_config(plugin: str, config: dict[str, Any]) -> None:
                     message=str(e),
                 )
             ],
-            detail=f"Invalid config parameters for plugin '{plugin}'",
-            hint="Check the plugin's config schema for valid parameter names.",
+            detail=f"Invalid config parameters for evaluator '{evaluator}'",
+            hint="Check the evaluator's config schema for valid parameter names.",
         )
 
 
-def _validate_plugin_config(plugin: str, config: dict[str, Any]) -> None:
-    _ensure_not_agent_scoped(plugin)
-    _validate_known_plugin_config(plugin, config)
+def _validate_evaluator_config(evaluator: str, config: dict[str, Any]) -> None:
+    _ensure_not_agent_scoped(evaluator)
+    _validate_known_evaluator_config(evaluator, config)
 
 
 def _is_name_conflict_error(exc: IntegrityError) -> bool:
@@ -156,12 +156,12 @@ async def create_evaluator_config(
     request: CreateEvaluatorConfigRequest,
     db: AsyncSession = Depends(get_async_db),
 ) -> EvaluatorConfigItem:
-    _validate_plugin_config(request.plugin, request.config)
+    _validate_evaluator_config(request.evaluator, request.config)
 
     evaluator_config = EvaluatorConfigDB(
         name=request.name,
         description=request.description,
-        plugin=request.plugin,
+        evaluator=request.evaluator,
         config=request.config,
     )
     db.add(evaluator_config)
@@ -208,7 +208,7 @@ async def list_evaluator_configs(
     cursor: int | None = Query(None, description="Evaluator config ID to start after"),
     limit: int = Query(_DEFAULT_PAGINATION_LIMIT, ge=1, le=_MAX_PAGINATION_LIMIT),
     name: str | None = Query(None, description="Filter by name (partial, case-insensitive)"),
-    plugin: str | None = Query(None, description="Filter by plugin name"),
+    evaluator: str | None = Query(None, description="Filter by evaluator name"),
     db: AsyncSession = Depends(get_async_db),
 ) -> ListEvaluatorConfigsResponse:
     query = select(EvaluatorConfigDB).order_by(EvaluatorConfigDB.id.desc())
@@ -219,8 +219,8 @@ async def list_evaluator_configs(
     if name is not None:
         query = query.where(EvaluatorConfigDB.name.ilike(f"%{name}%"))
 
-    if plugin is not None:
-        query = query.where(EvaluatorConfigDB.plugin == plugin)
+    if evaluator is not None:
+        query = query.where(EvaluatorConfigDB.evaluator == evaluator)
 
     query = query.limit(limit + 1)
     result = await db.execute(query)
@@ -229,8 +229,8 @@ async def list_evaluator_configs(
     total_query = select(func.count()).select_from(EvaluatorConfigDB)
     if name is not None:
         total_query = total_query.where(EvaluatorConfigDB.name.ilike(f"%{name}%"))
-    if plugin is not None:
-        total_query = total_query.where(EvaluatorConfigDB.plugin == plugin)
+    if evaluator is not None:
+        total_query = total_query.where(EvaluatorConfigDB.evaluator == evaluator)
     total_result = await db.execute(total_query)
     total = total_result.scalar() or 0
 
@@ -301,11 +301,11 @@ async def update_evaluator_config(
             hint="Verify the evaluator config ID is correct.",
         )
 
-    _validate_plugin_config(request.plugin, request.config)
+    _validate_evaluator_config(request.evaluator, request.config)
 
     evaluator_config.name = request.name
     evaluator_config.description = request.description
-    evaluator_config.plugin = request.plugin
+    evaluator_config.evaluator = request.evaluator
     evaluator_config.config = request.config
     evaluator_config.updated_at = dt.datetime.now(dt.UTC)
 

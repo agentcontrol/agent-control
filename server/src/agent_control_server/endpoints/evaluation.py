@@ -63,7 +63,7 @@ async def evaluate(
     evaluation engine. Controls are evaluated in parallel with
     cancel-on-deny for efficiency.
 
-    Custom evaluators must be deployed as PluginEvaluator classes
+    Custom evaluators must be deployed as Evaluator classes
     with the engine. Their schemas are registered via initAgent.
 
     Optionally accepts X-Trace-Id and X-Span-Id headers for
@@ -187,7 +187,7 @@ async def _emit_observability_events(
                     matched=True,
                     confidence=match.result.confidence,
                     timestamp=now,
-                    evaluator_plugin=ctrl.control.evaluator.plugin if ctrl else None,
+                    evaluator_name=ctrl.control.evaluator.name if ctrl else None,
                     error_message=match.result.error,
                     metadata=match.result.metadata or {},
                 )
@@ -212,7 +212,7 @@ async def _emit_observability_events(
                     matched=False,
                     confidence=error.result.confidence,
                     timestamp=now,
-                    evaluator_plugin=ctrl.control.evaluator.plugin if ctrl else None,
+                    evaluator_name=ctrl.control.evaluator.name if ctrl else None,
                     error_message=error.result.error,
                     metadata=error.result.metadata or {},
                 )
@@ -237,7 +237,7 @@ async def _emit_observability_events(
                     matched=False,
                     confidence=non_match.result.confidence,
                     timestamp=now,
-                    evaluator_plugin=ctrl.control.evaluator.plugin if ctrl else None,
+                    evaluator_name=ctrl.control.evaluator.name if ctrl else None,
                     error_message=None,
                     metadata=non_match.result.metadata or {},
                 )

@@ -58,7 +58,7 @@ def test_init_agent_with_evaluators(client: TestClient) -> None:
 
 
 def test_init_agent_evaluator_name_collision_rejected(client: TestClient) -> None:
-    """Test that evaluator names conflicting with built-in plugins are rejected."""
+    """Test that evaluator names conflicting with built-in evaluators are rejected."""
     # Given: Evaluator name conflicting with built-in
     payload = make_agent_payload(
         evaluators=[
@@ -74,7 +74,7 @@ def test_init_agent_evaluator_name_collision_rejected(client: TestClient) -> Non
     # Then: Should be rejected (RFC 7807 format)
     assert resp.status_code == 409
     response_data = resp.json()
-    assert "conflicts with built-in plugin" in response_data.get("detail", "")
+    assert "conflicts with built-in evaluator" in response_data.get("detail", "")
 
 
 def test_init_agent_evaluator_name_collision_list(client: TestClient) -> None:

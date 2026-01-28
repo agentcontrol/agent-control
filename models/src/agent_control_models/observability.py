@@ -30,7 +30,7 @@ class ControlExecutionEvent(BaseModel):
     - Context: agent, control, check stage, applies to
     - Result: action taken, whether matched, confidence score
     - Timing: when it happened, how long it took
-    - Optional details: evaluator plugin, selector path, errors, metadata
+    - Optional details: evaluator name, selector path, errors, metadata
 
     Attributes:
         control_execution_id: Unique ID for this specific control execution
@@ -49,7 +49,7 @@ class ControlExecutionEvent(BaseModel):
         confidence: Confidence score from the evaluator (0.0-1.0)
         timestamp: When the control was executed (UTC)
         execution_duration_ms: How long the control evaluation took
-        evaluator_plugin: Name of the evaluator plugin used
+        evaluator_name: Name of the evaluator used
         selector_path: The selector path used to extract data
         error_message: Error message if evaluation failed
         metadata: Additional metadata for extensibility
@@ -108,8 +108,8 @@ class ControlExecutionEvent(BaseModel):
     )
 
     # Optional details
-    evaluator_plugin: str | None = Field(
-        default=None, description="Name of the evaluator plugin used"
+    evaluator_name: str | None = Field(
+        default=None, description="Name of the evaluator used"
     )
     selector_path: str | None = Field(
         default=None, description="Selector path used to extract data"
@@ -171,7 +171,7 @@ class ControlExecutionEvent(BaseModel):
                     "confidence": 0.95,
                     "timestamp": "2025-01-09T10:30:00Z",
                     "execution_duration_ms": 15.3,
-                    "evaluator_plugin": "regex",
+                    "evaluator_name": "regex",
                     "selector_path": "input",
                 }
             ]

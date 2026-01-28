@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from agent_control_engine import list_plugins
+from agent_control_engine import list_evaluators
 from agent_control_models.agent import Agent as APIAgent
 from agent_control_models.agent import StepSchema
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
@@ -53,8 +53,8 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 
 _logger = get_logger(__name__)
 
-# Cache for built-in plugin names (populated on first use)
-_BUILTIN_PLUGIN_NAMES: set[str] | None = None
+# Cache for built-in evaluator names (populated on first use)
+_BUILTIN_EVALUATOR_NAMES: set[str] | None = None
 
 # Pagination constants
 _DEFAULT_PAGINATION_OFFSET = 0
@@ -69,12 +69,12 @@ type StepKeyTuple = tuple[str, str]
 # =============================================================================
 
 
-def _get_builtin_plugin_names() -> set[str]:
-    """Get built-in plugin names (cached)."""
-    global _BUILTIN_PLUGIN_NAMES
-    if _BUILTIN_PLUGIN_NAMES is None:
-        _BUILTIN_PLUGIN_NAMES = set(list_plugins().keys())
-    return _BUILTIN_PLUGIN_NAMES
+def _get_builtin_evaluator_names() -> set[str]:
+    """Get built-in evaluator names (cached)."""
+    global _BUILTIN_EVALUATOR_NAMES
+    if _BUILTIN_EVALUATOR_NAMES is None:
+        _BUILTIN_EVALUATOR_NAMES = set(list_evaluators().keys())
+    return _BUILTIN_EVALUATOR_NAMES
 
 
 async def _validate_policy_controls_for_agent(
@@ -107,18 +107,18 @@ async def _validate_policy_controls_for_agent(
             continue
 
         evaluator_cfg = control.data.get("evaluator", {})
-        plugin = evaluator_cfg.get("plugin", "")
-        if not plugin:
+        evaluator_name = evaluator_cfg.get("name", "")
+        if not evaluator_name:
             continue
 
-        agent_name, eval_name = parse_evaluator_ref(plugin)
+        agent_name, eval_name = parse_evaluator_ref(evaluator_name)
         if agent_name is None:
-            continue  # Built-in plugin, already validated at control creation
+            continue  # Built-in evaluator, already validated at control creation
 
         # Agent-scoped evaluator - check if target matches this agent
         if agent_name != agent.name:
             errors.append(
-                f"Control '{control.name}' references evaluator '{plugin}' "
+                f"Control '{control.name}' references evaluator '{evaluator_name}' "
                 f"which belongs to agent '{agent_name}', not '{agent.name}'"
             )
             continue
@@ -309,22 +309,22 @@ async def init_agent(
         HTTPException 409: Agent name exists with different UUID
         HTTPException 500: Database error during creation/update
     """
-    # Check for evaluator name collisions with built-in plugins
-    builtin_names = _get_builtin_plugin_names()
+    # Check for evaluator name collisions with built-in evaluators
+    builtin_names = _get_builtin_evaluator_names()
     for ev in request.evaluators:
         if ev.name in builtin_names:
             raise ConflictError(
                 error_code=ErrorCode.EVALUATOR_NAME_CONFLICT,
-                detail=f"Evaluator name '{ev.name}' conflicts with built-in plugin.",
+                detail=f"Evaluator name '{ev.name}' conflicts with built-in evaluator.",
                 resource="Evaluator",
                 resource_id=ev.name,
-                hint="Choose a different name that does not conflict with built-in plugins.",
+                hint="Choose a different name that does not conflict with built-in evaluators.",
                 errors=[
                     ValidationErrorItem(
                         resource="Evaluator",
                         field="name",
                         code="name_conflict",
-                        message=f"Name '{ev.name}' conflicts with a built-in plugin",
+                        message=f"Name '{ev.name}' conflicts with a built-in evaluator",
                         value=ev.name,
                     )
                 ],
@@ -1137,7 +1137,7 @@ async def patch_agent(
             referencing_controls: list[tuple[str, str]] = []  # (control_name, evaluator)
 
             for ctrl in controls:
-                evaluator_ref = ctrl.control.evaluator.plugin
+                evaluator_ref = ctrl.control.evaluator.name
                 if ":" in evaluator_ref:
                     ref_agent, ref_eval = evaluator_ref.split(":", 1)
                     # Check if this control references an evaluator we're removing
@@ -1154,7 +1154,7 @@ async def patch_agent(
                     errors=[
                         ValidationErrorItem(
                             resource="Control",
-                            field="evaluator.plugin",
+                            field="evaluator.name",
                             code="in_use",
                             message=f"Control '{ctrl}' uses evaluator '{ev}'",
                         )

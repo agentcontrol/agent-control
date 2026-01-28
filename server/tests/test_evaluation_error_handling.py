@@ -32,7 +32,7 @@ def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
-            "plugin": f"{agent_name}:missing-evaluator",
+            "name": f"{agent_name}:missing-evaluator",
             "config": {}
         },
         "action": {"decision": "deny"}
@@ -52,7 +52,7 @@ def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
 def test_evaluation_control_with_invalid_config_caught_early(client: TestClient):
     """Test that invalid evaluator config is caught at control creation.
 
-    Given: A control with invalid config for a plugin
+    Given: A control with invalid config for an evaluator
     When: Setting control data
     Then: Returns 422 with validation error
     """
@@ -69,7 +69,7 @@ def test_evaluation_control_with_invalid_config_caught_early(client: TestClient)
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
-            "plugin": "regex",
+            "name": "regex",
             "config": {}  # Missing required 'pattern' field
         },
         "action": {"decision": "deny"}
@@ -87,7 +87,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
 ):
     """Test that errors field is populated when evaluator fails at runtime.
 
-    Given: A valid control with a plugin that crashes during evaluation
+    Given: A valid control with an evaluator that crashes during evaluation
     When: Evaluation is requested
     Then: Response has errors field populated and is_safe=False (for deny)
     """
@@ -101,25 +101,25 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
-            "plugin": "regex",
+            "name": "regex",
             "config": {"pattern": "test"}
         },
         "action": {"decision": "deny"}
     }
     agent_uuid, control_name = create_and_assign_policy(client, control_data)
 
-    # Mock get_evaluator to return a plugin that throws
+    # Mock get_evaluator_instance to return an evaluator that throws
     mock_evaluator = MagicMock()
-    mock_evaluator.evaluate = AsyncMock(side_effect=RuntimeError("Simulated plugin crash"))
+    mock_evaluator.evaluate = AsyncMock(side_effect=RuntimeError("Simulated evaluator crash"))
     mock_evaluator.get_timeout_seconds = MagicMock(return_value=30.0)
 
     # Patch where it's used (in core module), not where it's defined
     import agent_control_engine.core as core_module
 
-    def mock_get_evaluator(config):
+    def mock_get_evaluator_instance(config):
         return mock_evaluator
 
-    monkeypatch.setattr(core_module, "get_evaluator", mock_get_evaluator)
+    monkeypatch.setattr(core_module, "get_evaluator_instance", mock_get_evaluator_instance)
 
     # When: Sending evaluation request
     payload = Step(type="llm_inference", name="test-step", input="test content", output=None)
@@ -145,7 +145,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     assert len(data["errors"]) == 1
     assert data["errors"][0]["control_name"] == control_name
     assert "RuntimeError" in data["errors"][0]["result"]["error"]
-    assert "Simulated plugin crash" in data["errors"][0]["result"]["error"]
+    assert "Simulated evaluator crash" in data["errors"][0]["result"]["error"]
 
     # No matches because evaluation failed
     assert data["matches"] is None or len(data["matches"]) == 0

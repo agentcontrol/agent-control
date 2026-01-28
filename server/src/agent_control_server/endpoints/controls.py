@@ -1,4 +1,4 @@
-from agent_control_engine import list_plugins
+from agent_control_engine import list_evaluators
 from agent_control_models import ControlDefinition
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
@@ -250,8 +250,8 @@ async def set_control_data(
         )
 
     # Validate evaluator config
-    plugin_ref = request.data.evaluator.plugin
-    agent_name, eval_name = parse_evaluator_ref(plugin_ref)
+    evaluator_ref = request.data.evaluator.name
+    agent_name, eval_name = parse_evaluator_ref(evaluator_ref)
 
     if agent_name is not None:
         # Agent-scoped evaluator: validate against agent's registered schema
@@ -306,10 +306,10 @@ async def set_control_data(
                 errors=[
                     ValidationErrorItem(
                         resource="Control",
-                        field="data.evaluator.plugin",
+                        field="data.evaluator.name",
                         code="evaluator_not_found",
                         message=f"Evaluator '{eval_name}' not found on agent '{agent_name}'",
-                        value=plugin_ref,
+                        value=evaluator_ref,
                     )
                 ],
             )
@@ -336,17 +336,17 @@ async def set_control_data(
                     ],
                 )
     else:
-        # Built-in or server-side plugin: validate if registered
-        plugin_cls = list_plugins().get(eval_name)
-        if plugin_cls is not None:
+        # Built-in or server-side evaluator: validate if registered
+        evaluator_cls = list_evaluators().get(eval_name)
+        if evaluator_cls is not None:
             try:
-                plugin_cls.config_model(**request.data.evaluator.config)
+                evaluator_cls.config_model(**request.data.evaluator.config)
             except ValidationError as e:
                 raise APIValidationError(
                     error_code=ErrorCode.INVALID_CONFIG,
-                    detail=f"Config validation failed for plugin '{eval_name}'",
+                    detail=f"Config validation failed for evaluator '{eval_name}'",
                     resource="Control",
-                    hint="Check the plugin's config schema for required fields and types.",
+                    hint="Check the evaluator's config schema for required fields and types.",
                     errors=[
                         ValidationErrorItem(
                             resource="Control",
@@ -363,9 +363,9 @@ async def set_control_data(
             except TypeError as e:
                 raise APIValidationError(
                     error_code=ErrorCode.INVALID_CONFIG,
-                    detail=f"Invalid config parameters for plugin '{eval_name}'",
+                    detail=f"Invalid config parameters for evaluator '{eval_name}'",
                     resource="Control",
-                    hint="Check the plugin's config schema for valid parameter names.",
+                    hint="Check the evaluator's config schema for valid parameter names.",
                     errors=[
                         ValidationErrorItem(
                             resource="Control",
@@ -375,7 +375,7 @@ async def set_control_data(
                         )
                     ],
                 )
-        # If plugin not found, allow it - might be a server-side registered plugin
+        # If evaluator not found, allow it - might be a server-side registered evaluator
         # that will be validated at runtime
 
     data_json = request.data.model_dump(mode="json", exclude_none=True, exclude_unset=True)

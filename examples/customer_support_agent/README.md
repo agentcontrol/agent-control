@@ -12,8 +12,8 @@ This example demonstrates how to integrate the `agent-control` SDK into an exist
 ## Quick Start
 
 ```bash
-# 1. Install SDK and plugins (first time only)
-pip install -e sdks/python -e plugins
+# 1. Install SDK and evaluators (first time only)
+pip install -e sdks/python -e evaluators
 
 # 2. Start all services (database, server, UI, demo controls)
 ./examples/customer_support_agent/demo.sh start
@@ -48,10 +48,10 @@ When you open the UI, you'll see the agent with controls already configured.
 
 ### First-Time Setup
 
-1. **Install the SDK and plugins**:
+1. **Install the SDK and evaluators**:
    ```bash
    pip install -e sdks/python
-   pip install -e plugins
+   pip install -e evaluators
    ```
 
 2. **Install UI dependencies**:
@@ -267,7 +267,7 @@ check_stage: post
 selector:
   path: output
 evaluator:
-  plugin: regex
+  name: regex
   config:
     pattern: '\d{3}-\d{2}-\d{4}'  # SSN pattern
 action:
@@ -283,7 +283,7 @@ check_stage: pre
 selector:
   path: input
 evaluator:
-  plugin: regex
+  name: regex
   config:
     pattern: '(?i)(ignore.*instructions|system:|you are now)'
 action:
@@ -299,7 +299,7 @@ check_stage: pre
 selector:
   path: input
 evaluator:
-  plugin: luna2
+  name: luna2
   config:
     threshold: 0.8
 action:

@@ -32,7 +32,7 @@ Documentation = "https://github.com/yourusername/agent-control#readme"
 Repository = "https://github.com/yourusername/agent-control"
 
 [project.optional-dependencies]
-# Optional: Luna-2 plugin requires additional dependencies
+# Optional: Luna-2 evaluator requires additional dependencies
 luna2 = [
     "httpx>=0.24.0",
 ]
@@ -45,7 +45,7 @@ dev = [
     "mypy>=1.8.0",
     "agent-control-models",
     "agent-control-engine",
-    "agent-control-plugins",
+    "agent-control-evaluators",
 ]
 
 [build-system]
@@ -76,4 +76,4 @@ known-first-party = ["agent_control"]
 [tool.uv.sources]
 agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
-agent-control-plugins = { workspace = true }
+agent-control-evaluators = { workspace = true }

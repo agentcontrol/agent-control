@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "agent-control-engine",
     "agent-control-models",
-    "agent-control-plugins",
+    "agent-control-evaluators",
     "agent-control-sdk",
     "langchain>=0.3.0",
     "langchain-community>=0.3.0",
@@ -42,5 +42,5 @@ include = [
 agent-control-sdk = { path = "../../sdks/python", editable = true }
 agent-control-models = { path = "../../models", editable = true }
 agent-control-engine = { path = "../../engine", editable = true }
-agent-control-plugins = { path = "../../plugins", editable = true }
+agent-control-evaluators = { path = "../../evaluators", editable = true }
 

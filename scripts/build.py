@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build SDK and server packages with vendored dependencies.
 
-This script copies internal packages (models, engine, plugins) into the SDK and server
+This script copies internal packages (models, engine, evaluators) into the SDK and server
 source directories before building, then cleans up afterward. This allows the published
 wheels to be self-contained without requiring separate PyPI dependencies.
 
@@ -135,7 +135,7 @@ def build_server() -> None:
     print(f"Building agent-control-server v{version}")
 
     # Clean previous builds and vendored code
-    for pkg in ["agent_control_models", "agent_control_engine", "agent_control_plugins"]:
+    for pkg in ["agent_control_models", "agent_control_engine", "agent_control_evaluators"]:
         target = server_src / pkg
         if target.exists():
             shutil.rmtree(target)
@@ -154,8 +154,8 @@ def build_server() -> None:
         server_src / "agent_control_engine",
     )
     shutil.copytree(
-        ROOT / "plugins" / "src" / "agent_control_plugins",
-        server_src / "agent_control_plugins",
+        ROOT / "evaluators" / "src" / "agent_control_evaluators",
+        server_src / "agent_control_evaluators",
     )
 
     # Inject bundle metadata for conflict detection
@@ -170,7 +170,7 @@ def build_server() -> None:
         version,
     )
     inject_bundle_metadata(
-        server_src / "agent_control_plugins" / "__init__.py",
+        server_src / "agent_control_evaluators" / "__init__.py",
         "agent-control-server",
         version,
     )
@@ -183,7 +183,7 @@ def build_server() -> None:
         print(f"  Built agent-control-server v{version}")
     finally:
         # Clean up vendored code (don't commit it)
-        for pkg in ["agent_control_models", "agent_control_engine", "agent_control_plugins"]:
+        for pkg in ["agent_control_models", "agent_control_engine", "agent_control_evaluators"]:
             target = server_src / pkg
             if target.exists():
                 shutil.rmtree(target)

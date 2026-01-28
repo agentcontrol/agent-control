@@ -14,7 +14,7 @@ def test_list_evaluator_denylist_behavior(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.cmd"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["rm", "shutdown"],
                 "logic": "any",
@@ -62,7 +62,7 @@ def test_list_evaluator_allowlist_behavior(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "name"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["safe_tool"],
                 "logic": "any", 
@@ -109,7 +109,7 @@ def test_list_evaluator_case_insensitive(client: TestClient):
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["BlockMe"],
                 "case_sensitive": False,
@@ -142,7 +142,7 @@ def test_list_evaluator_list_input_any_match(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.tags"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["restricted"],
                 "logic": "any",
@@ -189,7 +189,7 @@ def test_list_evaluator_list_input_all_match(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.tags"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["safe_tag", "audit_approved"],
                 "logic": "all",
@@ -235,7 +235,7 @@ def test_list_evaluator_disallow_name(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "name"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["delete_user", "drop_db"],
                 "logic": "any",
@@ -278,7 +278,7 @@ def test_list_evaluator_allow_only_argument_values(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.region"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["us-east-1", "us-west-2"],
                 "logic": "any",
@@ -322,7 +322,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "name"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": [],
                 "logic": "any",
@@ -352,7 +352,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.count"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": [10, 20], # Integers in control
                 "logic": "any",
@@ -392,7 +392,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.query"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["(test)", "a.b*c"], # Literal parens and dot/star
                 "logic": "any",
@@ -433,7 +433,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.missing_arg"}, # Will be None
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["something"],
                 "logic": "any",
@@ -469,7 +469,7 @@ def test_list_evaluator_re2_corner_cases(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.item"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": large_list,
                 "logic": "any",
@@ -501,7 +501,7 @@ def test_list_evaluator_newline_strictness(client: TestClient):
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.val"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["exact"],
                 "logic": "any",

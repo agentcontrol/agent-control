@@ -20,7 +20,7 @@ from agent_control_models import (
     EvaluatorResult,
 )
 
-from .evaluators import get_evaluator
+from .evaluators import get_evaluator_instance
 from .selectors import select_data
 
 logger = logging.getLogger(__name__)
@@ -159,8 +159,8 @@ class ControlEngine:
             """Evaluate a single control, respecting cancellation and timeout."""
             async with semaphore:
                 try:
-                    evaluator = get_evaluator(eval_task.item.control.evaluator)
-                    # Use plugin's timeout or fall back to default
+                    evaluator = get_evaluator_instance(eval_task.item.control.evaluator)
+                    # Use evaluator's timeout or fall back to default
                     timeout = evaluator.get_timeout_seconds()
                     if timeout <= 0:
                         timeout = DEFAULT_EVALUATOR_TIMEOUT
@@ -184,7 +184,7 @@ class ControlEngine:
                     error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
                     logger.warning(
                         f"Evaluator timeout for control '{eval_task.item.name}' "
-                        f"(plugin: {eval_task.item.control.evaluator.plugin}): {error_msg}"
+                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}"
                     )
                     eval_task.result = EvaluatorResult(
                         matched=False,
@@ -198,7 +198,7 @@ class ControlEngine:
                     error_msg = f"{type(e).__name__}: {e}"
                     logger.warning(
                         f"Evaluator error for control '{eval_task.item.name}' "
-                        f"(plugin: {eval_task.item.control.evaluator.plugin}): {error_msg}"
+                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}"
                     )
                     eval_task.result = EvaluatorResult(
                         matched=False,

@@ -1,27 +1,27 @@
 """Tests for unified evaluator factory."""
 
 import pytest
-from agent_control_engine import list_plugins
+from agent_control_engine import list_evaluators
 from agent_control_engine.evaluators import (
     clear_evaluator_cache,
-    get_evaluator,
+    get_evaluator_instance,
 )
 from agent_control_models import (
     EvaluatorConfig,
-    RegexConfig,
+    RegexEvaluatorConfig,
 )
-from agent_control_plugins import ListPlugin, RegexPlugin
+from agent_control_evaluators import ListEvaluator, RegexEvaluator
 
 
-class TestRegexPlugin:
-    """Tests for the regex plugin via the evaluator factory."""
+class TestRegexEvaluator:
+    """Tests for the regex evaluator via the evaluator factory."""
 
     @pytest.mark.asyncio
     async def test_basic_match(self):
         """Test regex matches SSN pattern."""
         # Given: A regex evaluator with SSN pattern
-        config = EvaluatorConfig(plugin="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
-        evaluator = get_evaluator(config)
+        config = EvaluatorConfig(name="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
+        evaluator = get_evaluator_instance(config)
 
         # When: Evaluating text containing SSN
         result = await evaluator.evaluate("My SSN is 123-45-6789")
@@ -34,8 +34,8 @@ class TestRegexPlugin:
     async def test_no_match(self):
         """Test regex doesn't match when pattern not found."""
         # Given: A regex evaluator with SSN pattern
-        config = EvaluatorConfig(plugin="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
-        evaluator = get_evaluator(config)
+        config = EvaluatorConfig(name="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
+        evaluator = get_evaluator_instance(config)
 
         # When: Evaluating text without pattern
         result = await evaluator.evaluate("No numbers here")
@@ -48,8 +48,8 @@ class TestRegexPlugin:
     async def test_non_string_input(self):
         """Test non-string input is converted to string."""
         # Given: A regex evaluator
-        config = EvaluatorConfig(plugin="regex", config={"pattern": r"123"})
-        evaluator = get_evaluator(config)
+        config = EvaluatorConfig(name="regex", config={"pattern": r"123"})
+        evaluator = get_evaluator_instance(config)
 
         # When: Evaluating non-string input
         result = await evaluator.evaluate(12345)
@@ -61,8 +61,8 @@ class TestRegexPlugin:
     async def test_none_input(self):
         """Test handling of None input."""
         # Given: A regex evaluator
-        config = EvaluatorConfig(plugin="regex", config={"pattern": r".*"})
-        evaluator = get_evaluator(config)
+        config = EvaluatorConfig(name="regex", config={"pattern": r".*"})
+        evaluator = get_evaluator_instance(config)
 
         # When: Evaluating None
         result = await evaluator.evaluate(None)
@@ -76,14 +76,14 @@ class TestRegexPlugin:
         # Given/When: Creating config with invalid pattern
         # Then: Should raise ValueError
         with pytest.raises(ValueError):
-            RegexConfig(pattern="[")
+            RegexEvaluatorConfig(pattern="[")
 
     @pytest.mark.asyncio
     async def test_empty_pattern_matches_everything(self):
         """Test empty pattern matches everything."""
         # Given: A regex evaluator with empty pattern
-        config = EvaluatorConfig(plugin="regex", config={"pattern": ""})
-        evaluator = get_evaluator(config)
+        config = EvaluatorConfig(name="regex", config={"pattern": ""})
+        evaluator = get_evaluator_instance(config)
 
         # When: Evaluating any text
         result = await evaluator.evaluate("something")
@@ -92,18 +92,18 @@ class TestRegexPlugin:
         assert result.matched is True
 
 
-class TestListPlugin:
-    """Tests for the list plugin via the evaluator factory."""
+class TestListEvaluator:
+    """Tests for the list evaluator via the evaluator factory."""
 
     @pytest.mark.asyncio
     async def test_any_match(self):
         """Test list evaluator with any/match logic."""
         # Given: A list evaluator with blocklist items
         config = EvaluatorConfig(
-            plugin="list",
+            name="list",
             config={"values": ["bad", "evil"], "logic": "any", "match_on": "match"},
         )
-        evaluator = get_evaluator(config)
+        evaluator = get_evaluator_instance(config)
 
         # When/Then: Blocklist items match, others don't
         assert (await evaluator.evaluate("bad")).matched is True
@@ -115,10 +115,10 @@ class TestListPlugin:
         """Test list evaluator as allowlist (any/no_match)."""
         # Given: A list evaluator as allowlist
         config = EvaluatorConfig(
-            plugin="list",
+            name="list",
             config={"values": ["safe", "ok"], "logic": "any", "match_on": "no_match"},
         )
-        evaluator = get_evaluator(config)
+        evaluator = get_evaluator_instance(config)
 
         # When/Then: Allowlist items don't match, others do
         assert (await evaluator.evaluate("safe")).matched is False
@@ -130,10 +130,10 @@ class TestListPlugin:
         """Test list evaluator with all/match logic."""
         # Given: A list evaluator with all/match logic
         config = EvaluatorConfig(
-            plugin="list",
+            name="list",
             config={"values": ["valid1", "valid2"], "logic": "all", "match_on": "match"},
         )
-        evaluator = get_evaluator(config)
+        evaluator = get_evaluator_instance(config)
 
         # When/Then: Matches only when all values present
         assert (await evaluator.evaluate(["valid1", "valid2"])).matched is True
@@ -145,47 +145,47 @@ class TestListPlugin:
         """Test case-insensitive matching."""
         # Given: A case-insensitive list evaluator
         config = EvaluatorConfig(
-            plugin="list",
+            name="list",
             config={"values": ["MixedCase"], "case_sensitive": False, "match_on": "match"},
         )
-        evaluator = get_evaluator(config)
+        evaluator = get_evaluator_instance(config)
 
         # When/Then: Matches regardless of case
         assert (await evaluator.evaluate("mixedcase")).matched is True
         assert (await evaluator.evaluate("MIXEDCASE")).matched is True
 
 
-class TestGetEvaluator:
-    """Tests for the get_evaluator factory function."""
+class TestGetEvaluatorInstance:
+    """Tests for the get_evaluator_instance factory function."""
 
-    def test_get_evaluator_returns_plugin_instance(self):
-        """Test factory returns correct plugin type."""
+    def test_get_evaluator_instance_returns_correct_type(self):
+        """Test factory returns correct evaluator type."""
         # Given: An evaluator config
-        config = EvaluatorConfig(plugin="regex", config={"pattern": "abc"})
+        config = EvaluatorConfig(name="regex", config={"pattern": "abc"})
         # When: Getting evaluator
-        evaluator = get_evaluator(config)
+        evaluator = get_evaluator_instance(config)
 
-        # Then: Returns correct plugin type
-        assert isinstance(evaluator, RegexPlugin)
+        # Then: Returns correct evaluator type
+        assert isinstance(evaluator, RegexEvaluator)
         assert evaluator.config.pattern == "abc"
 
-    def test_get_evaluator_unknown_plugin(self):
-        """Test error when plugin not found."""
-        # Given: Config for nonexistent plugin
-        config = EvaluatorConfig(plugin="nonexistent", config={})
+    def test_get_evaluator_instance_unknown_evaluator(self):
+        """Test error when evaluator not found."""
+        # Given: Config for nonexistent evaluator
+        config = EvaluatorConfig(name="nonexistent", config={})
 
         # When/Then: Should raise ValueError
         with pytest.raises(ValueError, match="not found"):
-            get_evaluator(config)
+            get_evaluator_instance(config)
 
-    def test_list_plugins(self):
-        """Test listing available plugins."""
-        # Given/When: Getting available plugins
-        plugins = list_plugins()
+    def test_list_evaluators(self):
+        """Test listing available evaluators."""
+        # Given/When: Getting available evaluators
+        evaluators = list_evaluators()
 
-        # Then: Should include built-in plugins
-        assert "regex" in plugins
-        assert "list" in plugins
+        # Then: Should include built-in evaluators
+        assert "regex" in evaluators
+        assert "list" in evaluators
 
 
 class TestEvaluatorCache:
@@ -202,12 +202,12 @@ class TestEvaluatorCache:
     def test_evaluator_cache_hit(self):
         """Test that same config returns same cached instance."""
         # Given: An evaluator config
-        config = EvaluatorConfig(plugin="regex", config={"pattern": "test"})
+        config = EvaluatorConfig(name="regex", config={"pattern": "test"})
 
         # When: First call creates instance
-        evaluator1 = get_evaluator(config)
+        evaluator1 = get_evaluator_instance(config)
         # When: Second call with same config
-        evaluator2 = get_evaluator(config)
+        evaluator2 = get_evaluator_instance(config)
 
         # Then: Should return same cached instance
         assert evaluator1 is evaluator2, "Same config should return cached instance"
@@ -215,45 +215,45 @@ class TestEvaluatorCache:
     def test_evaluator_cache_miss_different_config(self):
         """Test that different configs return different instances."""
         # Given: Two different configs
-        config1 = EvaluatorConfig(plugin="regex", config={"pattern": "test1"})
-        config2 = EvaluatorConfig(plugin="regex", config={"pattern": "test2"})
+        config1 = EvaluatorConfig(name="regex", config={"pattern": "test1"})
+        config2 = EvaluatorConfig(name="regex", config={"pattern": "test2"})
 
         # When: Getting evaluators
-        evaluator1 = get_evaluator(config1)
-        evaluator2 = get_evaluator(config2)
+        evaluator1 = get_evaluator_instance(config1)
+        evaluator2 = get_evaluator_instance(config2)
 
         # Then: Should return different instances
         assert evaluator1 is not evaluator2, "Different configs should return different instances"
 
-    def test_evaluator_cache_miss_different_plugin(self):
-        """Test that same config but different plugins return different instances."""
-        # Given: Two configs with different plugins
-        config1 = EvaluatorConfig(plugin="regex", config={"pattern": "bad"})
-        config2 = EvaluatorConfig(plugin="list", config={"values": ["bad"]})
+    def test_evaluator_cache_miss_different_evaluator(self):
+        """Test that same config but different evaluators return different instances."""
+        # Given: Two configs with different evaluators
+        config1 = EvaluatorConfig(name="regex", config={"pattern": "bad"})
+        config2 = EvaluatorConfig(name="list", config={"values": ["bad"]})
 
         # When: Getting evaluators
-        evaluator1 = get_evaluator(config1)
-        evaluator2 = get_evaluator(config2)
+        evaluator1 = get_evaluator_instance(config1)
+        evaluator2 = get_evaluator_instance(config2)
 
-        # Then: Should return different plugin types
+        # Then: Should return different evaluator types
         assert evaluator1 is not evaluator2
-        assert isinstance(evaluator1, RegexPlugin)
-        assert isinstance(evaluator2, ListPlugin)
+        assert isinstance(evaluator1, RegexEvaluator)
+        assert isinstance(evaluator2, ListEvaluator)
 
     def test_evaluator_cache_clear_all(self):
         """Test that clear_evaluator_cache clears all entries."""
         # Given: Two cached evaluators
-        config1 = EvaluatorConfig(plugin="regex", config={"pattern": "test1"})
-        config2 = EvaluatorConfig(plugin="list", config={"values": ["test"]})
-        evaluator1a = get_evaluator(config1)
-        evaluator2a = get_evaluator(config2)
+        config1 = EvaluatorConfig(name="regex", config={"pattern": "test1"})
+        config2 = EvaluatorConfig(name="list", config={"values": ["test"]})
+        evaluator1a = get_evaluator_instance(config1)
+        evaluator2a = get_evaluator_instance(config2)
 
         # When: Clearing cache
         clear_evaluator_cache()
 
         # When: Getting instances again
-        evaluator1b = get_evaluator(config1)
-        evaluator2b = get_evaluator(config2)
+        evaluator1b = get_evaluator_instance(config1)
+        evaluator2b = get_evaluator_instance(config2)
 
         # Then: Both should be new instances
         assert evaluator1a is not evaluator1b, "Should be new instance after clear"

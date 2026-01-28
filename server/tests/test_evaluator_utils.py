@@ -11,8 +11,8 @@ from agent_control_server.services.evaluator_utils import (
 class TestParseEvaluatorRef:
     """Tests for parse_evaluator_ref function."""
 
-    def test_builtin_plugin(self) -> None:
-        """Given a built-in plugin name, when parsing, then returns None for agent."""
+    def test_builtin_evaluator(self) -> None:
+        """Given a built-in evaluator name, when parsing, then returns None for agent."""
         # When
         agent, name = parse_evaluator_ref("regex")
 
@@ -47,8 +47,8 @@ class TestParseEvaluatorRef:
         assert agent is None
         assert name == ""
 
-    def test_list_plugin(self) -> None:
-        """Given the list built-in plugin, when parsing, then returns None for agent."""
+    def test_list_evaluator(self) -> None:
+        """Given the list built-in evaluator, when parsing, then returns None for agent."""
         # When
         agent, name = parse_evaluator_ref("list")
 

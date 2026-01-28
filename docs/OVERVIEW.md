@@ -40,7 +40,7 @@ Example: *"If the output contains an SSN pattern, block the response."*
   "scope": { "step_types": ["llm_inference"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
-    "plugin": "regex",
+    "name": "regex",
     "config": { "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b" }
   },
   "action": { "decision": "deny" }
@@ -95,7 +95,7 @@ A **Selector** defines *what data* to extract from the payload for evaluation.
 
 ### 🔍 Evaluators
 
-An **Evaluator** defines *how* to analyze the selected data. Agent Control provides built-in evaluators and supports custom plugins.
+An **Evaluator** defines *how* to analyze the selected data. Agent Control provides built-in evaluators and supports custom evaluators.
 
 ### ⚡ Actions
 
@@ -138,7 +138,7 @@ Pattern matching using Google RE2 (safe from ReDoS attacks).
 ```json
 // Block Social Security Numbers
 {
-  "plugin": "regex",
+  "name": "regex",
   "config": {
     "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"
   }
@@ -146,7 +146,7 @@ Pattern matching using Google RE2 (safe from ReDoS attacks).
 
 // Block credit card numbers (case-insensitive "card" + digits)
 {
-  "plugin": "regex",
+  "name": "regex",
   "config": {
     "pattern": "card.*\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}",
     "flags": ["IGNORECASE"]
@@ -155,7 +155,7 @@ Pattern matching using Google RE2 (safe from ReDoS attacks).
 
 // Block AWS access keys
 {
-  "plugin": "regex",
+  "name": "regex",
   "config": {
     "pattern": "AKIA[0-9A-Z]{16}"
   }
@@ -188,7 +188,7 @@ Flexible value matching with multiple modes and logic options.
 ```json
 // Block admin/root keywords (any match, contains, case-insensitive)
 {
-  "plugin": "list",
+  "name": "list",
   "config": {
     "values": ["admin", "root", "sudo", "superuser"],
     "logic": "any",
@@ -199,7 +199,7 @@ Flexible value matching with multiple modes and logic options.
 
 // Require approval keyword (trigger if NOT found)
 {
-  "plugin": "list",
+  "name": "list",
   "config": {
     "values": ["APPROVED", "VERIFIED"],
     "match_on": "no_match",
@@ -209,7 +209,7 @@ Flexible value matching with multiple modes and logic options.
 
 // Block competitor mentions
 {
-  "plugin": "list",
+  "name": "list",
   "config": {
     "values": ["CompetitorA", "CompetitorB", "CompetitorC"],
     "match_mode": "contains",
@@ -219,7 +219,7 @@ Flexible value matching with multiple modes and logic options.
 
 // Allowlist: only permit specific tools
 {
-  "plugin": "list",
+  "name": "list",
   "config": {
     "values": ["search", "calculate", "lookup"],
     "match_on": "no_match"
@@ -236,7 +236,7 @@ Flexible value matching with multiple modes and logic options.
 
 ---
 
-### 3. Luna-2 Plugin (`galileo-luna2`)
+### 3. Luna-2 Evaluator (`galileo-luna2`)
 
 AI-powered detection using Galileo's Luna-2 small language models. Provides real-time, low-latency evaluation for complex patterns that can't be caught with regex or lists.
 
@@ -267,7 +267,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 ```json
 // Block toxic inputs (score > 0.5)
 {
-  "plugin": "galileo-luna2",
+  "name": "galileo-luna2",
   "config": {
     "metric": "input_toxicity",
     "operator": "gt",
@@ -278,7 +278,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Block prompt injection attempts
 {
-  "plugin": "galileo-luna2",
+  "name": "galileo-luna2",
   "config": {
     "metric": "prompt_injection",
     "operator": "gt",
@@ -289,7 +289,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Flag potential hallucinations (warn but allow)
 {
-  "plugin": "galileo-luna2",
+  "name": "galileo-luna2",
   "config": {
     "metric": "hallucination",
     "operator": "gt",
@@ -299,7 +299,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Using a central stage (pre-defined server-side rules)
 {
-  "plugin": "galileo-luna2",
+  "name": "galileo-luna2",
   "config": {
     "stage_type": "central",
     "stage_name": "production-safety",
@@ -365,7 +365,7 @@ Every evaluation is logged with:
 Answer questions like: *"Why was this blocked?"* or *"What threats did we stop this week?"*
 
 ### 🔌 Pluggable Architecture
-Use built-in evaluators or bring your own. The plugin system supports:
+Use built-in evaluators or bring your own. The evaluator system supports:
 - Simple pattern matching (regex, word lists)
 - AI-powered detection (toxicity, prompt injection, hallucination)
 - Custom business logic
@@ -397,17 +397,17 @@ Choose how to handle failures:
 ┌──────────────────────────────────────────────────────────────────┐
 │                      Agent Control Server                         │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │  Plugins   │  │   Agents   │  │
+│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
 │  │    API     │  │    API     │  │  Registry  │  │    API     │  │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                         Plugin Ecosystem                          │
+│                         Evaluator Ecosystem                          │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
 │  │   Regex    │  │    List    │  │   Luna-2   │  │   Custom   │  │
-│  │ Evaluator  │  │ Evaluator  │  │   Plugin   │  │  Plugins   │  │
+│  │ Evaluator  │  │ Evaluator  │  │ Evaluator  │  │ Evaluators │  │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -419,45 +419,45 @@ Choose how to handle failures:
 | **SDK** | Python client library with `@control()` decorator |
 | **Server** | FastAPI service that stores and evaluates controls |
 | **Engine** | Core evaluation logic (can run locally or server-side) |
-| **Plugins** | Extensible evaluators for different detection methods |
+| **Evaluators** | Extensible evaluators for different detection methods |
 | **Models** | Shared Pydantic models for type-safe communication |
 
 ---
 
-## Creating Custom Plugins
+## Creating Custom Evaluators
 
-Partners and developers can create custom plugins to extend Agent Control with their own detection capabilities.
+Partners and developers can create custom evaluators to extend Agent Control with their own detection capabilities.
 
-### Plugin Interface
+### Evaluator Interface
 
-Every plugin implements the `PluginEvaluator` base class:
+Every evaluator implements the `Evaluator` base class:
 
 ```python
 from typing import Any
 from pydantic import BaseModel
-from agent_control_models import EvaluatorResult, PluginEvaluator, PluginMetadata, register_plugin
+from agent_control_models import EvaluatorResult, Evaluator, EvaluatorMetadata, register_evaluator
 
 
-class MyPluginConfig(BaseModel):
-    """Configuration schema for your plugin."""
+class MyEvaluatorConfig(BaseModel):
+    """Configuration schema for your evaluator."""
     threshold: float = 0.5
     custom_option: str = "default"
 
 
-@register_plugin
-class MyCustomPlugin(PluginEvaluator[MyPluginConfig]):
-    """Your custom evaluator plugin."""
-    
-    metadata = PluginMetadata(
-        name="my-custom-plugin",
+@register_evaluator
+class MyCustomEvaluator(Evaluator[MyEvaluatorConfig]):
+    """Your custom evaluator."""
+
+    metadata = EvaluatorMetadata(
+        name="my-custom-evaluator",
         version="1.0.0",
         description="Detects custom patterns using proprietary logic",
         requires_api_key=True,  # Set to True if you need credentials
         timeout_ms=5000,
     )
-    config_model = MyPluginConfig
+    config_model = MyEvaluatorConfig
 
-    def __init__(self, config: MyPluginConfig) -> None:
+    def __init__(self, config: MyEvaluatorConfig) -> None:
         """Initialize with validated configuration."""
         super().__init__(config)
         # Set up any clients, load models, etc.
@@ -495,28 +495,28 @@ class MyCustomPlugin(PluginEvaluator[MyPluginConfig]):
         return 0.0
 ```
 
-### Plugin Registration
+### Evaluator Registration
 
-Plugins are discovered automatically via Python entry points. To make your plugin available:
+Evaluators are discovered automatically via Python entry points. To make your evaluator available:
 
-1. **Create a Python package** with your plugin class decorated with `@register_plugin`
+1. **Create a Python package** with your evaluator class decorated with `@register_evaluator`
 2. **Register as an entry point** in your `pyproject.toml`:
    ```toml
-   [project.entry-points."agent_control.plugins"]
-   my-plugin = "my_package.plugin:MyPlugin"
+   [project.entry-points."agent_control.evaluators"]
+   my-evaluator = "my_package.evaluator:MyEvaluator"
    ```
 3. **Install it** in the Agent Control environment
 
 ```bash
-# Install your plugin
-pip install my-custom-plugin
+# Install your evaluator
+pip install my-custom-evaluator
 
-# It's now available for use in controls
+# It's now available
 ```
 
 ### Optional Dependencies
 
-If your plugin has optional dependencies, override `is_available()`:
+If your evaluator has optional dependencies, override `is_available()`:
 
 ```python
 try:
@@ -525,21 +525,21 @@ try:
 except ImportError:
     AVAILABLE = False
 
-@register_plugin
-class MyPlugin(PluginEvaluator[MyConfig]):
+@register_evaluator
+class MyEvaluator(Evaluator[MyConfig]):
     @classmethod
     def is_available(cls) -> bool:
         return AVAILABLE
 ```
 
-When `is_available()` returns `False`, the plugin is silently skipped during registration.
+When `is_available()` returns `False`, the evaluator is silently skipped during registration.
 
-### Plugin Best Practices
+### Evaluator Best Practices
 
 | Practice | Why |
 |----------|-----|
 | **Use Pydantic for config** | Automatic validation and documentation |
-| **Implement timeouts** | Prevent slow plugins from blocking agents |
+| **Implement timeouts** | Prevent slow evaluators from blocking agents |
 | **Return confidence scores** | Enable threshold-based filtering |
 | **Include metadata** | Helps with debugging and observability |
 | **Handle errors gracefully** | Respect the `on_error` configuration |
@@ -550,11 +550,11 @@ When `is_available()` returns `False`, the plugin is silently skipped during reg
 Here's how a partner might integrate their content moderation API:
 
 ```python
-@register_plugin
-class ContentModerationPlugin(PluginEvaluator[ContentModConfig]):
+@register_evaluator
+class ContentModerationEvaluator(Evaluator[ContentModConfig]):
     """Integration with Acme Content Moderation API."""
     
-    metadata = PluginMetadata(
+    metadata = EvaluatorMetadata(
         name="acme-content-mod",
         version="1.0.0",
         description="Acme Inc. content moderation",
@@ -641,7 +641,7 @@ docker-compose up
 ## Roadmap
 
 - [ ] Web UI for control management
-- [ ] More built-in plugins (OpenAI Moderation, Perspective API, etc.)
+- [ ] More built-in evaluators (OpenAI Moderation, Perspective API, etc.)
 - [ ] Metrics and analytics dashboard
 - [ ] Multi-language SDK support (TypeScript, Go)
 - [ ] Webhook notifications for violations
@@ -652,11 +652,11 @@ docker-compose up
 
 We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
 
-### Adding a Plugin
+### Adding an Evaluator
 
 1. Fork the repository
-2. Create your plugin in `plugins/src/agent_control_plugins/`
-3. Add tests in `plugins/tests/`
+2. Create your evaluator in `evaluators/src/agent_control_evaluators/`
+3. Add tests in `evaluators/tests/`
 4. Submit a pull request
 
 ---

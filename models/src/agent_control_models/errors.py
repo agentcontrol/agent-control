@@ -317,9 +317,9 @@ class ProblemDetail(BaseModel):
                         },
                         {
                             "resource": "Control",
-                            "field": "data.evaluator.plugin",
+                            "field": "data.evaluator.name",
                             "code": "not_found",
-                            "message": "Plugin 'nonexistent' not registered",
+                            "message": "Evaluator 'nonexistent' not registered",
                         },
                     ],
                     "hint": "Check the evaluator configuration against the schema.",

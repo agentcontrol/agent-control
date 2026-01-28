@@ -20,10 +20,10 @@ from .controls import (
     ControlSelector,
     EvaluatorConfig,
     EvaluatorResult,
-    JSONControlEvaluatorPluginConfig,
-    ListConfig,
-    RegexConfig,
-    SQLControlEvaluatorPluginConfig,
+    JSONEvaluatorConfig,
+    ListEvaluatorConfig,
+    RegexEvaluatorConfig,
+    SQLEvaluatorConfig,
 )
 from .errors import (
     ERROR_TITLES,
@@ -41,6 +41,14 @@ from .evaluation import (
     EvaluationResponse,
     EvaluationResult,
 )
+from .evaluator import (
+    Evaluator,
+    EvaluatorMetadata,
+    clear_evaluators,
+    get_all_evaluators,
+    get_evaluator,
+    register_evaluator,
+)
 from .health import HealthResponse
 from .observability import (
     BatchEventsRequest,
@@ -51,14 +59,6 @@ from .observability import (
     EventQueryResponse,
     StatsRequest,
     StatsResponse,
-)
-from .plugin import (
-    PluginEvaluator,
-    PluginMetadata,
-    clear_plugins,
-    get_all_plugins,
-    get_plugin,
-    register_plugin,
 )
 from .policy import Policy
 from .server import (
@@ -106,18 +106,18 @@ __all__ = [
     "ControlSelector",
     "EvaluatorConfig",
     "EvaluatorResult",
-    # Plugin configs
-    "JSONControlEvaluatorPluginConfig",
-    "ListConfig",
-    "RegexConfig",
-    "SQLControlEvaluatorPluginConfig",
-    # Plugin system
-    "PluginEvaluator",
-    "PluginMetadata",
-    "register_plugin",
-    "get_plugin",
-    "get_all_plugins",
-    "clear_plugins",
+    # Evaluator configs
+    "JSONEvaluatorConfig",
+    "ListEvaluatorConfig",
+    "RegexEvaluatorConfig",
+    "SQLEvaluatorConfig",
+    # Evaluator system
+    "Evaluator",
+    "EvaluatorMetadata",
+    "register_evaluator",
+    "get_evaluator",
+    "get_all_evaluators",
+    "clear_evaluators",
     # Error models (RFC 7807 / Kubernetes / GitHub-style)
     "ProblemDetail",
     "ErrorCode",

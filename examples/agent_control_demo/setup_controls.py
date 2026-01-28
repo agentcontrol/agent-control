@@ -129,7 +129,7 @@ async def create_regex_control(client: AgentControlClient) -> int:
         "scope": {"step_types": ["llm_inference"], "stages": ["post"]},  # Check AFTER
         "selector": {"path": "output"},
         "evaluator": {
-            "plugin": "regex",
+            "name": "regex",
             "config": {
                 "pattern": r"\b\d{3}-\d{2}-\d{4}\b",  # SSN pattern
                 "flags": []
@@ -161,7 +161,7 @@ async def create_list_control(client: AgentControlClient) -> int:
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},  # Check BEFORE
         "selector": {"path": "input"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": ["DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT"],
                 "logic": "any",  # Block if ANY keyword is found
@@ -307,7 +307,7 @@ async def update_control(client: AgentControlClient, control_id: int) -> None:
         "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
-            "plugin": "list",
+            "name": "list",
             "config": {
                 "values": [
                     "DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT",

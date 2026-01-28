@@ -1,48 +1,48 @@
-"""Tests for plugin auto-discovery."""
+"""Tests for evaluator auto-discovery."""
 
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 from pydantic import BaseModel
 
-from agent_control_engine import discover_plugins, ensure_plugins_discovered, list_plugins
-from agent_control_engine.discovery import reset_discovery
+from agent_control_engine import discover_evaluators, ensure_evaluators_discovered, list_evaluators
+from agent_control_engine.discovery import reset_evaluator_discovery
 from agent_control_models import (
+    Evaluator,
+    EvaluatorMetadata,
     EvaluatorResult,
-    PluginEvaluator,
-    PluginMetadata,
-    clear_plugins,
-    get_plugin,
-    register_plugin,
+    clear_evaluators,
+    get_evaluator,
+    register_evaluator,
 )
 
 
-class TestDiscoverPlugins:
-    """Tests for discover_plugins() function."""
+class TestDiscoverEvaluators:
+    """Tests for discover_evaluators() function."""
 
-    def test_discover_plugins_loads_builtins(self) -> None:
-        """Test that built-in plugins are loaded."""
-        discover_plugins()
+    def test_discover_evaluators_loads_builtins(self) -> None:
+        """Test that built-in evaluators are loaded."""
+        discover_evaluators()
 
-        plugins = list_plugins()
-        assert "regex" in plugins
-        assert "list" in plugins
+        evaluators = list_evaluators()
+        assert "regex" in evaluators
+        assert "list" in evaluators
 
     @patch("agent_control_engine.discovery.entry_points")
-    def test_discover_plugins_loads_entry_points(
+    def test_discover_evaluators_loads_entry_points(
         self, mock_entry_points: MagicMock
     ) -> None:
-        """Test that entry point plugins are discovered."""
+        """Test that entry point evaluators are discovered."""
 
-        # Create mock plugin
+        # Create mock evaluator
         class MockConfig(BaseModel):
             pass
 
-        class MockPlugin(PluginEvaluator[MockConfig]):
-            metadata = PluginMetadata(
-                name="mock-ep-plugin",
+        class MockEvaluator(Evaluator[MockConfig]):
+            metadata = EvaluatorMetadata(
+                name="mock-ep-evaluator",
                 version="1.0.0",
-                description="Test plugin",
+                description="Test evaluator",
             )
             config_model = MockConfig
 
@@ -50,82 +50,82 @@ class TestDiscoverPlugins:
                 return EvaluatorResult(matched=False, confidence=0.0, message="test")
 
         mock_ep = MagicMock()
-        mock_ep.name = "mock-ep-plugin"
-        mock_ep.load.return_value = MockPlugin
+        mock_ep.name = "mock-ep-evaluator"
+        mock_ep.load.return_value = MockEvaluator
         mock_entry_points.return_value = [mock_ep]
 
-        count = discover_plugins()
+        count = discover_evaluators()
 
-        mock_entry_points.assert_called_once_with(group="agent_control.plugins")
-        plugins = list_plugins()
-        assert "mock-ep-plugin" in plugins
+        mock_entry_points.assert_called_once_with(group="agent_control.evaluators")
+        evaluators = list_evaluators()
+        assert "mock-ep-evaluator" in evaluators
         # Count only includes entry-point registrations (not built-ins loaded via import)
         assert count >= 1
 
     @patch("agent_control_engine.discovery.entry_points")
-    def test_discover_plugins_handles_load_error(
+    def test_discover_evaluators_handles_load_error(
         self, mock_entry_points: MagicMock
     ) -> None:
-        """Test graceful handling of plugin load errors."""
+        """Test graceful handling of evaluator load errors."""
         mock_ep = MagicMock()
-        mock_ep.name = "bad-plugin"
+        mock_ep.name = "bad-evaluator"
         mock_ep.load.side_effect = ImportError("Missing dependency")
         mock_entry_points.return_value = [mock_ep]
 
         # Should not raise
-        discover_plugins()
+        discover_evaluators()
 
-    def test_discover_plugins_only_runs_once(self) -> None:
+    def test_discover_evaluators_only_runs_once(self) -> None:
         """Test that discovery only runs once."""
-        count1 = discover_plugins()
-        count2 = discover_plugins()
+        count1 = discover_evaluators()
+        count2 = discover_evaluators()
 
-        # First call loads plugins, second call returns 0 (already discovered)
+        # First call loads evaluators, second call returns 0 (already discovered)
         assert count2 == 0
-        # Verify plugins are available (count may be 0 if no entry-point plugins)
-        plugins = list_plugins()
-        assert "regex" in plugins
-        assert "list" in plugins
+        # Verify evaluators are available (count may be 0 if no entry-point evaluators)
+        evaluators = list_evaluators()
+        assert "regex" in evaluators
+        assert "list" in evaluators
 
-    def test_ensure_plugins_discovered_triggers_discovery(self) -> None:
-        """Test that ensure_plugins_discovered triggers discovery."""
-        ensure_plugins_discovered()
+    def test_ensure_evaluators_discovered_triggers_discovery(self) -> None:
+        """Test that ensure_evaluators_discovered triggers discovery."""
+        ensure_evaluators_discovered()
 
-        plugins = list_plugins()
-        # Should have at least built-in plugins
-        assert isinstance(plugins, dict)
-        assert "regex" in plugins
-        assert "list" in plugins
+        evaluators = list_evaluators()
+        # Should have at least built-in evaluators
+        assert isinstance(evaluators, dict)
+        assert "regex" in evaluators
+        assert "list" in evaluators
 
     def test_reset_discovery_allows_rediscovery(self) -> None:
-        """Test that reset_discovery allows discovery to run again."""
-        discover_plugins()
-        plugins1 = list_plugins()
-        assert "regex" in plugins1
+        """Test that reset_evaluator_discovery allows discovery to run again."""
+        discover_evaluators()
+        evaluators1 = list_evaluators()
+        assert "regex" in evaluators1
 
         # After reset, discovery should run again
-        reset_discovery()
-        clear_plugins()
+        reset_evaluator_discovery()
+        clear_evaluators()
 
-        discover_plugins()
-        plugins2 = list_plugins()
-        assert "regex" in plugins2
-        assert "list" in plugins2
+        discover_evaluators()
+        evaluators2 = list_evaluators()
+        assert "regex" in evaluators2
+        assert "list" in evaluators2
 
     @patch("agent_control_engine.discovery.entry_points")
-    def test_discover_plugins_skips_unavailable(
+    def test_discover_evaluators_skips_unavailable(
         self, mock_entry_points: MagicMock
     ) -> None:
-        """Test that plugins with is_available() returning False are skipped."""
+        """Test that evaluators with is_available() returning False are skipped."""
 
         class MockConfig(BaseModel):
             pass
 
-        class UnavailablePlugin(PluginEvaluator[MockConfig]):
-            metadata = PluginMetadata(
-                name="unavailable-plugin",
+        class UnavailableEvaluator(Evaluator[MockConfig]):
+            metadata = EvaluatorMetadata(
+                name="unavailable-evaluator",
                 version="1.0.0",
-                description="Plugin with missing deps",
+                description="Evaluator with missing deps",
             )
             config_model = MockConfig
 
@@ -137,31 +137,31 @@ class TestDiscoverPlugins:
                 return EvaluatorResult(matched=False, confidence=0.0, message="test")
 
         mock_ep = MagicMock()
-        mock_ep.name = "unavailable-plugin"
-        mock_ep.load.return_value = UnavailablePlugin
+        mock_ep.name = "unavailable-evaluator"
+        mock_ep.load.return_value = UnavailableEvaluator
         mock_entry_points.return_value = [mock_ep]
 
-        count = discover_plugins()
+        count = discover_evaluators()
 
-        # Plugin should NOT be registered
-        plugins = list_plugins()
-        assert "unavailable-plugin" not in plugins
+        # Evaluator should NOT be registered
+        evaluators = list_evaluators()
+        assert "unavailable-evaluator" not in evaluators
         assert count == 0
 
     @patch("agent_control_engine.discovery.entry_points")
-    def test_discover_plugins_registers_available(
+    def test_discover_evaluators_registers_available(
         self, mock_entry_points: MagicMock
     ) -> None:
-        """Test that plugins with is_available() returning True are registered."""
+        """Test that evaluators with is_available() returning True are registered."""
 
         class MockConfig(BaseModel):
             pass
 
-        class AvailablePlugin(PluginEvaluator[MockConfig]):
-            metadata = PluginMetadata(
-                name="available-plugin",
+        class AvailableEvaluator(Evaluator[MockConfig]):
+            metadata = EvaluatorMetadata(
+                name="available-evaluator",
                 version="1.0.0",
-                description="Plugin with all deps",
+                description="Evaluator with all deps",
             )
             config_model = MockConfig
 
@@ -173,30 +173,30 @@ class TestDiscoverPlugins:
                 return EvaluatorResult(matched=False, confidence=0.0, message="test")
 
         mock_ep = MagicMock()
-        mock_ep.name = "available-plugin"
-        mock_ep.load.return_value = AvailablePlugin
+        mock_ep.name = "available-evaluator"
+        mock_ep.load.return_value = AvailableEvaluator
         mock_entry_points.return_value = [mock_ep]
 
-        count = discover_plugins()
+        count = discover_evaluators()
 
-        # Plugin should be registered
-        plugins = list_plugins()
-        assert "available-plugin" in plugins
+        # Evaluator should be registered
+        evaluators = list_evaluators()
+        assert "available-evaluator" in evaluators
         assert count == 1
 
 
 class TestIsAvailable:
-    """Tests for the is_available() plugin method."""
+    """Tests for the is_available() evaluator method."""
 
     def test_base_class_is_available_returns_true(self) -> None:
-        """Test that base PluginEvaluator.is_available() returns True by default."""
+        """Test that base Evaluator.is_available() returns True by default."""
 
         class MockConfig(BaseModel):
             pass
 
-        class TestPlugin(PluginEvaluator[MockConfig]):
-            metadata = PluginMetadata(
-                name="test-plugin",
+        class TestEvaluator(Evaluator[MockConfig]):
+            metadata = EvaluatorMetadata(
+                name="test-evaluator",
                 version="1.0.0",
                 description="Test",
             )
@@ -206,24 +206,24 @@ class TestIsAvailable:
                 return EvaluatorResult(matched=False, confidence=0.0, message="test")
 
         # Default is_available() should return True
-        assert TestPlugin.is_available() is True
+        assert TestEvaluator.is_available() is True
 
 
-class TestRegisterPluginRespectsIsAvailable:
-    """Tests that @register_plugin decorator respects is_available()."""
+class TestRegisterEvaluatorRespectsIsAvailable:
+    """Tests that @register_evaluator decorator respects is_available()."""
 
-    def test_register_plugin_skips_unavailable(self) -> None:
-        """Test that @register_plugin skips plugins where is_available() returns False."""
+    def test_register_evaluator_skips_unavailable(self) -> None:
+        """Test that @register_evaluator skips evaluators where is_available() returns False."""
 
         class MockConfig(BaseModel):
             pass
 
-        @register_plugin
-        class UnavailablePlugin(PluginEvaluator[MockConfig]):
-            metadata = PluginMetadata(
+        @register_evaluator
+        class UnavailableEvaluator(Evaluator[MockConfig]):
+            metadata = EvaluatorMetadata(
                 name="test-unavailable-decorated",
                 version="1.0.0",
-                description="Plugin with unavailable deps",
+                description="Evaluator with unavailable deps",
             )
             config_model = MockConfig
 
@@ -234,21 +234,21 @@ class TestRegisterPluginRespectsIsAvailable:
             async def evaluate(self, data: Any) -> EvaluatorResult:
                 return EvaluatorResult(matched=False, confidence=0.0, message="test")
 
-        # Plugin should NOT be registered despite using @register_plugin
-        assert get_plugin("test-unavailable-decorated") is None
+        # Evaluator should NOT be registered despite using @register_evaluator
+        assert get_evaluator("test-unavailable-decorated") is None
 
-    def test_register_plugin_registers_available(self) -> None:
-        """Test that @register_plugin registers plugins where is_available() returns True."""
+    def test_register_evaluator_registers_available(self) -> None:
+        """Test that @register_evaluator registers evaluators where is_available() returns True."""
 
         class MockConfig(BaseModel):
             pass
 
-        @register_plugin
-        class AvailablePlugin(PluginEvaluator[MockConfig]):
-            metadata = PluginMetadata(
+        @register_evaluator
+        class AvailableEvaluator(Evaluator[MockConfig]):
+            metadata = EvaluatorMetadata(
                 name="test-available-decorated",
                 version="1.0.0",
-                description="Plugin with all deps",
+                description="Evaluator with all deps",
             )
             config_model = MockConfig
 
@@ -259,26 +259,26 @@ class TestRegisterPluginRespectsIsAvailable:
             async def evaluate(self, data: Any) -> EvaluatorResult:
                 return EvaluatorResult(matched=False, confidence=0.0, message="test")
 
-        # Plugin should be registered
-        assert get_plugin("test-available-decorated") is not None
+        # Evaluator should be registered
+        assert get_evaluator("test-available-decorated") is not None
 
-    def test_register_plugin_default_is_available(self) -> None:
-        """Test that @register_plugin works when is_available() is not overridden."""
+    def test_register_evaluator_default_is_available(self) -> None:
+        """Test that @register_evaluator works when is_available() is not overridden."""
 
         class MockConfig(BaseModel):
             pass
 
-        @register_plugin
-        class DefaultPlugin(PluginEvaluator[MockConfig]):
-            metadata = PluginMetadata(
+        @register_evaluator
+        class DefaultEvaluator(Evaluator[MockConfig]):
+            metadata = EvaluatorMetadata(
                 name="test-default-available",
                 version="1.0.0",
-                description="Plugin with default is_available",
+                description="Evaluator with default is_available",
             )
             config_model = MockConfig
 
             async def evaluate(self, data: Any) -> EvaluatorResult:
                 return EvaluatorResult(matched=False, confidence=0.0, message="test")
 
-        # Plugin should be registered (default is_available returns True)
-        assert get_plugin("test-default-available") is not None
+        # Evaluator should be registered (default is_available returns True)
+        assert get_evaluator("test-default-available") is not None

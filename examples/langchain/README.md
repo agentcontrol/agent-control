@@ -6,7 +6,7 @@ This example demonstrates integrating Agent Control with a LangChain SQL agent t
 
 ### 1. Start the Agent Control Server
 
-**IMPORTANT: You must start/restart the server to load the SQL plugin!**
+**IMPORTANT: You must start/restart the server to load the SQL evaluator!**
 
 ```bash
 # From the repo root
@@ -21,9 +21,9 @@ make run
 # OR: uv run --package agent-control-server uvicorn agent_control_server.main:app --port 8000
 ```
 
-**Verify plugins are loaded:**
+**Verify evaluators are loaded:**
 ```bash
-curl http://localhost:8000/api/v1/plugins | python -m json.tool
+curl http://localhost:8000/api/v1/evaluators | python -m json.tool
 # Should show: {"sql": {"name": "sql", "version": "1.0.0", ...}, ...}
 ```
 
@@ -96,7 +96,7 @@ The `@control()` decorator:
 
 ### 3. Server-Side SQL Control
 
-The server evaluates the SQL using the `sql` plugin:
+The server evaluates the SQL using the `sql` evaluator:
 - Parses the query
 - Checks for blocked operations (DROP, DELETE, etc.)
 - Validates LIMIT clauses
@@ -111,9 +111,9 @@ If the control check fails with an error:
 
 ## Troubleshooting
 
-### "Plugin 'sql' not found"
+### "Evaluator 'sql' not found"
 
-**Cause:** Server was started before plugins were installed, or using old code.
+**Cause:** Server was started before evaluators were installed, or using old code.
 
 **Fix:**
 ```bash
@@ -133,7 +133,7 @@ cd server && make run
 ### DROP TABLE still executes
 
 **Causes:**
-1. Server not running or plugins not loaded
+1. Server not running or evaluators not loaded
 2. Control not assigned to agent's policy
 3. Using old decorator code
 
@@ -158,7 +158,7 @@ Step Payload: {
     ↓
 Agent Control Server
     ↓
-SQL Plugin Evaluation
+SQL Evaluator Evaluation
     ↓
 DENY (blocks DROP) or ALLOW (safe query)
     ↓
