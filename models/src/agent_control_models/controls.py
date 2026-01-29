@@ -193,8 +193,10 @@ class EvaluatorSpec(BaseModel):
         # Built-in evaluators: validate config against evaluator's config_model
         # This import is optional - evaluators package may not be installed
         try:
-            from agent_control_evaluators import get_evaluator
+            from agent_control_evaluators import ensure_evaluators_discovered, get_evaluator
 
+            # Ensure entry points are loaded before looking up evaluator
+            ensure_evaluators_discovered()
             evaluator_cls = get_evaluator(self.name)
             if evaluator_cls:
                 evaluator_cls.config_model(**self.config)

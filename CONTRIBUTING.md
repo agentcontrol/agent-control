@@ -221,14 +221,23 @@ Extensible evaluators for custom detection logic.
 # Location
 evaluators/src/agent_control_evaluators/
 
-# Key directories
-├── builtin/       # Built-in evaluators
-│   ├── regex.py   # RegexEvaluator - pattern matching
-│   └── list.py    # ListEvaluator - value matching
-└── luna2/         # Galileo Luna-2 integration
-    ├── evaluator.py  # Luna2Evaluator implementation
-    ├── config.py     # Luna2Config model
-    └── client.py     # Direct HTTP client (no SDK dependency)
+# Key directories (flat structure - each evaluator is a peer directory)
+├── regex/           # Regex pattern matching evaluator
+│   ├── config.py    # RegexEvaluatorConfig
+│   └── evaluator.py # RegexEvaluator implementation
+├── list/            # List value matching evaluator
+│   ├── config.py    # ListEvaluatorConfig
+│   └── evaluator.py # ListEvaluator implementation
+├── json/            # JSON validation evaluator
+│   ├── config.py    # JsonEvaluatorConfig
+│   └── evaluator.py # JsonEvaluator implementation
+├── sql/             # SQL validation evaluator
+│   ├── config.py    # SqlEvaluatorConfig
+│   └── evaluator.py # SqlEvaluator implementation
+└── galileo_luna2/   # Galileo Luna-2 integration
+    ├── config.py    # Luna2EvaluatorConfig
+    ├── evaluator.py # Luna2Evaluator implementation
+    └── client.py    # Direct HTTP client (no SDK dependency)
 ```
 
 **Adding a new evaluator:**
@@ -251,8 +260,8 @@ evaluators/src/agent_control_evaluators/
 3. **Implement evaluator (`evaluator.py`):**
    ```python
    from typing import Any
-   from agent_control_models import (
-       EvaluatorResult,
+   from agent_control_models import EvaluatorResult
+   from agent_control_evaluators import (
        Evaluator,
        EvaluatorMetadata,
        register_evaluator,
@@ -466,10 +475,11 @@ test: add control set integration tests
 
 ### Add a built-in evaluator (regex/list style)
 
-1. Add evaluator class in `evaluators/src/agent_control_evaluators/builtin/`
-2. Add config model in `models/src/agent_control_models/controls.py`
-3. Register with `@register_evaluator` decorator
-4. Add comprehensive tests in `evaluators/tests/`
+1. Create evaluator directory in `evaluators/src/agent_control_evaluators/my_evaluator/`
+2. Add `config.py` with your config model extending `EvaluatorConfig`
+3. Add `evaluator.py` with your evaluator class using `@register_evaluator` decorator
+4. Add entry point in `evaluators/pyproject.toml`
+5. Add comprehensive tests in `evaluators/tests/`
 
 ### Update shared models
 
@@ -499,11 +509,11 @@ test: add control set integration tests
 
 | Task | Location |
 |------|----------|
-| Evaluator base class | `agent_control_models.Evaluator` |
-| Evaluator metadata | `agent_control_models.EvaluatorMetadata` |
+| Evaluator base class | `agent_control_evaluators.Evaluator` |
+| Evaluator metadata | `agent_control_evaluators.EvaluatorMetadata` |
 | Evaluator result | `agent_control_models.EvaluatorResult` |
-| Register decorator | `@agent_control_models.register_evaluator` |
-| Built-in evaluators | `evaluators/src/agent_control_evaluators/builtin/` |
+| Register decorator | `@agent_control_evaluators.register_evaluator` |
+| Built-in evaluators | `evaluators/src/agent_control_evaluators/{regex,list,json,sql}/` |
 | Evaluator tests | `evaluators/tests/` |
 
 **Evaluator config model fields:**

@@ -68,7 +68,7 @@ All testing guidance (including “behavior changes require tests”) lives in `
 
 - Add a new evaluator:
   1) implement evaluator class extending `Evaluator` in `evaluators/src/agent_control_evaluators/`
-  2) use `@register_evaluator` decorator (from `agent_control_models`)
+  2) use `@register_evaluator` decorator (from `agent_control_evaluators`)
   3) add entry point in `evaluators/pyproject.toml` for auto-discovery
   4) add tests in the evaluators package
   5) evaluator is automatically available to server and SDK via `discover_evaluators()`

@@ -131,7 +131,7 @@ from agent_control import (
     ControlSelector,
     ControlScope,
     ControlAction,
-    EvaluatorConfig,
+    EvaluatorSpec,
     controls,
 )
 
@@ -146,7 +146,7 @@ async with AgentControlClient() as client:
         execution="server",
         scope=ControlScope(step_types=["llm"], stages=["post"]),
         selector=ControlSelector(path="output"),
-        evaluator=EvaluatorConfig(
+        evaluator=EvaluatorSpec(
             name="regex",
             config={"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
         ),

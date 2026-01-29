@@ -24,7 +24,7 @@ regex = "agent_control_evaluators.regex:RegexEvaluator"
 list = "agent_control_evaluators.list:ListEvaluator"
 json = "agent_control_evaluators.json:JSONEvaluator"
 sql = "agent_control_evaluators.sql:SQLEvaluator"
-luna2 = "agent_control_evaluators.galileo_luna2:Luna2Evaluator"
+galileo-luna2 = "agent_control_evaluators.galileo_luna2:Luna2Evaluator"
 
 [build-system]
 requires = ["hatchling"]
