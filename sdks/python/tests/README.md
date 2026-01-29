@@ -60,7 +60,7 @@ The server must be running before executing tests:
 ```bash
 # From server directory
 cd server
-uv run uvicorn agent_protect_server.main:app --reload
+uv run uvicorn agent_control_server.main:app --reload
 ```
 
 Or use the Makefile:
@@ -75,7 +75,7 @@ For SQLite (local testing):
 
 ```bash
 cd server
-echo "DB_URL=sqlite+aiosqlite:///./test_agent_protect.db" > .env
+echo "DB_URL=sqlite+aiosqlite:///./test_agent_control.db" > .env
 uv run alembic upgrade head
 ```
 
@@ -114,13 +114,13 @@ uv run pytest tests/test_integration_agents.py::test_agent_registration_workflow
 
 ```bash
 uv pip install pytest-cov
-uv run pytest tests/ --cov=agent_protect --cov-report=html
+uv run pytest tests/ --cov=agent_control --cov-report=html
 ```
 
 ### Run with Different Server URL
 
 ```bash
-AGENT_PROTECT_TEST_URL=http://staging.example.com:8000 uv run pytest tests/ -v
+AGENT_CONTROL_TEST_URL=http://staging.example.com:8000 uv run pytest tests/ -v
 ```
 
 ## Test Output
@@ -202,7 +202,7 @@ jobs:
         image: postgres:15
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: agent_protect_test
+          POSTGRES_DB: agent_control_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -231,14 +231,14 @@ jobs:
           uv run uvicorn agent_control_server.main:app &
           sleep 5
         env:
-          DB_URL: postgresql+psycopg://postgres:postgres@localhost/agent_protect_test
+          DB_URL: postgresql+psycopg://postgres:postgres@localhost/agent_control_test
           AGENT_CONTROL_API_KEYS: test-api-key-ci
           AGENT_CONTROL_ADMIN_API_KEYS: test-api-key-ci
       
       - name: Run tests
         run: |
           cd sdks/python
-          uv run pytest tests/ -v --cov=agent_protect
+          uv run pytest tests/ -v --cov=agent_control
         env:
           AGENT_CONTROL_API_KEY: test-api-key-ci
 ```
@@ -273,7 +273,7 @@ httpx.ConnectError: [Errno 61] Connection refused
 
 **Solution**: 
 1. Check server is running: `lsof -ti:8000`
-2. Verify server URL: `echo $AGENT_PROTECT_TEST_URL`
+2. Verify server URL: `echo $AGENT_CONTROL_TEST_URL`
 3. Check server logs for errors
 
 ### 404 Errors in rule association tests
@@ -302,11 +302,11 @@ Follow this pattern for new integration tests:
 
 ```python
 import pytest
-import agent_protect
+import agent_control
 
 @pytest.mark.asyncio
 async def test_my_new_workflow(
-    client: agent_protect.AgentProtectClient,
+    client: agent_control.AgentControlClient,
     test_agent: dict
 ):
     """
@@ -320,7 +320,7 @@ async def test_my_new_workflow(
     agent_id = test_agent["agent_id"]
     
     # Act
-    result = await agent_protect.my_module.my_operation(client, agent_id)
+    result = await agent_control.my_module.my_operation(client, agent_id)
     
     # Assert
     assert result["success"] is True
