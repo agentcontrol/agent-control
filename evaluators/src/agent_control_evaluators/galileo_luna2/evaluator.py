@@ -8,14 +8,11 @@ import logging
 import os
 from typing import Any
 
-from agent_control_models import (
-    Evaluator,
-    EvaluatorMetadata,
-    EvaluatorResult,
-    register_evaluator,
-)
+from agent_control_models import EvaluatorResult
 
-from .config import Luna2EvaluatorConfig
+from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
+from agent_control_evaluators._registry import register_evaluator
+from agent_control_evaluators.galileo_luna2.config import Luna2EvaluatorConfig
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +64,7 @@ class Luna2Evaluator(Evaluator[Luna2EvaluatorConfig]):
 
     Example:
         ```python
-        from agent_control_evaluators.luna2 import Luna2Evaluator, Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator, Luna2EvaluatorConfig
 
         config = Luna2EvaluatorConfig(
             stage_type="local",

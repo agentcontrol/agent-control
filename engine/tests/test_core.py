@@ -11,17 +11,15 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from agent_control_engine import clear_evaluator_cache
 from agent_control_engine.core import ControlEngine, _compile_regex
-from agent_control_engine.evaluators import clear_evaluator_cache
+from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import (
     ControlDefinition,
     EvaluationRequest,
-    Evaluator,
-    EvaluatorConfig,
-    EvaluatorMetadata,
     EvaluatorResult,
+    EvaluatorSpec,
     Step,
-    register_evaluator,
 )
 from pydantic import BaseModel
 
@@ -208,7 +206,7 @@ def make_control(
             execution=execution,
             scope=scope,
             selector=selector or {"path": "*"},
-            evaluator=EvaluatorConfig(
+            evaluator=EvaluatorSpec(
                 name=evaluator,
                 config={"value": config_value},
             ),
@@ -1057,7 +1055,7 @@ class TestSelectorStepScoping:
                 execution="server",
                 scope={"step_types": ["tool"], "stages": ["pre"], "step_name_regex": "("},
                 selector={"path": "input"},
-                evaluator=EvaluatorConfig(name="test-allow", config={"value": "x"}),
+                evaluator=EvaluatorSpec(name="test-allow", config={"value": "x"}),
                 action={"decision": "log"},
             )
 
@@ -1094,7 +1092,7 @@ class TestTimeoutEnforcement:
                     execution="server",
                     scope={"step_types": ["llm"], "stages": ["pre"]},
                     selector={"path": "input"},
-                    evaluator=EvaluatorConfig(
+                    evaluator=EvaluatorSpec(
                         name="test-timeout",
                         config={"value": "t1", "timeout_ms": 100},
                     ),
@@ -1152,7 +1150,7 @@ class TestTimeoutEnforcement:
                     execution="server",
                     scope={"step_types": ["llm"], "stages": ["pre"]},
                     selector={"path": "input"},
-                    evaluator=EvaluatorConfig(
+                    evaluator=EvaluatorSpec(
                         name="test-timeout",
                         config={"value": "slow", "timeout_ms": 100},
                     ),
@@ -1298,7 +1296,7 @@ def make_control_with_execution(
             execution=execution,
             scope=scope,
             selector={"path": path},
-            evaluator=EvaluatorConfig(
+            evaluator=EvaluatorSpec(
                 name=evaluator,
                 config={"value": config_value},
             ),

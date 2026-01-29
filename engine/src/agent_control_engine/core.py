@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 import re2
+from agent_control_evaluators import get_evaluator_instance
 from agent_control_models import (
     ControlDefinition,
     ControlMatch,
@@ -20,7 +21,6 @@ from agent_control_models import (
     EvaluatorResult,
 )
 
-from .evaluators import get_evaluator_instance
 from .selectors import select_data
 
 logger = logging.getLogger(__name__)

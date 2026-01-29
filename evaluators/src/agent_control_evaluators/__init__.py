@@ -14,19 +14,52 @@ Custom evaluators are Evaluator classes deployed with the engine.
 Their schemas are registered via initAgent for validation purposes.
 """
 
-from agent_control_models import Evaluator, EvaluatorMetadata, register_evaluator
+# Core infrastructure - export from _base and _registry
+from agent_control_evaluators._base import Evaluator, EvaluatorConfig, EvaluatorMetadata
+from agent_control_evaluators._discovery import (
+    discover_evaluators,
+    ensure_evaluators_discovered,
+    list_evaluators,
+    reset_evaluator_discovery,
+)
+from agent_control_evaluators._factory import clear_evaluator_cache, get_evaluator_instance
+from agent_control_evaluators._registry import (
+    clear_evaluators,
+    get_all_evaluators,
+    get_evaluator,
+    register_evaluator,
+)
 
 # Import built-in evaluators to auto-register them
-from .builtin import JSONEvaluator, ListEvaluator, RegexEvaluator, SQLEvaluator
+from agent_control_evaluators.json import JSONEvaluator, JSONEvaluatorConfig
+from agent_control_evaluators.list import ListEvaluator, ListEvaluatorConfig
+from agent_control_evaluators.regex import RegexEvaluator, RegexEvaluatorConfig
+from agent_control_evaluators.sql import SQLEvaluator, SQLEvaluatorConfig
 
 __version__ = "0.1.0"
 
 __all__ = [
+    # Core infrastructure
     "Evaluator",
+    "EvaluatorConfig",
     "EvaluatorMetadata",
     "register_evaluator",
+    "get_evaluator",
+    "get_all_evaluators",
+    "clear_evaluators",
+    "discover_evaluators",
+    "ensure_evaluators_discovered",
+    "reset_evaluator_discovery",
+    "list_evaluators",
+    "get_evaluator_instance",
+    "clear_evaluator_cache",
+    # Built-in evaluators
     "RegexEvaluator",
+    "RegexEvaluatorConfig",
     "ListEvaluator",
+    "ListEvaluatorConfig",
     "JSONEvaluator",
+    "JSONEvaluatorConfig",
     "SQLEvaluator",
+    "SQLEvaluatorConfig",
 ]

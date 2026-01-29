@@ -1,4 +1,4 @@
-"""Evaluator system base classes and registry."""
+"""Evaluator base classes and metadata."""
 
 from __future__ import annotations
 
@@ -7,16 +7,36 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
-from .controls import EvaluatorResult
+from agent_control_models import EvaluatorResult
 
 if TYPE_CHECKING:
     from typing import Self
 
 logger = logging.getLogger(__name__)
 
-ConfigT = TypeVar("ConfigT", bound=BaseModel)
+
+class EvaluatorConfig(BaseModel):
+    """Base class for typed evaluator configurations.
+
+    All evaluator config classes should extend this to ensure consistent
+    behavior and enable type checking.
+
+    Example:
+        ```python
+        from agent_control_evaluators import EvaluatorConfig
+
+        class MyEvaluatorConfig(EvaluatorConfig):
+            pattern: str
+            threshold: float = 0.5
+        ```
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+ConfigT = TypeVar("ConfigT", bound=EvaluatorConfig)
 
 
 @dataclass
@@ -24,7 +44,7 @@ class EvaluatorMetadata:
     """Metadata about an evaluator.
 
     Attributes:
-        name: Unique evaluator name (e.g., "regex", "galileo-luna2")
+        name: Unique evaluator name (e.g., "regex", "galileo_luna2")
         version: Evaluator version string
         description: Human-readable description
         requires_api_key: Whether the evaluator requires an API key
@@ -38,7 +58,7 @@ class EvaluatorMetadata:
     timeout_ms: int = 10000
 
 
-class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046
+class Evaluator(ABC, Generic[ConfigT]):
     """Base class for all evaluators (built-in, external, or custom).
 
     All evaluators follow the same pattern:
@@ -74,9 +94,15 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046
 
     Example:
         ```python
-        from agent_control_models import Evaluator, EvaluatorMetadata, register_evaluator
+        from agent_control_evaluators import (
+            Evaluator,
+            EvaluatorConfig,
+            EvaluatorMetadata,
+            register_evaluator,
+        )
+        from agent_control_models import EvaluatorResult
 
-        class MyConfig(BaseModel):
+        class MyConfig(EvaluatorConfig):
             threshold: float = 0.5
 
         @register_evaluator
@@ -98,7 +124,7 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046
     """
 
     metadata: ClassVar[EvaluatorMetadata]
-    config_model: ClassVar[type[BaseModel]]
+    config_model: ClassVar[type[EvaluatorConfig]]
 
     def __init__(self, config: ConfigT) -> None:
         """Initialize evaluator with validated config.
@@ -151,72 +177,3 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046
             True if evaluator can be used, False otherwise
         """
         return True
-
-
-# =============================================================================
-# Evaluator Registry
-# =============================================================================
-
-_EVALUATOR_REGISTRY: dict[str, type[Evaluator[Any]]] = {}
-
-
-def register_evaluator(
-    evaluator_class: type[Evaluator[Any]],
-) -> type[Evaluator[Any]]:
-    """Register an evaluator class by its metadata name.
-
-    Can be used as a decorator or called directly. Respects the evaluator's
-    is_available() method - evaluators with unavailable dependencies are
-    silently skipped.
-
-    Args:
-        evaluator_class: Evaluator class to register
-
-    Returns:
-        The same evaluator class (for decorator usage)
-
-    Raises:
-        ValueError: If evaluator name already registered
-    """
-    name = evaluator_class.metadata.name
-
-    # Check if evaluator dependencies are satisfied
-    if not evaluator_class.is_available():
-        logger.debug(f"Evaluator '{name}' not available (is_available=False), skipping")
-        return evaluator_class
-
-    if name in _EVALUATOR_REGISTRY:
-        # Allow re-registration of same class (e.g., during hot reload)
-        if _EVALUATOR_REGISTRY[name] is evaluator_class:
-            return evaluator_class
-        raise ValueError(f"Evaluator '{name}' is already registered")
-
-    _EVALUATOR_REGISTRY[name] = evaluator_class
-    logger.debug(f"Registered evaluator: {name} v{evaluator_class.metadata.version}")
-    return evaluator_class
-
-
-def get_evaluator(name: str) -> type[Evaluator[Any]] | None:
-    """Get a registered evaluator by name.
-
-    Args:
-        name: Evaluator name to look up
-
-    Returns:
-        Evaluator class if found, None otherwise
-    """
-    return _EVALUATOR_REGISTRY.get(name)
-
-
-def get_all_evaluators() -> dict[str, type[Evaluator[Any]]]:
-    """Get all registered evaluators.
-
-    Returns:
-        Dictionary mapping evaluator names to evaluator classes
-    """
-    return dict(_EVALUATOR_REGISTRY)
-
-
-def clear_evaluators() -> None:
-    """Clear all registered evaluators. Useful for testing."""
-    _EVALUATOR_REGISTRY.clear()

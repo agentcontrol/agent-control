@@ -5,14 +5,16 @@ from __future__ import annotations
 import logging
 import threading
 from importlib.metadata import entry_points
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from agent_control_models import (
-    Evaluator,
+from agent_control_evaluators._registry import (
     get_all_evaluators,
     get_evaluator,
     register_evaluator,
 )
+
+if TYPE_CHECKING:
+    from agent_control_evaluators._base import Evaluator
 
 logger = logging.getLogger(__name__)
 

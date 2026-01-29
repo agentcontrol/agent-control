@@ -18,12 +18,8 @@ from .controls import (
     ControlMatch,
     ControlScope,
     ControlSelector,
-    EvaluatorConfig,
     EvaluatorResult,
-    JSONEvaluatorConfig,
-    ListEvaluatorConfig,
-    RegexEvaluatorConfig,
-    SQLEvaluatorConfig,
+    EvaluatorSpec,
 )
 from .errors import (
     ERROR_TITLES,
@@ -40,14 +36,6 @@ from .evaluation import (
     EvaluationRequest,
     EvaluationResponse,
     EvaluationResult,
-)
-from .evaluator import (
-    Evaluator,
-    EvaluatorMetadata,
-    clear_evaluators,
-    get_all_evaluators,
-    get_evaluator,
-    register_evaluator,
 )
 from .health import HealthResponse
 from .observability import (
@@ -108,21 +96,9 @@ __all__ = [
     "ControlMatch",
     "ControlScope",
     "ControlSelector",
-    "EvaluatorConfig",
+    "EvaluatorSpec",
     "EvaluatorResult",
-    # Evaluator configs
-    "JSONEvaluatorConfig",
-    "ListEvaluatorConfig",
-    "RegexEvaluatorConfig",
-    "SQLEvaluatorConfig",
-    # Evaluator system
-    "Evaluator",
-    "EvaluatorMetadata",
-    "register_evaluator",
-    "get_evaluator",
-    "get_all_evaluators",
-    "clear_evaluators",
-    # Error models (RFC 7807 / Kubernetes / GitHub-style)
+    # Error models
     "ProblemDetail",
     "ErrorCode",
     "ErrorReason",

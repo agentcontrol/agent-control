@@ -1,8 +1,7 @@
 """Tests for JSON validation evaluator."""
 
 import pytest
-from agent_control_models import JSONEvaluatorConfig
-from agent_control_evaluators.builtin.json import JSONEvaluator
+from agent_control_evaluators.json import JSONEvaluator, JSONEvaluatorConfig
 
 
 class TestJSONParsing:

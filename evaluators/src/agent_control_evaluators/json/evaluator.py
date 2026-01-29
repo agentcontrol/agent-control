@@ -5,14 +5,12 @@ import json
 from typing import Any
 
 import re2
-from agent_control_models import (
-    Evaluator,
-    EvaluatorMetadata,
-    EvaluatorResult,
-    JSONEvaluatorConfig,
-    register_evaluator,
-)
+from agent_control_models import EvaluatorResult
 from jsonschema import Draft7Validator
+
+from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
+from agent_control_evaluators._registry import register_evaluator
+from agent_control_evaluators.json.config import JSONEvaluatorConfig
 
 
 @register_evaluator
@@ -27,12 +25,6 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
     5. Field constraints (if configured) - Validate ranges, enums, string length
     6. Pattern matching (if configured) - Validate field value patterns
 
-    This order ensures:
-    - Fast failure on basic issues (invalid JSON, missing required fields)
-    - Type is validated before checking value constraints
-    - Clear error messages indicating which check failed
-    - Developers can easily understand and predict validation behavior
-
     Example configs:
         # JSON Schema validation
         {"json_schema": {"type": "object", "required": ["id", "name"]}}
@@ -45,9 +37,6 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
 
         # Field constraints - numeric ranges
         {"field_constraints": {"score": {"min": 0.0, "max": 1.0}}}
-
-        # Field constraints - enums
-        {"field_constraints": {"status": {"enum": ["active", "inactive"]}}}
 
         # Pattern matching
         {"field_patterns": {"email": "^[a-z0-9._%+-]+@[a-z0-9.-]+\\\\.[a-z]+$"}}
@@ -99,14 +88,6 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
 
     async def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate JSON data against all configured validation checks.
-
-        Evaluation order (fail-fast from simple to complex):
-        1. JSON syntax/validity
-        2. JSON Schema (if configured)
-        3. Required fields (if configured)
-        4. Type checking (if configured)
-        5. Field constraints (if configured)
-        6. Pattern matching (if configured)
 
         Note: Validation is offloaded to a thread executor to avoid blocking
         the event loop for large payloads, since all validation logic is synchronous.
@@ -299,10 +280,7 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
         )
 
     def _check_constraints(self, data: dict | list) -> EvaluatorResult | None:
-        """Validate field constraints (ranges, enums, string length).
-
-        Returns error result or None.
-        """
+        """Validate field constraints (ranges, enums, string length)."""
         if not isinstance(data, dict):
             return EvaluatorResult(
                 matched=True,
@@ -339,9 +317,7 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
 
             # Enum constraints
             if "enum" in constraints:
-                # Case-insensitive matching if configured
                 if self.config.case_sensitive_enums:
-                    # Case-sensitive (default behavior)
                     if value not in constraints["enum"]:
                         allowed = ", ".join(str(v) for v in constraints["enum"][:5])
                         errors.append(
@@ -349,8 +325,6 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
                         )
                         continue
                 else:
-                    # Case-insensitive matching
-                    # Convert to lowercase for comparison (only for strings)
                     if isinstance(value, str):
                         value_lower = value.lower()
                         enum_lower = [
@@ -365,7 +339,6 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
                             )
                             continue
                     else:
-                        # Non-string values: exact match only
                         if value not in constraints["enum"]:
                             allowed = ", ".join(str(v) for v in constraints["enum"][:5])
                             errors.append(
@@ -490,24 +463,14 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
     def _get_all_paths(
         self, data: dict, prefix: str = "", leaves_only: bool = False
     ) -> set[str]:
-        """Recursively get all field paths in nested dict.
-
-        Args:
-            data: The dictionary to traverse
-            prefix: Current path prefix for nested traversal
-            leaves_only: If True, only return paths to leaf values (non-dict values).
-                        This avoids flagging parent containers as extra fields.
-        """
+        """Recursively get all field paths in nested dict."""
         paths = set()
         for key, value in data.items():
             path = f"{prefix}.{key}" if prefix else key
             if isinstance(value, dict):
-                # Recurse into nested dicts
                 paths.update(self._get_all_paths(value, path, leaves_only))
-                # Only add container path if not leaves_only
                 if not leaves_only:
                     paths.add(path)
             else:
-                # Always add leaf paths (non-dict values)
                 paths.add(path)
         return paths

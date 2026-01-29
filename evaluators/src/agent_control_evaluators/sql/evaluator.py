@@ -10,14 +10,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import sqlglot
-from agent_control_models import (
-    Evaluator,
-    EvaluatorMetadata,
-    EvaluatorResult,
-    SQLEvaluatorConfig,
-    register_evaluator,
-)
+from agent_control_models import EvaluatorResult
 from sqlglot import exp
+
+from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
+from agent_control_evaluators._registry import register_evaluator
+from agent_control_evaluators.sql.config import SQLEvaluatorConfig
 
 logger = logging.getLogger(__name__)
 
@@ -332,12 +330,12 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
 
         A SELECT is considered top-level if it's not nested inside another SELECT.
         This properly handles cases like:
-        - Simple SELECT: top-level ✓
-        - SELECT in subquery: not top-level ✗
-        - SELECT inside CTE definition: not top-level ✗ (has outer SELECT as ancestor)
-        - Main SELECT with CTEs: top-level ✓ (the outer SELECT, not the CTE body)
-        - SELECT in CREATE VIEW: not top-level ✗
-        - SELECT in INSERT SELECT: not top-level ✗
+        - Simple SELECT: top-level
+        - SELECT in subquery: not top-level
+        - SELECT inside CTE definition: not top-level (has outer SELECT as ancestor)
+        - Main SELECT with CTEs: top-level (the outer SELECT, not the CTE body)
+        - SELECT in CREATE VIEW: not top-level
+        - SELECT in INSERT SELECT: not top-level
 
         Args:
             select_node: SELECT node to check
@@ -619,9 +617,9 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
         """Calculate maximum subquery nesting depth recursively.
 
         Depth is the number of nested SELECT layers:
-        - SELECT ... FROM table → depth 0
-        - SELECT ... FROM (SELECT ...) → depth 1
-        - SELECT ... FROM (SELECT ... FROM (SELECT ...)) → depth 2
+        - SELECT ... FROM table -> depth 0
+        - SELECT ... FROM (SELECT ...) -> depth 1
+        - SELECT ... FROM (SELECT ... FROM (SELECT ...)) -> depth 2
 
         Args:
             node: Current AST node

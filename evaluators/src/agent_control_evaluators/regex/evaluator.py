@@ -3,13 +3,11 @@
 from typing import Any
 
 import re2
-from agent_control_models import (
-    Evaluator,
-    EvaluatorMetadata,
-    EvaluatorResult,
-    RegexEvaluatorConfig,
-    register_evaluator,
-)
+from agent_control_models import EvaluatorResult
+
+from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
+from agent_control_evaluators._registry import register_evaluator
+from agent_control_evaluators.regex.config import RegexEvaluatorConfig
 
 
 @register_evaluator

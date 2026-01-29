@@ -4,13 +4,11 @@ import re
 from typing import Any
 
 import re2
-from agent_control_models import (
-    Evaluator,
-    EvaluatorMetadata,
-    EvaluatorResult,
-    ListEvaluatorConfig,
-    register_evaluator,
-)
+from agent_control_models import EvaluatorResult
+
+from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
+from agent_control_evaluators._registry import register_evaluator
+from agent_control_evaluators.list.config import ListEvaluatorConfig
 
 
 @register_evaluator

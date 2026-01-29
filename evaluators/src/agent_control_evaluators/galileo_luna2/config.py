@@ -2,7 +2,9 @@
 
 from typing import Any, Literal, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
+
+from agent_control_evaluators._base import EvaluatorConfig
 
 # Supported Luna-2 metrics
 Luna2Metric = Literal[
@@ -20,7 +22,7 @@ Luna2Metric = Literal[
 Luna2Operator = Literal["gt", "lt", "gte", "lte", "eq", "contains", "any"]
 
 
-class Luna2EvaluatorConfig(BaseModel):
+class Luna2EvaluatorConfig(EvaluatorConfig):
     """Configuration for Luna-2 evaluator.
 
     Two stage types are supported:

@@ -11,7 +11,7 @@ Evaluator implementations for agent-control.
 
 ## Optional Evaluators
 
-- **luna2** - Galileo Luna-2 integration (requires `luna2` extra)
+- **galileo-luna2** - Galileo Luna-2 integration (requires `luna2` extra)
 
 ## Installation
 

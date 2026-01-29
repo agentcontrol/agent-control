@@ -13,7 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from agent_control_models import EvaluatorResult, Evaluator
+from agent_control_evaluators import Evaluator
+from agent_control_models import EvaluatorResult
 
 
 def create_mock_protect_response(
@@ -23,7 +24,7 @@ def create_mock_protect_response(
     execution_time: float = 100.0,
 ) -> MagicMock:
     """Create a mock ProtectResponse object for testing."""
-    from agent_control_evaluators.luna2.client import ProtectResponse, TraceMetadata
+    from agent_control_evaluators.galileo_luna2.client import ProtectResponse, TraceMetadata
 
     return ProtectResponse(
         status=status,
@@ -44,7 +45,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_local_stage_config_valid(self):
         """Test valid local stage configuration."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         config = Luna2EvaluatorConfig(
             stage_type="local",
@@ -62,7 +63,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_local_stage_config_with_numeric_target(self):
         """Test local stage configuration with numeric target_value."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         config = Luna2EvaluatorConfig(
             stage_type="local",
@@ -76,7 +77,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_central_stage_config_valid(self):
         """Test valid central stage configuration."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         config = Luna2EvaluatorConfig(
             stage_type="central",
@@ -90,7 +91,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_local_stage_requires_metric(self):
         """Test local stage requires metric field."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         with pytest.raises(ValidationError, match="metric.*required"):
             Luna2EvaluatorConfig(
@@ -101,7 +102,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_local_stage_requires_operator(self):
         """Test local stage requires operator field."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         with pytest.raises(ValidationError, match="operator.*required"):
             Luna2EvaluatorConfig(
@@ -112,7 +113,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_local_stage_requires_target_value(self):
         """Test local stage requires target_value field."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         with pytest.raises(ValidationError, match="target_value.*required"):
             Luna2EvaluatorConfig(
@@ -123,7 +124,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_central_stage_requires_stage_name(self):
         """Test central stage requires stage_name field."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         with pytest.raises(ValidationError, match="stage_name.*required"):
             Luna2EvaluatorConfig(
@@ -133,7 +134,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_timeout_ms_validation(self):
         """Test timeout_ms must be within valid range."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         # Too low
         with pytest.raises(ValidationError):
@@ -161,7 +162,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_on_error_validation(self):
         """Test on_error must be 'allow' or 'deny'."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         config_allow = Luna2EvaluatorConfig(
             stage_type="central",
@@ -186,7 +187,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_metric_validation(self):
         """Test metric must be a valid Luna2 metric."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         # Valid metrics
         valid_metrics = [
@@ -217,7 +218,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_operator_validation(self):
         """Test operator must be a valid Luna2 operator."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         valid_operators = ["gt", "lt", "gte", "lte", "eq", "contains", "any"]
         for op in valid_operators:
@@ -239,7 +240,7 @@ class TestLuna2EvaluatorConfig:
 
     def test_model_dump(self):
         """Test config can be dumped to dict."""
-        from agent_control_evaluators.luna2 import Luna2EvaluatorConfig
+        from agent_control_evaluators.galileo_luna2 import Luna2EvaluatorConfig
 
         config = Luna2EvaluatorConfig(
             stage_type="local",
@@ -263,10 +264,10 @@ class TestLuna2EvaluatorInheritance:
     """Tests for Luna-2 evaluator inheritance."""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_evaluator_extends_base(self):
         """Test Luna2Evaluator extends Evaluator."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         assert issubclass(Luna2Evaluator, Evaluator)
 
@@ -275,36 +276,36 @@ class TestLuna2EvaluatorImport:
     """Tests for Luna-2 evaluator import and initialization."""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_luna2_evaluator_import_success(self):
         """Test importing Luna-2 evaluator with dependencies available."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         assert Luna2Evaluator is not None
         assert Luna2Evaluator.metadata.name == "galileo-luna2"
         assert Luna2Evaluator.metadata.version == "2.0.0"
 
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", False)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", False)
     def test_luna2_evaluator_is_available_false_without_httpx(self):
         """Test that is_available() returns False when httpx is not installed."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         # When httpx is not available, is_available() should return False
         assert Luna2Evaluator.is_available() is False
 
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_luna2_evaluator_is_available_true_with_httpx(self):
         """Test that is_available() returns True when httpx is installed."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         # When httpx is available, is_available() should return True
         assert Luna2Evaluator.is_available() is True
 
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     @patch.dict(os.environ, {}, clear=True)
     def test_luna2_evaluator_init_without_api_key_raises_error(self):
         """Test that initializing without API key raises ValueError."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         config = {
             "stage_type": "local",
@@ -321,10 +322,10 @@ class TestLuna2EvaluatorMetadata:
     """Tests for Luna-2 evaluator metadata."""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_metadata_fields(self):
         """Test Luna-2 evaluator metadata fields."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         metadata = Luna2Evaluator.metadata
 
@@ -335,10 +336,10 @@ class TestLuna2EvaluatorMetadata:
         assert Luna2Evaluator.config_model is not None
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_config_schema_supported_metrics(self):
         """Test config schema includes all supported metrics."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         schema = Luna2Evaluator.config_model.model_json_schema()
         # Pydantic uses anyOf with const for Literal types
@@ -364,12 +365,12 @@ class TestLuna2EvaluatorLocalStage:
     """Tests for Luna-2 evaluator with local stages."""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     @pytest.mark.asyncio
     async def test_local_stage_triggered(self):
         """Test local stage evaluation when rule is triggered."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         # Create mock response with triggered status
         mock_response = create_mock_protect_response(
@@ -404,12 +405,12 @@ class TestLuna2EvaluatorLocalStage:
             assert result.metadata["status"] == "triggered"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     @pytest.mark.asyncio
     async def test_local_stage_not_triggered(self):
         """Test local stage evaluation when rule is not triggered."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         mock_response = create_mock_protect_response(
             status="not_triggered",
@@ -439,12 +440,12 @@ class TestLuna2EvaluatorLocalStage:
             assert result.metadata["status"] == "not_triggered"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     @pytest.mark.asyncio
     async def test_local_stage_with_timeout_ms(self):
         """Test local stage respects timeout_ms configuration."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         mock_response = create_mock_protect_response()
 
@@ -476,12 +477,12 @@ class TestLuna2EvaluatorCentralStage:
     """Tests for Luna-2 evaluator with central stages."""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     @pytest.mark.asyncio
     async def test_central_stage_evaluation(self):
         """Test central stage evaluation."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         mock_response = create_mock_protect_response(
             status="triggered",
@@ -509,12 +510,12 @@ class TestLuna2EvaluatorCentralStage:
             assert result.metadata["status"] == "triggered"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     @pytest.mark.asyncio
     async def test_central_stage_without_version(self):
         """Test central stage without pinned version."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         mock_response = create_mock_protect_response(trace_id="trace-latest")
 
@@ -542,10 +543,10 @@ class TestLuna2EvaluatorPayloadPreparation:
     """Tests for payload preparation logic."""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_input_metric_payload(self):
         """Test payload for input metrics uses _prepare_payload correctly."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         config = {
             "stage_type": "local",
@@ -562,10 +563,10 @@ class TestLuna2EvaluatorPayloadPreparation:
         assert payload.output == ""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_output_metric_payload(self):
         """Test payload for output metrics uses _prepare_payload correctly."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         config = {
             "stage_type": "local",
@@ -582,10 +583,10 @@ class TestLuna2EvaluatorPayloadPreparation:
         assert payload.output == "llm output text"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_payload_field_override(self):
         """Test explicit payload_field configuration."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         config = {
             "stage_type": "central",
@@ -605,12 +606,12 @@ class TestLuna2EvaluatorErrorHandling:
     """Tests for error handling in Luna-2 evaluator."""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     @pytest.mark.asyncio
     async def test_error_with_fail_open(self):
         """Test error handling with fail open (default)."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         config = {
             "stage_type": "local",
@@ -635,12 +636,12 @@ class TestLuna2EvaluatorErrorHandling:
             assert result.metadata["fallback_action"] == "allow"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     @pytest.mark.asyncio
     async def test_error_with_fail_closed(self):
         """Test error handling with fail closed."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         config = {
             "stage_type": "local",
@@ -665,12 +666,12 @@ class TestLuna2EvaluatorErrorHandling:
             assert result.metadata["fallback_action"] == "deny"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     @pytest.mark.asyncio
     async def test_empty_response_handling(self):
         """Test handling of empty/None response."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         config = {
             "stage_type": "local",
@@ -697,10 +698,10 @@ class TestLuna2EvaluatorTimeoutHelper:
     """Tests for timeout helper method."""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_get_timeout_from_config(self):
         """Test timeout conversion from config."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         config = {
             "stage_type": "local",
@@ -714,10 +715,10 @@ class TestLuna2EvaluatorTimeoutHelper:
         assert evaluator.get_timeout_seconds() == 5.0
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_get_timeout_from_default(self):
         """Test timeout uses metadata default."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         config = {
             "stage_type": "local",
@@ -735,10 +736,10 @@ class TestLuna2EvaluatorNumericTargetValue:
     """Tests for numeric target_value handling."""
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_numeric_target_value_float(self):
         """Test evaluator accepts float target_value."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         config = {
             "stage_type": "local",
@@ -751,10 +752,10 @@ class TestLuna2EvaluatorNumericTargetValue:
         assert evaluator._get_numeric_target_value() == 0.5
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_numeric_target_value_int(self):
         """Test evaluator accepts int target_value."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         config = {
             "stage_type": "local",
@@ -767,10 +768,10 @@ class TestLuna2EvaluatorNumericTargetValue:
         assert evaluator._get_numeric_target_value() == 1
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @patch("agent_control_evaluators.luna2.evaluator.LUNA2_AVAILABLE", True)
+    @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", True)
     def test_string_target_value_converts_to_float(self):
         """Test evaluator converts string target_value to float."""
-        from agent_control_evaluators.luna2 import Luna2Evaluator
+        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         config = {
             "stage_type": "local",
@@ -788,7 +789,7 @@ class TestGalileoProtectClient:
 
     def test_client_init_with_api_key(self):
         """Test client initialization with API key."""
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}):
             client = GalileoProtectClient()
@@ -796,7 +797,7 @@ class TestGalileoProtectClient:
 
     def test_client_init_without_api_key_raises(self):
         """Test client raises error without API key."""
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError, match="GALILEO_API_KEY"):
@@ -804,7 +805,7 @@ class TestGalileoProtectClient:
 
     def test_derive_api_url_from_console_url(self):
         """Test API URL derivation from console URL."""
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}):
             client = GalileoProtectClient(
@@ -814,7 +815,7 @@ class TestGalileoProtectClient:
 
     def test_derive_api_url_default(self):
         """Test default API URL."""
-        from agent_control_evaluators.luna2.client import GalileoProtectClient
+        from agent_control_evaluators.galileo_luna2.client import GalileoProtectClient
 
         with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}):
             client = GalileoProtectClient()
@@ -826,14 +827,14 @@ class TestPayloadDataClasses:
 
     def test_payload_to_dict(self):
         """Test Payload.to_dict() method."""
-        from agent_control_evaluators.luna2.client import Payload
+        from agent_control_evaluators.galileo_luna2.client import Payload
 
         payload = Payload(input="test input", output="test output")
         assert payload.to_dict() == {"input": "test input", "output": "test output"}
 
     def test_rule_to_dict(self):
         """Test Rule.to_dict() method."""
-        from agent_control_evaluators.luna2.client import Rule
+        from agent_control_evaluators.galileo_luna2.client import Rule
 
         rule = Rule(metric="input_toxicity", operator="gt", target_value=0.5)
         assert rule.to_dict() == {
@@ -844,7 +845,7 @@ class TestPayloadDataClasses:
 
     def test_ruleset_to_dict(self):
         """Test Ruleset.to_dict() method."""
-        from agent_control_evaluators.luna2.client import PassthroughAction, Rule, Ruleset
+        from agent_control_evaluators.galileo_luna2.client import PassthroughAction, Rule, Ruleset
 
         ruleset = Ruleset(
             rules=[Rule(metric="input_toxicity", operator="gt", target_value=0.5)],
@@ -858,7 +859,7 @@ class TestPayloadDataClasses:
 
     def test_protect_response_from_dict(self):
         """Test ProtectResponse.from_dict() method."""
-        from agent_control_evaluators.luna2.client import ProtectResponse
+        from agent_control_evaluators.galileo_luna2.client import ProtectResponse
 
         data = {
             "status": "triggered",

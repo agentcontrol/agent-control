@@ -44,6 +44,19 @@ from uuid import UUID
 
 import httpx
 
+if TYPE_CHECKING:
+    from agent_control_models import (
+        Agent,
+        ControlAction,
+        ControlDefinition,
+        ControlSelector,
+        EvaluationRequest,
+        EvaluationResult,
+        EvaluatorSpec,
+        Step,
+        StepSchema,
+    )
+
 from . import agents, controls, evaluation, evaluators, policies
 
 # Import client and operations modules
@@ -87,7 +100,7 @@ try:
         ControlSelector,
         EvaluationRequest,
         EvaluationResult,
-        EvaluatorConfig,
+        EvaluatorSpec,
         Step,
         StepSchema,
     )
@@ -104,7 +117,7 @@ except ImportError:
         class ControlAction:
             pass
 
-        class EvaluatorConfig:
+        class EvaluatorSpec:
             pass
 
         class Agent:  # runtime fallback
@@ -1012,15 +1025,6 @@ async def list_policy_controls(
         return await policies.list_policy_controls(client, policy_id)
 
 
-# Note: The @control decorator is imported from control_decorators.py
-# It applies server-defined policies to agent functions.
-# See: from agent_control import control
-
-
-# ============================================================================
-# Exports
-# ============================================================================
-
 __all__ = [
     # Initialization
     "init",
@@ -1033,56 +1037,38 @@ __all__ = [
 
     # SDK Logging
     "get_logger",
-
     # Agent management
     "get_agent",
     "list_agents",
-
     # Control management
     "create_control",
     "list_controls",
     "get_control",
     "delete_control",
     "update_control",
-
-    # Decorator (server-side policy evaluation)
-    "control",
-
-    # Control Decorator
+    # Decorator
     "control",
     "ControlViolationError",
-
     # Client
     "AgentControlClient",
-
     # Operation modules
     "agents",
     "policies",
     "controls",
     "evaluation",
     "evaluators",
-
     # Policy-Control management
     "add_control_to_policy",
     "remove_control_from_policy",
     "list_policy_controls",
-
-
-    # Tool inference utilities
-    "tool",
-    "extract_tools_from_functions",
-    "tools_from_module",
-
     # Local evaluation
     "check_evaluation_with_local",
-
     # Tracing
     "get_trace_and_span_ids",
     "get_current_trace_id",
     "get_current_span_id",
     "with_trace",
     "is_otel_available",
-
     # Observability
     "init_observability",
     "add_event",
@@ -1093,8 +1079,7 @@ __all__ = [
     "get_log_config",
     "log_control_evaluation",
     "LogConfig",
-
-    # Models (if available)
+    # Models (re-exported when available)
     "Agent",
     "Step",
     "StepSchema",
@@ -1103,7 +1088,7 @@ __all__ = [
     "ControlDefinition",
     "ControlSelector",
     "ControlAction",
-    "EvaluatorConfig",
+    "EvaluatorSpec",
 ]
 
 try:

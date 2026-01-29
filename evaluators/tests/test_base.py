@@ -8,7 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from agent_control_models import EvaluatorResult, Evaluator, EvaluatorMetadata
+from agent_control_evaluators import Evaluator, EvaluatorMetadata
+from agent_control_models import EvaluatorResult
 
 
 class MockConfig(BaseModel):

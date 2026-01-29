@@ -95,8 +95,6 @@ class AgentControlServerDatabaseConfig(BaseSettings):
 
 class Settings(BaseSettings):
     """Server configuration settings."""
-    # TODO: Clean this up since we may want to connect to pg, etc., so
-    # database_url may have to go
 
     model_config = SettingsConfigDict(
         env_file=".env",

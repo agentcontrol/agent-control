@@ -4,7 +4,7 @@ Tests evaluator registration, discovery, and base functionality without
 requiring actual evaluator implementations or external services.
 
 Evaluators take config at __init__, evaluate() only takes data.
-Registry is now in agent_control_models, discovery in agent_control_engine.
+Registry, base classes, and discovery are in agent_control_evaluators.
 """
 
 import pytest
@@ -19,8 +19,8 @@ from agent_control.evaluators import (
     list_evaluators,
     register_evaluator,
 )
-from agent_control_models import clear_evaluators
-from agent_control_engine.discovery import reset_evaluator_discovery
+from agent_control_evaluators import clear_evaluators
+from agent_control_engine import reset_evaluator_discovery
 from agent_control_models.controls import EvaluatorResult
 
 
@@ -236,7 +236,7 @@ class TestEvaluatorDiscovery:
         # Second call should return 0 (already discovered)
         assert count2 == 0
 
-    @patch("agent_control_engine.discovery.entry_points")
+    @patch("agent_control_evaluators._discovery.entry_points")
     def test_discover_evaluators_loads_entry_points(self, mock_entry_points):
         """Test loading evaluators via entry points."""
         mock_ep = MagicMock()

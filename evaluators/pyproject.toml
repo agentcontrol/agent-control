@@ -20,11 +20,11 @@ all = ["httpx>=0.24.0"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
 
 [project.entry-points."agent_control.evaluators"]
-regex = "agent_control_evaluators.builtin.regex:RegexEvaluator"
-list = "agent_control_evaluators.builtin.list:ListEvaluator"
-json = "agent_control_evaluators.builtin.json:JSONEvaluator"
-sql = "agent_control_evaluators.builtin.sql:SQLEvaluator"
-luna2 = "agent_control_evaluators.luna2.evaluator:Luna2Evaluator"
+regex = "agent_control_evaluators.regex:RegexEvaluator"
+list = "agent_control_evaluators.list:ListEvaluator"
+json = "agent_control_evaluators.json:JSONEvaluator"
+sql = "agent_control_evaluators.sql:SQLEvaluator"
+luna2 = "agent_control_evaluators.galileo_luna2:Luna2Evaluator"
 
 [build-system]
 requires = ["hatchling"]

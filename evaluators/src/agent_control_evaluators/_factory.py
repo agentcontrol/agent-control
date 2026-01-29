@@ -1,14 +1,18 @@
-"""Unified evaluator factory using evaluator registry with caching."""
+"""Evaluator factory with instance caching."""
+
+from __future__ import annotations
 
 import json
 import logging
 import os
 from collections import OrderedDict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from agent_control_models import Evaluator, EvaluatorConfig
+from agent_control_evaluators._discovery import list_evaluators
 
-from .discovery import list_evaluators
+if TYPE_CHECKING:
+    from agent_control_evaluators._base import Evaluator
+    from agent_control_models import EvaluatorSpec
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +46,8 @@ def _config_hash(config: dict[str, Any]) -> str:
     return json.dumps(config, sort_keys=True, default=str)
 
 
-def get_evaluator_instance(evaluator_config: EvaluatorConfig) -> Evaluator[Any]:
-    """Get or create a cached evaluator instance from configuration.
+def get_evaluator_instance(evaluator_spec: EvaluatorSpec) -> Evaluator[Any]:
+    """Get or create a cached evaluator instance from specification.
 
     Uses LRU caching to reuse evaluator instances with the same config.
     Cache key is: {evaluator_name}:{config_hash}
@@ -54,7 +58,7 @@ def get_evaluator_instance(evaluator_config: EvaluatorConfig) -> Evaluator[Any]:
     docstring for details on safe patterns.
 
     Args:
-        evaluator_config: The evaluator configuration with evaluator name and config
+        evaluator_spec: The evaluator specification with name and config
 
     Returns:
         Evaluator instance (cached or new)
@@ -63,27 +67,27 @@ def get_evaluator_instance(evaluator_config: EvaluatorConfig) -> Evaluator[Any]:
         ValueError: If evaluator not found
     """
     # Build cache key
-    cache_key = f"{evaluator_config.name}:{_config_hash(evaluator_config.config)}"
+    cache_key = f"{evaluator_spec.name}:{_config_hash(evaluator_spec.config)}"
 
     # Check cache
     if cache_key in _EVALUATOR_CACHE:
         # Move to end (most recently used)
         _EVALUATOR_CACHE.move_to_end(cache_key)
-        logger.debug(f"Cache hit for evaluator: {evaluator_config.name}")
+        logger.debug(f"Cache hit for evaluator: {evaluator_spec.name}")
         return _EVALUATOR_CACHE[cache_key]
 
     # Cache miss - create new instance
     evaluators = list_evaluators()
-    evaluator_cls = evaluators.get(evaluator_config.name)
+    evaluator_cls = evaluators.get(evaluator_spec.name)
 
     if evaluator_cls is None:
         raise ValueError(
-            f"Evaluator '{evaluator_config.name}' not found. "
+            f"Evaluator '{evaluator_spec.name}' not found. "
             f"Available evaluators: {', '.join(evaluators.keys())}"
         )
 
-    logger.debug(f"Cache miss, creating evaluator: {evaluator_config.name}")
-    instance = evaluator_cls.from_dict(evaluator_config.config)
+    logger.debug(f"Cache miss, creating evaluator: {evaluator_spec.name}")
+    instance = evaluator_cls.from_dict(evaluator_spec.config)
 
     # Evict oldest if cache is full
     while len(_EVALUATOR_CACHE) >= EVALUATOR_CACHE_SIZE:
@@ -98,5 +102,3 @@ def get_evaluator_instance(evaluator_config: EvaluatorConfig) -> Evaluator[Any]:
 def clear_evaluator_cache() -> None:
     """Clear all cached evaluator instances. Useful for testing."""
     _EVALUATOR_CACHE.clear()
-
-

@@ -483,12 +483,8 @@ You can create custom evaluators to extend Agent Control with your own detection
 ```python
 from typing import Any
 from pydantic import BaseModel
-from agent_control_models import (
-    EvaluatorResult,
-    Evaluator,
-    EvaluatorMetadata,
-    register_evaluator,
-)
+from agent_control_models import EvaluatorResult
+from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 
 
 class MyEvaluatorConfig(BaseModel):
