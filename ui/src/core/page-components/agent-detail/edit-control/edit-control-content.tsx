@@ -378,7 +378,7 @@ export const EditControlContent = ({
                   Evaluator configuration
                 </Text>
                 <Anchor
-                  href="https://docs.galileo.ai/controls"
+                  href="https://github.com/galileo/agent-control/blob/main/README.md"
                   target="_blank"
                   size="xs"
                   c="blue"

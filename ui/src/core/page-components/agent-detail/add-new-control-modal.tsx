@@ -310,7 +310,15 @@ export function AddNewControlModal({
                 />
                 <Text size="sm" c="dimmed">
                   Looking to add custom control?{" "}
-                  <Text component="a" href="#" c="blue" size="sm" td="none">
+                  <Text
+                    component="a"
+                    href="https://github.com/galileo/agent-control/blob/main/README.md"
+                    c="blue"
+                    size="sm"
+                    td="none"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     Check our Docs ↗
                   </Text>
                 </Text>
