@@ -110,4 +110,25 @@ export const api = {
         params: { query: params },
       }),
   },
+  evaluatorConfigs: {
+    list: (params?: {
+      cursor?: number;
+      limit?: number;
+      name?: string;
+      evaluator?: string;
+    }) =>
+      apiClient.GET("/api/v1/evaluator-configs", {
+        params: params ? { query: params } : undefined,
+      }),
+    create: (data: {
+      name: string;
+      description?: string | null;
+      evaluator: string;
+      config: Record<string, unknown>;
+    }) => apiClient.POST("/api/v1/evaluator-configs", { body: data }),
+    delete: (configId: number) =>
+      apiClient.DELETE("/api/v1/evaluator-configs/{config_id}", {
+        params: { path: { config_id: configId } },
+      }),
+  },
 };

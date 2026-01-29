@@ -3,7 +3,6 @@ import {
   // Group,
   ScrollArea,
   // SegmentedControl,
-  Stack,
   Textarea,
 } from "@mantine/core";
 
@@ -11,7 +10,7 @@ import { JsonEditor } from "@/components/json-editor";
 
 import type { EvaluatorJsonViewProps } from "./types";
 
-const JSON_VIEW_HEIGHT = 400;
+const DEFAULT_HEIGHT = 400;
 
 export const EvaluatorJsonView = ({
   config,
@@ -21,29 +20,31 @@ export const EvaluatorJsonView = ({
   rawJsonText,
   onRawJsonTextChange,
   rawJsonError,
+  height = DEFAULT_HEIGHT,
+  action,
 }: EvaluatorJsonViewProps) => {
-  return (
-    <Stack gap='sm'>
-      {/* TODO: Re-enable tree/raw toggle when needed */}
-      {/* <Group justify='flex-end'>
-        <SegmentedControl
-          value={jsonViewMode}
-          onChange={handleModeChange}
-          data={[
-            { value: "tree", label: "Tree" },
-            { value: "raw", label: "Raw" },
-          ]}
-          size='xs'
-        />
-      </Group> */}
+  // TODO: Re-enable tree/raw toggle when needed
+  // <Group justify='flex-end'>
+  //   <SegmentedControl
+  //     value={jsonViewMode}
+  //     onChange={handleModeChange}
+  //     data={[
+  //       { value: "tree", label: "Tree" },
+  //       { value: "raw", label: "Raw" },
+  //     ]}
+  //     size='xs'
+  //   />
+  // </Group>
 
-      {jsonViewMode === "tree" ? (
-        <ScrollArea h={JSON_VIEW_HEIGHT} type='auto'>
-          <Box p='xs'>
+  if (jsonViewMode === "tree") {
+    return (
+      <Box pos="relative">
+        <ScrollArea h={height} type="auto">
+          <Box p="xs">
             <JsonEditor
               data={config}
               setData={onChange}
-              rootName='config'
+              rootName="config"
               restrictEdit={false}
               restrictDelete={false}
               restrictAdd={false}
@@ -52,23 +53,28 @@ export const EvaluatorJsonView = ({
             />
           </Box>
         </ScrollArea>
-      ) : (
-        <Textarea
-          value={rawJsonText}
-          onChange={(e) => onRawJsonTextChange(e.currentTarget.value)}
-          rows={18}
-          styles={{
-            input: {
-              fontFamily: "monospace",
-              fontSize: 12,
-              height: JSON_VIEW_HEIGHT,
-              overflow: "auto",
-            },
-          }}
-          error={rawJsonError}
-          data-testid='raw-json-textarea'
-        />
-      )}
-    </Stack>
+        {action}
+      </Box>
+    );
+  }
+
+  return (
+    <Box pos="relative">
+      <Textarea
+        value={rawJsonText}
+        onChange={(e) => onRawJsonTextChange(e.currentTarget.value)}
+        styles={{
+          input: {
+            fontFamily: "monospace",
+            fontSize: 12,
+            height,
+            overflow: "auto",
+          },
+        }}
+        error={rawJsonError}
+        data-testid="raw-json-textarea"
+      />
+      {action}
+    </Box>
   );
 };

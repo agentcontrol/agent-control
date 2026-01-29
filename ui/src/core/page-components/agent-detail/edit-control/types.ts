@@ -1,4 +1,5 @@
 import type { UseFormReturnType } from "@mantine/form";
+import type { ReactNode } from "react";
 
 import type {
   Control,
@@ -61,6 +62,10 @@ export interface EvaluatorJsonViewProps {
   rawJsonText: string;
   onRawJsonTextChange: (text: string) => void;
   rawJsonError: string | null;
+  /** Optional height for the editor area */
+  height?: number;
+  /** Optional action to render inside the editor container */
+  action?: ReactNode;
 }
 
 export interface ControlDefinitionFormProps {
