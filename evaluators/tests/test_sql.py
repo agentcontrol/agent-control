@@ -1311,10 +1311,10 @@ class TestSQLSubqueries:
         assert result.matched is True
         assert "DELETE" in result.metadata["blocked"]
 
-        # NOTE: The following is a KNOWN BUG (Issue #1 in SQL_PLUGIN_ISSUES.md)
+        # NOTE: The following is a KNOWN LIMITATION of the SQL evaluator
         # DELETE in subquery - SHOULD be blocked but currently ISN'T
         # Blocked operations in subqueries are not currently detected
-        # Leaving this test commented out until Issue #1 is fixed
+        # This test is commented out until this limitation is addressed
         #
         # result = await evaluator.evaluate(
         #     "SELECT * FROM users WHERE id NOT IN "

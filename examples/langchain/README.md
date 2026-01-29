@@ -9,8 +9,7 @@ This example demonstrates integrating Agent Control with a LangChain SQL agent t
 **IMPORTANT: You must start/restart the server to load the SQL evaluator!**
 
 ```bash
-# From the repo root
-cd /path/to/agent-protect
+cd path/to/agent-control
 
 # Kill any old servers
 pkill -f "uvicorn agent_control_server"
