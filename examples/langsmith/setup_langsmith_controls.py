@@ -18,12 +18,13 @@ import asyncio
 import os
 import sys
 
-# Add the langsmith_evaluator module to the path
+# Add the current directory to the path
 sys.path.insert(0, os.path.dirname(__file__))
 
+import httpx
 import agent_control
 from agent_control import AgentControlClient, controls, policies
-from langsmith_evaluator import LangSmithEvaluatorConfig
+from config import LangSmithEvaluatorConfig
 
 
 async def setup_controls():
@@ -41,12 +42,6 @@ async def setup_controls():
     async with AgentControlClient() as client:
         # 1. Create toxicity control for input queries
         print("Creating toxicity control for queries...")
-        toxicity_config = LangSmithEvaluatorConfig(
-            metric="toxicity",
-            threshold=0.6,  # Block queries with toxicity score > 0.6
-            langsmith_project="agent-control-demo",
-        )
-
         toxicity_control_data = {
             "name": "query-toxicity-check",
             "data": {
@@ -58,7 +53,11 @@ async def setup_controls():
                 "evaluator_configs": [
                     {
                         "evaluator": "langsmith",
-                        "config": toxicity_config.model_dump(),
+                        "config": {
+                            "metric": "toxicity",
+                            "threshold": 0.6,
+                            "langsmith_project": "agent-control-demo",
+                        },
                         "selector": "input.query",
                         "action": "deny",
                     }
@@ -71,22 +70,19 @@ async def setup_controls():
                 client, toxicity_control_data["name"], toxicity_control_data["data"]
             )
             print(f"✓ Created toxicity control (ID: {toxicity_result['control_id']})")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 409:
+                print(f"✓ Toxicity control already exists (skipping)")
+            else:
+                raise
         except Exception as e:
-            if "already exists" in str(e):
-                print(f"✓ Toxicity control already exists")
+            if "already exists" in str(e).lower():
+                print(f"✓ Toxicity control already exists (skipping)")
             else:
                 raise
 
         # 2. Create hallucination control for responses
         print("\nCreating hallucination control for responses...")
-        hallucination_config = LangSmithEvaluatorConfig(
-            metric="hallucination",
-            threshold=0.7,  # Block responses with hallucination score > 0.7
-            langsmith_project="agent-control-demo",
-            require_context=True,
-            context_key="context",
-        )
-
         hallucination_control_data = {
             "name": "response-hallucination-check",
             "data": {
@@ -98,7 +94,13 @@ async def setup_controls():
                 "evaluator_configs": [
                     {
                         "evaluator": "langsmith",
-                        "config": hallucination_config.model_dump(),
+                        "config": {
+                            "metric": "hallucination",
+                            "threshold": 0.7,
+                            "langsmith_project": "agent-control-demo",
+                            "require_context": True,
+                            "context_key": "context",
+                        },
                         "selector": "output",
                         "action": "deny",
                     }
@@ -115,20 +117,19 @@ async def setup_controls():
             print(
                 f"✓ Created hallucination control (ID: {hallucination_result['control_id']})"
             )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 409:
+                print(f"✓ Hallucination control already exists (skipping)")
+            else:
+                raise
         except Exception as e:
-            if "already exists" in str(e):
-                print(f"✓ Hallucination control already exists")
+            if "already exists" in str(e).lower():
+                print(f"✓ Hallucination control already exists (skipping)")
             else:
                 raise
 
         # 3. Create PII detection control for responses
         print("\nCreating PII detection control for responses...")
-        pii_config = LangSmithEvaluatorConfig(
-            metric="pii_detection",
-            threshold=0.5,  # Block responses with PII score > 0.5
-            langsmith_project="agent-control-demo",
-        )
-
         pii_control_data = {
             "name": "response-pii-check",
             "data": {
@@ -140,7 +141,11 @@ async def setup_controls():
                 "evaluator_configs": [
                     {
                         "evaluator": "langsmith",
-                        "config": pii_config.model_dump(),
+                        "config": {
+                            "metric": "pii_detection",
+                            "threshold": 0.5,
+                            "langsmith_project": "agent-control-demo",
+                        },
                         "selector": "output",
                         "action": "deny",
                     }
@@ -153,20 +158,24 @@ async def setup_controls():
                 client, pii_control_data["name"], pii_control_data["data"]
             )
             print(f"✓ Created PII detection control (ID: {pii_result['control_id']})")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 409:
+                print(f"✓ PII detection control already exists (skipping)")
+            elif e.response.status_code == 422:
+                print(f"✗ PII detection control validation failed:")
+                print(f"   Response: {e.response.text}")
+                print(f"   Config sent: {pii_control_data['data']['evaluator_configs'][0]['config']}")
+                raise
+            else:
+                raise
         except Exception as e:
-            if "already exists" in str(e):
-                print(f"✓ PII detection control already exists")
+            if "already exists" in str(e).lower():
+                print(f"✓ PII detection control already exists (skipping)")
             else:
                 raise
 
         # 4. Create coherence control for responses
         print("\nCreating coherence control for responses...")
-        coherence_config = LangSmithEvaluatorConfig(
-            metric="coherence",
-            threshold=0.8,  # Block incoherent responses (score > 0.8)
-            langsmith_project="agent-control-demo",
-        )
-
         coherence_control_data = {
             "name": "response-coherence-check",
             "data": {
@@ -178,7 +187,11 @@ async def setup_controls():
                 "evaluator_configs": [
                     {
                         "evaluator": "langsmith",
-                        "config": coherence_config.model_dump(),
+                        "config": {
+                            "metric": "coherence",
+                            "threshold": 0.8,
+                            "langsmith_project": "agent-control-demo",
+                        },
                         "selector": "output",
                         "action": "deny",
                     }
@@ -191,9 +204,19 @@ async def setup_controls():
                 client, coherence_control_data["name"], coherence_control_data["data"]
             )
             print(f"✓ Created coherence control (ID: {coherence_result['control_id']})")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 409:
+                print(f"✓ Coherence control already exists (skipping)")
+            elif e.response.status_code == 422:
+                print(f"✗ Coherence control validation failed:")
+                print(f"   Response: {e.response.text}")
+                print(f"   Config sent: {coherence_control_data['data']['evaluator_configs'][0]['config']}")
+                raise
+            else:
+                raise
         except Exception as e:
-            if "already exists" in str(e):
-                print(f"✓ Coherence control already exists")
+            if "already exists" in str(e).lower():
+                print(f"✓ Coherence control already exists (skipping)")
             else:
                 raise
 
@@ -205,9 +228,16 @@ async def setup_controls():
             policy_result = await policies.create_policy(client, policy_name)
             policy_id = policy_result["policy_id"]
             print(f"✓ Created policy '{policy_name}' (ID: {policy_id})")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 409:
+                print(f"✓ Policy '{policy_name}' already exists (skipping)")
+                # Get existing policy ID
+                policy_id = None  # Would need to fetch from API
+            else:
+                raise
         except Exception as e:
-            if "already exists" in str(e):
-                print(f"✓ Policy '{policy_name}' already exists")
+            if "already exists" in str(e).lower():
+                print(f"✓ Policy '{policy_name}' already exists (skipping)")
                 # Get existing policy ID
                 policy_id = None  # Would need to fetch from API
             else:

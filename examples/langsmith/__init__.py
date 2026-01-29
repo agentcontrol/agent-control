@@ -18,6 +18,11 @@ Example:
     ```
 """
 
+from .client import (
+    EvaluationRequest,
+    EvaluationResponse,
+    LangSmithClient,
+)
 from .config import LangSmithEvaluatorConfig, LangSmithMetric
 from .evaluator import LangSmithEvaluator
 
@@ -25,4 +30,7 @@ __all__ = [
     "LangSmithEvaluator",
     "LangSmithEvaluatorConfig",
     "LangSmithMetric",
+    "LangSmithClient",
+    "EvaluationRequest",
+    "EvaluationResponse",
 ]

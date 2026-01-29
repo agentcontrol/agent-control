@@ -2,7 +2,7 @@
 name = "langsmith-rag-example"
 version = "0.1.0"
 description = "RAG Q&A agent with LangSmith evaluator controls"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "langchain>=0.3.21",
     "langchain-community>=0.3.21",
@@ -12,17 +12,29 @@ dependencies = [
     "openai>=1.59.5",
     "faiss-cpu>=1.9.0",
     "tiktoken>=0.8.0",
-    "agent-control @ file://../../sdks/python",
-    "agent-control-models @ file://../../models",
+    "httpx>=0.24.0",
+    "pydantic>=2.0.0",
+    "agent-control-sdk",
+    "agent-control-models",
+    "agent-control-engine",
+    "agent-control-evaluators",
 ]
+
+[project.optional-dependencies]
+dev = []
+
+[project.entry-points."agent_control.evaluators"]
+langsmith = "evaluator:LangSmithEvaluator"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-package = false
+[tool.hatch.build.targets.wheel]
+packages = ["."]
 
 [tool.uv.sources]
-agent-control = { path = "../../sdks/python", editable = true }
+agent-control-sdk = { path = "../../sdks/python", editable = true }
 agent-control-models = { path = "../../models", editable = true }
+agent-control-engine = { path = "../../engine", editable = true }
+agent-control-evaluators = { path = "../../evaluators", editable = true }
