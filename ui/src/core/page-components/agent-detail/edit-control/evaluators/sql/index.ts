@@ -1,4 +1,4 @@
-import type { EvaluatorPlugin } from "../types";
+import type { EvaluatorDefinition } from "../types";
 import { SqlForm } from "./form";
 import type { SqlFormValues } from "./types";
 
@@ -20,11 +20,11 @@ const numberOrNull = (value: number | ""): number | null =>
   value === "" ? null : value;
 
 /**
- * SQL evaluator plugin.
+ * SQL evaluator definition.
  *
  * Validates SQL queries for operations, table access, column presence, and complexity.
  */
-export const sqlPlugin: EvaluatorPlugin<SqlFormValues> = {
+export const sqlEvaluator: EvaluatorDefinition<SqlFormValues> = {
   id: "sql",
   displayName: "SQL",
 

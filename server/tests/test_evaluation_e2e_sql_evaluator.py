@@ -488,7 +488,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
         "description": "Validate LLM-generated SQL",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+        "scope": {"step_types": ["llm"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
             "name": "sql",
@@ -506,7 +506,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
     # Case 1: LLM outputs SELECT with LIMIT → Allowed
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", 
+        step=Step(type="llm", name="test-step", 
             input="Generate a query to get all users",
             output="SELECT * FROM users LIMIT 10"
         ),
@@ -519,7 +519,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
     # Case 2: LLM outputs DELETE → Denied (not SELECT)
     req_delete = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", 
+        step=Step(type="llm", name="test-step", 
             input="Delete user with id 1",
             output="DELETE FROM users WHERE id = 1"
         ),
@@ -533,7 +533,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
     # Case 3: LLM outputs SELECT without LIMIT → Denied (missing LIMIT)
     req_no_limit = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", 
+        step=Step(type="llm", name="test-step", 
             input="Get all users",
             output="SELECT * FROM users"
         ),
@@ -551,7 +551,7 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
         "description": "Block multi-statement in LLM output",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+        "scope": {"step_types": ["llm"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
             "name": "sql",
@@ -568,7 +568,7 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
     # Case 1: LLM outputs single statement → Allowed
     req_single = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", 
+        step=Step(type="llm", name="test-step", 
             input="Get user by id",
             output="SELECT * FROM users WHERE id = 1"
         ),
@@ -581,7 +581,7 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
     # Case 2: LLM outputs multi-statement (injection pattern) → Denied
     req_multi = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", 
+        step=Step(type="llm", name="test-step", 
             input="Get users and drop table",
             output="SELECT * FROM users; DROP TABLE users;"
         ),
@@ -600,7 +600,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
         "description": "Restrict LLM to analytics tables",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+        "scope": {"step_types": ["llm"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
             "name": "sql",
@@ -617,7 +617,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
     # Case 1: LLM outputs query on analytics table → Allowed
     req_analytics = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", 
+        step=Step(type="llm", name="test-step", 
             input="Get analytics data",
             output="SELECT * FROM analytics WHERE date > '2024-01-01'"
         ),
@@ -630,7 +630,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
     # Case 2: LLM outputs query on reports table → Allowed
     req_reports = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", 
+        step=Step(type="llm", name="test-step", 
             input="Get monthly reports",
             output="SELECT * FROM reports WHERE month = 'January'"
         ),
@@ -643,7 +643,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
     # Case 3: LLM outputs query on users table → Denied (not in allowed_tables)
     req_users = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", 
+        step=Step(type="llm", name="test-step", 
             input="Get all users",
             output="SELECT * FROM users"
         ),

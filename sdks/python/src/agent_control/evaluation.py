@@ -61,12 +61,12 @@ async def check_evaluation(
         httpx.HTTPError: If request fails
 
     Example:
-        # Pre-check before LLM inference
+        # Pre-check before LLM step
         async with AgentControlClient() as client:
             result = await check_evaluation(
                 client=client,
                 agent_uuid=agent.agent_id,
-                step={"type": "llm_inference", "name": "support-answer", "input": "User question"},
+                step={"type": "llm", "name": "support-answer", "input": "User question"},
                 stage="pre"
             )
 
@@ -227,7 +227,7 @@ async def check_evaluation_with_local(
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=agent.agent_id,
-            step={"type": "llm_inference", "name": "support-answer", "input": "User question"},
+            step={"type": "llm", "name": "support-answer", "input": "User question"},
             stage="pre",
             controls=controls,
         )

@@ -1,17 +1,17 @@
 import type { UseFormReturnType } from "@mantine/form";
 
 /**
- * Base interface for evaluator plugins.
+ * Base interface for evaluator definitions.
  *
  * To add a new evaluator:
- * 1. Create a new folder under `evaluators/` (e.g., `evaluators/my-plugin/`)
- * 2. Implement `EvaluatorPlugin<YourFormValues>`
- * 3. Export the plugin from `evaluators/index.ts`
+ * 1. Create a new folder under `evaluators/` (e.g., `evaluators/my-evaluator/`)
+ * 2. Implement `EvaluatorDefinition<YourFormValues>`
+ * 3. Export the evaluator from `evaluators/index.ts`
  *
  * The main edit-control component will automatically pick it up.
  */
-export interface EvaluatorPlugin<TFormValues = any> {
-  /** Unique plugin ID (must match backend plugin name) */
+export interface EvaluatorDefinition<TFormValues = any> {
+  /** Unique evaluator ID (must match backend evaluator name) */
   id: string;
 
   /** Human-readable display name */
@@ -52,10 +52,10 @@ export interface EvaluatorPlugin<TFormValues = any> {
 }
 
 /**
- * Type helper for creating strongly-typed evaluator plugins.
- * Usage: `const myPlugin: EvaluatorPlugin<MyFormValues> = { ... }`
+ * Type helper for creating strongly-typed evaluator definitions.
+ * Usage: `const myEvaluator: EvaluatorDefinition<MyFormValues> = { ... }`
  */
-export type AnyEvaluatorPlugin = EvaluatorPlugin<any>;
+export type AnyEvaluatorDefinition = EvaluatorDefinition<any>;
 
 /**
  * Props passed to evaluator form components.
@@ -65,8 +65,8 @@ export interface EvaluatorFormProps<TFormValues> {
 }
 
 /**
- * Utility type for extracting form values type from a plugin.
+ * Utility type for extracting form values type from an evaluator definition.
  */
-export type PluginFormValues<T> = T extends EvaluatorPlugin<infer V>
+export type EvaluatorFormValues<T> = T extends EvaluatorDefinition<infer V>
   ? V
   : never;

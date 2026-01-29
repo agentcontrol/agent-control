@@ -18,7 +18,7 @@ export function useAgentsInfinite() {
         limit: AGENTS_PAGE_SIZE,
       });
       if (error) throw error;
-      return data!;
+      return data;
     },
     getNextPageParam: (lastPage: ListAgentsResponse) => {
       // Return undefined if no more pages (stops infinite query)

@@ -126,7 +126,7 @@ async def create_regex_control(client: AgentControlClient) -> int:
         "description": "Block SSN patterns in output to prevent PII leakage",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},  # Check AFTER
+        "scope": {"step_types": ["llm"], "stages": ["post"]},  # Check AFTER
         "selector": {"path": "output"},
         "evaluator": {
             "name": "regex",
@@ -158,7 +158,7 @@ async def create_list_control(client: AgentControlClient) -> int:
         "description": "Block dangerous SQL operations in input",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},  # Check BEFORE
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},  # Check BEFORE
         "selector": {"path": "input"},
         "evaluator": {
             "name": "list",
@@ -304,7 +304,7 @@ async def update_control(client: AgentControlClient, control_id: int) -> None:
         "description": "Block dangerous SQL operations (UPDATED - more keywords)",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "name": "list",

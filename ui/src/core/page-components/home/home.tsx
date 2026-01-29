@@ -1,6 +1,5 @@
 import {
   Alert,
-  Badge,
   Box,
   Center,
   Group,
@@ -15,24 +14,17 @@ import { Table } from "@rungalileo/jupiter-ds";
 import { IconAlertCircle, IconSearch } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/router";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { AgentSummary } from "@/core/api/types";
 import { useAgentsInfinite } from "@/core/hooks/query-hooks/use-agents-infinite";
 
-// Extended type for table display (real API data + mock data)
-interface AgentTableRow extends AgentSummary {
-  // Real data from API: agent_id, agent_name, agent_description, active_controls_count
-
-  // Mock data for demo (TODO: Add to API):
-  type: string;
-  requests: number;
-  passRate: number;
-  lastActive: string;
-}
+// Table row type - uses real API data
+type AgentTableRow = AgentSummary;
 
 const HomePage = () => {
   const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState("");
   const {
     data,
     fetchNextPage,
@@ -48,19 +40,14 @@ const HomePage = () => {
   // Flatten all pages into single array
   const allAgents = data?.pages.flatMap((page) => page.agents) || [];
 
-  // Transform API data to table format with mock data for missing fields
-  // TODO: Replace with API data
-  const agents: AgentTableRow[] = allAgents.map((agent, index) => ({
-    ...agent,
-    // Mock data until API provides:
-    type: index % 2 === 0 ? "1st party" : "3rd party",
-    // eslint-disable-next-line react-hooks/purity
-    requests: Math.floor(Math.random() * 50000) + 10000,
-    // eslint-disable-next-line react-hooks/purity
-    passRate: Math.floor(Math.random() * 30) + 70, // 70-100%
-    // eslint-disable-next-line react-hooks/purity
-    lastActive: `${Math.floor(Math.random() * 60) + 1} mins ago`,
-  }));
+  // Filter agents based on search query
+  const agents: AgentTableRow[] = useMemo(() => {
+    if (!searchQuery.trim()) return allAgents;
+    const query = searchQuery.toLowerCase();
+    return allAgents.filter((agent) =>
+      agent.agent_name.toLowerCase().includes(query)
+    );
+  }, [allAgents, searchQuery]);
 
   // Intersection observer to load more agents when scrolling near bottom
   useEffect(() => {
@@ -79,12 +66,6 @@ const HomePage = () => {
 
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  const getPassRateColor = (rate: number) => {
-    if (rate >= 90) return "#059669";
-    if (rate >= 70) return "#D97706";
-    return "#DC2626";
-  };
 
   const handleRowClick = (agent: AgentTableRow) => {
     router.push(`/agents/${agent.agent_id}`);
@@ -119,9 +100,8 @@ const HomePage = () => {
     );
   }
 
-  // Define table columns (real API data + mock data)
+  // Define table columns
   const columns: ColumnDef<AgentTableRow>[] = [
-    // ✅ Real API data
     {
       id: "agent_name",
       header: "Agent name",
@@ -132,41 +112,6 @@ const HomePage = () => {
         </Text>
       ),
     },
-    // 🎨 Mock data (TODO: Add to API)
-    {
-      id: "type",
-      header: "Type",
-      accessorKey: "type",
-      size: 120,
-      cell: ({ row }: { row: any }) => (
-        <Badge
-          variant='light'
-          color={row.original.type === "3rd party" ? "gray" : "blue"}
-          size='sm'
-          tt='uppercase'
-          styles={{
-            root: {
-              fontWeight: 600,
-              fontSize: "10px",
-              padding: "4px 8px",
-            },
-          }}
-        >
-          {row.original.type}
-        </Badge>
-      ),
-    },
-    // 🎨 Mock data (TODO: Add to API)
-    {
-      id: "requests",
-      header: "Requests",
-      accessorKey: "requests",
-      size: 120,
-      cell: ({ row }: { row: any }) => (
-        <Text size='sm'>{row.original.requests.toLocaleString()}</Text>
-      ),
-    },
-    // ✅ Real API data
     {
       id: "activeControls",
       header: "Active controls",
@@ -174,30 +119,6 @@ const HomePage = () => {
       size: 140,
       cell: ({ row }: { row: any }) => (
         <Text size='sm'>{row.original.active_controls_count}</Text>
-      ),
-    },
-    // 🎨 Mock data (TODO: Add to API)
-    {
-      id: "passRate",
-      header: "Pass rate",
-      accessorKey: "passRate",
-      size: 120,
-      cell: ({ row }: { row: any }) => (
-        <Text size='sm' fw={500} c={getPassRateColor(row.original.passRate)}>
-          {row.original.passRate}%
-        </Text>
-      ),
-    },
-    // 🎨 Mock data (TODO: Add to API)
-    {
-      id: "lastActive",
-      header: "Last active",
-      accessorKey: "lastActive",
-      size: 150,
-      cell: ({ row }: { row: any }) => (
-        <Text size='sm' c='dimmed'>
-          {row.original.lastActive}
-        </Text>
       ),
     },
   ];
@@ -224,12 +145,15 @@ const HomePage = () => {
 
         {/* Search and Filters */}
         <TextInput
-          placeholder='Search or apply filter...'
+          placeholder='Search agents...'
           leftSection={
             <Center>
               <IconSearch size={16} />
             </Center>
           }
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.currentTarget.value)}
+          w={250}
         />
       </Group>
 

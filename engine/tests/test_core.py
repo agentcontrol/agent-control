@@ -188,7 +188,7 @@ def make_control(
         selector["path"] = path
     scope: dict[str, Any] = {}
     if step_types is None:
-        step_types = ["llm_inference"]
+        step_types = ["llm"]
     scope["step_types"] = step_types
     if step_names is not None:
         scope["step_names"] = step_names
@@ -239,7 +239,7 @@ class TestParallelExecution:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         await engine.process(request)
@@ -271,7 +271,7 @@ class TestParallelExecution:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         start = time.monotonic()
@@ -306,7 +306,7 @@ class TestCancelOnDeny:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -341,7 +341,7 @@ class TestCancelOnDeny:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -367,7 +367,7 @@ class TestCancelOnDeny:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -393,7 +393,7 @@ class TestCancelOnDeny:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -427,7 +427,7 @@ class TestResultCollection:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -450,7 +450,7 @@ class TestResultCollection:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -538,7 +538,7 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -574,7 +574,7 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -612,7 +612,7 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -644,7 +644,7 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -681,7 +681,7 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -727,7 +727,7 @@ class TestErrorHandling:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -768,7 +768,7 @@ class TestConfidenceCalculation:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -802,7 +802,7 @@ class TestConfidenceCalculation:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -834,7 +834,7 @@ class TestConfidenceCalculation:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -863,7 +863,7 @@ class TestConfidenceCalculation:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -1084,7 +1084,7 @@ class TestTimeoutEnforcement:
                     description="Test timeout",
                     enabled=True,
                     execution="server",
-                    scope={"step_types": ["llm_inference"], "stages": ["pre"]},
+                    scope={"step_types": ["llm"], "stages": ["pre"]},
                     selector={"path": "input"},
                     evaluator=EvaluatorConfig(
                         name="test-timeout",
@@ -1099,7 +1099,7 @@ class TestTimeoutEnforcement:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         start = time.monotonic()
@@ -1142,7 +1142,7 @@ class TestTimeoutEnforcement:
                     description="Test timeout",
                     enabled=True,
                     execution="server",
-                    scope={"step_types": ["llm_inference"], "stages": ["pre"]},
+                    scope={"step_types": ["llm"], "stages": ["pre"]},
                     selector={"path": "input"},
                     evaluator=EvaluatorConfig(
                         name="test-timeout",
@@ -1157,7 +1157,7 @@ class TestTimeoutEnforcement:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -1242,7 +1242,7 @@ class TestConcurrencyLimit:
         # When: Processing
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         await engine.process(request)
@@ -1272,7 +1272,7 @@ def make_control_with_execution(
 ) -> MockControlWithIdentity:
     """Create a mock control with the execution field set."""
     if step_types is None:
-        step_types = ["llm_inference"]
+        step_types = ["llm"]
     if stages is None:
         stages = ["pre"]
     scope: dict[str, Any] = {"step_types": step_types, "stages": stages}
@@ -1322,7 +1322,7 @@ class TestContextFiltering:
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         await engine.process(request)
@@ -1352,7 +1352,7 @@ class TestContextFiltering:
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         await engine.process(request)
@@ -1382,7 +1382,7 @@ class TestContextFiltering:
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         await engine.process(request)
@@ -1412,7 +1412,7 @@ class TestContextFiltering:
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -1444,7 +1444,7 @@ class TestContextFiltering:
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)
@@ -1473,7 +1473,7 @@ class TestContextFiltering:
 
         request = EvaluationRequest(
             agent_uuid="00000000-0000-0000-0000-000000000001",
-            step=Step(type="llm_inference", name="test-step", input="test", output=None),
+            step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
         result = await engine.process(request)

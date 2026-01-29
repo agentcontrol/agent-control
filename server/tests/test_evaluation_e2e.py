@@ -11,7 +11,7 @@ def test_evaluation_flow_deny(client: TestClient):
         "description": "Block secret",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "name": "regex",
@@ -22,7 +22,7 @@ def test_evaluation_flow_deny(client: TestClient):
     agent_uuid, control_name = create_and_assign_policy(client, control_data)
 
     # When: Sending a request containing "secret"
-    payload = Step(type="llm_inference", name="test-step", input="This contains a secret", output=None)
+    payload = Step(type="llm", name="test-step", input="This contains a secret", output=None)
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=payload,
@@ -50,7 +50,7 @@ def test_evaluation_no_policy(client: TestClient):
     # 2. Check Evaluation
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", input="anything", output=None),
+        step=Step(type="llm", name="test-step", input="anything", output=None),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
@@ -80,7 +80,7 @@ def test_evaluation_empty_policy(client: TestClient):
     # 4. Check Evaluation
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", input="anything", output=None),
+        step=Step(type="llm", name="test-step", input="anything", output=None),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
@@ -97,7 +97,7 @@ def test_evaluation_path_failure(client: TestClient):
         "description": "Check non-existent field",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input.non_existent_field"}, # Invalid for string input
         "evaluator": {
             "name": "regex",
@@ -108,7 +108,7 @@ def test_evaluation_path_failure(client: TestClient):
     agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="PathFailAgent")
 
     # When: Sending a request
-    payload = Step(type="llm_inference", name="test-step", input="some content", output=None)
+    payload = Step(type="llm", name="test-step", input="some content", output=None)
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=payload,
@@ -186,7 +186,7 @@ def test_evaluation_deny_precedence(client: TestClient):
         "description": "Warn on keyword",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {"name": "regex", "config": {"pattern": "keyword"}},
         "action": {"decision": "warn"}
@@ -204,7 +204,7 @@ def test_evaluation_deny_precedence(client: TestClient):
         "description": "Deny on keyword",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {"name": "regex", "config": {"pattern": "keyword"}},
         "action": {"decision": "deny"}
@@ -219,7 +219,7 @@ def test_evaluation_deny_precedence(client: TestClient):
     # When: Sending request matching "keyword"
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", input="This has a keyword", output=None),
+        step=Step(type="llm", name="test-step", input="This has a keyword", output=None),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
@@ -241,7 +241,7 @@ def test_evaluation_stage_filtering(client: TestClient):
         "description": "Post-check only",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+        "scope": {"step_types": ["llm"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {"name": "regex", "config": {"pattern": "bad_output"}},
         "action": {"decision": "deny"}
@@ -253,7 +253,7 @@ def test_evaluation_stage_filtering(client: TestClient):
         agent_uuid=agent_uuid,
         # Even if we provide output, the control shouldn't run in 'pre' stage? 
         # Actually the control says stage='post'. If we send request with stage='pre', it skips.
-        step=Step(type="llm_inference", name="test-step", input="bad_output", output="bad_output"),
+        step=Step(type="llm", name="test-step", input="bad_output", output="bad_output"),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_pre.model_dump(mode="json"))
@@ -263,7 +263,7 @@ def test_evaluation_stage_filtering(client: TestClient):
     # 2. Post-check (Should be Unsafe)
     req_post = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", input="ok", output="bad_output"),
+        step=Step(type="llm", name="test-step", input="ok", output="bad_output"),
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_post.model_dump(mode="json"))
@@ -285,11 +285,11 @@ def test_evaluation_step_type_filtering(client: TestClient):
     }
     agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="AppliesToAgent")
 
-    # 1. LLM inference step (Should be Safe even if content matches)
+    # 1. LLM step (Should be Safe even if content matches)
     # Note: LLM steps don't have tool names, but the engine filters by step type.
     req_llm = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", input="rm_rf", output=None),
+        step=Step(type="llm", name="test-step", input="rm_rf", output=None),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_llm.model_dump(mode="json"))

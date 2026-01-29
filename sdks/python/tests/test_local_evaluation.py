@@ -43,7 +43,7 @@ def agent_uuid() -> UUID:
 @pytest.fixture
 def llm_payload() -> Step:
     """Sample LLM call payload."""
-    return Step(type="llm_inference", name="test-step", input="test input", output=None)
+    return Step(type="llm", name="test-step", input="test input", output=None)
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ def make_control_dict(
     evaluator: str = "regex",
     pattern: str = r"test",
     action: str = "deny",
-    step_type: str = "llm_inference",
+    step_type: str = "llm",
     stage: str = "pre",
     path: str | None = None,
 ) -> dict[str, Any]:

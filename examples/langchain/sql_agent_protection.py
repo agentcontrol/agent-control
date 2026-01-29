@@ -32,7 +32,13 @@ import pathlib
 from typing import Annotated, Literal, TypedDict
 
 import agent_control
-from agent_control import ControlViolationError, control
+from agent_control import (
+    AgentControlClient,
+    ControlViolationError,
+    agents,
+    check_evaluation_with_local,
+    control,
+)
 import requests
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.utilities import SQLDatabase
@@ -47,13 +53,8 @@ from langgraph.prebuilt import ToolNode
 AGENT_ID = "sql-agent-demo"
 AGENT_NAME = "SQL Demo Agent"
 AGENT_DESCRIPTION = "SQL agent with server-side controls"
-
-agent_control.init(
-    agent_name=AGENT_NAME,
-    agent_id=AGENT_ID,
-    agent_description=AGENT_DESCRIPTION,
-    server_url=os.getenv("AGENT_CONTROL_URL"),
-)
+USE_LOCAL_CONTROLS = os.getenv("AGENT_CONTROL_LOCAL_EVAL", "false").lower() == "true"
+# When enabled, controls must be configured with execution="sdk".
 
 # --- 1. Setup Database ---
 def setup_database():
@@ -88,7 +89,7 @@ def setup_database():
     return SQLDatabase.from_uri("sqlite:///Chinook.db")
 
 # --- 2. Define Tools with Server-Side Controls ---
-def create_safe_tools(db, llm):
+def create_safe_tools(db, llm, *, use_local_controls: bool, local_controls: list[dict] | None):
     toolkit = SQLDatabaseToolkit(db=db, llm=llm)
     original_tools = toolkit.get_tools()
     
@@ -110,14 +111,40 @@ def create_safe_tools(db, llm):
     validated_query_func = control()(_execute_query_with_validation)
     
     # Outer wrapper: catches exceptions and returns error messages gracefully
-    @tool("sql_db_query", description="Execute a SQL query after server-side safety validation")
+    @tool("sql_db_query", description="Execute a SQL query after safety validation")
     async def safe_query_tool(query: str):
-        """Execute a SQL query with server-side safety checks."""
+        """Execute a SQL query with safety checks."""
         print(f"\n[SQL Safety Check] Validating query: {query[:60]}...")
         try:
-            result = await validated_query_func(query)
+            if use_local_controls:
+                agent = agent_control.current_agent()
+                if agent is None:
+                    raise RuntimeError("Agent is not initialized.")
+                if not local_controls:
+                    raise RuntimeError("No local controls available for SDK evaluation.")
+
+                step = {
+                    "type": "tool",
+                    "name": "sql_db_query",
+                    "input": {"query": query},
+                }
+                async with AgentControlClient() as client:
+                    result = await check_evaluation_with_local(
+                        client=client,
+                        agent_uuid=agent.agent_id,
+                        step=step,
+                        stage="pre",
+                        controls=local_controls,
+                    )
+                if getattr(result, "errors", None):
+                    raise RuntimeError("Local control evaluation failed.")
+                if not result.is_safe:
+                    raise ControlViolationError(message=result.reason or "Control blocked")
+                output = query_tool.invoke(query)
+            else:
+                output = await validated_query_func(query)
             print("✅ Query executed successfully")
-            return result
+            return output
         except ControlViolationError as e:
             # SQL control blocked the query
             error_msg = f"🚫 Query blocked by safety control: {e.message}"
@@ -181,17 +208,41 @@ async def main():
     print("      $ uv run setup_sql_controls.py")
     print()
     print("Initializing SQL Agent...")
-    
+
+    agent_control.init(
+        agent_name=AGENT_NAME,
+        agent_id=AGENT_ID,
+        agent_description=AGENT_DESCRIPTION,
+        server_url=os.getenv("AGENT_CONTROL_URL"),
+    )
+
     # 1. Setup DB
     db = setup_database()
-    
+
     # 2. Setup LLM & Tools
     if not os.getenv("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY not set")
         return
 
     llm = ChatOpenAI(model="gpt-4o-mini")
-    tools = create_safe_tools(db, llm)
+
+    # Register agent and fetch controls if local evaluation is enabled
+    local_controls: list[dict] | None = None
+    if USE_LOCAL_CONTROLS:
+        agent = agent_control.current_agent()
+        if agent is None:
+            raise RuntimeError("Agent is not initialized.")
+        async with AgentControlClient() as client:
+            response = await agents.register_agent(client, agent, steps=[])
+            local_controls = response.get("controls", [])
+            print(f"✓ Loaded {len(local_controls)} control(s) for local evaluation")
+
+    tools = create_safe_tools(
+        db,
+        llm,
+        use_local_controls=USE_LOCAL_CONTROLS,
+        local_controls=local_controls,
+    )
     
     # 4. Create Agent
     agent = create_agent(llm, tools)

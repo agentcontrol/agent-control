@@ -37,7 +37,7 @@ class EvaluationRequest(BaseModel):
                 {
                     "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
                     "step": {
-                        "type": "llm_inference",
+                        "type": "llm",
                         "name": "support-answer",
                         "input": "What is the customer's credit card number?",
                         "context": {"user_id": "user123", "session_id": "abc123"},
@@ -47,7 +47,7 @@ class EvaluationRequest(BaseModel):
                 {
                     "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
                     "step": {
-                        "type": "llm_inference",
+                        "type": "llm",
                         "name": "support-answer",
                         "input": "What is the customer's credit card number?",
                         "output": "I cannot share sensitive payment information.",

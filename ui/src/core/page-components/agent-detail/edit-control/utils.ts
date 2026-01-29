@@ -22,7 +22,7 @@ interface FieldMapping {
  *
  * API field paths look like:
  * - "name" (control name)
- * - "data.applies_to" (definition field)
+ * - "data.scope.step_types" (definition field)
  * - "data.selector.path" → selector_path (definition field)
  * - "data.evaluator.config.pattern" (evaluator config field)
  * - "data.evaluator.field_types" (evaluator config field without config prefix)
@@ -79,9 +79,23 @@ export function mapApiFieldToFormField(
   if (fieldPath === "action.decision") {
     return { form: "definition", field: "action_decision" };
   }
+  if (fieldPath.startsWith("scope.")) {
+    const scopeField = fieldPath.slice("scope.".length);
+    const scopeFieldBase = scopeField.split(".")[0];
+    const scopeMap: Record<string, string> = {
+      step_types: "step_types",
+      step_names: "step_names",
+      step_name_regex: "step_name_regex",
+      stages: "stages",
+    };
+    const mappedField = scopeMap[scopeFieldBase];
+    if (mappedField) {
+      return { form: "definition", field: mappedField };
+    }
+  }
 
   // For other definition fields, use the field path directly
-  // (e.g., "applies_to", "check_stage", "enabled", "local")
+  // (e.g., "execution", "enabled")
   const firstDotIndex = fieldPath.indexOf(".");
   const field =
     firstDotIndex > 0 ? fieldPath.slice(0, firstDotIndex) : fieldPath;

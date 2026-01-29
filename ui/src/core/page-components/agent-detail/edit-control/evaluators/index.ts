@@ -1,29 +1,29 @@
 /**
- * Evaluator Plugin Registry
+ * Evaluator Registry
  *
- * This module exports all available evaluator plugins and provides
+ * This module exports all available evaluators and provides
  * utilities for working with them.
  *
- * ## Adding a New Evaluator Plugin
+ * ## Adding a New Evaluator
  *
- * 1. Create a new folder under `evaluators/` (e.g., `evaluators/my-plugin/`)
+ * 1. Create a new folder under `evaluators/` (e.g., `evaluators/my-evaluator/`)
  * 2. Create the following files:
  *    - `types.ts` - Form value types
  *    - `form.tsx` - React form component
- *    - `index.ts` - Plugin definition (implements EvaluatorPlugin interface)
- * 3. Import and add the plugin to the `plugins` array below
+ *    - `index.ts` - Evaluator definition (implements EvaluatorDefinition interface)
+ * 3. Import and add the evaluator to the `evaluators` array below
  * 4. That's it! The main edit-control component will automatically pick it up.
  *
  * @example
  * ```typescript
- * // evaluators/my-plugin/index.ts
- * import type { EvaluatorPlugin } from "../types";
+ * // evaluators/my-evaluator/index.ts
+ * import type { EvaluatorDefinition } from "../types";
  * import { MyForm } from "./form";
  * import type { MyFormValues } from "./types";
  *
- * export const myPlugin: EvaluatorPlugin<MyFormValues> = {
- *   id: "my-plugin",
- *   displayName: "My Plugin",
+ * export const myEvaluator: EvaluatorDefinition<MyFormValues> = {
+ *   id: "my-evaluator",
+ *   displayName: "My Evaluator",
  *   initialValues: { ... },
  *   validate: { ... },
  *   toConfig: (values) => ({ ... }),
@@ -33,52 +33,53 @@
  * ```
  */
 
-import { jsonPlugin } from "./json";
-import { listPlugin } from "./list";
-import { luna2Plugin } from "./luna2";
-import { regexPlugin } from "./regex";
-import { sqlPlugin } from "./sql";
-import type { AnyEvaluatorPlugin } from "./types";
+import { jsonEvaluator } from "./json";
+import { listEvaluator } from "./list";
+import { luna2Evaluator } from "./luna2";
+import { regexEvaluator } from "./regex";
+import { sqlEvaluator } from "./sql";
+import type { AnyEvaluatorDefinition } from "./types";
 
 /**
- * All registered evaluator plugins.
- * Add new plugins here to make them available in the UI.
+ * All registered evaluators.
+ * Add new evaluators here to make them available in the UI.
  */
-export const plugins: AnyEvaluatorPlugin[] = [
-  regexPlugin,
-  listPlugin,
-  jsonPlugin,
-  sqlPlugin,
-  luna2Plugin,
+export const evaluators: AnyEvaluatorDefinition[] = [
+  regexEvaluator,
+  listEvaluator,
+  jsonEvaluator,
+  sqlEvaluator,
+  luna2Evaluator,
 ];
 
 /**
- * Map of plugin ID to plugin for quick lookup.
+ * Map of evaluator ID to evaluator for quick lookup.
  */
-export const pluginRegistry = new Map<string, AnyEvaluatorPlugin>(
-  plugins.map((p) => [p.id, p])
+export const evaluatorRegistry = new Map<string, AnyEvaluatorDefinition>(
+  evaluators.map((evaluator) => [evaluator.id, evaluator])
 );
 
 /**
- * Get a plugin by ID.
- * Returns undefined if the plugin is not found.
+ * Get an evaluator by ID.
+ * Returns undefined if the evaluator is not found.
  */
-export const getPlugin = (id: string): AnyEvaluatorPlugin | undefined =>
-  pluginRegistry.get(id);
+export const getEvaluator = (
+  id: string
+): AnyEvaluatorDefinition | undefined => evaluatorRegistry.get(id);
 
 /**
- * Check if a plugin exists.
+ * Check if an evaluator exists.
  */
-export const hasPlugin = (id: string): boolean => pluginRegistry.has(id);
+export const hasEvaluator = (id: string): boolean => evaluatorRegistry.has(id);
 
-// Re-export types and individual plugins for direct imports
-export { jsonPlugin } from "./json";
-export { listPlugin } from "./list";
-export { luna2Plugin } from "./luna2";
-export { regexPlugin } from "./regex";
-export { sqlPlugin } from "./sql";
+// Re-export types and individual evaluators for direct imports
+export { jsonEvaluator } from "./json";
+export { listEvaluator } from "./list";
+export { luna2Evaluator } from "./luna2";
+export { regexEvaluator } from "./regex";
+export { sqlEvaluator } from "./sql";
 export type {
-  AnyEvaluatorPlugin,
+  AnyEvaluatorDefinition,
+  EvaluatorDefinition,
   EvaluatorFormProps,
-  EvaluatorPlugin,
 } from "./types";

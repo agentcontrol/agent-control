@@ -76,8 +76,8 @@ export const api = {
         params: { path: { agent_id: agentId } },
       }),
   },
-  plugins: {
-    list: () => apiClient.GET("/api/v1/plugins"),
+  evaluators: {
+    list: () => apiClient.GET("/api/v1/evaluators"),
   },
   controls: {
     create: (data: CreateControlRequest) =>
@@ -98,6 +98,16 @@ export const api = {
     addControl: (policyId: number, controlId: number) =>
       apiClient.POST("/api/v1/policies/{policy_id}/controls/{control_id}", {
         params: { path: { policy_id: policyId, control_id: controlId } },
+      }),
+  },
+  observability: {
+    getStats: (params: {
+      agent_uuid: string;
+      time_range?: "1m" | "5m" | "15m" | "1h" | "24h" | "7d";
+      control_id?: number | null;
+    }) =>
+      apiClient.GET("/api/v1/observability/stats", {
+        params: { query: params },
       }),
   },
 };

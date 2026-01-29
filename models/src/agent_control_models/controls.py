@@ -68,7 +68,7 @@ class ControlScope(BaseModel):
         default=None,
         description=(
             "Step types this control applies to (omit to apply to all types). "
-            "Built-in types are 'tool' and 'llm_inference'."
+            "Built-in types are 'tool' and 'llm'."
         ),
     )
     step_names: list[str] | None = Field(
@@ -142,7 +142,7 @@ class ControlScope(BaseModel):
                 {"step_types": ["tool"], "stages": ["pre"]},
                 {"step_names": ["search_db", "fetch_user"]},
                 {"step_name_regex": "^db_.*"},
-                {"step_types": ["llm_inference"], "stages": ["post"]},
+                {"step_types": ["llm"], "stages": ["post"]},
             ]
         }
     }
@@ -813,7 +813,7 @@ class ControlDefinition(BaseModel):
                     "description": "Block outputs containing US Social Security Numbers",
                     "enabled": True,
                     "execution": "server",
-                    "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+                    "scope": {"step_types": ["llm"], "stages": ["post"]},
                     "selector": {"path": "output"},
                     "evaluator": {
                         "name": "regex",

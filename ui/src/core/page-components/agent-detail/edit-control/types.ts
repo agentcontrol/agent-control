@@ -3,11 +3,11 @@ import type { UseFormReturnType } from "@mantine/form";
 import type {
   Control,
   ControlActionDecision,
-  ControlAppliesTo,
-  ControlCheckStage,
+  ControlExecution,
+  ControlStage,
 } from "@/core/api/types";
 
-// Re-export evaluator form types from plugins for convenience
+// Re-export evaluator form types for convenience
 export type { JsonFormValues } from "./evaluators/json/types";
 export type { ListFormValues } from "./evaluators/list/types";
 export type {
@@ -26,11 +26,13 @@ export type JsonViewMode = "tree" | "raw";
 export interface ControlDefinitionFormValues {
   name: string;
   enabled: boolean;
-  applies_to: ControlAppliesTo;
-  check_stage: ControlCheckStage;
+  step_types: string[];
+  stages: ControlStage[];
+  step_names: string;
+  step_name_regex: string;
   selector_path: string;
   action_decision: ControlActionDecision;
-  local: boolean;
+  execution: ControlExecution;
 }
 
 /** Mode for the EditControl modal */

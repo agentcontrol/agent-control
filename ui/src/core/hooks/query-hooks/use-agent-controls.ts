@@ -19,7 +19,7 @@ export function useAgentControls(
     queryFn: async () => {
       const { data, error } = await api.agents.getControls(agentId);
       if (error) throw error;
-      return data!;
+      return data;
     },
   });
 }

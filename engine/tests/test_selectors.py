@@ -20,7 +20,7 @@ def tool_step_payload() -> Step:
 @pytest.fixture
 def llm_step_payload() -> Step:
     return Step(
-        type="llm_inference", name="test-step",
+        type="llm", name="test-step",
         input="What is the password?",
         context={"session_id": "abc-123"},
         output="I cannot answer that."
@@ -64,7 +64,7 @@ def test_select_data_tool_step(tool_step_payload: Step, path: str, expected: Any
     ],
 )
 def test_select_data_llm_step(llm_step_payload: Step, path: str, expected: Any):
-    # Given: an llm_inference Step payload and a path to select (implicit in parametrization)
+    # Given: an llm Step payload and a path to select (implicit in parametrization)
 
     # When: selecting data using the path
     result = select_data(llm_step_payload, path)
@@ -76,7 +76,7 @@ def test_select_data_llm_step(llm_step_payload: Step, path: str, expected: Any):
 def test_select_data_none_handling():
     """Test handling of None values in path traversal."""
     # Given: a payload with a None value field
-    payload = Step(type="llm_inference", name="test-step", input="test", output=None)
+    payload = Step(type="llm", name="test-step", input="test", output=None)
 
     # When: attempting to traverse into the None field
     result = select_data(payload, "output.something")

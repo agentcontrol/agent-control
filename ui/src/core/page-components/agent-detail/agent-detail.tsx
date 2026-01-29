@@ -17,12 +17,14 @@ import {
 import { Button, Switch, Table } from "@rungalileo/jupiter-ds";
 import {
   IconAlertCircle,
+  IconChartBar,
   IconInbox,
   IconPencil,
   IconSearch,
+  IconShield,
 } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import type { Control } from "@/core/api/types";
@@ -30,6 +32,7 @@ import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 
+import { AgentStats } from "./agent-stats";
 import { ControlStoreModal } from "./control-store-modal";
 import { EditControlContent } from "./edit-control";
 
@@ -37,11 +40,25 @@ interface AgentDetailPageProps {
   agentId: string;
 }
 
+const getStepTypeLabelAndColor = (
+  stepType: string
+): { label: string; color: string } => {
+  switch (stepType) {
+    case "llm":
+      return { label: "LLM", color: "blue" };
+    case "tool":
+      return { label: "Tool", color: "green" };
+    default:
+      return { label: stepType, color: "gray" };
+  }
+};
+
 const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   const [activeTab, setActiveTab] = useState<string | null>("controls");
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [controlStoreOpened, setControlStoreOpened] = useState(false);
   const [selectedControl, setSelectedControl] = useState<Control | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Fetch agent details and controls
   const {
@@ -56,7 +73,18 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   } = useAgentControls(agentId);
   const updateControl = useUpdateControl();
 
-  const controls = controlsResponse?.controls || [];
+  const allControls = controlsResponse?.controls || [];
+
+  // Filter controls based on search query
+  const controls = useMemo(() => {
+    if (!searchQuery.trim()) return allControls;
+    const query = searchQuery.toLowerCase();
+    return allControls.filter(
+      (control) =>
+        control.name.toLowerCase().includes(query) ||
+        control.control?.description?.toLowerCase().includes(query)
+    );
+  }, [allControls, searchQuery]);
 
   // Loading state
   if (agentLoading) {
@@ -122,40 +150,66 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
       ),
     },
     {
-      id: "applies_to",
-      header: "Applies to",
-      accessorKey: "control.applies_to",
-      size: 120,
-      cell: ({ row }: { row: any }) => (
-        <Badge
-          variant='light'
-          color={
-            row.original.control?.applies_to === "llm_call" ? "blue" : "green"
-          }
-          size='sm'
-        >
-          {row.original.control?.applies_to === "llm_call"
-            ? "LLM Call"
-            : "Tool Call"}
-        </Badge>
-      ),
+      id: "step_types",
+      header: "Step types",
+      accessorKey: "control.scope.step_types",
+      size: 180,
+      cell: ({ row }: { row: any }) => {
+        const stepTypes = row.original.control?.scope?.step_types ?? [];
+        if (stepTypes.length === 0) {
+          return (
+            <Badge variant='light' color='gray' size='sm'>
+              All
+            </Badge>
+          );
+        }
+
+        return (
+          <Group gap={4} wrap='nowrap'>
+            {stepTypes.map((stepType: string) => {
+              const { label, color } = getStepTypeLabelAndColor(stepType);
+              return (
+                <Badge key={stepType} variant='light' color={color} size='sm'>
+                  {label}
+                </Badge>
+              );
+            })}
+          </Group>
+        );
+      },
     },
     {
-      id: "check_stage",
-      header: "Stage",
-      accessorKey: "control.check_stage",
-      size: 100,
-      cell: ({ row }: { row: any }) => (
-        <Badge
-          variant='light'
-          color={
-            row.original.control?.check_stage === "pre" ? "violet" : "orange"
-          }
-          size='sm'
-        >
-          {row.original.control?.check_stage === "pre" ? "Pre" : "Post"}
-        </Badge>
-      ),
+      id: "stages",
+      header: "Stages",
+      accessorKey: "control.scope.stages",
+      size: 120,
+      cell: ({ row }: { row: any }) => {
+        const stages = row.original.control?.scope?.stages ?? [];
+        if (stages.length === 0) {
+          return (
+            <Badge variant='light' color='gray' size='sm'>
+              All
+            </Badge>
+          );
+        }
+
+        if (stages.length > 1) {
+          return (
+            <Badge variant='light' color='gray' size='sm'>
+              Pre/Post
+            </Badge>
+          );
+        }
+
+        const stage = stages[0];
+        const label = stage === "pre" ? "Pre" : "Post";
+        const color = stage === "pre" ? "violet" : "orange";
+        return (
+          <Badge variant='light' color={color} size='sm'>
+            {label}
+          </Badge>
+        );
+      },
     },
     {
       id: "actions",
@@ -210,32 +264,25 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
               <Tabs.List>
                 <Tabs.Tab
                   value='controls'
-                  leftSection={<Text size='sm'>🎛️</Text>}
+                  leftSection={<IconShield size={16} />}
                 >
                   Controls
                 </Tabs.Tab>
                 <Tabs.Tab
-                  value='charts'
-                  leftSection={<Text size='sm'>📊</Text>}
+                  value='stats'
+                  leftSection={<IconChartBar size={16} />}
                 >
-                  Charts
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value='agent-graph'
-                  leftSection={<Text size='sm'>🔗</Text>}
-                >
-                  Agent graph
-                </Tabs.Tab>
-                <Tabs.Tab value='logs' leftSection={<Text size='sm'>📋</Text>}>
-                  Logs
+                  Stats
                 </Tabs.Tab>
               </Tabs.List>
 
               <Group gap='md' pos='absolute' right={0} top='-8px'>
                 <TextInput
-                  placeholder='Search or apply filter...'
+                  placeholder='Search controls...'
                   leftSection={<IconSearch size={16} />}
-                  w={300}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                  w={250}
                   h={32}
                   size='xs'
                 />
@@ -302,16 +349,12 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
             )}
           </Tabs.Panel>
 
-          <Tabs.Panel value='charts' pt='lg'>
-            <Text c='dimmed'>Charts view coming soon...</Text>
-          </Tabs.Panel>
-
-          <Tabs.Panel value='agent-graph' pt='lg'>
-            <Text c='dimmed'>Agent graph view coming soon...</Text>
-          </Tabs.Panel>
-
-          <Tabs.Panel value='logs' pt='lg'>
-            <Text c='dimmed'>Logs view coming soon...</Text>
+          <Tabs.Panel value='stats' pt='lg'>
+            <ErrorBoundary variant="page">
+              {agent?.agent.agent_id && (
+                <AgentStats agentUuid={agent.agent.agent_id} />
+              )}
+            </ErrorBoundary>
           </Tabs.Panel>
         </Tabs>
       </Stack>
@@ -331,7 +374,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
         size="xl"
         styles={{
           title: { fontSize: "18px", fontWeight: 600 },
-          content: { maxWidth: "1200px", width: "90vw" },
+          content: { maxWidth: "1400px", width: "95vw" },
         }}
       >
         <ErrorBoundary variant="modal">

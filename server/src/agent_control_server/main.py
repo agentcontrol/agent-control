@@ -3,6 +3,7 @@
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import uvicorn
 from agent_control_engine import discover_evaluators, list_evaluators
@@ -10,6 +11,7 @@ from agent_control_models import HealthResponse
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from .auth import require_api_key
@@ -213,6 +215,28 @@ app.include_router(
     observability_router,
     prefix=api_v1_prefix,
 )
+
+# Override OpenAPI to avoid recursive JSONValue schema issues in TS generators.
+def custom_openapi() -> dict[str, Any]:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    schemas = openapi_schema.get("components", {}).get("schemas", {})
+    if "JSONValue" in schemas:
+        schemas["JSONValue"] = {"description": "Any JSON value"}
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi  # type: ignore[assignment]
 
 # Health check at root level (common convention)
 @app.get(

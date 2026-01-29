@@ -59,7 +59,7 @@ async def allow_ssn(client: AgentControlClient, control_id: int) -> None:
         "description": "SSN control - DISABLED (SSNs allowed)",
         "enabled": False,  # Disabled = SSNs allowed
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+        "scope": {"step_types": ["llm"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
             "name": "regex",
@@ -99,7 +99,7 @@ async def block_ssn(client: AgentControlClient, control_id: int) -> None:
         "description": "Block SSN patterns in output to prevent PII leakage",
         "enabled": True,  # Enabled = SSNs blocked
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+        "scope": {"step_types": ["llm"], "stages": ["post"]},
         "selector": {"path": "output"},
         "evaluator": {
             "name": "regex",

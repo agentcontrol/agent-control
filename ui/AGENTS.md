@@ -34,6 +34,7 @@ pnpm fetch-api-types  # regenerate API types from server (must be running on :80
 ### API layer (`core/api/`)
 - Types are **auto-generated** from OpenAPI — run `pnpm fetch-api-types` after server changes
 - `client.ts` exports typed `api` object with namespaced methods (`api.agents.get()`, `api.controls.create()`, etc.)
+- **NEVER use raw `fetch()` for API calls** — always add new endpoints to the `api` object in `client.ts`. This ensures consistent base URL handling, auth headers, and type safety.
 - Never call `apiClient` directly in components; use the `api` wrapper or query hooks
 - **Best practice**: always derive types from `generated/api-types.ts` — this keeps types flowing from backend to frontend for tight integration; avoid duplicating or manually defining types that already exist in the generated file
 - **Debugging tip**: if you hit type errors related to API responses/requests, regenerate types first (`pnpm fetch-api-types`) — they may be stale
@@ -63,10 +64,11 @@ pnpm fetch-api-types  # regenerate API types from server (must be running on :80
 5. Register in `evaluators/index.ts`
 
 ### Add a new API endpoint integration
-1. Run `pnpm fetch-api-types` to get new types
-2. Add method to `api` object in `core/api/client.ts`
-3. Add query hook in `core/hooks/query-hooks/`
+1. Run `pnpm fetch-api-types` to get new types from the server
+2. Add method to `api` object in `core/api/client.ts` (e.g., `api.observability.getStats()`)
+3. Add query hook in `core/hooks/query-hooks/` that calls the `api` method
 4. Use hook in component
+5. Import types from `@/core/api/generated/api-types` — never manually define request/response types
 
 ### Add a new page
 1. Create route file in `pages/` (e.g., `pages/settings.tsx`)

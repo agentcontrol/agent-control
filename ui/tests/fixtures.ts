@@ -1,13 +1,14 @@
-import { type Page,test as base } from "@playwright/test";
+import { type Page, test as base } from "@playwright/test";
 
 import type {
   AgentControlsResponse,
   AgentSummary,
   Control,
+  EvaluatorsResponse,
   GetAgentResponse,
   ListAgentsResponse,
-  PluginsResponse,
 } from "@/core/api/types";
+import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-stats";
 
 /**
  * Mock data for API responses
@@ -21,7 +22,7 @@ const agentsList: AgentSummary[] = [
     agent_name: "Customer Support Bot",
     policy_id: 1,
     created_at: "2024-01-01T00:00:00Z",
-    tool_count: 5,
+    step_count: 5,
     evaluator_count: 2,
     active_controls_count: 3,
   },
@@ -30,7 +31,7 @@ const agentsList: AgentSummary[] = [
     agent_name: "Data Analysis Agent",
     policy_id: 2,
     created_at: "2024-01-02T00:00:00Z",
-    tool_count: 3,
+    step_count: 3,
     evaluator_count: 1,
     active_controls_count: 2,
   },
@@ -39,7 +40,7 @@ const agentsList: AgentSummary[] = [
     agent_name: "Code Review Assistant",
     policy_id: 3,
     created_at: "2024-01-03T00:00:00Z",
-    tool_count: 8,
+    step_count: 8,
     evaluator_count: 4,
     active_controls_count: 5,
   },
@@ -65,7 +66,7 @@ const agentResponse: GetAgentResponse = {
     agent_version: "1.0.0",
     agent_metadata: null,
   },
-  tools: [],
+  steps: [],
   evaluators: [],
 };
 
@@ -76,12 +77,11 @@ const controlsList: Control[] = [
     control: {
       description: "Detects and masks personally identifiable information",
       enabled: true,
-      local: false,
-      applies_to: "llm_call",
-      check_stage: "post",
-      selector: { path: "*" },
+      execution: "server",
+      scope: { step_types: ["llm"], stages: ["post"] },
+      selector: { path: "output" },
       evaluator: {
-        plugin: "regex",
+        name: "regex",
         config: { pattern: "\\b\\d{3}-\\d{2}-\\d{4}\\b" },
       },
       action: { decision: "deny" },
@@ -94,12 +94,16 @@ const controlsList: Control[] = [
     control: {
       description: "Prevents SQL injection attacks",
       enabled: true,
-      local: false,
-      applies_to: "tool_call",
-      check_stage: "pre",
-      selector: { path: "arguments.query", tool_names: ["database_query"] },
+      execution: "server",
+      scope: {
+        step_types: ["tool"],
+        step_names: ["database_query"],
+        step_name_regex: "^db_.*",
+        stages: ["pre"],
+      },
+      selector: { path: "input.query" },
       evaluator: {
-        plugin: "sql",
+        name: "sql",
         config: { mode: "safe" },
       },
       action: { decision: "deny" },
@@ -112,12 +116,11 @@ const controlsList: Control[] = [
     control: {
       description: "Limits API call frequency",
       enabled: false,
-      local: false,
-      applies_to: "llm_call",
-      check_stage: "pre",
+      execution: "server",
+      scope: { step_types: ["llm"], stages: ["pre"] },
       selector: { path: "*" },
       evaluator: {
-        plugin: "list",
+        name: "list",
         config: { values: [], logic: "any", match_on: "match" },
       },
       action: { decision: "allow" },
@@ -130,7 +133,7 @@ const controlsResponse: AgentControlsResponse = {
   controls: controlsList,
 };
 
-const pluginsResponse: PluginsResponse = {
+const evaluatorsResponse: EvaluatorsResponse = {
   regex: {
     name: "Regex",
     version: "1.0.0",
@@ -203,6 +206,76 @@ const pluginsResponse: PluginsResponse = {
   },
 };
 
+const statsResponse: StatsResponse = {
+  agent_uuid: "agent-1",
+  time_range: "1h",
+  stats: [
+    {
+      control_id: 1,
+      control_name: "PII Detection",
+      execution_count: 150,
+      match_count: 25,
+      non_match_count: 125,
+      allow_count: 5,
+      deny_count: 15,
+      warn_count: 3,
+      log_count: 2,
+      error_count: 0,
+      avg_confidence: 0.92,
+      avg_duration_ms: 45,
+    },
+    {
+      control_id: 2,
+      control_name: "SQL Injection Guard",
+      execution_count: 80,
+      match_count: 10,
+      non_match_count: 70,
+      allow_count: 0,
+      deny_count: 10,
+      warn_count: 0,
+      log_count: 0,
+      error_count: 2,
+      avg_confidence: 0.88,
+      avg_duration_ms: 32,
+    },
+    {
+      control_id: 3,
+      control_name: "Rate Limiter",
+      execution_count: 200,
+      match_count: 5,
+      non_match_count: 195,
+      allow_count: 5,
+      deny_count: 0,
+      warn_count: 0,
+      log_count: 0,
+      error_count: 0,
+      avg_confidence: 0.95,
+      avg_duration_ms: 12,
+    },
+  ],
+  total_executions: 430,
+  total_matches: 40,
+  total_non_matches: 390,
+  total_errors: 2,
+  action_counts: {
+    allow: 10,
+    deny: 25,
+    warn: 3,
+    log: 2,
+  },
+};
+
+const emptyStatsResponse: StatsResponse = {
+  agent_uuid: "agent-1",
+  time_range: "1h",
+  stats: [],
+  total_executions: 0,
+  total_matches: 0,
+  total_non_matches: 0,
+  total_errors: 0,
+  action_counts: {},
+};
+
 /**
  * Typed mock data for tests
  */
@@ -210,88 +283,156 @@ export const mockData = {
   agents: agentsResponse,
   agent: agentResponse,
   controls: controlsResponse,
-  plugins: pluginsResponse,
+  evaluators: evaluatorsResponse,
+  stats: statsResponse,
+  emptyStats: emptyStatsResponse,
 } as const;
 
 /**
- * Helper to set up API route mocking
+ * Response options for route mocking
+ */
+type MockResponseOptions<T> =
+  | { data: T; status?: number }
+  | { error: string; status: number }
+  | { handler: () => T | Promise<T> };
+
+/**
+ * Helper to fulfill a route with consistent formatting
+ */
+async function fulfillRoute<T>(
+  route: Parameters<Parameters<Page["route"]>[1]>[0],
+  options: MockResponseOptions<T>,
+  defaultData: T
+) {
+  if ("error" in options) {
+    await route.fulfill({
+      status: options.status,
+      contentType: "application/json",
+      body: JSON.stringify({ error: options.error }),
+    });
+  } else if ("handler" in options) {
+    const data = await options.handler();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(data),
+    });
+  } else {
+    await route.fulfill({
+      status: options.status ?? 200,
+      contentType: "application/json",
+      body: JSON.stringify(options.data ?? defaultData),
+    });
+  }
+}
+
+/**
+ * Individual route mock helpers - can be used standalone or with custom data
+ */
+export const mockRoutes = {
+  /** Mock GET /api/v1/agents */
+  agents: async (
+    page: Page,
+    options: MockResponseOptions<ListAgentsResponse> = { data: mockData.agents }
+  ) => {
+    await page.route("**/api/v1/agents?**", async (route) => {
+      await fulfillRoute(route, options, mockData.agents);
+    });
+  },
+
+  /** Mock GET /api/v1/agents/:id and /api/v1/agents/:id/controls */
+  agent: async (
+    page: Page,
+    options: {
+      agent?: MockResponseOptions<GetAgentResponse>;
+      controls?: MockResponseOptions<AgentControlsResponse>;
+    } = {}
+  ) => {
+    const controlsOpts = options.controls ?? { data: mockData.controls };
+    const agentOpts = options.agent ?? { data: mockData.agent };
+
+    // Register controls route first (more specific pattern)
+    await page.route("**/api/v1/agents/*/controls", async (route) => {
+      await fulfillRoute(route, controlsOpts, mockData.controls);
+    });
+
+    // Register agent route second
+    await page.route("**/api/v1/agents/*", async (route, request) => {
+      const url = request.url();
+      // Skip if it's a controls request (handled by separate route above)
+      if (url.includes("/controls")) {
+        await route.continue();
+        return;
+      }
+      await fulfillRoute(route, agentOpts, mockData.agent);
+    });
+  },
+
+  /** Mock GET /api/v1/evaluators */
+  evaluators: async (
+    page: Page,
+    options: MockResponseOptions<EvaluatorsResponse> = { data: mockData.evaluators }
+  ) => {
+    await page.route("**/api/v1/evaluators", async (route) => {
+      await fulfillRoute(route, options, mockData.evaluators);
+    });
+  },
+
+  /** Mock PUT /api/v1/controls */
+  controlCreate: async (page: Page) => {
+    await page.route("**/api/v1/controls", async (route, request) => {
+      if (request.method() === "PUT") {
+        const body = await request.postDataJSON();
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            control_id: 100,
+            name: body.name || "New Control",
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+  },
+
+  /** Mock PUT /api/v1/controls/:id/data */
+  controlUpdate: async (page: Page) => {
+    await page.route("**/api/v1/controls/*/data", async (route, request) => {
+      if (request.method() === "PUT") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ success: true }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+  },
+
+  /** Mock GET /api/v1/observability/stats */
+  stats: async (
+    page: Page,
+    options: MockResponseOptions<StatsResponse> = { data: mockData.stats }
+  ) => {
+    await page.route("**/api/v1/observability/stats**", async (route) => {
+      await fulfillRoute(route, options, mockData.stats);
+    });
+  },
+};
+
+/**
+ * Helper to set up all API route mocking with defaults
  */
 export async function mockApiRoutes(page: Page) {
-  // Mock agents list
-  await page.route("**/api/v1/agents?**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(mockData.agents),
-    });
-  });
-
-  // Mock agent controls - must be registered before single agent route
-  await page.route("**/api/v1/agents/*/controls", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(mockData.controls),
-    });
-  });
-
-  // Mock single agent
-  await page.route("**/api/v1/agents/*", async (route, request) => {
-    const url = request.url();
-
-    // Skip if it's a controls request (handled by separate route above)
-    if (url.includes("/controls")) {
-      await route.continue();
-      return;
-    }
-
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(mockData.agent),
-    });
-  });
-
-  // Mock plugins list
-  await page.route("**/api/v1/plugins", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(mockData.plugins),
-    });
-  });
-
-  // Mock control creation
-  await page.route("**/api/v1/controls", async (route, request) => {
-    if (request.method() === "PUT") {
-      const body = await request.postDataJSON();
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          control_id: 100,
-          name: body.name || "New Control",
-        }),
-      });
-      return;
-    }
-    await route.continue();
-  });
-
-  // Mock control update
-  await page.route("**/api/v1/controls/*/data", async (route, request) => {
-    if (request.method() === "PUT") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          success: true,
-        }),
-      });
-      return;
-    }
-    await route.continue();
-  });
+  await mockRoutes.agents(page);
+  await mockRoutes.agent(page);
+  await mockRoutes.evaluators(page);
+  await mockRoutes.controlCreate(page);
+  await mockRoutes.controlUpdate(page);
+  await mockRoutes.stats(page);
 }
 
 /**

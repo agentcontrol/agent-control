@@ -1,4 +1,4 @@
-import type { EvaluatorPlugin } from "../types";
+import type { EvaluatorDefinition } from "../types";
 import { JsonForm } from "./form";
 import type { JsonFormValues } from "./types";
 
@@ -19,11 +19,11 @@ const stringifyOrEmpty = (value: unknown): string => {
 };
 
 /**
- * JSON evaluator plugin.
+ * JSON evaluator definition.
  *
  * Validates JSON structure, types, constraints, and patterns.
  */
-export const jsonPlugin: EvaluatorPlugin<JsonFormValues> = {
+export const jsonEvaluator: EvaluatorDefinition<JsonFormValues> = {
   id: "json",
   displayName: "JSON",
 

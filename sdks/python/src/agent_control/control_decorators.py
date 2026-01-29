@@ -267,10 +267,10 @@ def _create_evaluation_payload(
             ),
         }
 
-    # This is an LLM inference step
+    # This is an LLM step
     input_data = _extract_input_from_args(func, args, kwargs)
     return {
-        "type": "llm_inference",
+        "type": "llm",
         "name": func.__name__,
         "input": input_data,
         "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (

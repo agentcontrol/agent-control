@@ -37,7 +37,7 @@ Example: *"If the output contains an SSN pattern, block the response."*
 {
   "name": "block-ssn-in-output",
   "execution": "server",
-  "scope": { "step_types": ["llm_inference"], "stages": ["post"] },
+  "scope": { "step_types": ["llm"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
     "name": "regex",

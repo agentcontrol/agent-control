@@ -1,4 +1,4 @@
-import type { EvaluatorPlugin } from "../types";
+import type { EvaluatorDefinition } from "../types";
 import { Luna2Form } from "./form";
 import type { Luna2FormValues } from "./types";
 
@@ -27,12 +27,12 @@ const numberOrNull = (value: number | ""): number | null =>
   value === "" ? null : value;
 
 /**
- * Luna2 (Galileo) evaluator plugin.
+ * Luna2 (Galileo) evaluator definition.
  *
  * Evaluates content using Galileo's Luna-2 AI metrics for toxicity,
  * prompt injection, PII detection, and more.
  */
-export const luna2Plugin: EvaluatorPlugin<Luna2FormValues> = {
+export const luna2Evaluator: EvaluatorDefinition<Luna2FormValues> = {
   id: "galileo-luna2",
   displayName: "Galileo Luna-2",
 

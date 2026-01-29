@@ -12,8 +12,8 @@ type JSONValue = str | int | float | bool | None | list[JSONValue] | dict[str, J
 type JSONObject = dict[str, JSONValue]
 
 STEP_TYPE_TOOL = "tool"
-STEP_TYPE_LLM_INFERENCE = "llm"
-BUILTIN_STEP_TYPES: tuple[str, str] = (STEP_TYPE_TOOL, STEP_TYPE_LLM_INFERENCE)
+STEP_TYPE_LLM = "llm"
+BUILTIN_STEP_TYPES: tuple[str, str] = (STEP_TYPE_TOOL, STEP_TYPE_LLM)
 
 
 class Agent(BaseModel):
@@ -66,7 +66,7 @@ class StepSchema(BaseModel):
     type: str = Field(
         ...,
         min_length=1,
-        description="Step type for this schema (e.g., 'tool', 'llm_inference')",
+        description="Step type for this schema (e.g., 'tool', 'llm')",
     )
     name: str = Field(..., description="Unique name for the step", min_length=1)
     description: str | None = Field(
@@ -97,7 +97,7 @@ class StepSchema(BaseModel):
                     },
                 },
                 {
-                    "type": "llm_inference",
+                    "type": "llm",
                     "name": "support-answer",
                     "description": "Customer support response generation",
                     "input_schema": {
@@ -123,7 +123,7 @@ class Step(BaseModel):
     type: str = Field(
         ...,
         min_length=1,
-        description="Step type (e.g., 'tool', 'llm_inference')",
+        description="Step type (e.g., 'tool', 'llm')",
     )
     name: str = Field(
         ..., min_length=1, description="Step name (tool name or model/chain id)"

@@ -15,7 +15,36 @@ test.describe("Home Page - Agents Overview", () => {
     ).toBeVisible();
 
     // Check search input exists
-    await expect(mockedPage.getByPlaceholder("Search or apply filter...")).toBeVisible();
+    await expect(mockedPage.getByPlaceholder("Search agents...")).toBeVisible();
+  });
+
+  test("filters agents when searching", async ({ mockedPage }) => {
+    await mockedPage.goto("/");
+
+    // Wait for the table to load
+    await expect(mockedPage.getByRole("table")).toBeVisible();
+
+    // All agents should be visible initially
+    for (const agent of mockData.agents.agents) {
+      await expect(mockedPage.getByText(agent.agent_name)).toBeVisible();
+    }
+
+    // Type in the search box to filter
+    const searchInput = mockedPage.getByPlaceholder("Search agents...");
+    await searchInput.fill("Customer");
+
+    // Only the matching agent should be visible
+    await expect(mockedPage.getByText("Customer Support Bot")).toBeVisible();
+
+    // Non-matching agents should be hidden
+    await expect(mockedPage.getByText("Data Analysis Agent")).not.toBeVisible();
+    await expect(mockedPage.getByText("Code Review Assistant")).not.toBeVisible();
+
+    // Clear search to show all agents again
+    await searchInput.clear();
+    for (const agent of mockData.agents.agents) {
+      await expect(mockedPage.getByText(agent.agent_name)).toBeVisible();
+    }
   });
 
   test("displays the agents table with data", async ({ mockedPage }) => {
@@ -26,7 +55,6 @@ test.describe("Home Page - Agents Overview", () => {
 
     // Check table headers
     await expect(mockedPage.getByRole("columnheader", { name: "Agent name" })).toBeVisible();
-    await expect(mockedPage.getByRole("columnheader", { name: "Type" })).toBeVisible();
     await expect(mockedPage.getByRole("columnheader", { name: "Active controls" })).toBeVisible();
 
     // Check that agents from mock data are displayed

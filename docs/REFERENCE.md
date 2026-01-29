@@ -54,7 +54,7 @@ Example: *"If the output contains an SSN pattern, block the response."*
 {
   "name": "block-ssn-in-output",
   "execution": "server",
-  "scope": { "step_types": ["llm_inference"], "stages": ["post"] },
+  "scope": { "step_types": ["llm"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
     "name": "regex",
@@ -130,7 +130,7 @@ Controls can scope to different step types:
 
 | Type | Description |
 |------|-------------|
-| `llm_inference` | LLM interactions (input/output text) |
+| `llm` | LLM interactions (input/output text) |
 | `tool` | Tool executions (input/output) |
 
 ---
@@ -578,7 +578,7 @@ async with AgentControlClient() as client:
         name="block-pii",
         data={
             "execution": "server",
-            "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+            "scope": {"step_types": ["llm"], "stages": ["post"]},
             "selector": {"path": "output"},
             "evaluator": {
                 "name": "regex",
@@ -872,7 +872,7 @@ make alembic-upgrade
 ### Control Not Triggering
 
 1. Verify the control is enabled
-2. Check `scope.step_types` matches your step type (`llm_inference` vs `tool`)
+2. Check `scope.step_types` matches your step type (`llm` vs `tool`)
 3. Check `scope.stages` is correct (`pre` for input, `post` for output)
 4. Verify the selector path matches your data structure
 5. Test the evaluator pattern/values independently

@@ -288,7 +288,7 @@ def test_policy_assignment_with_builtin_evaluator(client: TestClient) -> None:
         f"control-{uuid.uuid4().hex[:8]}",
         {
             "execution": "server",
-            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {"name": "regex", "config": {"pattern": "test.*"}},
             "action": {"decision": "deny"},
@@ -320,7 +320,7 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
         f"control-{uuid.uuid4().hex[:8]}",
         {
             "execution": "server",
-            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {"name": f"{agent_name}:custom-eval", "config": {}},
             "action": {"decision": "deny"},
@@ -351,7 +351,7 @@ def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) 
         json={
             "data": {
                 "execution": "server",
-                "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+                "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "selector": {"path": "input"},
                 "evaluator": {"name": f"{agent_name}:nonexistent-eval", "config": {}},
                 "action": {"decision": "deny"},
@@ -389,7 +389,7 @@ def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> No
         f"control-{uuid.uuid4().hex[:8]}",
         {
             "execution": "server",
-            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {"name": f"{agent_a_name}:shared-eval", "config": {}},
             "action": {"decision": "deny"},
@@ -551,7 +551,7 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
         f"control-{uuid.uuid4().hex[:8]}",
         {
             "execution": "server",
-            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {"name": f"{agent_name}:my-eval", "config": {}},
             "action": {"decision": "deny"},

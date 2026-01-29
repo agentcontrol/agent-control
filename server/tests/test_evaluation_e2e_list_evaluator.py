@@ -106,7 +106,7 @@ def test_list_evaluator_case_insensitive(client: TestClient):
         "description": "Case Insensitive Control",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "name": "list",
@@ -123,7 +123,7 @@ def test_list_evaluator_case_insensitive(client: TestClient):
     # When: Sending input "blockme" (lowercase)
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
-        step=Step(type="llm_inference", name="test-step", input="blockme", output=None),
+        step=Step(type="llm", name="test-step", input="blockme", output=None),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))

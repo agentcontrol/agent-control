@@ -8,7 +8,7 @@ VALID_CONTROL_PAYLOAD = {
     "description": "Valid Control",
     "enabled": True,
     "execution": "server",
-    "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+    "scope": {"step_types": ["llm"], "stages": ["pre"]},
     "selector": {"path": "input"},
     "evaluator": {"name": "regex", "config": {"pattern": "x"}},
     "action": {"decision": "deny"}

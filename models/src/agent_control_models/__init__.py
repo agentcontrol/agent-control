@@ -4,7 +4,7 @@ __version__ = "0.1.0"
 
 from .agent import (
     BUILTIN_STEP_TYPES,
-    STEP_TYPE_LLM_INFERENCE,
+    STEP_TYPE_LLM,
     STEP_TYPE_TOOL,
     Agent,
     JSONObject,
@@ -90,7 +90,7 @@ __all__ = [
     "JSONObject",
     "Step",
     "STEP_TYPE_TOOL",
-    "STEP_TYPE_LLM_INFERENCE",
+    "STEP_TYPE_LLM",
     "BUILTIN_STEP_TYPES",
     # Policy
     "Policy",

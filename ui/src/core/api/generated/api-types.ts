@@ -16,7 +16,7 @@ export interface paths {
          * @description List all registered agents with cursor-based pagination.
          *
          *     Returns a summary of each agent including ID, name, policy assignment,
-         *     and counts of registered tools and evaluators.
+         *     and counts of registered steps and evaluators.
          *
          *     Args:
          *         cursor: Optional cursor for pagination (UUID of last agent from previous page)
@@ -46,18 +46,18 @@ export interface paths {
         put?: never;
         /**
          * Initialize or update an agent
-         * @description Register a new agent or update an existing agent's tools and metadata.
+         * @description Register a new agent or update an existing agent's steps and metadata.
          *
          *     This endpoint is idempotent:
          *     - If the agent name doesn't exist, creates a new agent
-         *     - If the agent name exists with the same UUID, updates tool schemas
+         *     - If the agent name exists with the same UUID, updates step schemas
          *     - If the agent name exists with a different UUID, returns 409 Conflict
          *
-         *     Tool versioning: When tool schemas change (arguments or output_schema),
+         *     Step versioning: When step schemas change (input_schema or output_schema),
          *     a new version is created automatically.
          *
          *     Args:
-         *         request: Agent metadata and tool schemas
+         *         request: Agent metadata and step schemas
          *         db: Database session (injected)
          *
          *     Returns:
@@ -83,16 +83,16 @@ export interface paths {
         };
         /**
          * Get agent details
-         * @description Retrieve agent metadata and all registered tools.
+         * @description Retrieve agent metadata and all registered steps.
          *
-         *     Returns the latest version of each tool (tools are deduplicated by name).
+         *     Returns the latest version of each step (deduplicated by type+name).
          *
          *     Args:
          *         agent_id: UUID of the agent
          *         db: Database session (injected)
          *
          *     Returns:
-         *         GetAgentResponse with agent metadata and tool list
+         *         GetAgentResponse with agent metadata and step list
          *
          *     Raises:
          *         HTTPException 404: Agent not found
@@ -105,15 +105,15 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Modify agent (remove tools/evaluators)
-         * @description Remove tools and/or evaluators from an agent.
+         * Modify agent (remove steps/evaluators)
+         * @description Remove steps and/or evaluators from an agent.
          *
          *     This is the complement to initAgent which only adds items.
          *     Removals are idempotent - attempting to remove non-existent items is not an error.
          *
          *     Args:
          *         agent_id: UUID of the agent
-         *         request: Lists of tool/evaluator names to remove
+         *         request: Lists of step/evaluator identifiers to remove
          *         db: Database session (injected)
          *
          *     Returns:
@@ -443,7 +443,9 @@ export interface paths {
          *         limit: Maximum number of controls to return (default 20, max 100)
          *         name: Optional filter by name (partial, case-insensitive match)
          *         enabled: Optional filter by enabled status
-         *         applies_to: Optional filter by type ('llm_call' or 'tool_call')
+         *         step_type: Optional filter by step type (built-ins: 'tool', 'llm')
+         *         stage: Optional filter by stage ('pre' or 'post')
+         *         execution: Optional filter by execution ('server' or 'sdk')
          *         tag: Optional filter by tag
          *         db: Database session (injected)
          *
@@ -451,7 +453,7 @@ export interface paths {
          *         ListControlsResponse with control summaries and pagination info
          *
          *     Example:
-         *         GET /controls?limit=10&enabled=true&applies_to=llm_call
+         *         GET /controls?limit=10&enabled=true&step_type=tool
          */
         get: operations["list_controls_api_v1_controls_get"];
         /**
@@ -604,6 +606,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluator-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List evaluator configs */
+        get: operations["list_evaluator_configs_api_v1_evaluator_configs_get"];
+        put?: never;
+        /** Create evaluator config */
+        post: operations["create_evaluator_config_api_v1_evaluator_configs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evaluator-configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get evaluator config */
+        get: operations["get_evaluator_config_api_v1_evaluator_configs__config_id__get"];
+        /** Update evaluator config */
+        put: operations["update_evaluator_config_api_v1_evaluator_configs__config_id__put"];
+        post?: never;
+        /** Delete evaluator config */
+        delete: operations["delete_evaluator_config_api_v1_evaluator_configs__config_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluation": {
         parameters: {
             query?: never;
@@ -621,8 +660,11 @@ export interface paths {
          *     evaluation engine. Controls are evaluated in parallel with
          *     cancel-on-deny for efficiency.
          *
-         *     Custom evaluators must be deployed as PluginEvaluator classes
+         *     Custom evaluators must be deployed as Evaluator classes
          *     with the engine. Their schemas are registered via initAgent.
+         *
+         *     Optionally accepts X-Trace-Id and X-Span-Id headers for
+         *     OpenTelemetry-compatible distributed tracing.
          */
         post: operations["evaluate_api_v1_evaluation_post"];
         delete?: never;
@@ -631,7 +673,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/plugins": {
+    "/api/v1/evaluators": {
         parameters: {
             query?: never;
             header?: never;
@@ -639,19 +681,145 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List available plugins
-         * @description List all available evaluator plugins.
+         * List available evaluators
+         * @description List all available evaluators.
          *
-         *     Returns metadata and JSON Schema for each built-in plugin.
+         *     Returns metadata and JSON Schema for each built-in evaluator.
          *
-         *     Built-in plugins:
+         *     Built-in evaluators:
          *     - **regex**: Regular expression pattern matching
          *     - **list**: List-based value matching with flexible logic
+         *     - **json**: JSON validation with schema, types, constraints
+         *     - **sql**: SQL query validation
          *
          *     Custom evaluators are registered per-agent via initAgent.
          *     Use GET /agents/{agent_id}/evaluators to list agent-specific schemas.
          */
-        get: operations["get_plugins_api_v1_plugins_get"];
+        get: operations["get_evaluators_api_v1_evaluators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Events
+         * @description Ingest batched control execution events.
+         *
+         *     Events are stored directly to the database with ~5-20ms latency.
+         *
+         *     Args:
+         *         request: Batch of events to ingest
+         *         ingestor: Event ingestor (injected)
+         *
+         *     Returns:
+         *         BatchEventsResponse with counts of received/processed/dropped
+         */
+        post: operations["ingest_events_api_v1_observability_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/events/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query Events
+         * @description Query raw control execution events.
+         *
+         *     Supports filtering by:
+         *     - trace_id: Get all events for a request
+         *     - span_id: Get all events for a function call
+         *     - control_execution_id: Get a specific event
+         *     - agent_uuid: Filter by agent
+         *     - control_ids: Filter by controls
+         *     - actions: Filter by actions (allow, deny, warn, log)
+         *     - matched: Filter by matched status
+         *     - check_stages: Filter by check stage (pre, post)
+         *     - applies_to: Filter by call type (llm_call, tool_call)
+         *     - start_time/end_time: Filter by time range
+         *
+         *     Results are paginated with limit/offset.
+         *
+         *     Args:
+         *         request: Query parameters
+         *         store: Event store (injected)
+         *
+         *     Returns:
+         *         EventQueryResponse with matching events and pagination info
+         */
+        post: operations["query_events_api_v1_observability_events_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stats
+         * @description Get aggregated control execution statistics.
+         *
+         *     Statistics are computed at query time from raw events. This is fast
+         *     enough for most use cases (sub-200ms for 1-hour windows).
+         *
+         *     Args:
+         *         agent_uuid: Agent to get stats for
+         *         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d)
+         *         control_id: Optional filter by specific control
+         *         store: Event store (injected)
+         *
+         *     Returns:
+         *         StatsResponse with per-control statistics
+         */
+        get: operations["get_stats_api_v1_observability_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description Get observability system status.
+         *
+         *     Returns basic health information.
+         */
+        get: operations["get_status_api_v1_observability_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -694,7 +862,7 @@ export interface components {
          * @description Agent metadata for registration and tracking.
          *
          *     An agent represents an AI system that can be protected and monitored.
-         *     Each agent has a unique ID and can have multiple tools registered with it.
+         *     Each agent has a unique ID and can have multiple steps registered with it.
          * @example {
          *       "agent_description": "Handles customer inquiries and support tickets",
          *       "agent_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -780,11 +948,11 @@ export interface components {
              */
             created_at?: string | null;
             /**
-             * Tool Count
-             * @description Number of tools registered with the agent
+             * Step Count
+             * @description Number of steps registered with the agent
              * @default 0
              */
-            tool_count: number;
+            step_count: number;
             /**
              * Evaluator Count
              * @description Number of evaluators registered with the agent
@@ -798,48 +966,6 @@ export interface components {
              */
             active_controls_count: number;
         };
-        /**
-         * AgentTool
-         * @description Tool schema for agent capabilities.
-         * @example {
-         *       "arguments": {
-         *         "query": {
-         *           "description": "Search query",
-         *           "type": "string"
-         *         }
-         *       },
-         *       "output_schema": {
-         *         "results": {
-         *           "items": {
-         *             "type": "object"
-         *           },
-         *           "type": "array"
-         *         }
-         *       },
-         *       "tool_name": "search_knowledge_base"
-         *     }
-         */
-        AgentTool: {
-            /**
-             * Tool Name
-             * @description Unique name for the tool
-             */
-            tool_name: string;
-            /**
-             * Arguments
-             * @description JSON schema describing tool input parameters
-             */
-            arguments: {
-                [key: string]: unknown;
-            };
-            /**
-             * Output Schema
-             * @description JSON schema describing tool output structure
-             */
-            output_schema: {
-                [key: string]: unknown;
-            };
-        };
         /** AssocResponse */
         AssocResponse: {
             /**
@@ -847,6 +973,73 @@ export interface components {
              * @description Whether the association change succeeded
              */
             success: boolean;
+        };
+        /**
+         * BatchEventsRequest
+         * @description Request model for batch event ingestion.
+         *
+         *     SDKs batch events and send them to the server periodically.
+         *     This reduces HTTP overhead significantly (100x reduction).
+         *
+         *     Attributes:
+         *         events: List of control execution events to ingest
+         * @example {
+         *       "events": [
+         *         {
+         *           "action": "deny",
+         *           "agent_name": "my-agent",
+         *           "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
+         *           "applies_to": "llm_call",
+         *           "check_stage": "pre",
+         *           "confidence": 0.95,
+         *           "control_id": 123,
+         *           "control_name": "sql-injection-check",
+         *           "matched": true,
+         *           "span_id": "00f067aa0ba902b7",
+         *           "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+         *         }
+         *       ]
+         *     }
+         */
+        BatchEventsRequest: {
+            /**
+             * Events
+             * @description List of events to ingest
+             */
+            events: components["schemas"]["ControlExecutionEvent"][];
+        };
+        /**
+         * BatchEventsResponse
+         * @description Response model for batch event ingestion.
+         *
+         *     Attributes:
+         *         received: Number of events received
+         *         enqueued: Number of events successfully enqueued
+         *         dropped: Number of events dropped (queue full)
+         *         status: Overall status ('queued', 'partial', 'failed')
+         */
+        BatchEventsResponse: {
+            /**
+             * Received
+             * @description Number of events received
+             */
+            received: number;
+            /**
+             * Enqueued
+             * @description Number of events enqueued
+             */
+            enqueued: number;
+            /**
+             * Dropped
+             * @description Number of events dropped
+             */
+            dropped: number;
+            /**
+             * Status
+             * @description Overall ingestion status
+             * @enum {string}
+             */
+            status: "queued" | "partial" | "failed";
         };
         /**
          * Control
@@ -884,15 +1077,22 @@ export interface components {
          *       "action": {
          *         "decision": "deny"
          *       },
-         *       "applies_to": "llm_call",
-         *       "check_stage": "post",
          *       "description": "Block outputs containing US Social Security Numbers",
          *       "enabled": true,
          *       "evaluator": {
          *         "config": {
          *           "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"
          *         },
-         *         "plugin": "regex"
+         *         "name": "regex"
+         *       },
+         *       "execution": "server",
+         *       "scope": {
+         *         "stages": [
+         *           "post"
+         *         ],
+         *         "step_types": [
+         *           "llm"
+         *         ]
          *       },
          *       "selector": {
          *         "path": "output"
@@ -916,23 +1116,13 @@ export interface components {
              */
             enabled: boolean;
             /**
-             * Local
-             * @description If True, this control runs locally in the SDK. If False (default), it runs on the server.
-             * @default false
-             */
-            local: boolean;
-            /**
-             * Applies To
-             * @description Which type of interaction this control applies to
+             * Execution
+             * @description Where this control executes
              * @enum {string}
              */
-            applies_to: "llm_call" | "tool_call";
-            /**
-             * Check Stage
-             * @description When to execute this control
-             * @enum {string}
-             */
-            check_stage: "pre" | "post";
+            execution: "server" | "sdk";
+            /** @description Which steps and stages this control applies to */
+            scope?: components["schemas"]["ControlScope"];
             /** @description What data to select from the payload */
             selector: components["schemas"]["ControlSelector"];
             /** @description How to evaluate the selected data */
@@ -946,23 +1136,178 @@ export interface components {
             tags?: string[];
         };
         /**
-         * ControlMatch
-         * @description Represents a control match (could be allow, deny, warn, or log).
+         * ControlExecutionEvent
+         * @description Represents a single control execution event.
+         *
+         *     This is the core observability data model, capturing:
+         *     - Identity: control_execution_id, trace_id, span_id (OpenTelemetry-compatible)
+         *     - Context: agent, control, check stage, applies to
+         *     - Result: action taken, whether matched, confidence score
+         *     - Timing: when it happened, how long it took
+         *     - Optional details: evaluator name, selector path, errors, metadata
+         *
+         *     Attributes:
+         *         control_execution_id: Unique ID for this specific control execution
+         *         trace_id: OpenTelemetry-compatible trace ID (128-bit hex, 32 chars)
+         *         span_id: OpenTelemetry-compatible span ID (64-bit hex, 16 chars)
+         *         agent_uuid: UUID of the agent that executed the control
+         *         agent_name: Name of the agent (denormalized for queries)
+         *         control_id: Database ID of the control
+         *         control_name: Name of the control (denormalized for queries)
+         *         control_set_id: Optional ID of the control set
+         *         control_set_name: Optional name of the control set
+         *         check_stage: "pre" (before execution) or "post" (after execution)
+         *         applies_to: "llm_call" or "tool_call"
+         *         action: The action taken (allow, deny, warn, log)
+         *         matched: Whether the control evaluator matched
+         *         confidence: Confidence score from the evaluator (0.0-1.0)
+         *         timestamp: When the control was executed (UTC)
+         *         execution_duration_ms: How long the control evaluation took
+         *         evaluator_name: Name of the evaluator used
+         *         selector_path: The selector path used to extract data
+         *         error_message: Error message if evaluation failed
+         *         metadata: Additional metadata for extensibility
+         * @example {
+         *       "action": "deny",
+         *       "agent_name": "my-agent",
+         *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
+         *       "applies_to": "llm_call",
+         *       "check_stage": "pre",
+         *       "confidence": 0.95,
+         *       "control_execution_id": "550e8400-e29b-41d4-a716-446655440000",
+         *       "control_id": 123,
+         *       "control_name": "sql-injection-check",
+         *       "evaluator_name": "regex",
+         *       "execution_duration_ms": 15.3,
+         *       "matched": true,
+         *       "selector_path": "input",
+         *       "span_id": "00f067aa0ba902b7",
+         *       "timestamp": "2025-01-09T10:30:00Z",
+         *       "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+         *     }
          */
-        ControlMatch: {
+        ControlExecutionEvent: {
+            /**
+             * Control Execution Id
+             * @description Unique ID for this control execution
+             */
+            control_execution_id?: string;
+            /**
+             * Trace Id
+             * @description Trace ID for distributed tracing (SDK generates OTEL-compatible 32-char hex)
+             */
+            trace_id: string;
+            /**
+             * Span Id
+             * @description Span ID for distributed tracing (SDK generates OTEL-compatible 16-char hex)
+             */
+            span_id: string;
+            /**
+             * Agent Uuid
+             * Format: uuid
+             * @description UUID of the agent
+             */
+            agent_uuid: string;
+            /**
+             * Agent Name
+             * @description Name of the agent (denormalized)
+             */
+            agent_name: string;
             /**
              * Control Id
-             * @description Database ID of the control that matched
+             * @description Database ID of the control
              */
             control_id: number;
             /**
              * Control Name
-             * @description Name of the control that matched
+             * @description Name of the control (denormalized)
+             */
+            control_name: string;
+            /**
+             * Check Stage
+             * @description Check stage: 'pre' or 'post'
+             * @enum {string}
+             */
+            check_stage: "pre" | "post";
+            /**
+             * Applies To
+             * @description Type of call: 'llm_call' or 'tool_call'
+             * @enum {string}
+             */
+            applies_to: "llm_call" | "tool_call";
+            /**
+             * Action
+             * @description Action taken by the control
+             * @enum {string}
+             */
+            action: "allow" | "deny" | "warn" | "log";
+            /**
+             * Matched
+             * @description Whether the evaluator matched (True) or not (False)
+             */
+            matched: boolean;
+            /**
+             * Confidence
+             * @description Confidence score (0.0 to 1.0)
+             */
+            confidence: number;
+            /**
+             * Timestamp
+             * Format: date-time
+             * @description When the control was executed (UTC)
+             */
+            timestamp?: string;
+            /**
+             * Execution Duration Ms
+             * @description Execution duration in milliseconds
+             */
+            execution_duration_ms?: number | null;
+            /**
+             * Evaluator Name
+             * @description Name of the evaluator used
+             */
+            evaluator_name?: string | null;
+            /**
+             * Selector Path
+             * @description Selector path used to extract data
+             */
+            selector_path?: string | null;
+            /**
+             * Error Message
+             * @description Error message if evaluation failed
+             */
+            error_message?: string | null;
+            /**
+             * Metadata
+             * @description Additional metadata
+             */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ControlMatch
+         * @description Represents a control evaluation result (match, non-match, or error).
+         */
+        ControlMatch: {
+            /**
+             * Control Execution Id
+             * @description Unique ID for this control execution (generated by engine)
+             */
+            control_execution_id?: string;
+            /**
+             * Control Id
+             * @description Database ID of the control
+             */
+            control_id: number;
+            /**
+             * Control Name
+             * @description Name of the control
              */
             control_name: string;
             /**
              * Action
-             * @description Action to take for this match
+             * @description Action configured for this control
              * @enum {string}
              */
             action: "allow" | "deny" | "warn" | "log";
@@ -970,17 +1315,64 @@ export interface components {
             result: components["schemas"]["EvaluatorResult"];
         };
         /**
-         * ControlSelector
-         * @description Selects data from payload and optionally scopes applicability by tool.
-         *
-         *     - path: which slice of the payload to feed into the evaluator. Optional, defaults to "*"
-         *       meaning the entire payload object (ToolCall or LlmCall).
-         *     - tool_names/tool_name_regex: optional applicability filters for ToolCall payloads.
+         * ControlScope
+         * @description Defines when a control applies to a Step.
          * @example {
-         *       "path": "output"
+         *       "stages": [
+         *         "pre"
+         *       ],
+         *       "step_types": [
+         *         "tool"
+         *       ]
          *     }
          * @example {
-         *       "path": "arguments.query"
+         *       "step_names": [
+         *         "search_db",
+         *         "fetch_user"
+         *       ]
+         *     }
+         * @example {
+         *       "step_name_regex": "^db_.*"
+         *     }
+         * @example {
+         *       "stages": [
+         *         "post"
+         *       ],
+         *       "step_types": [
+         *         "llm"
+         *       ]
+         *     }
+         */
+        ControlScope: {
+            /**
+             * Step Types
+             * @description Step types this control applies to (omit to apply to all types). Built-in types are 'tool' and 'llm'.
+             */
+            step_types?: string[] | null;
+            /**
+             * Step Names
+             * @description Exact step names this control applies to
+             */
+            step_names?: string[] | null;
+            /**
+             * Step Name Regex
+             * @description RE2 pattern matched with search() against step name
+             */
+            step_name_regex?: string | null;
+            /**
+             * Stages
+             * @description Evaluation stages this control applies to
+             */
+            stages?: ("pre" | "post")[] | null;
+        };
+        /**
+         * ControlSelector
+         * @description Selects data from a Step payload.
+         *
+         *     - path: which slice of the Step to feed into the evaluator. Optional, defaults to "*"
+         *       meaning the entire Step object.
+         * @example {
+         *       "path": "output"
          *     }
          * @example {
          *       "path": "context.user_id"
@@ -992,34 +1384,99 @@ export interface components {
          *       "path": "*"
          *     }
          * @example {
-         *       "path": "arguments.dest",
-         *       "tool_names": [
-         *         "copy_file",
-         *         "aws_cli"
-         *       ]
+         *       "path": "name"
          *     }
          * @example {
-         *       "path": "output",
-         *       "tool_name_regex": "^db_.*"
+         *       "path": "output"
          *     }
          */
         ControlSelector: {
             /**
              * Path
-             * @description Path to data using dot notation. Examples: 'input', 'output', 'arguments.query', 'context.user_id', 'tool_name', '*'
+             * @description Path to data using dot notation. Examples: 'input', 'output', 'context.user_id', 'name', 'type', '*'
              * @default *
              */
             path: string | null;
+        };
+        /**
+         * ControlStats
+         * @description Aggregated statistics for a single control.
+         *
+         *     Attributes:
+         *         control_id: Database ID of the control
+         *         control_name: Name of the control
+         *         execution_count: Total number of executions
+         *         match_count: Number of times the control matched
+         *         non_match_count: Number of times the control did not match
+         *         allow_count: Number of allow actions
+         *         deny_count: Number of deny actions
+         *         warn_count: Number of warn actions
+         *         log_count: Number of log actions
+         *         error_count: Number of errors during evaluation
+         *         avg_confidence: Average confidence score
+         *         avg_duration_ms: Average execution duration in milliseconds
+         */
+        ControlStats: {
             /**
-             * Tool Names
-             * @description Exact tool names this control applies to (ToolCall only)
+             * Control Id
+             * @description Control ID
              */
-            tool_names?: string[] | null;
+            control_id: number;
             /**
-             * Tool Name Regex
-             * @description RE2 pattern matched with search() against tool_name (ToolCall only)
+             * Control Name
+             * @description Control name
              */
-            tool_name_regex?: string | null;
+            control_name: string;
+            /**
+             * Execution Count
+             * @description Total executions
+             */
+            execution_count: number;
+            /**
+             * Match Count
+             * @description Total matches
+             */
+            match_count: number;
+            /**
+             * Non Match Count
+             * @description Total non-matches
+             */
+            non_match_count: number;
+            /**
+             * Allow Count
+             * @description Allow actions
+             */
+            allow_count: number;
+            /**
+             * Deny Count
+             * @description Deny actions
+             */
+            deny_count: number;
+            /**
+             * Warn Count
+             * @description Warn actions
+             */
+            warn_count: number;
+            /**
+             * Log Count
+             * @description Log actions
+             */
+            log_count: number;
+            /**
+             * Error Count
+             * @description Evaluation errors
+             */
+            error_count: number;
+            /**
+             * Avg Confidence
+             * @description Average confidence
+             */
+            avg_confidence: number;
+            /**
+             * Avg Duration Ms
+             * @description Average duration (ms)
+             */
+            avg_duration_ms?: number | null;
         };
         /**
          * ControlSummary
@@ -1048,15 +1505,20 @@ export interface components {
              */
             enabled: boolean;
             /**
-             * Applies To
-             * @description 'llm_call' or 'tool_call'
+             * Execution
+             * @description 'server' or 'sdk'
              */
-            applies_to?: string | null;
+            execution?: string | null;
             /**
-             * Check Stage
-             * @description 'pre' or 'post'
+             * Step Types
+             * @description Step types in scope
              */
-            check_stage?: string | null;
+            step_types?: string[] | null;
+            /**
+             * Stages
+             * @description Evaluation stages in scope
+             */
+            stages?: string[] | null;
             /**
              * Tags
              * @description Control tags
@@ -1078,6 +1540,34 @@ export interface components {
              * @description Identifier of the created control
              */
             control_id: number;
+        };
+        /**
+         * CreateEvaluatorConfigRequest
+         * @description Request to create an evaluator config template.
+         */
+        CreateEvaluatorConfigRequest: {
+            /**
+             * Name
+             * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional description
+             */
+            description?: string | null;
+            /**
+             * Evaluator
+             * @description Evaluator name (built-in or custom)
+             */
+            evaluator: string;
+            /**
+             * Config
+             * @description Evaluator-specific configuration
+             */
+            config: {
+                [key: string]: unknown;
+            };
         };
         /** CreatePolicyRequest */
         CreatePolicyRequest: {
@@ -1111,6 +1601,17 @@ export interface components {
              */
             dissociated_from?: number[];
         };
+        /**
+         * DeleteEvaluatorConfigResponse
+         * @description Response for deleting an evaluator config.
+         */
+        DeleteEvaluatorConfigResponse: {
+            /**
+             * Success
+             * @description Whether the evaluator config was deleted
+             */
+            success: boolean;
+        };
         /** DeletePolicyResponse */
         DeletePolicyResponse: {
             /**
@@ -1128,58 +1629,64 @@ export interface components {
          *
          *     Attributes:
          *         agent_uuid: UUID of the agent making the request
-         *         payload: Either a ToolCall or LlmCall
-         *         check_stage: 'pre' (before execution) or 'post' (after execution)
+         *         step: Step payload for evaluation
+         *         stage: 'pre' (before execution) or 'post' (after execution)
          * @example {
          *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
-         *       "check_stage": "pre",
-         *       "payload": {
-         *         "context": {
-         *           "session_id": "abc123",
-         *           "user_id": "user123"
-         *         },
-         *         "input": "What is the customer's credit card number?"
-         *       }
-         *     }
-         * @example {
-         *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
-         *       "check_stage": "post",
-         *       "payload": {
+         *       "stage": "pre",
+         *       "step": {
          *         "context": {
          *           "session_id": "abc123",
          *           "user_id": "user123"
          *         },
          *         "input": "What is the customer's credit card number?",
-         *         "output": "I cannot share sensitive payment information."
+         *         "name": "support-answer",
+         *         "type": "llm"
          *       }
          *     }
          * @example {
          *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
-         *       "check_stage": "pre",
-         *       "payload": {
-         *         "arguments": {
-         *           "query": "SELECT * FROM users"
-         *         },
+         *       "stage": "post",
+         *       "step": {
          *         "context": {
+         *           "session_id": "abc123",
          *           "user_id": "user123"
          *         },
-         *         "tool_name": "search_database"
+         *         "input": "What is the customer's credit card number?",
+         *         "name": "support-answer",
+         *         "output": "I cannot share sensitive payment information.",
+         *         "type": "llm"
          *       }
          *     }
          * @example {
          *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
-         *       "check_stage": "post",
-         *       "payload": {
-         *         "arguments": {
-         *           "query": "SELECT * FROM users"
-         *         },
+         *       "stage": "pre",
+         *       "step": {
          *         "context": {
          *           "user_id": "user123"
          *         },
+         *         "input": {
+         *           "query": "SELECT * FROM users"
+         *         },
+         *         "name": "search_database",
+         *         "type": "tool"
+         *       }
+         *     }
+         * @example {
+         *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+         *       "stage": "post",
+         *       "step": {
+         *         "context": {
+         *           "user_id": "user123"
+         *         },
+         *         "input": {
+         *           "query": "SELECT * FROM users"
+         *         },
+         *         "name": "search_database",
          *         "output": {
          *           "results": []
          *         },
-         *         "tool_name": "search_database"
+         *         "type": "tool"
          *       }
          *     }
          */
@@ -1190,17 +1697,14 @@ export interface components {
              * @description UUID of the agent making the evaluation request
              */
             agent_uuid: string;
+            /** @description Agent step payload to evaluate */
+            step: components["schemas"]["Step"];
             /**
-             * Payload
-             * @description Agent interaction payload - either a tool call or LLM call
-             */
-            payload: components["schemas"]["ToolCall"] | components["schemas"]["LlmCall"];
-            /**
-             * Check Stage
-             * @description Check stage: 'pre' or 'post'
+             * Stage
+             * @description Evaluation stage: 'pre' or 'post'
              * @enum {string}
              */
-            check_stage: "pre" | "post";
+            stage: "pre" | "post";
         };
         /**
          * EvaluationResponse
@@ -1213,8 +1717,9 @@ export interface components {
          *         is_safe: Whether the content is considered safe
          *         confidence: Confidence score between 0.0 and 1.0
          *         reason: Optional explanation for the decision
-         *         matches: List of control matches detected (if any)
-         *         errors: List of control matches that failed during evaluation (if any)
+         *         matches: List of controls that matched/triggered (if any)
+         *         errors: List of controls that failed during evaluation (if any)
+         *         non_matches: List of controls that were evaluated but did not match (if any)
          */
         EvaluationResponse: {
             /**
@@ -1234,7 +1739,7 @@ export interface components {
             reason?: string | null;
             /**
              * Matches
-             * @description List of control matches detected (if any)
+             * @description List of controls that matched/triggered (if any)
              */
             matches?: components["schemas"]["ControlMatch"][] | null;
             /**
@@ -1242,27 +1747,32 @@ export interface components {
              * @description List of controls that failed during evaluation (if any)
              */
             errors?: components["schemas"]["ControlMatch"][] | null;
+            /**
+             * Non Matches
+             * @description List of controls that were evaluated but did not match (if any)
+             */
+            non_matches?: components["schemas"]["ControlMatch"][] | null;
         };
         /**
          * EvaluatorConfig
-         * @description Evaluator configuration. See GET /plugins for available plugins and schemas.
+         * @description Evaluator configuration. See GET /evaluators for available evaluators and schemas.
          *
-         *     Plugin reference formats:
+         *     Evaluator reference formats:
          *     - Built-in: "regex", "list"
          *     - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
          */
         EvaluatorConfig: {
             /**
-             * Plugin
-             * @description Plugin name or agent-scoped reference (agent:evaluator)
+             * Name
+             * @description Evaluator name or agent-scoped reference (agent:evaluator)
              * @example regex
              * @example list
              * @example my-agent:pii-detector
              */
-            plugin: string;
+            name: string;
             /**
              * Config
-             * @description Plugin-specific configuration
+             * @description Evaluator-specific configuration
              * @example {
              *       "pattern": "\\d{3}-\\d{2}-\\d{4}"
              *     }
@@ -1278,19 +1788,100 @@ export interface components {
             };
         };
         /**
+         * EvaluatorConfigItem
+         * @description Evaluator config template stored in the server.
+         */
+        EvaluatorConfigItem: {
+            /**
+             * Id
+             * @description Evaluator config ID
+             */
+            id: number;
+            /**
+             * Name
+             * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional description
+             */
+            description?: string | null;
+            /**
+             * Evaluator
+             * @description Evaluator name (built-in or custom)
+             */
+            evaluator: string;
+            /**
+             * Config
+             * @description Evaluator-specific configuration
+             */
+            config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * @description ISO 8601 created timestamp
+             */
+            created_at?: string | null;
+            /**
+             * Updated At
+             * @description ISO 8601 updated timestamp
+             */
+            updated_at?: string | null;
+        };
+        /**
+         * EvaluatorInfo
+         * @description Information about a registered evaluator.
+         */
+        EvaluatorInfo: {
+            /**
+             * Name
+             * @description Evaluator name
+             */
+            name: string;
+            /**
+             * Version
+             * @description Evaluator version
+             */
+            version: string;
+            /**
+             * Description
+             * @description Evaluator description
+             */
+            description: string;
+            /**
+             * Requires Api Key
+             * @description Whether evaluator requires API key
+             */
+            requires_api_key: boolean;
+            /**
+             * Timeout Ms
+             * @description Default timeout in milliseconds
+             */
+            timeout_ms: number;
+            /**
+             * Config Schema
+             * @description JSON Schema for config
+             */
+            config_schema: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * EvaluatorResult
          * @description Result from a control evaluator.
          *
-         *     The `error` field indicates plugin failures, NOT validation failures:
-         *     - Set `error` for: plugin crashes, timeouts, missing dependencies, external service errors
+         *     The `error` field indicates evaluator failures, NOT validation failures:
+         *     - Set `error` for: evaluator crashes, timeouts, missing dependencies, external service errors
          *     - Do NOT set `error` for: invalid input, syntax errors, schema violations, constraint failures
          *
-         *     When `error` is set, `matched` must be False (fail-open on plugin errors).
+         *     When `error` is set, `matched` must be False (fail-open on evaluator errors).
          *     When `error` is None, `matched` reflects the actual validation result.
          *
          *     This distinction allows:
-         *     - Clients to distinguish "data violated rules" from "plugin is broken"
-         *     - Observability systems to monitor plugin health separately from validation outcomes
+         *     - Clients to distinguish "data violated rules" from "evaluator is broken"
+         *     - Observability systems to monitor evaluator health separately from validation outcomes
          */
         EvaluatorResult: {
             /**
@@ -1325,7 +1916,7 @@ export interface components {
          * EvaluatorSchema
          * @description Schema for a custom evaluator registered with an agent.
          *
-         *     Custom evaluators are PluginEvaluator classes deployed with the engine.
+         *     Custom evaluators are Evaluator classes deployed with the engine.
          *     This schema is registered via initAgent for validation and UI purposes.
          */
         EvaluatorSchema: {
@@ -1362,17 +1953,151 @@ export interface components {
             };
         };
         /**
+         * EventQueryRequest
+         * @description Request model for querying raw events.
+         *
+         *     Supports filtering by various criteria and pagination.
+         *
+         *     Attributes:
+         *         trace_id: Filter by trace ID (get all events for a request)
+         *         span_id: Filter by span ID (get all events for a function call)
+         *         control_execution_id: Filter by specific event ID
+         *         agent_uuid: Filter by agent UUID
+         *         control_ids: Filter by control IDs
+         *         actions: Filter by actions (allow, deny, warn, log)
+         *         matched: Filter by matched status
+         *         check_stages: Filter by check stages (pre, post)
+         *         applies_to: Filter by call type (llm_call, tool_call)
+         *         start_time: Filter events after this time
+         *         end_time: Filter events before this time
+         *         limit: Maximum number of events to return
+         *         offset: Offset for pagination
+         * @example {
+         *       "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+         *     }
+         * @example {
+         *       "actions": [
+         *         "deny",
+         *         "warn"
+         *       ],
+         *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
+         *       "limit": 50,
+         *       "start_time": "2025-01-09T00:00:00Z"
+         *     }
+         */
+        EventQueryRequest: {
+            /**
+             * Trace Id
+             * @description Filter by trace ID (all events for a request)
+             */
+            trace_id?: string | null;
+            /**
+             * Span Id
+             * @description Filter by span ID (all events for a function)
+             */
+            span_id?: string | null;
+            /**
+             * Control Execution Id
+             * @description Filter by specific event ID
+             */
+            control_execution_id?: string | null;
+            /**
+             * Agent Uuid
+             * @description Filter by agent UUID
+             */
+            agent_uuid?: string | null;
+            /**
+             * Control Ids
+             * @description Filter by control IDs
+             */
+            control_ids?: number[] | null;
+            /**
+             * Actions
+             * @description Filter by actions
+             */
+            actions?: ("allow" | "deny" | "warn" | "log")[] | null;
+            /**
+             * Matched
+             * @description Filter by matched status
+             */
+            matched?: boolean | null;
+            /**
+             * Check Stages
+             * @description Filter by check stages
+             */
+            check_stages?: ("pre" | "post")[] | null;
+            /**
+             * Applies To
+             * @description Filter by call types
+             */
+            applies_to?: ("llm_call" | "tool_call")[] | null;
+            /**
+             * Start Time
+             * @description Filter events after this time
+             */
+            start_time?: string | null;
+            /**
+             * End Time
+             * @description Filter events before this time
+             */
+            end_time?: string | null;
+            /**
+             * Limit
+             * @description Maximum events
+             * @default 100
+             */
+            limit: number;
+            /**
+             * Offset
+             * @description Pagination offset
+             * @default 0
+             */
+            offset: number;
+        };
+        /**
+         * EventQueryResponse
+         * @description Response model for event queries.
+         *
+         *     Attributes:
+         *         events: List of matching events
+         *         total: Total number of matching events (for pagination)
+         *         limit: Limit used in query
+         *         offset: Offset used in query
+         */
+        EventQueryResponse: {
+            /**
+             * Events
+             * @description Matching events
+             */
+            events: components["schemas"]["ControlExecutionEvent"][];
+            /**
+             * Total
+             * @description Total matching events
+             */
+            total: number;
+            /**
+             * Limit
+             * @description Limit used in query
+             */
+            limit: number;
+            /**
+             * Offset
+             * @description Offset used in query
+             */
+            offset: number;
+        };
+        /**
          * GetAgentResponse
-         * @description Response containing agent details and registered tools.
+         * @description Response containing agent details and registered steps.
          */
         GetAgentResponse: {
             /** @description Agent metadata */
             agent: components["schemas"]["Agent"];
             /**
-             * Tools
-             * @description Tools registered with this agent
+             * Steps
+             * @description Steps registered with this agent
              */
-            tools: components["schemas"]["AgentTool"][];
+            steps: components["schemas"]["StepSchema"][];
             /**
              * Evaluators
              * @description Custom evaluators registered with this agent
@@ -1464,19 +2189,20 @@ export interface components {
          *           "name": "pii-detector"
          *         }
          *       ],
-         *       "tools": [
+         *       "steps": [
          *         {
-         *           "arguments": {
+         *           "input_schema": {
          *             "query": {
          *               "type": "string"
          *             }
          *           },
+         *           "name": "search_kb",
          *           "output_schema": {
          *             "results": {
          *               "type": "array"
          *             }
          *           },
-         *           "tool_name": "search_kb"
+         *           "type": "tool"
          *         }
          *       ]
          *     }
@@ -1485,10 +2211,10 @@ export interface components {
             /** @description Agent metadata including ID, name, and version */
             agent: components["schemas"]["Agent"];
             /**
-             * Tools
-             * @description List of tools available to the agent
+             * Steps
+             * @description List of steps available to the agent
              */
-            tools?: components["schemas"]["AgentTool"][];
+            steps?: components["schemas"]["StepSchema"][];
             /**
              * Evaluators
              * @description Custom evaluator schemas for config validation
@@ -1517,6 +2243,11 @@ export interface components {
              */
             controls?: components["schemas"]["Control"][];
         };
+        JSONObject: {
+            [key: string]: components["schemas"]["JSONValue"];
+        };
+        /** @description Any JSON value */
+        JSONValue: unknown;
         /**
          * ListAgentsResponse
          * @description Response for listing agents.
@@ -1544,6 +2275,19 @@ export interface components {
             pagination: components["schemas"]["PaginationInfo"];
         };
         /**
+         * ListEvaluatorConfigsResponse
+         * @description Response for listing evaluator configs.
+         */
+        ListEvaluatorConfigsResponse: {
+            /**
+             * Evaluator Configs
+             * @description List of evaluator configs
+             */
+            evaluator_configs: components["schemas"]["EvaluatorConfigItem"][];
+            /** @description Pagination metadata */
+            pagination: components["schemas"]["PaginationInfo"];
+        };
+        /**
          * ListEvaluatorsResponse
          * @description Response for listing agent's evaluator schemas.
          */
@@ -1551,33 +2295,6 @@ export interface components {
             /** Evaluators */
             evaluators: components["schemas"]["EvaluatorSchemaItem"][];
             pagination: components["schemas"]["PaginationInfo"];
-        };
-        /**
-         * LlmCall
-         * @description Represents an LLM interaction by the agent.
-         */
-        LlmCall: {
-            /**
-             * Context
-             * @description Optional context (conversation history, metadata, etc.)
-             */
-            context?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Input
-             * @description Input content to analyze for safety (text or structured data)
-             */
-            input: string | {
-                [key: string]: unknown;
-            };
-            /**
-             * Output
-             * @description Output content to analyze for safety (None for pre-checks)
-             */
-            output?: string | {
-                [key: string]: unknown;
-            } | null;
         };
         /**
          * PaginationInfo
@@ -1607,14 +2324,14 @@ export interface components {
         };
         /**
          * PatchAgentRequest
-         * @description Request to modify an agent (remove tools/evaluators).
+         * @description Request to modify an agent (remove steps/evaluators).
          */
         PatchAgentRequest: {
             /**
-             * Remove Tools
-             * @description Tool names to remove from the agent
+             * Remove Steps
+             * @description Step identifiers to remove from the agent
              */
-            remove_tools?: string[];
+            remove_steps?: components["schemas"]["StepKey"][];
             /**
              * Remove Evaluators
              * @description Evaluator names to remove from the agent
@@ -1627,10 +2344,10 @@ export interface components {
          */
         PatchAgentResponse: {
             /**
-             * Tools Removed
-             * @description Tool names that were removed
+             * Steps Removed
+             * @description Step identifiers that were removed
              */
-            tools_removed?: string[];
+            steps_removed?: components["schemas"]["StepKey"][];
             /**
              * Evaluators Removed
              * @description Evaluator names that were removed
@@ -1675,44 +2392,6 @@ export interface components {
             enabled?: boolean | null;
         };
         /**
-         * PluginInfo
-         * @description Information about a registered plugin.
-         */
-        PluginInfo: {
-            /**
-             * Name
-             * @description Plugin name
-             */
-            name: string;
-            /**
-             * Version
-             * @description Plugin version
-             */
-            version: string;
-            /**
-             * Description
-             * @description Plugin description
-             */
-            description: string;
-            /**
-             * Requires Api Key
-             * @description Whether plugin requires API key
-             */
-            requires_api_key: boolean;
-            /**
-             * Timeout Ms
-             * @description Default timeout in milliseconds
-             */
-            timeout_ms: number;
-            /**
-             * Config Schema
-             * @description JSON Schema for config
-             */
-            config_schema: {
-                [key: string]: unknown;
-            };
-        };
-        /**
          * SetControlDataRequest
          * @description Request to update control configuration data.
          */
@@ -1742,36 +2421,216 @@ export interface components {
             old_policy_id?: number | null;
         };
         /**
-         * ToolCall
-         * @description Represents a tool invocation by the agent.
+         * StatsResponse
+         * @description Response model for aggregated statistics.
+         *
+         *     Invariant: total_executions = total_matches + total_non_matches + total_errors
+         *
+         *     Matches have actions (allow, deny, warn, log) tracked in action_counts.
+         *     sum(action_counts.values()) == total_matches
+         *
+         *     Attributes:
+         *         agent_uuid: Agent UUID
+         *         time_range: Time range used
+         *         stats: List of per-control statistics
+         *         total_executions: Total executions across all controls
+         *         total_matches: Total matches across all controls (evaluator matched)
+         *         total_non_matches: Total non-matches across all controls (evaluator didn't match)
+         *         total_errors: Total errors across all controls (evaluation failed)
+         *         action_counts: Breakdown of actions for matched executions
          */
-        ToolCall: {
+        StatsResponse: {
             /**
-             * Context
-             * @description Optional context (conversation history, metadata, etc.)
+             * Agent Uuid
+             * Format: uuid
+             * @description Agent UUID
              */
-            context?: {
+            agent_uuid: string;
+            /**
+             * Time Range
+             * @description Time range used
+             */
+            time_range: string;
+            /**
+             * Stats
+             * @description Per-control statistics
+             */
+            stats: components["schemas"]["ControlStats"][];
+            /**
+             * Total Executions
+             * @description Total executions across all controls
+             */
+            total_executions: number;
+            /**
+             * Total Matches
+             * @description Total matches across all controls
+             * @default 0
+             */
+            total_matches: number;
+            /**
+             * Total Non Matches
+             * @description Total non-matches across all controls
+             * @default 0
+             */
+            total_non_matches: number;
+            /**
+             * Total Errors
+             * @description Total errors across all controls
+             * @default 0
+             */
+            total_errors: number;
+            /**
+             * Action Counts
+             * @description Action breakdown for matches: {allow, deny, warn, log}
+             */
+            action_counts?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * Step
+         * @description Runtime payload for an agent step invocation.
+         */
+        Step: {
+            /**
+             * Type
+             * @description Step type (e.g., 'tool', 'llm')
+             */
+            type: string;
+            /**
+             * Name
+             * @description Step name (tool name or model/chain id)
+             */
+            name: string;
+            /** @description Input content for this step */
+            input: components["schemas"]["JSONValue"];
+            /** @description Output content for this step (None for pre-checks) */
+            output?: components["schemas"]["JSONValue"] | null;
+            /** @description Optional context (conversation history, metadata, etc.) */
+            context?: components["schemas"]["JSONObject"] | null;
+        };
+        /**
+         * StepKey
+         * @description Identifies a registered step schema by type and name.
+         */
+        StepKey: {
+            /**
+             * Type
+             * @description Step type
+             */
+            type: string;
+            /**
+             * Name
+             * @description Registered step name
+             */
+            name: string;
+        };
+        /**
+         * StepSchema
+         * @description Schema for a registered agent step.
+         * @example {
+         *       "description": "Search the internal knowledge base",
+         *       "input_schema": {
+         *         "query": {
+         *           "description": "Search query",
+         *           "type": "string"
+         *         }
+         *       },
+         *       "name": "search_knowledge_base",
+         *       "output_schema": {
+         *         "results": {
+         *           "items": {
+         *             "type": "object"
+         *           },
+         *           "type": "array"
+         *         }
+         *       },
+         *       "type": "tool"
+         *     }
+         * @example {
+         *       "description": "Customer support response generation",
+         *       "input_schema": {
+         *         "messages": {
+         *           "items": {
+         *             "type": "object"
+         *           },
+         *           "type": "array"
+         *         }
+         *       },
+         *       "name": "support-answer",
+         *       "output_schema": {
+         *         "text": {
+         *           "type": "string"
+         *         }
+         *       },
+         *       "type": "llm"
+         *     }
+         */
+        StepSchema: {
+            /**
+             * Type
+             * @description Step type for this schema (e.g., 'tool', 'llm')
+             */
+            type: string;
+            /**
+             * Name
+             * @description Unique name for the step
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional description of the step
+             */
+            description?: string | null;
+            /**
+             * Input Schema
+             * @description JSON schema describing step input
+             */
+            input_schema?: {
                 [key: string]: unknown;
             } | null;
             /**
-             * Tool Name
-             * @description Name of the tool called
+             * Output Schema
+             * @description JSON schema describing step output
              */
-            tool_name: string;
+            output_schema?: {
+                [key: string]: unknown;
+            } | null;
             /**
-             * Arguments
-             * @description Arguments passed to the tool
+             * Metadata
+             * @description Additional metadata for the step
              */
-            arguments: {
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * UpdateEvaluatorConfigRequest
+         * @description Request to replace an evaluator config template.
+         */
+        UpdateEvaluatorConfigRequest: {
+            /**
+             * Name
+             * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional description
+             */
+            description?: string | null;
+            /**
+             * Evaluator
+             * @description Evaluator name (built-in or custom)
+             */
+            evaluator: string;
+            /**
+             * Config
+             * @description Evaluator-specific configuration
+             */
+            config: {
                 [key: string]: unknown;
             };
-            /**
-             * Output
-             * @description Output of the tool (None for pre-checks)
-             */
-            output?: string | {
-                [key: string]: unknown;
-            } | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -1867,7 +2726,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Agent metadata and registered tools */
+            /** @description Agent metadata and registered steps */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2251,8 +3110,12 @@ export interface operations {
                 name?: string | null;
                 /** @description Filter by enabled status */
                 enabled?: boolean | null;
-                /** @description Filter by 'llm_call' or 'tool_call' */
-                applies_to?: string | null;
+                /** @description Filter by step type (built-ins: 'tool', 'llm') */
+                step_type?: string | null;
+                /** @description Filter by stage ('pre' or 'post') */
+                stage?: string | null;
+                /** @description Filter by execution ('server' or 'sdk') */
+                execution?: string | null;
                 /** @description Filter by tag */
                 tag?: string | null;
             };
@@ -2481,10 +3344,180 @@ export interface operations {
             };
         };
     };
-    evaluate_api_v1_evaluation_post: {
+    list_evaluator_configs_api_v1_evaluator_configs_get: {
+        parameters: {
+            query?: {
+                /** @description Evaluator config ID to start after */
+                cursor?: number | null;
+                limit?: number;
+                /** @description Filter by name (partial, case-insensitive) */
+                name?: string | null;
+                /** @description Filter by evaluator name */
+                evaluator?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of evaluator configs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListEvaluatorConfigsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_evaluator_config_api_v1_evaluator_configs_post: {
         parameters: {
             query?: never;
             header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEvaluatorConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Created evaluator config */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluatorConfigItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evaluator_config_api_v1_evaluator_configs__config_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Evaluator config details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluatorConfigItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_evaluator_config_api_v1_evaluator_configs__config_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEvaluatorConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated evaluator config */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluatorConfigItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_evaluator_config_api_v1_evaluator_configs__config_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deletion confirmation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteEvaluatorConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_api_v1_evaluation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Trace-Id"?: string | null;
+                "X-Span-Id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2514,7 +3547,7 @@ export interface operations {
             };
         };
     };
-    get_plugins_api_v1_plugins_get: {
+    get_evaluators_api_v1_evaluators_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2523,14 +3556,135 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Dictionary of plugin name to plugin info */
+            /** @description Dictionary of evaluator name to evaluator info */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        [key: string]: components["schemas"]["PluginInfo"];
+                        [key: string]: components["schemas"]["EvaluatorInfo"];
+                    };
+                };
+            };
+        };
+    };
+    ingest_events_api_v1_observability_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchEventsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchEventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_events_api_v1_observability_events_query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventQueryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_stats_api_v1_observability_stats_get: {
+        parameters: {
+            query: {
+                agent_uuid: string;
+                time_range?: "1m" | "5m" | "15m" | "1h" | "24h" | "7d";
+                control_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_status_api_v1_observability_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
                     };
                 };
             };

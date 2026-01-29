@@ -23,18 +23,18 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
-import type { PluginInfo } from "@/core/api/types";
-import { usePlugins } from "@/core/hooks/query-hooks/use-plugins";
+import type { EvaluatorInfo } from "@/core/api/types";
+import { useEvaluators } from "@/core/hooks/query-hooks/use-evaluators";
 
 import { EditControlContent } from "./edit-control";
 
-type PluginWithId = PluginInfo & { id: string };
+type EvaluatorWithId = EvaluatorInfo & { id: string };
 
 /**
- * Default evaluator configs for each plugin type
+ * Default evaluator configs for each evaluator type
  * Based on backend models in agent_control_models/controls.py
  */
-const DEFAULT_PLUGIN_CONFIGS: Record<string, Record<string, unknown>> = {
+const DEFAULT_EVALUATOR_CONFIGS: Record<string, Record<string, unknown>> = {
   regex: {
     pattern: "^.*$",
   },
@@ -47,8 +47,10 @@ const DEFAULT_PLUGIN_CONFIGS: Record<string, Record<string, unknown>> = {
   },
 };
 
-function getDefaultConfigForPlugin(pluginId: string): Record<string, unknown> {
-  return DEFAULT_PLUGIN_CONFIGS[pluginId] ?? {};
+function getDefaultConfigForEvaluator(
+  evaluatorId: string
+): Record<string, unknown> {
+  return DEFAULT_EVALUATOR_CONFIGS[evaluatorId] ?? {};
 }
 
 interface ControlStoreModalProps {
@@ -66,20 +68,19 @@ export function ControlStoreModal({
     "galileo"
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedPlugin, setSelectedPlugin] = useState<PluginWithId | null>(
-    null
-  );
+  const [selectedEvaluator, setSelectedEvaluator] =
+    useState<EvaluatorWithId | null>(null);
   const [editModalOpened, setEditModalOpened] = useState(false);
-  const { data: pluginsData, isLoading, error } = usePlugins();
+  const { data: evaluatorsData, isLoading, error } = useEvaluators();
 
-  const handleAddClick = (plugin: PluginWithId) => {
-    setSelectedPlugin(plugin);
+  const handleAddClick = (evaluator: EvaluatorWithId) => {
+    setSelectedEvaluator(evaluator);
     setEditModalOpened(true);
   };
 
   const handleEditModalClose = () => {
     setEditModalOpened(false);
-    setSelectedPlugin(null);
+    setSelectedEvaluator(null);
   };
 
   const handleEditModalSuccess = () => {
@@ -87,16 +88,16 @@ export function ControlStoreModal({
     onClose();
   };
 
-  // Transform plugins record to array for table display
-  const plugins = useMemo(() => {
-    if (!pluginsData) return [];
-    return Object.entries(pluginsData).map(([key, plugin]) => ({
-      ...plugin,
+  // Transform evaluators record to array for table display
+  const evaluators = useMemo(() => {
+    if (!evaluatorsData) return [];
+    return Object.entries(evaluatorsData).map(([key, evaluator]) => ({
+      ...evaluator,
       id: key,
     }));
-  }, [pluginsData]);
+  }, [evaluatorsData]);
 
-  const columns: ColumnDef<PluginInfo & { id: string }>[] = [
+  const columns: ColumnDef<EvaluatorInfo & { id: string }>[] = [
     {
       id: "name",
       header: "Name",
@@ -147,10 +148,10 @@ export function ControlStoreModal({
     },
   ];
 
-  const filteredPlugins =
+  const filteredEvaluators =
     selectedSource === "galileo"
-      ? plugins.filter((plugin) =>
-          plugin.name.toLowerCase().includes(searchQuery.toLowerCase())
+      ? evaluators.filter((evaluator) =>
+          evaluator.name.toLowerCase().includes(searchQuery.toLowerCase())
         )
       : [];
 
@@ -303,18 +304,18 @@ export function ControlStoreModal({
                         size={48}
                         color='var(--mantine-color-red-5)'
                       />
-                      <Text c='red'>Failed to load plugins</Text>
+                  <Text c='red'>Failed to load evaluators</Text>
                     </Stack>
                   </Paper>
-                ) : filteredPlugins.length > 0 ? (
+            ) : filteredEvaluators.length > 0 ? (
                   <Table
                     columns={columns}
-                    data={filteredPlugins}
+                data={filteredEvaluators}
                     highlightOnHover
                   />
                 ) : (
                   <Paper p='xl' withBorder radius='sm' ta='center'>
-                    <Text c='dimmed'>No plugins found</Text>
+                <Text c='dimmed'>No evaluators found</Text>
                   </Paper>
                 )
               ) : (
@@ -351,23 +352,25 @@ export function ControlStoreModal({
         }}
       >
         <ErrorBoundary variant="modal">
-          {selectedPlugin && (
+          {selectedEvaluator && (
             <EditControlContent
               control={{
                 id: 0,
-                name: selectedPlugin.name,
+                name: selectedEvaluator.name,
                 control: {
-                  description: selectedPlugin.description,
+                  description: selectedEvaluator.description,
                   enabled: true,
-                  local: false,
-                  applies_to: "llm_call" as const,
-                  check_stage: "post" as const,
+                  execution: "server",
+                  scope: {
+                    step_types: ["llm"],
+                    stages: ["post"],
+                  },
                   selector: {
                     path: "*",
                   },
                   evaluator: {
-                    plugin: selectedPlugin.id,
-                    config: getDefaultConfigForPlugin(selectedPlugin.id),
+                    name: selectedEvaluator.id,
+                    config: getDefaultConfigForEvaluator(selectedEvaluator.id),
                   },
                   action: { decision: "deny" as const },
                 },

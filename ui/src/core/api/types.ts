@@ -49,30 +49,34 @@ export interface ProblemDetail {
 }
 
 // Agent types
+export type Agent = components["schemas"]["Agent"];
+export type EvaluatorSchema = components["schemas"]["EvaluatorSchema"];
+export type StepSchema = components["schemas"]["StepSchema"];
 export type AgentSummary = components["schemas"]["AgentSummary"];
 export type ListAgentsResponse = components["schemas"]["ListAgentsResponse"];
-export type Agent = components["schemas"]["Agent"];
-export type AgentTool = components["schemas"]["AgentTool"];
-export type EvaluatorSchema = components["schemas"]["EvaluatorSchema"];
 
-// Plugin types
-export type PluginInfo = components["schemas"]["PluginInfo"];
-export type PluginsResponse = Record<string, PluginInfo>;
+// Evaluator types
+export type EvaluatorInfo = components["schemas"]["EvaluatorInfo"];
+export type EvaluatorsResponse = Record<string, EvaluatorInfo>;
 
 // Request/Response types
 export type InitAgentRequest = components["schemas"]["InitAgentRequest"];
 export type InitAgentResponse = components["schemas"]["InitAgentResponse"];
 export type GetAgentResponse = components["schemas"]["GetAgentResponse"];
-export type AgentControlsResponse =
-  components["schemas"]["AgentControlsResponse"];
-export type Control = components["schemas"]["Control"];
-export type ControlDefinition = components["schemas"]["ControlDefinition"];
-
-// Extracted enums from ControlDefinition
-export type ControlAppliesTo = ControlDefinition["applies_to"];
-export type ControlCheckStage = ControlDefinition["check_stage"];
 export type ControlActionDecision =
   components["schemas"]["ControlAction"]["decision"];
+export type ControlExecution =
+  components["schemas"]["ControlDefinition"]["execution"];
+export type ControlStage = NonNullable<
+  components["schemas"]["ControlScope"]["stages"]
+>[number];
+export type ControlScope = components["schemas"]["ControlScope"];
+export type ControlSelector = components["schemas"]["ControlSelector"];
+export type ControlAction = components["schemas"]["ControlAction"];
+export type ControlDefinition = components["schemas"]["ControlDefinition"];
+export type Control = components["schemas"]["Control"];
+export type AgentControlsResponse =
+  components["schemas"]["AgentControlsResponse"];
 
 // Control types
 export type CreateControlRequest =

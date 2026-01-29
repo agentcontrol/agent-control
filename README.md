@@ -158,7 +158,7 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "description": "Block Social Security Numbers in responses",
   "enabled": true,
   "execution": "server",
-  "scope": { "step_types": ["llm_inference"], "stages": ["post"] },
+  "scope": { "step_types": ["llm"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
     "name": "regex",
@@ -176,7 +176,7 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "description": "Block toxic or harmful user messages",
   "enabled": true,
   "execution": "server",
-  "scope": { "step_types": ["llm_inference"], "stages": ["pre"] },
+  "scope": { "step_types": ["llm"], "stages": ["pre"] },
   "selector": { "path": "input" },
   "evaluator": {
     "name": "galileo-luna2",

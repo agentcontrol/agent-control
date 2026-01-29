@@ -1,18 +1,21 @@
 import {
   Box,
   Group,
+  MultiSelect,
   Select,
   Stack,
   Switch,
+  TagsInput,
   Text,
+  TextInput,
   Tooltip,
 } from "@mantine/core";
 import { IconInfoCircle } from "@tabler/icons-react";
 
 import type {
   ControlActionDecision,
-  ControlAppliesTo,
-  ControlCheckStage,
+  ControlExecution,
+  ControlStage,
 } from "@/core/api/types";
 
 import type { ControlDefinitionFormProps } from "./types";
@@ -38,24 +41,42 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
       <Box>
         <Group gap={4} mb={4}>
           <Text size='sm' fw={500}>
-            Applies to
+            Step types
           </Text>
-          <Tooltip label='Which type of interaction this control applies to'>
+          <Tooltip label='Leave empty to apply to all step types'>
             <IconInfoCircle size={14} color='gray' />
           </Tooltip>
         </Group>
-        <Select
+        <TagsInput
+          data={["llm", "tool"]}
+          size='sm'
+          placeholder='All step types'
+          clearable
+          value={form.values.step_types}
+          onChange={(value) => form.setFieldValue("step_types", value)}
+        />
+      </Box>
+
+      <Box>
+        <Group gap={4} mb={4}>
+          <Text size='sm' fw={500}>
+            Stages
+          </Text>
+          <Tooltip label='Leave empty to apply to both stages'>
+            <IconInfoCircle size={14} color='gray' />
+          </Tooltip>
+        </Group>
+        <MultiSelect
           data={[
-            { value: "llm_call", label: "LLM Call" },
-            { value: "tool_call", label: "Tool Call" },
+            { value: "pre", label: "Pre (before execution)" },
+            { value: "post", label: "Post (after execution)" },
           ]}
           size='sm'
-          {...form.getInputProps("applies_to")}
+          placeholder='All stages'
+          clearable
+          value={form.values.stages}
           onChange={(value) =>
-            form.setFieldValue(
-              "applies_to",
-              (value as ControlAppliesTo) || "llm_call"
-            )
+            form.setFieldValue("stages", value as ControlStage[])
           }
         />
       </Box>
@@ -63,25 +84,32 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
       <Box>
         <Group gap={4} mb={4}>
           <Text size='sm' fw={500}>
-            Check stage
+            Step names
           </Text>
-          <Tooltip label='When to execute this control (before or after the call)'>
+          <Tooltip label='Comma-separated step names to scope this control'>
             <IconInfoCircle size={14} color='gray' />
           </Tooltip>
         </Group>
-        <Select
-          data={[
-            { value: "pre", label: "Pre (before execution)" },
-            { value: "post", label: "Post (after execution)" },
-          ]}
+        <TextInput
           size='sm'
-          {...form.getInputProps("check_stage")}
-          onChange={(value) =>
-            form.setFieldValue(
-              "check_stage",
-              (value as ControlCheckStage) || "post"
-            )
-          }
+          placeholder='search_db, fetch_user'
+          {...form.getInputProps("step_names")}
+        />
+      </Box>
+
+      <Box>
+        <Group gap={4} mb={4}>
+          <Text size='sm' fw={500}>
+            Step name regex
+          </Text>
+          <Tooltip label='Optional RE2 pattern to match step names'>
+            <IconInfoCircle size={14} color='gray' />
+          </Tooltip>
+        </Group>
+        <TextInput
+          size='sm'
+          placeholder='^db_.*'
+          {...form.getInputProps("step_name_regex")}
         />
       </Box>
 
@@ -90,7 +118,7 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
           <Text size='sm' fw={500}>
             Selector path
           </Text>
-          <Tooltip label="Path to data using dot notation (e.g., 'input', 'output', 'arguments.query', '*' for all)">
+          <Tooltip label="Path to data using dot notation (e.g., 'input', 'output', 'context.user_id', 'name', '*')">
             <IconInfoCircle size={14} color='gray' />
           </Tooltip>
         </Group>
@@ -99,9 +127,9 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
             { value: "*", label: "* (entire payload)" },
             { value: "input", label: "input" },
             { value: "output", label: "output" },
-            { value: "arguments", label: "arguments" },
             { value: "context", label: "context" },
-            { value: "tool_name", label: "tool_name" },
+            { value: "name", label: "name" },
+            { value: "type", label: "type" },
           ]}
           size='sm'
           searchable
@@ -152,11 +180,16 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
         <Select
           data={[
             { value: "server", label: "Server" },
-            { value: "local", label: "Local (SDK)" },
+            { value: "sdk", label: "SDK" },
           ]}
           size='sm'
-          value={form.values.local ? "local" : "server"}
-          onChange={(value) => form.setFieldValue("local", value === "local")}
+          {...form.getInputProps("execution")}
+          onChange={(value) =>
+            form.setFieldValue(
+              "execution",
+              (value as ControlExecution) || "server"
+            )
+          }
         />
       </Box>
     </Stack>

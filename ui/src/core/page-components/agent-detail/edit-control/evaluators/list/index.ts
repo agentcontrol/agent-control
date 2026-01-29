@@ -1,13 +1,13 @@
-import type { EvaluatorPlugin } from "../types";
+import type { EvaluatorDefinition } from "../types";
 import { ListForm } from "./form";
 import type { ListFormValues } from "./types";
 
 /**
- * List evaluator plugin.
+ * List evaluator definition.
  *
  * Validates content against a list of values with configurable matching logic.
  */
-export const listPlugin: EvaluatorPlugin<ListFormValues> = {
+export const listEvaluator: EvaluatorDefinition<ListFormValues> = {
   id: "list",
   displayName: "List",
 

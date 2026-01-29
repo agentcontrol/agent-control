@@ -29,7 +29,7 @@ Usage:
         result = await agent_control.evaluation.check_evaluation(
             client,
             agent_uuid,
-            step={"type": "llm_inference", "name": "chat", "input": "Hello"},
+            step={"type": "llm", "name": "chat", "input": "Hello"},
             stage="pre",
         )
 """
@@ -528,7 +528,7 @@ async def list_controls(
         limit: Number of results per page (default 20, max 100)
         name: Optional filter by name (partial, case-insensitive)
         enabled: Optional filter by enabled status
-        step_type: Optional filter by step type (built-ins: 'tool', 'llm_inference')
+        step_type: Optional filter by step type (built-ins: 'tool', 'llm')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag
@@ -553,7 +553,7 @@ async def list_controls(
             # Filter enabled LLM controls
             llm_controls = await agent_control.list_controls(
                 enabled=True,
-                step_type="llm_inference"
+                step_type="llm"
             )
 
         asyncio.run(main())
@@ -612,7 +612,7 @@ async def create_control(
                 name="ssn-blocker",
                 data={
                     "execution": "server",
-                    "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+                    "scope": {"step_types": ["llm"], "stages": ["post"]},
                     "selector": {"path": "output"},
                     "evaluator": {
                         "name": "regex",

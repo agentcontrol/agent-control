@@ -36,7 +36,7 @@ async def list_controls(
         limit: Maximum number of controls to return (default 20, max 100)
         name: Optional filter by name (partial, case-insensitive match)
         enabled: Optional filter by enabled status
-        step_type: Optional filter by step type (built-ins: 'tool', 'llm_inference')
+        step_type: Optional filter by step type (built-ins: 'tool', 'llm')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag
@@ -57,7 +57,7 @@ async def list_controls(
             print(f"Total: {result['pagination']['total']}")
 
             # Filter by type
-            llm_controls = await list_controls(client, step_type="llm_inference")
+            llm_controls = await list_controls(client, step_type="llm")
 
             # Paginate
             page1 = await list_controls(client, limit=10)
@@ -161,7 +161,7 @@ async def create_control(
                 name="ssn-blocker",
                 data={
                     "execution": "server",
-                    "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+                    "scope": {"step_types": ["llm"], "stages": ["post"]},
                     "selector": {"path": "output"},
                     "evaluator": {
                         "name": "regex",

@@ -80,13 +80,9 @@ function NavItem({ href, icon, label, active, onClick }: NavItemProps) {
 //   );
 // }
 
-interface BottomSectionProps {
-  desktopOpened: boolean;
-}
-
-function BottomSection({ desktopOpened }: BottomSectionProps) {
-  const { colorScheme, toggleColorScheme } = useMantineColorScheme();
-  const isDark = colorScheme === "dark";
+function BottomSection() {
+  const { colorScheme: _colorScheme, toggleColorScheme } =
+    useMantineColorScheme();
 
   return (
     <Stack gap={0} p='md'>
@@ -135,7 +131,7 @@ function BottomSection({ desktopOpened }: BottomSectionProps) {
 export function AppLayout({ children }: AppLayoutProps) {
   const router = useRouter();
   const [mobileOpened, setMobileOpened] = useState(false);
-  const [desktopOpened, setDesktopOpened] = useState(true);
+  const [desktopOpened, _setDesktopOpened] = useState(true);
   // TODO: Agent list temporarily disabled in sidebar
   // Reconsidering pagination strategy for navigation sidebar
   // const {
@@ -255,7 +251,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           </Stack>
 
           {/* Bottom Section */}
-          <BottomSection desktopOpened={desktopOpened} />
+          <BottomSection />
         </Stack>
       </AppShell.Navbar>
 

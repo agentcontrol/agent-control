@@ -1,13 +1,13 @@
-import type { EvaluatorPlugin } from "../types";
+import type { EvaluatorDefinition } from "../types";
 import { RegexForm } from "./form";
 import type { RegexFormValues } from "./types";
 
 /**
- * Regex evaluator plugin.
+ * Regex evaluator definition.
  *
  * Validates content against a regular expression pattern.
  */
-export const regexPlugin: EvaluatorPlugin<RegexFormValues> = {
+export const regexEvaluator: EvaluatorDefinition<RegexFormValues> = {
   id: "regex",
   displayName: "Regex",
 

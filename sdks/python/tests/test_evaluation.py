@@ -21,7 +21,7 @@ async def test_check_evaluation_requires_step_name_without_models(monkeypatch):
         await evaluation.check_evaluation(
             client=client,
             agent_uuid=UUID("00000000-0000-0000-0000-000000000001"),
-            step={"type": "llm_inference", "input": "hello"},
+            step={"type": "llm", "input": "hello"},
             stage="pre",
         )
 

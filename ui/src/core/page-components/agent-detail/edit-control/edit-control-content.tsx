@@ -23,7 +23,7 @@ import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 import { ApiErrorAlert } from "./api-error-alert";
 import { ControlDefinitionForm } from "./control-definition-form";
 import { EvaluatorJsonView } from "./evaluator-json-view";
-import { getPlugin } from "./evaluators";
+import { getEvaluator } from "./evaluators";
 import type {
   ConfigViewMode,
   ControlDefinitionFormValues,
@@ -76,23 +76,25 @@ export const EditControlContent = ({
     ? addControlToAgent.isPending
     : updateControl.isPending;
 
-  // Track which plugin the evaluator form has been initialized for
-  const formInitializedForPlugin = useRef<string>("");
+  // Track which evaluator the evaluator form has been initialized for
+  const formInitializedForEvaluator = useRef<string>("");
 
-  // Get plugin for this control
-  const pluginId = control.control.evaluator.plugin || "";
-  const plugin = useMemo(() => getPlugin(pluginId), [pluginId]);
+  // Get evaluator for this control
+  const evaluatorId = control.control.evaluator.name || "";
+  const evaluator = useMemo(() => getEvaluator(evaluatorId), [evaluatorId]);
 
   // Control definition form
   const definitionForm = useForm<ControlDefinitionFormValues>({
     initialValues: {
       name: "",
       enabled: true,
-      applies_to: "llm_call",
-      check_stage: "post",
+      step_types: ["llm"],
+      stages: ["post"],
+      step_names: "",
+      step_name_regex: "",
       selector_path: "*",
       action_decision: "deny",
-      local: false,
+      execution: "server",
     },
     validate: {
       name: (value) => (!value?.trim() ? "Control name is required" : null),
@@ -101,20 +103,20 @@ export const EditControlContent = ({
     },
   });
 
-  // Evaluator config form - dynamically configured based on plugin
+  // Evaluator config form - dynamically configured based on evaluator
   const evaluatorForm = useForm({
-    initialValues: plugin?.initialValues ?? {},
-    validate: plugin?.validate,
+    initialValues: evaluator?.initialValues ?? {},
+    validate: evaluator?.validate,
   });
 
   // Get config from evaluator form
-  // If form hasn't been initialized for current plugin yet, use initial values to avoid crashes
+  // If form hasn't been initialized for current evaluator yet, use initial values to avoid crashes
   const getEvaluatorConfig = () => {
-    if (!plugin) return {};
-    if (formInitializedForPlugin.current !== pluginId) {
-      return plugin.toConfig(plugin.initialValues);
+    if (!evaluator) return {};
+    if (formInitializedForEvaluator.current !== evaluatorId) {
+      return evaluator.toConfig(evaluator.initialValues);
     }
-    return plugin.toConfig(evaluatorForm.values);
+    return evaluator.toConfig(evaluatorForm.values);
   };
 
   // Sync form to JSON
@@ -125,8 +127,8 @@ export const EditControlContent = ({
 
   // Sync JSON to form
   const syncJsonToForm = (config: Record<string, unknown>) => {
-    if (plugin) {
-      evaluatorForm.setValues(plugin.fromConfig(config));
+    if (evaluator) {
+      evaluatorForm.setValues(evaluator.fromConfig(config));
     }
   };
 
@@ -175,7 +177,7 @@ export const EditControlContent = ({
     }
   };
 
-  // Reset view mode and errors when plugin changes
+  // Reset view mode and errors when evaluator changes
   useEffect(() => {
     setConfigViewMode("form");
     setJsonViewMode("raw"); // TODO: Change to "tree" when re-enabling tree view
@@ -183,28 +185,31 @@ export const EditControlContent = ({
     setRawJsonError(null);
     setApiError(null);
     setUnmappedErrors([]);
-  }, [pluginId]);
+  }, [evaluatorId]);
 
   // Load control data into forms
   useEffect(() => {
-    if (control && plugin) {
+    if (control && evaluator) {
+      const scope = control.control.scope ?? {};
       definitionForm.setValues({
         name: control.name,
         enabled: control.control.enabled,
-        applies_to: control.control.applies_to,
-        check_stage: control.control.check_stage,
+        step_types: scope.step_types ?? [],
+        stages: scope.stages ?? [],
+        step_names: (scope.step_names ?? []).join(", "),
+        step_name_regex: scope.step_name_regex ?? "",
         selector_path: control.control.selector.path ?? "*",
         action_decision: control.control.action.decision,
-        local: control.control.local,
+        execution: control.control.execution ?? "server",
       });
       evaluatorForm.setValues(
-        plugin.fromConfig(control.control.evaluator.config)
+        evaluator.fromConfig(control.control.evaluator.config)
       );
-      // Mark form as initialized for this plugin
-      formInitializedForPlugin.current = pluginId;
+      // Mark form as initialized for this evaluator
+      formInitializedForEvaluator.current = evaluatorId;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [control, plugin, pluginId]);
+  }, [control, evaluator, evaluatorId]);
 
   // Handle form submission
   const handleSubmit = async (values: ControlDefinitionFormValues) => {
@@ -230,14 +235,27 @@ export const EditControlContent = ({
       finalConfig = getEvaluatorConfig();
     }
 
+    const stepTypes = values.step_types
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const stepNames = values.step_names
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const stepNameRegex = values.step_name_regex.trim();
+
     const definition = {
       ...control.control,
       enabled: values.enabled,
-      applies_to: values.applies_to,
-      check_stage: values.check_stage,
+      execution: values.execution,
+      scope: {
+        step_types: stepTypes.length > 0 ? stepTypes : undefined,
+        step_names: stepNames.length > 0 ? stepNames : undefined,
+        step_name_regex: stepNameRegex || undefined,
+        stages: values.stages.length > 0 ? values.stages : undefined,
+      },
       selector: { ...control.control.selector, path: values.selector_path },
       action: { decision: values.action_decision },
-      local: values.local,
       evaluator: { ...control.control.evaluator, config: finalConfig },
     };
 
@@ -302,8 +320,8 @@ export const EditControlContent = ({
     }
   };
 
-  // Render the plugin's form component
-  const FormComponent = plugin?.FormComponent;
+  // Render the evaluator's form component
+  const FormComponent = evaluator?.FormComponent;
 
   return (
     <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
@@ -359,7 +377,7 @@ export const EditControlContent = ({
                     <FormComponent form={evaluatorForm} />
                   ) : (
                     <Text c="dimmed" ta="center" py="xl">
-                      No form available for this plugin. Use JSON view to
+                      No form available for this evaluator. Use JSON view to
                       configure.
                     </Text>
                   )}
@@ -417,4 +435,3 @@ export const EditControlContent = ({
     </form>
   );
 };
-

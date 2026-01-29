@@ -142,7 +142,7 @@ async with agent_protect.AgentProtectClient() as client:
     result = await agent_protect.protection.check_protection(
         client=client,
         agent_uuid=agent.agent_id,
-        step=Step(type="llm_inference", name="chat", input="User question", output=None),
+        step=Step(type="llm", name="chat", input="User question", output=None),
         stage="pre"
     )
     print(f"Safe: {result.is_safe}")

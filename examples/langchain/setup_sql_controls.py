@@ -91,18 +91,26 @@ async def setup_sql_controls():
             "action": {"decision": "deny"}
         }
 
+        # Client-side control example (SDK execution)
+        # To run controls locally, set "execution": "sdk" and use
+        # agent_control.check_evaluation_with_local(...) in your agent code.
+        sql_control_data_sdk = {
+            **sql_control_data,
+            "execution": "sdk",
+        }
+
         try:
             control_result = await controls.create_control(
-                client, 
-                name="sql-safety-tool-call", 
-                data=sql_control_data
+                client,
+                name="sql-safety-tool-call",
+                data=sql_control_data,
             )
             control_id = control_result["control_id"]
             print(f"✓ SQL Control created (ID: {control_id})")
         except Exception as e:
             if "409" in str(e):
                 # Control exists - try to find it
-                print(f"ℹ️  SQL Control 'sql-safety-tool-call' already exists, looking it up...")
+                print("ℹ️  SQL Control 'sql-safety-tool-call' already exists, looking it up...")
                 controls_list = await controls.list_controls(
                     client, name="sql-safety-tool-call", limit=1
                 )
@@ -114,6 +122,13 @@ async def setup_sql_controls():
                     raise SystemExit(1)
             else:
                 raise
+
+        # Ensure control has valid data (older runs may have created it empty/corrupt)
+        control_details = await controls.get_control(client, control_id)
+        if not control_details.get("data"):
+            print("ℹ️  Control has no valid data, updating configuration...")
+            await controls.set_control_data(client, control_id, sql_control_data)
+            print("✓ Control configuration updated")
         
         # 3. Create Policy
         try:
@@ -124,15 +139,25 @@ async def setup_sql_controls():
             print(f"✓ Policy created (ID: {policy_id})")
         except Exception as e:
             if "409" in str(e):
-                print(f"⚠️  Policy 'sql-protection-policy' already exists.")
-                print("    Cannot proceed - SDK doesn't support looking up policies by name.")
-                print("\n    To fix this, run one of these commands:")
-                print("    1. Delete via server API:")
-                print(f"       curl -X DELETE {SERVER_URL}/api/v1/policies/<policy_id>")
-                print("    2. Or use the server UI to delete the policy")
-                print("\n    Then re-run this script.")
-                raise SystemExit(1)
-            raise
+                print("ℹ️  Policy 'sql-protection-policy' already exists, checking agent...")
+                try:
+                    policy_info = await agents.get_agent_policy(client, str(agent_uuid))
+                    policy_id = policy_info.get("policy_id")
+                    if policy_id is None:
+                        raise ValueError("No policy assigned to agent.")
+                    print(f"ℹ️  Using agent's existing policy (ID: {policy_id})")
+                except Exception:
+                    # Create a new policy name to avoid conflicts and keep script idempotent.
+                    unique_name = f"sql-protection-policy-{uuid.uuid4().hex[:8]}"
+                    print("⚠️  Policy exists but could not resolve its ID.")
+                    print(f"    Creating a new policy '{unique_name}' instead.")
+                    policy_result = await policies.create_policy(
+                        client, name=unique_name
+                    )
+                    policy_id = policy_result["policy_id"]
+                    print(f"✓ Policy created (ID: {policy_id})")
+            else:
+                raise
         
         # 4. Add Control to Policy
         try:

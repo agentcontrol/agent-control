@@ -5,11 +5,13 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from agent_control_models import ControlDefinition
+from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.policy import Control as APIControl
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..errors import APIValidationError
 from ..models import Agent, Control, Policy, policy_controls
 
 _logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ async def list_controls_for_agent(agent_id: UUID, db: AsyncSession) -> list[APIC
     Traversal: Agent -> Policy -> Controls (direct relationship).
     Uses explicit joins over association table to avoid async relationship loading.
 
-    Note: Unconfigured controls (empty data or invalid ControlDefinition) are filtered out.
+    Note: Invalid ControlDefinition data triggers an APIValidationError.
     """
     stmt = (
         select(Control)
@@ -45,19 +47,35 @@ async def list_controls_for_agent(agent_id: UUID, db: AsyncSession) -> list[APIC
     result = await db.execute(stmt)
     db_controls: Sequence[Control] = result.scalars().unique().all()
 
-    # Map DB Control to API Control, filtering out unconfigured controls
+    # Map DB Control to API Control, raising on invalid definitions
     api_controls: list[APIControl] = []
     for c in db_controls:
         try:
             control_def = ControlDefinition.model_validate(c.data)
             api_controls.append(APIControl(id=c.id, name=c.name, control=control_def))
         except ValidationError as e:
-            # Skip unconfigured or invalid controls
-            _logger.warning(
-                "Skipping invalid control '%s' (id=%s) for agent %s: %s",
-                c.name,
-                c.id,
-                agent_id,
-                e.errors(),
-            )
+            error_items = []
+            for err in e.errors():
+                loc = err.get("loc", [])
+                field_suffix = ".".join(str(part) for part in loc) if loc else ""
+                error_items.append(
+                    ValidationErrorItem(
+                        resource="Control",
+                        field=f"data.{field_suffix}" if field_suffix else "data",
+                        code=err.get("type", "validation_error"),
+                        message=err.get("msg", "Validation failed"),
+                    )
+                )
+
+            raise APIValidationError(
+                error_code=ErrorCode.CORRUPTED_DATA,
+                detail=f"Control '{c.name}' has corrupted data",
+                resource="Control",
+                resource_id=str(c.id),
+                hint=(
+                    "Update the control data using "
+                    f"PUT /api/v1/controls/{c.id}/data."
+                ),
+                errors=error_items,
+            ) from e
     return api_controls

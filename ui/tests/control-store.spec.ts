@@ -31,29 +31,33 @@ test.describe("Control Store Modal", () => {
     await expect(oobButton).toBeVisible();
   });
 
-  test("displays plugins table with available plugins", async ({ mockedPage }) => {
+  test("displays evaluators table with available evaluators", async ({
+    mockedPage,
+  }) => {
     // Check table headers
     await expect(mockedPage.getByRole("columnheader", { name: "Name" })).toBeVisible();
     await expect(mockedPage.getByRole("columnheader", { name: "Version" })).toBeVisible();
     await expect(mockedPage.getByRole("columnheader", { name: "Description" })).toBeVisible();
 
-    // Check plugin names are displayed
-    const plugins = Object.values(mockData.plugins);
-    for (const plugin of plugins) {
-      await expect(mockedPage.getByText(plugin.name, { exact: true }).first()).toBeVisible();
+    // Check evaluator names are displayed
+    const evaluators = Object.values(mockData.evaluators);
+    for (const evaluator of evaluators) {
+      await expect(
+        mockedPage.getByText(evaluator.name, { exact: true }).first()
+      ).toBeVisible();
     }
   });
 
-  test("can search for plugins", async ({ mockedPage }) => {
+  test("can search for evaluators", async ({ mockedPage }) => {
     // Type in search box (scope to modal to avoid matching page search)
     const modal = mockedPage.getByRole("dialog");
     const searchInput = modal.getByPlaceholder("Search or apply filter...");
     await searchInput.fill("Regex");
 
-    // Only Regex plugin should be visible in the modal table
+    // Only Regex evaluator should be visible in the modal table
     await expect(modal.getByRole("cell", { name: "Regex" })).toBeVisible();
 
-    // Other plugins should not be visible in the modal table (scope to modal)
+    // Other evaluators should not be visible in the modal table (scope to modal)
     await expect(modal.getByRole("cell", { name: "SQL" })).not.toBeVisible();
   });
 
@@ -61,10 +65,10 @@ test.describe("Control Store Modal", () => {
     // Type a non-matching search (use modal scoped input)
     const modal = mockedPage.getByRole("dialog");
     const searchInput = modal.getByPlaceholder("Search or apply filter...");
-    await searchInput.fill("NonexistentPlugin");
+    await searchInput.fill("NonexistentEvaluator");
 
-    // Should show "No plugins found"
-    await expect(mockedPage.getByText("No plugins found")).toBeVisible();
+    // Should show "No evaluators found"
+    await expect(mockedPage.getByText("No evaluators found")).toBeVisible();
   });
 
   test("shows empty state for Custom source", async ({ mockedPage }) => {
@@ -87,7 +91,7 @@ test.describe("Control Store Modal", () => {
   });
 
   test("Add button opens create control modal", async ({ mockedPage }) => {
-    // Find the Add button in the first plugin row (inside the modal table)
+    // Find the Add button in the first evaluator row (inside the modal table)
     const modal = mockedPage.getByRole("dialog");
     const tableRow = modal.locator("tbody tr").first();
     await tableRow.getByRole("button", { name: "Add" }).click();
@@ -107,7 +111,7 @@ test.describe("Control Store - Loading States", () => {
   // to reliably test in CI environments. The error state test provides coverage for
   // the loading/error state mechanism.
 
-  test("shows error state when plugins fail to load", async ({ page }) => {
+  test("shows error state when evaluators fail to load", async ({ page }) => {
     // Mock controls to return normally
     await page.route("**/api/v1/agents/*/controls", async (route) => {
       await route.fulfill({
@@ -126,12 +130,12 @@ test.describe("Control Store - Loading States", () => {
       });
     });
 
-    // Mock plugins to fail
-    await page.route("**/api/v1/plugins", async (route) => {
+    // Mock evaluators to fail
+    await page.route("**/api/v1/evaluators", async (route) => {
       await route.fulfill({
         status: 500,
         contentType: "application/json",
-        body: JSON.stringify({ error: "Failed to fetch plugins" }),
+        body: JSON.stringify({ error: "Failed to fetch evaluators" }),
       });
     });
 
@@ -141,7 +145,7 @@ test.describe("Control Store - Loading States", () => {
     await page.getByTestId("add-control-button").first().click();
 
     // Should show error state
-    await expect(page.getByText("Failed to load plugins")).toBeVisible();
+    await expect(page.getByText("Failed to load evaluators")).toBeVisible();
   });
 });
 

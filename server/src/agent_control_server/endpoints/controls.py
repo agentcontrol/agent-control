@@ -418,7 +418,7 @@ async def list_controls(
     name: str | None = Query(None, description="Filter by name (partial, case-insensitive)"),
     enabled: bool | None = Query(None, description="Filter by enabled status"),
     step_type: str | None = Query(
-        None, description="Filter by step type (built-ins: 'tool', 'llm_inference')"
+        None, description="Filter by step type (built-ins: 'tool', 'llm')"
     ),
     stage: str | None = Query(None, description="Filter by stage ('pre' or 'post')"),
     execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
@@ -435,7 +435,7 @@ async def list_controls(
         limit: Maximum number of controls to return (default 20, max 100)
         name: Optional filter by name (partial, case-insensitive match)
         enabled: Optional filter by enabled status
-        step_type: Optional filter by step type (built-ins: 'tool', 'llm_inference')
+        step_type: Optional filter by step type (built-ins: 'tool', 'llm')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag

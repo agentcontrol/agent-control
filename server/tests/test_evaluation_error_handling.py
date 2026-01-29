@@ -29,7 +29,7 @@ def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
         "description": "Test control",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "name": f"{agent_name}:missing-evaluator",
@@ -66,7 +66,7 @@ def test_evaluation_control_with_invalid_config_caught_early(client: TestClient)
         "description": "Test control",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "name": "regex",
@@ -98,7 +98,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
         "description": "Test control",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {
             "name": "regex",
@@ -122,7 +122,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     monkeypatch.setattr(core_module, "get_evaluator_instance", mock_get_evaluator_instance)
 
     # When: Sending evaluation request
-    payload = Step(type="llm_inference", name="test-step", input="test content", output=None)
+    payload = Step(type="llm", name="test-step", input="test content", output=None)
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=payload,

@@ -141,7 +141,7 @@ async with AgentControlClient() as client:
         description="Block PII in output",
         enabled=True,
         execution="server",
-        scope=ControlScope(step_types=["llm_inference"], stages=["post"]),
+        scope=ControlScope(step_types=["llm"], stages=["post"]),
         selector=ControlSelector(path="output"),
         evaluator=EvaluatorConfig(
             name="regex",
