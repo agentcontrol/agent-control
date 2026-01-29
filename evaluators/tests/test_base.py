@@ -6,13 +6,11 @@ Architecture: Evaluators take config at __init__, evaluate() only takes data.
 import pytest
 from typing import Any
 
-from pydantic import BaseModel
-
-from agent_control_evaluators import Evaluator, EvaluatorMetadata
+from agent_control_evaluators import Evaluator, EvaluatorConfig, EvaluatorMetadata
 from agent_control_models import EvaluatorResult
 
 
-class MockConfig(BaseModel):
+class MockConfig(EvaluatorConfig):
     """Config model for mock evaluator."""
 
     should_match: bool = False
