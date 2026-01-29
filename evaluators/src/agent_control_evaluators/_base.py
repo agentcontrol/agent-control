@@ -7,9 +7,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict
-
 from agent_control_models import EvaluatorResult
+from agent_control_models.base import BaseModel
 
 if TYPE_CHECKING:
     from typing import Self
@@ -20,8 +19,8 @@ logger = logging.getLogger(__name__)
 class EvaluatorConfig(BaseModel):
     """Base class for typed evaluator configurations.
 
-    All evaluator config classes should extend this to ensure consistent
-    behavior and enable type checking.
+    Extends the project's BaseModel to ensure consistent behavior
+    and enable type checking across all evaluator configs.
 
     Example:
         ```python
@@ -33,7 +32,7 @@ class EvaluatorConfig(BaseModel):
         ```
     """
 
-    model_config = ConfigDict(extra="forbid")
+    pass
 
 
 ConfigT = TypeVar("ConfigT", bound=EvaluatorConfig)
