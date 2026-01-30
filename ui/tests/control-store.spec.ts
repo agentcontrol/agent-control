@@ -54,13 +54,20 @@ test.describe("Control Store Modal", () => {
     // PII Detection is used by Customer Support Bot
     const agentLink = modal.getByRole("link", { name: "Customer Support Bot" }).first();
     await expect(agentLink).toBeVisible();
-    await expect(agentLink).toHaveAttribute("href", "/agents/agent-1");
+    // Link includes query param to filter by control name
+    await expect(agentLink).toHaveAttribute("href", "/agents/agent-1?q=PII%20Detection");
   });
 
   test("can search for controls", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
     const searchInput = modal.getByPlaceholder("Search controls...");
+    
+    // Fill search and wait for debounced API request (300ms debounce)
+    const searchPromise = mockedPage.waitForRequest((req) => 
+      req.url().includes("/api/v1/controls") && req.url().includes("name=SQL")
+    );
     await searchInput.fill("SQL");
+    await searchPromise;
 
     await expect(modal.getByText("SQL Injection Guard", { exact: true })).toBeVisible();
     await expect(
@@ -71,7 +78,13 @@ test.describe("Control Store Modal", () => {
   test("shows empty state when search has no results", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
     const searchInput = modal.getByPlaceholder("Search controls...");
+    
+    // Fill search and wait for debounced API request
+    const searchPromise = mockedPage.waitForRequest((req) => 
+      req.url().includes("/api/v1/controls") && req.url().includes("name=NonexistentControl")
+    );
     await searchInput.fill("NonexistentControl");
+    await searchPromise;
 
     await expect(modal.getByText("No controls found")).toBeVisible();
   });

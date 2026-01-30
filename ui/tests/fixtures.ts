@@ -385,8 +385,37 @@ export const mockRoutes = {
     page: Page,
     options: MockResponseOptions<ListAgentsResponse> = { data: mockData.agents }
   ) => {
-    await page.route("**/api/v1/agents?**", async (route) => {
-      await fulfillRoute(route, options, mockData.agents);
+    await page.route("**/api/v1/agents?**", async (route, request) => {
+      // Helper to filter agents based on query params (server-side search)
+      const getFilteredResponse = (url: string): ListAgentsResponse => {
+        const urlObj = new URL(url);
+        const nameFilter = urlObj.searchParams.get("name");
+        
+        let agents = mockData.agents.agents;
+        
+        // Apply name filter (case-insensitive partial match, like the real API)
+        if (nameFilter) {
+          const lowerFilter = nameFilter.toLowerCase();
+          agents = agents.filter(a => 
+            a.agent_name.toLowerCase().includes(lowerFilter)
+          );
+        }
+        
+        return {
+          agents,
+          pagination: {
+            total: agents.length,
+            limit: 10,
+            has_more: false,
+            next_cursor: null,
+          },
+        };
+      };
+
+      const url = request.url();
+      const filteredData = getFilteredResponse(url);
+      
+      await fulfillRoute(route, { ...options, data: filteredData }, filteredData);
     });
   },
 
@@ -433,9 +462,46 @@ export const mockRoutes = {
     page: Page,
     options: MockResponseOptions<ListControlsResponse> = { data: mockData.listControls }
   ) => {
+    // Helper to filter controls based on query params (server-side search)
+    const getFilteredResponse = (url: string): ListControlsResponse => {
+      const urlObj = new URL(url);
+      const nameFilter = urlObj.searchParams.get("name");
+      
+      let controls = mockData.listControls.controls;
+      
+      // Apply name filter (case-insensitive partial match, like the real API)
+      if (nameFilter) {
+        const lowerFilter = nameFilter.toLowerCase();
+        controls = controls.filter(c => 
+          c.name.toLowerCase().includes(lowerFilter) ||
+          (c.description ?? "").toLowerCase().includes(lowerFilter)
+        );
+      }
+      
+      return {
+        controls,
+        pagination: {
+          total: controls.length,
+          limit: 20,
+          has_more: false,
+          next_cursor: null,
+        },
+      };
+    };
+
     // Handle both with and without query params
-    await page.route("**/api/v1/controls?**", async (route) => {
-      await fulfillRoute(route, options, mockData.listControls);
+    await page.route("**/api/v1/controls?**", async (route, request) => {
+      const method = request.method();
+      if (method === "GET") {
+        const response = getFilteredResponse(request.url());
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(response),
+        });
+        return;
+      }
+      await route.continue();
     });
     // Handle base path for GET (list) and PUT (create)
     await page.route("**/api/v1/controls", async (route, request) => {

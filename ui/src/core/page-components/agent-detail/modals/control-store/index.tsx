@@ -9,21 +9,24 @@ import {
   ScrollArea,
   Stack,
   Text,
-  TextInput,
   Title,
   Tooltip,
 } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { Button, Table } from "@rungalileo/jupiter-ds";
-import { IconAlertCircle, IconSearch, IconX } from "@tabler/icons-react";
+import { IconAlertCircle, IconX } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { api } from "@/core/api/client";
 import type { AgentRef, ControlDefinition, ControlSummary } from "@/core/api/types";
-import { useControls } from "@/core/hooks/query-hooks/use-controls";
+import { SearchInput } from "@/core/components/search-input";
+import { useControlsInfinite } from "@/core/hooks/query-hooks/use-controls-infinite";
+import { useInfiniteScroll } from "@/core/hooks/use-infinite-scroll";
+import { useQueryParam } from "@/core/hooks/use-query-param";
 
 import { AddNewControlModal } from "../add-new-control";
 import { EditControlContent } from "../edit-control/edit-control-content";
@@ -44,7 +47,9 @@ export function ControlStoreModal({
   onClose,
   agentId,
 }: ControlStoreModalProps) {
-  const [searchQuery, setSearchQuery] = useState("");
+  // Get search value for debouncing (SearchInput handles the UI and URL sync)
+  const [searchQuery, setSearchQuery] = useQueryParam("store_q");
+  const [debouncedSearch] = useDebouncedValue(searchQuery, 300);
   const [selectedControl, setSelectedControl] = useState<{
     summary: ControlSummary;
     definition: ControlDefinition;
@@ -52,7 +57,38 @@ export function ControlStoreModal({
   const [loadingControlId, setLoadingControlId] = useState<number | null>(null);
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [addNewModalOpened, setAddNewModalOpened] = useState(false);
-  const { data, isLoading, error } = useControls();
+
+  // Clear search query param when modal closes
+  useEffect(() => {
+    if (!opened && searchQuery) {
+      setSearchQuery("");
+    }
+  }, [opened, searchQuery, setSearchQuery]);
+
+  // Server-side search via name param - only fetch when modal is open
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useControlsInfinite({
+    name: debouncedSearch || undefined,
+    enabled: opened,
+  });
+
+  // Infinite scroll setup
+  const { sentinelRef, scrollContainerRef } = useInfiniteScroll({
+    hasNextPage: hasNextPage ?? false,
+    isFetchingNextPage,
+    fetchNextPage,
+  });
+
+  // Flatten paginated data
+  const controls = useMemo(() => {
+    return data?.pages.flatMap((page) => page.controls) ?? [];
+  }, [data]);
 
   const handleUseControl = async (control: ControlSummary) => {
     setLoadingControlId(control.id);
@@ -82,17 +118,6 @@ export function ControlStoreModal({
     handleEditModalClose();
     onClose();
   };
-
-  const filteredControls = useMemo(() => {
-    const controls = data?.controls ?? [];
-    if (!searchQuery.trim()) return controls;
-    const query = searchQuery.toLowerCase();
-    return controls.filter(
-      (control) =>
-        control.name.toLowerCase().includes(query) ||
-        (control.description ?? "").toLowerCase().includes(query)
-    );
-  }, [data, searchQuery]);
 
   // Build a draft control for the edit modal with full evaluator config
   const draftControl = useMemo(() => {
@@ -160,15 +185,22 @@ export function ControlStoreModal({
       size: 150,
       cell: ({ row }) => {
         const agent = (row.original as ControlSummaryWithAgent).used_by_agent;
+        const control = row.original;
         if (!agent) {
           return <Text size="sm" c="dimmed">—</Text>;
         }
+        // Link to agent detail page with control name filter
+        const href = `/agents/${agent.agent_id}?q=${encodeURIComponent(control.name)}`;
         return (
           <Anchor
             component={Link}
-            href={`/agents/${agent.agent_id}`}
+            href={href}
             size="sm"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              // Close modal when navigating to agent page
+              onClose();
+            }}
           >
             {agent.agent_name}
           </Anchor>
@@ -233,18 +265,16 @@ export function ControlStoreModal({
 
         {/* Search Bar */}
         <Box px="md" pt="md" pb="sm">
-          <TextInput
+          <SearchInput
+            queryKey="store_q"
             placeholder="Search controls..."
-            leftSection={<IconSearch size={16} />}
-            maw={250}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            w={250}
           />
         </Box>
 
         {/* Scrollable Table Content */}
         <Box px="md" pb="md" style={{ flex: 1, minHeight: 0 }}>
-          <ScrollArea h="100%" type="auto">
+          <ScrollArea h="100%" type="auto" viewportRef={scrollContainerRef}>
             {isLoading ? (
               <Paper p="xl" ta="center" withBorder radius="sm">
                 <Loader size="sm" />
@@ -259,8 +289,17 @@ export function ControlStoreModal({
                   <Text c="red">Failed to load controls</Text>
                 </Stack>
               </Paper>
-            ) : filteredControls.length > 0 ? (
-              <Table columns={columns} data={filteredControls} highlightOnHover />
+            ) : controls.length > 0 ? (
+              <>
+                <Table columns={columns} data={controls} highlightOnHover />
+                {/* Load more sentinel for infinite scroll */}
+                <div ref={sentinelRef} style={{ height: 1 }} />
+                {isFetchingNextPage && (
+                  <Box py="md" ta="center">
+                    <Loader size="sm" />
+                  </Box>
+                )}
+              </>
             ) : (
               <Paper p="xl" withBorder radius="sm" ta="center">
                 <Text c="dimmed">No controls found</Text>
