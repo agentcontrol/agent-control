@@ -2,6 +2,7 @@ from agent_control_engine import list_evaluators
 from agent_control_models import ControlDefinition
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
+    AgentRef,
     ControlSummary,
     CreateControlRequest,
     CreateControlResponse,
@@ -29,7 +30,7 @@ from ..errors import (
     NotFoundError,
 )
 from ..logging_utils import get_logger
-from ..models import Agent, AgentData, Control, policy_controls
+from ..models import Agent, AgentData, Control, Policy, policy_controls
 from ..services.evaluator_utils import parse_evaluator_ref, validate_config_against_schema
 
 # Pagination constants
@@ -544,6 +545,31 @@ async def list_controls(
     if has_more:
         controls = controls[:-1]
 
+    # Build mapping of control_id -> agent that uses it
+    # Traversal: Control -> policy_controls -> Policy -> Agent
+    control_agent_map: dict[int, AgentRef | None] = {ctrl.id: None for ctrl in controls}
+    if controls:
+        control_ids = [ctrl.id for ctrl in controls]
+        agents_query = (
+            select(
+                policy_controls.c.control_id,
+                Agent.agent_uuid,
+                Agent.name,
+            )
+            .select_from(policy_controls)
+            .join(Policy, policy_controls.c.policy_id == Policy.id)
+            .join(Agent, Agent.policy_id == Policy.id)
+            .where(policy_controls.c.control_id.in_(control_ids))
+        )
+        agents_result = await db.execute(agents_query)
+        for row in agents_result.all():
+            control_id, agent_uuid, agent_name = row
+            # Take the first agent found (1 control = 1 agent)
+            if control_agent_map[control_id] is None:
+                control_agent_map[control_id] = AgentRef(
+                    agent_id=str(agent_uuid), agent_name=agent_name
+                )
+
     # Build summaries (filtering already done at DB level)
     summaries: list[ControlSummary] = []
     for ctrl in controls:
@@ -560,6 +586,7 @@ async def list_controls(
                 step_types=scope.get("step_types"),
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
+                used_by_agent=control_agent_map.get(ctrl.id),
             )
         )
 

@@ -248,6 +248,13 @@ class ListAgentsResponse(BaseModel):
 # =============================================================================
 
 
+class AgentRef(BaseModel):
+    """Reference to an agent (for listing which agents use a control)."""
+
+    agent_id: str = Field(..., description="Agent UUID")
+    agent_name: str = Field(..., description="Agent name")
+
+
 class ControlSummary(BaseModel):
     """Summary of a control for list responses."""
 
@@ -259,6 +266,7 @@ class ControlSummary(BaseModel):
     step_types: list[str] | None = Field(None, description="Step types in scope")
     stages: list[str] | None = Field(None, description="Evaluation stages in scope")
     tags: list[str] = Field(default_factory=list, description="Control tags")
+    used_by_agent: AgentRef | None = Field(None, description="Agent using this control")
 
 
 class ListControlsResponse(BaseModel):
