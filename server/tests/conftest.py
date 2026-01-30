@@ -111,6 +111,7 @@ def clean_db():
         conn.execute(text("DELETE FROM policy_controls"))
         conn.execute(text("DELETE FROM policies"))
         conn.execute(text("DELETE FROM controls"))
+        conn.execute(text("DELETE FROM control_execution_events"))
     yield
 
 
@@ -120,3 +121,25 @@ async def async_db():
     async with AsyncSessionTest() as session:
         yield session
         await session.rollback()
+
+
+@pytest.fixture
+def postgres_event_store():
+    """Provide PostgresEventStore for observability tests."""
+    from agent_control_server.observability import PostgresEventStore
+
+    return PostgresEventStore(AsyncSessionTest)
+
+
+@pytest.fixture
+def setup_observability(postgres_event_store):
+    """Set up observability store and ingestor on app.state."""
+    from agent_control_server.observability import DirectEventIngestor
+
+    ingestor = DirectEventIngestor(postgres_event_store)
+    fastapi_app.state.event_store = postgres_event_store
+    fastapi_app.state.event_ingestor = ingestor
+    yield postgres_event_store
+    # Clean up app.state
+    del fastapi_app.state.event_store
+    del fastapi_app.state.event_ingestor
