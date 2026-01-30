@@ -428,28 +428,23 @@ export const mockRoutes = {
     });
   },
 
-  /** Mock GET /api/v1/controls (list all controls) */
+  /** Mock GET /api/v1/controls (list all controls) and PUT /api/v1/controls (create) */
   controlsList: async (
     page: Page,
     options: MockResponseOptions<ListControlsResponse> = { data: mockData.listControls }
   ) => {
+    // Handle both with and without query params
     await page.route("**/api/v1/controls?**", async (route) => {
       await fulfillRoute(route, options, mockData.listControls);
     });
-    // Also match without query params
+    // Handle base path for GET (list) and PUT (create)
     await page.route("**/api/v1/controls", async (route, request) => {
-      if (request.method() === "GET") {
+      const method = request.method();
+      if (method === "GET") {
         await fulfillRoute(route, options, mockData.listControls);
         return;
       }
-      await route.continue();
-    });
-  },
-
-  /** Mock PUT /api/v1/controls */
-  controlCreate: async (page: Page) => {
-    await page.route("**/api/v1/controls", async (route, request) => {
-      if (request.method() === "PUT") {
+      if (method === "PUT") {
         const body = await request.postDataJSON();
         await route.fulfill({
           status: 200,
@@ -465,10 +460,16 @@ export const mockRoutes = {
     });
   },
 
-  /** Mock GET /api/v1/controls/:id/data */
+  /** @deprecated Use controlsList which now handles both GET and PUT */
+  controlCreate: async (_page: Page) => {
+    // No-op - handled by controlsList
+  },
+
+  /** Mock GET and PUT /api/v1/controls/:id/data */
   controlGetData: async (page: Page) => {
     await page.route("**/api/v1/controls/*/data", async (route, request) => {
-      if (request.method() === "GET") {
+      const method = request.method();
+      if (method === "GET") {
         // Extract control ID from URL
         const url = request.url();
         const match = url.match(/\/controls\/(\d+)\/data/);
@@ -486,14 +487,7 @@ export const mockRoutes = {
         });
         return;
       }
-      await route.continue();
-    });
-  },
-
-  /** Mock PUT /api/v1/controls/:id/data */
-  controlUpdate: async (page: Page) => {
-    await page.route("**/api/v1/controls/*/data", async (route, request) => {
-      if (request.method() === "PUT") {
+      if (method === "PUT") {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -503,6 +497,11 @@ export const mockRoutes = {
       }
       await route.continue();
     });
+  },
+
+  /** @deprecated Use controlGetData which now handles both GET and PUT */
+  controlUpdate: async (_page: Page) => {
+    // No-op - handled by controlGetData
   },
 
   /** Mock GET /api/v1/observability/stats */
