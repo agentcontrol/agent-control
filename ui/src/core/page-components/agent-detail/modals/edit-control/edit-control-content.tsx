@@ -18,14 +18,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { isApiError } from "@/core/api/errors";
 import type { Control, ProblemDetail } from "@/core/api/types";
+import { getEvaluator } from "@/core/evaluators";
 import { useAddControlToAgent } from "@/core/hooks/query-hooks/use-add-control-to-agent";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 
+import { SaveEvaluatorTemplateModal } from "../save-evaluator-template";
 import { ApiErrorAlert } from "./api-error-alert";
 import { ControlDefinitionForm } from "./control-definition-form";
 import { EvaluatorJsonView } from "./evaluator-json-view";
-import { getEvaluator } from "./evaluators";
-import { SaveEvaluatorTemplateModal } from "./save-evaluator-template-modal";
 import type {
   ConfigViewMode,
   ControlDefinitionFormValues,

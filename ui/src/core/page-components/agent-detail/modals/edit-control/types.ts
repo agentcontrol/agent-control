@@ -9,15 +9,15 @@ import type {
 } from "@/core/api/types";
 
 // Re-export evaluator form types for convenience
-export type { JsonFormValues } from "./evaluators/json/types";
-export type { ListFormValues } from "./evaluators/list/types";
+export type { JsonFormValues } from "@/core/evaluators/json/types";
+export type { ListFormValues } from "@/core/evaluators/list/types";
 export type {
   Luna2FormValues,
   Luna2Metric,
   Luna2Operator,
-} from "./evaluators/luna2/types";
-export type { RegexFormValues } from "./evaluators/regex/types";
-export type { SqlFormValues } from "./evaluators/sql/types";
+} from "@/core/evaluators/luna2/types";
+export type { RegexFormValues } from "@/core/evaluators/regex/types";
+export type { SqlFormValues } from "@/core/evaluators/sql/types";
 
 export type ConfigViewMode = "form" | "json";
 export type JsonViewMode = "tree" | "raw";

@@ -27,8 +27,8 @@ import type { components } from "@/core/api/generated/api-types";
 import { useDeleteEvaluatorConfig } from "@/core/hooks/query-hooks/use-delete-evaluator-config";
 import { useEvaluatorConfigs } from "@/core/hooks/query-hooks/use-evaluator-configs";
 
-import { AddNewControlModal } from "./add-new-control-modal";
-import { EditControlContent } from "./edit-control";
+import { AddNewControlModal } from "../add-new-control";
+import { EditControlContent } from "../edit-control/edit-control-content";
 
 type EvaluatorConfigItem = components["schemas"]["EvaluatorConfigItem"];
 

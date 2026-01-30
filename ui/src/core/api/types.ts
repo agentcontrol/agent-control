@@ -58,6 +58,9 @@ export type ListAgentsResponse = components["schemas"]["ListAgentsResponse"];
 // Evaluator types
 export type EvaluatorInfo = components["schemas"]["EvaluatorInfo"];
 export type EvaluatorsResponse = Record<string, EvaluatorInfo>;
+export type EvaluatorConfigItem = components["schemas"]["EvaluatorConfigItem"];
+export type ListEvaluatorConfigsResponse =
+  components["schemas"]["ListEvaluatorConfigsResponse"];
 
 // Request/Response types
 export type InitAgentRequest = components["schemas"]["InitAgentRequest"];

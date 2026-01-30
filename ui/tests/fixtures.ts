@@ -4,9 +4,11 @@ import type {
   AgentControlsResponse,
   AgentSummary,
   Control,
+  EvaluatorConfigItem,
   EvaluatorsResponse,
   GetAgentResponse,
   ListAgentsResponse,
+  ListEvaluatorConfigsResponse,
 } from "@/core/api/types";
 import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-stats";
 
@@ -206,6 +208,37 @@ const evaluatorsResponse: EvaluatorsResponse = {
   },
 };
 
+const evaluatorConfigsList: EvaluatorConfigItem[] = [
+  {
+    id: 101,
+    name: "PII Regex Template",
+    description: "Detect SSN patterns",
+    evaluator: "regex",
+    config: { pattern: "\\b\\d{3}-\\d{2}-\\d{4}\\b" },
+    created_at: "2024-01-10T00:00:00Z",
+    updated_at: "2024-01-12T00:00:00Z",
+  },
+  {
+    id: 102,
+    name: "SQL Guard Template",
+    description: "Safe mode SQL checks",
+    evaluator: "sql",
+    config: { mode: "safe" },
+    created_at: "2024-01-11T00:00:00Z",
+    updated_at: "2024-01-13T00:00:00Z",
+  },
+];
+
+const evaluatorConfigsResponse: ListEvaluatorConfigsResponse = {
+  evaluator_configs: evaluatorConfigsList,
+  pagination: {
+    total: evaluatorConfigsList.length,
+    limit: 25,
+    has_more: false,
+    next_cursor: null,
+  },
+};
+
 const statsResponse: StatsResponse = {
   agent_uuid: "agent-1",
   time_range: "1h",
@@ -284,6 +317,7 @@ export const mockData = {
   agent: agentResponse,
   controls: controlsResponse,
   evaluators: evaluatorsResponse,
+  evaluatorConfigs: evaluatorConfigsResponse,
   stats: statsResponse,
   emptyStats: emptyStatsResponse,
 } as const;
@@ -378,6 +412,57 @@ export const mockRoutes = {
     });
   },
 
+  /** Mock GET /api/v1/evaluator-configs */
+  evaluatorConfigs: async (
+    page: Page,
+    options: MockResponseOptions<ListEvaluatorConfigsResponse> = {
+      data: mockData.evaluatorConfigs,
+    }
+  ) => {
+    await page.route("**/api/v1/evaluator-configs**", async (route) => {
+      await fulfillRoute(route, options, mockData.evaluatorConfigs);
+    });
+  },
+
+  /** Mock POST /api/v1/evaluator-configs */
+  evaluatorConfigCreate: async (page: Page) => {
+    await page.route("**/api/v1/evaluator-configs", async (route, request) => {
+      if (request.method() === "POST") {
+        const body = await request.postDataJSON();
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: 999,
+            name: body.name ?? "New Evaluator Config",
+            description: body.description ?? null,
+            evaluator: body.evaluator ?? "regex",
+            config: body.config ?? {},
+            created_at: "2024-01-20T00:00:00Z",
+            updated_at: "2024-01-20T00:00:00Z",
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+  },
+
+  /** Mock DELETE /api/v1/evaluator-configs/:id */
+  evaluatorConfigDelete: async (page: Page) => {
+    await page.route("**/api/v1/evaluator-configs/*", async (route, request) => {
+      if (request.method() === "DELETE") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ success: true }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+  },
+
   /** Mock PUT /api/v1/controls */
   controlCreate: async (page: Page) => {
     await page.route("**/api/v1/controls", async (route, request) => {
@@ -430,6 +515,9 @@ export async function mockApiRoutes(page: Page) {
   await mockRoutes.agents(page);
   await mockRoutes.agent(page);
   await mockRoutes.evaluators(page);
+  await mockRoutes.evaluatorConfigs(page);
+  await mockRoutes.evaluatorConfigCreate(page);
+  await mockRoutes.evaluatorConfigDelete(page);
   await mockRoutes.controlCreate(page);
   await mockRoutes.controlUpdate(page);
   await mockRoutes.stats(page);

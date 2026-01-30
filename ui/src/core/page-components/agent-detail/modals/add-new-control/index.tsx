@@ -26,7 +26,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import type { EvaluatorInfo } from "@/core/api/types";
 import { useEvaluators } from "@/core/hooks/query-hooks/use-evaluators";
 
-import { EditControlContent } from "./edit-control";
+import { EditControlContent } from "../edit-control/edit-control-content";
 
 type EvaluatorWithId = EvaluatorInfo & { id: string };
 

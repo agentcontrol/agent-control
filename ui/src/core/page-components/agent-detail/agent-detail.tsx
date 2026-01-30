@@ -33,8 +33,8 @@ import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 
 import { AgentStats } from "./agent-stats";
-import { ControlStoreModal } from "./control-store-modal";
-import { EditControlContent } from "./edit-control";
+import { ControlStoreModal } from "./modals/control-store";
+import { EditControlContent } from "./modals/edit-control/edit-control-content";
 
 interface AgentDetailPageProps {
   agentId: string;
@@ -73,10 +73,9 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   } = useAgentControls(agentId);
   const updateControl = useUpdateControl();
 
-  const allControls = controlsResponse?.controls || [];
-
   // Filter controls based on search query
   const controls = useMemo(() => {
+    const allControls = controlsResponse?.controls || [];
     if (!searchQuery.trim()) return allControls;
     const query = searchQuery.toLowerCase();
     return allControls.filter(
@@ -84,7 +83,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
         control.name.toLowerCase().includes(query) ||
         control.control?.description?.toLowerCase().includes(query)
     );
-  }, [allControls, searchQuery]);
+  }, [controlsResponse, searchQuery]);
 
   // Loading state
   if (agentLoading) {

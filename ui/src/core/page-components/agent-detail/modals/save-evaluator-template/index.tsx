@@ -6,7 +6,7 @@ import { IconCheck } from "@tabler/icons-react";
 
 import { useCreateEvaluatorConfig } from "@/core/hooks/query-hooks/use-create-evaluator-config";
 
-import type { ConfigViewMode } from "./types";
+import type { ConfigViewMode } from "../edit-control/types";
 
 interface SaveEvaluatorTemplateModalProps {
   opened: boolean;

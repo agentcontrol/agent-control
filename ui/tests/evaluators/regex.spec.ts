@@ -11,7 +11,9 @@ test.describe("Regex Evaluator", () => {
 
     // Check pattern field is visible (use exact match to avoid matching description)
     await expect(mockedPage.getByText("Pattern", { exact: true })).toBeVisible();
-    await expect(mockedPage.getByPlaceholder("Enter regex pattern")).toBeVisible();
+    await expect(
+      mockedPage.getByPlaceholder("Enter regex pattern (e.g., ^.*$)")
+    ).toBeVisible();
 
     // Check helper text
     await expect(
@@ -23,14 +25,18 @@ test.describe("Regex Evaluator", () => {
     await openEvaluatorForm(mockedPage, "Regex");
 
     // Default pattern should be ^.*$
-    const patternInput = mockedPage.getByPlaceholder("Enter regex pattern");
+    const patternInput = mockedPage.getByPlaceholder(
+      "Enter regex pattern (e.g., ^.*$)"
+    );
     await expect(patternInput).toHaveValue("^.*$");
   });
 
   test("can edit pattern field", async ({ mockedPage }) => {
     await openEvaluatorForm(mockedPage, "Regex");
 
-    const patternInput = mockedPage.getByPlaceholder("Enter regex pattern");
+    const patternInput = mockedPage.getByPlaceholder(
+      "Enter regex pattern (e.g., ^.*$)"
+    );
     await patternInput.clear();
     await patternInput.fill("\\d{3}-\\d{2}-\\d{4}");
 

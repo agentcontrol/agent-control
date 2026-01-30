@@ -37,17 +37,15 @@ const HomePage = () => {
   // Ref for intersection observer
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  // Flatten all pages into single array
-  const allAgents = data?.pages.flatMap((page) => page.agents) || [];
-
   // Filter agents based on search query
   const agents: AgentTableRow[] = useMemo(() => {
+    const allAgents = data?.pages.flatMap((page) => page.agents) || [];
     if (!searchQuery.trim()) return allAgents;
     const query = searchQuery.toLowerCase();
     return allAgents.filter((agent) =>
       agent.agent_name.toLowerCase().includes(query)
     );
-  }, [allAgents, searchQuery]);
+  }, [data, searchQuery]);
 
   // Intersection observer to load more agents when scrolling near bottom
   useEffect(() => {
