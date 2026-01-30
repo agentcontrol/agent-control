@@ -328,7 +328,7 @@ class AcmeToxicityEvaluator(Evaluator[AcmeToxicityEvaluatorConfig]):
         requires_api_key=True,
         timeout_ms=5000,
     )
-    config_model = AcmeToxicityConfig
+    config_model = AcmeToxicityEvaluatorConfig
 
     @classmethod
     def is_available(cls) -> bool:
