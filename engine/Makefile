@@ -25,7 +25,7 @@ sync:
 	uv sync
 
 test:
-	uv run pytest
+	uv run pytest --cov=src --cov-report=xml:../coverage-engine.xml -q
 
 lint:
 	uv run ruff check --config ../pyproject.toml src/

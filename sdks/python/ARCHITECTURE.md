@@ -2,18 +2,26 @@
 
 ## Overview
 
-The Agent Control SDK has been refactored to follow a modular architecture that mirrors the server's endpoint structure. This makes the codebase more maintainable, easier to navigate, and follows the single responsibility principle.
+The Agent Control SDK follows a modular architecture that mirrors the server's endpoint structure. This makes the codebase more maintainable, easier to navigate, and follows the single responsibility principle.
 
 ## Directory Structure
 
 ```
-sdks/python/src/agent_protect/
-├── __init__.py          # Main entry point, init() function, and exports
-├── client.py            # Base HTTP client class
-├── agents.py            # Agent management operations
-├── policies.py          # Policy management operations
-├── controls.py          # Control management operations
-└── protection.py        # Protection check operations
+sdks/python/src/agent_control/
+├── __init__.py               # Main entry point, init() function, and exports
+├── client.py                 # Base HTTP client class
+├── agents.py                 # Agent management operations
+├── policies.py               # Policy management operations
+├── controls.py               # Control management operations
+├── control_decorators.py     # @control() decorator implementation
+├── evaluation.py             # Evaluation and evaluator operations
+├── observability.py          # Observability and telemetry
+├── settings.py               # SDK configuration and settings
+├── tracing.py                # Distributed tracing support
+├── py.typed                  # PEP 561 type marker
+└── evaluators/               # Evaluator base classes and discovery system
+    ├── __init__.py           # Evaluator discovery, registration, and Luna-2 integration
+    └── base.py               # Base Evaluator and EvaluatorMetadata classes
 ```
 
 ## Module Responsibilities
@@ -23,14 +31,14 @@ sdks/python/src/agent_protect/
 **Purpose**: Provides the core HTTP client for server communication.
 
 **Key Components**:
-- `AgentProtectClient` class with async context manager support
+- `AgentControlClient` class with async context manager support
 - HTTP connection management
 - Health check endpoint
 - Base URL and timeout configuration
 
 **Usage**:
 ```python
-async with AgentProtectClient(base_url="http://localhost:8000") as client:
+async with AgentControlClient(base_url="http://localhost:8000") as client:
     # Use client with operation modules
     pass
 ```
@@ -49,16 +57,16 @@ async with AgentProtectClient(base_url="http://localhost:8000") as client:
 
 **Usage**:
 ```python
-import agent_protect
+import agent_control
 
-async with agent_protect.AgentProtectClient() as client:
+async with agent_control.AgentControlClient() as client:
     # Register agent
-    response = await agent_protect.agents.register_agent(
+    response = await agent_control.agents.register_agent(
         client, agent, tools=[...]
     )
     
     # Get agent
-    agent_data = await agent_protect.agents.get_agent(client, "agent-id")
+    agent_data = await agent_control.agents.get_agent(client, "agent-id")
 ```
 
 ### `policies.py` - Policy Operations
@@ -79,15 +87,15 @@ async with agent_protect.AgentProtectClient() as client:
 
 **Usage**:
 ```python
-import agent_protect
+import agent_control
 
-async with agent_protect.AgentProtectClient() as client:
+async with agent_control.AgentControlClient() as client:
     # Create policy
-    result = await agent_protect.policies.create_policy(client, "prod-policy")
+    result = await agent_control.policies.create_policy(client, "prod-policy")
     policy_id = result["policy_id"]
     
     # Add control set to policy
-    await agent_protect.policies.add_control_set_to_policy(
+    await agent_control.policies.add_control_set_to_policy(
         client, policy_id=1, control_set_id=5
     )
 ```
@@ -110,42 +118,98 @@ async with agent_protect.AgentProtectClient() as client:
 
 **Usage**:
 ```python
-import agent_protect
+import agent_control
 
-async with agent_protect.AgentProtectClient() as client:
+async with agent_control.AgentControlClient() as client:
     # Create control
-    result = await agent_protect.controls.create_control(client, "pii-protection")
+    result = await agent_control.controls.create_control(client, "pii-protection")
     control_id = result["control_id"]
     
     # Add rule to control
-    await agent_protect.controls.add_rule_to_control(
+    await agent_control.controls.add_rule_to_control(
         client, control_id=5, rule_id=10
     )
 ```
 
-### `protection.py` - Protection Operations
+### `control_decorators.py` - Control Decorator
 
-**Purpose**: Runtime protection checks for agent operations.
+**Purpose**: Implements the `@control()` decorator for server-side policy evaluation.
 
-**Endpoints Covered**:
-- `POST /api/v1/protect` - Check if an operation is safe
-
-**Functions**:
-- `async def check_protection(client, agent_uuid, step, stage)` - Validate operation
+**Key Components**:
+- `@control()` decorator for protecting functions
+- Automatic pre/post execution checks
+- Integration with server-side controls
 
 **Usage**:
 ```python
-import agent_protect
-from agent_control_models import Step
+from agent_control import control
 
-async with agent_protect.AgentProtectClient() as client:
-    result = await agent_protect.protection.check_protection(
-        client=client,
-        agent_uuid=agent.agent_id,
-        step=Step(type="llm", name="chat", input="User question", output=None),
-        stage="pre"
-    )
-    print(f"Safe: {result.is_safe}")
+@control()
+async def chat(message: str) -> str:
+    """This function is protected by server-defined controls"""
+    return await llm.generate(message)
+```
+
+### `evaluation.py` - Evaluation Operations
+
+**Purpose**: Client-side and server-side evaluation management.
+
+**Key Components**:
+- Evaluator registration and management
+- Evaluation execution
+- Integration with control evaluation pipeline
+
+### `observability.py` - Observability & Telemetry
+
+**Purpose**: Provides observability features for agent execution.
+
+**Key Components**:
+- Telemetry collection
+- Metrics tracking
+- Execution logging
+
+### `settings.py` - SDK Configuration
+
+**Purpose**: Centralized configuration management for the SDK.
+
+**Key Components**:
+- Environment variable handling
+- Configuration defaults
+- Settings validation
+
+### `tracing.py` - Distributed Tracing
+
+**Purpose**: Distributed tracing support for agent operations.
+
+**Key Components**:
+- OpenTelemetry integration
+- Span creation and management
+- Context propagation
+
+### `evaluators/` - Evaluator System
+
+**Purpose**: Evaluator base classes, discovery, and registration system.
+
+**Key Components**:
+- Base evaluator classes (`Evaluator`, `EvaluatorMetadata`)
+- Evaluator discovery via entry points
+- Third-party evaluator integration (e.g., Luna-2, Guardrails AI)
+- Registration functions for custom evaluators
+
+**Structure**:
+- `__init__.py` - Evaluator discovery (`discover_evaluators()`, `list_evaluators()`), registration (`register_evaluator()`), and optional Luna-2 integration
+- `base.py` - Base `Evaluator` and `EvaluatorMetadata` classes (re-exported from `agent_control_models`)
+
+**Usage**:
+```python
+from agent_control.evaluators import Evaluator, EvaluatorMetadata, discover_evaluators
+
+# Discover all available evaluators (built-in and third-party)
+discover_evaluators()
+
+# Create custom evaluator by extending base class
+class MyCustomEvaluator(Evaluator):
+    pass
 ```
 
 ### `__init__.py` - Main Entry Point
@@ -155,13 +219,17 @@ async with agent_protect.AgentProtectClient() as client:
 **Key Functions**:
 - `init(agent_name, agent_id, ...)` - Initialize Agent Control
 - `get_agent(agent_id, server_url)` - Convenience function for fetching agents
+- `list_agents()` - List all registered agents
 - `current_agent()` - Get the currently initialized agent
-- `protect(step_name, **data_sources)` - Decorator for rule enforcement
+- `control()` - Decorator for server-side policy enforcement
+- `create_control()`, `get_control()`, `list_controls()` - Control management
+- `get_logger()` - SDK logging
 
 **Exports**:
-- Core functions: `init`, `current_agent`, `get_agent`, `protect`
-- Client class: `AgentProtectClient`
-- Operation modules: `agents`, `policies`, `controls`, `protection`
+- Core functions: `init`, `current_agent`, `get_agent`, `control`
+- Client class: `AgentControlClient`
+- Operation modules: `agents`, `policies`, `controls`, `evaluation`
+- Decorators: `control`, `ControlViolationError`
 - Models (if available): `Agent`, `Step`, `StepSchema`, etc.
 
 ## Design Principles
@@ -177,8 +245,8 @@ All operations are accessed via module functions that take a client as the first
 
 ```python
 # Pattern: module.operation(client, ...args)
-await agent_protect.policies.create_policy(client, "my-policy")
-await agent_protect.controls.add_rule_to_control(client, 5, 10)
+await agent_control.policies.create_policy(client, "my-policy")
+await agent_control.controls.add_rule_to_control(client, 5, 10)
 ```
 
 This pattern:
@@ -191,26 +259,26 @@ High-level convenience functions are provided in `__init__.py` for common operat
 
 ```python
 # Convenience: No need to manage client manually
-agent_data = await agent_protect.get_agent("agent-id")
+agent_data = await agent_control.get_agent("agent-id")
 
 # Equivalent module-first approach:
-async with AgentProtectClient() as client:
-    agent_data = await agent_protect.agents.get_agent(client, "agent-id")
+async with AgentControlClient() as client:
+    agent_data = await agent_control.agents.get_agent(client, "agent-id")
 ```
 
-### 4. Backwards Compatibility
-The refactoring maintains API compatibility:
-- `init()` function works the same way
-- `protect()` decorator unchanged
-- Core exports remain the same
-- Examples updated to show new patterns
+### 4. API Stability
+The SDK maintains a stable public API:
+- `init()` function for agent initialization
+- `control()` decorator for policy enforcement
+- Core exports remain stable across versions
+- Examples demonstrate best practices
 
 ## Migration Guide
 
 ### Before (Monolithic __init__.py)
 
 ```python
-async with AgentProtectClient() as client:
+async with AgentControlClient() as client:
     result = await client.create_policy("my-policy")
     await client.add_control_to_policy(1, 5)
 ```
@@ -218,16 +286,16 @@ async with AgentProtectClient() as client:
 ### After (Modular Structure)
 
 ```python
-import agent_protect
+import agent_control
 
-async with agent_protect.AgentProtectClient() as client:
-    result = await agent_protect.policies.create_policy(client, "my-policy")
-    await agent_protect.policies.add_control_set_to_policy(client, 1, 5)
+async with agent_control.AgentControlClient() as client:
+    result = await agent_control.policies.create_policy(client, "my-policy")
+    await agent_control.policies.add_control_set_to_policy(client, 1, 5)
 ```
 
 **Benefits of New Structure**:
 - ✅ Clear organization by endpoint category
-- ✅ Easy to find operations: `agent_protect.policies.*`, `agent_protect.controls.*`
+- ✅ Easy to find operations: `agent_control.policies.*`, `agent_control.controls.*`
 - ✅ Matches server structure for consistency
 - ✅ Smaller, more maintainable files
 - ✅ Better IDE autocomplete and navigation
@@ -238,11 +306,11 @@ Each module can be tested independently:
 
 ```python
 # Test policies module
-from agent_protect import policies
-from agent_protect.client import AgentProtectClient
+from agent_control import policies
+from agent_control.client import AgentControlClient
 
 async def test_create_policy():
-    async with AgentProtectClient() as client:
+    async with AgentControlClient() as client:
         result = await policies.create_policy(client, "test-policy")
         assert "policy_id" in result
 ```
@@ -257,28 +325,31 @@ When adding new endpoints:
 4. **Add convenience functions** if needed for common operations
 5. **Update documentation** and examples
 
-## File Sizes
+## Module Sizes
 
-The refactoring reduced file sizes significantly:
+Current module organization:
 
-- **Before**: `__init__.py` ~900 lines
-- **After**:
-  - `__init__.py`: ~340 lines
-  - `client.py`: ~75 lines
-  - `agents.py`: ~90 lines
-  - `policies.py`: ~145 lines
-  - `controls.py`: ~145 lines
-  - `protection.py`: ~120 lines
+- `__init__.py`: ~1000 lines (main entry point with convenience functions)
+- `client.py`: ~100 lines (HTTP client)
+- `agents.py`: ~180 lines (agent operations)
+- `policies.py`: ~160 lines (policy operations)
+- `controls.py`: ~430 lines (control operations)
+- `control_decorators.py`: ~580 lines (@control decorator implementation)
+- `evaluation.py`: ~400 lines (evaluation operations)
+- `observability.py`: ~700 lines (telemetry and observability)
+- `settings.py`: ~160 lines (configuration)
+- `tracing.py`: ~240 lines (distributed tracing)
 
-Total lines remain similar, but organized into focused, maintainable modules.
+Total organized into focused, maintainable modules with clear responsibilities.
 
 ## Summary
 
-The refactored SDK architecture provides:
-- ✅ **Clear organization** matching server endpoints
+The Agent Control SDK architecture provides:
+- ✅ **Clear organization** matching server endpoints and responsibilities
 - ✅ **Maintainability** through separation of concerns
 - ✅ **Discoverability** via logical module names
 - ✅ **Testability** with independent modules
-- ✅ **Scalability** for future endpoint additions
-- ✅ **Type safety** preserved throughout
-- ✅ **Backwards compatibility** maintained
+- ✅ **Scalability** for future endpoint and feature additions
+- ✅ **Type safety** with full type annotations
+- ✅ **Extensibility** through evaluator system
+- ✅ **Observability** with built-in tracing and telemetry

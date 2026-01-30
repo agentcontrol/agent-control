@@ -5,7 +5,7 @@
 ```bash
 # 1. Start the server
 cd server
-uv run uvicorn agent_protect_server.main:app --reload
+uv run uvicorn agent_control_server.main:app --reload
 
 # 2. In another terminal, run tests
 cd sdks/python
@@ -50,7 +50,7 @@ uv run pytest tests/test_integration_agents.py -v
 uv run pytest tests/test_integration_agents.py::test_agent_registration_workflow -v
 
 # Run with coverage
-uv run pytest tests/ --cov=agent_protect --cov-report=html
+uv run pytest tests/ --cov=agent_control --cov-report=html
 
 # Show detailed output
 uv run pytest tests/ -vv -s
@@ -83,7 +83,7 @@ SKIPPED [1] tests/conftest.py:32: Agent Control server not available
 **Solution**: Start the server first!
 ```bash
 cd server
-uv run uvicorn agent_protect_server.main:app
+uv run uvicorn agent_control_server.main:app
 ```
 
 ---
@@ -115,7 +115,7 @@ uv run alembic upgrade head
 
 ```bash
 # Use custom server URL
-export AGENT_PROTECT_TEST_URL=http://staging:8000
+export AGENT_CONTROL_TEST_URL=http://staging:8000
 
 # Run tests
 uv run pytest tests/ -v

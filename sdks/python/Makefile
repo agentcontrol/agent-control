@@ -24,7 +24,7 @@ test:
 	@bash -c 'for i in {1..30}; do if curl -s http://localhost:8000/health >/dev/null; then echo "Server up!"; exit 0; fi; sleep 1; done; echo "Server failed"; cat server.log; exit 1'
 	@# Run tests, capture exit code, and ensure cleanup
 	@set -e; \
-	uv run pytest; \
+	uv run pytest --cov=src --cov-report=xml:../../coverage-sdk.xml -q; \
 	TEST_EXIT_CODE=$$?; \
 	echo "Stopping server..."; \
 	if [ -f server.pid ]; then kill `cat server.pid` && rm server.pid; fi; \
