@@ -92,6 +92,15 @@ export type SetControlDataResponse =
   components["schemas"]["SetControlDataResponse"];
 export type GetControlDataResponse =
   components["schemas"]["GetControlDataResponse"];
+export type ControlSummary = components["schemas"]["ControlSummary"];
+export type ListControlsResponse = components["schemas"]["ListControlsResponse"];
+
+// AgentRef - reference to an agent (for used_by_agents)
+// Note: This will be in generated types after running pnpm fetch-api-types
+export interface AgentRef {
+  agent_id: string;
+  agent_name: string;
+}
 
 // Helper type to extract query parameters from operations
 type ExtractQueryParams<T> = T extends { parameters: { query?: infer Q } }

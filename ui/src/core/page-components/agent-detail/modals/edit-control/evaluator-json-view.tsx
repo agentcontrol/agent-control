@@ -21,7 +21,6 @@ export const EvaluatorJsonView = ({
   onRawJsonTextChange,
   rawJsonError,
   height = DEFAULT_HEIGHT,
-  action,
 }: EvaluatorJsonViewProps) => {
   // TODO: Re-enable tree/raw toggle when needed
   // <Group justify='flex-end'>
@@ -38,43 +37,37 @@ export const EvaluatorJsonView = ({
 
   if (jsonViewMode === "tree") {
     return (
-      <Box pos="relative">
-        <ScrollArea h={height} type="auto">
-          <Box p="xs">
-            <JsonEditor
-              data={config}
-              setData={onChange}
-              rootName="config"
-              restrictEdit={false}
-              restrictDelete={false}
-              restrictAdd={false}
-              collapse={false}
-              rootFontSize={12}
-            />
-          </Box>
-        </ScrollArea>
-        {action}
-      </Box>
+      <ScrollArea h={height} type="auto">
+        <Box p="xs">
+          <JsonEditor
+            data={config}
+            setData={onChange}
+            rootName="config"
+            restrictEdit={false}
+            restrictDelete={false}
+            restrictAdd={false}
+            collapse={false}
+            rootFontSize={12}
+          />
+        </Box>
+      </ScrollArea>
     );
   }
 
   return (
-    <Box pos="relative">
-      <Textarea
-        value={rawJsonText}
-        onChange={(e) => onRawJsonTextChange(e.currentTarget.value)}
-        styles={{
-          input: {
-            fontFamily: "monospace",
-            fontSize: 12,
-            height,
-            overflow: "auto",
-          },
-        }}
-        error={rawJsonError}
-        data-testid="raw-json-textarea"
-      />
-      {action}
-    </Box>
+    <Textarea
+      value={rawJsonText}
+      onChange={(e) => onRawJsonTextChange(e.currentTarget.value)}
+      styles={{
+        input: {
+          fontFamily: "monospace",
+          fontSize: 12,
+          height,
+          overflow: "auto",
+        },
+      }}
+      error={rawJsonError}
+      data-testid="raw-json-textarea"
+    />
   );
 };

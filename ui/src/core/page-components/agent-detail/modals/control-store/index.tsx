@@ -1,10 +1,12 @@
 import {
+  Anchor,
   Box,
   Divider,
   Group,
   Loader,
   Modal,
   Paper,
+  ScrollArea,
   Stack,
   Text,
   TextInput,
@@ -13,24 +15,23 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Button, Table } from "@rungalileo/jupiter-ds";
-import {
-  IconAlertCircle,
-  IconSearch,
-  IconTrash,
-  IconX,
-} from "@tabler/icons-react";
+import { IconAlertCircle, IconSearch, IconX } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
-import type { components } from "@/core/api/generated/api-types";
-import { useDeleteEvaluatorConfig } from "@/core/hooks/query-hooks/use-delete-evaluator-config";
-import { useEvaluatorConfigs } from "@/core/hooks/query-hooks/use-evaluator-configs";
+import { api } from "@/core/api/client";
+import type { AgentRef, ControlDefinition, ControlSummary } from "@/core/api/types";
+import { useControls } from "@/core/hooks/query-hooks/use-controls";
 
 import { AddNewControlModal } from "../add-new-control";
 import { EditControlContent } from "../edit-control/edit-control-content";
 
-type EvaluatorConfigItem = components["schemas"]["EvaluatorConfigItem"];
+// Extended ControlSummary with used_by_agent (until API types are regenerated)
+type ControlSummaryWithAgent = ControlSummary & {
+  used_by_agent?: AgentRef | null;
+};
 
 interface ControlStoreModalProps {
   opened: boolean;
@@ -44,21 +45,37 @@ export function ControlStoreModal({
   agentId,
 }: ControlStoreModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedConfig, setSelectedConfig] =
-    useState<EvaluatorConfigItem | null>(null);
+  const [selectedControl, setSelectedControl] = useState<{
+    summary: ControlSummary;
+    definition: ControlDefinition;
+  } | null>(null);
+  const [loadingControlId, setLoadingControlId] = useState<number | null>(null);
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [addNewModalOpened, setAddNewModalOpened] = useState(false);
-  const deleteEvaluatorConfig = useDeleteEvaluatorConfig();
-  const { data, isLoading, error } = useEvaluatorConfigs();
+  const { data, isLoading, error } = useControls();
 
-  const handleUseConfig = (config: EvaluatorConfigItem) => {
-    setSelectedConfig(config);
-    setEditModalOpened(true);
+  const handleUseControl = async (control: ControlSummary) => {
+    setLoadingControlId(control.id);
+    try {
+      const { data: controlData, error: fetchError } = await api.controls.getData(control.id);
+      if (fetchError || !controlData) {
+        notifications.show({
+          title: "Error",
+          message: "Failed to load control configuration",
+          color: "red",
+        });
+        return;
+      }
+      setSelectedControl({ summary: control, definition: controlData.data });
+      setEditModalOpened(true);
+    } finally {
+      setLoadingControlId(null);
+    }
   };
 
   const handleEditModalClose = () => {
     setEditModalOpened(false);
-    setSelectedConfig(null);
+    setSelectedControl(null);
   };
 
   const handleEditModalSuccess = () => {
@@ -66,88 +83,52 @@ export function ControlStoreModal({
     onClose();
   };
 
-  const handleDeleteConfig = async (config: EvaluatorConfigItem) => {
-    const shouldDelete = window.confirm(
-      `Delete evaluator config "${config.name}"? This cannot be undone.`
-    );
-    if (!shouldDelete) return;
-
-    try {
-      await deleteEvaluatorConfig.mutateAsync(config.id);
-      notifications.show({
-        title: "Deleted",
-        message: `"${config.name}" has been deleted.`,
-        color: "green",
-      });
-    } catch (deleteError) {
-      notifications.show({
-        title: "Delete failed",
-        message:
-          deleteError instanceof Error
-            ? deleteError.message
-            : "Unable to delete evaluator config.",
-        color: "red",
-      });
-    }
-  };
-
-  const filteredConfigs = useMemo(() => {
-    const configs = data?.evaluator_configs ?? [];
-    if (!searchQuery.trim()) return configs;
+  const filteredControls = useMemo(() => {
+    const controls = data?.controls ?? [];
+    if (!searchQuery.trim()) return controls;
     const query = searchQuery.toLowerCase();
-    return configs.filter(
-      (config) =>
-        config.name.toLowerCase().includes(query) ||
-        config.evaluator.toLowerCase().includes(query) ||
-        (config.description ?? "").toLowerCase().includes(query)
+    return controls.filter(
+      (control) =>
+        control.name.toLowerCase().includes(query) ||
+        (control.description ?? "").toLowerCase().includes(query)
     );
   }, [data, searchQuery]);
 
+  // Build a draft control for the edit modal with full evaluator config
   const draftControl = useMemo(() => {
-    if (!selectedConfig) return null;
+    if (!selectedControl) return null;
+    const { summary, definition } = selectedControl;
+    // Sanitize name to match pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]*$
+    // Replace spaces with hyphens, remove invalid characters, append -copy
+    const sanitizedName = summary.name
+      .replace(/\s+/g, "-") // spaces -> hyphens
+      .replace(/[^a-zA-Z0-9_-]/g, ""); // remove invalid chars
     return {
       id: 0,
-      name: selectedConfig.name,
+      name: `${sanitizedName}-copy`,
       control: {
-        description: selectedConfig.description,
-        enabled: true,
-        execution: "server" as const,
+        ...definition,
+        // Ensure we have the proper types
+        execution: (definition.execution ?? "server") as "server" | "sdk",
         scope: {
-          step_types: ["llm"],
-          stages: ["post"] as ("post" | "pre")[],
+          ...definition.scope,
+          stages: (definition.scope?.stages ?? ["post"]) as ("post" | "pre")[],
         },
-        selector: {
-          path: "*",
-        },
-        evaluator: {
-          name: selectedConfig.evaluator,
-          config: selectedConfig.config,
-        },
-        action: { decision: "deny" as const },
       },
     };
-  }, [selectedConfig]);
+  }, [selectedControl]);
 
-  const columns: ColumnDef<EvaluatorConfigItem>[] = [
+  const columns: ColumnDef<ControlSummary>[] = [
     {
       id: "name",
       header: "Name",
       accessorKey: "name",
-      size: 120,
+      size: 150,
       cell: ({ row }) => (
-        <Group gap="xs">
-          <Text size="sm" fw={500}>
-            {row.original.name}
-          </Text>
-        </Group>
+        <Text size="sm" fw={500}>
+          {row.original.name}
+        </Text>
       ),
-    },
-    {
-      id: "evaluator",
-      header: "Evaluator",
-      accessorKey: "evaluator",
-      size: 120,
-      cell: ({ row }) => <Text size="sm">{row.original.evaluator}</Text>,
     },
     {
       id: "description",
@@ -155,7 +136,7 @@ export function ControlStoreModal({
       accessorKey: "description",
       size: 200,
       cell: ({ row }) => (
-        <Tooltip label={row.original.description} withArrow>
+        <Tooltip label={row.original.description} withArrow disabled={!row.original.description}>
           <Text size="sm" c="dimmed" lineClamp={1}>
             {row.original.description || "—"}
           </Text>
@@ -163,30 +144,52 @@ export function ControlStoreModal({
       ),
     },
     {
+      id: "enabled",
+      header: "Enabled",
+      accessorKey: "enabled",
+      size: 80,
+      cell: ({ row }) => (
+        <Text size="sm" c={row.original.enabled ? "green" : "dimmed"}>
+          {row.original.enabled ? "Yes" : "No"}
+        </Text>
+      ),
+    },
+    {
+      id: "agent",
+      header: "Used by",
+      size: 150,
+      cell: ({ row }) => {
+        const agent = (row.original as ControlSummaryWithAgent).used_by_agent;
+        if (!agent) {
+          return <Text size="sm" c="dimmed">—</Text>;
+        }
+        return (
+          <Anchor
+            component={Link}
+            href={`/agents/${agent.agent_id}`}
+            size="sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {agent.agent_name}
+          </Anchor>
+        );
+      },
+    },
+    {
       id: "actions",
       header: "",
-      size: 180,
+      size: 100,
       cell: ({ row }) => (
         <Group gap="md" justify="flex-end" wrap="nowrap">
           <Button
             variant="outline"
             size="sm"
-            data-testid="use-config-button"
-            onClick={() => handleUseConfig(row.original)}
+            data-testid="use-control-button"
+            loading={loadingControlId === row.original.id}
+            onClick={() => handleUseControl(row.original)}
           >
             Use
           </Button>
-          <Tooltip label="Delete" withArrow>
-            <Button
-              variant="destructive"
-              size="sm"
-              data-testid="delete-config-button"
-              onClick={() => handleDeleteConfig(row.original)}
-              loading={deleteEvaluatorConfig.isPending}
-            >
-              <IconTrash size={14} />
-            </Button>
-          </Tooltip>
         </Group>
       ),
     },
@@ -196,62 +199,52 @@ export function ControlStoreModal({
     <Modal
       opened={opened}
       onClose={onClose}
-      size='xxl'
+      size="xxl"
       padding={0}
       withCloseButton={false}
       styles={{
         body: {
           padding: 0,
-          width: "800px",
+          width: "900px",
           height: "600px",
         },
       }}
     >
       <Box h="100%" style={{ display: "flex", flexDirection: "column" }}>
         {/* Header */}
-        <Box p='md'>
-          <Group justify='space-between' mb='xs'>
+        <Box p="md">
+          <Group justify="space-between" mb="xs">
             <Title order={3} fw={600}>
               Control store
             </Title>
-            <Group gap="xs">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setAddNewModalOpened(true)}
-                data-testid="create-new-control-button"
-              >
-                New control
-              </Button>
-              <Button
-                size="sm"
-                onClick={onClose}
-                data-testid="close-control-store-modal-button"
-              >
-                <IconX size={16} />
-              </Button>
-            </Group>
+            <Button
+              size="sm"
+              onClick={onClose}
+              data-testid="close-control-store-modal-button"
+            >
+              <IconX size={16} />
+            </Button>
           </Group>
-          <Text size='sm' c='dimmed'>
-            Choose a saved evaluator config to create a control
+          <Text size="sm" c="dimmed">
+            Browse existing controls or create a new one
           </Text>
         </Box>
         <Divider />
 
-        {/* Content */}
-        <Box p="md" style={{ flex: 1, overflow: "auto" }}>
-          <Stack gap="md">
-            <Group justify="space-between">
-              <TextInput
-                placeholder="Search templates..."
-                leftSection={<IconSearch size={16} />}
-                flex={1}
-                maw={250}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </Group>
+        {/* Search Bar */}
+        <Box px="md" pt="md" pb="sm">
+          <TextInput
+            placeholder="Search controls..."
+            leftSection={<IconSearch size={16} />}
+            maw={250}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </Box>
 
+        {/* Scrollable Table Content */}
+        <Box px="md" pb="md" style={{ flex: 1, minHeight: 0 }}>
+          <ScrollArea h="100%" type="auto">
             {isLoading ? (
               <Paper p="xl" ta="center" withBorder radius="sm">
                 <Loader size="sm" />
@@ -263,21 +256,35 @@ export function ControlStoreModal({
                     size={48}
                     color="var(--mantine-color-red-5)"
                   />
-                  <Text c="red">Failed to load evaluator configs</Text>
+                  <Text c="red">Failed to load controls</Text>
                 </Stack>
               </Paper>
-            ) : filteredConfigs.length > 0 ? (
-              <Table
-                columns={columns}
-                data={filteredConfigs}
-                highlightOnHover
-              />
+            ) : filteredControls.length > 0 ? (
+              <Table columns={columns} data={filteredControls} highlightOnHover />
             ) : (
               <Paper p="xl" withBorder radius="sm" ta="center">
-                <Text c="dimmed">No evaluator configs found</Text>
+                <Text c="dimmed">No controls found</Text>
               </Paper>
             )}
-          </Stack>
+          </ScrollArea>
+        </Box>
+
+        {/* Footer CTA */}
+        <Divider />
+        <Box p="md">
+          <Group justify="center" gap="xs">
+            <Text size="sm" c="dimmed">
+              Can&apos;t find what you&apos;re looking for?
+            </Text>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAddNewModalOpened(true)}
+              data-testid="footer-new-control-button"
+            >
+              Create new control
+            </Button>
+          </Group>
         </Box>
       </Box>
 
@@ -286,7 +293,7 @@ export function ControlStoreModal({
         opened={editModalOpened}
         onClose={handleEditModalClose}
         title="Create Control"
-        size='xl'
+        size="xl"
         keepMounted={false}
         styles={{
           title: { fontSize: "18px", fontWeight: 600 },

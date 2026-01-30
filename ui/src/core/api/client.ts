@@ -80,6 +80,19 @@ export const api = {
     list: () => apiClient.GET("/api/v1/evaluators"),
   },
   controls: {
+    list: (params?: {
+      cursor?: number;
+      limit?: number;
+      name?: string;
+      enabled?: boolean;
+      step_type?: string;
+      stage?: string;
+      execution?: string;
+      tag?: string;
+    }) =>
+      apiClient.GET("/api/v1/controls", {
+        params: params ? { query: params } : undefined,
+      }),
     create: (data: CreateControlRequest) =>
       apiClient.PUT("/api/v1/controls", { body: data }),
     getData: (controlId: number) =>
@@ -108,27 +121,6 @@ export const api = {
     }) =>
       apiClient.GET("/api/v1/observability/stats", {
         params: { query: params },
-      }),
-  },
-  evaluatorConfigs: {
-    list: (params?: {
-      cursor?: number;
-      limit?: number;
-      name?: string;
-      evaluator?: string;
-    }) =>
-      apiClient.GET("/api/v1/evaluator-configs", {
-        params: params ? { query: params } : undefined,
-      }),
-    create: (data: {
-      name: string;
-      description?: string | null;
-      evaluator: string;
-      config: Record<string, unknown>;
-    }) => apiClient.POST("/api/v1/evaluator-configs", { body: data }),
-    delete: (configId: number) =>
-      apiClient.DELETE("/api/v1/evaluator-configs/{config_id}", {
-        params: { path: { config_id: configId } },
       }),
   },
 };

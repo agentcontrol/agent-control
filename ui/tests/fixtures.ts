@@ -4,11 +4,11 @@ import type {
   AgentControlsResponse,
   AgentSummary,
   Control,
-  EvaluatorConfigItem,
+  ControlSummary,
   EvaluatorsResponse,
   GetAgentResponse,
   ListAgentsResponse,
-  ListEvaluatorConfigsResponse,
+  ListControlsResponse,
 } from "@/core/api/types";
 import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-stats";
 
@@ -135,6 +135,53 @@ const controlsResponse: AgentControlsResponse = {
   controls: controlsList,
 };
 
+// Control summaries for GET /api/v1/controls (list all controls)
+const controlSummariesList: (ControlSummary & { used_by_agent?: { agent_id: string; agent_name: string } | null })[] = [
+  {
+    id: 1,
+    name: "PII Detection",
+    description: "Detects and masks personally identifiable information",
+    enabled: true,
+    execution: "server",
+    step_types: ["llm"],
+    stages: ["post"],
+    tags: ["pii", "compliance"],
+    used_by_agent: { agent_id: "agent-1", agent_name: "Customer Support Bot" },
+  },
+  {
+    id: 2,
+    name: "SQL Injection Guard",
+    description: "Prevents SQL injection attacks",
+    enabled: true,
+    execution: "server",
+    step_types: ["tool"],
+    stages: ["pre"],
+    tags: ["security"],
+    used_by_agent: { agent_id: "agent-2", agent_name: "Data Analysis Agent" },
+  },
+  {
+    id: 3,
+    name: "Rate Limiter",
+    description: "Limits API call frequency",
+    enabled: false,
+    execution: "server",
+    step_types: ["llm"],
+    stages: ["pre"],
+    tags: [],
+    used_by_agent: null,
+  },
+];
+
+const listControlsResponse: ListControlsResponse = {
+  controls: controlSummariesList,
+  pagination: {
+    total: controlSummariesList.length,
+    limit: 20,
+    has_more: false,
+    next_cursor: null,
+  },
+};
+
 const evaluatorsResponse: EvaluatorsResponse = {
   regex: {
     name: "Regex",
@@ -205,37 +252,6 @@ const evaluatorsResponse: EvaluatorsResponse = {
         threshold: { type: "number" },
       },
     },
-  },
-};
-
-const evaluatorConfigsList: EvaluatorConfigItem[] = [
-  {
-    id: 101,
-    name: "PII Regex Template",
-    description: "Detect SSN patterns",
-    evaluator: "regex",
-    config: { pattern: "\\b\\d{3}-\\d{2}-\\d{4}\\b" },
-    created_at: "2024-01-10T00:00:00Z",
-    updated_at: "2024-01-12T00:00:00Z",
-  },
-  {
-    id: 102,
-    name: "SQL Guard Template",
-    description: "Safe mode SQL checks",
-    evaluator: "sql",
-    config: { mode: "safe" },
-    created_at: "2024-01-11T00:00:00Z",
-    updated_at: "2024-01-13T00:00:00Z",
-  },
-];
-
-const evaluatorConfigsResponse: ListEvaluatorConfigsResponse = {
-  evaluator_configs: evaluatorConfigsList,
-  pagination: {
-    total: evaluatorConfigsList.length,
-    limit: 25,
-    has_more: false,
-    next_cursor: null,
   },
 };
 
@@ -316,8 +332,8 @@ export const mockData = {
   agents: agentsResponse,
   agent: agentResponse,
   controls: controlsResponse,
+  listControls: listControlsResponse,
   evaluators: evaluatorsResponse,
-  evaluatorConfigs: evaluatorConfigsResponse,
   stats: statsResponse,
   emptyStats: emptyStatsResponse,
 } as const;
@@ -412,51 +428,18 @@ export const mockRoutes = {
     });
   },
 
-  /** Mock GET /api/v1/evaluator-configs */
-  evaluatorConfigs: async (
+  /** Mock GET /api/v1/controls (list all controls) */
+  controlsList: async (
     page: Page,
-    options: MockResponseOptions<ListEvaluatorConfigsResponse> = {
-      data: mockData.evaluatorConfigs,
-    }
+    options: MockResponseOptions<ListControlsResponse> = { data: mockData.listControls }
   ) => {
-    await page.route("**/api/v1/evaluator-configs**", async (route) => {
-      await fulfillRoute(route, options, mockData.evaluatorConfigs);
+    await page.route("**/api/v1/controls?**", async (route) => {
+      await fulfillRoute(route, options, mockData.listControls);
     });
-  },
-
-  /** Mock POST /api/v1/evaluator-configs */
-  evaluatorConfigCreate: async (page: Page) => {
-    await page.route("**/api/v1/evaluator-configs", async (route, request) => {
-      if (request.method() === "POST") {
-        const body = await request.postDataJSON();
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            id: 999,
-            name: body.name ?? "New Evaluator Config",
-            description: body.description ?? null,
-            evaluator: body.evaluator ?? "regex",
-            config: body.config ?? {},
-            created_at: "2024-01-20T00:00:00Z",
-            updated_at: "2024-01-20T00:00:00Z",
-          }),
-        });
-        return;
-      }
-      await route.continue();
-    });
-  },
-
-  /** Mock DELETE /api/v1/evaluator-configs/:id */
-  evaluatorConfigDelete: async (page: Page) => {
-    await page.route("**/api/v1/evaluator-configs/*", async (route, request) => {
-      if (request.method() === "DELETE") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ success: true }),
-        });
+    // Also match without query params
+    await page.route("**/api/v1/controls", async (route, request) => {
+      if (request.method() === "GET") {
+        await fulfillRoute(route, options, mockData.listControls);
         return;
       }
       await route.continue();
@@ -474,6 +457,31 @@ export const mockRoutes = {
           body: JSON.stringify({
             control_id: 100,
             name: body.name || "New Control",
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+  },
+
+  /** Mock GET /api/v1/controls/:id/data */
+  controlGetData: async (page: Page) => {
+    await page.route("**/api/v1/controls/*/data", async (route, request) => {
+      if (request.method() === "GET") {
+        // Extract control ID from URL
+        const url = request.url();
+        const match = url.match(/\/controls\/(\d+)\/data/);
+        const controlId = match ? parseInt(match[1], 10) : 1;
+        
+        // Find matching control from mock data
+        const control = controlsList.find(c => c.id === controlId) ?? controlsList[0];
+        
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: control.control,
           }),
         });
         return;
@@ -515,9 +523,8 @@ export async function mockApiRoutes(page: Page) {
   await mockRoutes.agents(page);
   await mockRoutes.agent(page);
   await mockRoutes.evaluators(page);
-  await mockRoutes.evaluatorConfigs(page);
-  await mockRoutes.evaluatorConfigCreate(page);
-  await mockRoutes.evaluatorConfigDelete(page);
+  await mockRoutes.controlsList(page);
+  await mockRoutes.controlGetData(page);
   await mockRoutes.controlCreate(page);
   await mockRoutes.controlUpdate(page);
   await mockRoutes.stats(page);

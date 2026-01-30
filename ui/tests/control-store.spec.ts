@@ -1,4 +1,3 @@
-
 import type { Page } from "@playwright/test";
 
 import { expect, mockData, test } from "./fixtures";
@@ -10,14 +9,14 @@ async function openControlStoreModal(page: Page) {
   await page.getByTestId("add-control-button").first().click();
   const modal = page
     .getByRole("dialog")
-    .filter({ hasText: "Choose a saved evaluator config to create a control" });
+    .filter({ hasText: "Browse existing controls or create a new one" });
   await expect(modal).toBeVisible();
   return modal;
 }
 
 async function openAddNewControlModal(page: Page) {
   const controlStoreModal = await openControlStoreModal(page);
-  await controlStoreModal.getByTestId("create-new-control-button").click();
+  await controlStoreModal.getByTestId("footer-new-control-button").click();
   const modal = page
     .getByRole("dialog")
     .filter({ hasText: "Browse and add controls to your agent" });
@@ -30,124 +29,91 @@ test.describe("Control Store Modal", () => {
     const modal = await openControlStoreModal(mockedPage);
     await expect(modal.getByRole("heading", { name: "Control store" })).toBeVisible();
     await expect(
-      modal.getByText("Choose a saved evaluator config to create a control")
+      modal.getByText("Browse existing controls or create a new one")
     ).toBeVisible();
   });
 
-  test("displays evaluator configs table with available templates", async ({
+  test("displays controls table with available controls", async ({
     mockedPage,
   }) => {
     const modal = await openControlStoreModal(mockedPage);
 
     await expect(modal.getByRole("columnheader", { name: "Name" })).toBeVisible();
-    await expect(modal.getByRole("columnheader", { name: "Evaluator" })).toBeVisible();
     await expect(modal.getByRole("columnheader", { name: "Description" })).toBeVisible();
+    await expect(modal.getByRole("columnheader", { name: "Enabled" })).toBeVisible();
+    await expect(modal.getByRole("columnheader", { name: "Used by" })).toBeVisible();
 
-    for (const config of mockData.evaluatorConfigs.evaluator_configs) {
-      await expect(modal.getByText(config.name, { exact: true })).toBeVisible();
+    for (const control of mockData.listControls.controls) {
+      await expect(modal.getByText(control.name, { exact: true })).toBeVisible();
     }
   });
 
-  test("can search for evaluator configs", async ({ mockedPage }) => {
+  test("displays agent links in Used by column", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
-    const searchInput = modal.getByPlaceholder("Search templates...");
-    await searchInput.fill("Regex");
 
-    await expect(modal.getByText("PII Regex Template", { exact: true })).toBeVisible();
+    // PII Detection is used by Customer Support Bot
+    const agentLink = modal.getByRole("link", { name: "Customer Support Bot" }).first();
+    await expect(agentLink).toBeVisible();
+    await expect(agentLink).toHaveAttribute("href", "/agents/agent-1");
+  });
+
+  test("can search for controls", async ({ mockedPage }) => {
+    const modal = await openControlStoreModal(mockedPage);
+    const searchInput = modal.getByPlaceholder("Search controls...");
+    await searchInput.fill("SQL");
+
+    await expect(modal.getByText("SQL Injection Guard", { exact: true })).toBeVisible();
     await expect(
-      modal.getByText("SQL Guard Template", { exact: true })
+      modal.getByText("PII Detection", { exact: true })
     ).not.toBeVisible();
   });
 
   test("shows empty state when search has no results", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
-    const searchInput = modal.getByPlaceholder("Search templates...");
-    await searchInput.fill("NonexistentTemplate");
+    const searchInput = modal.getByPlaceholder("Search controls...");
+    await searchInput.fill("NonexistentControl");
 
-    await expect(modal.getByText("No evaluator configs found")).toBeVisible();
+    await expect(modal.getByText("No controls found")).toBeVisible();
   });
 
   test("can close modal with X button", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
     await modal.getByTestId("close-control-store-modal-button").click();
     await expect(
-      mockedPage.getByText("Choose a saved evaluator config to create a control")
+      mockedPage.getByText("Browse existing controls or create a new one")
     ).not.toBeVisible();
   });
 
   test("Use button opens create control modal", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
     const tableRow = modal.locator("tbody tr").first();
-    await tableRow.getByTestId("use-config-button").click();
+    await tableRow.getByTestId("use-control-button").click();
 
     await expect(mockedPage.getByRole("heading", { name: "Create Control" })).toBeVisible();
   });
 
-  test("Use button pre-fills evaluator config", async ({ mockedPage }) => {
+  test("Use button pre-fills control name and evaluator config", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
-    const targetRow = modal.locator("tr", { hasText: "PII Regex Template" });
-    await targetRow.getByTestId("use-config-button").click();
+    const targetRow = modal.locator("tr", { hasText: "PII Detection" });
+    await targetRow.getByTestId("use-control-button").click();
 
     const createControlModal = mockedPage
       .getByRole("dialog")
       .filter({ hasText: "Create Control" });
     await expect(createControlModal).toBeVisible();
 
+    // Check control name is pre-filled with -copy suffix (sanitized)
     const controlNameInput = createControlModal.getByPlaceholder("Enter control name");
-    await expect(controlNameInput).toHaveValue("PII Regex Template");
+    await expect(controlNameInput).toHaveValue("PII-Detection-copy");
 
-    const patternInput = createControlModal.getByPlaceholder(
-      "Enter regex pattern (e.g., ^.*$)"
-    );
+    // Check evaluator config is pre-filled (PII Detection uses regex with SSN pattern)
+    const patternInput = createControlModal.getByPlaceholder("Enter regex pattern (e.g., ^.*$)");
     await expect(patternInput).toHaveValue("\\b\\d{3}-\\d{2}-\\d{4}\\b");
   });
 
-  test("Save as Template creates evaluator config", async ({ mockedPage }) => {
+  test("Footer 'Create new control' button opens add-new-control modal", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
-    const targetRow = modal.locator("tr", { hasText: "PII Regex Template" });
-    await targetRow.getByTestId("use-config-button").click();
-
-    const createControlModal = mockedPage
-      .getByRole("dialog")
-      .filter({ hasText: "Create Control" });
-    await expect(createControlModal).toBeVisible();
-
-    await createControlModal.getByTestId("save-as-template-button").click();
-
-    const saveTemplateModal = mockedPage
-      .getByRole("dialog")
-      .filter({ hasText: "Save Evaluator Config as Template" });
-    await expect(saveTemplateModal).toBeVisible();
-
-    await saveTemplateModal.getByTestId("template-name-input").fill("pii_template");
-    await saveTemplateModal
-      .getByTestId("template-description-input")
-      .fill("Reusable PII regex template");
-
-    const requestPromise = mockedPage.waitForRequest((request) => {
-      return (
-        request.url().includes("/api/v1/evaluator-configs") &&
-        request.method() === "POST"
-      );
-    });
-
-    await saveTemplateModal.getByTestId("save-template-button").click();
-
-    const request = await requestPromise;
-    const payload = request.postDataJSON();
-    expect(payload).toMatchObject({
-      name: "pii_template",
-      description: "Reusable PII regex template",
-      evaluator: "regex",
-      config: { pattern: "\\b\\d{3}-\\d{2}-\\d{4}\\b" },
-    });
-
-    await expect(mockedPage.getByText("Template Saved")).toBeVisible();
-  });
-
-  test("New control button opens add-new-control modal", async ({ mockedPage }) => {
-    const modal = await openControlStoreModal(mockedPage);
-    await modal.getByTestId("create-new-control-button").click();
+    await modal.getByTestId("footer-new-control-button").click();
 
     await expect(
       mockedPage.getByText("Browse and add controls to your agent")
@@ -230,12 +196,8 @@ test.describe("Add New Control Modal", () => {
 });
 
 test.describe("Control Store - Loading States", () => {
-  // Note: Loading state test is skipped because the loader element is rendered too briefly
-  // to reliably test in CI environments. The error state test provides coverage for
-  // the loading/error state mechanism.
-
-  test("shows error state when evaluator configs fail to load", async ({ page }) => {
-    // Mock controls to return normally
+  test("shows error state when controls fail to load", async ({ page }) => {
+    // Mock agent controls to return normally
     await page.route("**/api/v1/agents/*/controls", async (route) => {
       await route.fulfill({
         status: 200,
@@ -253,12 +215,12 @@ test.describe("Control Store - Loading States", () => {
       });
     });
 
-    // Mock evaluator configs to fail
-    await page.route("**/api/v1/evaluator-configs**", async (route) => {
+    // Mock controls list to fail
+    await page.route("**/api/v1/controls**", async (route) => {
       await route.fulfill({
         status: 500,
         contentType: "application/json",
-        body: JSON.stringify({ error: "Failed to fetch evaluator configs" }),
+        body: JSON.stringify({ error: "Failed to fetch controls" }),
       });
     });
 
@@ -268,7 +230,6 @@ test.describe("Control Store - Loading States", () => {
     await page.getByTestId("add-control-button").first().click();
 
     // Should show error state
-    await expect(page.getByText("Failed to load evaluator configs")).toBeVisible();
+    await expect(page.getByText("Failed to load controls")).toBeVisible();
   });
 });
-

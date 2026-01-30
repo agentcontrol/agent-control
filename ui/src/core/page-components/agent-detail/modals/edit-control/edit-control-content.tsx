@@ -1,6 +1,5 @@
 import {
   Anchor,
-  Box,
   Divider,
   Grid,
   Group,
@@ -13,7 +12,7 @@ import {
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { Button } from "@rungalileo/jupiter-ds";
-import { IconBookmark, IconExternalLink } from "@tabler/icons-react";
+import { IconExternalLink } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { isApiError } from "@/core/api/errors";
@@ -22,7 +21,6 @@ import { getEvaluator } from "@/core/evaluators";
 import { useAddControlToAgent } from "@/core/hooks/query-hooks/use-add-control-to-agent";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 
-import { SaveEvaluatorTemplateModal } from "../save-evaluator-template";
 import { ApiErrorAlert } from "./api-error-alert";
 import { ControlDefinitionForm } from "./control-definition-form";
 import { EvaluatorJsonView } from "./evaluator-json-view";
@@ -34,7 +32,7 @@ import type {
 } from "./types";
 import { applyApiErrorsToForms } from "./utils";
 
-const EVALUATOR_CONFIG_HEIGHT = 360; // Reduced to make room for Save as Template button
+const EVALUATOR_CONFIG_HEIGHT = 400;
 
 export interface EditControlContentProps {
   /** The control to edit/create template */
@@ -77,9 +75,6 @@ export const EditControlContent = ({
   const isPending = isCreating
     ? addControlToAgent.isPending
     : updateControl.isPending;
-
-  // Save as Template modal state
-  const [templateModalOpened, setTemplateModalOpened] = useState(false);
 
   // Track which evaluator the evaluator form has been initialized for
   const formInitializedForEvaluator = useRef<string>("");
@@ -191,11 +186,6 @@ export const EditControlContent = ({
     setApiError(null);
     setUnmappedErrors([]);
   }, [evaluatorId]);
-
-  const validateEvaluatorForm = () => {
-    const validation = evaluatorForm.validate();
-    return !validation.hasErrors;
-  };
 
   // Load control data into forms
   useEffect(() => {
@@ -333,25 +323,6 @@ export const EditControlContent = ({
   // Render the evaluator's form component
   const FormComponent = evaluator?.FormComponent;
 
-  const saveTemplateAction = (
-    <Button
-      variant="ghost"
-      size="sm"
-      leftSection={<IconBookmark size={14} />}
-      onClick={() => setTemplateModalOpened(true)}
-      data-testid="save-as-template-button"
-      style={{
-        position: "absolute",
-        right: 8,
-        bottom: 8,
-        boxShadow: "var(--mantine-shadow-sm)",
-        zIndex: 1,
-      }}
-    >
-      Save
-    </Button>
-  );
-
   return (
     <>
       <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
@@ -402,19 +373,16 @@ export const EditControlContent = ({
 
             <Paper withBorder radius="sm" p={16}>
               {configViewMode === "form" && (
-                <Box pos="relative">
-                  <ScrollArea h={EVALUATOR_CONFIG_HEIGHT} type="auto">
-                    {FormComponent ? (
-                      <FormComponent form={evaluatorForm} />
-                    ) : (
-                      <Text c="dimmed" ta="center" py="xl">
-                        No form available for this evaluator. Use JSON view to
-                        configure.
-                      </Text>
-                    )}
-                  </ScrollArea>
-                  {saveTemplateAction}
-                </Box>
+                <ScrollArea h={EVALUATOR_CONFIG_HEIGHT} type="auto">
+                  {FormComponent ? (
+                    <FormComponent form={evaluatorForm} />
+                  ) : (
+                    <Text c="dimmed" ta="center" py="xl">
+                      No form available for this evaluator. Use JSON view to
+                      configure.
+                    </Text>
+                  )}
+                </ScrollArea>
               )}
 
               {configViewMode === "json" && (
@@ -427,7 +395,6 @@ export const EditControlContent = ({
                   onRawJsonTextChange={handleRawJsonChange}
                   rawJsonError={rawJsonError}
                   height={EVALUATOR_CONFIG_HEIGHT}
-                  action={saveTemplateAction}
                 />
               )}
             </Paper>
@@ -468,16 +435,6 @@ export const EditControlContent = ({
         </Button>
       </Group>
       </form>
-
-      <SaveEvaluatorTemplateModal
-        opened={templateModalOpened}
-        onClose={() => setTemplateModalOpened(false)}
-        evaluatorId={evaluatorId}
-        configViewMode={configViewMode}
-        rawJsonText={rawJsonText}
-        getEvaluatorConfig={getEvaluatorConfig}
-        validateEvaluatorForm={validateEvaluatorForm}
-      />
     </>
   );
 };
