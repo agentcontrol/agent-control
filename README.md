@@ -8,7 +8,48 @@
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
-AI agents interact with users, tools, and external systems in unpredictable ways. Agent Control provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
+**ADD DIAGRAM HERE**
+
+AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
+
+## Why Do You Need It?
+Traditional code-based guardrails have critical limitations:
+
+- **Scattered Logic:** Control code is buried across your agent codebase, making it hard to audit or update
+- **Deployment Overhead:** Changing protection rules requires code changes and redeployment
+- **Limited Adaptability:** Hardcoded checks can't adapt to new attack patterns or production data variations
+
+
+**Agent Control gives you RUNTIME control over what your agents CAN & CANNOT do.**
+1. You can enable and change controls of your agent in  runtime without deploying code through APIs. This enables instant risk mitigation. 
+2. For non-technical members, agent control provides an intuitive UI to manage the control configuration.
+3. Enable/disable controls dynamically to respond to emerging threats.
+3. The package also comes with several common out of box templates for controls that can be adapted and with a lot of flexibility to define custom controls or integrate with external evaluators.  
+
+## Core Concepts
+See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's architecture and design principles.
+
+---
+
+## Key Features
+
+- **Safety Without Code Changes** — Add guardrails with a `@control()` decorator
+- **Runtime Configuration** — Update controls without redeploying your application
+- **Centralized Policies** — Define controls once, apply to multiple agents
+- **Web Dashboard** — Manage agents and controls through the UI
+- **API Key Authentication** — Secure your control server in production
+- **Pluggable Evaluators** — Regex, list matching, AI-powered detection (Luna-2), or custom evaluators
+- **Fail-Safe Defaults** — Deny controls fail closed on error; evaluators like Luna-2 support configurable error handling
+
+---
+
+### Examples
+
+- **[Examples Overview](examples/README.md)** — Working code examples and integration patterns
+- **[Customer Support Agent](examples/customer_support_agent/)** — Full example with multiple tools
+- **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection with LangChain
+- **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
+- **[CrewAI SDK Integration](examples/crewai/)** - Working example on integrating with third party Agent SDKs and using Agent Control along side their guardrails.
 
 ---
 
@@ -37,19 +78,6 @@ except ControlViolationError as e:
     print(f"Blocked by control '{e.control_name}': {e.message}")
 ```
 
----
-
-## Key Features
-
-- **Safety Without Code Changes** — Add guardrails with a `@control()` decorator
-- **Runtime Configuration** — Update controls without redeploying your application
-- **Centralized Policies** — Define controls once, apply to multiple agents
-- **Web Dashboard** — Manage agents and controls through the UI
-- **API Key Authentication** — Secure your control server in production
-- **Pluggable Evaluators** — Regex, list matching, AI-powered detection (Luna-2), or custom evaluators
-- **Fail-Safe Defaults** — Deny controls fail closed on error; evaluators like Luna-2 support configurable error handling
-
----
 
 ## Quick Start
 
@@ -298,15 +326,6 @@ For detailed development workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 - **[Server](server/README.md)** — Server setup, configuration, and deployment
 - **[UI Dashboard](ui/README.md)** — Web dashboard setup and usage
 - **[Evaluators](evaluators/README.md)** — Available evaluators and custom evaluator development
-
-### Examples
-
-- **[Examples Overview](examples/README.md)** — Working code examples and integration patterns
-- **[Customer Support Agent](examples/customer_support_agent/)** — Full example with multiple tools
-- **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection with LangChain
-- **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
-
----
 
 ## Contributing
 
