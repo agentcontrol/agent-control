@@ -11,10 +11,9 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import ValidationError
-
 from agent_control_evaluators import Evaluator
 from agent_control_models import EvaluatorResult
+from pydantic import ValidationError
 
 
 def create_mock_protect_response(
@@ -282,7 +281,7 @@ class TestLuna2EvaluatorImport:
         from agent_control_evaluators.galileo_luna2 import Luna2Evaluator
 
         assert Luna2Evaluator is not None
-        assert Luna2Evaluator.metadata.name == "galileo-luna2"
+        assert Luna2Evaluator.metadata.name == "galileo/luna2"
         assert Luna2Evaluator.metadata.version == "2.0.0"
 
     @patch("agent_control_evaluators.galileo_luna2.evaluator.LUNA2_AVAILABLE", False)
@@ -329,7 +328,7 @@ class TestLuna2EvaluatorMetadata:
 
         metadata = Luna2Evaluator.metadata
 
-        assert metadata.name == "galileo-luna2"
+        assert metadata.name == "galileo/luna2"
         assert metadata.requires_api_key is True
         assert metadata.timeout_ms == 10000
         # Config schema is now from config_model

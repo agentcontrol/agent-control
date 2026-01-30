@@ -26,9 +26,9 @@ __all__ = [
     "LUNA2_AVAILABLE",
 ]
 
-# Export client classes when available
+# Export client classes when available (added to __all__ below)
 if LUNA2_AVAILABLE:
-    from .client import (
+    from .client import (  # noqa: F401
         GalileoProtectClient,
         PassthroughAction,
         Payload,

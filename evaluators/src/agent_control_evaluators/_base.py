@@ -43,7 +43,7 @@ class EvaluatorMetadata:
     """Metadata about an evaluator.
 
     Attributes:
-        name: Unique evaluator name (e.g., "regex", "galileo_luna2")
+        name: Unique evaluator name (e.g., "regex", "galileo/luna2")
         version: Evaluator version string
         description: Human-readable description
         requires_api_key: Whether the evaluator requires an API key
@@ -57,7 +57,7 @@ class EvaluatorMetadata:
     timeout_ms: int = 10000
 
 
-class Evaluator(ABC, Generic[ConfigT]):
+class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046 - need Python 3.10 compat
     """Base class for all evaluators (built-in, external, or custom).
 
     All evaluators follow the same pattern:

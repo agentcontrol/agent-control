@@ -43,7 +43,10 @@ from ..models import (
     policy_controls,
 )
 from ..services.controls import list_controls_for_agent, list_controls_for_policy
-from ..services.evaluator_utils import parse_evaluator_ref, validate_config_against_schema
+from ..services.evaluator_utils import (
+    parse_evaluator_ref_full,
+    validate_config_against_schema,
+)
 from ..services.schema_compat import (
     check_schema_compatibility,
     format_compatibility_error,
@@ -111,36 +114,37 @@ async def _validate_policy_controls_for_agent(
         if not evaluator_name:
             continue
 
-        agent_name, eval_name = parse_evaluator_ref(evaluator_name)
-        if agent_name is None:
-            continue  # Built-in evaluator, already validated at control creation
+        parsed = parse_evaluator_ref_full(evaluator_name)
+        if parsed.type != "agent":
+            continue  # Built-in/external evaluator, already validated at control creation
 
         # Agent-scoped evaluator - check if target matches this agent
-        if agent_name != agent.name:
+        if parsed.namespace != agent.name:
             errors.append(
                 f"Control '{control.name}' references evaluator '{evaluator_name}' "
-                f"which belongs to agent '{agent_name}', not '{agent.name}'"
+                f"which belongs to agent '{parsed.namespace}', not '{agent.name}'"
             )
             continue
 
         # Check if evaluator exists on this agent
-        if eval_name not in agent_evaluators:
+        if parsed.local_name not in agent_evaluators:
             errors.append(
-                f"Control '{control.name}' references evaluator '{eval_name}' "
+                f"Control '{control.name}' references evaluator '{parsed.local_name}' "
                 f"which is not registered with agent '{agent.name}'. "
                 f"Register it via initAgent or use a different evaluator."
             )
             continue
 
         # Validate config against schema
-        registered_ev = agent_evaluators[eval_name]
+        registered_ev = agent_evaluators[parsed.local_name]
         config = evaluator_cfg.get("config", {})
         if registered_ev.config_schema:
             try:
                 validate_config_against_schema(config, registered_ev.config_schema)
             except JSONSchemaValidationError as e:
                 errors.append(
-                    f"Control '{control.name}' invalid config for '{eval_name}': {e.message}"
+                    f"Control '{control.name}' invalid config for "
+                    f"'{parsed.local_name}': {e.message}"
                 )
 
     return errors

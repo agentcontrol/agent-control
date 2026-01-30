@@ -84,7 +84,7 @@ class Luna2Evaluator(Evaluator[Luna2EvaluatorConfig]):
     """
 
     metadata = EvaluatorMetadata(
-        name="galileo-luna2",
+        name="galileo/luna2",
         version="2.0.0",
         description="Galileo Luna-2 enterprise runtime protection (direct API)",
         requires_api_key=True,

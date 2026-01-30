@@ -222,105 +222,219 @@ Extensible evaluators for custom detection logic.
 evaluators/src/agent_control_evaluators/
 
 # Key directories (flat structure - each evaluator is a peer directory)
-├── regex/           # Regex pattern matching evaluator
+# Built-in evaluators (no namespace, core dependencies only)
+├── regex/           # Type name: "regex"
 │   ├── config.py    # RegexEvaluatorConfig
 │   └── evaluator.py # RegexEvaluator implementation
-├── list/            # List value matching evaluator
+├── list/            # Type name: "list"
 │   ├── config.py    # ListEvaluatorConfig
 │   └── evaluator.py # ListEvaluator implementation
-├── json/            # JSON validation evaluator
+├── json/            # Type name: "json"
 │   ├── config.py    # JsonEvaluatorConfig
 │   └── evaluator.py # JsonEvaluator implementation
-├── sql/             # SQL validation evaluator
+├── sql/             # Type name: "sql"
 │   ├── config.py    # SqlEvaluatorConfig
 │   └── evaluator.py # SqlEvaluator implementation
-└── galileo_luna2/   # Galileo Luna-2 integration
+#
+# External evaluators (namespaced, optional dependencies)
+└── galileo_luna2/   # Type name: "galileo/luna2" (folder uses underscore)
     ├── config.py    # Luna2EvaluatorConfig
     ├── evaluator.py # Luna2Evaluator implementation
     └── client.py    # Direct HTTP client (no SDK dependency)
 ```
 
-**Adding a new evaluator:**
+> **Note:** Folder names use `snake_case` (Python convention), but type names in metadata
+> use `provider/name` format with slash for external evaluators.
 
-1. **Create evaluator directory:**
-   ```bash
-   mkdir evaluators/src/agent_control_evaluators/my_evaluator/
-   ```
+**Creating a new evaluator:**
 
-2. **Define configuration model (`config.py`):**
-   ```python
-   from pydantic import BaseModel, Field
+Choose the appropriate type based on your use case:
 
-   class MyEvaluatorConfig(BaseModel):
-       """Configuration for MyEvaluator."""
-       threshold: float = Field(0.5, ge=0.0, le=1.0)
-       api_endpoint: str = Field(default="https://api.example.com")
-   ```
+| Type | When to Use | Name Format |
+|------|-------------|-------------|
+| Built-in | Core functionality, no external deps | `my-evaluator` |
+| External | External provider integration, optional deps | `provider/name` |
+| Agent-scoped | Custom logic deployed with agent | `my-agent:custom` |
 
-3. **Implement evaluator (`evaluator.py`):**
-   ```python
-   from typing import Any
-   from agent_control_models import EvaluatorResult
-   from agent_control_evaluators import (
-       Evaluator,
-       EvaluatorMetadata,
-       register_evaluator,
-   )
-   from .config import MyEvaluatorConfig
+### Creating a Third-Party Evaluator (Recommended for External Providers)
 
-   @register_evaluator
-   class MyEvaluator(Evaluator[MyEvaluatorConfig]):
-       """My custom evaluator."""
+This example creates a external evaluator `acme/toxicity`:
 
-       metadata = EvaluatorMetadata(
-           name="my-evaluator",
-           version="1.0.0",
-           description="Custom detection logic",
-           requires_api_key=False,
-           timeout_ms=5000,
-       )
-       config_model = MyEvaluatorConfig
+**1. Create evaluator directory:**
+```bash
+mkdir -p evaluators/src/agent_control_evaluators/acme_toxicity/
+touch evaluators/src/agent_control_evaluators/acme_toxicity/__init__.py
+```
 
-       def __init__(self, config: MyEvaluatorConfig) -> None:
-           super().__init__(config)
-           # Initialize any clients or resources
+**2. Define configuration model (`config.py`):**
+```python
+from pydantic import Field
+from agent_control_evaluators import EvaluatorConfig
 
-       async def evaluate(self, data: Any) -> EvaluatorResult:
-           # Your detection logic here
-           score = await self._analyze(str(data))
 
-           return EvaluatorResult(
-               matched=score > self.config.threshold,
-               confidence=score,
-               message=f"Analysis score: {score:.2f}",
-               metadata={"score": score},
-           )
-   ```
+class AcmeToxicityEvaluatorConfig(EvaluatorConfig):
+    """Configuration for Acme Toxicity evaluator."""
 
-4. **Export in `__init__.py`:**
-   ```python
-   from .config import MyEvaluatorConfig
-   from .evaluator import MyEvaluator
+    threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Score threshold for triggering (0.0-1.0)",
+    )
+    categories: list[str] = Field(
+        default_factory=lambda: ["hate", "violence"],
+        description="Toxicity categories to check",
+    )
+    timeout_ms: int = Field(
+        default=5000,
+        ge=100,
+        le=30000,
+        description="API timeout in milliseconds",
+    )
+```
 
-   __all__ = ["MyEvaluator", "MyEvaluatorConfig"]
-   ```
+**3. Implement evaluator (`evaluator.py`):**
+```python
+from typing import Any
 
-5. **Add optional dependencies in `evaluators/pyproject.toml`:**
-   ```toml
-   [project.optional-dependencies]
-   my-evaluator = ["httpx>=0.24.0"]  # Add your dependencies
-   all = ["httpx>=0.24.0", ...]      # Include in 'all' extra
-   ```
+from agent_control_models import EvaluatorResult
 
-6. **Add tests in `evaluators/tests/`**
+from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
+from agent_control_evaluators._registry import register_evaluator
+from agent_control_evaluators.acme_toxicity.config import AcmeToxicityEvaluatorConfig
 
-**Evaluator Best Practices:**
-- Use Pydantic for config validation
-- Make API calls async with httpx
-- Return confidence scores (0.0-1.0)
-- Include helpful metadata for debugging
-- Handle errors gracefully (respect `on_error` config)
-- Avoid storing request-scoped state (evaluators are cached)
+# Check optional dependency
+try:
+    import httpx
+    ACME_AVAILABLE = True
+except ImportError:
+    ACME_AVAILABLE = False
+
+
+@register_evaluator
+class AcmeToxicityEvaluator(Evaluator[AcmeToxicityEvaluatorConfig]):
+    """Acme Toxicity detection evaluator.
+
+    Calls the Acme API to detect toxic content in text.
+
+    Example config:
+        {"threshold": 0.8, "categories": ["hate", "harassment"]}
+    """
+
+    metadata = EvaluatorMetadata(
+        name="acme/toxicity",  # <-- External provider with slash
+        version="1.0.0",
+        description="Acme toxicity detection API",
+        requires_api_key=True,
+        timeout_ms=5000,
+    )
+    config_model = AcmeToxicityConfig
+
+    @classmethod
+    def is_available(cls) -> bool:
+        """Check if httpx dependency is installed."""
+        return ACME_AVAILABLE
+
+    def __init__(self, config: AcmeToxicityEvaluatorConfig) -> None:
+        super().__init__(config)
+        # Pre-compile or initialize resources here (will be cached)
+        self._client: httpx.AsyncClient | None = None
+
+    async def evaluate(self, data: Any) -> EvaluatorResult:
+        """Evaluate text for toxicity."""
+        if data is None:
+            return EvaluatorResult(
+                matched=False,
+                confidence=1.0,
+                message="No data to evaluate",
+            )
+
+        text = str(data)
+
+        try:
+            score = await self._call_api(text)
+            matched = score >= self.config.threshold
+
+            return EvaluatorResult(
+                matched=matched,
+                confidence=score,
+                message=f"Toxicity score: {score:.2f}",
+                metadata={
+                    "score": score,
+                    "threshold": self.config.threshold,
+                    "categories": self.config.categories,
+                },
+            )
+        except Exception as e:
+            # Return error result (fail-open by default)
+            return EvaluatorResult(
+                matched=False,
+                confidence=0.0,
+                message=f"Evaluation failed: {e}",
+                error=f"{type(e).__name__}: {str(e)[:200]}",
+            )
+
+    async def _call_api(self, text: str) -> float:
+        """Call Acme API and return toxicity score."""
+        # Implementation details...
+        pass
+```
+
+**4. Export in `__init__.py`:**
+```python
+from agent_control_evaluators.acme_toxicity.config import AcmeToxicityEvaluatorConfig
+from agent_control_evaluators.acme_toxicity.evaluator import AcmeToxicityEvaluator
+
+__all__ = ["AcmeToxicityEvaluator", "AcmeToxicityEvaluatorConfig"]
+```
+
+**5. Register entry point in `evaluators/pyproject.toml`:**
+```toml
+[project.optional-dependencies]
+acme = ["httpx>=0.24.0"]  # Your dependencies
+all = ["httpx>=0.24.0"]   # Include in 'all' extra
+
+[project.entry-points."agent_control.evaluators"]
+regex = "agent_control_evaluators.regex:RegexEvaluator"
+list = "agent_control_evaluators.list:ListEvaluator"
+# ... existing entries ...
+"acme/toxicity" = "agent_control_evaluators.acme_toxicity:AcmeToxicityEvaluator"
+```
+
+**6. Add tests in `evaluators/tests/acme_toxicity/`**
+
+### Creating a Built-in Evaluator
+
+For evaluators with no external dependencies (to be included in core), follow the same pattern but:
+- Use simple name: `name="my-evaluator"` (no slash)
+- No `is_available()` override needed
+- Import directly in `evaluators/src/agent_control_evaluators/__init__.py` for auto-registration:
+  ```python
+  from agent_control_evaluators.my_evaluator import MyEvaluator, MyEvaluatorConfig
+  ```
+
+### Evaluator Best Practices
+
+**Thread Safety & Caching:**
+- Evaluator instances are **cached and reused** across requests
+- **DO NOT** store mutable request-scoped state on `self`
+- Use local variables in `evaluate()` for request-specific data
+- Initialize immutable resources in `__init__()` (compiled patterns, clients)
+
+**Error Handling:**
+- Set `error` field for evaluator failures (API errors, timeouts)
+- Return `matched=False` when `error` is set (fail-open)
+- DO NOT set `error` for validation failures (bad input is a valid "matched" result)
+
+**Performance:**
+- Pre-compile patterns in `__init__()`
+- Use `asyncio.to_thread()` for CPU-bound work (see SQL evaluator)
+- Respect `timeout_ms` config for external API calls
+
+**Config Validation:**
+- Extend `EvaluatorConfig` (not plain `BaseModel`)
+- Use Pydantic validators for complex rules
+- Provide sensible defaults with `Field(default=...)`
 
 ---
 
@@ -465,21 +579,18 @@ test: add control set integration tests
 
 ### Add a new evaluator
 
-1. Create evaluator directory in `evaluators/src/agent_control_evaluators/`
-2. Implement `Evaluator` interface (see Evaluators section above)
-3. Add `@register_evaluator` decorator to your evaluator class
-4. Add optional dependencies in `evaluators/pyproject.toml`
-5. Export from `evaluators/src/agent_control_evaluators/__init__.py`
-6. Add tests in `evaluators/tests/`
-7. Update `docs/OVERVIEW.md` with usage examples
+See the **Evaluators** section above for detailed instructions. Summary:
 
-### Add a built-in evaluator (regex/list style)
-
-1. Create evaluator directory in `evaluators/src/agent_control_evaluators/my_evaluator/`
-2. Add `config.py` with your config model extending `EvaluatorConfig`
-3. Add `evaluator.py` with your evaluator class using `@register_evaluator` decorator
-4. Add entry point in `evaluators/pyproject.toml`
-5. Add comprehensive tests in `evaluators/tests/`
+1. Decide on evaluator type (built-in vs external)
+2. Create directory: `evaluators/src/agent_control_evaluators/my_evaluator/`
+3. Add `config.py` extending `EvaluatorConfig`
+4. Add `evaluator.py` with `@register_evaluator` decorator
+5. Add entry point in `evaluators/pyproject.toml`:
+   - Built-in: `my-evaluator = "..."`
+   - External: `"provider/name" = "..."`
+6. Add optional dependencies if needed
+7. Add tests in `evaluators/tests/`
+8. Update `docs/OVERVIEW.md` with usage examples
 
 ### Update shared models
 
@@ -505,28 +616,115 @@ test: add control set integration tests
 
 ---
 
+## Evaluator Naming Conventions
+
+### Terminology
+
+There are three distinct concepts related to evaluators:
+
+| Concept | Definition | Example |
+|---------|------------|---------|
+| **Evaluator Type** | An implementation class with `evaluate()` method | `RegexEvaluator`, `Luna2Evaluator` |
+| **Evaluator Schema** | Metadata about a custom type (name + JSON Schema for config validation) | Registered via `initAgent` |
+| **Evaluator Config** | A saved configuration template (type + specific config values) | Stored via `/evaluator-configs` API |
+
+### Evaluator Type Name Formats
+
+Evaluator type names identify evaluator implementations. The format indicates the evaluator's origin:
+
+| Format | Origin | Examples |
+|--------|--------|----------|
+| `name` | Built-in (first-party, no dependencies) | `regex`, `list`, `json`, `sql` |
+| `provider/name` | External (external providers, optional deps) | `galileo/luna2`, `nvidia/nemo` |
+| `agent:name` | Agent-scoped (custom code deployed with agent) | `my-agent:pii-detector` |
+
+**Parsing rules:**
+```python
+if ":" in name:    # Agent-scoped (split on first ":")
+    agent, evaluator = name.split(":", 1)
+elif "/" in name:  # External provider (split on first "/")
+    provider, evaluator = name.split("/", 1)
+else:              # Built-in
+    evaluator = name
+```
+
+### Built-in vs Third-Party Evaluators
+
+**Built-in evaluators** (`regex`, `list`, `json`, `sql`):
+- No namespace prefix
+- Core dependencies only (included in base package)
+- Imported and registered automatically on package import
+
+**External evaluators** (`galileo/luna2`):
+- Use `provider/name` format with slash separator
+- Have optional dependencies (install via extras: `pip install agent-control-evaluators[luna2]`)
+- Discovered via Python entry points (not auto-imported)
+
+### Agent-Scoped Evaluators
+
+Agent-scoped evaluators (`my-agent:pii-detector`) are custom evaluator types that:
+1. Are **implemented in the agent's code** (not in the evaluators package)
+2. Have their **schema registered via `initAgent`** for config validation
+3. Are **server-only** (SDK cannot run them locally)
+
+```
+Agent Code                          Server Database
+┌─────────────────────┐            ┌─────────────────────────────┐
+│ @register_evaluator │  initAgent │ Agent: "my-agent"           │
+│ class PIIDetector   │ ─────────► │ Schemas: [{                 │
+│   ...               │            │   name: "pii-detector",     │
+└─────────────────────┘            │   config_schema: {...}      │
+                                   │ }]                          │
+                                   └─────────────────────────────┘
+```
+
+Controls reference them as `my-agent:pii-detector` (the `:` indicates agent scope).
+
+### Folder and File Naming
+
+| Item | Convention | Example |
+|------|------------|---------|
+| Folder name | `snake_case` (Python package) | `galileo_luna2/` |
+| Entry point key | Same as type name | `"galileo/luna2"` |
+| Metadata name | Same as type name | `name="galileo/luna2"` |
+
+> **Note:** In code, use "provider" as the type identifier. In user-facing docs,
+> use "external" as the descriptive term.
+
+---
+
 ## Evaluator Development Quick Reference
 
 | Task | Location |
 |------|----------|
 | Evaluator base class | `agent_control_evaluators.Evaluator` |
+| Config base class | `agent_control_evaluators.EvaluatorConfig` |
 | Evaluator metadata | `agent_control_evaluators.EvaluatorMetadata` |
 | Evaluator result | `agent_control_models.EvaluatorResult` |
 | Register decorator | `@agent_control_evaluators.register_evaluator` |
 | Built-in evaluators | `evaluators/src/agent_control_evaluators/{regex,list,json,sql}/` |
+| External evaluators | `evaluators/src/agent_control_evaluators/galileo_luna2/` |
 | Evaluator tests | `evaluators/tests/` |
+
+**Naming convention quick reference:**
+```
+Built-in:      regex, list, json, sql
+External:   galileo/luna2, nvidia/nemo
+Agent-scoped:  my-agent:pii-detector
+```
 
 **Evaluator config model fields:**
 ```python
-from pydantic import BaseModel, Field
+from pydantic import Field
+from agent_control_evaluators import EvaluatorConfig
 
-class MyConfig(BaseModel):
+class MyEvaluatorConfig(EvaluatorConfig):
     # Required field
     pattern: str = Field(..., description="Pattern to match")
-    
+
     # Optional with default
     threshold: float = Field(0.5, ge=0.0, le=1.0)
-    
+
     # List field
     values: list[str] = Field(default_factory=list)
 ```

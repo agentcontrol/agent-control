@@ -4,11 +4,20 @@ This package contains evaluator implementations for agent-control.
 Built-in evaluators (regex, list, json, sql) are registered automatically on import.
 
 Available evaluators:
-    - regex: Regular expression matching (built-in)
-    - list: List-based value matching (built-in)
-    - json: JSON validation (built-in)
-    - sql: SQL query validation (built-in)
-    - galileo-luna2: Galileo Luna-2 runtime protection (pip install agent-control-evaluators[luna2])
+    Built-in (no namespace):
+        - regex: Regular expression matching
+        - list: List-based value matching
+        - json: JSON validation
+        - sql: SQL query validation
+
+    External (provider/name format):
+        - galileo/luna2: Galileo Luna-2 runtime protection
+          (pip install agent-control-evaluators[luna2])
+
+Naming convention:
+    - Built-in: "regex", "list", "json", "sql"
+    - External: "provider/name" (e.g., "galileo/luna2")
+    - Agent-scoped: "agent:name" (custom code deployed with agent)
 
 Custom evaluators are Evaluator classes deployed with the engine.
 Their schemas are registered via initAgent for validation purposes.

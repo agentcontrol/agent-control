@@ -161,7 +161,7 @@ class EvaluatorSpec(BaseModel):
 
     Evaluator reference formats:
     - Built-in: "regex", "list", "json", "sql"
-    - External: "galileo-luna2" (requires agent-control-evaluators[luna2])
+    - External: "galileo/luna2" (requires agent-control-evaluators[luna2])
     - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
     """
 

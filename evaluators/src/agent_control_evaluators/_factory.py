@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING, Any
 from agent_control_evaluators._discovery import list_evaluators
 
 if TYPE_CHECKING:
-    from agent_control_evaluators._base import Evaluator
     from agent_control_models import EvaluatorSpec
+
+    from agent_control_evaluators._base import Evaluator
 
 logger = logging.getLogger(__name__)
 

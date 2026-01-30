@@ -302,7 +302,7 @@ scope:
 selector:
   path: input
 evaluator:
-  name: galileo-luna2
+  name: galileo/luna2
   config:
     stage_type: local
     metric: input_toxicity

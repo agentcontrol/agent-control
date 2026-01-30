@@ -9,9 +9,9 @@ Evaluator implementations for agent-control.
 - **json** - JSON schema validation
 - **sql** - SQL query validation using sqlglot
 
-## Optional Evaluators
+## External Evaluators
 
-- **galileo-luna2** - Galileo Luna-2 integration (requires `luna2` extra)
+- **galileo/luna2** - Galileo Luna-2 integration (requires `luna2` extra)
 
 ## Installation
 

@@ -236,7 +236,7 @@ Flexible value matching with multiple modes and logic options.
 
 ---
 
-### 3. Luna-2 Evaluator (`galileo-luna2`)
+### 3. Luna-2 Evaluator (`galileo/luna2`)
 
 AI-powered detection using Galileo's Luna-2 small language models. Provides real-time, low-latency evaluation for complex patterns that can't be caught with regex or lists.
 
@@ -267,7 +267,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 ```json
 // Block toxic inputs (score > 0.5)
 {
-  "name": "galileo-luna2",
+  "name": "galileo/luna2",
   "config": {
     "metric": "input_toxicity",
     "operator": "gt",
@@ -278,7 +278,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Block prompt injection attempts
 {
-  "name": "galileo-luna2",
+  "name": "galileo/luna2",
   "config": {
     "metric": "prompt_injection",
     "operator": "gt",
@@ -289,7 +289,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Flag potential hallucinations (warn but allow)
 {
-  "name": "galileo-luna2",
+  "name": "galileo/luna2",
   "config": {
     "metric": "hallucination",
     "operator": "gt",
@@ -299,7 +299,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Using a central stage (pre-defined server-side rules)
 {
-  "name": "galileo-luna2",
+  "name": "galileo/luna2",
   "config": {
     "stage_type": "central",
     "stage_name": "production-safety",
@@ -434,23 +434,28 @@ Every evaluator implements the `Evaluator` base class:
 
 ```python
 from typing import Any
-from pydantic import BaseModel
+
 from agent_control_models import EvaluatorResult
-from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
+from agent_control_evaluators import (
+    Evaluator,
+    EvaluatorConfig,
+    EvaluatorMetadata,
+    register_evaluator,
+)
 
 
-class MyEvaluatorConfig(BaseModel):
+class MyEvaluatorConfig(EvaluatorConfig):
     """Configuration schema for your evaluator."""
     threshold: float = 0.5
     custom_option: str = "default"
 
 
 @register_evaluator
-class MyCustomEvaluator(Evaluator[MyEvaluatorConfig]):
+class MyEvaluator(Evaluator[MyEvaluatorConfig]):
     """Your custom evaluator."""
 
     metadata = EvaluatorMetadata(
-        name="my-custom-evaluator",
+        name="my-evaluator",
         version="1.0.0",
         description="Detects custom patterns using proprietary logic",
         requires_api_key=True,  # Set to True if you need credentials
@@ -527,7 +532,7 @@ except ImportError:
     AVAILABLE = False
 
 @register_evaluator
-class MyEvaluator(Evaluator[MyConfig]):
+class MyEvaluator(Evaluator[MyEvaluatorConfig]):
     @classmethod
     def is_available(cls) -> bool:
         return AVAILABLE
@@ -552,7 +557,7 @@ Here's how a partner might integrate their content moderation API:
 
 ```python
 @register_evaluator
-class ContentModerationEvaluator(Evaluator[ContentModConfig]):
+class ContentModerationEvaluator(Evaluator[ContentModerationEvaluatorConfig]):
     """Integration with Acme Content Moderation API."""
     
     metadata = EvaluatorMetadata(
@@ -562,9 +567,9 @@ class ContentModerationEvaluator(Evaluator[ContentModConfig]):
         requires_api_key=True,
         timeout_ms=3000,
     )
-    config_model = ContentModConfig
+    config_model = ContentModerationEvaluatorConfig
 
-    def __init__(self, config: ContentModConfig) -> None:
+    def __init__(self, config: ContentModerationEvaluatorConfig) -> None:
         super().__init__(config)
         self.client = AcmeClient(api_key=os.getenv("ACME_API_KEY"))
 

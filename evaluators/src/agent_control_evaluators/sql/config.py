@@ -1,7 +1,7 @@
 """Configuration for SQL validation evaluator."""
 
 import warnings
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import Field, model_validator
 
