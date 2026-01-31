@@ -16,11 +16,7 @@ from agent_control_models import (
     register_evaluator,
 )
 
-# Import config - handle both relative and absolute imports
-try:
-    from .config import DeepEvalEvaluatorConfig
-except ImportError:
-    from config import DeepEvalEvaluatorConfig
+from .config import DeepEvalEvaluatorConfig
 
 logger = logging.getLogger(__name__)
 

@@ -193,12 +193,14 @@ The server will be running at `http://localhost:8000`.
 ### 3. Install DeepEval Example
 
 ```bash
-# Install the DeepEval example package with its dependencies
+# Navigate to the DeepEval example directory
 cd examples/deepeval
-uv sync
+
+# Install the example package in editable mode with its dependencies
+uv pip install -e .
 ```
 
-This installs the evaluator package and makes it discoverable by the server via entry points.
+This installs the evaluator package in editable mode and makes it discoverable by the server via entry points.
 
 ### 4. Set Environment Variables
 
