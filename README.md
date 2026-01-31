@@ -3,8 +3,8 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI version](https://img.shields.io/pypi/v/agent-control-sdk.svg)](https://pypi.org/project/agent-control-sdk/)
-[![CI](https://github.com/rungalileo/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/rungalileo/agent-control/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/rungalileo/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/rungalileo/agent-control)
+[![CI](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/agentcontrol/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/agentcontrol/agent-control)
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
@@ -91,7 +91,7 @@ except ControlViolationError as e:
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/rungalileo/agent-control.git
+git clone https://github.com/agentcontrol/agent-control.git
 cd agent-control
 make sync
 ```
