@@ -53,8 +53,15 @@ jobs:
       - name: Type check
         run: make typecheck
 
-      - name: Test
+      - name: Test with coverage
         run: make test
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage-engine.xml,coverage-server.xml,coverage-sdk.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   ui-ci:
     runs-on: ubuntu-latest

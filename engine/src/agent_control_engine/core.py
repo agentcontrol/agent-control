@@ -80,7 +80,9 @@ class ControlEngine:
         self.context = context
 
     def get_applicable_controls(
-        self, request: EvaluationRequest
+        self,
+        request: EvaluationRequest,
+        selector_errors: list[ControlMatch] | None = None,
     ) -> list[ControlWithIdentity]:
         """Get all controls that apply to the current request."""
         applicable = []
@@ -113,9 +115,26 @@ class ControlEngine:
                     try:
                         if _compile_regex(scope.step_name_regex).search(step_name) is not None:
                             match = True
-                    except re2.error:
+                    except re2.error as e:
                         # Invalid pattern should have been caught at model validation;
-                        # skip defensively.
+                        # skip defensively but surface an error if requested.
+                        if selector_errors is not None:
+                            selector_errors.append(
+                                ControlMatch(
+                                    control_id=item.id,
+                                    control_name=item.name,
+                                    action=control_def.action.decision,
+                                    result=EvaluatorResult(
+                                        matched=False,
+                                        confidence=0.0,
+                                        message=(
+                                            "Control skipped due to invalid step_name_regex: "
+                                            f"'{scope.step_name_regex}'"
+                                        ),
+                                        error=f"Invalid step_name_regex: {e}",
+                                    ),
+                                )
+                            )
                         continue
                 if not match:
                     continue
@@ -136,10 +155,17 @@ class ControlEngine:
         Returns:
             EvaluationResponse with is_safe status and any matches
         """
-        applicable = self.get_applicable_controls(request)
+        precheck_errors: list[ControlMatch] = []
+        applicable = self.get_applicable_controls(request, selector_errors=precheck_errors)
 
         if not applicable:
-            return EvaluationResponse(is_safe=True, confidence=1.0, matches=None)
+            confidence = 0.0 if precheck_errors else 1.0
+            return EvaluationResponse(
+                is_safe=True,
+                confidence=confidence,
+                matches=None,
+                errors=precheck_errors or None,
+            )
 
         # Prepare evaluation tasks
         eval_tasks: list[_EvalTask] = []
@@ -235,7 +261,7 @@ class ControlEngine:
                 pass
 
         # Collect results and errors
-        errors: list[ControlMatch] = []
+        errors: list[ControlMatch] = list(precheck_errors)
         non_matches: list[ControlMatch] = []
         successful_count = 0
         evaluated_count = 0  # Controls that ran (not cancelled)

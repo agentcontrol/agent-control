@@ -2,6 +2,59 @@
 
 <!-- version list -->
 
+## v3.0.0 (2026-01-30)
+
+### Bug Fixes
+
+- Tighten evaluation error handling and preserve control data
+  ([`52a1ef8`](https://github.com/rungalileo/agent-control/commit/52a1ef8127aca382e373ee6b6433a2d527e6e5e2))
+
+- **examples**: Update crew ai example to use evaluator
+  ([#93](https://github.com/rungalileo/agent-control/pull/93),
+  [`1c65084`](https://github.com/rungalileo/agent-control/commit/1c6508434860ed5bb56c622a721197c5a8f7ad4e))
+
+- **sdk**: Fix logging ([#77](https://github.com/rungalileo/agent-control/pull/77),
+  [`b1f078c`](https://github.com/rungalileo/agent-control/commit/b1f078c52c29ac048a9bcbea09252786e842acbd))
+
+- **sdk**: Plugin to evaluator.. agent_protect to agent_control
+  ([#88](https://github.com/rungalileo/agent-control/pull/88),
+  [`fc9b088`](https://github.com/rungalileo/agent-control/commit/fc9b088fcd091132a1e38deae372b73fc2834beb))
+
+- **ui**: Fix UI and clients for simplified step schema
+  ([#75](https://github.com/rungalileo/agent-control/pull/75),
+  [`be2aaf0`](https://github.com/rungalileo/agent-control/commit/be2aaf0ae43a9051cb60ce3597f089307f731d0a))
+
+### Documentation
+
+- **examples**: Add crew ai example ([#84](https://github.com/rungalileo/agent-control/pull/84),
+  [`1077c3b`](https://github.com/rungalileo/agent-control/commit/1077c3b9281ece7885383dccf58dbf0e4e70080e))
+
+### Features
+
+- **docs**: Add GitHub badges and CI coverage reporting
+  ([#90](https://github.com/rungalileo/agent-control/pull/90),
+  [`be1fa14`](https://github.com/rungalileo/agent-control/commit/be1fa140e4208993886f0afaef29b4a45fd27253))
+
+- **ui**: Stats dashboard ([#80](https://github.com/rungalileo/agent-control/pull/80),
+  [`4cbb7fe`](https://github.com/rungalileo/agent-control/commit/4cbb7fee43ed14145815c9fd807b150f19200654))
+
+### Refactoring
+
+- **evaluators**: Rename plugin to evaluator throughout
+  ([#81](https://github.com/rungalileo/agent-control/pull/81),
+  [`0134682`](https://github.com/rungalileo/agent-control/commit/0134682c1d0f167528d7267507dbcf3a1e7b3192))
+
+### Testing
+
+- **server**: Add behavioral coverage for controls, agents - follow up
+  ([#95](https://github.com/rungalileo/agent-control/pull/95),
+  [`dfa9c3f`](https://github.com/rungalileo/agent-control/commit/dfa9c3f2b110c96041893e392b3a11ab02cafcdb))
+
+- **server**: Add behavioral coverage for controls, agents, observability
+  ([#91](https://github.com/rungalileo/agent-control/pull/91),
+  [`d5c2301`](https://github.com/rungalileo/agent-control/commit/d5c2301a8707ad9b4c84400f64695c53505d479a))
+
+
 ## v2.1.0 (2026-01-27)
 
 ### Features

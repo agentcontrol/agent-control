@@ -35,6 +35,49 @@ Both systems work together: Agent Control provides non-negotiable security block
 - ✅ Works with existing CrewAI agent orchestration
 - ✅ Catches orchestration bypass where agent generates own responses with PII
 
+## Installation
+
+### For External Users (PyPI)
+
+If you're using this example outside the monorepo:
+
+```bash
+# Create virtual environment
+cd examples/crewai
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+python -m pip install -e .
+```
+
+This will install all dependencies including `agent-control-sdk>=2.1.0` from PyPI.
+
+### For Local Development (Monorepo)
+
+If you're developing within the agent-control monorepo:
+
+**Option 1: Use installed local SDK (recommended)**
+
+```bash
+# From monorepo root, activate your venv
+source .venv/bin/activate
+
+# Install local SDK in editable mode
+python -m pip install -e sdks/python
+
+# Navigate to example and install other dependencies
+cd examples/crewai
+python -m pip install crewai>=0.80.0 crewai-tools>=0.12.0 openai>=1.0.0 python-dotenv>=1.0.0 requests>=2.31.0
+```
+
+**Option 2: Use uv with workspace (if configured)**
+
+```bash
+cd examples/crewai
+uv pip install -e .
+```
+
 ## Prerequisites
 
 ### 1. Start the Agent Control Server
@@ -46,7 +89,7 @@ make server-run
 
 **Verify server is running:**
 ```bash
-curl http://localhost:8000/health 
+curl http://localhost:8000/health
 ```
 
 ### 2. Set OpenAI API Key
@@ -59,7 +102,7 @@ export OPENAI_API_KEY="your-key-here"
 
 ```bash
 cd examples/crewai
-uv run setup_content_controls.py
+python setup_content_controls.py
 ```
 
 This creates:
@@ -71,20 +114,18 @@ This creates:
 
 ## Running the Example
 
-**IMPORTANT:** You must run commands from the `examples/crewai` directory for uv to find dependencies.
+Make sure you're in the `examples/crewai` directory:
 
 ```bash
-# From repo root
 cd examples/crewai
 
 # Run the example
-uv run content_agent_protection.py
+python content_agent_protection.py
 ```
 
-**Alternative:** Run from repo root with explicit directory:
+Or if using uv:
 ```bash
-# From repo root
-cd examples/crewai && uv run content_agent_protection.py
+uv run content_agent_protection.py
 ```
 
 ### Expected Behavior
@@ -440,20 +481,38 @@ Return result or raise ControlViolationError
 
 ## Troubleshooting
 
-### "ModuleNotFoundError: No module named 'crewai'"
+### "ModuleNotFoundError: No module named 'crewai'" or "agent_control"
 
-**Cause:** Running `uv run` from the wrong directory. The `uv` tool needs to be run from the directory containing `pyproject.toml`.
+**Cause:** Dependencies not installed.
 
 **Fix:**
 ```bash
 # Make sure you're in the crewai directory
 cd examples/crewai
 
-# Then run the command
-uv run content_agent_protection.py
+# Activate your virtual environment if needed
+source .venv/bin/activate  # or source /path/to/monorepo/.venv/bin/activate
+
+# Install dependencies
+python -m pip install -e .
+
+# For monorepo development, also install local SDK
+python -m pip install -e ../../sdks/python
 ```
 
-**Do NOT run:** `uv run examples/crewai/content_agent_protection.py` from repo root - this won't work because uv won't find the pyproject.toml.
+### "externally managed environment" error with pip
+
+**Cause:** macOS Homebrew Python has protections against modifying system packages.
+
+**Fix:** Use a virtual environment:
+```bash
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Now install works
+python -m pip install -e .
+```
 
 ### "event loop already running" Error
 

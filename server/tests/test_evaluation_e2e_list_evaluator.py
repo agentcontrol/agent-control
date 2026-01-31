@@ -254,6 +254,7 @@ def test_list_evaluator_disallow_name(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.json()["is_safe"] is True
 
     # Case 2: Disallowed Tool
@@ -264,6 +265,7 @@ def test_list_evaluator_disallow_name(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_unsafe.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
 
@@ -297,6 +299,7 @@ def test_list_evaluator_allow_only_argument_values(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.json()["is_safe"] is True
 
     # Case 2: Disallowed Value
@@ -307,6 +310,7 @@ def test_list_evaluator_allow_only_argument_values(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_unsafe.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
 

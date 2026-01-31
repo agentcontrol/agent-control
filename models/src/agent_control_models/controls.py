@@ -5,7 +5,7 @@ from typing import Any, Literal, Self
 from uuid import uuid4
 
 import re2
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 
 from .base import BaseModel
 
@@ -114,8 +114,12 @@ class ControlScope(BaseModel):
 
     @field_validator("step_name_regex")
     @classmethod
-    def validate_step_name_regex(cls, v: str | None) -> str | None:
+    def validate_step_name_regex(
+        cls, v: str | None, info: ValidationInfo
+    ) -> str | None:
         if v is None:
+            return v
+        if info.context and info.context.get("allow_invalid_step_name_regex"):
             return v
         try:
             re2.compile(v)

@@ -76,8 +76,8 @@ def test_set_control_data_with_empty_dict_fails(client: TestClient) -> None:
     # Given: a control with non-empty data
     control_id = create_control(client)
     # When: setting empty dict
-    # Then: Fails 422 because strict schema is enforced
     resp_put = client.put(f"/api/v1/controls/{control_id}/data", json={"data": {}})
+    # Then: Fails 422 because strict schema is enforced
     assert resp_put.status_code == 422
 
 
@@ -91,6 +91,7 @@ def test_set_control_data_validates_nested_schema(client: TestClient) -> None:
     
     # Then: 422 Validation Error
     assert r.status_code == 422
+
     # Given: a non-existent control id
     missing = "99999999"
     # When: fetching data

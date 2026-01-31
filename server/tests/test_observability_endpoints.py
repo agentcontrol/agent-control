@@ -16,6 +16,7 @@ from agent_control_server.observability import (
     DirectEventIngestor,
     MemoryEventStore,
 )
+from agent_control_server.observability.ingest.base import IngestResult
 
 
 def create_test_event(
@@ -230,3 +231,164 @@ class TestMemoryEventStore:
         assert result.processed == 3
         assert result.dropped == 0
         assert store.event_count == 3
+
+
+class TestObservabilityQueries:
+    """Tests for observability query endpoints."""
+
+    def test_query_events_filters_and_pagination(self, client: TestClient):
+        """Test POST /events/query with filters and pagination."""
+        # Given: multiple events ingested into the store
+        event1 = create_test_event(control_id=1, action="allow", matched=True)
+        event2 = create_test_event(control_id=2, action="deny", matched=False).model_copy(
+            update={"trace_id": "c" * 32}
+        )
+        event3 = create_test_event(control_id=1, action="allow", matched=True).model_copy(
+            update={"span_id": "d" * 16}
+        )
+
+        request = BatchEventsRequest(events=[event1, event2, event3])
+        ingest_resp = client.post(
+            "/api/v1/observability/events",
+            json=request.model_dump(mode="json"),
+        )
+        assert ingest_resp.status_code == 202
+
+        # When: querying by trace_id
+        query = EventQueryRequest(trace_id="a" * 32, limit=10, offset=0)
+        resp = client.post(
+            "/api/v1/observability/events/query",
+            json=query.model_dump(mode="json"),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        # Then: only matching events are returned
+        assert body["total"] == 2
+        assert all(e["trace_id"] == "a" * 32 for e in body["events"])
+
+        # When: querying with pagination
+        query_page = EventQueryRequest(limit=1, offset=1)
+        resp_page = client.post(
+            "/api/v1/observability/events/query",
+            json=query_page.model_dump(mode="json"),
+        )
+        assert resp_page.status_code == 200
+        body_page = resp_page.json()
+        # Then: pagination works and total is preserved
+        assert body_page["total"] == 3
+        assert len(body_page["events"]) == 1
+
+    def test_get_stats_aggregates_events(self, client: TestClient):
+        """Test GET /stats aggregates events for an agent."""
+        # Given: events for a specific agent and one other agent
+        agent_uuid = uuid4()
+        event1 = create_test_event(control_id=1, action="allow", matched=True).model_copy(
+            update={"agent_uuid": agent_uuid}
+        )
+        event2 = create_test_event(control_id=1, action="deny", matched=False).model_copy(
+            update={"agent_uuid": agent_uuid}
+        )
+        event3 = create_test_event(control_id=2, action="deny", matched=True).model_copy(
+            update={"agent_uuid": agent_uuid}
+        )
+        event_other = create_test_event(control_id=3).model_copy(
+            update={"agent_uuid": uuid4()}
+        )
+
+        request = BatchEventsRequest(events=[event1, event2, event3, event_other])
+        ingest_resp = client.post(
+            "/api/v1/observability/events",
+            json=request.model_dump(mode="json"),
+        )
+        assert ingest_resp.status_code == 202
+
+        # When: requesting stats for the target agent
+        resp = client.get(
+            "/api/v1/observability/stats",
+            params={"agent_uuid": str(agent_uuid), "time_range": "1h"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        # Then: stats reflect only that agent's events
+        assert body["total_executions"] == 3
+        assert body["total_matches"] == 2
+        assert body["total_non_matches"] == 1
+
+    def test_query_events_returns_500_when_store_missing(self, client: TestClient):
+        """Test that query endpoint fails when the event store is not initialized."""
+        # Given: the event store is unset
+        original_store = app.state.event_store
+        app.state.event_store = None
+        try:
+            # When: posting a query
+            query = EventQueryRequest(limit=10, offset=0)
+            with pytest.raises(RuntimeError):
+                client.post(
+                    "/api/v1/observability/events/query",
+                    json=query.model_dump(mode="json"),
+                )
+        finally:
+            app.state.event_store = original_store
+
+        # Then: an internal error is returned
+        # (exception raised due to TestClient raise_server_exceptions=True)
+
+
+class TestObservabilityIngestStatus:
+    """Tests for ingestion status mapping."""
+
+    def test_ingest_events_partial_status(self, client: TestClient):
+        # Given: a stub ingestor that drops some events
+        class StubIngestor:
+            async def ingest(self, events):
+                return IngestResult(received=len(events), processed=1, dropped=len(events) - 1)
+
+        original = app.state.event_ingestor
+        app.state.event_ingestor = StubIngestor()
+        try:
+            events = [create_test_event(i) for i in range(3)]
+            request = BatchEventsRequest(events=events)
+
+            # When: ingesting events
+            response = client.post(
+                "/api/v1/observability/events",
+                json=request.model_dump(mode="json"),
+            )
+
+            # Then: status is partial with expected counts
+            assert response.status_code == 202
+            data = response.json()
+            assert data["received"] == 3
+            assert data["enqueued"] == 1
+            assert data["dropped"] == 2
+            assert data["status"] == "partial"
+        finally:
+            app.state.event_ingestor = original
+
+    def test_ingest_events_failed_status(self, client: TestClient):
+        # Given: a stub ingestor that drops all events
+        class StubIngestor:
+            async def ingest(self, events):
+                return IngestResult(received=len(events), processed=0, dropped=len(events))
+
+        original = app.state.event_ingestor
+        app.state.event_ingestor = StubIngestor()
+        try:
+            events = [create_test_event(i) for i in range(2)]
+            request = BatchEventsRequest(events=events)
+
+            # When: ingesting events
+            response = client.post(
+                "/api/v1/observability/events",
+                json=request.model_dump(mode="json"),
+            )
+
+            # Then: status is failed with expected counts
+            assert response.status_code == 202
+            data = response.json()
+            assert data["received"] == 2
+            assert data["enqueued"] == 0
+            assert data["dropped"] == 2
+            assert data["status"] == "failed"
+        finally:
+            app.state.event_ingestor = original

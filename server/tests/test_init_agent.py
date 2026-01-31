@@ -47,6 +47,8 @@ def make_agent_payload(
 def test_init_agent_route_exists(app: FastAPI) -> None:
     # Given: an application router
     paths = {getattr(route, "path", None) for route in app.router.routes}
+    # When: inspecting registered paths
+    # (computation done above to gather all paths)
     # Then: initAgent and agent retrieval endpoints are present
     assert "/api/v1/agents/initAgent" in paths
     assert "/api/v1/agents/{agent_id}" in paths
@@ -454,6 +456,7 @@ def test_init_agent_rejects_non_uuid_agent_id(client: TestClient) -> None:
 
 def test_list_agents_empty(client: TestClient) -> None:
     """Test listing agents when none exist returns empty list."""
+    # Given: no agents are registered
     # When: listing agents with no agents created
     resp = client.get("/api/v1/agents")
     # Then: returns empty list with zero total
@@ -546,6 +549,7 @@ def test_list_agents_pagination(client: TestClient) -> None:
     resp = client.get("/api/v1/agents?limit=2")
     assert resp.status_code == 200
     body = resp.json()
+    # Then: pagination metadata indicates more pages
     assert body["pagination"]["total"] == 5
     assert len(body["agents"]) == 2
     assert body["pagination"]["limit"] == 2
@@ -557,6 +561,7 @@ def test_list_agents_pagination(client: TestClient) -> None:
     resp2 = client.get(f"/api/v1/agents?limit=2&cursor={cursor}")
     assert resp2.status_code == 200
     body2 = resp2.json()
+    # Then: second page returns two more agents
     assert body2["pagination"]["total"] == 5
     assert len(body2["agents"]) == 2
     assert body2["pagination"]["has_more"] is True
@@ -566,6 +571,7 @@ def test_list_agents_pagination(client: TestClient) -> None:
     resp3 = client.get(f"/api/v1/agents?limit=2&cursor={cursor2}")
     assert resp3.status_code == 200
     body3 = resp3.json()
+    # Then: last page returns remaining agent and ends pagination
     assert body3["pagination"]["total"] == 5
     assert len(body3["agents"]) == 1
     assert body3["pagination"]["has_more"] is False

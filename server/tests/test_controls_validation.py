@@ -11,9 +11,8 @@ def create_control(client: TestClient) -> int:
 
 def test_validation_invalid_logic_enum(client: TestClient):
     """Test that invalid enum values in config are rejected."""
+    # Given: a control and a payload with invalid 'logic' value
     control_id = create_control(client)
-    
-    # Given: Payload with invalid 'logic' value
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
         "name": "list",
@@ -24,13 +23,13 @@ def test_validation_invalid_logic_enum(client: TestClient):
         }
     }
     
-    # When: Setting control data
+    # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
-    
+
     # Then: 422 Unprocessable Entity
     assert resp.status_code == 422
     
-    # Verify error message mentions the field (RFC 7807 format)
+    # Then: error message mentions the field (RFC 7807 format)
     response_data = resp.json()
     errors = response_data.get("errors", [])
     assert any("logic" in str(e.get("field", "")) for e in errors)
@@ -39,9 +38,8 @@ def test_validation_invalid_logic_enum(client: TestClient):
 
 def test_validation_discriminator_mismatch(client: TestClient):
     """Test that config must match the evaluator type."""
+    # Given: a control and type='list' but config has 'pattern' (RegexEvaluatorConfig)
     control_id = create_control(client)
-    
-    # Given: type='list' but config has 'pattern' (RegexEvaluatorConfig)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
         "name": "list",
@@ -51,13 +49,13 @@ def test_validation_discriminator_mismatch(client: TestClient):
         }
     }
 
-    # When: Setting control data
+    # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
     # Then: 422 Unprocessable Entity
     assert resp.status_code == 422
 
-    # Verify error mentions missing required field for ListEvaluatorConfig (RFC 7807 format)
+    # Then: error mentions missing required field for ListEvaluatorConfig (RFC 7807 format)
     response_data = resp.json()
     errors = response_data.get("errors", [])
     # Expecting 'values' field missing
@@ -67,9 +65,8 @@ def test_validation_discriminator_mismatch(client: TestClient):
 
 def test_validation_regex_flags_list(client: TestClient):
     """Test validation of regex flags list."""
+    # Given: a control and regex config with invalid flags type (string instead of list)
     control_id = create_control(client)
-    
-    # Given: regex config with invalid flags type (string instead of list)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
         "name": "regex",
@@ -79,9 +76,9 @@ def test_validation_regex_flags_list(client: TestClient):
         }
     }
     
-    # When: Setting control data
+    # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
-    
+
     # Then: 422 (RFC 7807 format)
     assert resp.status_code == 422
     response_data = resp.json()
@@ -91,9 +88,8 @@ def test_validation_regex_flags_list(client: TestClient):
 
 def test_validation_invalid_regex_pattern(client: TestClient):
     """Test validation of regex pattern syntax."""
+    # Given: a control and regex config with invalid pattern (unclosed bracket)
     control_id = create_control(client)
-    
-    # Given: regex config with invalid pattern (unclosed bracket)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
         "name": "regex",
@@ -103,34 +99,33 @@ def test_validation_invalid_regex_pattern(client: TestClient):
         }
     }
     
-    # When: Setting control data
+    # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
-    
+
     # Then: 422 Unprocessable Entity (RFC 7807 format)
     assert resp.status_code == 422
     
     response_data = resp.json()
     errors = response_data.get("errors", [])
-    # Verify error message mentions regex compilation failure
+    # Then: error message mentions regex compilation failure
     assert any("pattern" in str(e.get("field", "")) for e in errors)
     assert any("Invalid regex pattern" in e.get("message", "") for e in errors)
 
 
 def test_validation_empty_string_path_rejected(client: TestClient):
     """Test that empty string path is rejected."""
+    # Given: a control and payload with empty string path
     control_id = create_control(client)
-
-    # Given: Payload with empty string path
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["selector"] = {"path": ""}
 
-    # When: Setting control data
+    # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
     # Then: 422 Unprocessable Entity (RFC 7807 format)
     assert resp.status_code == 422
 
-    # Verify error message mentions path
+    # Then: error message mentions path
     response_data = resp.json()
     errors = response_data.get("errors", [])
     assert any("path" in str(e.get("field", "")).lower() for e in errors)
@@ -139,19 +134,18 @@ def test_validation_empty_string_path_rejected(client: TestClient):
 
 def test_validation_none_path_defaults_to_star(client: TestClient):
     """Test that None/missing path defaults to '*'."""
+    # Given: a control and payload without path in selector (None)
     control_id = create_control(client)
-
-    # Given: Payload without path in selector (None)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["selector"] = {}  # No path specified
 
-    # When: Setting control data
+    # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
-    # Then: Succeeds
+    # Then: succeeds
     assert resp.status_code == 200, resp.text
 
-    # When: Reading back
+    # When: reading back
     get_resp = client.get(f"/api/v1/controls/{control_id}/data")
     assert get_resp.status_code == 200
 
@@ -162,18 +156,17 @@ def test_validation_none_path_defaults_to_star(client: TestClient):
 
 def test_get_control_data_returns_typed_response(client: TestClient):
     """Test that GET control data returns a typed ControlDefinition."""
+    # Given: a control with valid control data
     control_id = create_control(client)
-
-    # Given: Set valid control data
     resp_put = client.put(
         f"/api/v1/controls/{control_id}/data", json={"data": VALID_CONTROL_PAYLOAD}
     )
     assert resp_put.status_code == 200
 
-    # When: Getting control data
+    # When: getting control data
     resp_get = client.get(f"/api/v1/controls/{control_id}/data")
 
-    # Then: Response should be typed with all expected fields
+    # Then: response should be typed with all expected fields
     assert resp_get.status_code == 200
     data = resp_get.json()["data"]
 
@@ -187,19 +180,18 @@ def test_get_control_data_returns_typed_response(client: TestClient):
 
 def test_validation_empty_step_names_rejected(client: TestClient):
     """Test that empty step_names list is rejected."""
+    # Given: a control and payload with empty step_names list
     control_id = create_control(client)
-
-    # Given: Payload with empty step_names list
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["scope"] = {"step_names": []}
 
-    # When: Setting control data
+    # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
     # Then: 422 Unprocessable Entity (RFC 7807 format)
     assert resp.status_code == 422
 
-    # Verify error message mentions step_names
+    # Then: error message mentions step_names
     response_data = resp.json()
     errors = response_data.get("errors", [])
     assert any("step_names" in str(e.get("field", "")) for e in errors)

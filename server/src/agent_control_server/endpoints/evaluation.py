@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import observability_settings
 from ..db import get_async_db
-from ..errors import APIValidationError
+from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
 from ..observability.ingest.base import EventIngestor
@@ -91,10 +91,22 @@ async def evaluate(
         select(Agent).where(Agent.agent_uuid == request.agent_uuid)
     )
     agent = agent_result.scalar_one_or_none()
-    agent_name = agent.name if agent else "unknown"
+    if agent is None:
+        raise NotFoundError(
+            error_code=ErrorCode.AGENT_NOT_FOUND,
+            detail=f"Agent '{request.agent_uuid}' not found",
+            resource="Agent",
+            resource_id=str(request.agent_uuid),
+            hint="Register the agent via initAgent before evaluating.",
+        )
+    agent_name = agent.name
 
     # Fetch controls for the agent (already validated as ControlDefinition)
-    api_controls = await list_controls_for_agent(request.agent_uuid, db)
+    api_controls = await list_controls_for_agent(
+        request.agent_uuid,
+        db,
+        allow_invalid_step_name_regex=True,
+    )
 
     # Build control lookup for observability
     control_lookup = {c.id: c for c in api_controls}

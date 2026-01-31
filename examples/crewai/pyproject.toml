@@ -4,10 +4,7 @@ version = "0.1.0"
 description = "CrewAI content moderation example with Agent Control"
 requires-python = ">=3.12"
 dependencies = [
-    "agent-control-engine",
-    "agent-control-models",
-    "agent-control-plugins",
-    "agent-control-sdk",
+    "agent-control-sdk>=2.1.0,<3.0.0",
     "crewai>=0.80.0",
     "crewai-tools>=0.12.0",
     "openai>=1.0.0",
@@ -30,9 +27,3 @@ include = [
     "*.py",
     ".env.example",
 ]
-
-[tool.uv.sources]
-agent-control-sdk = { path = "../../sdks/python", editable = true }
-agent-control-models = { path = "../../models", editable = true }
-agent-control-engine = { path = "../../engine", editable = true }
-agent-control-plugins = { path = "../../plugins", editable = true }

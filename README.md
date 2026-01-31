@@ -1,5 +1,11 @@
 # Agent Control
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI version](https://img.shields.io/pypi/v/agent-control-sdk.svg)](https://pypi.org/project/agent-control-sdk/)
+[![CI](https://github.com/rungalileo/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/rungalileo/agent-control/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/rungalileo/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/rungalileo/agent-control)
+
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
 AI agents interact with users, tools, and external systems in unpredictable ways. Agent Control provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.

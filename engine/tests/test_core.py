@@ -898,13 +898,21 @@ class PayloadEchoEvaluator(Evaluator[SimpleConfig]):
     config_model = SimpleConfig
 
     async def evaluate(self, data: Any) -> EvaluatorResult:
-        # If we received the full Step payload, it has .type and .name
-        step_type = getattr(data, "type", None)
-        step_name = getattr(data, "name", None)
-        if step_type and step_name:
-            _execution_log.append(f"payload_step:{step_type}:{step_name}")
+        # If we received the full payload as JSON, it has dict keys for type/name
+        if isinstance(data, dict):
+            step_type = data.get("type")
+            step_name = data.get("name")
+            if step_type and step_name:
+                _execution_log.append(f"payload_dict:{step_type}:{step_name}")
+            else:
+                _execution_log.append("payload_dict:<none>")
         else:
-            _execution_log.append("payload_step:<none>")
+            step_type = getattr(data, "type", None)
+            step_name = getattr(data, "name", None)
+            if step_type and step_name:
+                _execution_log.append(f"payload_step:{step_type}:{step_name}")
+            else:
+                _execution_log.append("payload_step:<none>")
         return EvaluatorResult(matched=False, confidence=1.0, message="ok")
 
 
@@ -1038,7 +1046,7 @@ class TestSelectorStepScoping:
             stage="pre",
         )
         await engine.process(request)
-        assert any(s.startswith("payload_step:") for s in _execution_log)
+        assert "payload_dict:tool:copy_file" in _execution_log
 
     def test_invalid_step_name_regex_rejected(self):
         # ControlDefinition should reject invalid regex during validation

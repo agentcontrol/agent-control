@@ -778,10 +778,11 @@ async def patch_control(
         try:
             ctrl_def = ControlDefinition.model_validate(control.data)
             if ctrl_def.enabled != request.enabled:
-                ctrl_def.enabled = request.enabled
-                control.data = ctrl_def.model_dump(mode="json", exclude_none=True)
+                new_data = dict(control.data)
+                new_data["enabled"] = request.enabled
+                control.data = new_data
                 updated = True
-            current_enabled = ctrl_def.enabled
+            current_enabled = request.enabled if updated else ctrl_def.enabled
         except ValidationError as e:
             raise APIValidationError(
                 error_code=ErrorCode.CORRUPTED_DATA,

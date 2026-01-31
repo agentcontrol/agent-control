@@ -1,6 +1,13 @@
 """Tests for force_replace behavior in initAgent endpoint."""
 import uuid
+
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from agent_control_server.models import Agent
+
+from .conftest import engine
 
 
 def test_init_agent_force_replace_default_false_works_normally(client: TestClient):
@@ -118,3 +125,53 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
 #
 # This is difficult to test via HTTP API since the DB corruption must be injected
 # externally, but the code path is covered by the implementation.
+
+
+def test_init_agent_force_replace_recovers_from_corrupted_data(client: TestClient) -> None:
+    """Test that force_replace=true replaces corrupted stored data."""
+    # Given: an existing agent with corrupted data in the DB
+    agent_id = str(uuid.uuid4())
+    agent_name = f"TestAgent-{uuid.uuid4().hex[:8]}"
+    resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {
+                "agent_id": agent_id,
+                "agent_name": agent_name,
+                "agent_description": "Test",
+                "agent_version": "1.0",
+            },
+            "steps": [],
+        },
+    )
+    assert resp.status_code == 200
+
+    with Session(engine) as session:
+        agent = session.execute(select(Agent).where(Agent.agent_uuid == agent_id)).scalar_one()
+        agent.data = {"steps": "not-a-list"}
+        session.commit()
+
+    # When: re-initializing with force_replace=true
+    resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {
+                "agent_id": agent_id,
+                "agent_name": agent_name,
+                "agent_description": "Replaced",
+                "agent_version": "2.0",
+            },
+            "steps": [
+                {"type": "tool", "name": "tool_a", "input_schema": {}, "output_schema": {}}
+            ],
+            "force_replace": True,
+        },
+    )
+
+    # Then: request succeeds and stored data is replaced
+    assert resp.status_code == 200
+    get_resp = client.get(f"/api/v1/agents/{agent_id}")
+    assert get_resp.status_code == 200
+    data = get_resp.json()
+    assert data["agent"]["agent_description"] == "Replaced"
+    assert {s["name"] for s in data["steps"]} == {"tool_a"}

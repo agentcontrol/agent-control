@@ -34,7 +34,7 @@ def test_sql_read_only_agent(client: TestClient):
         client, control_data, agent_name="ReadOnlyAgent"
     )
 
-    # Case 1: SELECT with LIMIT 100 → Allowed
+    # When: evaluating a SELECT with LIMIT 100
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -45,10 +45,11 @@ def test_sql_read_only_agent(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 2: INSERT query → Denied (not in allowed_operations)
+    # When: evaluating an INSERT query (not allowed)
     req_insert = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -59,11 +60,12 @@ def test_sql_read_only_agent(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_insert.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
 
-    # Case 3: SELECT without LIMIT → Denied (require_limit)
+    # When: evaluating a SELECT without LIMIT
     req_no_limit = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -74,10 +76,11 @@ def test_sql_read_only_agent(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_no_limit.model_dump(mode="json"))
+    # Then: evaluation is unsafe (LIMIT required)
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
 
-    # Case 4: SELECT with LIMIT 5000 → Denied (exceeds max_limit)
+    # When: evaluating a SELECT with LIMIT 5000 (exceeds max_limit)
     req_high_limit = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -88,6 +91,7 @@ def test_sql_read_only_agent(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_high_limit.model_dump(mode="json"))
+    # Then: evaluation is unsafe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
 
@@ -114,7 +118,7 @@ def test_sql_multi_tenant_security(client: TestClient):
         client, control_data, agent_name="MultiTenantAgent"
     )
 
-    # Case 1: SELECT with WHERE tenant_id = 123 → Allowed
+    # When: evaluating a query with tenant_id in WHERE
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -125,10 +129,11 @@ def test_sql_multi_tenant_security(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 2: SELECT without tenant_id in WHERE → Denied
+    # When: evaluating a query without tenant_id in WHERE
     req_no_tenant = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -139,11 +144,12 @@ def test_sql_multi_tenant_security(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_no_tenant.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
 
-    # Case 3: SELECT with tenant_id in SELECT but not WHERE → Denied
+    # When: evaluating a query with tenant_id only in SELECT
     req_select_only = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -154,6 +160,7 @@ def test_sql_multi_tenant_security(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_select_only.model_dump(mode="json"))
+    # Then: evaluation is unsafe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
 
@@ -179,7 +186,7 @@ def test_sql_block_destructive_operations(client: TestClient):
         client, control_data, agent_name="SafeAgent"
     )
 
-    # Case 1: SELECT query → Allowed
+    # When: evaluating a safe SELECT query
     req_select = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -190,10 +197,11 @@ def test_sql_block_destructive_operations(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_select.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 2: INSERT query → Allowed
+    # When: evaluating a non-destructive INSERT query
     req_insert = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -204,10 +212,11 @@ def test_sql_block_destructive_operations(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_insert.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 3: DROP TABLE → Denied
+    # When: evaluating a DROP TABLE query
     req_drop = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -218,11 +227,12 @@ def test_sql_block_destructive_operations(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_drop.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
 
-    # Case 4: DELETE FROM → Denied
+    # When: evaluating a DELETE query
     req_delete = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -233,10 +243,11 @@ def test_sql_block_destructive_operations(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_delete.model_dump(mode="json"))
+    # Then: evaluation is unsafe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
 
-    # Case 5: TRUNCATE TABLE → Denied
+    # When: evaluating a TRUNCATE TABLE query
     req_truncate = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -247,6 +258,7 @@ def test_sql_block_destructive_operations(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_truncate.model_dump(mode="json"))
+    # Then: evaluation is unsafe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
 
@@ -272,7 +284,7 @@ def test_sql_table_restrictions(client: TestClient):
         client, control_data, agent_name="AnalyticsAgent"
     )
 
-    # Case 1: SELECT from users → Allowed
+    # When: evaluating a query against an allowed table (users)
     req_users = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -283,10 +295,11 @@ def test_sql_table_restrictions(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_users.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 2: SELECT from orders → Allowed
+    # When: evaluating a query against an allowed table (orders)
     req_orders = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -297,10 +310,11 @@ def test_sql_table_restrictions(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_orders.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 3: SELECT from admin_data → Denied
+    # When: evaluating a query against a disallowed table (admin_data)
     req_admin = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -311,11 +325,12 @@ def test_sql_table_restrictions(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_admin.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
 
-    # Case 4: SELECT from sensitive_data → Denied
+    # When: evaluating a query against a disallowed table (sensitive_data)
     req_sensitive = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -326,6 +341,7 @@ def test_sql_table_restrictions(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_sensitive.model_dump(mode="json"))
+    # Then: evaluation is unsafe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
 
@@ -351,7 +367,7 @@ def test_sql_multi_statement_blocking(client: TestClient):
         client, control_data, agent_name="SingleStatementAgent"
     )
 
-    # Case 1: Single SELECT → Allowed
+    # When: evaluating a single-statement query
     req_single = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -362,10 +378,11 @@ def test_sql_multi_statement_blocking(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_single.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 2: Multi-statement (SQL injection attempt) → Denied
+    # When: evaluating a multi-statement query
     req_multi = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -376,6 +393,7 @@ def test_sql_multi_statement_blocking(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_multi.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
@@ -403,7 +421,7 @@ def test_sql_limit_enforcement(client: TestClient):
         client, control_data, agent_name="LimitAgent"
     )
 
-    # Case 1: SELECT with LIMIT 500 → Allowed
+    # When: evaluating a SELECT with LIMIT 500
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -414,10 +432,11 @@ def test_sql_limit_enforcement(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 2: SELECT with LIMIT 1000 → Allowed (exact boundary)
+    # When: evaluating a SELECT with LIMIT 1000 (boundary)
     req_boundary = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -428,10 +447,11 @@ def test_sql_limit_enforcement(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_boundary.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 3: SELECT with LIMIT 1001 → Denied (exceeds max)
+    # When: evaluating a SELECT with LIMIT 1001 (exceeds max)
     req_exceed = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -442,11 +462,12 @@ def test_sql_limit_enforcement(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_exceed.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
 
-    # Case 4: SELECT without LIMIT → Denied (required)
+    # When: evaluating a SELECT without LIMIT
     req_no_limit = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -457,10 +478,11 @@ def test_sql_limit_enforcement(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_no_limit.model_dump(mode="json"))
+    # Then: evaluation is unsafe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
 
-    # Case 5: INSERT without LIMIT → Allowed (LIMIT only applies to SELECT)
+    # When: evaluating an INSERT without LIMIT (LIMIT only applies to SELECT)
     req_insert = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", 
@@ -471,6 +493,7 @@ def test_sql_limit_enforcement(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_insert.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
@@ -503,7 +526,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
         client, control_data, agent_name="LlmReadOnlyAgent"
     )
 
-    # Case 1: LLM outputs SELECT with LIMIT → Allowed
+    # When: LLM outputs SELECT with LIMIT
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", 
@@ -513,10 +536,11 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 2: LLM outputs DELETE → Denied (not SELECT)
+    # When: LLM outputs DELETE
     req_delete = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", 
@@ -526,11 +550,12 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_delete.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
 
-    # Case 3: LLM outputs SELECT without LIMIT → Denied (missing LIMIT)
+    # When: LLM outputs SELECT without LIMIT
     req_no_limit = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", 
@@ -540,6 +565,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_no_limit.model_dump(mode="json"))
+    # Then: evaluation is unsafe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
 
@@ -565,7 +591,7 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
         client, control_data, agent_name="LlmSingleStatementAgent"
     )
 
-    # Case 1: LLM outputs single statement → Allowed
+    # When: LLM outputs a single statement
     req_single = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", 
@@ -575,10 +601,11 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_single.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 2: LLM outputs multi-statement (injection pattern) → Denied
+    # When: LLM outputs a multi-statement query
     req_multi = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", 
@@ -588,6 +615,7 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_multi.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name
@@ -614,7 +642,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
         client, control_data, agent_name="LlmAnalyticsAgent"
     )
 
-    # Case 1: LLM outputs query on analytics table → Allowed
+    # When: LLM outputs a query on an allowed table (analytics)
     req_analytics = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", 
@@ -624,10 +652,11 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_analytics.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 2: LLM outputs query on reports table → Allowed
+    # When: LLM outputs a query on an allowed table (reports)
     req_reports = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", 
@@ -637,10 +666,11 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_reports.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
-    # Case 3: LLM outputs query on users table → Denied (not in allowed_tables)
+    # When: LLM outputs a query on a disallowed table (users)
     req_users = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", 
@@ -650,6 +680,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_users.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name

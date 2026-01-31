@@ -40,21 +40,22 @@ def test_evaluation_flow_deny(client: TestClient):
 
 def test_evaluation_no_policy(client: TestClient):
     """Test that an agent with no policy assigned is safe."""
-    # 1. Register Agent
+    # Given: an agent with no policy assigned
     agent_uuid = uuid.uuid4()
     client.post("/api/v1/agents/initAgent", json={
         "agent": {"agent_id": str(agent_uuid), "agent_name": "NoPolicyAgent"},
         "steps": []
     })
 
-    # 2. Check Evaluation
+    # When: evaluating content for that agent
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", input="anything", output=None),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
-    
+
+    # Then: evaluation is safe with no matches
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
     assert not resp.json()["matches"]
@@ -62,29 +63,29 @@ def test_evaluation_no_policy(client: TestClient):
 
 def test_evaluation_empty_policy(client: TestClient):
     """Test that an agent with an empty policy is safe."""
-    # 1. Create Empty Policy
+    # Given: an empty policy
     resp = client.put("/api/v1/policies", json={"name": "empty-policy"})
     assert resp.status_code == 200
     policy_id = resp.json()["policy_id"]
 
-    # 2. Register Agent
+    # And: an agent assigned to that policy
     agent_uuid = uuid.uuid4()
     client.post("/api/v1/agents/initAgent", json={
         "agent": {"agent_id": str(agent_uuid), "agent_name": "EmptyPolicyAgent"},
         "steps": []
     })
 
-    # 3. Assign Policy
     client.post(f"/api/v1/agents/{str(agent_uuid)}/policy/{policy_id}")
 
-    # 4. Check Evaluation
+    # When: evaluating content for that agent
     req = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", input="anything", output=None),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
-    
+
+    # Then: evaluation is safe with no matches
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
     assert not resp.json()["matches"]
@@ -121,6 +122,30 @@ def test_evaluation_path_failure(client: TestClient):
     data = resp.json()
     assert data["is_safe"] is True
     assert len(data["matches"] or []) == 0
+
+
+def test_evaluation_selector_star_uses_full_step_json(client: TestClient):
+    # Given: a control with selector "*" and JSON evaluator
+    control_data = {
+        "description": "Validate full step JSON",
+        "enabled": True,
+        "execution": "server",
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
+        "selector": {"path": "*"},
+        "evaluator": {"name": "json", "config": {"required_fields": ["type"]}},
+        "action": {"decision": "deny"},
+    }
+    agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="JsonStarAgent")
+
+    # When: evaluating a valid step payload
+    payload = Step(type="llm", name="test-step", input="hello", output=None)
+    req = EvaluationRequest(agent_uuid=agent_uuid, step=payload, stage="pre")
+    resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+
+    # Then: evaluation is safe (JSON evaluator accepts the full payload)
+    assert resp.status_code == 200
+    assert resp.json()["is_safe"] is True
+    assert resp.json()["matches"] is None
 
 
 def test_evaluation_tool_step_nested(client: TestClient):
@@ -248,7 +273,7 @@ def test_evaluation_stage_filtering(client: TestClient):
     }
     agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="StageAgent")
 
-    # 1. Pre-check (Should be Safe even if pattern exists in input/output placeholder)
+    # When: evaluating at the pre stage
     req_pre = EvaluationRequest(
         agent_uuid=agent_uuid,
         # Even if we provide output, the control shouldn't run in 'pre' stage? 
@@ -257,16 +282,18 @@ def test_evaluation_stage_filtering(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_pre.model_dump(mode="json"))
+    # Then: control does not apply and evaluation is safe
     assert resp.json()["is_safe"] is True
     assert not resp.json()["matches"]
 
-    # 2. Post-check (Should be Unsafe)
+    # When: evaluating at the post stage
     req_post = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", input="ok", output="bad_output"),
         stage="post"
     )
     resp = client.post("/api/v1/evaluation", json=req_post.model_dump(mode="json"))
+    # Then: control applies and evaluation is unsafe
     assert resp.json()["is_safe"] is False
     assert len(resp.json()["matches"]) > 0
 
@@ -285,7 +312,7 @@ def test_evaluation_step_type_filtering(client: TestClient):
     }
     agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="AppliesToAgent")
 
-    # 1. LLM step (Should be Safe even if content matches)
+    # When: evaluating an LLM step (control should not apply)
     # Note: LLM steps don't have tool names, but the engine filters by step type.
     req_llm = EvaluationRequest(
         agent_uuid=agent_uuid,
@@ -293,15 +320,17 @@ def test_evaluation_step_type_filtering(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_llm.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.json()["is_safe"] is True
 
-    # 2. Tool step (Should be Unsafe)
+    # When: evaluating a tool step (control applies)
     req_tool = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", name="rm_rf", input={}),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_tool.model_dump(mode="json"))
+    # Then: evaluation is unsafe
     assert resp.json()["is_safe"] is False
 
 
@@ -322,21 +351,23 @@ def test_evaluation_denylist_step_name(client: TestClient):
     }
     agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="ToolBlockAgent")
 
-    # 1. Safe Tool (Not in list) -> Allowed
+    # When: evaluating a safe tool (not in list)
     req_safe = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", name="safe_tool", input={}),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
+    # Then: evaluation is safe
     assert resp.json()["is_safe"] is True
 
-    # 2. Dangerous Tool (In list) -> Denied
+    # When: evaluating a dangerous tool (in list)
     req_unsafe = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="tool", name="dangerous_tool", input={}),
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_unsafe.model_dump(mode="json"))
+    # Then: evaluation is unsafe and matches the control
     assert resp.json()["is_safe"] is False
     assert resp.json()["matches"][0]["control_name"] == control_name

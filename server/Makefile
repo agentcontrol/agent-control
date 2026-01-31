@@ -53,7 +53,7 @@ start-dependencies:
 	docker compose up -d
 
 test:
-	DB_DATABASE=$(TEST_DB) uv run --package agent-control-server pytest -q
+	DB_DATABASE=$(TEST_DB) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q
 
 run: start-dependencies
 	uv run --package agent-control-server uvicorn agent_control_server.main:app --reload

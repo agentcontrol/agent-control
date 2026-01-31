@@ -50,7 +50,7 @@ async def setup_content_controls():
                 "path": "input.ticket"
             },
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {
                     # Block requests for other users' data, admin access, passwords
                     "pattern": r"(?i)(show\s+me|what\s+is|give\s+me|tell\s+me).*(other\s+user|another\s+user|user\s+\w+|admin|password|credential|account\s+\d+|all\s+orders|other\s+customer)"
@@ -96,7 +96,7 @@ async def setup_content_controls():
                 "path": "output"
             },
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {
                     # Block SSN, credit cards, emails, phone numbers
                     "pattern": r"(?:\b\d{3}-\d{2}-\d{4}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b)"
@@ -142,7 +142,7 @@ async def setup_content_controls():
                 "path": "output"
             },
             "evaluator": {
-                "plugin": "regex",
+                "name": "regex",
                 "config": {
                     # Block SSN, credit cards, emails, phone numbers
                     "pattern": r"(?:\b\d{3}-\d{2}-\d{4}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b)"

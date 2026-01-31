@@ -375,7 +375,7 @@ class TestSchemaCompatibility:
 
     def test_empty_old_schema_compatible(self):
         """Empty old schema is always compatible."""
-        # Given/When: Empty old schema
+        # Given:/When: Empty old schema
         is_compat, errors = check_schema_compatibility({}, {"type": "object"})
         # Then: Should be compatible
         assert is_compat

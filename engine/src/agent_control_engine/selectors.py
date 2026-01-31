@@ -16,7 +16,7 @@ def select_data(step: Step, path: str) -> Any:
         The selected value, or None if the path doesn't exist.
     """
     if not path or path == "*":
-        return step
+        return step.model_dump(mode="json")
 
     parts = path.split(".")
     current: Any = step
