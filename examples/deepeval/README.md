@@ -171,7 +171,7 @@ If you're starting from a fresh clone of the agent-control repository, follow th
 
 ```bash
 # Clone the repository
-git clone https://github.com/rungalileo/agent-control.git
+git clone https://github.com/agentcontrol/agent-control.git
 cd agent-control
 
 # Install all dependencies (installs models, engine, evaluators, sdk, server packages)
