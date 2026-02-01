@@ -206,8 +206,8 @@ export function AddNewControlModal({
         <Divider />
 
         {/* Content */}
-        <Box p="md" mih={500}>
-          <Stack gap="md">
+        <Box p="md" style={{ height: "500px", display: "flex", flexDirection: "column" }}>
+          <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
             {/* Search and Docs Link */}
             <Group justify="space-between">
               <TextInput
@@ -250,11 +250,14 @@ export function AddNewControlModal({
                 </Stack>
               </Paper>
             ) : filteredEvaluators.length > 0 ? (
-              <Table
-                columns={columns}
-                data={filteredEvaluators}
-                highlightOnHover
-              />
+              <Box style={{ flex: 1, minHeight: 0 }}>
+                <Table
+                  columns={columns}
+                  data={filteredEvaluators}
+                  highlightOnHover
+                  maxHeight="100%"
+                />
+              </Box>
             ) : (
               <Paper p="xl" withBorder radius="sm" ta="center">
                 <Text c="dimmed">No evaluators found</Text>

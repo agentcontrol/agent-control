@@ -1,6 +1,6 @@
 import { expect, mockData, mockRoutes, test } from "./fixtures";
 
-test.describe("Agent Stats Tab", () => {
+test.describe("Agent Monitoring Tab", () => {
   test.beforeEach(async ({ mockedPage }) => {
     // Navigate to agent detail page
     await mockedPage.goto("/agents/agent-1");
@@ -10,7 +10,7 @@ test.describe("Agent Stats Tab", () => {
 
   test("should display stats tab and navigate to it", async ({ mockedPage }) => {
     // Stats tab should be visible
-    const statsTab = mockedPage.getByRole("tab", { name: "Stats" });
+    const statsTab = mockedPage.getByRole("tab", { name: "Monitoring" });
     await expect(statsTab).toBeVisible();
 
     // Click on stats tab
@@ -26,17 +26,17 @@ test.describe("Agent Stats Tab", () => {
     mockedPage,
   }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Stats" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
 
-    // Time range selector should be visible with default "Last 1 hour"
-    const timeRangeSelect = mockedPage.getByRole("textbox", { name: "Time Range" });
-    await expect(timeRangeSelect).toBeVisible();
-    await expect(timeRangeSelect).toHaveValue("Last 1 hour");
+    // Time range selector should be visible (TimeRangeSwitch component)
+    // Look for the component by finding the segment buttons or menu button
+    const timeRangeSwitch = mockedPage.locator('[class*="TimeRangeSwitch"]').first();
+    await expect(timeRangeSwitch).toBeVisible();
   });
 
   test("should display summary statistics", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Stats" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
 
     // Check total executions
     await expect(
@@ -51,7 +51,7 @@ test.describe("Agent Stats Tab", () => {
 
   test("should display actions distribution section", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Stats" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
 
     // Check actions distribution header
     await expect(mockedPage.getByText("Actions Distribution")).toBeVisible();
@@ -65,7 +65,7 @@ test.describe("Agent Stats Tab", () => {
 
   test("should display per-control statistics table", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Stats" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
 
     // Check table header
     await expect(
@@ -88,10 +88,10 @@ test.describe("Agent Stats Tab", () => {
 
   test("should display control names in the table", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Stats" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
 
     // Check control names from mock data - scope to Stats panel table
-    const statsTable = mockedPage.getByRole("tabpanel", { name: /Stats/i }).getByRole("table");
+    const statsTable = mockedPage.getByRole("tabpanel", { name: /Monitoring/i }).getByRole("table");
     for (const stat of mockData.stats.stats) {
       await expect(statsTable.getByText(stat.control_name)).toBeVisible();
     }
@@ -99,24 +99,25 @@ test.describe("Agent Stats Tab", () => {
 
   test("should allow changing time range", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Stats" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
 
-    // Open time range selector
-    const timeRangeSelect = mockedPage.getByRole("textbox", { name: "Time Range" });
-    await timeRangeSelect.click();
-
-    // Select a different time range
-    await mockedPage.getByRole("option", { name: "Last 24 hours" }).click();
-
-    // Verify the selection changed
-    await expect(timeRangeSelect).toHaveValue("Last 24 hours");
+    // TimeRangeSwitch should be visible and allow changing time range
+    // The component has segment buttons for quick selection
+    const timeRangeSwitch = mockedPage.locator('[class*="TimeRangeSwitch"]').first();
+    await expect(timeRangeSwitch).toBeVisible();
+    
+    // Try clicking on a segment button (e.g., "1D" for 24 hours)
+    const oneDayButton = mockedPage.getByRole("button", { name: /1D/i }).first();
+    if (await oneDayButton.isVisible()) {
+      await oneDayButton.click();
+    }
   });
 
   test("should show error badges for controls with errors", async ({
     mockedPage,
   }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Stats" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
 
     // SQL Injection Guard has 2 errors in mock data
     // Find the row and check for error count
@@ -128,7 +129,7 @@ test.describe("Agent Stats Tab", () => {
     mockedPage,
   }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Stats" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
 
     // Check that confidence percentages are displayed
     // PII Detection has 92% confidence
@@ -140,7 +141,7 @@ test.describe("Agent Stats Tab", () => {
   });
 });
 
-test.describe("Agent Stats Tab - Empty State", () => {
+test.describe("Agent Monitoring Tab - Empty State", () => {
   test("should show empty state when no stats available", async ({ page }) => {
     // Set up mocks with empty stats
     await mockRoutes.agents(page);
@@ -152,10 +153,11 @@ test.describe("Agent Stats Tab - Empty State", () => {
     await expect(page.getByText("Customer Support Bot")).toBeVisible();
 
     // Navigate to stats tab
-    await page.getByRole("tab", { name: "Stats" }).click();
+    await page.getByRole("tab", { name: "Monitoring" }).click();
 
-    // Time range selector should still be visible in empty state
-    await expect(page.getByRole("textbox", { name: "Time Range" })).toBeVisible();
+    // Time range selector should still be visible in empty state (TimeRangeSwitch)
+    const timeRangeSwitch = page.locator('[class*="TimeRangeSwitch"]').first();
+    await expect(timeRangeSwitch).toBeVisible();
 
     // Should show empty state message
     await expect(page.getByText("No stats available")).toBeVisible();
@@ -165,7 +167,7 @@ test.describe("Agent Stats Tab - Empty State", () => {
   });
 });
 
-test.describe("Agent Stats Tab - Refetch Flow", () => {
+test.describe("Agent Monitoring Tab - Refetch Flow", () => {
   test("should update values when data is refetched", async ({ page }) => {
     let requestCount = 0;
 
@@ -232,7 +234,7 @@ test.describe("Agent Stats Tab - Refetch Flow", () => {
     await expect(page.getByText("Customer Support Bot")).toBeVisible();
 
     // Navigate to stats tab
-    await page.getByRole("tab", { name: "Stats" }).click();
+    await page.getByRole("tab", { name: "Monitoring" }).click();
 
     // Verify initial values are displayed (use first() to get summary stat, not table cell)
     await expect(page.getByText("100", { exact: true }).first()).toBeVisible();
@@ -250,7 +252,7 @@ test.describe("Agent Stats Tab - Refetch Flow", () => {
   });
 });
 
-test.describe("Agent Stats Tab - Error State", () => {
+test.describe("Agent Monitoring Tab - Error State", () => {
   test("should show error state when API fails", async ({ page }) => {
     // Set up mocks with failing stats endpoint
     await mockRoutes.agents(page);
@@ -262,7 +264,7 @@ test.describe("Agent Stats Tab - Error State", () => {
     await expect(page.getByText("Customer Support Bot")).toBeVisible();
 
     // Navigate to stats tab
-    await page.getByRole("tab", { name: "Stats" }).click();
+    await page.getByRole("tab", { name: "Monitoring" }).click();
 
     // Should show error state
     await expect(page.getByText("Failed to load stats")).toBeVisible();

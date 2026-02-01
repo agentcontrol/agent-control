@@ -26,7 +26,7 @@ test.describe("Agent Detail Page", () => {
 
     // Check all tabs are present
     await expect(mockedPage.getByRole("tab", { name: /Controls/i })).toBeVisible();
-    await expect(mockedPage.getByRole("tab", { name: /Stats/i })).toBeVisible();
+    await expect(mockedPage.getByRole("tab", { name: /Monitoring/i })).toBeVisible();
   });
 
   test("controls tab is active by default", async ({ mockedPage }) => {
@@ -178,7 +178,7 @@ test.describe("Agent Detail Page", () => {
     await mockedPage.goto(agentUrl);
 
     // Click Stats tab
-    await mockedPage.getByRole("tab", { name: /Stats/i }).click();
+    await mockedPage.getByRole("tab", { name: /Monitoring/i }).click();
     await expect(
       mockedPage.getByRole("heading", { name: "Control Statistics", exact: true })
     ).toBeVisible();

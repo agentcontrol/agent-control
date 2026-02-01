@@ -107,7 +107,7 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
       <ErrorBoundary variant="page">
         <QueryProvider>
           <MantineProvider defaultColorScheme="auto">
-            <DatesProvider>
+            <DatesProvider settings={{ firstDayOfWeek: 0 }}>
               <JupiterThemeProvider>
                 <ModalsProvider>
                   {getLayout(<Component {...pageProps} />)}

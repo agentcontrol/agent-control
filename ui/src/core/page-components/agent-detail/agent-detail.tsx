@@ -362,12 +362,15 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                 </Stack>
               </Paper>
             ) : (
-              <Table
-                columns={columns}
-                data={controls}
-                highlightOnHover
-                withColumnBorders
-              />
+              <Box style={{ maxHeight: "calc(100vh - 400px)", minHeight: 0 }}>
+                <Table
+                  columns={columns}
+                  data={controls}
+                  highlightOnHover
+                  withColumnBorders
+                  maxHeight="100%"
+                />
+              </Box>
             )}
           </Tabs.Panel>
 
