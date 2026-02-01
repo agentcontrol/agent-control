@@ -13,6 +13,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
+import { modals } from "@mantine/modals";
 import { Button, Switch, Table } from "@rungalileo/jupiter-ds";
 import {
   IconAlertCircle,
@@ -121,23 +122,46 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
       id: "enabled",
       header: "",
       size: 60,
-      cell: ({ row }: { row: any }) => (
-        <Switch
-          checked={row.original.control?.enabled ?? false}
-          color='violet'
-          onChange={(e) => {
-            const control = row.original as Control;
-            updateControl.mutate({
-              agentId,
-              controlId: control.id,
-              definition: {
-                ...control.control,
-                enabled: e.currentTarget.checked,
-              },
-            });
-          }}
-        />
-      ),
+      cell: ({ row }: { row: any }) => {
+        const control = row.original as Control;
+        const enabled = control.control?.enabled ?? false;
+        return (
+          <Switch
+            checked={enabled}
+            color="violet"
+            onChange={(e) => {
+              const newEnabled = e.currentTarget.checked;
+              modals.openConfirmModal({
+                title: newEnabled ? "Enable control?" : "Disable control?",
+                children: (
+                  <Text size="sm" c="dimmed">
+                    {newEnabled
+                      ? `Enable "${control.name}"?`
+                      : `Disable "${control.name}"?`}
+                  </Text>
+                ),
+                labels: { confirm: "Confirm", cancel: "Cancel" },
+                confirmProps: {
+                  variant: "filled",
+                  color: "violet",
+                  size: "sm",
+                  className: "confirm-modal-confirm-btn",
+                },
+                cancelProps: { variant: "default", size: "sm" },
+                onConfirm: () =>
+                  updateControl.mutate({
+                    agentId,
+                    controlId: control.id,
+                    definition: {
+                      ...control.control,
+                      enabled: newEnabled,
+                    },
+                  }),
+              });
+            }}
+          />
+        );
+      },
     },
     {
       id: "name",
@@ -286,7 +310,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                 />
                 <Button
                   variant='filled'
-                  color='violet'
+                  // color='violet'
                   size='sm'
                   data-testid='add-control-button'
                   h={32}
@@ -368,7 +392,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
       <Modal
         opened={editModalOpened}
         onClose={handleCloseEditModal}
-        title="Configure Control"
+        title="Edit Control"
         size="xl"
         styles={{
           title: { fontSize: "18px", fontWeight: 600 },

@@ -30,6 +30,7 @@ import { useQueryParam } from "@/core/hooks/use-query-param";
 
 import { AddNewControlModal } from "../add-new-control";
 import { EditControlContent } from "../edit-control/edit-control-content";
+import { sanitizeControlNamePart } from "../edit-control/utils";
 
 // Extended ControlSummary with used_by_agent (until API types are regenerated)
 type ControlSummaryWithAgent = ControlSummary & {
@@ -90,11 +91,11 @@ export function ControlStoreModal({
     return data?.pages.flatMap((page) => page.controls) ?? [];
   }, [data]);
 
-  const handleUseControl = async (control: ControlSummary) => {
+  const handleCopyControl = async (control: ControlSummary) => {
     setLoadingControlId(control.id);
     try {
       const { data: controlData, error: fetchError } = await api.controls.getData(control.id);
-      if (fetchError || !controlData) {
+      if (fetchError || !controlData?.data) {
         notifications.show({
           title: "Error",
           message: "Failed to load control configuration",
@@ -119,15 +120,11 @@ export function ControlStoreModal({
     onClose();
   };
 
-  // Build a draft control for the edit modal with full evaluator config
+  // Build a draft control for the edit modal with full evaluator config (clone: append -copy to name)
   const draftControl = useMemo(() => {
     if (!selectedControl) return null;
     const { summary, definition } = selectedControl;
-    // Sanitize name to match pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]*$
-    // Replace spaces with hyphens, remove invalid characters, append -copy
-    const sanitizedName = summary.name
-      .replace(/\s+/g, "-") // spaces -> hyphens
-      .replace(/[^a-zA-Z0-9_-]/g, ""); // remove invalid chars
+    const sanitizedName = sanitizeControlNamePart(summary.name);
     return {
       id: 0,
       name: `${sanitizedName}-copy`,
@@ -181,7 +178,7 @@ export function ControlStoreModal({
     },
     {
       id: "agent",
-      header: "Used by",
+      header: "Agent",
       size: 150,
       cell: ({ row }) => {
         const agent = (row.original as ControlSummaryWithAgent).used_by_agent;
@@ -216,11 +213,11 @@ export function ControlStoreModal({
           <Button
             variant="outline"
             size="sm"
-            data-testid="use-control-button"
+            data-testid="copy-control-button"
             loading={loadingControlId === row.original.id}
-            onClick={() => handleUseControl(row.original)}
+            onClick={() => handleCopyControl(row.original)}
           >
-            Use
+            Copy
           </Button>
         </Group>
       ),
@@ -228,104 +225,98 @@ export function ControlStoreModal({
   ];
 
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      size="xxl"
-      padding={0}
-      withCloseButton={false}
-      styles={{
-        body: {
-          padding: 0,
-          width: "900px",
-          height: "600px",
-        },
-      }}
-    >
-      <Box h="100%" style={{ display: "flex", flexDirection: "column" }}>
-        {/* Header */}
-        <Box p="md">
-          <Group justify="space-between" mb="xs">
-            <Title order={3} fw={600}>
-              Control store
-            </Title>
-            <Button
-              size="sm"
-              onClick={onClose}
-              data-testid="close-control-store-modal-button"
-            >
-              <IconX size={16} />
-            </Button>
-          </Group>
-          <Text size="sm" c="dimmed">
-            Browse existing controls or create a new one
-          </Text>
-        </Box>
-        <Divider />
-
-        {/* Search Bar */}
-        <Box px="md" pt="md" pb="sm">
-          <SearchInput
-            queryKey="store_q"
-            placeholder="Search controls..."
-            w={250}
-          />
-        </Box>
-
-        {/* Scrollable Table Content */}
-        <Box px="md" pb="md" style={{ flex: 1, minHeight: 0 }}>
-          <ScrollArea h="100%" type="auto" viewportRef={scrollContainerRef}>
-            {isLoading ? (
-              <Paper p="xl" ta="center" withBorder radius="sm">
-                <Loader size="sm" />
-              </Paper>
-            ) : error ? (
-              <Paper p="xl" ta="center" withBorder radius="sm">
-                <Stack gap="xs" align="center">
-                  <IconAlertCircle
-                    size={48}
-                    color="var(--mantine-color-red-5)"
-                  />
-                  <Text c="red">Failed to load controls</Text>
-                </Stack>
-              </Paper>
-            ) : controls.length > 0 ? (
-              <>
-                <Table columns={columns} data={controls} highlightOnHover />
-                {/* Load more sentinel for infinite scroll */}
-                <div ref={sentinelRef} style={{ height: 1 }} />
-                {isFetchingNextPage && (
-                  <Box py="md" ta="center">
-                    <Loader size="sm" />
-                  </Box>
-                )}
-              </>
-            ) : (
-              <Paper p="xl" withBorder radius="sm" ta="center">
-                <Text c="dimmed">No controls found</Text>
-              </Paper>
-            )}
-          </ScrollArea>
-        </Box>
-
-        {/* Footer CTA */}
-        <Divider />
-        <Box p="md">
-          <Group justify="center" gap="xs">
+    <>
+      <Modal
+        opened={opened}
+        onClose={onClose}
+        size="xxl"
+        padding={0}
+        withCloseButton={false}
+        styles={{
+          body: {
+            padding: 0,
+            width: "900px",
+            height: "600px",
+          },
+        }}
+      >
+        <Box h="100%" style={{ display: "flex", flexDirection: "column" }}>
+          {/* Header */}
+          <Box p="md">
+            <Group justify="space-between" mb="xs">
+              <Title order={3} fw={600}>
+                Control store
+              </Title>
+              <Button
+                size="sm"
+                onClick={onClose}
+                data-testid="close-control-store-modal-button"
+              >
+                <IconX size={16} />
+              </Button>
+            </Group>
             <Text size="sm" c="dimmed">
-              Can&apos;t find what you&apos;re looking for?
+              Browse existing controls or create a new one
             </Text>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setAddNewModalOpened(true)}
-              data-testid="footer-new-control-button"
-            >
-              Create new control
-            </Button>
-          </Group>
+          </Box>
+          <Divider />
+
+          {/* Search Bar + Create Control */}
+          <Box px="md" pt="md" pb="sm">
+            <Group justify="space-between" align="flex-end">
+              <SearchInput
+                queryKey="store_q"
+                placeholder="Search controls..."
+                w={250}
+              />
+              <Button
+                variant="filled"
+                size="sm"
+                onClick={() => setAddNewModalOpened(true)}
+                data-testid="footer-new-control-button"
+              >
+                Create Control
+              </Button>
+            </Group>
+          </Box>
+
+          {/* Scrollable Table Content */}
+          <Box px="md" pb="md" style={{ flex: 1, minHeight: 0 }}>
+            <ScrollArea h="100%" type="auto" viewportRef={scrollContainerRef}>
+              {isLoading ? (
+                <Paper p="xl" ta="center" withBorder radius="sm">
+                  <Loader size="sm" />
+                </Paper>
+              ) : error ? (
+                <Paper p="xl" ta="center" withBorder radius="sm">
+                  <Stack gap="xs" align="center">
+                    <IconAlertCircle
+                      size={48}
+                      color="var(--mantine-color-red-5)"
+                    />
+                    <Text c="red">Failed to load controls</Text>
+                  </Stack>
+                </Paper>
+              ) : controls.length > 0 ? (
+                <>
+                  <Table columns={columns} data={controls} highlightOnHover />
+                  {/* Load more sentinel for infinite scroll */}
+                  <div ref={sentinelRef} style={{ height: 1 }} />
+                  {isFetchingNextPage && (
+                    <Box py="md" ta="center">
+                      <Loader size="sm" />
+                    </Box>
+                  )}
+                </>
+              ) : (
+                <Paper p="xl" withBorder radius="sm" ta="center">
+                  <Text c="dimmed">No controls found</Text>
+                </Paper>
+              )}
+            </ScrollArea>
+          </Box>
         </Box>
-      </Box>
+      </Modal>
 
       {/* Edit Control Modal */}
       <Modal
@@ -336,7 +327,7 @@ export function ControlStoreModal({
         keepMounted={false}
         styles={{
           title: { fontSize: "18px", fontWeight: 600 },
-          content: { maxWidth: "1200px", width: "90vw" },
+          content: { maxWidth: "1400px", width: "90vw" },
         }}
       >
         <ErrorBoundary variant="modal">
@@ -357,6 +348,6 @@ export function ControlStoreModal({
         onClose={() => setAddNewModalOpened(false)}
         agentId={agentId}
       />
-    </Modal>
+    </>
   );
 }

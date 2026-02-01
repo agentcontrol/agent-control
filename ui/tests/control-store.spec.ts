@@ -41,14 +41,14 @@ test.describe("Control Store Modal", () => {
     await expect(modal.getByRole("columnheader", { name: "Name" })).toBeVisible();
     await expect(modal.getByRole("columnheader", { name: "Description" })).toBeVisible();
     await expect(modal.getByRole("columnheader", { name: "Enabled" })).toBeVisible();
-    await expect(modal.getByRole("columnheader", { name: "Used by" })).toBeVisible();
+    await expect(modal.getByRole("columnheader", { name: "Agent" })).toBeVisible();
 
     for (const control of mockData.listControls.controls) {
       await expect(modal.getByText(control.name, { exact: true })).toBeVisible();
     }
   });
 
-  test("displays agent links in Used by column", async ({ mockedPage }) => {
+  test("displays agent links in Agent column", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
 
     // PII Detection is used by Customer Support Bot
@@ -97,25 +97,25 @@ test.describe("Control Store Modal", () => {
     ).not.toBeVisible();
   });
 
-  test("Use button opens create control modal", async ({ mockedPage }) => {
+  test("Copy button opens create control modal", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
     const tableRow = modal.locator("tbody tr").first();
-    await tableRow.getByTestId("use-control-button").click();
+    await tableRow.getByTestId("copy-control-button").click();
 
-    await expect(mockedPage.getByRole("heading", { name: "Create Control" })).toBeVisible();
+    await expect(mockedPage.getByRole("dialog", { name: "Create Control" })).toBeVisible();
   });
 
-  test("Use button pre-fills control name and evaluator config", async ({ mockedPage }) => {
+  test("Copy button pre-fills control name and evaluator config", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
     const targetRow = modal.locator("tr", { hasText: "PII Detection" });
-    await targetRow.getByTestId("use-control-button").click();
+    await targetRow.getByTestId("copy-control-button").click();
 
-    const createControlModal = mockedPage
-      .getByRole("dialog")
-      .filter({ hasText: "Create Control" });
+    const createControlModal = mockedPage.getByRole("dialog", {
+      name: "Create Control",
+    });
     await expect(createControlModal).toBeVisible();
 
-    // Check control name is pre-filled with -copy suffix (sanitized)
+    // Check control name is pre-filled with -copy appended (sanitized)
     const controlNameInput = createControlModal.getByPlaceholder("Enter control name");
     await expect(controlNameInput).toHaveValue("PII-Detection-copy");
 
@@ -124,7 +124,7 @@ test.describe("Control Store Modal", () => {
     await expect(patternInput).toHaveValue("\\b\\d{3}-\\d{2}-\\d{4}\\b");
   });
 
-  test("Footer 'Create new control' button opens add-new-control modal", async ({ mockedPage }) => {
+  test("Create Control button opens add-new-control modal", async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
     await modal.getByTestId("footer-new-control-button").click();
 
@@ -137,19 +137,8 @@ test.describe("Control Store Modal", () => {
 test.describe("Add New Control Modal", () => {
   test("displays modal header and description", async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
-    await expect(modal.getByRole("heading", { name: "Control store" })).toBeVisible();
+    await expect(modal.getByRole("heading", { name: "Create Control" })).toBeVisible();
     await expect(modal.getByText("Browse and add controls to your agent")).toBeVisible();
-  });
-
-  test("displays source selection sidebar", async ({ mockedPage }) => {
-    const modal = await openAddNewControlModal(mockedPage);
-    await expect(modal.getByRole("button", { name: "OOB standard" })).toBeVisible();
-    await expect(modal.getByRole("button", { name: "Custom" })).toBeVisible();
-  });
-
-  test("OOB standard is selected by default", async ({ mockedPage }) => {
-    const modal = await openAddNewControlModal(mockedPage);
-    await expect(modal.getByText("OOB standard")).toBeVisible();
   });
 
   test("displays evaluators table with available evaluators", async ({
@@ -157,7 +146,6 @@ test.describe("Add New Control Modal", () => {
   }) => {
     const modal = await openAddNewControlModal(mockedPage);
     await expect(modal.getByRole("columnheader", { name: "Name" })).toBeVisible();
-    await expect(modal.getByRole("columnheader", { name: "Version" })).toBeVisible();
     await expect(modal.getByRole("columnheader", { name: "Description" })).toBeVisible();
 
     const evaluators = Object.values(mockData.evaluators);
@@ -168,7 +156,7 @@ test.describe("Add New Control Modal", () => {
 
   test("can search for evaluators", async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
-    const searchInput = modal.getByPlaceholder("Search or apply filter...");
+    const searchInput = modal.getByPlaceholder("Search...");
     await searchInput.fill("Regex");
 
     await expect(modal.getByRole("cell", { name: "Regex" })).toBeVisible();
@@ -177,28 +165,18 @@ test.describe("Add New Control Modal", () => {
 
   test("shows empty state when search has no results", async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
-    const searchInput = modal.getByPlaceholder("Search or apply filter...");
+    const searchInput = modal.getByPlaceholder("Search...");
     await searchInput.fill("NonexistentEvaluator");
 
     await expect(modal.getByText("No evaluators found")).toBeVisible();
   });
 
-  test("shows empty state for Custom source", async ({ mockedPage }) => {
-    const modal = await openAddNewControlModal(mockedPage);
-    await modal.getByRole("button", { name: "Custom" }).click();
-
-    await expect(modal.getByText("No custom controls yet")).toBeVisible();
-    await expect(
-      modal.getByText("Create your first custom control to get started")
-    ).toBeVisible();
-  });
-
-  test("Add button opens create control modal", async ({ mockedPage }) => {
+  test("Use button opens create control modal", async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
     const tableRow = modal.locator("tbody tr").first();
-    await tableRow.getByRole("button", { name: "Add" }).click();
+    await tableRow.getByRole("button", { name: "Use" }).click();
 
-    await expect(mockedPage.getByRole("heading", { name: "Create Control" })).toBeVisible();
+    await expect(mockedPage.getByRole("dialog", { name: "Create Control" })).toBeVisible();
   });
 
   test("displays docs link", async ({ mockedPage }) => {

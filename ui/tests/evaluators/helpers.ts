@@ -28,9 +28,9 @@ export async function openEvaluatorForm(page: Page, evaluatorName: string) {
 
   // Find and click Add button for the evaluator
   const evaluatorRow = addNewModal.locator("tr", { hasText: evaluatorName });
-  await evaluatorRow.getByRole("button", { name: "Add" }).click();
+  await evaluatorRow.getByRole("button", { name: "Use" }).click();
 
-  // Wait for the create control modal
-  await expect(page.getByRole("heading", { name: "Create Control" })).toBeVisible();
+  // Wait for the create control modal (scope to dialog to avoid multiple headings)
+  await expect(page.getByRole("dialog", { name: "Create Control" })).toBeVisible();
 }
 

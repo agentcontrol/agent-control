@@ -8,6 +8,7 @@ import "@rungalileo/icons/styles.css";
 import "@/styles/globals.css";
 
 import { MantineProvider } from "@mantine/core";
+import { ModalsProvider } from "@mantine/modals";
 import { JupiterThemeProvider } from "@rungalileo/jupiter-ds";
 import type { AppProps } from "next/app";
 import Head from "next/head";
@@ -105,7 +106,9 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
         <QueryProvider>
           <MantineProvider defaultColorScheme="auto">
             <JupiterThemeProvider>
-              {getLayout(<Component {...pageProps} />)}
+              <ModalsProvider>
+                {getLayout(<Component {...pageProps} />)}
+              </ModalsProvider>
             </JupiterThemeProvider>
           </MantineProvider>
         </QueryProvider>
