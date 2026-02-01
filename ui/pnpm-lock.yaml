@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@emotion/is-prop-valid':
+        specifier: ^1.4.0
+        version: 1.4.0
       '@mantine/code-highlight':
         specifier: 7.17.5
         version: 7.17.5(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
@@ -36,8 +39,8 @@ importers:
         specifier: ^0.0.1
         version: 0.0.1(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
       '@rungalileo/jupiter-ds':
-        specifier: ^0.0.2
-        version: 0.0.2(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
+        specifier: ^0.0.6
+        version: 0.0.6(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/dates@7.17.5(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(dayjs@1.11.19)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(@tabler/icons-react@3.31.0(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
       '@tabler/icons-react':
         specifier: '3.31'
         version: 3.31.0(react@19.1.4)
@@ -206,6 +209,12 @@ packages:
 
   '@emnapi/wasi-threads@1.1.0':
     resolution: {integrity: sha512-WI0DdZ8xFSbgMjR1sFsKABJ/C5OnRrjT06JXbZKexJGrDuPTzZdDYfFlsgcCXCyf+suG5QU2e/y1Wo2V/OapLQ==}
+
+  '@emotion/is-prop-valid@1.4.0':
+    resolution: {integrity: sha512-QgD4fyscGcbbKwJmqNvUMSE02OsHUa+lAWKdEUIJKgqe5IwRSKd7+KhibEWdaKwgjLj0DRSHA9biAIqGBk05lw==}
+
+  '@emotion/memoize@0.9.0':
+    resolution: {integrity: sha512-30FAj7/EoJ5mwVPOWhAyCX+FPfMDrVecJAM+Iw9NRoSl4BBAQeqj4cApHHUXOVvIPgLVDsCFoz/hGD+5QQD1GQ==}
 
   '@eslint-community/eslint-utils@4.9.1':
     resolution: {integrity: sha512-phrYmNiYppR7znFEdqgfWHXR6NCkZEK7hwWDHZUjit/2/U0r6XvkDl0SYnoM51Hq7FhCGdLDT6zxCCOY1hexsQ==}
@@ -596,11 +605,13 @@ packages:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
 
-  '@rungalileo/jupiter-ds@0.0.2':
-    resolution: {integrity: sha512-OCzGt4iXMYzsll0ADn/4LoN++rsH8Rd2w2jmznJv+BJ7+CN902LTn42CWxh1NqYA1SWn++a57QaZaSuj8MkOjw==}
+  '@rungalileo/jupiter-ds@0.0.6':
+    resolution: {integrity: sha512-9h6QjOmNNNAg4eXd2GaoE5jZK40NM7TEHCcDFknkVI5AN5g0Vx1LDS8hXjT/yAZDpTaz0UYdnpMqeyxdRWiI5g==}
     peerDependencies:
       '@mantine/core': ^7.17.0
+      '@mantine/dates': ^7.17.0
       '@mantine/hooks': ^7.17.0
+      '@tabler/icons-react': ^3.0.0
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
 
@@ -2601,6 +2612,12 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@emotion/is-prop-valid@1.4.0':
+    dependencies:
+      '@emotion/memoize': 0.9.0
+
+  '@emotion/memoize@0.9.0': {}
+
   '@eslint-community/eslint-utils@4.9.1(eslint@9.39.2(jiti@2.6.1))':
     dependencies:
       eslint: 9.39.2(jiti@2.6.1)
@@ -2955,10 +2972,12 @@ snapshots:
       react: 19.1.4
       react-dom: 19.1.4(react@19.1.4)
 
-  '@rungalileo/jupiter-ds@0.0.2(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)':
+  '@rungalileo/jupiter-ds@0.0.6(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/dates@7.17.5(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(dayjs@1.11.19)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(@tabler/icons-react@3.31.0(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)':
     dependencies:
       '@mantine/core': 7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
+      '@mantine/dates': 7.17.5(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(dayjs@1.11.19)(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
       '@mantine/hooks': 7.17.5(react@19.1.4)
+      '@tabler/icons-react': 3.31.0(react@19.1.4)
       clsx: 2.1.1
       react: 19.1.4
       react-dom: 19.1.4(react@19.1.4)

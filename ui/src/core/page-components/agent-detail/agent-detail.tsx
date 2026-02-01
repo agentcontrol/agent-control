@@ -33,7 +33,7 @@ import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 import { useQueryParam } from "@/core/hooks/use-query-param";
 
-import { AgentStats } from "./agent-stats";
+import { AgentsMonitoring } from "./agents-monitoring";
 import { ControlStoreModal } from "./modals/control-store";
 import { EditControlContent } from "./modals/edit-control/edit-control-content";
 
@@ -128,7 +128,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
         return (
           <Switch
             checked={enabled}
-            color="violet"
+            color="green.5"
             onChange={(e) => {
               const newEnabled = e.currentTarget.checked;
               modals.openConfirmModal({
@@ -296,7 +296,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                   value='stats'
                   leftSection={<IconChartBar size={16} />}
                 >
-                  Stats
+                  Monitoring
                 </Tabs.Tab>
               </Tabs.List>
 
@@ -374,7 +374,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
           <Tabs.Panel value='stats' pt='lg'>
             <ErrorBoundary variant="page">
               {agent?.agent.agent_id && (
-                <AgentStats agentUuid={agent.agent.agent_id} />
+                <AgentsMonitoring agentUuid={agent.agent.agent_id} />
               )}
             </ErrorBoundary>
           </Tabs.Panel>

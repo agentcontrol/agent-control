@@ -24,6 +24,7 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
     <Stack gap='md'>
       <Switch
         size='sm'
+        color="green.5"
         label={
           <LabelWithTooltip
             label="Enabled"
