@@ -6,7 +6,6 @@ import {
   Loader,
   Modal,
   Paper,
-  ScrollArea,
   Stack,
   Text,
   Title,
@@ -18,7 +17,7 @@ import { Button, Table } from "@rungalileo/jupiter-ds";
 import { IconAlertCircle, IconX } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { api } from "@/core/api/client";
@@ -85,11 +84,35 @@ export function ControlStoreModal({
     isFetchingNextPage,
     fetchNextPage,
   });
-
+  
   // Flatten paginated data
   const controls = useMemo(() => {
     return data?.pages.flatMap((page) => page.controls) ?? [];
   }, [data]);
+  
+  // Ref callback to attach to Table's scroll container when maxHeight is set
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
+  
+  // Attach scroll container ref to the Table's scroll container
+  useEffect(() => {
+    if (tableWrapperRef.current && controls.length > 0) {
+      // Find the scrollable container (the div with overflow: auto from Table's maxHeight)
+      // The Table component wraps content in a div with the "root" class when maxHeight is set
+      const scrollContainer = tableWrapperRef.current.querySelector('[class*="root"]') as HTMLElement;
+      if (scrollContainer) {
+        // Check if it's scrollable (has overflow: auto)
+        const computedStyle = window.getComputedStyle(scrollContainer);
+        if (computedStyle.overflow === 'auto' || computedStyle.overflowY === 'auto') {
+          (scrollContainerRef as React.MutableRefObject<HTMLElement | null>).current = scrollContainer;
+          
+          // Append sentinel inside the scroll container (after the table)
+          if (sentinelRef.current && sentinelRef.current.parentElement !== scrollContainer) {
+            scrollContainer.appendChild(sentinelRef.current);
+          }
+        }
+      }
+    }
+  }, [controls.length, scrollContainerRef, sentinelRef]);
 
   const handleCopyControl = async (control: ControlSummary) => {
     setLoadingControlId(control.id);
@@ -281,39 +304,45 @@ export function ControlStoreModal({
           </Box>
 
           {/* Scrollable Table Content */}
-          <Box px="md" pb="md" style={{ flex: 1, minHeight: 0 }}>
-            <ScrollArea h="100%" type="auto" viewportRef={scrollContainerRef}>
-              {isLoading ? (
-                <Paper p="xl" ta="center" withBorder radius="sm">
-                  <Loader size="sm" />
-                </Paper>
-              ) : error ? (
-                <Paper p="xl" ta="center" withBorder radius="sm">
-                  <Stack gap="xs" align="center">
-                    <IconAlertCircle
-                      size={48}
-                      color="var(--mantine-color-red-5)"
-                    />
-                    <Text c="red">Failed to load controls</Text>
-                  </Stack>
-                </Paper>
-              ) : controls.length > 0 ? (
-                <>
-                  <Table columns={columns} data={controls} highlightOnHover />
-                  {/* Load more sentinel for infinite scroll */}
-                  <div ref={sentinelRef} style={{ height: 1 }} />
-                  {isFetchingNextPage && (
-                    <Box py="md" ta="center">
-                      <Loader size="sm" />
-                    </Box>
-                  )}
-                </>
-              ) : (
-                <Paper p="xl" withBorder radius="sm" ta="center">
-                  <Text c="dimmed">No controls found</Text>
-                </Paper>
-              )}
-            </ScrollArea>
+          <Box px="md" pb="md" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            {isLoading ? (
+              <Paper p="xl" ta="center" withBorder radius="sm">
+                <Loader size="sm" />
+              </Paper>
+            ) : error ? (
+              <Paper p="xl" ta="center" withBorder radius="sm">
+                <Stack gap="xs" align="center">
+                  <IconAlertCircle
+                    size={48}
+                    color="var(--mantine-color-red-5)"
+                  />
+                  <Text c="red">Failed to load controls</Text>
+                </Stack>
+              </Paper>
+            ) : controls.length > 0 ? (
+              <Box 
+                ref={tableWrapperRef}
+                style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+              >
+                <Table 
+                  columns={columns} 
+                  data={controls} 
+                  highlightOnHover 
+                  maxHeight="100%"
+                />
+                {/* Load more sentinel for infinite scroll - will be moved inside table's scroll container by useEffect */}
+                <div ref={sentinelRef} style={{ height: 1 }} />
+                {isFetchingNextPage && (
+                  <Box py="md" ta="center">
+                    <Loader size="sm" />
+                  </Box>
+                )}
+              </Box>
+            ) : (
+              <Paper p="xl" withBorder radius="sm" ta="center">
+                <Text c="dimmed">No controls found</Text>
+              </Paper>
+            )}
           </Box>
         </Box>
       </Modal>
