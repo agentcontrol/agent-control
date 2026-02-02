@@ -54,32 +54,6 @@ See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's archi
 
 ---
 
-## See It In Action
-
-```python
-import agent_control
-from agent_control import control, ControlViolationError
-
-# Initialize once at startup
-agent_control.init(
-    agent_name="Customer Support Agent",
-    agent_id="support-agent-v1",
-    server_url="http://localhost:8000"
-)
-
-# Protect any function with a decorator
-@control()
-async def chat(message: str) -> str:
-    return await llm.generate(message)
-
-# Violations are caught automatically
-try:
-    response = await chat(user_input)
-except ControlViolationError as e:
-    print(f"Blocked by control '{e.control_name}': {e.message}")
-```
-
-
 ## Quick Start
 
 ### Prerequisites
@@ -124,7 +98,7 @@ Dashboard is now running at `http://localhost:4000`.
 Install the SDK:
 
 ```bash
-pip install agent-control
+pip install agent-control-sdk
 ```
 
 Use in your code:
@@ -193,7 +167,7 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "description": "Block Social Security Numbers in responses",
   "enabled": true,
   "execution": "server",
-  "scope": { "step_types": ["llm"], "stages": ["post"] },
+  "scope": { "step_names": ["generate_response"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
     "name": "regex",
@@ -211,7 +185,7 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "description": "Block toxic or harmful user messages",
   "enabled": true,
   "execution": "server",
-  "scope": { "step_types": ["llm"], "stages": ["pre"] },
+  "scope": { "step_names": ["process_user_message"], "stages": ["pre"] },
   "selector": { "path": "input" },
   "evaluator": {
     "name": "galileo-luna2",
@@ -229,7 +203,7 @@ See [docs/REFERENCE.md](docs/REFERENCE.md#evaluators) for full evaluator documen
 
 ---
 
-## Architecture
+## Agent Control Components
 
 Agent Control is built as a monorepo with these components:
 
@@ -268,7 +242,7 @@ Agent Control is built as a monorepo with these components:
 
 | Package | Description |
 |:--------|:------------|
-| `agent-control` | Python SDK with `@control()` decorator |
+| `agent-control-sdk` | Python SDK with `@control()` decorator |
 | `agent-control-server` | FastAPI server with Control Management API |
 | `agent-control-engine` | Core evaluation logic and evaluator system |
 | `agent-control-models` | Shared Pydantic v2 models |
