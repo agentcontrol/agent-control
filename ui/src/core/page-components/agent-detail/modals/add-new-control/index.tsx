@@ -123,7 +123,7 @@ export function AddNewControlModal({
       id: "name",
       header: "Name",
       accessorKey: "name",
-      size: 80,
+      size: 150,
       cell: ({ row }) => (
         <Group gap="xs">
           <Text size="sm" fw={500}>
@@ -136,7 +136,7 @@ export function AddNewControlModal({
       id: "description",
       header: "Description",
       accessorKey: "description",
-      size: 600,
+      size: 400,
       cell: ({ row }) => (
         <Tooltip label={row.original.description} withArrow>
           <Text size="sm" c="dimmed" lineClamp={1}>
@@ -200,7 +200,7 @@ export function AddNewControlModal({
             </Button>
           </Group>
           <Text size="sm" c="dimmed">
-            Browse and add controls to your agent
+            Select an evaluator to create a new control
           </Text>
         </Box>
         <Divider />
@@ -211,7 +211,7 @@ export function AddNewControlModal({
             {/* Search and Docs Link */}
             <Group justify="space-between">
               <TextInput
-                placeholder="Search..."
+                placeholder="Search evaluators..."
                 leftSection={<IconSearch size={16} />}
                 flex={1}
                 maw={250}
@@ -219,7 +219,7 @@ export function AddNewControlModal({
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
                 <Text size="sm" c="dimmed">
-                  Looking to add custom control?{" "}
+                  Learn here on how to add new type of evaluator.{" "}
                   <Text
                     component="a"
                     href="https://github.com/agentcontrol/agent-control/blob/main/README.md"
@@ -229,7 +229,7 @@ export function AddNewControlModal({
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Check our Docs ↗
+                    Docs ↗
                   </Text>
                 </Text>
               </Group>

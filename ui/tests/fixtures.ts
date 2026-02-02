@@ -10,7 +10,7 @@ import type {
   ListAgentsResponse,
   ListControlsResponse,
 } from "@/core/api/types";
-import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-stats";
+import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-monitor";
 
 /**
  * Mock data for API responses

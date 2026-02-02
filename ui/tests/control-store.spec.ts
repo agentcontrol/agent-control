@@ -19,7 +19,7 @@ async function openAddNewControlModal(page: Page) {
   await controlStoreModal.getByTestId("footer-new-control-button").click();
   const modal = page
     .getByRole("dialog")
-    .filter({ hasText: "Browse and add controls to your agent" });
+    .filter({ hasText: "Select an evaluator to create a new control" });
   await expect(modal).toBeVisible();
   return modal;
 }
@@ -40,7 +40,7 @@ test.describe("Control Store Modal", () => {
 
     await expect(modal.getByRole("columnheader", { name: "Name" })).toBeVisible();
     await expect(modal.getByRole("columnheader", { name: "Description" })).toBeVisible();
-    await expect(modal.getByRole("columnheader", { name: "Enabled" })).toBeVisible();
+    // Status dot column has no header text, so we skip checking for it
     await expect(modal.getByRole("columnheader", { name: "Agent" })).toBeVisible();
 
     for (const control of mockData.listControls.controls) {
@@ -129,7 +129,7 @@ test.describe("Control Store Modal", () => {
     await modal.getByTestId("footer-new-control-button").click();
 
     await expect(
-      mockedPage.getByText("Browse and add controls to your agent")
+      mockedPage.getByText("Select an evaluator to create a new control")
     ).toBeVisible();
   });
 });
@@ -138,7 +138,7 @@ test.describe("Add New Control Modal", () => {
   test("displays modal header and description", async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
     await expect(modal.getByRole("heading", { name: "Create Control" })).toBeVisible();
-    await expect(modal.getByText("Browse and add controls to your agent")).toBeVisible();
+    await expect(modal.getByText("Select an evaluator to create a new control")).toBeVisible();
   });
 
   test("displays evaluators table with available evaluators", async ({
@@ -156,7 +156,7 @@ test.describe("Add New Control Modal", () => {
 
   test("can search for evaluators", async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
-    const searchInput = modal.getByPlaceholder("Search...");
+    const searchInput = modal.getByPlaceholder("Search evaluators...");
     await searchInput.fill("Regex");
 
     await expect(modal.getByRole("cell", { name: "Regex" })).toBeVisible();
@@ -165,7 +165,7 @@ test.describe("Add New Control Modal", () => {
 
   test("shows empty state when search has no results", async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
-    const searchInput = modal.getByPlaceholder("Search...");
+    const searchInput = modal.getByPlaceholder("Search evaluators...");
     await searchInput.fill("NonexistentEvaluator");
 
     await expect(modal.getByText("No evaluators found")).toBeVisible();
@@ -181,8 +181,8 @@ test.describe("Add New Control Modal", () => {
 
   test("displays docs link", async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
-    await expect(modal.getByText("Looking to add custom control?")).toBeVisible();
-    await expect(modal.getByText("Check our Docs ↗")).toBeVisible();
+    await expect(modal.getByText("Learn here on how to add new type of evaluator.")).toBeVisible();
+    await expect(modal.getByText("Docs ↗")).toBeVisible();
   });
 });
 

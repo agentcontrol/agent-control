@@ -165,6 +165,28 @@ export function ControlStoreModal({
 
   const columns: ColumnDef<ControlSummary>[] = [
     {
+      id: "enabled",
+      header: "",
+      accessorKey: "enabled",
+      size: 40,
+      cell: ({ row }) => (
+        <Group justify="center">
+          <Tooltip label={row.original.enabled ? "Enabled" : "Disabled"}>
+            <Box
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                backgroundColor: row.original.enabled
+                  ? "var(--mantine-color-green-6)"
+                  : "var(--mantine-color-gray-5)",
+              }}
+            />
+          </Tooltip>
+        </Group>
+      ),
+    },
+    {
       id: "name",
       header: "Name",
       accessorKey: "name",
@@ -186,17 +208,6 @@ export function ControlStoreModal({
             {row.original.description || "—"}
           </Text>
         </Tooltip>
-      ),
-    },
-    {
-      id: "enabled",
-      header: "Enabled",
-      accessorKey: "enabled",
-      size: 80,
-      cell: ({ row }) => (
-        <Text size="sm" c={row.original.enabled ? "green" : "dimmed"}>
-          {row.original.enabled ? "Yes" : "No"}
-        </Text>
       ),
     },
     {

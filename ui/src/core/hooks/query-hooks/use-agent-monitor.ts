@@ -7,7 +7,7 @@ export type TimeRange = "1m" | "5m" | "15m" | "1h" | "24h" | "7d";
 export type ControlStats = components["schemas"]["ControlStats"];
 export type StatsResponse = components["schemas"]["StatsResponse"];
 
-export function useAgentStats(
+export function useAgentMonitor(
   agentUuid: string,
   timeRange: TimeRange = "1h",
   options?: {
@@ -16,7 +16,7 @@ export function useAgentStats(
   }
 ) {
   return useQuery({
-    queryKey: ["agent-stats", agentUuid, timeRange],
+    queryKey: ["agent-monitor", agentUuid, timeRange],
     queryFn: async (): Promise<StatsResponse> => {
       const { data, error } = await api.observability.getStats({
         agent_uuid: agentUuid,
@@ -34,4 +34,3 @@ export function useAgentStats(
     refetchIntervalInBackground: false, // Pause polling when tab is not visible
   });
 }
-

@@ -23,7 +23,7 @@ export async function openEvaluatorForm(page: Page, evaluatorName: string) {
   await controlStoreModal.getByTestId("footer-new-control-button").click();
   const addNewModal = page
     .getByRole("dialog")
-    .filter({ hasText: "Browse and add controls to your agent" });
+    .filter({ hasText: "Select an evaluator to create a new control" });
   await expect(addNewModal).toBeVisible();
 
   // Find and click Add button for the evaluator

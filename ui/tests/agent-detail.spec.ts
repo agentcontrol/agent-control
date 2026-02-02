@@ -1,6 +1,6 @@
 import type { AgentControlsResponse, GetAgentResponse } from "@/core/api/types";
 
-import { expect, mockData, test } from "./fixtures";
+import { expect, mockData, mockRoutes, test } from "./fixtures";
 
 test.describe("Agent Detail Page", () => {
   const agentId = "agent-1";
@@ -26,19 +26,51 @@ test.describe("Agent Detail Page", () => {
 
     // Check all tabs are present
     await expect(mockedPage.getByRole("tab", { name: /Controls/i })).toBeVisible();
-    await expect(mockedPage.getByRole("tab", { name: /Monitoring/i })).toBeVisible();
+    await expect(mockedPage.getByRole("tab", { name: /Monitor/i })).toBeVisible();
   });
 
-  test("controls tab is active by default", async ({ mockedPage }) => {
+  test("controls tab is active by default when no stats data", async ({ mockedPage }) => {
+    // Set up mocks with empty stats to ensure Controls tab is shown
+    await mockRoutes.agents(mockedPage);
+    await mockRoutes.agent(mockedPage);
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+
     await mockedPage.goto(agentUrl);
 
-    // Controls tab should be selected
+    // Controls tab should be selected when no stats data exists
     const controlsTab = mockedPage.getByRole("tab", { name: /Controls/i });
     await expect(controlsTab).toHaveAttribute("aria-selected", "true");
+    
+    // Monitor tab should not be selected
+    const monitorTab = mockedPage.getByRole("tab", { name: /Monitor/i });
+    await expect(monitorTab).toHaveAttribute("aria-selected", "false");
+  });
+
+  test("monitor tab is active by default when stats data exists", async ({ mockedPage }) => {
+    // Set up mocks with stats data to ensure Monitor tab is shown
+    await mockRoutes.agents(mockedPage);
+    await mockRoutes.agent(mockedPage);
+    await mockRoutes.stats(mockedPage, { data: mockData.stats });
+
+    await mockedPage.goto(agentUrl);
+
+    // Wait for stats to load and tab to be set
+    await mockedPage.waitForTimeout(100);
+
+    // Monitor tab should be selected when stats data exists
+    const monitorTab = mockedPage.getByRole("tab", { name: /Monitor/i });
+    await expect(monitorTab).toHaveAttribute("aria-selected", "true");
+    
+    // Controls tab should not be selected
+    const controlsTab = mockedPage.getByRole("tab", { name: /Controls/i });
+    await expect(controlsTab).toHaveAttribute("aria-selected", "false");
   });
 
   test("displays controls table with data", async ({ mockedPage }) => {
     await mockedPage.goto(agentUrl);
+
+    // Click Controls tab (monitor might be shown by default if stats exist)
+    await mockedPage.getByRole("tab", { name: "Controls" }).click();
 
     // Wait for controls to load - scope to the Controls tab panel
     const controlsPanel = mockedPage.getByRole("tabpanel", { name: /Controls/i });
@@ -52,6 +84,9 @@ test.describe("Agent Detail Page", () => {
 
   test("filters controls when searching", async ({ mockedPage }) => {
     await mockedPage.goto(agentUrl);
+
+    // Click Controls tab (monitor might be shown by default if stats exist)
+    await mockedPage.getByRole("tab", { name: "Controls" }).click();
 
     // Wait for controls to load
     const controlsPanel = mockedPage.getByRole("tabpanel", { name: /Controls/i });
@@ -83,16 +118,20 @@ test.describe("Agent Detail Page", () => {
   test("displays control badges for step types and stages", async ({ mockedPage }) => {
     await mockedPage.goto(agentUrl);
 
+    // Click Controls tab (monitor might be shown by default if stats exist)
+    await mockedPage.getByRole("tab", { name: "Controls" }).click();
+
     // Wait for controls to load
-    await expect(mockedPage.getByRole("table")).toBeVisible();
+    const controlsPanel = mockedPage.getByRole("tabpanel", { name: /Controls/i });
+    await expect(controlsPanel.getByRole("table")).toBeVisible();
 
-    // Check that badges are displayed (LLM or Tool) - use first() since multiple rows may have same badge
-    await expect(mockedPage.getByText("LLM").first()).toBeVisible();
-    await expect(mockedPage.getByText("Tool").first()).toBeVisible();
+    // Check that badges are displayed (LLM or Tool) - scope to controls panel
+    await expect(controlsPanel.getByText("LLM").first()).toBeVisible();
+    await expect(controlsPanel.getByText("Tool").first()).toBeVisible();
 
-    // Check stage badges (Pre or Post) - use first() since multiple rows may have same badge
-    await expect(mockedPage.getByText("Pre").first()).toBeVisible();
-    await expect(mockedPage.getByText("Post").first()).toBeVisible();
+    // Check stage badges (Pre or Post) - scope to controls panel
+    await expect(controlsPanel.getByText("Pre").first()).toBeVisible();
+    await expect(controlsPanel.getByText("Post").first()).toBeVisible();
   });
 
   test("shows Add Control button", async ({ mockedPage }) => {
@@ -178,7 +217,7 @@ test.describe("Agent Detail Page", () => {
     await mockedPage.goto(agentUrl);
 
     // Click Stats tab
-    await mockedPage.getByRole("tab", { name: /Monitoring/i }).click();
+    await mockedPage.getByRole("tab", { name: /Monitor/i }).click();
     await expect(
       mockedPage.getByRole("heading", { name: "Control Statistics", exact: true })
     ).toBeVisible();
@@ -191,12 +230,20 @@ test.describe("Agent Detail Page", () => {
   test("opens edit control modal when edit button is clicked", async ({ mockedPage }) => {
     await mockedPage.goto(agentUrl);
 
-    // Wait for controls to load
-    await expect(mockedPage.getByRole("table")).toBeVisible();
+    // Click Controls tab (monitor might be shown by default if stats exist)
+    await mockedPage.getByRole("tab", { name: "Controls" }).click();
 
-    // Find and click the first edit button in a row
-    const rows = mockedPage.locator("tbody tr");
+    // Wait for controls to load
+    const controlsPanel = mockedPage.getByRole("tabpanel", { name: /Controls/i });
+    await expect(controlsPanel.getByRole("table")).toBeVisible();
+
+    // Find and click the first edit button in a row (scope to controls panel)
+    const rows = controlsPanel.locator("tbody tr");
     const firstRow = rows.first();
+    
+    // Scroll to the row to ensure it's in view
+    await firstRow.scrollIntoViewIfNeeded();
+    
     const editButton = firstRow.locator('button:has(svg[class*="icon-pencil"])');
 
     // If that doesn't work, try clicking any action button in the row
@@ -204,7 +251,8 @@ test.describe("Agent Detail Page", () => {
       const actionButtons = firstRow.locator("button").last();
       await actionButtons.click();
     } else {
-      await editButton.click();
+      // Force click if button exists but might be hidden due to CSS
+      await editButton.click({ force: true });
     }
 
     // Edit modal should be visible
@@ -214,16 +262,26 @@ test.describe("Agent Detail Page", () => {
   test("edit control modal pre-fills scope and execution fields", async ({ mockedPage }) => {
     await mockedPage.goto(agentUrl);
 
-    // Wait for controls to load
-    await expect(mockedPage.getByRole("table")).toBeVisible();
+    // Click Controls tab (monitor might be shown by default if stats exist)
+    await mockedPage.getByRole("tab", { name: "Controls" }).click();
 
-    const targetRow = mockedPage.locator("tr", { hasText: "SQL Injection Guard" });
+    // Wait for controls to load
+    const controlsPanel = mockedPage.getByRole("tabpanel", { name: /Controls/i });
+    await expect(controlsPanel.getByRole("table")).toBeVisible();
+
+    // Find the row for "SQL Injection Guard" and click its edit button (scope to controls panel)
+    const targetRow = controlsPanel.locator("tr", { hasText: "SQL Injection Guard" });
+    
+    // Scroll to the row to ensure it's in view
+    await targetRow.scrollIntoViewIfNeeded();
+    
     const editButton = targetRow.locator('button:has(svg[class*="icon-pencil"])');
 
     if ((await editButton.count()) === 0) {
       await targetRow.locator("button").last().click();
     } else {
-      await editButton.click();
+      // Force click if button exists but might be hidden due to CSS
+      await editButton.click({ force: true });
     }
 
     const modal = mockedPage.getByRole("dialog", { name: "Edit Control" });

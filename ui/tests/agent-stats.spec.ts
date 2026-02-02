@@ -1,6 +1,6 @@
 import { expect, mockData, mockRoutes, test } from "./fixtures";
 
-test.describe("Agent Monitoring Tab", () => {
+test.describe("Agent Monitor Tab", () => {
   test.beforeEach(async ({ mockedPage }) => {
     // Navigate to agent detail page
     await mockedPage.goto("/agents/agent-1");
@@ -10,7 +10,7 @@ test.describe("Agent Monitoring Tab", () => {
 
   test("should display stats tab and navigate to it", async ({ mockedPage }) => {
     // Stats tab should be visible
-    const statsTab = mockedPage.getByRole("tab", { name: "Monitoring" });
+    const statsTab = mockedPage.getByRole("tab", { name: "Monitor" });
     await expect(statsTab).toBeVisible();
 
     // Click on stats tab
@@ -26,7 +26,7 @@ test.describe("Agent Monitoring Tab", () => {
     mockedPage,
   }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitor" }).click();
 
     // Time range selector should be visible (TimeRangeSwitch component)
     // Look for the component by finding the segment buttons or menu button
@@ -36,7 +36,7 @@ test.describe("Agent Monitoring Tab", () => {
 
   test("should display summary statistics", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitor" }).click();
 
     // Check total executions
     await expect(
@@ -45,13 +45,14 @@ test.describe("Agent Monitoring Tab", () => {
 
     // Check for badges showing matches and non-matches (use first() to get badge, not table header)
     await expect(mockedPage.getByText("Non-Matches").first()).toBeVisible();
+    // Note: "Matches" badge text is still "Matches" in the summary card, but table column is "Triggers"
     await expect(mockedPage.getByText("Matches").first()).toBeVisible();
     await expect(mockedPage.getByText("Errors").first()).toBeVisible();
   });
 
   test("should display actions distribution section", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitor" }).click();
 
     // Check actions distribution header
     await expect(mockedPage.getByText("Actions Distribution")).toBeVisible();
@@ -65,7 +66,7 @@ test.describe("Agent Monitoring Tab", () => {
 
   test("should display per-control statistics table", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitor" }).click();
 
     // Check table header
     await expect(
@@ -76,22 +77,19 @@ test.describe("Agent Monitoring Tab", () => {
     await expect(mockedPage.getByRole("columnheader", { name: "Control" })).toBeVisible();
     await expect(mockedPage.getByRole("columnheader", { name: "Executions" })).toBeVisible();
     await expect(
-      mockedPage.getByRole("columnheader", { name: "Matches", exact: true })
+      mockedPage.getByRole("columnheader", { name: "Triggers", exact: true })
     ).toBeVisible();
     await expect(mockedPage.getByRole("columnheader", { name: "Non-Matches" })).toBeVisible();
     await expect(mockedPage.getByRole("columnheader", { name: "Actions" })).toBeVisible();
     await expect(mockedPage.getByRole("columnheader", { name: "Errors" })).toBeVisible();
-    await expect(
-      mockedPage.getByRole("columnheader", { name: "Avg Confidence" })
-    ).toBeVisible();
   });
 
   test("should display control names in the table", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitor" }).click();
 
     // Check control names from mock data - scope to Stats panel table
-    const statsTable = mockedPage.getByRole("tabpanel", { name: /Monitoring/i }).getByRole("table");
+    const statsTable = mockedPage.getByRole("tabpanel", { name: /Monitor/i }).getByRole("table");
     for (const stat of mockData.stats.stats) {
       await expect(statsTable.getByText(stat.control_name)).toBeVisible();
     }
@@ -99,7 +97,7 @@ test.describe("Agent Monitoring Tab", () => {
 
   test("should allow changing time range", async ({ mockedPage }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitor" }).click();
 
     // TimeRangeSwitch should be visible and allow changing time range
     // The component has segment buttons for quick selection
@@ -117,7 +115,7 @@ test.describe("Agent Monitoring Tab", () => {
     mockedPage,
   }) => {
     // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
+    await mockedPage.getByRole("tab", { name: "Monitor" }).click();
 
     // SQL Injection Guard has 2 errors in mock data
     // Find the row and check for error count
@@ -125,23 +123,9 @@ test.describe("Agent Monitoring Tab", () => {
     await expect(errorBadge).toBeVisible();
   });
 
-  test("should show confidence badges with appropriate colors", async ({
-    mockedPage,
-  }) => {
-    // Navigate to stats tab
-    await mockedPage.getByRole("tab", { name: "Monitoring" }).click();
-
-    // Check that confidence percentages are displayed
-    // PII Detection has 92% confidence
-    await expect(mockedPage.getByText("92%")).toBeVisible();
-    // SQL Injection Guard has 88% confidence
-    await expect(mockedPage.getByText("88%")).toBeVisible();
-    // Rate Limiter has 95% confidence
-    await expect(mockedPage.getByText("95%")).toBeVisible();
-  });
 });
 
-test.describe("Agent Monitoring Tab - Empty State", () => {
+test.describe("Agent Monitor Tab - Empty State", () => {
   test("should show empty state when no stats available", async ({ page }) => {
     // Set up mocks with empty stats
     await mockRoutes.agents(page);
@@ -153,7 +137,7 @@ test.describe("Agent Monitoring Tab - Empty State", () => {
     await expect(page.getByText("Customer Support Bot")).toBeVisible();
 
     // Navigate to stats tab
-    await page.getByRole("tab", { name: "Monitoring" }).click();
+    await page.getByRole("tab", { name: "Monitor" }).click();
 
     // Time range selector should still be visible in empty state (TimeRangeSwitch)
     const timeRangeSwitch = page.locator('[class*="TimeRangeSwitch"]').first();
@@ -167,7 +151,7 @@ test.describe("Agent Monitoring Tab - Empty State", () => {
   });
 });
 
-test.describe("Agent Monitoring Tab - Refetch Flow", () => {
+test.describe("Agent Monitor Tab - Refetch Flow", () => {
   test("should update values when data is refetched", async ({ page }) => {
     let requestCount = 0;
 
@@ -234,25 +218,27 @@ test.describe("Agent Monitoring Tab - Refetch Flow", () => {
     await expect(page.getByText("Customer Support Bot")).toBeVisible();
 
     // Navigate to stats tab
-    await page.getByRole("tab", { name: "Monitoring" }).click();
+    await page.getByRole("tab", { name: "Monitor" }).click();
 
     // Verify initial values are displayed (use first() to get summary stat, not table cell)
+    // Initial: 100 executions, 10 matches = 10% match rate
     await expect(page.getByText("100", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("85%")).toBeVisible();
+    await expect(page.getByText("10.0%").first()).toBeVisible();
 
     // Wait for refetch (component polls every 5 seconds)
     // We wait for the updated values to appear
+    // Updated: 250 executions, 35 matches = 14% match rate
     await expect(page.getByText("250", { exact: true }).first()).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByText("91%")).toBeVisible();
+    await expect(page.getByText("14.0%").first()).toBeVisible();
 
     // Verify the request was made multiple times
     expect(requestCount).toBeGreaterThan(1);
   });
 });
 
-test.describe("Agent Monitoring Tab - Error State", () => {
+test.describe("Agent Monitor Tab - Error State", () => {
   test("should show error state when API fails", async ({ page }) => {
     // Set up mocks with failing stats endpoint
     await mockRoutes.agents(page);
@@ -264,7 +250,7 @@ test.describe("Agent Monitoring Tab - Error State", () => {
     await expect(page.getByText("Customer Support Bot")).toBeVisible();
 
     // Navigate to stats tab
-    await page.getByRole("tab", { name: "Monitoring" }).click();
+    await page.getByRole("tab", { name: "Monitor" }).click();
 
     // Should show error state
     await expect(page.getByText("Failed to load stats")).toBeVisible();

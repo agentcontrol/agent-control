@@ -23,19 +23,20 @@ import {
   IconShield,
 } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import type { Control } from "@/core/api/types";
 import { SearchInput } from "@/core/components/search-input";
 import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
+import { useAgentMonitor } from "@/core/hooks/query-hooks/use-agent-monitor";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 import { useQueryParam } from "@/core/hooks/use-query-param";
 
-import { AgentsMonitoring } from "./agents-monitoring";
 import { ControlStoreModal } from "./modals/control-store";
 import { EditControlContent } from "./modals/edit-control/edit-control-content";
+import { AgentsMonitor } from "./monitor";
 
 interface AgentDetailPageProps {
   agentId: string;
@@ -55,14 +56,13 @@ const getStepTypeLabelAndColor = (
 };
 
 const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
-  const [activeTab, setActiveTab] = useState<string | null>("controls");
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [controlStoreOpened, setControlStoreOpened] = useState(false);
   const [selectedControl, setSelectedControl] = useState<Control | null>(null);
   // Get search value for filtering (SearchInput handles the UI and URL sync)
   const [searchQuery] = useQueryParam("q");
 
-  // Fetch agent details and controls
+  // Fetch agent details, controls, and stats in parallel
   const {
     data: agent,
     isLoading: agentLoading,
@@ -73,7 +73,36 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
     isLoading: controlsLoading,
     error: controlsError,
   } = useAgentControls(agentId);
+  
+  // Fetch stats to determine if we should show monitor tab by default
+  // Use 1W (7d) as default time range
+  const {
+    data: statsData,
+    isLoading: statsLoading,
+  } = useAgentMonitor(agent?.agent.agent_id || "", "7d", {
+    enabled: !!agent?.agent.agent_id,
+  });
+  
   const updateControl = useUpdateControl();
+
+  // Determine initial tab: show monitor if stats data exists, otherwise controls
+  const [activeTab, setActiveTab] = useState<string | null>("controls");
+
+  // Set initial tab based on stats data once loaded (only on mount)
+  const hasCheckedInitialTab = React.useRef(false);
+  React.useEffect(() => {
+    if (!hasCheckedInitialTab.current && !statsLoading && statsData !== undefined) {
+      hasCheckedInitialTab.current = true;
+      // Check if stats have data (non-empty stats array or non-zero executions)
+      const hasStatsData = statsData && (
+        (statsData.stats && statsData.stats.length > 0) ||
+        (statsData.total_executions && statsData.total_executions > 0)
+      );
+      if (hasStatsData) {
+        setActiveTab("stats");
+      }
+    }
+  }, [statsLoading, statsData]);
 
   // Filter controls based on search query
   const controls = useMemo(() => {
@@ -296,7 +325,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                   value='stats'
                   leftSection={<IconChartBar size={16} />}
                 >
-                  Monitoring
+                  Monitor
                 </Tabs.Tab>
               </Tabs.List>
 
@@ -377,7 +406,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
           <Tabs.Panel value='stats' pt='lg'>
             <ErrorBoundary variant="page">
               {agent?.agent.agent_id && (
-                <AgentsMonitoring agentUuid={agent.agent.agent_id} />
+                <AgentsMonitor agentUuid={agent.agent.agent_id} />
               )}
             </ErrorBoundary>
           </Tabs.Panel>
