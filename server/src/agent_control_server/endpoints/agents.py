@@ -155,6 +155,7 @@ async def _validate_policy_controls_for_agent(
 async def list_agents(
     cursor: str | None = None,
     limit: int = _DEFAULT_PAGINATION_LIMIT,
+    name: str | None = None,
     db: AsyncSession = Depends(get_async_db),
 ) -> ListAgentsResponse:
     """
@@ -166,6 +167,7 @@ async def list_agents(
     Args:
         cursor: Optional cursor for pagination (UUID of last agent from previous page)
         limit: Pagination limit (default 20, max 100)
+        name: Optional name filter (case-insensitive partial match)
         db: Database session (injected)
 
     Returns:
@@ -174,13 +176,23 @@ async def list_agents(
     # Clamp limit
     limit = min(max(1, limit), _MAX_PAGINATION_LIMIT)
 
-    # Get total count
-    count_result = await db.execute(select(func.count()).select_from(Agent))
+    # Build base filter for name search
+    name_filter = Agent.name.ilike(f"%{name}%") if name else None
+
+    # Get total count (with name filter if provided)
+    count_query = select(func.count()).select_from(Agent)
+    if name_filter is not None:
+        count_query = count_query.where(name_filter)
+    count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
     # Build query with cursor-based pagination
     # Order by created_at DESC, then by UUID DESC for stable ordering
     query = select(Agent).order_by(Agent.created_at.desc(), Agent.agent_uuid.desc())
+
+    # Apply name filter if provided
+    if name_filter is not None:
+        query = query.where(name_filter)
 
     # If cursor provided, filter to get items after the cursor
     if cursor:

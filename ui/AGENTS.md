@@ -54,6 +54,45 @@ pnpm fetch-api-types  # regenerate API types from server (must be running on :80
 - Each folder exports: `form.tsx` (React component), `types.ts` (form types), `index.ts` (re-exports)
 - Registry in `evaluators/index.ts` maps evaluator names to form components
 
+### Reusable components (`core/components/`)
+- Create reusable components that encapsulate common patterns and logic
+- **Best practice**: When creating wrapper components around Mantine components, extend the underlying component's props using `Omit` to exclude overridden props, then spread `...rest` to forward all other props
+- This provides full flexibility while maintaining type safety
+
+**Example: SearchInput component pattern**
+```typescript
+import type { TextInputProps } from "@mantine/core";
+import { TextInput } from "@mantine/core";
+
+interface SearchInputProps
+  extends Omit<TextInputProps, "value" | "onChange" | "leftSection" | "rightSection"> {
+  queryKey: string; // Required prop specific to this component
+}
+
+export function SearchInput({
+  queryKey,
+  placeholder = "Search...",
+  w = 250,
+  ...rest // Forward all other TextInput props
+}: SearchInputProps) {
+  // Component logic...
+  return (
+    <TextInput
+      {...rest} // Spread all forwarded props
+      // Override specific props
+      value={searchQuery}
+      onChange={handleChange}
+    />
+  );
+}
+```
+
+**Benefits:**
+- Full type safety for all underlying component props
+- No need to explicitly define every prop in the wrapper interface
+- Easy to extend with new props from the underlying component
+- Maintains backward compatibility when underlying component adds new props
+
 ## Common changes
 
 ### Add a new evaluator form

@@ -80,6 +80,19 @@ export const api = {
     list: () => apiClient.GET("/api/v1/evaluators"),
   },
   controls: {
+    list: (params?: {
+      cursor?: number;
+      limit?: number;
+      name?: string;
+      enabled?: boolean;
+      step_type?: string;
+      stage?: string;
+      execution?: string;
+      tag?: string;
+    }) =>
+      apiClient.GET("/api/v1/controls", {
+        params: params ? { query: params } : undefined,
+      }),
     create: (data: CreateControlRequest) =>
       apiClient.PUT("/api/v1/controls", { body: data }),
     getData: (controlId: number) =>

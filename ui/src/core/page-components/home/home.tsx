@@ -1,30 +1,36 @@
 import {
   Alert,
-  Box,
   Center,
   Group,
   Loader,
   ScrollArea,
   Stack,
   Text,
-  TextInput,
   Title,
 } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import { Table } from "@rungalileo/jupiter-ds";
-import { IconAlertCircle, IconSearch } from "@tabler/icons-react";
+import { IconAlertCircle } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 
 import type { AgentSummary } from "@/core/api/types";
+import { SearchInput } from "@/core/components/search-input";
 import { useAgentsInfinite } from "@/core/hooks/query-hooks/use-agents-infinite";
+import { useInfiniteScroll } from "@/core/hooks/use-infinite-scroll";
+import { useQueryParam } from "@/core/hooks/use-query-param";
 
 // Table row type - uses real API data
 type AgentTableRow = AgentSummary;
 
 const HomePage = () => {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
+  // Get search value for debouncing (SearchInput handles the UI and URL sync)
+  const [searchQuery] = useQueryParam("search");
+  const [debouncedSearch] = useDebouncedValue(searchQuery, 300);
+
+  // Server-side search via name param
   const {
     data,
     fetchNextPage,
@@ -32,73 +38,25 @@ const HomePage = () => {
     isFetchingNextPage,
     isLoading,
     error,
-  } = useAgentsInfinite();
+  } = useAgentsInfinite({
+    name: debouncedSearch || undefined,
+  });
 
-  // Ref for intersection observer
-  const loadMoreRef = useRef<HTMLDivElement>(null);
+  // Infinite scroll setup
+  const { sentinelRef, scrollContainerRef } = useInfiniteScroll({
+    hasNextPage: hasNextPage ?? false,
+    isFetchingNextPage,
+    fetchNextPage,
+  });
 
-  // Flatten all pages into single array
-  const allAgents = data?.pages.flatMap((page) => page.agents) || [];
-
-  // Filter agents based on search query
+  // Flatten paginated data
   const agents: AgentTableRow[] = useMemo(() => {
-    if (!searchQuery.trim()) return allAgents;
-    const query = searchQuery.toLowerCase();
-    return allAgents.filter((agent) =>
-      agent.agent_name.toLowerCase().includes(query)
-    );
-  }, [allAgents, searchQuery]);
-
-  // Intersection observer to load more agents when scrolling near bottom
-  useEffect(() => {
-    if (!loadMoreRef.current || !hasNextPage || isFetchingNextPage) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          fetchNextPage();
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    observer.observe(loadMoreRef.current);
-
-    return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+    return data?.pages.flatMap((page) => page.agents) || [];
+  }, [data]);
 
   const handleRowClick = (agent: AgentTableRow) => {
     router.push(`/agents/${agent.agent_id}`);
   };
-
-  // Loading state
-  if (isLoading) {
-    return (
-      <Box p='xl' maw={1400} mx='auto' my={0}>
-        <Center h={400}>
-          <Stack align='center' gap='md'>
-            <Loader size='lg' />
-            <Text c='dimmed'>Loading agents...</Text>
-          </Stack>
-        </Center>
-      </Box>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <Box p='xl' maw={1400} mx='auto' my={0}>
-        <Alert
-          icon={<IconAlertCircle size={16} />}
-          title='Error loading agents'
-          color='red'
-        >
-          Failed to fetch agents. Please try again later.
-        </Alert>
-      </Box>
-    );
-  }
 
   // Define table columns
   const columns: ColumnDef<AgentTableRow>[] = [
@@ -144,37 +102,46 @@ const HomePage = () => {
         </Stack>
 
         {/* Search and Filters */}
-        <TextInput
-          placeholder='Search agents...'
-          leftSection={
-            <Center>
-              <IconSearch size={16} />
-            </Center>
-          }
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.currentTarget.value)}
-          w={250}
-        />
+        <SearchInput queryKey="search" placeholder="Search agents..." />
       </Group>
 
       {/* Scrollable Table Container */}
-      <ScrollArea flex={1} pos='relative' mih={0} type='auto'>
-        <Table
-          columns={columns}
-          data={agents}
-          onRowClick={handleRowClick}
-          highlightOnHover
-          withColumnBorders
-        />
-
-        {/* Intersection observer trigger */}
-        {hasNextPage && <Box ref={loadMoreRef} h={20} my={16} mx={0} />}
-
-        {/* Loading indicator for next page */}
-        {isFetchingNextPage && (
-          <Center p='md'>
-            <Loader size='sm' />
+      <ScrollArea flex={1} pos='relative' mih={0} type='auto' viewportRef={scrollContainerRef}>
+        {isLoading ? (
+          <Center h={400}>
+            <Stack align='center' gap='md'>
+              <Loader size='lg' />
+              <Text c='dimmed'>Loading agents...</Text>
+            </Stack>
           </Center>
+        ) : error ? (
+          <Alert
+            icon={<IconAlertCircle size={16} />}
+            title='Error loading agents'
+            color='red'
+          >
+            Failed to fetch agents. Please try again later.
+          </Alert>
+        ) : (
+          <>
+            <Table
+              columns={columns}
+              data={agents}
+              onRowClick={handleRowClick}
+              highlightOnHover
+              withColumnBorders
+            />
+
+            {/* Intersection observer trigger for infinite scroll */}
+            <div ref={sentinelRef} style={{ height: 1 }} />
+
+            {/* Loading indicator for next page */}
+            {isFetchingNextPage && (
+              <Center p='md'>
+                <Loader size='sm' />
+              </Center>
+            )}
+          </>
         )}
       </ScrollArea>
     </Stack>

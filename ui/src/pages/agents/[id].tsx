@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import type { ReactElement } from "react";
 
 import { AppLayout } from "@/core/layouts/app-layout";
-import { AgentDetailPage } from "@/core/page-components/agent-detail";
+import AgentDetailPage  from "@/core/page-components/agent-detail/agent-detail";
 import type { NextPageWithLayout } from "@/core/types/page";
 
 const AgentPage: NextPageWithLayout = () => {

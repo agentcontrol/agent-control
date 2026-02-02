@@ -17,13 +17,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { isApiError } from "@/core/api/errors";
 import type { Control, ProblemDetail } from "@/core/api/types";
+import { getEvaluator } from "@/core/evaluators";
 import { useAddControlToAgent } from "@/core/hooks/query-hooks/use-add-control-to-agent";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 
 import { ApiErrorAlert } from "./api-error-alert";
 import { ControlDefinitionForm } from "./control-definition-form";
 import { EvaluatorJsonView } from "./evaluator-json-view";
-import { getEvaluator } from "./evaluators";
 import type {
   ConfigViewMode,
   ControlDefinitionFormValues,
@@ -324,7 +324,8 @@ export const EditControlContent = ({
   const FormComponent = evaluator?.FormComponent;
 
   return (
-    <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
+    <>
+      <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
       <TextInput
         label="Control name"
         placeholder="Enter control name"
@@ -348,7 +349,7 @@ export const EditControlContent = ({
                   Evaluator configuration
                 </Text>
                 <Anchor
-                  href="https://docs.galileo.ai/controls"
+                  href="https://github.com/galileo/agent-control/blob/main/README.md"
                   target="_blank"
                   size="xs"
                   c="blue"
@@ -370,8 +371,8 @@ export const EditControlContent = ({
               />
             </Group>
 
-            {configViewMode === "form" && (
-              <Paper withBorder radius="sm" p={16}>
+            <Paper withBorder radius="sm" p={16}>
+              {configViewMode === "form" && (
                 <ScrollArea h={EVALUATOR_CONFIG_HEIGHT} type="auto">
                   {FormComponent ? (
                     <FormComponent form={evaluatorForm} />
@@ -382,20 +383,21 @@ export const EditControlContent = ({
                     </Text>
                   )}
                 </ScrollArea>
-              </Paper>
-            )}
+              )}
 
-            {configViewMode === "json" && (
-              <EvaluatorJsonView
-                config={getEvaluatorConfig()}
-                onChange={syncJsonToForm}
-                jsonViewMode={jsonViewMode}
-                onJsonViewModeChange={handleJsonViewModeChange}
-                rawJsonText={rawJsonText}
-                onRawJsonTextChange={handleRawJsonChange}
-                rawJsonError={rawJsonError}
-              />
-            )}
+              {configViewMode === "json" && (
+                <EvaluatorJsonView
+                  config={getEvaluatorConfig()}
+                  onChange={syncJsonToForm}
+                  jsonViewMode={jsonViewMode}
+                  onJsonViewModeChange={handleJsonViewModeChange}
+                  rawJsonText={rawJsonText}
+                  onRawJsonTextChange={handleRawJsonChange}
+                  rawJsonError={rawJsonError}
+                  height={EVALUATOR_CONFIG_HEIGHT}
+                />
+              )}
+            </Paper>
           </Stack>
         </Grid.Col>
       </Grid>
@@ -432,6 +434,7 @@ export const EditControlContent = ({
           {isCreating ? "Create" : "Save"}
         </Button>
       </Group>
-    </form>
+      </form>
+    </>
   );
 };

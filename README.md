@@ -259,7 +259,6 @@ agent-control/
 ├── engine/          # Evaluation engine (agent-control-engine)
 ├── models/          # Shared models (agent-control-models)
 ├── evaluators/      # Evaluator implementations (agent-control-evaluators)
-├── ui/              # Next.js dashboard
 └── examples/        # Usage examples
 ```
 
