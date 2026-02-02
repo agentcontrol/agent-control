@@ -8,7 +8,7 @@
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
-**ADD DIAGRAM HERE**
+![Agent Control Architecture](docs/images/Architecture.png)
 
 AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
 
