@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { expect, mockData, test } from "./fixtures";
 
-const agentUrl = "/agents/agent-1";
+const agentUrl = "/agents/agent-1/controls";
 
 async function openControlStoreModal(page: Page) {
   await page.goto(agentUrl);
@@ -55,7 +55,7 @@ test.describe("Control Store Modal", () => {
     const agentLink = modal.getByRole("link", { name: "Customer Support Bot" }).first();
     await expect(agentLink).toBeVisible();
     // Link includes query param to filter by control name
-    await expect(agentLink).toHaveAttribute("href", "/agents/agent-1?q=PII%20Detection");
+    await expect(agentLink).toHaveAttribute("href", "/agents/agent-1/controls?q=PII%20Detection");
   });
 
   test("can search for controls", async ({ mockedPage }) => {
@@ -215,7 +215,7 @@ test.describe("Control Store - Loading States", () => {
       });
     });
 
-    await page.goto("/agents/agent-1");
+    await page.goto("/agents/agent-1/controls");
 
     // Open the control store modal
     await page.getByTestId("add-control-button").first().click();

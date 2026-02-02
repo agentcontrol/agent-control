@@ -220,8 +220,8 @@ export function ControlStoreModal({
         if (!agent) {
           return <Text size="sm" c="dimmed">—</Text>;
         }
-        // Link to agent detail page with control name filter
-        const href = `/agents/${agent.agent_id}?q=${encodeURIComponent(control.name)}`;
+        // Link to agent controls tab with control name filter
+        const href = `/agents/${agent.agent_id}/controls?q=${encodeURIComponent(control.name)}`;
         return (
           <Anchor
             component={Link}

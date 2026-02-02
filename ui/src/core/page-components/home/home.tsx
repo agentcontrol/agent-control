@@ -55,7 +55,7 @@ const HomePage = () => {
   }, [data]);
 
   const handleRowClick = (agent: AgentTableRow) => {
-    router.push(`/agents/${agent.agent_id}`);
+    router.push(`/agents/${agent.agent_id}/controls`);
   };
 
   // Define table columns

@@ -4,7 +4,7 @@ import { expect, mockData, mockRoutes, test } from "./fixtures";
 
 test.describe("Agent Detail Page", () => {
   const agentId = "agent-1";
-  const agentUrl = `/agents/${agentId}`;
+  const agentUrl = `/agents/${agentId}/controls`;
 
   // Type-safe access to mock agent data
   const agentData: GetAgentResponse = mockData.agent;
@@ -35,7 +35,7 @@ test.describe("Agent Detail Page", () => {
     await mockRoutes.agent(mockedPage);
     await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
 
-    await mockedPage.goto(agentUrl);
+    await mockedPage.goto(`/agents/${agentId}/controls`);
 
     // Controls tab should be selected when no stats data exists
     const controlsTab = mockedPage.getByRole("tab", { name: /Controls/i });
@@ -52,7 +52,7 @@ test.describe("Agent Detail Page", () => {
     await mockRoutes.agent(mockedPage);
     await mockRoutes.stats(mockedPage, { data: mockData.stats });
 
-    await mockedPage.goto(agentUrl);
+    await mockedPage.goto(`/agents/${agentId}/monitor`);
 
     // Wait for stats to load and tab to be set
     await mockedPage.waitForTimeout(100);
@@ -331,7 +331,7 @@ test.describe("Agent Detail - Empty State", () => {
       });
     });
 
-    await page.goto("/agents/agent-1");
+    await page.goto("/agents/agent-1/controls");
 
     // Check for empty state message
     await expect(page.getByText("No controls configured")).toBeVisible();

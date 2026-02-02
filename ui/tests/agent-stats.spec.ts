@@ -3,7 +3,7 @@ import { expect, mockData, mockRoutes, test } from "./fixtures";
 test.describe("Agent Monitor Tab", () => {
   test.beforeEach(async ({ mockedPage }) => {
     // Navigate to agent detail page
-    await mockedPage.goto("/agents/agent-1");
+    await mockedPage.goto("/agents/agent-1/monitor");
     // Wait for the page to load
     await expect(mockedPage.getByText("Customer Support Bot")).toBeVisible();
   });
@@ -133,7 +133,7 @@ test.describe("Agent Monitor Tab - Empty State", () => {
     await mockRoutes.stats(page, { data: mockData.emptyStats });
 
     // Navigate to agent detail page
-    await page.goto("/agents/agent-1");
+    await page.goto("/agents/agent-1/monitor");
     await expect(page.getByText("Customer Support Bot")).toBeVisible();
 
     // Navigate to stats tab
@@ -214,7 +214,7 @@ test.describe("Agent Monitor Tab - Refetch Flow", () => {
     });
 
     // Navigate to agent detail page
-    await page.goto("/agents/agent-1");
+    await page.goto("/agents/agent-1/monitor");
     await expect(page.getByText("Customer Support Bot")).toBeVisible();
 
     // Navigate to stats tab
@@ -246,7 +246,7 @@ test.describe("Agent Monitor Tab - Error State", () => {
     await mockRoutes.stats(page, { error: "Internal server error", status: 500 });
 
     // Navigate to agent detail page
-    await page.goto("/agents/agent-1");
+    await page.goto("/agents/agent-1/monitor");
     await expect(page.getByText("Customer Support Bot")).toBeVisible();
 
     // Navigate to stats tab

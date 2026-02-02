@@ -106,7 +106,7 @@ test.describe("SearchInput - Query Param Syncing", () => {
 
 test.describe("SearchInput - Agent Detail Page", () => {
   test("syncs search value to URL query param (q)", async ({ mockedPage }) => {
-    await mockedPage.goto("/agents/agent-1");
+    await mockedPage.goto("/agents/agent-1/controls");
     
     const searchInput = mockedPage.getByPlaceholder("Search controls...");
     await searchInput.fill("PII");
@@ -119,7 +119,7 @@ test.describe("SearchInput - Agent Detail Page", () => {
   });
 
   test("reads search value from URL on page load", async ({ mockedPage }) => {
-    await mockedPage.goto("/agents/agent-1?q=PII");
+    await mockedPage.goto("/agents/agent-1/controls?q=PII");
     
     // Wait for page to load
     await expect(mockedPage.getByRole("table")).toBeVisible();

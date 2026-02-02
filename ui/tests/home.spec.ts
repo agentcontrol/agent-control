@@ -113,7 +113,7 @@ test.describe("Home Page - Agents Overview", () => {
     await mockedPage.getByText(firstAgent.agent_name).click();
 
     // Verify navigation to agent detail page
-    await expect(mockedPage).toHaveURL(`/agents/${firstAgent.agent_id}`);
+    await expect(mockedPage).toHaveURL(`/agents/${firstAgent.agent_id}/controls`);
   });
 
   test("displays correct active controls count for each agent", async ({ mockedPage }) => {

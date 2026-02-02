@@ -1,12 +1,12 @@
 import { Box, Center, Loader, Stack, Text } from "@mantine/core";
 import { useRouter } from "next/router";
-import type { ReactElement } from "react";
+import { type ReactElement } from "react";
 
 import { AppLayout } from "@/core/layouts/app-layout";
 import AgentDetailPage from "@/core/page-components/agent-detail/agent-detail";
 import type { NextPageWithLayout } from "@/core/types/page";
 
-const AgentPage: NextPageWithLayout = () => {
+const AgentControlsPage: NextPageWithLayout = () => {
   const router = useRouter();
   const { id } = router.query;
 
@@ -29,14 +29,12 @@ const AgentPage: NextPageWithLayout = () => {
     throw new Error("Invalid agent ID");
   }
 
-  // Let the component determine the default tab based on stats data
-  // It will check stats and redirect to the appropriate tab (monitor if data exists, controls otherwise)
-  return <AgentDetailPage agentId={id} />;
+  return <AgentDetailPage agentId={id} defaultTab="controls" />;
 };
 
 // Attach layout to page
-AgentPage.getLayout = (page: ReactElement) => {
+AgentControlsPage.getLayout = (page: ReactElement) => {
   return <AppLayout>{page}</AppLayout>;
 };
 
-export default AgentPage;
+export default AgentControlsPage;

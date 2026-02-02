@@ -23,6 +23,7 @@ import {
   IconShield,
 } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
+import { useRouter } from "next/router";
 import React, { useMemo, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -40,6 +41,7 @@ import { AgentsMonitor } from "./monitor";
 
 interface AgentDetailPageProps {
   agentId: string;
+  defaultTab?: "controls" | "monitor";
 }
 
 const getStepTypeLabelAndColor = (
@@ -55,7 +57,8 @@ const getStepTypeLabelAndColor = (
   }
 };
 
-const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
+const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
+  const router = useRouter();
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [controlStoreOpened, setControlStoreOpened] = useState(false);
   const [selectedControl, setSelectedControl] = useState<Control | null>(null);
@@ -76,33 +79,57 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   
   // Fetch stats to determine if we should show monitor tab by default
   // Use 1W (7d) as default time range
+  // Fetch stats even when agent is loading, using agentId directly
   const {
     data: statsData,
     isLoading: statsLoading,
-  } = useAgentMonitor(agent?.agent.agent_id || "", "7d", {
-    enabled: !!agent?.agent.agent_id,
+  } = useAgentMonitor(agentId, "7d", {
+    enabled: true, // Always enabled, will use agentId from props
   });
   
   const updateControl = useUpdateControl();
 
-  // Determine initial tab: show monitor if stats data exists, otherwise controls
-  const [activeTab, setActiveTab] = useState<string | null>("controls");
+  // Determine initial tab based on:
+  // 1. defaultTab prop (from route)
+  // 2. stats data (if no defaultTab and stats exist, show monitor)
+  // 3. Otherwise, show controls
+  const [activeTab, setActiveTab] = useState<string | null>(() => {
+    if (defaultTab === "monitor") return "monitor";
+    if (defaultTab === "controls") return "controls";
+    return "controls"; // Default fallback
+  });
 
-  // Set initial tab based on stats data once loaded (only on mount)
+  // Set initial tab based on stats data once loaded (only if no defaultTab specified)
   const hasCheckedInitialTab = React.useRef(false);
   React.useEffect(() => {
-    if (!hasCheckedInitialTab.current && !statsLoading && statsData !== undefined) {
-      hasCheckedInitialTab.current = true;
+    // Only check if no defaultTab is specified (i.e., accessing /agents/[id] directly)
+    if (!defaultTab && !hasCheckedInitialTab.current && !statsLoading) {
       // Check if stats have data (non-empty stats array or non-zero executions)
-      const hasStatsData = statsData && (
-        (statsData.stats && statsData.stats.length > 0) ||
-        (statsData.total_executions && statsData.total_executions > 0)
-      );
-      if (hasStatsData) {
-        setActiveTab("stats");
+      // statsData can be undefined (not loaded), null (error), or an object (loaded)
+      if (statsData) {
+        hasCheckedInitialTab.current = true;
+        const hasStatsData = 
+          (statsData.stats && statsData.stats.length > 0) ||
+          (statsData.total_executions && statsData.total_executions > 0);
+        
+        if (hasStatsData) {
+          setActiveTab("monitor");
+          // Update URL to reflect the monitor tab
+          router.replace(`/agents/${agentId}/monitor`, undefined, { shallow: true });
+        } else {
+          // No stats data, go to controls
+          setActiveTab("controls");
+          router.replace(`/agents/${agentId}/controls`, undefined, { shallow: true });
+        }
+      } else if (statsData === null) {
+        // Stats failed to load or returned null, default to controls
+        hasCheckedInitialTab.current = true;
+        setActiveTab("controls");
+        router.replace(`/agents/${agentId}/controls`, undefined, { shallow: true });
       }
+      // If statsData is undefined, stats are still loading, so wait
     }
-  }, [statsLoading, statsData]);
+  }, [defaultTab, statsLoading, statsData, agentId, router]);
 
   // Filter controls based on search query
   const controls = useMemo(() => {
@@ -139,7 +166,20 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
           title='Error loading agent'
           color='red'
         >
-          Failed to fetch agent details. Please try again later.
+          <Stack gap="xs">
+            <Text>Failed to fetch agent details. Please try again later.</Text>
+            <Text size="sm" c="dimmed" mt="xs">
+              Possible reasons:
+            </Text>
+            <Stack gap={4} pl="md">
+              <Text size="sm" c="dimmed">
+                • Check server for API errors
+              </Text>
+              <Text size="sm" c="dimmed">
+                • The agent ID might be incorrect
+              </Text>
+            </Stack>
+          </Stack>
         </Alert>
       </Box>
     );
@@ -311,7 +351,18 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
         </Stack>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onChange={setActiveTab}>
+        <Tabs
+          value={activeTab}
+          onChange={(value) => {
+            setActiveTab(value);
+            // Update URL when tab changes
+            if (value === "monitor") {
+              router.push(`/agents/${agentId}/monitor`, undefined, { shallow: true });
+            } else if (value === "controls") {
+              router.push(`/agents/${agentId}/controls`, undefined, { shallow: true });
+            }
+          }}
+        >
           <Box mb='md'>
             <Group justify='space-between' pos='relative'>
               <Tabs.List>
@@ -322,32 +373,34 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
                   Controls
                 </Tabs.Tab>
                 <Tabs.Tab
-                  value='stats'
+                  value='monitor'
                   leftSection={<IconChartBar size={16} />}
                 >
                   Monitor
                 </Tabs.Tab>
               </Tabs.List>
 
-              <Group gap='md' pos='absolute' right={0} top='-8px'>
-                <SearchInput
-                  queryKey="q"
-                  placeholder="Search controls..."
-                  w={250}
-                  h={32}
-                  size="xs"
-                />
-                <Button
-                  variant='filled'
-                  // color='violet'
-                  size='sm'
-                  data-testid='add-control-button'
-                  h={32}
-                  onClick={() => setControlStoreOpened(true)}
-                >
-                  Add Control
-                </Button>
-              </Group>
+              {activeTab === "controls" && (
+                <Group gap='md' pos='absolute' right={0} top='-8px'>
+                  <SearchInput
+                    queryKey="q"
+                    placeholder="Search controls..."
+                    w={250}
+                    h={32}
+                    size="xs"
+                  />
+                  <Button
+                    variant='filled'
+                    // color='violet'
+                    size='sm'
+                    data-testid='add-control-button'
+                    h={32}
+                    onClick={() => setControlStoreOpened(true)}
+                  >
+                    Add Control
+                  </Button>
+                </Group>
+              )}
             </Group>
           </Box>
 
@@ -403,7 +456,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
             )}
           </Tabs.Panel>
 
-          <Tabs.Panel value='stats' pt='lg'>
+          <Tabs.Panel value='monitor' pt='lg'>
             <ErrorBoundary variant="page">
               {agent?.agent.agent_id && (
                 <AgentsMonitor agentUuid={agent.agent.agent_id} />
