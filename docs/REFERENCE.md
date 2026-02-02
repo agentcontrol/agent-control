@@ -8,7 +8,7 @@ This document provides comprehensive technical reference for Agent Control. Each
 
 - [Introduction](#introduction)
 - [Concepts](#concepts)
-- [Architecture](#architecture)
+- [Architecture](#agent-control-architecture)
 - [Evaluators](#evaluators)
 - [SDK Reference](#sdk-reference)
 - [Server API](#server-api)
