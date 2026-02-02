@@ -396,7 +396,7 @@ export function ControlStoreModal({
         keepMounted={false}
         styles={{
           title: { fontSize: "18px", fontWeight: 600 },
-          content: { maxWidth: "1400px", width: "90vw" },
+          content: { maxWidth: "1500px", width: "90vw" },
         }}
       >
         <ErrorBoundary variant="modal">

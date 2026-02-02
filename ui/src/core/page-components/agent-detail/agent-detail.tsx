@@ -495,7 +495,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         size="xl"
         styles={{
           title: { fontSize: "18px", fontWeight: 600 },
-          content: { maxWidth: "1400px", width: "95vw" },
+          content: { maxWidth: "1500px", width: "95vw" },
         }}
       >
         <ErrorBoundary variant="modal">
