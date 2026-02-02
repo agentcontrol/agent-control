@@ -25,6 +25,7 @@ import type { AgentRef, ControlDefinition, ControlSummary } from "@/core/api/typ
 import { SearchInput } from "@/core/components/search-input";
 import { useControlsInfinite } from "@/core/hooks/query-hooks/use-controls-infinite";
 import { useInfiniteScroll } from "@/core/hooks/use-infinite-scroll";
+import { useModalRoute } from "@/core/hooks/use-modal-route";
 import { useQueryParam } from "@/core/hooks/use-query-param";
 
 import { AddNewControlModal } from "../add-new-control";
@@ -50,13 +51,17 @@ export function ControlStoreModal({
   // Get search value for debouncing (SearchInput handles the UI and URL sync)
   const [searchQuery, setSearchQuery] = useQueryParam("store_q");
   const [debouncedSearch] = useDebouncedValue(searchQuery, 300);
+  const { submodal, evaluator, controlId, openModal, closeSubmodal } = useModalRoute();
   const [selectedControl, setSelectedControl] = useState<{
     summary: ControlSummary;
     definition: ControlDefinition;
   } | null>(null);
   const [loadingControlId, setLoadingControlId] = useState<number | null>(null);
-  const [editModalOpened, setEditModalOpened] = useState(false);
-  const [addNewModalOpened, setAddNewModalOpened] = useState(false);
+  
+  // Derive submodal open state from URL
+  const editModalOpened = submodal === "edit";
+  // AddNewControlModal should be open when submodal is "add-new" OR "create" (create is nested inside add-new)
+  const addNewModalOpened = submodal === "add-new" || submodal === "create";
 
   // Clear search query param when modal closes
   useEffect(() => {
@@ -114,28 +119,51 @@ export function ControlStoreModal({
     }
   }, [controls.length, scrollContainerRef, sentinelRef]);
 
-  const handleCopyControl = async (control: ControlSummary) => {
-    setLoadingControlId(control.id);
-    try {
-      const { data: controlData, error: fetchError } = await api.controls.getData(control.id);
-      if (fetchError || !controlData?.data) {
-        notifications.show({
-          title: "Error",
-          message: "Failed to load control configuration",
-          color: "red",
-        });
-        return;
-      }
-      setSelectedControl({ summary: control, definition: controlData.data });
-      setEditModalOpened(true);
-    } finally {
-      setLoadingControlId(null);
+  // Load control when controlId is in URL
+  useEffect(() => {
+    if (editModalOpened && controlId && !selectedControl) {
+      const loadControl = async () => {
+        const id = parseInt(controlId, 10);
+        if (isNaN(id)) return;
+        
+        setLoadingControlId(id);
+        try {
+          const { data: controlData, error: fetchError } = await api.controls.getData(id);
+          if (fetchError || !controlData?.data) {
+            notifications.show({
+              title: "Error",
+              message: "Failed to load control configuration",
+              color: "red",
+            });
+            return;
+          }
+          // Find the control summary from the list
+          const controlSummary = controls.find((c) => c.id === id);
+          if (controlSummary) {
+            setSelectedControl({ summary: controlSummary, definition: controlData.data });
+          }
+        } finally {
+          setLoadingControlId(null);
+        }
+      };
+      loadControl();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editModalOpened, controlId, selectedControl]);
+
+  // Clear selectedControl when edit modal closes
+  useEffect(() => {
+    if (!editModalOpened && selectedControl) {
+      setSelectedControl(null);
+    }
+  }, [editModalOpened, selectedControl]);
+
+  const handleCopyControl = async (control: ControlSummary) => {
+    openModal("control-store", { submodal: "edit", controlId: control.id.toString() });
   };
 
   const handleEditModalClose = () => {
-    setEditModalOpened(false);
-    setSelectedControl(null);
+    closeSubmodal();
   };
 
   const handleEditModalSuccess = () => {
@@ -306,7 +334,7 @@ export function ControlStoreModal({
               <Button
                 variant="filled"
                 size="sm"
-                onClick={() => setAddNewModalOpened(true)}
+                onClick={() => openModal("control-store", { submodal: "add-new" })}
                 data-testid="footer-new-control-button"
               >
                 Create Control
@@ -385,7 +413,7 @@ export function ControlStoreModal({
 
       <AddNewControlModal
         opened={addNewModalOpened}
-        onClose={() => setAddNewModalOpened(false)}
+        onClose={closeSubmodal}
         agentId={agentId}
       />
     </>

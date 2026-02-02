@@ -149,6 +149,29 @@ test.describe("Agent Detail Page", () => {
 
     // Control store modal should be visible
     await expect(mockedPage.getByRole("heading", { name: "Control store" })).toBeVisible();
+    
+    // URL should contain modal parameter
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store/);
+  });
+
+  test("closing edit modal removes query parameters", async ({ mockedPage }) => {
+    // Mock empty stats to ensure controls tab is shown
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    
+    // Open edit modal via URL
+    await mockedPage.goto(`${agentUrl}?modal=edit&controlId=1`);
+    
+    const editModal = mockedPage.getByRole("dialog", { name: "Edit Control" });
+    await expect(editModal).toBeVisible();
+    
+    // Close the modal (press Escape)
+    await mockedPage.keyboard.press("Escape");
+    
+    // Modal should be closed
+    await expect(editModal).not.toBeVisible();
+    
+    // URL should not contain modal parameters
+    await expect(mockedPage).not.toHaveURL(/.*\?modal=/);
   });
 
   test("shows loading state while fetching controls", async ({ page }) => {
@@ -227,6 +250,20 @@ test.describe("Agent Detail Page", () => {
     await expect(mockedPage.getByRole("table")).toBeVisible();
   });
 
+  test("opens edit control modal via URL query parameter", async ({ mockedPage }) => {
+    // Mock empty stats to ensure controls tab is shown
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    
+    await mockedPage.goto(`${agentUrl}?modal=edit&controlId=1`);
+    
+    // Edit modal should be visible
+    const editModal = mockedPage.getByRole("dialog", { name: "Edit Control" });
+    await expect(editModal).toBeVisible();
+    
+    // URL should contain modal and controlId parameters
+    await expect(mockedPage).toHaveURL(/.*\?modal=edit&controlId=1/);
+  });
+
   test("opens edit control modal when edit button is clicked", async ({ mockedPage }) => {
     await mockedPage.goto(agentUrl);
 
@@ -257,6 +294,9 @@ test.describe("Agent Detail Page", () => {
 
     // Edit modal should be visible
     await expect(mockedPage.getByRole("dialog", { name: "Edit Control" })).toBeVisible();
+    
+    // URL should contain modal and controlId parameters
+    await expect(mockedPage).toHaveURL(/.*\?modal=edit&controlId=\d+/);
   });
 
   test("edit control modal pre-fills scope and execution fields", async ({ mockedPage }) => {

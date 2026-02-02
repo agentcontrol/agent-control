@@ -186,6 +186,186 @@ test.describe("Add New Control Modal", () => {
   });
 });
 
+test.describe("Modal Routing", () => {
+  test("opens control store modal via URL query parameter", async ({ mockedPage }) => {
+    await mockedPage.goto(`${agentUrl}?modal=control-store`);
+    
+    const modal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Browse existing controls or create a new one" });
+    await expect(modal).toBeVisible();
+    
+    // URL should contain modal parameter
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store/);
+  });
+
+  test("opens add-new-control modal via URL query parameters", async ({ mockedPage }) => {
+    await mockedPage.goto(`${agentUrl}?modal=control-store&submodal=add-new`);
+    
+    // Both modals should be visible
+    const controlStoreModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Browse existing controls or create a new one" });
+    await expect(controlStoreModal).toBeVisible();
+    
+    const addNewModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Select an evaluator to create a new control" });
+    await expect(addNewModal).toBeVisible();
+    
+    // URL should contain both parameters
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store&submodal=add-new/);
+  });
+
+  test("opens create control modal via URL query parameters", async ({ mockedPage }) => {
+    await mockedPage.goto(`${agentUrl}?modal=control-store&submodal=create&evaluator=list`);
+    
+    // Control store and add-new modals should be visible (create is nested inside add-new)
+    const controlStoreModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Browse existing controls or create a new one" });
+    await expect(controlStoreModal).toBeVisible();
+    
+    const addNewModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Select an evaluator to create a new control" });
+    await expect(addNewModal).toBeVisible();
+    
+    // Create control modal should be visible
+    const createModal = mockedPage.getByRole("dialog", { name: "Create Control" });
+    await expect(createModal).toBeVisible();
+    
+    // URL should contain all parameters
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store&submodal=create&evaluator=list/);
+  });
+
+  test("opens edit control modal via URL query parameters (Copy flow)", async ({ mockedPage }) => {
+    // First, we need to get a control ID from the list
+    await mockedPage.goto(`${agentUrl}?modal=control-store`);
+    const modal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Browse existing controls or create a new one" });
+    await expect(modal).toBeVisible();
+    
+    // Get the first control's ID (we'll use PII Detection which has ID 1 in mock data)
+    const targetRow = modal.locator("tr", { hasText: "PII Detection" });
+    await targetRow.getByTestId("copy-control-button").click();
+    
+    // Wait for the edit modal to open
+    const editModal = mockedPage.getByRole("dialog", { name: "Create Control" });
+    await expect(editModal).toBeVisible();
+    
+    // URL should contain edit submodal and controlId
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store&submodal=edit&controlId=\d+/);
+  });
+
+  test("closing create modal returns to add-new modal", async ({ mockedPage }) => {
+    await mockedPage.goto(`${agentUrl}?modal=control-store&submodal=create&evaluator=list`);
+    
+    // Verify create modal is open
+    const createModal = mockedPage.getByRole("dialog", { name: "Create Control" });
+    await expect(createModal).toBeVisible();
+    
+    // Close the create modal (press Escape or click close)
+    await mockedPage.keyboard.press("Escape");
+    
+    // Wait for create modal to close
+    await expect(createModal).not.toBeVisible();
+    
+    // Add-new modal should still be visible
+    const addNewModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Select an evaluator to create a new control" });
+    await expect(addNewModal).toBeVisible();
+    
+    // URL should be back to add-new
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store&submodal=add-new/);
+  });
+
+  test("closing edit modal (Copy flow) closes completely", async ({ mockedPage }) => {
+    // Open control store and click Copy
+    await mockedPage.goto(`${agentUrl}?modal=control-store`);
+    const modal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Browse existing controls or create a new one" });
+    await expect(modal).toBeVisible();
+    
+    const targetRow = modal.locator("tr", { hasText: "PII Detection" });
+    await targetRow.getByTestId("copy-control-button").click();
+    
+    // Wait for edit modal to open
+    const editModal = mockedPage.getByRole("dialog", { name: "Create Control" });
+    await expect(editModal).toBeVisible();
+    
+    // Close the edit modal (press Escape)
+    await mockedPage.keyboard.press("Escape");
+    
+    // Wait for edit modal to close
+    await expect(editModal).not.toBeVisible();
+    
+    // Control store modal should still be visible
+    await expect(modal).toBeVisible();
+    
+    // URL should only have modal parameter (no submodal)
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store(?!.*submodal)/);
+  });
+
+  test("modal state persists on page refresh", async ({ mockedPage }) => {
+    // Open modals via URL
+    await mockedPage.goto(`${agentUrl}?modal=control-store&submodal=add-new`);
+    
+    // Verify modals are open
+    const controlStoreModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Browse existing controls or create a new one" });
+    await expect(controlStoreModal).toBeVisible();
+    
+    const addNewModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Select an evaluator to create a new control" });
+    await expect(addNewModal).toBeVisible();
+    
+    // Refresh the page
+    await mockedPage.reload();
+    
+    // Modals should still be open after refresh
+    await expect(controlStoreModal).toBeVisible();
+    await expect(addNewModal).toBeVisible();
+    
+    // URL should still have the parameters
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store&submodal=add-new/);
+  });
+
+  test("navigating through modal flow updates URL correctly", async ({ mockedPage }) => {
+    // Start at control store
+    await mockedPage.goto(`${agentUrl}?modal=control-store`);
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store(?!.*submodal)/);
+    
+    // Click "Create Control" button
+    const controlStoreModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Browse existing controls or create a new one" });
+    await controlStoreModal.getByTestId("footer-new-control-button").click();
+    
+    // URL should update to include submodal=add-new
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store&submodal=add-new/);
+    
+    // Click "Use" on an evaluator
+    const addNewModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Select an evaluator to create a new control" });
+    const tableRow = addNewModal.locator("tbody tr").first();
+    await tableRow.getByRole("button", { name: "Use" }).click();
+    
+    // URL should update to include submodal=create and evaluator
+    await expect(mockedPage).toHaveURL(/.*\?modal=control-store&submodal=create&evaluator=\w+/);
+    
+    // Create modal should be visible
+    const createModal = mockedPage.getByRole("dialog", { name: "Create Control" });
+    await expect(createModal).toBeVisible();
+  });
+});
+
 test.describe("Control Store - Loading States", () => {
   test("shows error state when controls fail to load", async ({ page }) => {
     // Mock agent controls to return normally

@@ -20,6 +20,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import type { EvaluatorInfo } from "@/core/api/types";
 import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useEvaluators } from "@/core/hooks/query-hooks/use-evaluators";
+import { useModalRoute } from "@/core/hooks/use-modal-route";
 
 import { EditControlContent } from "../edit-control/edit-control-content";
 import { sanitizeControlNamePart } from "../edit-control/utils";
@@ -61,21 +62,31 @@ export function AddNewControlModal({
   agentId,
 }: AddNewControlModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedEvaluator, setSelectedEvaluator] =
-    useState<EvaluatorWithId | null>(null);
-  const [editModalOpened, setEditModalOpened] = useState(false);
+  const { submodal, evaluator, openModal, closeSubmodal } = useModalRoute();
   const { data: evaluatorsData, isLoading, error } = useEvaluators();
   const { data: agent } = useAgent(agentId);
   const agentName = agent?.agent?.agent_name ?? agentId;
 
+  // Derive submodal open state from URL
+  const editModalOpened = submodal === "create";
+
+  // Find selected evaluator from URL or state
+  const selectedEvaluator = useMemo(() => {
+    if (evaluator && evaluatorsData) {
+      const evaluatorData = evaluatorsData[evaluator];
+      if (evaluatorData) {
+        return { ...evaluatorData, id: evaluator };
+      }
+    }
+    return null;
+  }, [evaluator, evaluatorsData]);
+
   const handleAddClick = (evaluator: EvaluatorWithId) => {
-    setSelectedEvaluator(evaluator);
-    setEditModalOpened(true);
+    openModal("control-store", { submodal: "create", evaluator: evaluator.id });
   };
 
   const handleEditModalClose = () => {
-    setEditModalOpened(false);
-    setSelectedEvaluator(null);
+    closeSubmodal();
   };
 
   const handleEditModalSuccess = () => {

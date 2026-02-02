@@ -33,6 +33,7 @@ import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
 import { useAgentMonitor } from "@/core/hooks/query-hooks/use-agent-monitor";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
+import { useModalRoute } from "@/core/hooks/use-modal-route";
 import { useQueryParam } from "@/core/hooks/use-query-param";
 
 import { ControlStoreModal } from "./modals/control-store";
@@ -59,11 +60,14 @@ const getStepTypeLabelAndColor = (
 
 const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   const router = useRouter();
-  const [editModalOpened, setEditModalOpened] = useState(false);
-  const [controlStoreOpened, setControlStoreOpened] = useState(false);
+  const { modal, controlId, openModal, closeModal } = useModalRoute();
   const [selectedControl, setSelectedControl] = useState<Control | null>(null);
   // Get search value for filtering (SearchInput handles the UI and URL sync)
   const [searchQuery] = useQueryParam("q");
+
+  // Derive modal open state from URL
+  const controlStoreOpened = modal === "control-store";
+  const editModalOpened = modal === "edit";
 
   // Fetch agent details, controls, and stats in parallel
   const {
@@ -142,6 +146,16 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         control.control?.description?.toLowerCase().includes(query)
     );
   }, [controlsResponse, searchQuery]);
+
+  // Load control when controlId is in URL
+  React.useEffect(() => {
+    if (editModalOpened && controlId && controlsResponse?.controls) {
+      const control = controlsResponse.controls.find((c) => c.id.toString() === controlId);
+      if (control) {
+        setSelectedControl(control);
+      }
+    }
+  }, [editModalOpened, controlId, controlsResponse]);
 
   // Loading state
   if (agentLoading) {
@@ -322,16 +336,16 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   ];
 
   const handleEditControl = (control: Control) => {
-    setSelectedControl(control);
-    setEditModalOpened(true);
+    openModal("edit", { controlId: control.id.toString() });
   };
 
   const handleCloseEditModal = () => {
-    setEditModalOpened(false);
+    closeModal();
     setSelectedControl(null);
   };
 
   const handleEditControlSuccess = () => {
+    closeModal();
     setSelectedControl(null);
   };
 
@@ -395,7 +409,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                     size='sm'
                     data-testid='add-control-button'
                     h={32}
-                    onClick={() => setControlStoreOpened(true)}
+                    onClick={() => openModal("control-store")}
                   >
                     Add Control
                   </Button>
@@ -437,7 +451,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                     variant='filled'
                     mt='md'
                     data-testid='add-control-button'
-                    onClick={() => setControlStoreOpened(true)}
+                    onClick={() => openModal("control-store")}
                   >
                     Add Control
                   </Button>
@@ -469,7 +483,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
       {/* Control Store Modal */}
       <ControlStoreModal
         opened={controlStoreOpened}
-        onClose={() => setControlStoreOpened(false)}
+        onClose={closeModal}
         agentId={agentId}
       />
 
