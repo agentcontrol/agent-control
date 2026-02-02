@@ -15,14 +15,21 @@ DeepEval's GEval is an LLM-as-a-judge metric that uses chain-of-thoughts (CoT) t
 
 ```
 examples/deepeval/
-├── config.py              # DeepEvalEvaluatorConfig - Configuration model
-├── evaluator.py           # DeepEvalEvaluator - Main evaluator implementation
-├── qa_agent.py            # Q&A agent with DeepEval controls
-├── setup_controls.py      # Setup script to create controls on server
-├── pyproject.toml         # Project config with entry point registration
-├── README.md              # This file
-└── THIRD_PARTY_GUIDE.md   # Complete guide for third-party developers
+├── __init__.py                      # Package initialization
+├── config.py                        # DeepEvalEvaluatorConfig - Configuration model
+├── evaluator.py                     # DeepEvalEvaluator - Main evaluator implementation
+├── qa_agent.py                      # Q&A agent with DeepEval controls
+├── setup_controls.py                # Setup script to create controls on server
+├── start_server_with_evaluator.sh  # Helper script to start server with evaluator
+├── pyproject.toml                   # Project config with entry point and dependencies
+└── README.md                        # This file
 ```
+
+**Package Structure Notes:**
+- Uses a **flat layout** with Python files at the root (configured via `packages = ["."]` in pyproject.toml)
+- Modules use **absolute imports** (e.g., `from config import X`) rather than relative imports
+- Entry point `evaluator:DeepEvalEvaluator` references the module directly
+- Install with `uv pip install -e .` to register the entry point for server discovery
 
 ### Key Components
 
@@ -49,8 +56,10 @@ examples/deepeval/
 
 5. **Entry Point Registration** ([pyproject.toml](pyproject.toml))
    - Registers evaluator with server via `project.entry-points`
+   - Depends on `agent-control-models>=3.0.0` and `agent-control-sdk>=3.0.0`
+   - In monorepo: uses workspace dependencies (editable installs)
+   - For third-party: can use published PyPI packages
    - Enables automatic discovery when server starts
-   - Critical for third-party evaluator integration
 
 ## How It Works
 
@@ -91,11 +100,19 @@ class DeepEvalEvaluator(Evaluator[DeepEvalEvaluatorConfig]):
 The evaluator is registered via `pyproject.toml`:
 
 ```toml
+[project]
+dependencies = [
+    "agent-control-models>=3.0.0",
+    "agent-control-sdk>=3.0.0",
+    "deepeval>=1.0.0",
+    # ... other dependencies
+]
+
 [project.entry-points."agent_control.evaluators"]
 deepeval-geval = "evaluator:DeepEvalEvaluator"
 ```
 
-This makes the evaluator automatically discoverable by the server when it starts.
+This makes the evaluator automatically discoverable by the server when it starts. The pattern works with both workspace dependencies (for monorepo development) and published PyPI packages (for third-party evaluators).
 
 ### 3. Configuration
 
@@ -165,17 +182,19 @@ control_definition = {
 
 ## Getting Started from Fresh Clone
 
-If you're starting from a fresh clone of the agent-control repository, follow these steps:
+This example demonstrates **custom evaluator development** within the agent-control monorepo. It uses workspace dependencies (editable installs) to work with the latest development versions of:
+- `agent-control-models` - Base evaluator classes and types
+- `agent-control-sdk` - Agent Control SDK for integration
+- `deepeval` - DeepEval evaluation framework
 
-### 1. Clone and Install Repository
+**Note:** This is a **development/monorepo example** showing the evaluator architecture.
+
+### 1. Clone Repository
 
 ```bash
 # Clone the repository
 git clone https://github.com/agentcontrol/agent-control.git
 cd agent-control
-
-# Install all dependencies (installs models, engine, evaluators, sdk, server packages)
-make sync
 ```
 
 ### 2. Start Database and Server
@@ -196,11 +215,19 @@ The server will be running at `http://localhost:8000`.
 # Navigate to the DeepEval example directory
 cd examples/deepeval
 
-# Install the example package in editable mode with its dependencies
+# Install dependencies
+uv sync
+
+# Install the evaluator package itself in editable mode
 uv pip install -e .
 ```
 
-This installs the evaluator package in editable mode and makes it discoverable by the server via entry points.
+This installs:
+- **Dependencies**: `deepeval>=1.0.0`, `openai>=1.0.0`, `pydantic>=2.0.0`, etc.
+- **Workspace packages** (as editable installs): `agent-control-models`, `agent-control-sdk`
+- **This evaluator package** in editable mode, which registers the entry point for server discovery
+
+The entry point `deepeval-geval = "evaluator:DeepEvalEvaluator"` makes the evaluator discoverable by the server.
 
 ### 4. Set Environment Variables
 
@@ -309,7 +336,57 @@ Configure which parameters to use via the `evaluation_params` config field.
 
 ## For Third-Party Developers
 
-See [THIRD_PARTY_GUIDE.md](THIRD_PARTY_GUIDE.md) for a complete step-by-step guide on creating and publishing your own custom evaluators.
+This example shows the **evaluator plugin architecture** for extending agent-control. While this specific example is set up for monorepo development, the same pattern works for third-party plugins using published packages.
+
+To create your own evaluator plugin:
+
+1. **Extend the Evaluator base class** from `agent-control-models` (published on PyPI)
+2. **Define a configuration model** using Pydantic
+3. **Register via entry points** in your `pyproject.toml`
+4. **Install your package** so the server can discover the entry point
+5. **Restart the server** to load the new evaluator
+
+For standalone packages outside the monorepo, use published versions:
+```toml
+[project]
+dependencies = [
+    "agent-control-models>=3.0.0",  # From PyPI
+    "agent-control-sdk>=3.0.0",      # From PyPI
+    "your-evaluation-library>=1.0.0"
+]
+```
+
+See the [Extending This Example](#extending-this-example) section below for the complete pattern.
+
+### Production Deployment
+
+For production deployments, build your evaluator as a Python wheel and install it on your agent-control server:
+
+**Development (this example):**
+```bash
+uv pip install -e .  # Editable install for development
+```
+
+**Production:**
+```bash
+python -m build      # Creates dist/*.whl
+# Install wheel on production server where agent-control runs
+```
+
+**Deployment Options:**
+
+1. **Self-Hosted Server (Full Control)**
+   - Deploy your own agent-control server instance
+   - Install custom evaluator packages (wheel, source, or private PyPI)
+   - Your agents connect to this server via the SDK
+   - Complete control over evaluators and policies
+
+2. **Managed Service (If Available)**
+   - Use a hosted agent-control service
+   - May require coordination to install custom evaluators
+   - Or use only built-in/approved evaluators
+
+In both cases, evaluators run **server-side** (`execution: "server"`), so your agent applications only need the lightweight SDK installed. The evaluator package must be installed where the agent-control server runs, not in your agent application.
 
 ## Extending This Example
 
@@ -351,7 +428,7 @@ Follow this pattern to create evaluators for other libraries:
 
 4. **Install and Use**
    ```bash
-   uv pip install -e .  # Server will discover it automatically
+   uv sync  # Server will discover it automatically
    ```
 
 ### Adding More GEval Metrics
@@ -368,8 +445,8 @@ You can create specialized evaluators for specific use cases:
 
 - **DeepEval Documentation**: https://deepeval.com/docs/metrics-llm-evals
 - **G-Eval Guide**: https://www.confident-ai.com/blog/g-eval-the-definitive-guide
-- **Third-Party Developer Guide**: [THIRD_PARTY_GUIDE.md](THIRD_PARTY_GUIDE.md)
 - **Agent Control Evaluators**: [Base evaluator class](../../models/src/agent_control_models/evaluator.py)
+- **CrewAI Example**: [Using agent-control as a consumer](../crewai/)
 
 ## Key Takeaways
 
@@ -391,16 +468,85 @@ You can create specialized evaluators for specific use cases:
 
 ### Evaluator not found
 
-- Verify entry point in `pyproject.toml`
-- Run `uv sync` to install package
-- Check server logs for evaluator discovery
-- Confirm with: `curl http://localhost:8000/api/v1/evaluators`
+The server couldn't discover the evaluator. Check:
+
+1. **Entry point registration** in `pyproject.toml`:
+   ```toml
+   [project.entry-points."agent_control.evaluators"]
+   deepeval-geval = "evaluator:DeepEvalEvaluator"
+   ```
+
+2. **Package is installed**:
+   ```bash
+   cd examples/deepeval
+   uv sync                  # Install dependencies
+   uv pip install -e .      # Install this package
+   ```
+
+3. **Server was restarted** after package installation:
+   ```bash
+   # Stop server (Ctrl+C), then restart
+   make server-run
+   ```
+
+4. **Verify registration**:
+   ```bash
+   curl http://localhost:8000/api/v1/evaluators | grep deepeval-geval
+   ```
+
+5. **Check server logs** for evaluator discovery messages during startup
 
 ### Wrong evaluation results
 
 - For relevance: include both `input` and `actual_output` in `evaluation_params`
 - Check that `matched` logic is inverted (trigger when quality fails)
 - Lower threshold to be more strict (0.5 instead of 0.7)
+
+### Import errors: "cannot import name 'X'"
+
+If you see import errors like `ImportError: cannot import name 'AgentRef'`:
+
+1. **Stale editable install**: Reinstall the package
+   ```bash
+   uv pip install -e /path/to/package --force-reinstall --no-deps
+   ```
+
+2. **For agent-control-models specifically**:
+   ```bash
+   uv pip install -e ../../models --force-reinstall --no-deps
+   ```
+
+3. **Clear Python cache** if issues persist:
+   ```bash
+   find . -name "*.pyc" -delete
+   find . -name "__pycache__" -type d -exec rm -rf {} +
+   ```
+
+4. **Verify installation**:
+   ```bash
+   python -c "from agent_control_models.server import AgentRef; print('Success')"
+   ```
+
+### Package not discoverable: "attempted relative import"
+
+If you see `attempted relative import with no known parent package`:
+
+1. **Ensure the package is installed**:
+   ```bash
+   cd examples/deepeval
+   uv pip install -e .
+   ```
+
+2. **Verify entry point registration**:
+   ```bash
+   uv pip show agent-control-deepeval-example
+   ```
+
+3. **Check pyproject.toml has**:
+   ```toml
+   [tool.hatch.build.targets.wheel]
+   packages = ["."]
+   ```
 
 ### DeepEval telemetry files
 

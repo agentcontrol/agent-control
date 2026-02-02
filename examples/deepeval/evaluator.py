@@ -16,7 +16,7 @@ from agent_control_models import (
     register_evaluator,
 )
 
-from .config import DeepEvalEvaluatorConfig
+from config import DeepEvalEvaluatorConfig
 
 logger = logging.getLogger(__name__)
 
