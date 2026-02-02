@@ -336,9 +336,9 @@ Configure which parameters to use via the `evaluation_params` config field.
 
 ## For Third-Party Developers
 
-This example shows the **evaluator plugin architecture** for extending agent-control. While this specific example is set up for monorepo development, the same pattern works for third-party plugins using published packages.
+This example shows the **evaluator architecture** for extending agent-control. While this specific example is set up for monorepo development, the same pattern works for third-party evluators using published packages.
 
-To create your own evaluator plugin:
+To create your own evaluator:
 
 1. **Extend the Evaluator base class** from `agent-control-models` (published on PyPI)
 2. **Define a configuration model** using Pydantic
