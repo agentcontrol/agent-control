@@ -174,6 +174,45 @@ test.describe("Agent Detail Page", () => {
     await expect(mockedPage).not.toHaveURL(/.*\?modal=/);
   });
 
+  test("closes edit modal when control is successfully updated", async ({ mockedPage }) => {
+    // Mock empty stats to ensure controls tab is shown
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    
+    // Open edit modal via URL
+    await mockedPage.goto(`${agentUrl}?modal=edit&controlId=1`);
+    
+    const editModal = mockedPage.getByRole("dialog", { name: "Edit Control" });
+    await expect(editModal).toBeVisible();
+    
+    // Mock successful API response for control update
+    await mockedPage.route("**/api/v1/controls/*/data", async (route, request) => {
+      if (request.method() === "PUT") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({}),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    
+    // Submit the form
+    const saveButton = editModal.getByRole("button", { name: /Save/i });
+    await saveButton.click();
+    
+    // Wait for confirmation modal and confirm
+    await mockedPage.waitForTimeout(300); // Wait for modal animation
+    const confirmButton = mockedPage.getByRole("button", { name: /Confirm/i });
+    await confirmButton.click({ force: true });
+    
+    // Wait for modal to close
+    await expect(editModal).not.toBeVisible({ timeout: 5000 });
+    
+    // URL should not contain any modal parameters
+    await expect(mockedPage).not.toHaveURL(/.*\?modal=/);
+  });
+
   test("shows loading state while fetching controls", async ({ page }) => {
     let resolveControls: () => void;
     const controlsPromise = new Promise<void>((resolve) => {

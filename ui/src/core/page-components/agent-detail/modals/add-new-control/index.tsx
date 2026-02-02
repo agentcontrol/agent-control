@@ -62,7 +62,7 @@ export function AddNewControlModal({
   agentId,
 }: AddNewControlModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const { submodal, evaluator, openModal, closeSubmodal } = useModalRoute();
+  const { submodal, evaluator, openModal, closeSubmodal, closeModal } = useModalRoute();
   const { data: evaluatorsData, isLoading, error } = useEvaluators();
   const { data: agent } = useAgent(agentId);
   const agentName = agent?.agent?.agent_name ?? agentId;
@@ -90,8 +90,9 @@ export function AddNewControlModal({
   };
 
   const handleEditModalSuccess = () => {
-    handleEditModalClose();
-    onClose();
+    // Close all modals on successful create
+    // Use closeModal to close the entire modal stack (control-store + add-new + create)
+    closeModal();
   };
 
   // Transform evaluators record to array for table display

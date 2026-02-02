@@ -364,6 +364,161 @@ test.describe("Modal Routing", () => {
     const createModal = mockedPage.getByRole("dialog", { name: "Create Control" });
     await expect(createModal).toBeVisible();
   });
+
+  test("closes all modals when control is successfully created", async ({ mockedPage }) => {
+    // Navigate to create modal via URL (simulating the full flow)
+    await mockedPage.goto(`${agentUrl}?modal=control-store&submodal=create&evaluator=list`);
+    
+    // Verify all modals are open
+    const controlStoreModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Browse existing controls or create a new one" });
+    await expect(controlStoreModal).toBeVisible();
+    
+    const addNewModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Select an evaluator to create a new control" });
+    await expect(addNewModal).toBeVisible();
+    
+    const createModal = mockedPage.getByRole("dialog", { name: "Create Control" });
+    await expect(createModal).toBeVisible();
+    
+    // Mock successful API response for control creation
+    await mockedPage.route("**/api/v1/agents/*/policy", async (route) => {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Not found" }),
+      });
+    });
+    
+    await mockedPage.route("**/api/v1/policies", async (route, request) => {
+      if (request.method() === "PUT") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ policy_id: 1 }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    
+    await mockedPage.route("**/api/v1/agents/*/policy", async (route, request) => {
+      if (request.method() === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({}),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    
+    await mockedPage.route("**/api/v1/controls", async (route, request) => {
+      if (request.method() === "PUT") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ control_id: 100 }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    
+    await mockedPage.route("**/api/v1/controls/*/data", async (route, request) => {
+      if (request.method() === "PUT") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({}),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    
+    await mockedPage.route("**/api/v1/policies/*/controls/*", async (route, request) => {
+      if (request.method() === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({}),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    
+    // Fill out the form and submit
+    const controlNameInput = createModal.getByPlaceholder("Enter control name");
+    await controlNameInput.fill("Test Control");
+    
+    // Submit the form
+    const saveButton = createModal.getByRole("button", { name: /Save|Create/i });
+    await saveButton.click();
+    
+    // Wait for confirmation modal and confirm
+    const confirmModal = mockedPage.getByRole("dialog").filter({ hasText: /Create|Save/i });
+    await expect(confirmModal).toBeVisible();
+    const confirmButton = confirmModal.getByRole("button", { name: /Confirm|Save/i });
+    await confirmButton.click();
+    
+    // Wait for all modals to close
+    await expect(controlStoreModal).not.toBeVisible({ timeout: 5000 });
+    await expect(addNewModal).not.toBeVisible();
+    await expect(createModal).not.toBeVisible();
+    
+    // URL should not contain any modal parameters
+    await expect(mockedPage).not.toHaveURL(/.*\?modal=/);
+  });
+
+  test("closes all modals when control is successfully copied", async ({ mockedPage }) => {
+    // Open control store and click Copy
+    await mockedPage.goto(`${agentUrl}?modal=control-store`);
+    const controlStoreModal = mockedPage
+      .getByRole("dialog")
+      .filter({ hasText: "Browse existing controls or create a new one" });
+    await expect(controlStoreModal).toBeVisible();
+    
+    const targetRow = controlStoreModal.locator("tr", { hasText: "PII Detection" });
+    await targetRow.getByTestId("copy-control-button").click();
+    
+    // Wait for edit modal to open
+    const editModal = mockedPage.getByRole("dialog", { name: "Create Control" });
+    await expect(editModal).toBeVisible();
+    
+    // Mock successful API response for control update
+    await mockedPage.route("**/api/v1/controls/*/data", async (route, request) => {
+      if (request.method() === "PUT") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({}),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    
+    // Submit the form
+    const saveButton = editModal.getByRole("button", { name: /Save|Create/i });
+    await saveButton.click();
+    
+    // Wait for confirmation modal and confirm
+    await mockedPage.waitForTimeout(300); // Wait for modal animation
+    const confirmButton = mockedPage.getByRole("button", { name: /Confirm/i });
+    await confirmButton.click({ force: true });
+    
+    // Wait for all modals to close
+    await expect(controlStoreModal).not.toBeVisible({ timeout: 5000 });
+    await expect(editModal).not.toBeVisible();
+    
+    // URL should not contain any modal parameters
+    await expect(mockedPage).not.toHaveURL(/.*\?modal=/);
+  });
 });
 
 test.describe("Control Store - Loading States", () => {

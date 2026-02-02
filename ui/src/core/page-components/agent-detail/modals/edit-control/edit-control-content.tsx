@@ -283,8 +283,13 @@ export const EditControlContent = ({
             definition,
           });
         }
-        onSuccess?.();
-        onClose();
+        // Call onSuccess first (which should close all modals)
+        // Only call onClose if onSuccess is not provided (for backward compatibility)
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          onClose();
+        }
       } catch (error) {
         if (isApiError(error)) {
           const problemDetail = error.problemDetail;

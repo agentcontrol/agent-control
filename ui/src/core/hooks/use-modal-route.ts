@@ -44,11 +44,17 @@ export function useModalRoute() {
   );
 
   const closeModal = useCallback(() => {
-    const { modal: _modal, submodal: _submodal, evaluator: _evaluator, controlId: _controlId, ...rest } = router.query;
+    // Remove all modal-related query parameters
+    const query = { ...router.query };
+    delete query.modal;
+    delete query.submodal;
+    delete query.evaluator;
+    delete query.controlId;
+    
     router.push(
       {
         pathname: router.pathname,
-        query: rest,
+        query,
       },
       undefined,
       { shallow: true }

@@ -51,7 +51,7 @@ export function ControlStoreModal({
   // Get search value for debouncing (SearchInput handles the UI and URL sync)
   const [searchQuery, setSearchQuery] = useQueryParam("store_q");
   const [debouncedSearch] = useDebouncedValue(searchQuery, 300);
-  const { submodal, evaluator, controlId, openModal, closeSubmodal } = useModalRoute();
+  const { submodal, evaluator, controlId, openModal, closeSubmodal, closeModal } = useModalRoute();
   const [selectedControl, setSelectedControl] = useState<{
     summary: ControlSummary;
     definition: ControlDefinition;
@@ -167,8 +167,9 @@ export function ControlStoreModal({
   };
 
   const handleEditModalSuccess = () => {
-    handleEditModalClose();
-    onClose();
+    // Close all modals on successful create/edit
+    // Use closeModal to remove all modal query parameters from URL
+    closeModal();
   };
 
   // Build a draft control for the edit modal with full evaluator config (clone: append -copy to name)
