@@ -350,7 +350,12 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   };
 
   return (
-    <Box p='xl' maw={1400} mx='auto' my={0}>
+    <Box 
+      p='xl' 
+      maw={1400} 
+      mx='auto' 
+      my={0}
+    >
       <Stack gap='lg'>
         {/* Header */}
         <Stack gap={4}>
@@ -458,13 +463,18 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                 </Stack>
               </Paper>
             ) : (
-              <Box style={{ maxHeight: "calc(100vh - 400px)", minHeight: 0 }}>
+              <Box>
                 <Table
                   columns={columns}
                   data={controls}
+                  maxHeight='calc(100dvh - 270px)'
                   highlightOnHover
                   withColumnBorders
-                  maxHeight="100%"
+                      // scrollContainerProps={{
+                      //   style: {
+                      //     maxHeight: "calc(100dvh - 200px)",
+                      //   },
+                      // }}
                 />
               </Box>
             )}

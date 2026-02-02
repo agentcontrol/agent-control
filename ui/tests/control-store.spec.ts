@@ -384,28 +384,15 @@ test.describe("Modal Routing", () => {
     await expect(createModal).toBeVisible();
     
     // Mock successful API response for control creation
-    await mockedPage.route("**/api/v1/agents/*/policy", async (route) => {
-      await route.fulfill({
-        status: 404,
-        contentType: "application/json",
-        body: JSON.stringify({ detail: "Not found" }),
-      });
-    });
-    
-    await mockedPage.route("**/api/v1/policies", async (route, request) => {
-      if (request.method() === "PUT") {
+    // Agent already has a policy (return 200 with policy_id)
+    await mockedPage.route("**/api/v1/agents/*/policy", async (route, request) => {
+      if (request.method() === "GET") {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({ policy_id: 1 }),
         });
-      } else {
-        await route.continue();
-      }
-    });
-    
-    await mockedPage.route("**/api/v1/agents/*/policy", async (route, request) => {
-      if (request.method() === "POST") {
+      } else if (request.method() === "POST") {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -456,15 +443,27 @@ test.describe("Modal Routing", () => {
     const controlNameInput = createModal.getByPlaceholder("Enter control name");
     await controlNameInput.fill("Test Control");
     
+    // Fill in the required "Values" field for the list evaluator (at least one value required)
+    const valuesTextarea = createModal.getByPlaceholder("Enter values (one per line)");
+    await valuesTextarea.fill("test-value");
+    
     // Submit the form
     const saveButton = createModal.getByRole("button", { name: /Save|Create/i });
     await saveButton.click();
     
-    // Wait for confirmation modal and confirm
-    const confirmModal = mockedPage.getByRole("dialog").filter({ hasText: /Create|Save/i });
-    await expect(confirmModal).toBeVisible();
-    const confirmButton = confirmModal.getByRole("button", { name: /Confirm|Save/i });
+    // Wait for confirmation modal to appear
+    await mockedPage.waitForTimeout(300); // Wait for modal animation
+    
+    // Find the confirm button by text - use locator to find button containing "Confirm"
+    const confirmButton = mockedPage.locator("button:has-text('Confirm')");
+    await expect(confirmButton).toBeVisible({ timeout: 5000 });
+    
+    // Start waiting for API response before clicking (must be set up before the action)
+    const responsePromise = mockedPage.waitForResponse("**/api/v1/policies/*/controls/*", { timeout: 10000 });
     await confirmButton.click();
+    
+    // Wait for API call to complete
+    await responsePromise;
     
     // Wait for all modals to close
     await expect(controlStoreModal).not.toBeVisible({ timeout: 5000 });
@@ -490,9 +489,45 @@ test.describe("Modal Routing", () => {
     const editModal = mockedPage.getByRole("dialog", { name: "Create Control" });
     await expect(editModal).toBeVisible();
     
-    // Mock successful API response for control update
+    // Wait for form to be initialized with control data (control name should contain "-copy")
+    const controlNameInput = editModal.getByPlaceholder("Enter control name");
+    await expect(controlNameInput).toHaveValue(/.*-copy$/, { timeout: 5000 });
+    
+    // Set up mock routes for control creation flow (copying creates a new control)
+    await mockedPage.route("**/api/v1/agents/*/policy", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ policy_id: 1 }),
+      });
+    });
+    
+    await mockedPage.route("**/api/v1/controls", async (route, request) => {
+      if (request.method() === "PUT") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ control_id: 100 }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    
     await mockedPage.route("**/api/v1/controls/*/data", async (route, request) => {
       if (request.method() === "PUT") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({}),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    
+    await mockedPage.route("**/api/v1/policies/*/controls/*", async (route, request) => {
+      if (request.method() === "POST") {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -507,10 +542,19 @@ test.describe("Modal Routing", () => {
     const saveButton = editModal.getByRole("button", { name: /Save|Create/i });
     await saveButton.click();
     
-    // Wait for confirmation modal and confirm
+    // Wait for confirmation modal to appear
     await mockedPage.waitForTimeout(300); // Wait for modal animation
-    const confirmButton = mockedPage.getByRole("button", { name: /Confirm/i });
-    await confirmButton.click({ force: true });
+    
+    // Find the confirm button
+    const confirmButton = mockedPage.locator("button:has-text('Confirm')");
+    await expect(confirmButton).toBeVisible({ timeout: 5000 });
+    
+    // Start waiting for API response before clicking (must be set up before the action)
+    const responsePromise = mockedPage.waitForResponse("**/api/v1/policies/*/controls/*", { timeout: 10000 });
+    await confirmButton.click();
+    
+    // Wait for API call to complete
+    await responsePromise;
     
     // Wait for all modals to close
     await expect(controlStoreModal).not.toBeVisible({ timeout: 5000 });

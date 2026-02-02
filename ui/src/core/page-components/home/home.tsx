@@ -130,7 +130,7 @@ const HomePage = () => {
               onRowClick={handleRowClick}
               highlightOnHover
               withColumnBorders
-              maxHeight="100%"
+              maxHeight='calc(100dvh - 270px)'
             />
 
             {/* Intersection observer trigger for infinite scroll */}
