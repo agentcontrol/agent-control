@@ -1,540 +1,618 @@
 # Contributing to Agent Control
 
-Thanks for contributing! This document covers conventions, setup, and workflows for all contributors.
+First off, thanks for taking the time to contribute! ❤️
 
-## Project Architecture
+Agent Control is an open source project, and we welcome contributions from the community. Whether you're fixing bugs, adding features, improving documentation, or sharing feedback, your involvement helps make Agent Control better for everyone.
 
-Agent Control is a **uv workspace monorepo** with these components:
+> And if you like the project, but just don't have time to contribute code, that's fine. There are other easy ways to support the project and show your appreciation:
+>
+> - Star the project on GitHub
+> - Share it with colleagues and in your network
+> - Reference it in your project's documentation
+> - Mention it at meetups or conferences
+> - Submit and discuss feature ideas
+
+## Ways to Contribute
+
+There are many ways to help move the project forward:
+
+- **Report Bugs**: Found an issue? Help us fix it by reporting it.
+- **Suggest Features**: Have an idea? We'd love to discuss it with you.
+- **Improve Documentation**: Help make our docs clearer and more comprehensive.
+- **Contribute Code**: Fix bugs, implement features, or add new evaluators.
+- **Add Integrations**: Extend Agent Control with new agent framework integrations.
+
+## Reporting Bugs
+
+Found a bug? Please help us fix it by following these steps:
+
+### 1. Search Existing Issues
+
+Check if the issue already exists in our [GitHub Issues](https://github.com/rungalileo/agent-control/issues). If you find a similar issue, add a comment with additional context rather than creating a duplicate.
+
+### 2. Create a New Issue
+
+If no issue exists, create a new one. When writing your bug report, please include:
+
+- **Clear title and description**: Summarize the problem concisely.
+- **Steps to reproduce**: Provide a [minimal, reproducible example](https://stackoverflow.com/help/minimal-reproducible-example) that demonstrates the issue.
+- **Expected vs. actual behavior**: Describe what you expected to happen and what actually happened.
+- **Environment details**:
+  - OS and version (e.g., macOS 14.0, Ubuntu 22.04)
+  - Python version
+  - Agent Control version
+  - Relevant package versions
+- **Error messages**: Include full stack traces if applicable.
+- **Code snippets**: Share relevant code that triggers the issue.
+
+### 3. Wait for Triage
+
+A project maintainer will review your issue and may ask for additional information. Please be patient as we manage a high volume of issues. **Do not bump the issue unless you have new information to provide.**
+
+If you are adding an issue, please try to keep it focused on a single topic. If two issues are related or blocking, please [link them](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue) rather than combining them:
 
 ```
-agent-control/
-├── models/          # Shared Pydantic models (agent-control-models)
-├── server/          # FastAPI server (agent-control-server)
-├── sdks/python/     # Python SDK (agent-control)
-├── engine/          # Control evaluation engine (agent-control-engine)
-├── evaluators/      # Evaluator implementations (agent-control-evaluators)
-└── examples/        # Usage examples
+This issue is blocked by #123 and related to #456.
 ```
 
-**Dependency flow:**
-```
-SDK ──────────────────────────────────────┐
-                                          ▼
-Server ──► Engine ──► Models ◄── Evaluators
-```
+## Suggesting Features
 
----
+Have an idea for a new feature or enhancement?
 
-## Development Setup
+### 1. Search Existing Requests
 
-### Prerequisites
+Search the [GitHub Issues](https://github.com/rungalileo/agent-control/issues?q=is%3Aissue+label%3Aenhancement) for existing feature requests.
 
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) (package manager)
-- Docker (for server database)
+### 2. Start a Discussion
 
-### Initial Setup
+If no similar request exists, open a new issue with the `enhancement` label. In your feature request:
 
-```bash
-# Clone the repository
-git clone <repo-url>
-cd agent-control
+- **Describe the use case**: Explain the problem you're trying to solve.
+- **Explain the value**: Why would this be valuable to other users?
+- **Provide examples**: Include mockups, code examples, or references to similar features in other projects.
+- **Consider alternatives**: Have you considered other approaches?
+- **Outline test cases**: What should be tested to ensure the feature works correctly?
 
-# Install all dependencies (creates single .venv for workspace)
-make sync
+### 3. Await Feedback
 
-# Install git hooks (recommended)
-make hooks-install
-```
+Project maintainers and the community will provide feedback. Be open to discussion and iteration on your idea.
 
----
+## Before You Start Coding
 
-## Working with Components
+**For significant changes, please open an issue first.** Discussing your proposed changes ahead of time will make the contribution process smooth for everyone. Changes that were not discussed in an issue may be rejected.
 
-### Models (`models/`)
+For small bug fixes or documentation improvements, you can proceed directly to opening a pull request.
 
-Shared Pydantic models used by both server and SDK.
+A good first step is to search for [issues labeled "good first issue"](https://github.com/rungalileo/agent-control/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or "help wanted". These are specifically marked as suitable for new contributors.
 
-```bash
-# Location
-models/src/agent_control_models/
+**If you start working on an issue, please comment on it or assign it to yourself to avoid duplicate work.**
 
-# Key files
-├── agent.py       # Agent, Step models
-├── controls.py    # Control definitions, evaluators
-├── evaluation.py  # EvaluationRequest/Response
-├── policy.py      # Policy model
-└── health.py      # Health response
-```
+## Development Process
 
-**When to modify:**
-- Adding new API request/response models
-- Changing shared data structures
-- Adding validation rules
+Follow these steps to set up your environment and contribute changes.
 
-**Testing:**
-```bash
-cd models
-uv run pytest
-```
+### 1. Fork and Clone the Repository
 
----
-
-### Server (`server/`)
-
-FastAPI server providing the Agent Control API.
-
-```bash
-# Location
-server/src/agent_control_server/
-
-# Key files
-├── main.py        # FastAPI app entrypoint
-├── endpoints/     # API route handlers
-├── services/      # Business logic
-└── db/            # Database models & queries
-```
-
-**Running the server:**
-```bash
-cd server
-
-# Start dependencies (PostgreSQL via Docker)
-make start-dependencies
-
-# Run database migrations
-make alembic-upgrade
-
-# Start server with hot-reload
-make run
-```
-
-**Database migrations:**
-```bash
-cd server
-
-# Create new migration
-make alembic-migrate MSG="add new column"
-
-# Apply migrations
-make alembic-upgrade
-
-# Rollback one migration
-make alembic-downgrade
-
-# View migration history
-make alembic-history
-```
-
-**Testing:**
-```bash
-cd server
-make test
-```
-
----
-
-### SDK (`sdks/python/`)
-
-Python client SDK for interacting with the Agent Control server.
-
-```bash
-# Location
-sdks/python/src/agent_control/
-
-# Key files
-├── __init__.py           # Public API exports, init() function
-├── client.py             # AgentControlClient (HTTP client)
-├── agents.py             # Agent registration operations
-├── policies.py           # Policy management
-├── controls.py           # Control management
-├── control_sets.py       # Control set management
-├── evaluation.py         # Evaluation checks
-├── control_decorators.py # @control decorator
-└── evaluators/           # Evaluator system
-```
-
-**Key exports:**
-```python
-import agent_control
-
-# Initialization
-agent_control.init(agent_name="...", agent_id="...")
-
-# Decorator
-@agent_control.control()
-async def my_function(): ...
-
-# Client
-async with agent_control.AgentControlClient() as client:
-    await agent_control.agents.get_agent(client, "id")
-```
-
-**Testing:**
-```bash
-cd sdks/python
-make test  # Starts server automatically
-```
-
-**Adding new SDK functionality:**
-1. Add operation function in appropriate module (e.g., `policies.py`)
-2. Export in `__init__.py` if needed
-3. Add tests in `tests/`
-4. Update docstrings with examples
-
----
-
-### Engine (`engine/`)
-
-Core control evaluation logic. The engine loads evaluators and executes evaluations.
-
-```bash
-# Location
-engine/src/agent_control_engine/
-
-# Key files
-├── core.py        # Main ControlEngine class
-├── evaluators.py  # Evaluator loader and caching
-└── selectors.py   # Data selection from payloads
-```
-
-**How it works:**
-- The engine uses the evaluator registry to find evaluators
-- Evaluators are cached for performance (LRU cache)
-- Selectors extract data from payloads before evaluation
-
-**Testing:**
-```bash
-cd engine
-make test
-```
-
-> **Note:** To add new evaluators, create an evaluator in `evaluators/` rather than modifying the engine directly. See the Evaluators section below.
-
----
-
-### Evaluators (`evaluators/`)
-
-Extensible evaluators for custom detection logic.
-
-```bash
-# Location
-evaluators/src/agent_control_evaluators/
-
-# Key directories
-├── builtin/       # Built-in evaluators
-│   ├── regex.py   # RegexEvaluator - pattern matching
-│   └── list.py    # ListEvaluator - value matching
-└── luna2/         # Galileo Luna-2 integration
-    ├── evaluator.py  # Luna2Evaluator implementation
-    ├── config.py     # Luna2Config model
-    └── client.py     # Direct HTTP client (no SDK dependency)
-```
-
-**Adding a new evaluator:**
-
-1. **Create evaluator directory:**
+1. **Fork** the repository by clicking the "Fork" button on the [Agent Control GitHub page](https://github.com/rungalileo/agent-control).
+2. **Clone** your fork locally:
    ```bash
-   mkdir evaluators/src/agent_control_evaluators/my_evaluator/
+   git clone https://github.com/<your-username>/agent-control.git
+   cd agent-control
+   ```
+3. **Add the upstream remote** (to keep your fork in sync):
+   ```bash
+   git remote add upstream https://github.com/rungalileo/agent-control.git
    ```
 
-2. **Define configuration model (`config.py`):**
-   ```python
-   from pydantic import BaseModel, Field
+### 2. Set Up Your Development Environment
 
-   class MyEvaluatorConfig(BaseModel):
-       """Configuration for MyEvaluator."""
-       threshold: float = Field(0.5, ge=0.0, le=1.0)
-       api_endpoint: str = Field(default="https://api.example.com")
+This project is a Python monorepo managed as a `uv` workspace. We use `make` for common tasks.
+
+**Requirements:**
+- Python 3.12+
+- `uv` package manager
+- `make`
+
+**Setup steps:**
+
+1. **Install dependencies**:
+   ```bash
+   make sync
    ```
+   This installs all workspace dependencies and sets up the development environment.
 
-3. **Implement evaluator (`evaluator.py`):**
-   ```python
-   from typing import Any
-   from agent_control_models import (
-       EvaluatorResult,
-       Evaluator,
-       EvaluatorMetadata,
-       register_evaluator,
-   )
-   from .config import MyEvaluatorConfig
-
-   @register_evaluator
-   class MyEvaluator(Evaluator[MyEvaluatorConfig]):
-       """My custom evaluator."""
-
-       metadata = EvaluatorMetadata(
-           name="my-evaluator",
-           version="1.0.0",
-           description="Custom detection logic",
-           requires_api_key=False,
-           timeout_ms=5000,
-       )
-       config_model = MyEvaluatorConfig
-
-       def __init__(self, config: MyEvaluatorConfig) -> None:
-           super().__init__(config)
-           # Initialize any clients or resources
-
-       async def evaluate(self, data: Any) -> EvaluatorResult:
-           # Your detection logic here
-           score = await self._analyze(str(data))
-
-           return EvaluatorResult(
-               matched=score > self.config.threshold,
-               confidence=score,
-               message=f"Analysis score: {score:.2f}",
-               metadata={"score": score},
-           )
+2. **Install git hooks** (optional but recommended):
+   ```bash
+   make hooks-install
    ```
+   This sets up pre-commit hooks that automatically format and lint your code.
 
-4. **Export in `__init__.py`:**
-   ```python
-   from .config import MyEvaluatorConfig
-   from .evaluator import MyEvaluator
-
-   __all__ = ["MyEvaluator", "MyEvaluatorConfig"]
+3. **Verify your setup**:
+   ```bash
+   make check
    ```
+   This runs tests, linting, and type checking to ensure everything is working.
 
-5. **Add optional dependencies in `evaluators/pyproject.toml`:**
-   ```toml
-   [project.optional-dependencies]
-   my-evaluator = ["httpx>=0.24.0"]  # Add your dependencies
-   all = ["httpx>=0.24.0", ...]      # Include in 'all' extra
-   ```
+### 3. Create a Feature Branch
 
-6. **Add tests in `evaluators/tests/`**
+Create a new branch for your changes. Use descriptive names with prefixes:
 
-**Evaluator Best Practices:**
-- Use Pydantic for config validation
-- Make API calls async with httpx
-- Return confidence scores (0.0-1.0)
-- Include helpful metadata for debugging
-- Handle errors gracefully (respect `on_error` config)
-- Avoid storing request-scoped state (evaluators are cached)
-
----
-
-## Code Quality
-
-### Linting (Ruff)
+- `feature/add-regex-evaluator` - for new features
+- `fix/handle-null-agent-name` - for bug fixes
+- `docs/improve-evaluator-guide` - for documentation
+- `refactor/simplify-core-logic` - for refactoring
 
 ```bash
-# Check all packages
-make lint
-
-# Auto-fix issues
-make lint-fix
-
-# Single package
-cd server && make lint
+git checkout -b feature/my-new-feature
 ```
 
-### Type Checking (mypy)
-
+**Keep your branch up to date** with the main branch:
 ```bash
-# Check all packages
-make typecheck
-
-# Single package
-cd sdks/python && make typecheck
+git fetch upstream
+git rebase upstream/main
 ```
 
-### Pre-push Checks
+### 4. Make Your Changes
+
+Choose the appropriate package for your changes (see [Project Structure](#project-structure) below):
+
+- **Writing code**: Follow the [code conventions in AGENTS.md](AGENTS.md#code-conventions).
+- **Adding tests**: All behavior changes require tests (see [Testing](#testing-your-changes) below).
+- **Updating documentation**: Update docstrings, README files, and the `docs/` directory as needed.
+- **Adding dependencies**: Use `uv add <package>` in the appropriate workspace package directory.
+
+**Keep your changes focused**: Prefer the smallest diff that fixes the issue. Avoid mixing unrelated changes in a single PR.
+
+### 5. Test Your Changes
+
+Before submitting your PR, ensure all tests pass:
 
 ```bash
-# Run all checks (test + lint + typecheck)
+# Run all checks (tests, lint, typecheck)
 make check
 
-# Or manually run pre-push hook
-make prepush
+# Or run individual checks
+make test       # Run all tests
+make lint       # Check code style
+make typecheck  # Run mypy type checker
+
+# Run tests for a specific package
+make engine-test     # Test the engine package
+make sdk-test        # Test the SDK
+make server-test     # Test the server
+
+# Auto-fix linting issues
+make lint-fix
 ```
 
----
+**All tests must pass before your PR can be merged.** If you've introduced linter errors, fix them before submitting.
 
-## Testing Conventions
+### 6. Commit Your Changes
 
-Write tests using **Given/When/Then** comments:
-
-```python
-def test_create_control(client: TestClient) -> None:
-    # Given: a valid control payload
-    payload = {"name": "pii-protection"}
-
-    # When: creating the control via API
-    response = client.put("/api/v1/controls", json=payload)
-
-    # Then: the control is created successfully
-    assert response.status_code == 200
-    assert "control_id" in response.json()
-```
-
-**Guidelines:**
-- Keep tests small and focused
-- Use explicit setup over hidden fixtures
-- Test both success and error cases
-- Mock external services (database, Galileo API)
-
----
-
-## Building & Publishing
-
-### Build Packages
+We use [Conventional Commits](https://www.conventionalcommits.org/) for commit messages:
 
 ```bash
-# Build all
-make build
-
-# Build individual packages
-make build-models
-make build-server
-make build-sdk
-cd engine && make build
+feat: add regex pattern evaluator
+fix: handle missing agent_id in evaluation
+docs: update evaluator implementation guide
+refactor: simplify control selector logic
+test: add coverage for SQL evaluator edge cases
 ```
 
-### Publish Packages
+**Commit message format:**
+```
+<type>: <description>
 
-```bash
-# Publish all (requires PyPI credentials)
-make publish
+[optional body]
 
-# Publish individual packages
-make publish-models
-make publish-server
-make publish-sdk
+[optional footer]
 ```
 
-**Version bumping:**
-Update `version` in respective `pyproject.toml` files:
-- `models/pyproject.toml`
-- `server/pyproject.toml`
-- `sdks/python/pyproject.toml`
-- `engine/pyproject.toml`
-- `evaluators/pyproject.toml`
+Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`
 
----
+### 7. Push and Open a Pull Request
 
-## Git Workflow
+1. **Push** your branch to your fork:
+   ```bash
+   git push origin feature/my-new-feature
+   ```
 
-### Branch Naming
+2. **Open a Pull Request** against the `main` branch of the upstream repository.
 
-- `feature/description` - New features
-- `fix/description` - Bug fixes
-- `refactor/description` - Code refactoring
+3. **Fill out the PR template** with:
+   - **Title**: Use conventional commit format (e.g., `feat: add regex evaluator`)
+   - **Description**: Explain what problem you're solving and how
+   - **Issue reference**: Link to related issues (e.g., "Fixes #123", "Closes #456")
+   - **Testing**: Describe how you tested the changes
+   - **Checklist**: Confirm you've run tests, updated docs, etc.
 
-### Commit Messages
+4. **Wait for review**: A maintainer will review your PR. Be responsive to feedback and questions.
 
-Use conventional commits:
-```
-feat: add policy assignment endpoint
-fix: handle missing agent gracefully
-refactor: extract evaluator logic to engine
-docs: update SDK usage examples
-test: add control set integration tests
-```
+5. **Address review comments**: Make requested changes by pushing new commits to your branch.
 
-### Pull Request Checklist
+6. **Celebrate** when your PR is merged! 🎉
 
-- [ ] Tests pass (`make test`)
-- [ ] Linting passes (`make lint`)
-- [ ] Type checking passes (`make typecheck`)
-- [ ] Documentation updated if needed
-- [ ] Examples updated if API changed
+## Common Contribution Scenarios
 
----
+### Adding a New Evaluator
 
-## Common Tasks
+Evaluators are a core part of Agent Control. Here's how to add a new one:
 
-### Add a new API endpoint
+**1. Create the evaluator class** in `evaluators/src/agent_control_evaluators/builtin/`:
 
-1. Add Pydantic models in `models/` if needed
-2. Add route handler in `server/src/agent_control_server/endpoints/`
-3. Add service logic in `server/src/agent_control_server/services/`
-4. Add SDK wrapper in `sdks/python/src/agent_control/`
-5. Add tests for both server and SDK
-6. Update examples if user-facing
-
-### Add a new evaluator
-
-1. Create evaluator directory in `evaluators/src/agent_control_evaluators/`
-2. Implement `Evaluator` interface (see Evaluators section above)
-3. Add `@register_evaluator` decorator to your evaluator class
-4. Add optional dependencies in `evaluators/pyproject.toml`
-5. Export from `evaluators/src/agent_control_evaluators/__init__.py`
-6. Add tests in `evaluators/tests/`
-7. Update `docs/OVERVIEW.md` with usage examples
-
-### Add a built-in evaluator (regex/list style)
-
-1. Add evaluator class in `evaluators/src/agent_control_evaluators/builtin/`
-2. Add config model in `models/src/agent_control_models/controls.py`
-3. Register with `@register_evaluator` decorator
-4. Add comprehensive tests in `evaluators/tests/`
-
-### Update shared models
-
-1. Modify models in `models/src/agent_control_models/`
-2. Run tests across all packages: `make test`
-3. Update any affected server endpoints
-4. Update SDK if client-facing
-
----
-
-## Quick Reference
-
-| Task | Command |
-|------|---------|
-| Install dependencies | `make sync` |
-| Run server | `cd server && make run` |
-| Run all tests | `make test` |
-| Run linting | `make lint` |
-| Run type checks | `make typecheck` |
-| Run all checks | `make check` |
-| Build packages | `make build` |
-| Database migration | `cd server && make alembic-migrate MSG="..."` |
-
----
-
-## Evaluator Development Quick Reference
-
-| Task | Location |
-|------|----------|
-| Evaluator base class | `agent_control_models.Evaluator` |
-| Evaluator metadata | `agent_control_models.EvaluatorMetadata` |
-| Evaluator result | `agent_control_models.EvaluatorResult` |
-| Register decorator | `@agent_control_models.register_evaluator` |
-| Built-in evaluators | `evaluators/src/agent_control_evaluators/builtin/` |
-| Evaluator tests | `evaluators/tests/` |
-
-**Evaluator config model fields:**
 ```python
+from agent_control_models.evaluator import Evaluator, register_evaluator
+from agent_control_models.evaluation import EvaluationResult
 from pydantic import BaseModel, Field
 
-class MyConfig(BaseModel):
-    # Required field
-    pattern: str = Field(..., description="Pattern to match")
+class MyEvaluatorConfig(BaseModel):
+    """Configuration for the evaluator."""
+    pattern: str = Field(description="The pattern to match")
+
+@register_evaluator("my_evaluator")
+class MyEvaluator(Evaluator[MyEvaluatorConfig]):
+    """
+    A custom evaluator that does X.
     
-    # Optional with default
-    threshold: float = Field(0.5, ge=0.0, le=1.0)
+    Configuration:
+        pattern: The pattern to match against input
+    """
     
-    # List field
-    values: list[str] = Field(default_factory=list)
+    def evaluate(self, **kwargs) -> EvaluationResult:
+        # Your evaluation logic here
+        return EvaluationResult(
+            passed=True,
+            reason="Explanation of the result"
+        )
 ```
 
-**EvaluatorResult fields:**
+**2. Register the entry point** in `evaluators/pyproject.toml`:
+
+```toml
+[project.entry-points."agent_control.evaluators"]
+my_evaluator = "agent_control_evaluators.builtin.my_module:MyEvaluator"
+```
+
+**3. Add tests** in `evaluators/tests/test_my_evaluator.py`:
+
 ```python
-EvaluatorResult(
-    matched=True,           # Did this trigger the control?
-    confidence=0.95,        # How confident (0.0-1.0)?
-    message="Explanation",  # Human-readable message
-    metadata={"key": "val"} # Additional context
-)
+from agent_control_evaluators.builtin.my_module import MyEvaluator, MyEvaluatorConfig
+
+def test_my_evaluator():
+    config = MyEvaluatorConfig(pattern="test")
+    evaluator = MyEvaluator(config=config)
+    result = evaluator.evaluate(input_text="test")
+    assert result.passed is True
 ```
 
----
+**4. Add documentation** in `docs/evaluators/my_evaluator.md` explaining:
+- What the evaluator does
+- Configuration options
+- Usage examples
+- Edge cases and limitations
+
+**5. Run the tests**:
+```bash
+make evaluators-test
+make check
+```
+
+**6. Open a PR** with your changes. See [Making a Pull Request](#7-push-and-open-a-pull-request) above.
+
+### Adding a New API Endpoint
+
+If you're adding a new server endpoint:
+
+**1. Define or update models** in `models/src/agent_control_models/` if needed:
+```python
+from pydantic import BaseModel
+
+class MyRequest(BaseModel):
+    field: str
+
+class MyResponse(BaseModel):
+    result: str
+```
+
+**2. Add the endpoint** in `server/src/agent_control_server/endpoints/`:
+```python
+from fastapi import APIRouter
+from agent_control_models.my_models import MyRequest, MyResponse
+
+router = APIRouter()
+
+@router.post("/my-endpoint", response_model=MyResponse)
+async def my_endpoint(request: MyRequest) -> MyResponse:
+    # Your logic here
+    return MyResponse(result="success")
+```
+
+**3. Add business logic** in `server/src/agent_control_server/services/` (keep endpoints thin).
+
+**4. Add SDK wrapper** in `sdks/python/src/agent_control/`:
+```python
+class AgentControlClient:
+    def my_method(self, field: str) -> str:
+        response = self._request("POST", "/my-endpoint", json={"field": field})
+        return response["result"]
+```
+
+**5. Add tests** for both server and SDK:
+- `server/tests/test_my_endpoint.py`
+- `sdks/python/tests/test_my_method.py`
+
+**6. Update documentation** and examples if the endpoint is user-facing.
+
+### Adding an Integration Example
+
+To add an example for a new agent framework:
+
+**1. Create a new directory** in `examples/` (e.g., `examples/my_framework/`).
+
+**2. Add example files**:
+- `README.md` - Setup and usage instructions
+- `pyproject.toml` - Dependencies for the example
+- `.env.example` - Environment variables needed
+- Python files demonstrating the integration
+
+**3. Ensure the example is runnable**:
+```bash
+cd examples/my_framework
+uv sync
+python main.py
+```
+
+**4. Update** `examples/README.md` to include your new example.
+
+### Improving Documentation
+
+Documentation improvements are always welcome:
+
+- **Typos and clarity**: Fix them directly and open a PR.
+- **Missing examples**: Add code examples to `docs/` or `examples/`.
+- **API documentation**: Update docstrings in the code (they're the source of truth).
+- **Architecture guides**: Update `docs/OVERVIEW.md` or other guides.
+
+Run `make check` to ensure your changes don't break anything, then open a PR.
+
+## Pull Request Guidelines
+
+To ensure a smooth review process:
+
+- **Open an issue first** for significant changes to discuss the approach.
+- **Keep it focused**: Smaller, focused PRs are easier to review and merge.
+- **Follow conventions**: Use [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.
+- **Write tests**: All behavior changes require tests (see `docs/testing.md`).
+- **Update documentation**: If you change user-facing behavior, update docs.
+- **Pass all checks**: Ensure `make check` passes locally before opening the PR.
+- **Be responsive**: Address review comments promptly and be open to feedback.
+
+## Testing Your Changes
+
+All tests run in CI and must pass before merging. We follow the testing conventions outlined in `docs/testing.md`.
+
+**Key testing principles:**
+
+- **Behavior changes require tests**: If you modify behavior, add tests that verify the new behavior.
+- **Test at the right level**: Unit tests for logic, integration tests for workflows.
+- **Use existing patterns**: Review existing tests to understand conventions.
+- **Avoid flaky tests**: Tests should be deterministic and reliable.
+
+**Running tests:**
+
+```bash
+# Run all tests
+make test
+
+# Run tests for a specific package
+make engine-test
+make sdk-test
+make server-test
+make evaluators-test
+
+# Run a specific test file
+cd engine
+uv run pytest tests/test_evaluators.py
+
+# Run a specific test case
+uv run pytest tests/test_evaluators.py::test_json_evaluator
+```
+
+See `docs/testing.md` for comprehensive testing guidance.
+
+## Acceptable Use of AI Tools
+
+Generative AI can be a useful tool for contributors, but like any tool should be used with critical thinking and good judgment.
+
+We encourage contributors to use AI tools efficiently where they help. However, **AI assistance must be paired with meaningful human intervention, judgment, and contextual understanding.**
+
+**Guidelines:**
+
+- ✅ **Acceptable**: Using AI for boilerplate code, docstrings, test generation as a starting point that you review and refine.
+- ✅ **Acceptable**: Using AI to help understand unfamiliar code or concepts.
+- ✅ **Acceptable**: Using AI to suggest improvements that you critically evaluate.
+- ❌ **Not acceptable**: Submitting entirely AI-generated code without meaningful human review.
+- ❌ **Not acceptable**: Mass automated contributions that lack contextual relevance.
+- ❌ **Not acceptable**: Low-effort, AI-generated spam PRs.
+
+**If the human effort required to create a pull request is less than the effort required for maintainers to review it, that contribution should not be submitted.**
+
+We will close pull requests and issues that appear to be low-effort, AI-generated spam. With great tools comes great responsibility.
+
+## Project Structure
+
+Understanding the layout will help you know where to make changes.
+
+```mermaid
+flowchart TB
+    SDK["Python SDK<br/>(sdks/python)"]
+    Server["API Server<br/>(server)"]
+    Engine["Evaluation Engine<br/>(engine)"]
+    Models["Shared Models<br/>(models)"]
+    Evaluators["Evaluators<br/>(evaluators)"]
+    Examples["Examples & Docs<br/>(examples, docs)"]
+
+    SDK --> Server
+    Server --> Engine
+    Engine --> Models
+    Evaluators --> Models
+    Examples --- SDK
+    Examples --- Server
+```
+
+### Package Descriptions
+
+- **`models/`** (`agent_control_models`): Shared Pydantic v2 models and base classes.
+  - Defines API request/response models
+  - Base classes for evaluators
+  - Shared types used across packages
+  - **Change here if**: Adding new API models or evaluator base functionality
+
+- **`engine/`** (`agent_control_engine`): Core evaluation logic and orchestration.
+  - Control evaluation engine
+  - Evaluator discovery and registration
+  - Evaluation orchestration
+  - **Change here if**: Modifying evaluation logic or evaluator discovery
+
+- **`server/`** (`agent_control_server`): FastAPI server providing HTTP APIs.
+  - REST API endpoints
+  - Business logic services
+  - Database interactions (Alembic migrations)
+  - **Change here if**: Adding new endpoints or server functionality
+
+- **`sdks/python/`** (`agent_control`): Python SDK for users.
+  - Client library wrapping server APIs
+  - Control decorators and policies
+  - Local evaluation support (uses engine)
+  - **Change here if**: Adding user-facing SDK features
+
+- **`evaluators/`** (`agent_control_evaluators`): Built-in evaluator implementations.
+  - JSON, SQL, regex, list evaluators
+  - Luna2 integration
+  - All evaluators extend base classes from `models/`
+  - **Change here if**: Adding new evaluators or modifying existing ones
+
+- **`ui/`**: Next.js web application for managing agent controls.
+  - TypeScript/React frontend
+  - **Change here if**: Adding UI features (separate contribution process)
+
+- **`examples/`**: Runnable examples demonstrating integrations.
+  - LangChain, CrewAI, and other framework examples
+  - Demo agents and setup scripts
+  - **Change here if**: Adding new integration examples
+
+- **`docs/`**: Documentation and architectural guides.
+  - `OVERVIEW.md`: Architecture overview
+  - `REFERENCE.md`: API reference
+  - `testing.md`: Testing conventions
+  - Evaluator guides in `docs/evaluators/`
+  - **Change here if**: Improving documentation
+
+See `AGENTS.md` for detailed development conventions and the full change map.
+
+## Code Review Process
+
+Once you've opened a pull request:
+
+1. **Automated checks**: CI will run tests, linting, and type checking. All checks must pass.
+
+2. **Maintainer review**: A project maintainer will review your code. This may take a few days depending on the size and complexity of your PR.
+
+3. **Feedback and iteration**: The reviewer may request changes. Please:
+   - Address all feedback
+   - Push new commits to your branch (don't force-push unless asked)
+   - Respond to comments to acknowledge you've addressed them
+   - Ask questions if anything is unclear
+
+4. **Approval and merge**: Once approved, a maintainer will merge your PR. We use squash merge to keep history clean, so your commits will be combined into one.
+
+5. **Post-merge**: Your contribution will be included in the next release. Thank you! 🎉
+
+**Review timeline expectations:**
+- Simple PRs (docs, small fixes): Usually within 2-3 days
+- Complex PRs (new features, evaluators): May take 5-7 days
+- We're a small team, so please be patient
+
+If your PR has been waiting more than a week without review, feel free to politely ping in the PR comments.
 
 ## Need Help?
 
-- **Documentation:** See `docs/OVERVIEW.md` for architecture overview
-- **Examples:** Check `examples/` for usage patterns
-- **Tests:** Look at existing tests for patterns to follow
+If you have questions or need guidance:
+
+- **📚 Read the docs**:
+  - `docs/OVERVIEW.md` - Architecture overview
+  - `docs/REFERENCE.md` - API reference
+  - `docs/testing.md` - Testing conventions
+  - `AGENTS.md` - Developer guide for AI coding assistants
+
+- **💡 Check examples**: Review `examples/` for integration patterns.
+
+- **🔍 Search issues**: Your question may have been answered in [existing issues](https://github.com/rungalileo/agent-control/issues).
+
+- **💬 Open a discussion**: For questions that don't fit issues, start a [GitHub Discussion](https://github.com/rungalileo/agent-control/discussions).
+
+- **🐛 Report a problem**: If you're stuck on a bug, [open an issue](https://github.com/rungalileo/agent-control/issues/new) with details.
+
+We appreciate your contribution to making Agent Control better! ❤️
+
+## Quick Reference
+
+### Common Commands
+
+```bash
+# Setup and dependencies
+make sync                 # Install/sync all dependencies
+make hooks-install        # Install git pre-commit hooks
+
+# Development
+make dev                  # Run in development mode
+make server-run           # Run the server
+make check                # Run all checks (tests + lint + typecheck)
+
+# Testing
+make test                 # Run all tests
+make engine-test          # Test engine package
+make sdk-test             # Test SDK package
+make server-test          # Test server package
+make evaluators-test      # Test evaluators package
+
+# Code quality
+make lint                 # Check code style
+make lint-fix             # Auto-fix linting issues
+make typecheck            # Run mypy type checker
+
+# Database (server)
+make server-alembic-upgrade    # Apply database migrations
+make server-alembic-downgrade  # Rollback migrations
+make server-db-seed            # Seed database with test data
+```
+
+### Package Structure
+
+```
+agent-control/
+├── models/           → agent_control_models
+├── engine/           → agent_control_engine
+├── server/           → agent_control_server
+├── sdks/python/      → agent_control
+├── evaluators/       → agent_control_evaluators
+├── ui/               → Next.js web app
+├── examples/         → Integration examples
+└── docs/             → Documentation
+```
+
+### Conventional Commit Types
+
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `refactor`: Code refactoring
+- `test`: Test additions or changes
+- `chore`: Maintenance tasks
+- `perf`: Performance improvements
+
+## License
+
+Agent Control is Apache 2.0 licensed. See [LICENSE](LICENSE) for more details.
+
+By contributing to Agent Control, you agree that your contributions will be licensed under the Apache 2.0 License.
