@@ -8,23 +8,24 @@
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
-![Agent Control Architecture](docs/images/Architecture.png)
-
 AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
 
-## Why Do You Need It?
-Traditional code-based guardrails have critical limitations:
+![Agent Control Architecture](docs/images/Architecture.png)
 
-- **Scattered Logic:** Control code is buried across your agent codebase, making it hard to audit or update
+
+## Why Do You Need It?
+Traditional guardrails embedded inside your agent code have critical limitations:
+
+- **Scattered Logic:** Control code is buried across your agent codebase, making it hard to audit or update. 
 - **Deployment Overhead:** Changing protection rules requires code changes and redeployment
 - **Limited Adaptability:** Hardcoded checks can't adapt to new attack patterns or production data variations
 
 
 **Agent Control gives you RUNTIME control over what your agents CAN & CANNOT do.**
-1. You can enable and change controls of your agent in  runtime without deploying code through APIs. This enables instant risk mitigation. 
+1. You can enable and change controls of your agent in  runtime without deploying code through APIs. This enables instant risk mitigation for emerging threats. 
 2. For non-technical members, agent control provides an intuitive UI to manage the control configuration.
-3. Enable/disable controls dynamically to respond to emerging threats.
-3. The package also comes with several common out of box templates for controls that can be adapted and with a lot of flexibility to define custom controls or integrate with external evaluators.  
+3. The package also comes with several common out of box templates for controls that can be adapted and with a lot of flexibility to define custom controls or integrate with external evaluators.
+4. Easily reuse controls across agents in your organization. 
 
 ## Core Concepts
 See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's architecture and design principles.
