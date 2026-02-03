@@ -385,7 +385,7 @@ Flexible value matching with multiple modes and logic options.
 
 AI-powered detection using Galileo's Luna-2 small language models. Provides real-time, low-latency evaluation for complex patterns that can't be caught with regex or lists.
 
-**Evaluator name**: `galileo/luna2`
+**Evaluator name**: `galileo.luna2`
 
 **Installation**: Luna-2 requires an optional dependency:
 
@@ -429,7 +429,7 @@ pip install agent-control-evaluators[luna2]
 ```json
 // Block toxic inputs (score > 0.5)
 {
-  "name": "galileo/luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "input_toxicity",
     "operator": "gt",
@@ -440,7 +440,7 @@ pip install agent-control-evaluators[luna2]
 
 // Block prompt injection attempts
 {
-  "name": "galileo/luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "prompt_injection",
     "operator": "gt",
@@ -451,7 +451,7 @@ pip install agent-control-evaluators[luna2]
 
 // Flag potential hallucinations (warn but allow)
 {
-  "name": "galileo/luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "hallucination",
     "operator": "gt",
@@ -461,7 +461,7 @@ pip install agent-control-evaluators[luna2]
 
 // Using central stage (pre-defined in Galileo)
 {
-  "name": "galileo/luna2",
+  "name": "galileo.luna2",
   "config": {
     "stage_type": "central",
     "stage_name": "production-safety",
@@ -967,6 +967,6 @@ make alembic-upgrade
 4. Verify the metric name is valid
 5. Check `on_error` setting if failures are silently allowed
 
-**Evaluator Not Found**: If `galileo/luna2` doesn't appear in `list_evaluators()`:
+**Evaluator Not Found**: If `galileo.luna2` doesn't appear in `list_evaluators()`:
 - Verify `httpx` is installed (Luna-2's `is_available()` returns `False` without it)
 - Check server logs for evaluator discovery messages

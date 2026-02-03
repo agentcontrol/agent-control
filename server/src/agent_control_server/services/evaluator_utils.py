@@ -24,7 +24,7 @@ class ParsedEvaluatorRef:
 
     Attributes:
         type: The evaluator category ("builtin", "external", or "agent")
-        name: The full evaluator name (e.g., "regex", "galileo/luna2", "my-agent:pii")
+        name: The full evaluator name (e.g., "regex", "galileo.luna2", "my-agent:pii")
         namespace: For external evaluators, the provider name; for agent-scoped, the agent name
         local_name: The evaluator name without namespace prefix
     """
@@ -40,7 +40,7 @@ def parse_evaluator_ref_full(evaluator_ref: str) -> ParsedEvaluatorRef:
 
     Determines the evaluator type based on the name format:
     - Contains ":" → agent-scoped (split on first ":")
-    - Contains "/" → external (split on first "/")
+    - Contains "." → external (split on first ".")
     - Otherwise → built-in
 
     Args:
@@ -53,7 +53,7 @@ def parse_evaluator_ref_full(evaluator_ref: str) -> ParsedEvaluatorRef:
         >>> parse_evaluator_ref_full("regex")
         ParsedEvaluatorRef(type="builtin", name="regex", ...)
 
-        >>> parse_evaluator_ref_full("galileo/luna2")
+        >>> parse_evaluator_ref_full("galileo.luna2")
         ParsedEvaluatorRef(type="external", namespace="galileo", ...)
 
         >>> parse_evaluator_ref_full("my-agent:pii-detector")

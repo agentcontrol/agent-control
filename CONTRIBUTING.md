@@ -237,14 +237,14 @@ evaluators/src/agent_control_evaluators/
 │   └── evaluator.py # SqlEvaluator implementation
 #
 # External evaluators (namespaced, optional dependencies)
-└── galileo_luna2/   # Type name: "galileo/luna2" (folder uses underscore)
+└── galileo_luna2/   # Type name: "galileo.luna2" (folder uses underscore)
     ├── config.py    # Luna2EvaluatorConfig
     ├── evaluator.py # Luna2Evaluator implementation
     └── client.py    # Direct HTTP client (no SDK dependency)
 ```
 
 > **Note:** Folder names use `snake_case` (Python convention), but type names in metadata
-> use `provider/name` format with slash for external evaluators.
+> use `provider.name` format with dot separator for external evaluators.
 
 **Creating a new evaluator:**
 
@@ -253,12 +253,12 @@ Choose the appropriate type based on your use case:
 | Type | When to Use | Name Format |
 |------|-------------|-------------|
 | Built-in | Core functionality, no external deps | `my-evaluator` |
-| External | External provider integration, optional deps | `provider/name` |
+| External | External provider integration, optional deps | `provider.name` |
 | Agent-scoped | Custom logic deployed with agent | `my-agent:custom` |
 
 ### Creating a Third-Party Evaluator (Recommended for External Providers)
 
-This example creates a external evaluator `acme/toxicity`:
+This example creates a external evaluator `acme.toxicity`:
 
 **1. Create evaluator directory:**
 ```bash
@@ -322,7 +322,7 @@ class AcmeToxicityEvaluator(Evaluator[AcmeToxicityEvaluatorConfig]):
     """
 
     metadata = EvaluatorMetadata(
-        name="acme/toxicity",  # <-- External provider with slash
+        name="acme.toxicity",  # <-- External provider with dot
         version="1.0.0",
         description="Acme toxicity detection API",
         requires_api_key=True,
@@ -398,7 +398,7 @@ all = ["httpx>=0.24.0"]   # Include in 'all' extra
 regex = "agent_control_evaluators.regex:RegexEvaluator"
 list = "agent_control_evaluators.list:ListEvaluator"
 # ... existing entries ...
-"acme/toxicity" = "agent_control_evaluators.acme_toxicity:AcmeToxicityEvaluator"
+"acme.toxicity" = "agent_control_evaluators.acme_toxicity:AcmeToxicityEvaluator"
 ```
 
 **6. Add tests in `evaluators/tests/acme_toxicity/`**
@@ -635,15 +635,15 @@ Evaluator type names identify evaluator implementations. The format indicates th
 | Format | Origin | Examples |
 |--------|--------|----------|
 | `name` | Built-in (first-party, no dependencies) | `regex`, `list`, `json`, `sql` |
-| `provider/name` | External (external providers, optional deps) | `galileo/luna2`, `nvidia/nemo` |
+| `provider.name` | External (external providers, optional deps) | `galileo.luna2`, `nvidia.nemo` |
 | `agent:name` | Agent-scoped (custom code deployed with agent) | `my-agent:pii-detector` |
 
 **Parsing rules:**
 ```python
 if ":" in name:    # Agent-scoped (split on first ":")
     agent, evaluator = name.split(":", 1)
-elif "/" in name:  # External provider (split on first "/")
-    provider, evaluator = name.split("/", 1)
+elif "." in name:  # External provider (split on first ".")
+    provider, evaluator = name.split(".", 1)
 else:              # Built-in
     evaluator = name
 ```
@@ -655,8 +655,8 @@ else:              # Built-in
 - Core dependencies only (included in base package)
 - Imported and registered automatically on package import
 
-**External evaluators** (`galileo/luna2`):
-- Use `provider/name` format with slash separator
+**External evaluators** (`galileo.luna2`):
+- Use `provider.name` format with dot separator
 - Have optional dependencies (install via extras: `pip install agent-control-evaluators[luna2]`)
 - Discovered via Python entry points (not auto-imported)
 
@@ -685,8 +685,8 @@ Controls reference them as `my-agent:pii-detector` (the `:` indicates agent scop
 | Item | Convention | Example |
 |------|------------|---------|
 | Folder name | `snake_case` (Python package) | `galileo_luna2/` |
-| Entry point key | Same as type name | `"galileo/luna2"` |
-| Metadata name | Same as type name | `name="galileo/luna2"` |
+| Entry point key | Same as type name | `"galileo.luna2"` |
+| Metadata name | Same as type name | `name="galileo.luna2"` |
 
 > **Note:** In code, use "provider" as the type identifier. In user-facing docs,
 > use "external" as the descriptive term.
@@ -709,7 +709,7 @@ Controls reference them as `my-agent:pii-detector` (the `:` indicates agent scop
 **Naming convention quick reference:**
 ```
 Built-in:      regex, list, json, sql
-External:   galileo/luna2, nvidia/nemo
+External:      galileo.luna2, nvidia.nemo
 Agent-scoped:  my-agent:pii-detector
 ```
 

@@ -236,7 +236,7 @@ Flexible value matching with multiple modes and logic options.
 
 ---
 
-### 3. Luna-2 Evaluator (`galileo/luna2`)
+### 3. Luna-2 Evaluator (`galileo.luna2`)
 
 AI-powered detection using Galileo's Luna-2 small language models. Provides real-time, low-latency evaluation for complex patterns that can't be caught with regex or lists.
 
@@ -267,7 +267,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 ```json
 // Block toxic inputs (score > 0.5)
 {
-  "name": "galileo/luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "input_toxicity",
     "operator": "gt",
@@ -278,7 +278,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Block prompt injection attempts
 {
-  "name": "galileo/luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "prompt_injection",
     "operator": "gt",
@@ -289,7 +289,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Flag potential hallucinations (warn but allow)
 {
-  "name": "galileo/luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "hallucination",
     "operator": "gt",
@@ -299,7 +299,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Using a central stage (pre-defined server-side rules)
 {
-  "name": "galileo/luna2",
+  "name": "galileo.luna2",
   "config": {
     "stage_type": "central",
     "stage_name": "production-safety",
