@@ -1,4 +1,4 @@
-import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-monitor";
+import type { StatsTotals } from "@/core/hooks/query-hooks/use-agent-monitor";
 
 export type SummaryMetrics = {
   totalExecutions: number;
@@ -7,5 +7,5 @@ export type SummaryMetrics = {
   totalErrors: number;
   denyRate: number;
   matchRate: number;
-  actionCounts: StatsResponse["action_counts"];
+  actionCounts: NonNullable<StatsTotals["action_counts"]>;
 };

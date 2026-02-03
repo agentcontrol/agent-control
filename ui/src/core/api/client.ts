@@ -116,8 +116,9 @@ export const api = {
   observability: {
     getStats: (params: {
       agent_uuid: string;
-      time_range?: "1m" | "5m" | "15m" | "1h" | "24h" | "7d";
+      time_range?: "1m" | "5m" | "15m" | "1h" | "24h" | "7d" | "30d" | "180d" | "365d";
       control_id?: number | null;
+      include_timeseries?: boolean;
     }) =>
       apiClient.GET("/api/v1/observability/stats", {
         params: { query: params },

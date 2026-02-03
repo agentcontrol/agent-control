@@ -31,7 +31,7 @@ import type { Control } from "@/core/api/types";
 import { SearchInput } from "@/core/components/search-input";
 import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
-import { useAgentMonitor } from "@/core/hooks/query-hooks/use-agent-monitor";
+import { useHasMonitorData } from "@/core/hooks/query-hooks/use-has-monitor-data";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 import { useModalRoute } from "@/core/hooks/use-modal-route";
 import { useQueryParam } from "@/core/hooks/use-query-param";
@@ -81,14 +81,14 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     error: controlsError,
   } = useAgentControls(agentId);
   
-  // Fetch stats to determine if we should show monitor tab by default
-  // Use 1W (7d) as default time range
-  // Fetch stats even when agent is loading, using agentId directly
+  // Lightweight check to determine initial tab (when no defaultTab specified)
+  // Only checks if stats exist, doesn't fetch full data
+  const needsInitialTabCheck = !defaultTab;
   const {
-    data: statsData,
-    isLoading: statsLoading,
-  } = useAgentMonitor(agentId, "7d", {
-    enabled: true, // Always enabled, will use agentId from props
+    data: hasMonitorData,
+    isLoading: checkingMonitorData,
+  } = useHasMonitorData(agentId, {
+    enabled: needsInitialTabCheck,
   });
   
   const updateControl = useUpdateControl();
@@ -103,37 +103,22 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     return "controls"; // Default fallback
   });
 
-  // Set initial tab based on stats data once loaded (only if no defaultTab specified)
+  // Set initial tab based on monitor data check (only if no defaultTab specified)
   const hasCheckedInitialTab = React.useRef(false);
   React.useEffect(() => {
     // Only check if no defaultTab is specified (i.e., accessing /agents/[id] directly)
-    if (!defaultTab && !hasCheckedInitialTab.current && !statsLoading) {
-      // Check if stats have data (non-empty stats array or non-zero executions)
-      // statsData can be undefined (not loaded), null (error), or an object (loaded)
-      if (statsData) {
-        hasCheckedInitialTab.current = true;
-        const hasStatsData = 
-          (statsData.stats && statsData.stats.length > 0) ||
-          (statsData.total_executions && statsData.total_executions > 0);
-        
-        if (hasStatsData) {
-          setActiveTab("monitor");
-          // Update URL to reflect the monitor tab
-          router.replace(`/agents/${agentId}/monitor`, undefined, { shallow: true });
-        } else {
-          // No stats data, go to controls
-          setActiveTab("controls");
-          router.replace(`/agents/${agentId}/controls`, undefined, { shallow: true });
-        }
-      } else if (statsData === null) {
-        // Stats failed to load or returned null, default to controls
-        hasCheckedInitialTab.current = true;
+    if (!defaultTab && !hasCheckedInitialTab.current && !checkingMonitorData) {
+      hasCheckedInitialTab.current = true;
+      
+      if (hasMonitorData) {
+        setActiveTab("monitor");
+        router.replace(`/agents/${agentId}/monitor`, undefined, { shallow: true });
+      } else {
         setActiveTab("controls");
         router.replace(`/agents/${agentId}/controls`, undefined, { shallow: true });
       }
-      // If statsData is undefined, stats are still loading, so wait
     }
-  }, [defaultTab, statsLoading, statsData, agentId, router]);
+  }, [defaultTab, checkingMonitorData, hasMonitorData, agentId, router]);
 
   // Filter controls based on search query
   const controls = useMemo(() => {
@@ -482,7 +467,8 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
 
           <Tabs.Panel value='monitor' pt='lg'>
             <ErrorBoundary variant="page">
-              {agent?.agent.agent_id && (
+              {/* Only render AgentsMonitor when monitor tab is active to prevent polling on controls page */}
+              {agent?.agent.agent_id && activeTab === "monitor" && (
                 <AgentsMonitor agentUuid={agent.agent.agent_id} />
               )}
             </ErrorBoundary>

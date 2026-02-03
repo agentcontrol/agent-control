@@ -51,7 +51,7 @@ export function ControlStoreModal({
   // Get search value for debouncing (SearchInput handles the UI and URL sync)
   const [searchQuery, setSearchQuery] = useQueryParam("store_q");
   const [debouncedSearch] = useDebouncedValue(searchQuery, 300);
-  const { submodal, evaluator, controlId, openModal, closeSubmodal, closeModal } = useModalRoute();
+  const { submodal, evaluator: _evaluator, controlId, openModal, closeSubmodal, closeModal } = useModalRoute();
   const [selectedControl, setSelectedControl] = useState<{
     summary: ControlSummary;
     definition: ControlDefinition;

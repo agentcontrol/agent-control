@@ -8,12 +8,21 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { TimeRangeSwitch } from "@rungalileo/jupiter-ds";
-import {
-  IconAlertCircle,
-  IconClock,
-} from "@tabler/icons-react";
-import React, { useMemo, useState } from "react";
+import { type TimeRangeOption,TimeRangeSwitch } from "@rungalileo/jupiter-ds";
+import { IconAlertCircle } from "@tabler/icons-react";
+import React, { useMemo } from "react";
+
+// Custom segment options from 5m to 1Y
+const TIME_RANGE_SEGMENTS: TimeRangeOption[] = [
+  { label: "5m", value: "last5Mins" },
+  { label: "15m", value: "last15Mins" },
+  { label: "1H", value: "lastHour" },
+  { label: "12H", value: "last12Hours" },
+  { label: "1D", value: "last24Hours" },
+  { label: "1W", value: "lastWeek" },
+  { label: "1M", value: "lastMonth" },
+  { label: "1Y", value: "lastYear" },
+];
 
 import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-monitor";
 import { useAgentMonitor } from "@/core/hooks/query-hooks/use-agent-monitor";
@@ -31,18 +40,18 @@ interface AgentsMonitorProps {
 function calculateSummary(stats: StatsResponse | undefined): SummaryMetrics | null {
   if (!stats) return null;
 
-  const actionCounts = stats.action_counts ?? {};
+  const actionCounts = stats.totals.action_counts ?? {};
 
   return {
-    totalExecutions: stats.total_executions,
-    totalMatches: stats.total_matches,
-    totalNonMatches: stats.total_non_matches,
-    totalErrors: stats.total_errors,
-    denyRate: stats.total_executions > 0
-      ? ((actionCounts.deny || 0) / stats.total_executions) * 100
+    totalExecutions: stats.totals.execution_count,
+    totalMatches: stats.totals.match_count,
+    totalNonMatches: stats.totals.non_match_count,
+    totalErrors: stats.totals.error_count,
+    denyRate: stats.totals.execution_count > 0
+      ? ((actionCounts.deny || 0) / stats.totals.execution_count) * 100
       : 0,
-    matchRate: stats.total_executions > 0
-      ? (stats.total_matches / stats.total_executions) * 100
+    matchRate: stats.totals.execution_count > 0
+      ? (stats.totals.match_count / stats.totals.execution_count) * 100
       : 0,
     actionCounts,
   };
@@ -51,7 +60,6 @@ function calculateSummary(stats: StatsResponse | undefined): SummaryMetrics | nu
 export function AgentsMonitor({ agentUuid }: AgentsMonitorProps) {
   // Use localStorage preference hook (defaults to 1W)
   const [timeRangeValue, setTimeRangeValue] = useTimeRangePreference();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   
   // Convert to API TimeRange only when calling the API
   const apiTimeRange = useMemo(
@@ -65,6 +73,7 @@ export function AgentsMonitor({ agentUuid }: AgentsMonitorProps) {
     error,
   } = useAgentMonitor(agentUuid, apiTimeRange, {
     refetchInterval: 5000, // Poll every 5 seconds
+    includeTimeseries: true, // Always fetch timeseries for trend chart
   });
 
   // Calculate summary metrics
@@ -97,7 +106,16 @@ export function AgentsMonitor({ agentUuid }: AgentsMonitorProps) {
     );
   }
 
-  const isEmpty = !stats || stats.stats.length === 0;
+  // Create empty summary if no data
+  const displaySummary = summary || {
+    totalExecutions: 0,
+    totalMatches: 0,
+    totalNonMatches: 0,
+    totalErrors: 0,
+    denyRate: 0,
+    matchRate: 0,
+    actionCounts: {},
+  };
 
   return (
     <Stack gap="lg">
@@ -109,31 +127,27 @@ export function AgentsMonitor({ agentUuid }: AgentsMonitorProps) {
         <TimeRangeSwitch
           value={timeRangeValue}
           onChange={setTimeRangeValue}
-          isMenuOpen={isMenuOpen}
-          onMenuOpenChange={setIsMenuOpen}
+          segmentOptions={TIME_RANGE_SEGMENTS}
+          allowCustomSelection={false}
         />
       </Group>
 
-      {/* Empty state */}
-      {isEmpty && (
-        <Box py="xl">
-          <Stack align="center" gap="md">
-            <IconClock size={48} color="var(--mantine-color-gray-4)" />
-            <Text fw={500} c="dimmed">
-              No stats available
-            </Text>
-            <Text size="sm" c="dimmed">
-              Stats will appear here once controls are executed.
-            </Text>
-          </Stack>
+      {/* Always show the summary card - it handles empty state internally */}
+      <SummaryCard 
+        summary={displaySummary} 
+        timeseries={stats?.totals.timeseries}
+        timeRange={apiTimeRange}
+      />
+      
+      {/* Show table only if there's data, otherwise show empty state message */}
+      {stats && stats.controls.length > 0 ? (
+        <ControlStatsTable stats={stats.controls} />
+      ) : (
+        <Box py="md" ta="center">
+          <Text size="sm" c="dimmed">
+            Per-control statistics will appear here once controls are executed.
+          </Text>
         </Box>
-      )}
-
-      {!isEmpty && summary && (
-        <>
-          <SummaryCard summary={summary} />
-          <ControlStatsTable stats={stats.stats} />
-        </>
       )}
     </Stack>
   );

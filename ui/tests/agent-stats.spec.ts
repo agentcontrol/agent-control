@@ -40,7 +40,7 @@ test.describe("Agent Monitor Tab", () => {
 
     // Check total executions
     await expect(
-      mockedPage.getByText(mockData.stats.total_executions.toLocaleString())
+      mockedPage.getByText(mockData.stats.totals.execution_count.toLocaleString())
     ).toBeVisible();
 
     // Check for badges showing matches and non-matches (use first() to get badge, not table header)
@@ -90,7 +90,7 @@ test.describe("Agent Monitor Tab", () => {
 
     // Check control names from mock data - scope to Stats panel table
     const statsTable = mockedPage.getByRole("tabpanel", { name: /Monitor/i }).getByRole("table");
-    for (const stat of mockData.stats.stats) {
+    for (const stat of mockData.stats.controls) {
       await expect(statsTable.getByText(stat.control_name)).toBeVisible();
     }
   });
@@ -143,11 +143,9 @@ test.describe("Agent Monitor Tab - Empty State", () => {
     const timeRangeSwitch = page.locator('[class*="TimeRangeSwitch"]').first();
     await expect(timeRangeSwitch).toBeVisible();
 
-    // Should show empty state message
-    await expect(page.getByText("No stats available")).toBeVisible();
-    await expect(
-      page.getByText("Stats will appear here once controls are executed.")
-    ).toBeVisible();
+    // Should show empty state messages in the charts
+    await expect(page.getByText("No data available")).toBeVisible();
+    await expect(page.getByText("No triggers yet")).toBeVisible();
   });
 });
 
@@ -158,9 +156,12 @@ test.describe("Agent Monitor Tab - Refetch Flow", () => {
     // Initial stats data
     const initialStats: typeof mockData.stats = {
       ...mockData.stats,
-      total_executions: 100,
-      total_matches: 10,
-      stats: [
+      totals: {
+        ...mockData.stats.totals,
+        execution_count: 100,
+        match_count: 10,
+      },
+      controls: [
         {
           control_id: 1,
           control_name: "PII Detection",
@@ -181,9 +182,12 @@ test.describe("Agent Monitor Tab - Refetch Flow", () => {
     // Updated stats data (returned after first request)
     const updatedStats: typeof mockData.stats = {
       ...mockData.stats,
-      total_executions: 250,
-      total_matches: 35,
-      stats: [
+      totals: {
+        ...mockData.stats.totals,
+        execution_count: 250,
+        match_count: 35,
+      },
+      controls: [
         {
           control_id: 1,
           control_name: "PII Detection",
