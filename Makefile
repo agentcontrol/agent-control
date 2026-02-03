@@ -1,16 +1,18 @@
-.PHONY: help sync test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush
+.PHONY: help sync test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build
 
 # Workspace package names
 PACK_MODELS := agent-control-models
 PACK_SERVER := agent-control-server
 PACK_SDK    := agent-control
 PACK_ENGINE := agent-control-engine
+PACK_EVALUATORS := agent-control-evaluators
 
 # Directories
 MODELS_DIR := models
 SERVER_DIR := server
 SDK_DIR    := sdks/python
 ENGINE_DIR := engine
+EVALUATORS_DIR := evaluators/builtin
 
 help:
 	@echo "Agent Control - Makefile commands"
@@ -56,7 +58,7 @@ sync:
 # Test
 # ---------------------------
 
-test: server-test engine-test sdk-test
+test: server-test engine-test sdk-test evaluators-test
 
 # Run tests, lint, and typecheck
 check: test lint typecheck
@@ -65,17 +67,17 @@ check: test lint typecheck
 # Quality
 # ---------------------------
 
-lint: engine-lint
+lint: engine-lint evaluators-lint
 	uv run --package $(PACK_MODELS) ruff check --config pyproject.toml models/src
 	uv run --package $(PACK_SERVER) ruff check --config pyproject.toml server/src
 	uv run --package $(PACK_SDK) ruff check --config pyproject.toml sdks/python/src
 
-lint-fix: engine-lint-fix
+lint-fix: engine-lint-fix evaluators-lint-fix
 	uv run --package $(PACK_MODELS) ruff check --config pyproject.toml --fix models/src
 	uv run --package $(PACK_SERVER) ruff check --config pyproject.toml --fix server/src
 	uv run --package $(PACK_SDK) ruff check --config pyproject.toml --fix sdks/python/src
 
-typecheck: engine-typecheck
+typecheck: engine-typecheck evaluators-typecheck
 	uv run --package $(PACK_MODELS) mypy --config-file pyproject.toml models/src
 	uv run --package $(PACK_SERVER) mypy --config-file pyproject.toml server/src
 	uv run --package $(PACK_SDK) mypy --config-file pyproject.toml sdks/python/src
@@ -84,7 +86,7 @@ typecheck: engine-typecheck
 # Build / Publish
 # ---------------------------
 
-build: build-models build-server build-sdk engine-build
+build: build-models build-server build-sdk engine-build evaluators-build
 
 build-models:
 	cd $(MODELS_DIR) && uv build
@@ -129,6 +131,21 @@ engine-%:
 
 sdk-%:
 	$(MAKE) -C $(SDK_DIR) $(patsubst sdk-%,%,$@)
+
+evaluators-test:
+	$(MAKE) -C $(EVALUATORS_DIR) test
+
+evaluators-lint:
+	$(MAKE) -C $(EVALUATORS_DIR) lint
+
+evaluators-lint-fix:
+	$(MAKE) -C $(EVALUATORS_DIR) lint-fix
+
+evaluators-typecheck:
+	$(MAKE) -C $(EVALUATORS_DIR) typecheck
+
+evaluators-build:
+	$(MAKE) -C $(EVALUATORS_DIR) build
 
 .PHONY: server-%
 server-%:

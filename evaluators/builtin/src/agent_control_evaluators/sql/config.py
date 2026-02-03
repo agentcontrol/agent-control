@@ -139,7 +139,7 @@ class SQLEvaluatorConfig(EvaluatorConfig):
     )
 
     @model_validator(mode="after")
-    def validate_config(self):
+    def validate_config(self) -> "SQLEvaluatorConfig":
         """Validate configuration constraints."""
         # Validate operation restrictions
         if self.blocked_operations and self.allowed_operations:

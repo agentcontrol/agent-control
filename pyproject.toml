@@ -14,7 +14,14 @@ description = "Agent Control - protect your AI agents with controls"
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["models", "server", "sdks/python", "engine", "evaluators"]
+members = [
+    "models",
+    "server",
+    "sdks/python",
+    "engine",
+    "evaluators/builtin",
+    # NOTE: evaluators/extra/* excluded - install separately when needed
+]
 
 [tool.uv]
 # Require resolution to be compatible with the following environments so that CI and local dev
@@ -61,6 +68,8 @@ version_toml = [
     "models/pyproject.toml:project.version",
     "sdks/python/pyproject.toml:project.version",
     "server/pyproject.toml:project.version",
+    "evaluators/builtin/pyproject.toml:project.version",
+    "evaluators/extra/galileo/pyproject.toml:project.version",
 ]
 version_source = "tag"
 commit_message = "chore(release): v{version}"

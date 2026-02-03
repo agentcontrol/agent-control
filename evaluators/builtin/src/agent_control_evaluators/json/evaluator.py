@@ -53,6 +53,10 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
     )
     config_model = JSONEvaluatorConfig
 
+    # Instance variables (typed to support None when feature not configured)
+    _schema_validator: Draft7Validator | None
+    _compiled_patterns: dict[str, Any] | None
+
     def __init__(self, config: JSONEvaluatorConfig) -> None:
         super().__init__(config)
 
@@ -102,6 +106,9 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
         parsed_data, parse_error = self._parse_json(data)
         if parse_error:
             return self._handle_parse_error(parse_error)
+
+        # Type narrowing: if no parse error, parsed_data is guaranteed to be valid
+        assert parsed_data is not None
 
         # 2. JSON Schema Validation (comprehensive structure check)
         if self._schema_validator:
@@ -178,6 +185,9 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
 
     def _check_schema(self, data: dict | list) -> EvaluatorResult | None:
         """Validate against JSON Schema. Returns error result or None."""
+        if not self._schema_validator:
+            return None
+
         errors = list(self._schema_validator.iter_errors(data))
 
         if not errors:
@@ -202,6 +212,9 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
 
     def _check_types(self, data: dict | list) -> EvaluatorResult | None:
         """Validate field types. Returns error result or None."""
+        if not self.config.field_types:
+            return None
+
         if not isinstance(data, dict):
             return EvaluatorResult(
                 matched=True,
@@ -252,6 +265,9 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
 
     def _check_required(self, data: dict | list) -> EvaluatorResult | None:
         """Validate required fields are present. Returns error result or None."""
+        if not self.config.required_fields:
+            return None
+
         if not isinstance(data, dict):
             return EvaluatorResult(
                 matched=True,
@@ -281,6 +297,9 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
 
     def _check_constraints(self, data: dict | list) -> EvaluatorResult | None:
         """Validate field constraints (ranges, enums, string length)."""
+        if not self.config.field_constraints:
+            return None
+
         if not isinstance(data, dict):
             return EvaluatorResult(
                 matched=True,
@@ -377,6 +396,9 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
 
     def _check_patterns(self, data: dict | list) -> EvaluatorResult | None:
         """Validate field values match patterns. Returns error result or None."""
+        if not self._compiled_patterns:
+            return None
+
         if not isinstance(data, dict):
             return EvaluatorResult(
                 matched=True,

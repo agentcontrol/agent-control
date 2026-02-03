@@ -37,7 +37,7 @@ __all__ = [
 
 # Optionally export Luna-2 types when available
 try:
-    from agent_control_evaluators.galileo_luna2 import (  # noqa: F401
+    from agent_control_evaluator_galileo.luna2 import (  # type: ignore[import-not-found]  # noqa: F401
         LUNA2_AVAILABLE,
         Luna2Evaluator,
         Luna2EvaluatorConfig,

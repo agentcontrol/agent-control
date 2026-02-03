@@ -4,7 +4,7 @@ This evaluator integrates with Galileo's Luna-2 enterprise runtime protection sy
 using direct HTTP API calls (no SDK dependency required).
 
 Installation:
-    pip install agent-control-evaluators[luna2]
+    pip install agent-control-evaluator-galileo
 
 Environment Variables:
     GALILEO_API_KEY: Your Galileo API key (required)
@@ -15,8 +15,12 @@ Documentation:
     https://v2docs.galileo.ai/sdk-api/python/reference/protect
 """
 
-from .config import Luna2EvaluatorConfig, Luna2Metric, Luna2Operator
-from .evaluator import LUNA2_AVAILABLE, Luna2Evaluator
+from agent_control_evaluator_galileo.luna2.config import (
+    Luna2EvaluatorConfig,
+    Luna2Metric,
+    Luna2Operator,
+)
+from agent_control_evaluator_galileo.luna2.evaluator import LUNA2_AVAILABLE, Luna2Evaluator
 
 __all__ = [
     "Luna2EvaluatorConfig",
@@ -28,7 +32,7 @@ __all__ = [
 
 # Export client classes when available (added to __all__ below)
 if LUNA2_AVAILABLE:
-    from .client import (  # noqa: F401
+    from agent_control_evaluator_galileo.luna2.client import (  # noqa: F401
         GalileoProtectClient,
         PassthroughAction,
         Payload,

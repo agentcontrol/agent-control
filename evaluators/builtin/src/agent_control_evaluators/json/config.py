@@ -219,7 +219,7 @@ class JSONEvaluatorConfig(EvaluatorConfig):
         return v
 
     @model_validator(mode="after")
-    def validate_has_checks(self):
+    def validate_has_checks(self) -> "JSONEvaluatorConfig":
         """Ensure at least one validation check is configured."""
         if not any(
             [

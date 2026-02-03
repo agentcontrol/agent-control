@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from agent_control_server.models import Control
 
-from agent_control_models.controls import RegexEvaluatorConfig
+from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_server.endpoints import controls as controls_module
 from agent_control_server.models import Control
 

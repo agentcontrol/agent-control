@@ -1,0 +1,52 @@
+name: Test Extras
+
+on:
+  push:
+    paths:
+      # Trigger on extra changes
+      - 'evaluators/extra/**'
+      # Also trigger on core changes that could break extras
+      - 'evaluators/builtin/**'
+      - 'models/**'
+      - 'engine/**'
+      - 'server/**'
+      - 'sdks/python/**'
+  pull_request:
+    paths:
+      - 'evaluators/extra/**'
+      - 'evaluators/builtin/**'
+      - 'models/**'
+      - 'engine/**'
+      - 'server/**'
+      - 'sdks/python/**'
+
+jobs:
+  test-galileo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+
+      - name: Sync workspace
+        run: make sync
+
+      - name: Install galileo extra
+        run: cd evaluators/extra/galileo && uv pip install -e .
+
+      - name: Lint galileo
+        run: cd evaluators/extra/galileo && uv run ruff check --config ../../../pyproject.toml src/
+
+      - name: Typecheck galileo
+        run: cd evaluators/extra/galileo && uv run mypy --config-file ../../../pyproject.toml src/
+
+      - name: Test galileo
+        run: cd evaluators/extra/galileo && uv run pytest
+
+      - name: Verify SDK integration
+        run: |
+          cd sdks/python
+          uv run pytest tests/test_luna2_smoke.py

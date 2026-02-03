@@ -2,7 +2,7 @@
 
 Evaluator Type Name Formats:
     - Built-in: "regex", "list", "json", "sql"
-    - External: "galileo/luna2", "nvidia/nemo" (slash separator)
+    - External: "galileo.luna2", "nvidia.nemo" (dot separator)
     - Agent-scoped: "my-agent:pii-detector" (colon separator)
 
 The key distinction is:
@@ -68,9 +68,9 @@ def parse_evaluator_ref_full(evaluator_ref: str) -> ParsedEvaluatorRef:
             namespace=agent,
             local_name=local_name,
         )
-    elif "/" in evaluator_ref:
-        # External: "galileo/luna2"
-        provider, local_name = evaluator_ref.split("/", 1)
+    elif "." in evaluator_ref:
+        # External: "galileo.luna2"
+        provider, local_name = evaluator_ref.split(".", 1)
         return ParsedEvaluatorRef(
             type="external",
             name=evaluator_ref,

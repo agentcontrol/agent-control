@@ -286,7 +286,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
     ) -> bool:
         """Check if column is in top-level SELECT expressions (not subqueries)."""
         # Walk up from column to see if we're in the top-level SELECT
-        current = column
+        current: exp.Expression | None = column
         while current:
             # If we hit the top-level SELECT, check if we're in its expressions
             if current is top_level_select:
@@ -303,7 +303,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
 
     def _is_in_select_clause(self, column: exp.Column) -> bool:
         """Check if column is in any SELECT clause (including subqueries)."""
-        current = column.parent
+        current: exp.Expression | None = column.parent
         while current:
             # Check if this column is in a SELECT's expressions
             if isinstance(current, exp.Select):
@@ -318,7 +318,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
         self, node: exp.Expression, potential_ancestor: exp.Expression
     ) -> bool:
         """Check if node is a descendant of potential_ancestor."""
-        current = node
+        current: exp.Expression | None = node
         while current:
             if current is potential_ancestor:
                 return True
@@ -447,7 +447,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
                     offset_node = select_node.find(exp.Offset)
                     offset_value = 0
                     if offset_node:
-                        offset_value = self._extract_offset_value(offset_node)
+                        offset_value = self._extract_offset_value(offset_node) or 0
 
                     # Check LIMIT value (skip if indeterminate)
                     if limit_value is not None:
@@ -1097,6 +1097,10 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
         Returns:
             EvaluatorResult if required columns are missing, None otherwise
         """
+        # Early return if no required columns (caller should check, but be defensive)
+        if not self._required_columns:
+            return None
+
         # Collect columns from all analyses based on context and scope
         columns = []
         for analysis in analyses:

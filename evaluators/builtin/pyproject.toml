@@ -1,7 +1,7 @@
 [project]
 name = "agent-control-evaluators"
-version = "2.1.0"
-description = "Evaluator implementations for agent-control"
+version = "3.0.0"
+description = "Builtin evaluators for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
@@ -15,8 +15,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-luna2 = ["httpx>=0.24.0"]
-all = ["httpx>=0.24.0"]
+# NOTE: galileo extra commented out during local dev - package not yet on PyPI
+# galileo = ["agent-control-evaluator-galileo>=3.0.0"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
 
 [project.entry-points."agent_control.evaluators"]
@@ -24,7 +24,6 @@ regex = "agent_control_evaluators.regex:RegexEvaluator"
 list = "agent_control_evaluators.list:ListEvaluator"
 json = "agent_control_evaluators.json:JSONEvaluator"
 sql = "agent_control_evaluators.sql:SQLEvaluator"
-"galileo/luna2" = "agent_control_evaluators.galileo_luna2:Luna2Evaluator"
 
 [build-system]
 requires = ["hatchling"]

@@ -10,9 +10,9 @@ from typing import Any
 
 from agent_control_models import EvaluatorResult
 
-from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
-from agent_control_evaluators._registry import register_evaluator
-from agent_control_evaluators.galileo_luna2.config import Luna2EvaluatorConfig
+from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
+
+from agent_control_evaluator_galileo.luna2.config import Luna2EvaluatorConfig
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class Luna2Evaluator(Evaluator[Luna2EvaluatorConfig]):
 
     Example:
         ```python
-        from agent_control_evaluators.galileo_luna2 import Luna2Evaluator, Luna2EvaluatorConfig
+        from agent_control_evaluator_galileo.luna2 import Luna2Evaluator, Luna2EvaluatorConfig
 
         config = Luna2EvaluatorConfig(
             stage_type="local",
@@ -84,8 +84,8 @@ class Luna2Evaluator(Evaluator[Luna2EvaluatorConfig]):
     """
 
     metadata = EvaluatorMetadata(
-        name="galileo/luna2",
-        version="2.0.0",
+        name="galileo.luna2",
+        version="3.0.0",
         description="Galileo Luna-2 enterprise runtime protection (direct API)",
         requires_api_key=True,
         timeout_ms=10000,

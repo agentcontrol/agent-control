@@ -26,11 +26,11 @@ class TestParseEvaluatorRefFull:
     def test_external_evaluator(self) -> None:
         """Given an external evaluator, when parsing full, then type is external."""
         # When
-        result = parse_evaluator_ref_full("galileo/luna2")
+        result = parse_evaluator_ref_full("galileo.luna2")
 
         # Then
         assert result.type == "external"
-        assert result.name == "galileo/luna2"
+        assert result.name == "galileo.luna2"
         assert result.namespace == "galileo"
         assert result.local_name == "luna2"
 
@@ -46,24 +46,24 @@ class TestParseEvaluatorRefFull:
         assert result.local_name == "pii-detector"
 
     def test_external_with_nested_path(self) -> None:
-        """Given an external evaluator with nested path, when parsing, splits on first slash."""
+        """Given an external evaluator with nested path, when parsing, splits on first dot."""
         # When
-        result = parse_evaluator_ref_full("acme/safety/toxicity")
+        result = parse_evaluator_ref_full("acme.safety.toxicity")
 
         # Then
         assert result.type == "external"
         assert result.namespace == "acme"
-        assert result.local_name == "safety/toxicity"
+        assert result.local_name == "safety.toxicity"
 
-    def test_agent_scoped_with_slash_in_name(self) -> None:
-        """Given agent-scoped with slash in name, when parsing, then colon takes precedence."""
-        # When - colon should be detected before slash
-        result = parse_evaluator_ref_full("my-agent:vendor/eval")
+    def test_agent_scoped_with_dot_in_name(self) -> None:
+        """Given agent-scoped with dot in name, when parsing, then colon takes precedence."""
+        # When - colon should be detected before dot
+        result = parse_evaluator_ref_full("my-agent:vendor.eval")
 
         # Then
         assert result.type == "agent"
         assert result.namespace == "my-agent"
-        assert result.local_name == "vendor/eval"
+        assert result.local_name == "vendor.eval"
 
 
 class TestIsAgentScoped:
@@ -75,7 +75,7 @@ class TestIsAgentScoped:
 
     def test_external_not_agent_scoped(self) -> None:
         """Given an external evaluator, when checking, then returns False."""
-        assert is_agent_scoped("galileo/luna2") is False
+        assert is_agent_scoped("galileo.luna2") is False
 
     def test_agent_scoped_returns_true(self) -> None:
         """Given an agent-scoped evaluator, when checking, then returns True."""

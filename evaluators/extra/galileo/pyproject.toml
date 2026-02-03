@@ -1,0 +1,32 @@
+[project]
+name = "agent-control-evaluator-galileo"
+version = "3.0.0"
+description = "Galileo Luna2 evaluator for agent-control"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Agent Control Team" }]
+dependencies = [
+    "agent-control-evaluators>=3.0.0",
+    "agent-control-models>=3.0.0",
+    "httpx>=0.24.0",
+    "pydantic>=2.12.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
+
+[project.entry-points."agent_control.evaluators"]
+"galileo.luna2" = "agent_control_evaluator_galileo.luna2:Luna2Evaluator"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_control_evaluator_galileo"]
+
+# For local dev, use override to resolve from workspace
+[tool.uv.sources]
+agent-control-evaluators = { path = "../../builtin", editable = true }
+agent-control-models = { path = "../../../models", editable = true }
