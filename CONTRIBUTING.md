@@ -22,6 +22,25 @@ There are many ways to help move the project forward:
 - **Contribute Code**: Fix bugs, implement features, or add new evaluators.
 - **Add Integrations**: Extend Agent Control with new agent framework integrations.
 
+## Contributing Evaluators (Quickstart)
+
+If your goal is to add an evaluator, start here. We support two paths:
+
+| Path | Use when | Location | Install |
+| --- | --- | --- | --- |
+| Built-in evaluator | Lightweight deps, broadly useful | `evaluators/src/agent_control_evaluators/builtin/` | `pip install agent-control-evaluators` |
+| Contrib evaluator | Heavy deps or vendor-specific | `evaluators/contrib/agent-control-evaluator-<org>/` | `pip install agent-control-evaluators[org]` |
+
+**Fast path steps:**
+
+1. Create the evaluator class and config schema.
+2. Register the evaluator entry point.
+3. Add tests.
+4. Add docs.
+5. Run `make evaluators-test` (and ideally `make check`).
+
+Full details and examples are in [Adding a New Evaluator](#adding-a-new-evaluator) below.
+
 ## Reporting Bugs
 
 Found a bug? Please help us fix it by following these steps:
@@ -236,9 +255,16 @@ Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`
 
 ### Adding a New Evaluator
 
-Evaluators are a core part of Agent Control. Here's how to add a new one:
+Evaluators are a core part of Agent Control. Start by choosing a path:
 
-**1. Create the evaluator class** in `evaluators/src/agent_control_evaluators/builtin/`:
+| Path | Use when | Entry point name | Install |
+| --- | --- | --- | --- |
+| Built-in evaluator | Lightweight deps, broadly useful | `regex`, `sql`, `list` | `pip install agent-control-evaluators` |
+| Contrib evaluator | Heavy deps or vendor-specific | `org.evaluator_name` | `pip install agent-control-evaluators[org]` |
+
+**Option A: Built-in evaluator (core package)**
+
+1. Create the evaluator class in `evaluators/src/agent_control_evaluators/builtin/`:
 
 ```python
 from agent_control_models.evaluator import Evaluator, register_evaluator
@@ -247,57 +273,93 @@ from pydantic import BaseModel, Field
 
 class MyEvaluatorConfig(BaseModel):
     """Configuration for the evaluator."""
+
     pattern: str = Field(description="The pattern to match")
 
 @register_evaluator("my_evaluator")
 class MyEvaluator(Evaluator[MyEvaluatorConfig]):
-    """
-    A custom evaluator that does X.
-    
-    Configuration:
-        pattern: The pattern to match against input
-    """
-    
+    """A custom evaluator that does X."""
+
     def evaluate(self, **kwargs) -> EvaluationResult:
-        # Your evaluation logic here
         return EvaluationResult(
             passed=True,
-            reason="Explanation of the result"
+            reason="Explanation of the result",
         )
 ```
 
-**2. Register the entry point** in `evaluators/pyproject.toml`:
+2. Register the entry point in `evaluators/pyproject.toml`:
 
 ```toml
 [project.entry-points."agent_control.evaluators"]
 my_evaluator = "agent_control_evaluators.builtin.my_module:MyEvaluator"
 ```
 
-**3. Add tests** in `evaluators/tests/test_my_evaluator.py`:
+3. Add tests in `evaluators/tests/test_my_evaluator.py`.
+4. Add documentation in `docs/evaluators/my_evaluator.md`.
+5. Run tests with `make evaluators-test` and `make check`.
+6. Open a PR with your changes.
 
-```python
-from agent_control_evaluators.builtin.my_module import MyEvaluator, MyEvaluatorConfig
+**Option B: Contrib evaluator (third-party package)**
 
-def test_my_evaluator():
-    config = MyEvaluatorConfig(pattern="test")
-    evaluator = MyEvaluator(config=config)
-    result = evaluator.evaluate(input_text="test")
-    assert result.passed is True
+This path is for evaluators with heavy dependencies (CUDA, large ML libs) or vendor-specific
+requirements. Each publisher gets its own package and namespaced entry points.
+
+1. Create a new package under `evaluators/contrib/`:
+
+```
+evaluators/
+  contrib/
+    agent-control-evaluator-acme/
+      pyproject.toml
+      src/agent_control_evaluator_acme/
+      tests/
 ```
 
-**4. Add documentation** in `docs/evaluators/my_evaluator.md` explaining:
-- What the evaluator does
-- Configuration options
-- Usage examples
-- Edge cases and limitations
+2. Define the package and entry points in
+`evaluators/contrib/agent-control-evaluator-acme/pyproject.toml`:
 
-**5. Run the tests**:
-```bash
-make evaluators-test
-make check
+```toml
+[project]
+name = "agent-control-evaluator-acme"
+version = "0.1.0"
+dependencies = ["some-heavy-lib"]
+
+[project.entry-points."agent_control.evaluators"]
+"acme.toxicity" = "agent_control_evaluator_acme.toxicity:ToxicityEvaluator"
+"acme.hallucination" = "agent_control_evaluator_acme.hallucination:HallucinationEvaluator"
 ```
 
-**6. Open a PR** with your changes. See [Making a Pull Request](#7-push-and-open-a-pull-request) above.
+3. Implement evaluators in `src/agent_control_evaluator_acme/`. Use the same evaluator base
+class pattern as Option A and set the decorator name to the namespaced entry point, for example
+`@register_evaluator("acme.toxicity")`.
+4. Add tests in `evaluators/contrib/agent-control-evaluator-acme/tests/`.
+5. Add docs in `docs/evaluators/acme_toxicity.md` (and similar for other evaluators).
+6. Add a convenience extra in `evaluators/pyproject.toml`:
+
+```toml
+[project.optional-dependencies]
+acme = ["agent-control-evaluator-acme>=0.1.0"]
+```
+
+7. Ensure the workspace and release config include the new package:
+
+```
+pyproject.toml
+  [tool.uv.workspace]
+  members = ["models", "server", "sdks/python", "engine", "evaluators", "evaluators/contrib/*"]
+
+  [tool.semantic_release]
+  version_toml = [
+    "evaluators/contrib/agent-control-evaluator-acme/pyproject.toml:project.version",
+  ]
+```
+
+**Contrib evaluator conventions:**
+
+- Entry points must be namespaced as `org.evaluator_name`.
+- A single package can export multiple evaluators.
+- Keep heavy or optional dependencies inside the contrib package.
+- If optional dependencies exist, override `is_available()` to skip cleanly.
 
 ### Adding a New API Endpoint
 
@@ -441,24 +503,40 @@ We will close pull requests and issues that appear to be low-effort, AI-generate
 
 ## Project Structure
 
-Understanding the layout will help you know where to make changes.
+Understanding the layout will help you know where to make changes. This diagram shows how the different packages interact and where they reside in the repository.
 
 ```mermaid
-flowchart TB
-    SDK["Python SDK<br/>(sdks/python)"]
-    Server["API Server<br/>(server)"]
-    Engine["Evaluation Engine<br/>(engine)"]
-    Models["Shared Models<br/>(models)"]
-    Evaluators["Evaluators<br/>(evaluators)"]
-    Examples["Examples & Docs<br/>(examples, docs)"]
+graph TD
+    subgraph "Core System"
+        Models["models/<br>(Shared Types & Base Classes)"]
+        Engine["engine/<br>(Evaluation Logic)"]
+        Evaluators["evaluators/<br>(Built-in Checks)"]
+    end
 
-    SDK --> Server
-    Server --> Engine
-    Engine --> Models
-    Evaluators --> Models
-    Examples --- SDK
-    Examples --- Server
+    subgraph "Server-Side"
+        Server["server/<br>(FastAPI & DB)"]
+    end
+
+    subgraph "Client-Side"
+        SDK["sdks/python/<br>(User Interface)"]
+        UI["ui/<br>(Web Dashboard)"]
+    end
+
+    %% Dependencies
+    SDK -->|"Uses API"| Server
+    SDK -->|"Local Eval"| Engine
+    Server -->|"Remote Eval"| Engine
+    
+    Engine -->|"Uses"| Models
+    Evaluators -->|"Implements"| Models
+    Engine -->|"Loads"| Evaluators
+    
+    %% Examples
+    Examples["examples/<br>(Demos & Integrations)"] -.->|"Imports"| SDK
 ```
+
+Third-party evaluators live in `evaluators/contrib/` as separate packages and are installed via
+extras in `agent-control-evaluators` (for example, `pip install agent-control-evaluators[acme]`).
 
 ### Package Descriptions
 
@@ -490,6 +568,7 @@ flowchart TB
   - JSON, SQL, regex, list evaluators
   - Luna2 integration
   - All evaluators extend base classes from `models/`
+  - Third-party packages live in `evaluators/contrib/` (see [Adding a New Evaluator](#adding-a-new-evaluator))
   - **Change here if**: Adding new evaluators or modifying existing ones
 
 - **`ui/`**: Next.js web application for managing agent controls.
@@ -596,6 +675,7 @@ agent-control/
 ├── server/           → agent_control_server
 ├── sdks/python/      → agent_control
 ├── evaluators/       → agent_control_evaluators
+├── evaluators/contrib/ → Third-party evaluator packages
 ├── ui/               → Next.js web app
 ├── examples/         → Integration examples
 └── docs/             → Documentation
