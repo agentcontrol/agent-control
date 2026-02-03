@@ -55,13 +55,17 @@ from .observability import (
     BatchEventsResponse,
     ControlExecutionEvent,
     ControlStats,
+    ControlStatsResponse,
     EventQueryRequest,
     EventQueryResponse,
     StatsRequest,
     StatsResponse,
+    StatsTotals,
+    TimeseriesBucket,
 )
 from .policy import Policy
 from .server import (
+    AgentRef,
     AgentSummary,
     ControlSummary,
     CreateEvaluatorConfigRequest,
@@ -129,6 +133,7 @@ __all__ = [
     "get_error_title",
     "ERROR_TITLES",
     # Server models
+    "AgentRef",
     "AgentSummary",
     "ControlSummary",
     "CreateEvaluatorConfigRequest",
@@ -152,6 +157,9 @@ __all__ = [
     "EventQueryRequest",
     "EventQueryResponse",
     "ControlStats",
+    "ControlStatsResponse",
     "StatsRequest",
     "StatsResponse",
+    "StatsTotals",
+    "TimeseriesBucket",
 ]

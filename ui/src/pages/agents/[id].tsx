@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import type { ReactElement } from "react";
 
 import { AppLayout } from "@/core/layouts/app-layout";
-import { AgentDetailPage } from "@/core/page-components/agent-detail";
+import AgentDetailPage from "@/core/page-components/agent-detail/agent-detail";
 import type { NextPageWithLayout } from "@/core/types/page";
 
 const AgentPage: NextPageWithLayout = () => {
@@ -29,6 +29,8 @@ const AgentPage: NextPageWithLayout = () => {
     throw new Error("Invalid agent ID");
   }
 
+  // Let the component determine the default tab based on stats data
+  // It will check stats and redirect to the appropriate tab (monitor if data exists, controls otherwise)
   return <AgentDetailPage agentId={id} />;
 };
 

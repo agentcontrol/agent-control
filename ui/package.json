@@ -17,6 +17,8 @@
     "test:integration:report": "playwright show-report"
   },
   "dependencies": {
+    "@emotion/is-prop-valid": "^1.4.0",
+    "@mantine/charts": "^7.17.8",
     "@mantine/code-highlight": "7.17.5",
     "@mantine/core": "7.17.5",
     "@mantine/dates": "7.17.5",
@@ -26,7 +28,7 @@
     "@mantine/modals": "7.17.7",
     "@mantine/notifications": "7.17.7",
     "@rungalileo/icons": "^0.0.1",
-    "@rungalileo/jupiter-ds": "^0.0.2",
+    "@rungalileo/jupiter-ds": "^0.0.7",
     "@tabler/icons-react": "3.31",
     "@tanstack/react-query": "5.74.4",
     "@tanstack/react-query-devtools": "5.72.2",
@@ -38,7 +40,8 @@
     "next": "15.4.10",
     "openapi-fetch": "0.14.0",
     "react": "^19.1.4",
-    "react-dom": "^19.1.4"
+    "react-dom": "^19.1.4",
+    "recharts": "2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",

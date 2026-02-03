@@ -80,6 +80,19 @@ export const api = {
     list: () => apiClient.GET("/api/v1/evaluators"),
   },
   controls: {
+    list: (params?: {
+      cursor?: number;
+      limit?: number;
+      name?: string;
+      enabled?: boolean;
+      step_type?: string;
+      stage?: string;
+      execution?: string;
+      tag?: string;
+    }) =>
+      apiClient.GET("/api/v1/controls", {
+        params: params ? { query: params } : undefined,
+      }),
     create: (data: CreateControlRequest) =>
       apiClient.PUT("/api/v1/controls", { body: data }),
     getData: (controlId: number) =>
@@ -103,8 +116,9 @@ export const api = {
   observability: {
     getStats: (params: {
       agent_uuid: string;
-      time_range?: "1m" | "5m" | "15m" | "1h" | "24h" | "7d";
+      time_range?: "1m" | "5m" | "15m" | "1h" | "24h" | "7d" | "30d" | "180d" | "365d";
       control_id?: number | null;
+      include_timeseries?: boolean;
     }) =>
       apiClient.GET("/api/v1/observability/stats", {
         params: { query: params },
