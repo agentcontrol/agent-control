@@ -38,6 +38,7 @@ uv.lock
 *.swo
 *~
 .DS_Store
+*.xml
 
 # Testing
 .pytest_cache/
