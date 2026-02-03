@@ -79,10 +79,10 @@ The observability system uses a simple **interface-based design** with two swapp
 │  ┌─────────────────────┐     ┌─────────────────────┐        │
 │  │ PostgresEventStore  │     │ ClickhouseEventStore│        │
 │  │ (JSONB + indexes)   │     │ (columnar, fast)    │        │
-│  ├─────────────────────┤     ├─────────────────────┤        │
-│  │ MemoryEventStore    │     │ TimescaleDBStore    │        │
-│  │ (for testing)       │     │ (time-series)       │        │
-│  └─────────────────────┘     └─────────────────────┘        │
+│  └─────────────────────┘     ├─────────────────────┤        │
+│                              │ TimescaleDBStore    │        │
+│                              │ (time-series)       │        │
+│                              └─────────────────────┘        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -266,6 +266,24 @@ Each control evaluation produces an event (stored in the `data` JSONB column):
 
 All observability endpoints are under `/api/v1/observability/`.
 
+### Quick Reference
+
+| Use Case | Endpoint | Parameters | Returns |
+|----------|----------|------------|---------|
+| **Health check** | `GET /status` | — | System status |
+| **Ingest events** | `POST /events` | `events[]` in body | Ingestion result |
+| **Agent overview** | `GET /stats` | `agent_uuid`, `time_range` | `totals` + `controls[]` |
+| **Agent trends** | `GET /stats` | + `include_timeseries=true` | `totals.timeseries[]` included |
+| **Control stats** | `GET /stats/controls/{id}` | `agent_uuid`, `time_range` | `control_id`, `control_name`, `stats` |
+| **Control trends** | `GET /stats/controls/{id}` | + `include_timeseries=true` | `stats.timeseries[]` included |
+| **Query raw events** | `POST /events/query` | Filters in body | `events[]` with pagination |
+
+**Response Structures:**
+- **Agent stats** (`GET /stats`): `totals` (agent-level) + `controls[]` (per-control breakdown)
+- **Control stats** (`GET /stats/controls/{id}`): `control_id`, `control_name`, `stats` (control-level)
+
+---
+
 ### 1. Status (Health Check)
 
 Check observability system health.
@@ -327,12 +345,12 @@ Content-Type: application/json
 }
 ```
 
-### 3. Get Stats (Aggregated Statistics)
+### 3. Get Agent Stats
 
-Get aggregated control execution statistics computed at query time.
+Get agent-level aggregated statistics with per-control breakdown.
 
 ```http
-GET /api/v1/observability/stats?agent_uuid=<uuid>&time_range=<range>&control_id=<id>
+GET /api/v1/observability/stats?agent_uuid=<uuid>&time_range=<range>&include_timeseries=<bool>
 ```
 
 **Query Parameters:**
@@ -340,8 +358,24 @@ GET /api/v1/observability/stats?agent_uuid=<uuid>&time_range=<range>&control_id=
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_uuid` | UUID | Yes | Agent to get stats for |
-| `time_range` | string | No | Time range: `1m`, `5m`, `15m`, `1h`, `24h`, `7d` (default: `5m`) |
-| `control_id` | integer | No | Filter by specific control |
+| `time_range` | string | No | Time range: `1m`, `5m`, `15m`, `1h`, `24h`, `7d`, `30d`, `180d`, `365d` (default: `5m`) |
+| `include_timeseries` | boolean | No | Include time-series data for trend visualization (default: `false`) |
+
+**Time-Series Bucket Sizes:**
+
+When `include_timeseries=true`, data is bucketed automatically based on the time range:
+
+| Time Range | Bucket Size | Data Points |
+|------------|-------------|-------------|
+| `1m` | 10 seconds | ~6 |
+| `5m` | 30 seconds | ~10 |
+| `15m` | 1 minute | ~15 |
+| `1h` | 5 minutes | ~12 |
+| `24h` | 1 hour | ~24 |
+| `7d` | 6 hours | ~28 |
+| `30d` | 1 day | ~30 |
+| `180d` | 7 days | ~26 |
+| `365d` | 30 days | ~12 |
 
 **Example Request:**
 ```bash
@@ -353,47 +387,199 @@ curl "http://localhost:8000/api/v1/observability/stats?agent_uuid=563de065-23aa-
 {
     "agent_uuid": "563de065-23aa-5d75-b594-cfa73abcc53c",
     "time_range": "1h",
-    "stats": [
+    "totals": {
+        "execution_count": 8,
+        "match_count": 7,
+        "non_match_count": 1,
+        "error_count": 0,
+        "action_counts": {
+            "allow": 3,
+            "deny": 2,
+            "warn": 1,
+            "log": 1
+        },
+        "timeseries": null
+    },
+    "controls": [
         {
-            "control_id": 2,
+            "control_id": 1,
             "control_name": "block-prompt-injection",
-            "execution_count": 4,
-            "match_count": 0,
-            "non_match_count": 4,
-            "allow_count": 0,
+            "execution_count": 5,
+            "match_count": 4,
+            "non_match_count": 1,
+            "allow_count": 3,
             "deny_count": 0,
             "warn_count": 0,
-            "log_count": 0,
+            "log_count": 1,
             "error_count": 0,
-            "avg_confidence": 1.0,
-            "avg_duration_ms": null
+            "avg_confidence": 0.95,
+            "avg_duration_ms": 11.4
         },
         {
-            "control_id": 3,
+            "control_id": 2,
             "control_name": "block-credit-card",
-            "execution_count": 4,
-            "match_count": 1,
-            "non_match_count": 3,
+            "execution_count": 3,
+            "match_count": 3,
+            "non_match_count": 0,
             "allow_count": 0,
-            "deny_count": 1,
-            "warn_count": 0,
+            "deny_count": 2,
+            "warn_count": 1,
             "log_count": 0,
             "error_count": 0,
-            "avg_confidence": 1.0,
-            "avg_duration_ms": null
+            "avg_confidence": 0.95,
+            "avg_duration_ms": 13.3
         }
-    ],
-    "total_executions": 11,
-    "total_matches": 1,
-    "total_non_matches": 10,
-    "total_errors": 0,
-    "action_counts": {
-        "deny": 1
+    ]
+}
+```
+
+**Response Structure:**
+
+| Field | Description |
+|-------|-------------|
+| `totals` | Agent-level aggregate statistics (includes timeseries when requested) |
+| `controls` | Per-control breakdown for discovery and drilling down |
+
+**Example Request with Time-Series:**
+```bash
+curl "http://localhost:8000/api/v1/observability/stats?agent_uuid=563de065-23aa-5d75-b594-cfa73abcc53c&time_range=1h&include_timeseries=true"
+```
+
+**Example Response with Time-Series:**
+```json
+{
+    "agent_uuid": "563de065-23aa-5d75-b594-cfa73abcc53c",
+    "time_range": "1h",
+    "totals": {
+        "execution_count": 8,
+        "match_count": 7,
+        "non_match_count": 1,
+        "error_count": 0,
+        "action_counts": {
+            "allow": 3,
+            "deny": 2,
+            "warn": 1,
+            "log": 1
+        },
+        "timeseries": [
+            {
+                "timestamp": "2026-01-30T17:10:00Z",
+                "execution_count": 0,
+                "match_count": 0,
+                "non_match_count": 0,
+                "error_count": 0,
+                "action_counts": {},
+                "avg_confidence": null,
+                "avg_duration_ms": null
+            },
+            {
+                "timestamp": "2026-01-30T17:15:00Z",
+                "execution_count": 2,
+                "match_count": 2,
+                "non_match_count": 0,
+                "error_count": 0,
+                "action_counts": {
+                    "allow": 1,
+                    "deny": 1
+                },
+                "avg_confidence": 0.95,
+                "avg_duration_ms": 10.4
+            },
+            ...
+        ]
+    },
+    "controls": [ ... ]
+}
+```
+
+**Time-Series Bucket Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timestamp` | datetime | Start time of the bucket (UTC) |
+| `execution_count` | integer | Total executions in this bucket |
+| `match_count` | integer | Matches in this bucket |
+| `non_match_count` | integer | Non-matches in this bucket |
+| `error_count` | integer | Errors in this bucket |
+| `action_counts` | object | Action breakdown: `{allow, deny, warn, log}` |
+| `avg_confidence` | float\|null | Average confidence (null if no executions) |
+| `avg_duration_ms` | float\|null | Average duration in ms (null if no data) |
+
+Empty buckets are included with zero counts and `null` averages to ensure consistent data points for charting.
+
+### 4. Get Control Stats
+
+Get statistics for a single control.
+
+```http
+GET /api/v1/observability/stats/controls/{control_id}?agent_uuid=<uuid>&time_range=<range>&include_timeseries=<bool>
+```
+
+**Path Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `control_id` | integer | Yes | Control ID to get stats for |
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `agent_uuid` | UUID | Yes | Agent to get stats for |
+| `time_range` | string | No | Time range: `1m`, `5m`, `15m`, `1h`, `24h`, `7d`, `30d`, `180d`, `365d` (default: `5m`) |
+| `include_timeseries` | boolean | No | Include time-series data for trend visualization (default: `false`) |
+
+**Example Request:**
+```bash
+curl "http://localhost:8000/api/v1/observability/stats/controls/1?agent_uuid=563de065-23aa-5d75-b594-cfa73abcc53c&time_range=1h&include_timeseries=true"
+```
+
+**Example Response:**
+```json
+{
+    "agent_uuid": "563de065-23aa-5d75-b594-cfa73abcc53c",
+    "time_range": "1h",
+    "control_id": 1,
+    "control_name": "block-prompt-injection",
+    "stats": {
+        "execution_count": 3,
+        "match_count": 3,
+        "non_match_count": 0,
+        "error_count": 0,
+        "action_counts": {
+            "allow": 2,
+            "deny": 1
+        },
+        "timeseries": [
+            {
+                "timestamp": "2026-01-30T17:30:00Z",
+                "execution_count": 1,
+                "match_count": 1,
+                "non_match_count": 0,
+                "error_count": 0,
+                "action_counts": {"allow": 1},
+                "avg_confidence": 0.95,
+                "avg_duration_ms": 12.5
+            },
+            {
+                "timestamp": "2026-01-30T17:35:00Z",
+                "execution_count": 0,
+                "match_count": 0,
+                "non_match_count": 0,
+                "error_count": 0,
+                "action_counts": {},
+                "avg_confidence": null,
+                "avg_duration_ms": null
+            },
+            ...
+        ]
     }
 }
 ```
 
-### 4. Query Events (Raw Events)
+Note: The `controls` array is not present in control-level responses since you're already querying a specific control.
+
+### 5. Query Events (Raw Events)
 
 Query raw control execution events with filtering and pagination.
 

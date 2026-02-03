@@ -55,10 +55,13 @@ from .observability import (
     BatchEventsResponse,
     ControlExecutionEvent,
     ControlStats,
+    ControlStatsResponse,
     EventQueryRequest,
     EventQueryResponse,
     StatsRequest,
     StatsResponse,
+    StatsTotals,
+    TimeseriesBucket,
 )
 from .policy import Policy
 from .server import (
@@ -154,6 +157,9 @@ __all__ = [
     "EventQueryRequest",
     "EventQueryResponse",
     "ControlStats",
+    "ControlStatsResponse",
     "StatsRequest",
     "StatsResponse",
+    "StatsTotals",
+    "TimeseriesBucket",
 ]
