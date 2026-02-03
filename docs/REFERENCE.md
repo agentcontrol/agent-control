@@ -387,10 +387,14 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 **Evaluator name**: `galileo.luna2`
 
-**Installation**: Luna-2 requires an optional dependency:
+**Installation**: Luna-2 is available as a separate package:
 
 ```bash
-pip install agent-control-evaluators[luna2]
+# Direct install
+pip install agent-control-evaluator-galileo
+
+# Or via convenience extra
+pip install agent-control-evaluators[galileo]
 ```
 
 **Requirements**: Set `GALILEO_API_KEY` environment variable where evaluations run (on the server for server-side controls, or in the client environment for local controls).
@@ -961,12 +965,12 @@ make alembic-upgrade
 
 ### Luna-2 Evaluator Errors
 
-1. Ensure `httpx` is installed: `pip install agent-control-evaluators[luna2]`
+1. Ensure the Galileo package is installed: `pip install agent-control-evaluator-galileo` (or `pip install agent-control-evaluators[galileo]`)
 2. Ensure `GALILEO_API_KEY` is set
 3. Check network connectivity to Galileo API
 4. Verify the metric name is valid
 5. Check `on_error` setting if failures are silently allowed
 
 **Evaluator Not Found**: If `galileo.luna2` doesn't appear in `list_evaluators()`:
-- Verify `httpx` is installed (Luna-2's `is_available()` returns `False` without it)
+- Verify the Galileo package is installed
 - Check server logs for evaluator discovery messages

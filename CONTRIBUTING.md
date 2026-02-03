@@ -218,33 +218,31 @@ make test
 Extensible evaluators for custom detection logic.
 
 ```bash
-# Location
-evaluators/src/agent_control_evaluators/
-
-# Key directories (flat structure - each evaluator is a peer directory)
-# Built-in evaluators (no namespace, core dependencies only)
-├── regex/           # Type name: "regex"
-│   ├── config.py    # RegexEvaluatorConfig
-│   └── evaluator.py # RegexEvaluator implementation
-├── list/            # Type name: "list"
-│   ├── config.py    # ListEvaluatorConfig
-│   └── evaluator.py # ListEvaluator implementation
-├── json/            # Type name: "json"
-│   ├── config.py    # JsonEvaluatorConfig
-│   └── evaluator.py # JsonEvaluator implementation
-├── sql/             # Type name: "sql"
-│   ├── config.py    # SqlEvaluatorConfig
-│   └── evaluator.py # SqlEvaluator implementation
-#
-# External evaluators (namespaced, optional dependencies)
-└── galileo_luna2/   # Type name: "galileo.luna2" (folder uses underscore)
-    ├── config.py    # Luna2EvaluatorConfig
-    ├── evaluator.py # Luna2Evaluator implementation
-    └── client.py    # Direct HTTP client (no SDK dependency)
+evaluators/
+├── builtin/                           # agent-control-evaluators package
+│   ├── pyproject.toml
+│   ├── src/agent_control_evaluators/
+│   │   ├── _base.py                   # Evaluator, EvaluatorConfig, EvaluatorMetadata
+│   │   ├── _registry.py               # register_evaluator, get_evaluator
+│   │   ├── _discovery.py              # Entry point discovery
+│   │   ├── _factory.py                # Instance caching
+│   │   ├── regex/                     # Type name: "regex"
+│   │   ├── list/                      # Type name: "list"
+│   │   ├── json/                      # Type name: "json"
+│   │   └── sql/                       # Type name: "sql"
+│   └── tests/
+│
+└── extra/                             # External evaluator packages
+    ├── galileo/                       # agent-control-evaluator-galileo package
+    │   ├── pyproject.toml             # Separate package with own entry points
+    │   ├── src/agent_control_evaluator_galileo/
+    │   │   └── luna2/                 # Type name: "galileo.luna2"
+    │   └── tests/
+    └── template/                      # Template for new external evaluators
 ```
 
-> **Note:** Folder names use `snake_case` (Python convention), but type names in metadata
-> use `provider.name` format with dot separator for external evaluators.
+> **Note:** Built-in evaluators live in the `builtin/` package. External evaluators are
+> separate packages under `extra/`, each with their own `pyproject.toml` and entry points.
 
 **Creating a new evaluator:**
 
@@ -256,17 +254,49 @@ Choose the appropriate type based on your use case:
 | External | External provider integration, optional deps | `provider.name` |
 | Agent-scoped | Custom logic deployed with agent | `my-agent:custom` |
 
-### Creating a Third-Party Evaluator (Recommended for External Providers)
+### Creating an External Evaluator Package (Recommended for External Providers)
 
-This example creates a external evaluator `acme.toxicity`:
+External evaluators live in their own packages under `evaluators/extra/`. This example
+creates an `acme.toxicity` evaluator as a separate package.
 
-**1. Create evaluator directory:**
+**1. Copy the template and set up the package:**
 ```bash
-mkdir -p evaluators/src/agent_control_evaluators/acme_toxicity/
-touch evaluators/src/agent_control_evaluators/acme_toxicity/__init__.py
+cp -r evaluators/extra/template evaluators/extra/acme
+cd evaluators/extra/acme
 ```
 
-**2. Define configuration model (`config.py`):**
+**2. Create `pyproject.toml`** (from the template):
+```toml
+[project]
+name = "agent-control-evaluator-acme"
+version = "1.0.0"
+description = "Acme toxicity evaluator for agent-control"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-control-evaluators>=3.0.0",
+    "agent-control-models>=3.0.0",
+    "httpx>=0.24.0",  # Your external dependencies
+]
+
+[project.entry-points."agent_control.evaluators"]
+"acme.toxicity" = "agent_control_evaluator_acme.toxicity:AcmeToxicityEvaluator"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_control_evaluator_acme"]
+```
+
+**3. Create directory structure:**
+```bash
+mkdir -p src/agent_control_evaluator_acme/toxicity
+touch src/agent_control_evaluator_acme/__init__.py
+touch src/agent_control_evaluator_acme/toxicity/__init__.py
+```
+
+**4. Define configuration model (`toxicity/config.py`):**
 ```python
 from pydantic import Field
 from agent_control_evaluators import EvaluatorConfig
@@ -285,44 +315,25 @@ class AcmeToxicityEvaluatorConfig(EvaluatorConfig):
         default_factory=lambda: ["hate", "violence"],
         description="Toxicity categories to check",
     )
-    timeout_ms: int = Field(
-        default=5000,
-        ge=100,
-        le=30000,
-        description="API timeout in milliseconds",
-    )
 ```
 
-**3. Implement evaluator (`evaluator.py`):**
+**5. Implement evaluator (`toxicity/evaluator.py`):**
 ```python
 from typing import Any
 
+import httpx
+from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import EvaluatorResult
 
-from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
-from agent_control_evaluators._registry import register_evaluator
-from agent_control_evaluators.acme_toxicity.config import AcmeToxicityEvaluatorConfig
-
-# Check optional dependency
-try:
-    import httpx
-    ACME_AVAILABLE = True
-except ImportError:
-    ACME_AVAILABLE = False
+from agent_control_evaluator_acme.toxicity.config import AcmeToxicityEvaluatorConfig
 
 
 @register_evaluator
 class AcmeToxicityEvaluator(Evaluator[AcmeToxicityEvaluatorConfig]):
-    """Acme Toxicity detection evaluator.
-
-    Calls the Acme API to detect toxic content in text.
-
-    Example config:
-        {"threshold": 0.8, "categories": ["hate", "harassment"]}
-    """
+    """Acme Toxicity detection evaluator."""
 
     metadata = EvaluatorMetadata(
-        name="acme.toxicity",  # <-- External provider with dot
+        name="acme.toxicity",  # <-- External provider: org.name format
         version="1.0.0",
         description="Acme toxicity detection API",
         requires_api_key=True,
@@ -330,88 +341,61 @@ class AcmeToxicityEvaluator(Evaluator[AcmeToxicityEvaluatorConfig]):
     )
     config_model = AcmeToxicityEvaluatorConfig
 
-    @classmethod
-    def is_available(cls) -> bool:
-        """Check if httpx dependency is installed."""
-        return ACME_AVAILABLE
-
-    def __init__(self, config: AcmeToxicityEvaluatorConfig) -> None:
-        super().__init__(config)
-        # Pre-compile or initialize resources here (will be cached)
-        self._client: httpx.AsyncClient | None = None
-
     async def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate text for toxicity."""
         if data is None:
-            return EvaluatorResult(
-                matched=False,
-                confidence=1.0,
-                message="No data to evaluate",
-            )
-
-        text = str(data)
+            return EvaluatorResult(matched=False, confidence=1.0, message="No data")
 
         try:
-            score = await self._call_api(text)
-            matched = score >= self.config.threshold
-
+            score = await self._call_api(str(data))
             return EvaluatorResult(
-                matched=matched,
+                matched=score >= self.config.threshold,
                 confidence=score,
                 message=f"Toxicity score: {score:.2f}",
-                metadata={
-                    "score": score,
-                    "threshold": self.config.threshold,
-                    "categories": self.config.categories,
-                },
             )
         except Exception as e:
-            # Return error result (fail-open by default)
             return EvaluatorResult(
                 matched=False,
                 confidence=0.0,
                 message=f"Evaluation failed: {e}",
-                error=f"{type(e).__name__}: {str(e)[:200]}",
+                error=str(e),
             )
 
     async def _call_api(self, text: str) -> float:
         """Call Acme API and return toxicity score."""
-        # Implementation details...
+        # Your implementation here
         pass
 ```
 
-**4. Export in `__init__.py`:**
+**6. Export in `toxicity/__init__.py`:**
 ```python
-from agent_control_evaluators.acme_toxicity.config import AcmeToxicityEvaluatorConfig
-from agent_control_evaluators.acme_toxicity.evaluator import AcmeToxicityEvaluator
+from agent_control_evaluator_acme.toxicity.config import AcmeToxicityEvaluatorConfig
+from agent_control_evaluator_acme.toxicity.evaluator import AcmeToxicityEvaluator
 
 __all__ = ["AcmeToxicityEvaluator", "AcmeToxicityEvaluatorConfig"]
 ```
 
-**5. Register entry point in `evaluators/pyproject.toml`:**
-```toml
-[project.optional-dependencies]
-acme = ["httpx>=0.24.0"]  # Your dependencies
-all = ["httpx>=0.24.0"]   # Include in 'all' extra
-
-[project.entry-points."agent_control.evaluators"]
-regex = "agent_control_evaluators.regex:RegexEvaluator"
-list = "agent_control_evaluators.list:ListEvaluator"
-# ... existing entries ...
-"acme.toxicity" = "agent_control_evaluators.acme_toxicity:AcmeToxicityEvaluator"
+**7. Add tests in `tests/`** and publish:
+```bash
+uv run pytest
+uv build && uv publish
 ```
 
-**6. Add tests in `evaluators/tests/acme_toxicity/`**
+Once published, users install via `pip install agent-control-evaluator-acme` and the
+evaluator is automatically discovered via entry points
 
 ### Creating a Built-in Evaluator
 
-For evaluators with no external dependencies (to be included in core), follow the same pattern but:
-- Use simple name: `name="my-evaluator"` (no slash)
-- No `is_available()` override needed
-- Import directly in `evaluators/src/agent_control_evaluators/__init__.py` for auto-registration:
-  ```python
-  from agent_control_evaluators.my_evaluator import MyEvaluator, MyEvaluatorConfig
-  ```
+For evaluators with no external dependencies (to be included in core):
+
+1. Create directory: `evaluators/builtin/src/agent_control_evaluators/my_evaluator/`
+2. Add `config.py` extending `EvaluatorConfig`
+3. Add `evaluator.py` with `@register_evaluator` and simple name: `name="my-evaluator"`
+4. Add entry point in `evaluators/builtin/pyproject.toml`
+5. Import in `evaluators/builtin/src/agent_control_evaluators/__init__.py` for auto-registration:
+   ```python
+   from agent_control_evaluators.my_evaluator import MyEvaluator, MyEvaluatorConfig
+   ```
 
 ### Evaluator Best Practices
 
@@ -533,7 +517,8 @@ Update `version` in respective `pyproject.toml` files:
 - `server/pyproject.toml`
 - `sdks/python/pyproject.toml`
 - `engine/pyproject.toml`
-- `evaluators/pyproject.toml`
+- `evaluators/builtin/pyproject.toml`
+- `evaluators/extra/galileo/pyproject.toml` (and other external packages)
 
 ---
 
@@ -581,16 +566,17 @@ test: add control set integration tests
 
 See the **Evaluators** section above for detailed instructions. Summary:
 
-1. Decide on evaluator type (built-in vs external)
-2. Create directory: `evaluators/src/agent_control_evaluators/my_evaluator/`
-3. Add `config.py` extending `EvaluatorConfig`
-4. Add `evaluator.py` with `@register_evaluator` decorator
-5. Add entry point in `evaluators/pyproject.toml`:
-   - Built-in: `my-evaluator = "..."`
-   - External: `"provider/name" = "..."`
-6. Add optional dependencies if needed
-7. Add tests in `evaluators/tests/`
-8. Update `docs/OVERVIEW.md` with usage examples
+**Built-in evaluator:**
+1. Create directory: `evaluators/builtin/src/agent_control_evaluators/my_evaluator/`
+2. Add `config.py` extending `EvaluatorConfig`
+3. Add `evaluator.py` with `@register_evaluator` decorator
+4. Add entry point in `evaluators/builtin/pyproject.toml`
+5. Add tests in `evaluators/builtin/tests/`
+
+**External evaluator (separate package):**
+1. Copy template: `cp -r evaluators/extra/template evaluators/extra/myorg`
+2. Create package with own `pyproject.toml` and entry points
+3. Add tests and publish to PyPI
 
 ### Update shared models
 
@@ -657,7 +643,7 @@ else:              # Built-in
 
 **External evaluators** (`galileo.luna2`):
 - Use `provider.name` format with dot separator
-- Have optional dependencies (install via extras: `pip install agent-control-evaluators[luna2]`)
+- Are separate packages (e.g., `pip install agent-control-evaluator-galileo` or `pip install agent-control-evaluators[galileo]`)
 - Discovered via Python entry points (not auto-imported)
 
 ### Agent-Scoped Evaluators
@@ -702,9 +688,9 @@ Controls reference them as `my-agent:pii-detector` (the `:` indicates agent scop
 | Evaluator metadata | `agent_control_evaluators.EvaluatorMetadata` |
 | Evaluator result | `agent_control_models.EvaluatorResult` |
 | Register decorator | `@agent_control_evaluators.register_evaluator` |
-| Built-in evaluators | `evaluators/src/agent_control_evaluators/{regex,list,json,sql}/` |
-| External evaluators | `evaluators/src/agent_control_evaluators/galileo_luna2/` |
-| Evaluator tests | `evaluators/tests/` |
+| Built-in evaluators | `evaluators/builtin/src/agent_control_evaluators/{regex,list,json,sql}/` |
+| External evaluators | `evaluators/extra/galileo/` (separate packages) |
+| Evaluator tests | `evaluators/builtin/tests/` or `evaluators/extra/*/tests/` |
 
 **Naming convention quick reference:**
 ```

@@ -594,11 +594,13 @@ class ContentModerationEvaluator(Evaluator[ContentModerationEvaluatorConfig]):
 # Core SDK
 pip install agent-control
 
-# Server (with Luna-2 support)
-pip install agent-control-server[luna2]
+# Server
+pip install agent-control-server
 
-# Or install everything
-pip install agent-control-server[all]
+# With Luna-2 evaluator support (Galileo)
+pip install agent-control-evaluator-galileo
+# Or via convenience extra:
+pip install agent-control-server[luna2]
 ```
 
 ### Quick Start

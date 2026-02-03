@@ -412,7 +412,9 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
         for analysis in analyses:
             # Use pre-computed SELECT nodes
             for select_node in analysis.select_nodes:
-                limit_node = select_node.find(exp.Limit)
+                # Use args.get() to get direct LIMIT child, not find() which searches descendants
+                # This prevents a subquery's LIMIT from being attributed to the outer query
+                limit_node = select_node.args.get("limit")
 
                 # Check if LIMIT is required but missing
                 if self.config.require_limit and not limit_node:
@@ -443,8 +445,8 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
                 if limit_node:
                     limit_value = self._extract_limit_value(limit_node)
 
-                    # Extract OFFSET value if present
-                    offset_node = select_node.find(exp.Offset)
+                    # Extract OFFSET value if present (use args.get() for direct child only)
+                    offset_node = select_node.args.get("offset")
                     offset_value = 0
                     if offset_node:
                         offset_value = self._extract_offset_value(offset_node) or 0

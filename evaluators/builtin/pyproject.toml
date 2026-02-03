@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# NOTE: galileo extra commented out during local dev - package not yet on PyPI
+# TODO: Uncomment galileo extra once agent-control-evaluator-galileo is published to PyPI
+# Tracking: This enables `pip install agent-control-evaluators[galileo]` convenience install
 # galileo = ["agent-control-evaluator-galileo>=3.0.0"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
 

@@ -29,7 +29,8 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 
 [project.optional-dependencies]
-# NOTE: luna2 extra commented out during local dev - package not yet on PyPI
+# TODO: Uncomment luna2 extra once agent-control-evaluator-galileo is published to PyPI
+# Tracking: This enables `pip install agent-control-server[luna2]` convenience install
 # luna2 = [
 #     "agent-control-evaluator-galileo>=3.0.0",
 # ]
