@@ -381,15 +381,15 @@ class StatsRequest(BaseModel):
     Attributes:
         agent_uuid: Agent to get stats for
         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d)
-        control_id: Optional specific control to filter by
+        include_timeseries: Whether to include time-series data points
     """
 
     agent_uuid: UUID = Field(..., description="Agent UUID")
     time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d"] = Field(
         default="5m", description="Time range"
     )
-    control_id: int | None = Field(
-        default=None, description="Optional control ID filter"
+    include_timeseries: bool = Field(
+        default=False, description="Include time-series data points for trend visualization"
     )
 
 
