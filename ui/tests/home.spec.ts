@@ -33,6 +33,14 @@ test.describe("Home Page - Agents Overview", () => {
     const searchInput = mockedPage.getByPlaceholder("Search agents...");
     await searchInput.fill("Customer");
 
+    // Wait for debounced search (300ms) and API response
+    await mockedPage.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/agents") &&
+        response.url().includes("name=Customer") &&
+        response.status() === 200
+    );
+
     // Only the matching agent should be visible
     await expect(mockedPage.getByText("Customer Support Bot")).toBeVisible();
 
@@ -42,6 +50,15 @@ test.describe("Home Page - Agents Overview", () => {
 
     // Clear search to show all agents again
     await searchInput.clear();
+    
+    // Wait for debounced URL update (300ms)
+    await mockedPage.waitForTimeout(350);
+    
+    // Wait for a previously hidden agent to become visible (confirms filter was cleared)
+    // This is more reliable than waiting for an API response that might not happen
+    await expect(mockedPage.getByText("Data Analysis Agent")).toBeVisible({ timeout: 5000 });
+    
+    // Verify all agents are shown again
     for (const agent of mockData.agents.agents) {
       await expect(mockedPage.getByText(agent.agent_name)).toBeVisible();
     }

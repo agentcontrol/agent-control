@@ -11,7 +11,6 @@ import {
   Stack,
   Tabs,
   Text,
-  TextInput,
   Title,
 } from "@mantine/core";
 import { Button, Switch, Table } from "@rungalileo/jupiter-ds";
@@ -20,7 +19,6 @@ import {
   IconChartBar,
   IconInbox,
   IconPencil,
-  IconSearch,
   IconShield,
 } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
@@ -28,13 +26,15 @@ import { useMemo, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import type { Control } from "@/core/api/types";
+import { SearchInput } from "@/core/components/search-input";
 import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
+import { useQueryParam } from "@/core/hooks/use-query-param";
 
 import { AgentStats } from "./agent-stats";
-import { ControlStoreModal } from "./control-store-modal";
-import { EditControlContent } from "./edit-control";
+import { ControlStoreModal } from "./modals/control-store";
+import { EditControlContent } from "./modals/edit-control/edit-control-content";
 
 interface AgentDetailPageProps {
   agentId: string;
@@ -58,7 +58,8 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   const [editModalOpened, setEditModalOpened] = useState(false);
   const [controlStoreOpened, setControlStoreOpened] = useState(false);
   const [selectedControl, setSelectedControl] = useState<Control | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  // Get search value for filtering (SearchInput handles the UI and URL sync)
+  const [searchQuery] = useQueryParam("q");
 
   // Fetch agent details and controls
   const {
@@ -73,10 +74,9 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
   } = useAgentControls(agentId);
   const updateControl = useUpdateControl();
 
-  const allControls = controlsResponse?.controls || [];
-
   // Filter controls based on search query
   const controls = useMemo(() => {
+    const allControls = controlsResponse?.controls || [];
     if (!searchQuery.trim()) return allControls;
     const query = searchQuery.toLowerCase();
     return allControls.filter(
@@ -84,7 +84,7 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
         control.name.toLowerCase().includes(query) ||
         control.control?.description?.toLowerCase().includes(query)
     );
-  }, [allControls, searchQuery]);
+  }, [controlsResponse, searchQuery]);
 
   // Loading state
   if (agentLoading) {
@@ -277,14 +277,12 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
               </Tabs.List>
 
               <Group gap='md' pos='absolute' right={0} top='-8px'>
-                <TextInput
-                  placeholder='Search controls...'
-                  leftSection={<IconSearch size={16} />}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                <SearchInput
+                  queryKey="q"
+                  placeholder="Search controls..."
                   w={250}
                   h={32}
-                  size='xs'
+                  size="xs"
                 />
                 <Button
                   variant='filled'

@@ -26,7 +26,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import type { EvaluatorInfo } from "@/core/api/types";
 import { useEvaluators } from "@/core/hooks/query-hooks/use-evaluators";
 
-import { EditControlContent } from "./edit-control";
+import { EditControlContent } from "../edit-control/edit-control-content";
 
 type EvaluatorWithId = EvaluatorInfo & { id: string };
 
@@ -53,17 +53,17 @@ function getDefaultConfigForEvaluator(
   return DEFAULT_EVALUATOR_CONFIGS[evaluatorId] ?? {};
 }
 
-interface ControlStoreModalProps {
+interface AddNewControlModalProps {
   opened: boolean;
   onClose: () => void;
   agentId: string;
 }
 
-export function ControlStoreModal({
+export function AddNewControlModal({
   opened,
   onClose,
   agentId,
-}: ControlStoreModalProps) {
+}: AddNewControlModalProps) {
   const [selectedSource, setSelectedSource] = useState<"galileo" | "custom">(
     "galileo"
   );
@@ -97,6 +97,31 @@ export function ControlStoreModal({
     }));
   }, [evaluatorsData]);
 
+  const draftControl = useMemo(() => {
+    if (!selectedEvaluator) return null;
+    return {
+      id: 0,
+      name: selectedEvaluator.name,
+      control: {
+        description: selectedEvaluator.description,
+        enabled: true,
+        execution: "server" as const,
+        scope: {
+          step_types: ["llm"],
+          stages: ["post"] as ("post" | "pre")[],
+        },
+        selector: {
+          path: "*",
+        },
+        evaluator: {
+          name: selectedEvaluator.id,
+          config: getDefaultConfigForEvaluator(selectedEvaluator.id),
+        },
+        action: { decision: "deny" as const },
+      },
+    };
+  }, [selectedEvaluator]);
+
   const columns: ColumnDef<EvaluatorInfo & { id: string }>[] = [
     {
       id: "name",
@@ -104,8 +129,8 @@ export function ControlStoreModal({
       accessorKey: "name",
       size: 80,
       cell: ({ row }) => (
-        <Group gap='xs'>
-          <Text size='sm' fw={500}>
+        <Group gap="xs">
+          <Text size="sm" fw={500}>
             {row.original.name}
           </Text>
         </Group>
@@ -116,7 +141,7 @@ export function ControlStoreModal({
       header: "Version",
       accessorKey: "version",
       size: 80,
-      cell: ({ row }) => <Text size='sm'>{row.original.version}</Text>,
+      cell: ({ row }) => <Text size="sm">{row.original.version}</Text>,
     },
     {
       id: "description",
@@ -125,7 +150,7 @@ export function ControlStoreModal({
       size: 200,
       cell: ({ row }) => (
         <Tooltip label={row.original.description} withArrow>
-          <Text size='sm' c='dimmed' lineClamp={1}>
+          <Text size="sm" c="dimmed" lineClamp={1}>
             {row.original.description}
           </Text>
         </Tooltip>
@@ -137,9 +162,9 @@ export function ControlStoreModal({
       size: 80,
       cell: ({ row }) => (
         <Button
-          variant='outline'
-          size='sm'
-          data-testid='add-control-button'
+          variant="outline"
+          size="sm"
+          data-testid="add-control-button"
           onClick={() => handleAddClick(row.original)}
         >
           Add
@@ -159,7 +184,7 @@ export function ControlStoreModal({
     <Modal
       opened={opened}
       onClose={onClose}
-      size='xxl'
+      size="xxl"
       padding={0}
       withCloseButton={false}
       styles={{
@@ -171,42 +196,42 @@ export function ControlStoreModal({
     >
       <Box>
         {/* Header */}
-        <Box p='md'>
-          <Group justify='space-between' mb='xs'>
+        <Box p="md">
+          <Group justify="space-between" mb="xs">
             <Title order={3} fw={600}>
               Control store
             </Title>
             <Button
-              size='sm'
+              size="sm"
               onClick={onClose}
-              data-testid='close-control-store-modal-button'
+              data-testid="close-control-store-modal-button"
             >
               <IconX size={16} />
             </Button>
           </Group>
-          <Text size='sm' c='dimmed'>
+          <Text size="sm" c="dimmed">
             Browse and add controls to your agent
           </Text>
         </Box>
         <Divider />
 
         {/* Content */}
-        <Group align='stretch' gap={0} mih={500}>
+        <Group align="stretch" gap={0} mih={500}>
           {/* Left Sidebar */}
-          <Box w={175} p='md'>
-            <Stack gap='lg'>
-              <Stack gap='xs'>
-                <Text size='xs' fw={600} c='dimmed' tt='uppercase'>
+          <Box w={175} p="md">
+            <Stack gap="lg">
+              <Stack gap="xs">
+                <Text size="xs" fw={600} c="dimmed" tt="uppercase">
                   Source
                 </Text>
                 <Stack gap={4}>
                   <Paper
-                    component='button'
-                    type='button'
+                    component="button"
+                    type="button"
                     onClick={() => setSelectedSource("galileo")}
-                    w='100%'
-                    p='xs'
-                    radius='sm'
+                    w="100%"
+                    p="xs"
+                    radius="sm"
                     withBorder
                     bg={
                       selectedSource === "galileo"
@@ -214,7 +239,7 @@ export function ControlStoreModal({
                         : "transparent"
                     }
                   >
-                    <Group gap='xs'>
+                    <Group gap="xs">
                       <IconSparkles
                         size={18}
                         color={
@@ -224,7 +249,7 @@ export function ControlStoreModal({
                         }
                       />
                       <Text
-                        size='sm'
+                        size="sm"
                         fw={selectedSource === "galileo" ? 600 : 400}
                         c={selectedSource === "galileo" ? "dark" : "gray.2"}
                       >
@@ -233,12 +258,12 @@ export function ControlStoreModal({
                     </Group>
                   </Paper>
                   <Paper
-                    component='button'
-                    type='button'
+                    component="button"
+                    type="button"
                     onClick={() => setSelectedSource("custom")}
-                    w='100%'
-                    p='xs'
-                    radius='sm'
+                    w="100%"
+                    p="xs"
+                    radius="sm"
                     withBorder
                     bg={
                       selectedSource === "custom"
@@ -246,7 +271,7 @@ export function ControlStoreModal({
                         : "transparent"
                     }
                   >
-                    <Group gap='xs'>
+                    <Group gap="xs">
                       <IconSettings
                         size={18}
                         color={
@@ -256,7 +281,7 @@ export function ControlStoreModal({
                         }
                       />
                       <Text
-                        size='sm'
+                        size="sm"
                         fw={selectedSource === "custom" ? 600 : 400}
                         c={selectedSource === "custom" ? "dark" : "gray.2"}
                       >
@@ -268,24 +293,32 @@ export function ControlStoreModal({
               </Stack>
             </Stack>
           </Box>
-          <Divider orientation='vertical' />
+          <Divider orientation="vertical" />
 
           {/* Right Content */}
-          <Box flex={1} p='md'>
-            <Stack gap='md'>
+          <Box flex={1} p="md">
+            <Stack gap="md">
               {/* Search and Docs Link */}
-              <Group justify='space-between'>
+              <Group justify="space-between">
                 <TextInput
-                  placeholder='Search or apply filter...'
+                  placeholder="Search or apply filter..."
                   leftSection={<IconSearch size={16} />}
                   flex={1}
                   maw={250}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
-                <Text size='sm' c='dimmed'>
+                <Text size="sm" c="dimmed">
                   Looking to add custom control?{" "}
-                  <Text component='a' href='#' c='blue' size='sm' td='none'>
+                  <Text
+                    component="a"
+                    href="https://github.com/galileo/agent-control/blob/main/README.md"
+                    c="blue"
+                    size="sm"
+                    td="none"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     Check our Docs ↗
                   </Text>
                 </Text>
@@ -294,41 +327,41 @@ export function ControlStoreModal({
               {/* Table or Empty State */}
               {selectedSource === "galileo" ? (
                 isLoading ? (
-                  <Paper p='xl' ta='center' withBorder radius='sm'>
-                    <Loader size='sm' />
+                  <Paper p="xl" ta="center" withBorder radius="sm">
+                    <Loader size="sm" />
                   </Paper>
                 ) : error ? (
-                  <Paper p='xl' ta='center' withBorder radius='sm'>
-                    <Stack gap='xs' align='center'>
+                  <Paper p="xl" ta="center" withBorder radius="sm">
+                    <Stack gap="xs" align="center">
                       <IconAlertCircle
                         size={48}
-                        color='var(--mantine-color-red-5)'
+                        color="var(--mantine-color-red-5)"
                       />
-                  <Text c='red'>Failed to load evaluators</Text>
+                      <Text c="red">Failed to load evaluators</Text>
                     </Stack>
                   </Paper>
-            ) : filteredEvaluators.length > 0 ? (
+                ) : filteredEvaluators.length > 0 ? (
                   <Table
                     columns={columns}
-                data={filteredEvaluators}
+                    data={filteredEvaluators}
                     highlightOnHover
                   />
                 ) : (
-                  <Paper p='xl' withBorder radius='sm' ta='center'>
-                <Text c='dimmed'>No evaluators found</Text>
+                  <Paper p="xl" withBorder radius="sm" ta="center">
+                    <Text c="dimmed">No evaluators found</Text>
                   </Paper>
                 )
               ) : (
-                <Paper p='xl' withBorder radius='sm' ta='center'>
-                  <Stack gap='xs' align='center'>
+                <Paper p="xl" withBorder radius="sm" ta="center">
+                  <Stack gap="xs" align="center">
                     <IconSettings
                       size={48}
-                      color='var(--mantine-color-gray-4)'
+                      color="var(--mantine-color-gray-4)"
                     />
-                    <Text fw={500} c='dimmed'>
+                    <Text fw={500} c="dimmed">
                       No custom controls yet
                     </Text>
-                    <Text size='sm' c='dimmed'>
+                    <Text size="sm" c="dimmed">
                       Create your first custom control to get started
                     </Text>
                   </Stack>
@@ -344,7 +377,7 @@ export function ControlStoreModal({
         opened={editModalOpened}
         onClose={handleEditModalClose}
         title="Create Control"
-        size='xl'
+        size="xl"
         keepMounted={false}
         styles={{
           title: { fontSize: "18px", fontWeight: 600 },
@@ -352,31 +385,11 @@ export function ControlStoreModal({
         }}
       >
         <ErrorBoundary variant="modal">
-          {selectedEvaluator && (
+          {draftControl && (
             <EditControlContent
-              control={{
-                id: 0,
-                name: selectedEvaluator.name,
-                control: {
-                  description: selectedEvaluator.description,
-                  enabled: true,
-                  execution: "server",
-                  scope: {
-                    step_types: ["llm"],
-                    stages: ["post"],
-                  },
-                  selector: {
-                    path: "*",
-                  },
-                  evaluator: {
-                    name: selectedEvaluator.id,
-                    config: getDefaultConfigForEvaluator(selectedEvaluator.id),
-                  },
-                  action: { decision: "deny" as const },
-                },
-              }}
+              control={draftControl}
               agentId={agentId}
-              mode='create'
+              mode="create"
               onClose={handleEditModalClose}
               onSuccess={handleEditModalSuccess}
             />

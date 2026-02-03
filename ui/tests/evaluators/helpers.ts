@@ -14,10 +14,20 @@ export async function openEvaluatorForm(page: Page, evaluatorName: string) {
 
   // Open control store modal
   await page.getByTestId("add-control-button").first().click();
-  await expect(page.getByRole("heading", { name: "Control store" })).toBeVisible();
+  const controlStoreModal = page
+    .getByRole("dialog")
+    .filter({ hasText: "Browse existing controls or create a new one" });
+  await expect(controlStoreModal).toBeVisible();
+
+  // Open the add-new-control modal via footer CTA
+  await controlStoreModal.getByTestId("footer-new-control-button").click();
+  const addNewModal = page
+    .getByRole("dialog")
+    .filter({ hasText: "Browse and add controls to your agent" });
+  await expect(addNewModal).toBeVisible();
 
   // Find and click Add button for the evaluator
-  const evaluatorRow = page.locator("tr", { hasText: evaluatorName });
+  const evaluatorRow = addNewModal.locator("tr", { hasText: evaluatorName });
   await evaluatorRow.getByRole("button", { name: "Add" }).click();
 
   // Wait for the create control modal

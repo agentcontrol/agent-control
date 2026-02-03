@@ -4,9 +4,11 @@ import type {
   AgentControlsResponse,
   AgentSummary,
   Control,
+  ControlSummary,
   EvaluatorsResponse,
   GetAgentResponse,
   ListAgentsResponse,
+  ListControlsResponse,
 } from "@/core/api/types";
 import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-stats";
 
@@ -131,6 +133,53 @@ const controlsList: Control[] = [
 
 const controlsResponse: AgentControlsResponse = {
   controls: controlsList,
+};
+
+// Control summaries for GET /api/v1/controls (list all controls)
+const controlSummariesList: (ControlSummary & { used_by_agent?: { agent_id: string; agent_name: string } | null })[] = [
+  {
+    id: 1,
+    name: "PII Detection",
+    description: "Detects and masks personally identifiable information",
+    enabled: true,
+    execution: "server",
+    step_types: ["llm"],
+    stages: ["post"],
+    tags: ["pii", "compliance"],
+    used_by_agent: { agent_id: "agent-1", agent_name: "Customer Support Bot" },
+  },
+  {
+    id: 2,
+    name: "SQL Injection Guard",
+    description: "Prevents SQL injection attacks",
+    enabled: true,
+    execution: "server",
+    step_types: ["tool"],
+    stages: ["pre"],
+    tags: ["security"],
+    used_by_agent: { agent_id: "agent-2", agent_name: "Data Analysis Agent" },
+  },
+  {
+    id: 3,
+    name: "Rate Limiter",
+    description: "Limits API call frequency",
+    enabled: false,
+    execution: "server",
+    step_types: ["llm"],
+    stages: ["pre"],
+    tags: [],
+    used_by_agent: null,
+  },
+];
+
+const listControlsResponse: ListControlsResponse = {
+  controls: controlSummariesList,
+  pagination: {
+    total: controlSummariesList.length,
+    limit: 20,
+    has_more: false,
+    next_cursor: null,
+  },
 };
 
 const evaluatorsResponse: EvaluatorsResponse = {
@@ -283,6 +332,7 @@ export const mockData = {
   agents: agentsResponse,
   agent: agentResponse,
   controls: controlsResponse,
+  listControls: listControlsResponse,
   evaluators: evaluatorsResponse,
   stats: statsResponse,
   emptyStats: emptyStatsResponse,
@@ -335,8 +385,37 @@ export const mockRoutes = {
     page: Page,
     options: MockResponseOptions<ListAgentsResponse> = { data: mockData.agents }
   ) => {
-    await page.route("**/api/v1/agents?**", async (route) => {
-      await fulfillRoute(route, options, mockData.agents);
+    await page.route("**/api/v1/agents?**", async (route, request) => {
+      // Helper to filter agents based on query params (server-side search)
+      const getFilteredResponse = (url: string): ListAgentsResponse => {
+        const urlObj = new URL(url);
+        const nameFilter = urlObj.searchParams.get("name");
+        
+        let agents = mockData.agents.agents;
+        
+        // Apply name filter (case-insensitive partial match, like the real API)
+        if (nameFilter) {
+          const lowerFilter = nameFilter.toLowerCase();
+          agents = agents.filter(a => 
+            a.agent_name.toLowerCase().includes(lowerFilter)
+          );
+        }
+        
+        return {
+          agents,
+          pagination: {
+            total: agents.length,
+            limit: 10,
+            has_more: false,
+            next_cursor: null,
+          },
+        };
+      };
+
+      const url = request.url();
+      const filteredData = getFilteredResponse(url);
+      
+      await fulfillRoute(route, { ...options, data: filteredData }, filteredData);
     });
   },
 
@@ -378,10 +457,60 @@ export const mockRoutes = {
     });
   },
 
-  /** Mock PUT /api/v1/controls */
-  controlCreate: async (page: Page) => {
+  /** Mock GET /api/v1/controls (list all controls) and PUT /api/v1/controls (create) */
+  controlsList: async (
+    page: Page,
+    options: MockResponseOptions<ListControlsResponse> = { data: mockData.listControls }
+  ) => {
+    // Helper to filter controls based on query params (server-side search)
+    const getFilteredResponse = (url: string): ListControlsResponse => {
+      const urlObj = new URL(url);
+      const nameFilter = urlObj.searchParams.get("name");
+      
+      let controls = mockData.listControls.controls;
+      
+      // Apply name filter (case-insensitive partial match, like the real API)
+      if (nameFilter) {
+        const lowerFilter = nameFilter.toLowerCase();
+        controls = controls.filter(c => 
+          c.name.toLowerCase().includes(lowerFilter) ||
+          (c.description ?? "").toLowerCase().includes(lowerFilter)
+        );
+      }
+      
+      return {
+        controls,
+        pagination: {
+          total: controls.length,
+          limit: 20,
+          has_more: false,
+          next_cursor: null,
+        },
+      };
+    };
+
+    // Handle both with and without query params
+    await page.route("**/api/v1/controls?**", async (route, request) => {
+      const method = request.method();
+      if (method === "GET") {
+        const response = getFilteredResponse(request.url());
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(response),
+        });
+        return;
+      }
+      await route.continue();
+    });
+    // Handle base path for GET (list) and PUT (create)
     await page.route("**/api/v1/controls", async (route, request) => {
-      if (request.method() === "PUT") {
+      const method = request.method();
+      if (method === "GET") {
+        await fulfillRoute(route, options, mockData.listControls);
+        return;
+      }
+      if (method === "PUT") {
         const body = await request.postDataJSON();
         await route.fulfill({
           status: 200,
@@ -397,10 +526,34 @@ export const mockRoutes = {
     });
   },
 
-  /** Mock PUT /api/v1/controls/:id/data */
-  controlUpdate: async (page: Page) => {
+  /** @deprecated Use controlsList which now handles both GET and PUT */
+  controlCreate: async (_page: Page) => {
+    // No-op - handled by controlsList
+  },
+
+  /** Mock GET and PUT /api/v1/controls/:id/data */
+  controlGetData: async (page: Page) => {
     await page.route("**/api/v1/controls/*/data", async (route, request) => {
-      if (request.method() === "PUT") {
+      const method = request.method();
+      if (method === "GET") {
+        // Extract control ID from URL
+        const url = request.url();
+        const match = url.match(/\/controls\/(\d+)\/data/);
+        const controlId = match ? parseInt(match[1], 10) : 1;
+        
+        // Find matching control from mock data
+        const control = controlsList.find(c => c.id === controlId) ?? controlsList[0];
+        
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: control.control,
+          }),
+        });
+        return;
+      }
+      if (method === "PUT") {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -410,6 +563,11 @@ export const mockRoutes = {
       }
       await route.continue();
     });
+  },
+
+  /** @deprecated Use controlGetData which now handles both GET and PUT */
+  controlUpdate: async (_page: Page) => {
+    // No-op - handled by controlGetData
   },
 
   /** Mock GET /api/v1/observability/stats */
@@ -430,6 +588,8 @@ export async function mockApiRoutes(page: Page) {
   await mockRoutes.agents(page);
   await mockRoutes.agent(page);
   await mockRoutes.evaluators(page);
+  await mockRoutes.controlsList(page);
+  await mockRoutes.controlGetData(page);
   await mockRoutes.controlCreate(page);
   await mockRoutes.controlUpdate(page);
   await mockRoutes.stats(page);

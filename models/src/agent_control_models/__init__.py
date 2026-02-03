@@ -62,6 +62,7 @@ from .observability import (
 )
 from .policy import Policy
 from .server import (
+    AgentRef,
     AgentSummary,
     ControlSummary,
     CreateEvaluatorConfigRequest,
@@ -129,6 +130,7 @@ __all__ = [
     "get_error_title",
     "ERROR_TITLES",
     # Server models
+    "AgentRef",
     "AgentSummary",
     "ControlSummary",
     "CreateEvaluatorConfigRequest",
