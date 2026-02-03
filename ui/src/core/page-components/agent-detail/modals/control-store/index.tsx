@@ -100,6 +100,7 @@ export function ControlStoreModal({
   const tableWrapperRef = useRef<HTMLDivElement>(null);
   
   // Attach scroll container ref to the Table's scroll container
+  // TODO: Revisit scroll container handling for control-store
   useEffect(() => {
     if (tableWrapperRef.current && controls.length > 0) {
       // Find the scrollable container (the div with overflow: auto from Table's maxHeight)
