@@ -15,7 +15,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
-          token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN }}
+          token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || github.token }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -31,7 +31,7 @@ jobs:
         with:
           git_committer_name: galileo-automation
           git_committer_email: ci@rungalileo.io
-          github_token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN }}
+          github_token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || github.token }}
           ssh_public_signing_key: ${{ secrets.GALILEO_AUTOMATION_SSH_PUBLIC_KEY }}
           ssh_private_signing_key: ${{ secrets.GALILEO_AUTOMATION_SSH_PRIVATE_KEY }}
           root_options: "-vv"
@@ -62,7 +62,7 @@ jobs:
         if: steps.release.outputs.released == 'true'
         uses: python-semantic-release/upload-to-gh-release@main
         with:
-          github_token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN }}
+          github_token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || github.token }}
           tag: ${{ steps.release.outputs.tag }}
           root_options: "-vv"
           dist_glob: |
