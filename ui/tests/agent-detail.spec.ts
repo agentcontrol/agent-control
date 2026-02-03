@@ -385,6 +385,76 @@ test.describe("Agent Detail Page", () => {
     await executionLabel.scrollIntoViewIfNeeded();
     await expect(executionLabel).toBeVisible();
   });
+
+  test("disables Form switch when JSON is invalid", async ({ mockedPage }) => {
+    await mockedPage.goto(agentUrl);
+
+    // Click Controls tab (monitor might be shown by default if stats exist)
+    await mockedPage.getByRole("tab", { name: "Controls" }).click();
+
+    // Open edit modal
+    const controlsPanel = mockedPage.getByRole("tabpanel", { name: /Controls/i });
+    await expect(controlsPanel.getByRole("table")).toBeVisible();
+    const firstRow = controlsPanel.locator("tbody tr").first();
+    await firstRow.scrollIntoViewIfNeeded();
+    const editButton = firstRow.locator('button:has(svg[class*="icon-pencil"])');
+    if ((await editButton.count()) === 0) {
+      await firstRow.locator("button").last().click();
+    } else {
+      await editButton.click({ force: true });
+    }
+
+    const modal = mockedPage.getByRole("dialog", { name: "Edit Control" });
+    await expect(modal).toBeVisible();
+
+    // Switch to JSON mode
+    await modal.getByRole("radio", { name: "JSON" }).click();
+
+    // Enter invalid JSON
+    const jsonInput = modal.getByTestId("raw-json-textarea");
+    await jsonInput.fill("{");
+
+    // Form option should be disabled when JSON is invalid
+    await expect(modal.getByRole("radio", { name: "Form" })).toBeDisabled();
+  });
+
+  test("valid JSON triggers validation call", async ({ mockedPage }) => {
+    await mockedPage.goto(agentUrl);
+
+    // Click Controls tab
+    await mockedPage.getByRole("tab", { name: "Controls" }).click();
+
+    // Open edit modal
+    const controlsPanel = mockedPage.getByRole("tabpanel", { name: /Controls/i });
+    await expect(controlsPanel.getByRole("table")).toBeVisible();
+    const firstRow = controlsPanel.locator("tbody tr").first();
+    await firstRow.scrollIntoViewIfNeeded();
+    const editButton = firstRow.locator('button:has(svg[class*="icon-pencil"])');
+    if ((await editButton.count()) === 0) {
+      await firstRow.locator("button").last().click();
+    } else {
+      await editButton.click({ force: true });
+    }
+
+    const modal = mockedPage.getByRole("dialog", { name: "Edit Control" });
+    await expect(modal).toBeVisible();
+
+    // Switch to JSON mode
+    await modal.getByRole("radio", { name: "JSON" }).click();
+
+    // Wait for validation request after entering valid JSON
+    const validateRequest = mockedPage.waitForRequest(
+      (request) =>
+        request.url().includes("/api/v1/controls/validate") &&
+        request.method() === "POST"
+    );
+
+    await modal.getByTestId("raw-json-textarea").fill(
+      JSON.stringify({ pattern: ".*" }, null, 2)
+    );
+
+    await validateRequest;
+  });
 });
 
 test.describe("Agent Detail - Empty State", () => {

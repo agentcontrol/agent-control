@@ -92,6 +92,15 @@ export type SetControlDataResponse =
   components["schemas"]["SetControlDataResponse"];
 export type GetControlDataResponse =
   components["schemas"]["GetControlDataResponse"];
+
+// Validate control data types (not yet in generated schemas)
+// TODO: replace these with generated types after running pnpm fetch-api-types
+export interface ValidateControlDataRequest {
+  data: ControlDefinition;
+}
+export interface ValidateControlDataResponse {
+  success: boolean;
+}
 export type ControlSummary = components["schemas"]["ControlSummary"];
 export type ListControlsResponse = components["schemas"]["ListControlsResponse"];
 

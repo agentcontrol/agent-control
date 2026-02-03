@@ -9,7 +9,7 @@ export interface ApiErrorAlertProps {
   /** Unmapped field errors to show in the list */
   unmappedErrors?: Array<{ field: string | null; message: string }>;
   /** Callback when the alert is dismissed */
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 /**
@@ -27,7 +27,7 @@ export const ApiErrorAlert = ({
       color='red'
       title={error.title}
       icon={<IconAlertCircle size={16} />}
-      withCloseButton
+      withCloseButton={!!onClose}
       onClose={onClose}
     >
       <Text size='sm'>{error.detail}</Text>

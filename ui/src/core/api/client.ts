@@ -8,6 +8,8 @@ import type {
   InitAgentRequestBody,
   ListAgentsQueryParams,
   SetControlDataRequest,
+  ValidateControlDataRequest,
+  ValidateControlDataResponse,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -104,6 +106,15 @@ export const api = {
         params: { path: { control_id: controlId } },
         body: data,
       }),
+    validateData: (data: ValidateControlDataRequest) =>
+      // TODO: remove cast after regenerating api types
+      (apiClient.POST as unknown as (
+        path: "/api/v1/controls/validate",
+        init: { body: ValidateControlDataRequest }
+      ) => Promise<{ data: ValidateControlDataResponse; error?: unknown; response?: Response }>)( 
+        "/api/v1/controls/validate",
+        { body: data }
+      ),
   },
   policies: {
     create: (name: string) =>

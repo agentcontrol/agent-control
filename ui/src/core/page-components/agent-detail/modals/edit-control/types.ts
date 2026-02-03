@@ -5,6 +5,7 @@ import type {
   ControlActionDecision,
   ControlExecution,
   ControlStage,
+  ProblemDetail,
 } from "@/core/api/types";
 
 // Re-export evaluator form types for convenience
@@ -62,6 +63,14 @@ export interface EvaluatorJsonViewProps {
   rawJsonText: string;
   onRawJsonTextChange: (text: string) => void;
   rawJsonError: string | null;
+  onRawJsonErrorChange?: (error: string | null) => void;
+  validationError?: ProblemDetail | null;
+  onValidationErrorChange?: (error: ProblemDetail | null) => void;
+  onValidateConfig?: (config: Record<string, unknown>) => Promise<void>;
+  onValidationStatusChange?: (
+    status: "idle" | "validating" | "valid" | "invalid"
+  ) => void;
+  validateDebounceMs?: number;
   /** Optional height for the editor area */
   height?: number;
 }

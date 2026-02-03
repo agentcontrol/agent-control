@@ -569,6 +569,16 @@ export const mockRoutes = {
     });
   },
 
+  /** Mock POST /api/v1/controls/validate */
+  controlValidate: async (
+    page: Page,
+    options: MockResponseOptions<{ success: boolean }> = { data: { success: true } }
+  ) => {
+    await page.route("**/api/v1/controls/validate", async (route) => {
+      await fulfillRoute(route, options, { success: true });
+    });
+  },
+
   /** @deprecated Use controlGetData which now handles both GET and PUT */
   controlUpdate: async (_page: Page) => {
     // No-op - handled by controlGetData
@@ -594,6 +604,7 @@ export async function mockApiRoutes(page: Page) {
   await mockRoutes.evaluators(page);
   await mockRoutes.controlsList(page);
   await mockRoutes.controlGetData(page);
+  await mockRoutes.controlValidate(page);
   await mockRoutes.controlCreate(page);
   await mockRoutes.controlUpdate(page);
   await mockRoutes.stats(page);
