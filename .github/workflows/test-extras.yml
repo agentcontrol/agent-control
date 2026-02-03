@@ -34,17 +34,17 @@ jobs:
       - name: Sync workspace
         run: make sync
 
-      - name: Install galileo extra
-        run: cd evaluators/extra/galileo && uv pip install -e .
+      - name: Install galileo extra with dev dependencies
+        run: cd evaluators/extra/galileo && uv sync --extra dev
 
       - name: Lint galileo
-        run: cd evaluators/extra/galileo && uv run ruff check --config ../../../pyproject.toml src/
+        run: cd evaluators/extra/galileo && uv run --extra dev ruff check --config ../../../pyproject.toml src/
 
       - name: Typecheck galileo
-        run: cd evaluators/extra/galileo && uv run mypy --config-file ../../../pyproject.toml src/
+        run: cd evaluators/extra/galileo && uv run --extra dev mypy --config-file ../../../pyproject.toml src/
 
       - name: Test galileo
-        run: cd evaluators/extra/galileo && uv run pytest
+        run: cd evaluators/extra/galileo && uv run --extra dev pytest
 
       - name: Verify SDK integration
         run: |
