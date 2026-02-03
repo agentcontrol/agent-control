@@ -10,7 +10,7 @@ Usage:
     # Initialize at the base of your agent file
     agent_control.init(
         agent_name="my-customer-service-bot",
-        agent_id="csbot-prod-v1"
+        agent_id="550e8400-e29b-41d4-a716-446655440000"
     )
 
     # Apply server-defined controls using the decorator
@@ -39,6 +39,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from uuid import UUID
+
+import httpx
 
 from . import agents, controls, evaluation, evaluators, policies
 
@@ -69,6 +71,7 @@ from .tracing import (
     is_otel_available,
     with_trace,
 )
+from .validation import ensure_uuid
 
 # Module logger
 logger = get_logger(__name__)
@@ -188,7 +191,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def init(
     agent_name: str,
-    agent_id: str,
+    agent_id: str | UUID,
     agent_description: str | None = None,
     agent_version: str | None = None,
     server_url: str | None = None,
@@ -212,9 +215,7 @@ def init(
 
     Args:
         agent_name: Human-readable name for your agent (e.g., "Customer Service Bot")
-        agent_id: Unique identifier for your agent. Can be:
-                 - A UUID string (e.g., "550e8400-e29b-41d4-a716-446655440000")
-                 - Any string (e.g., "csbot-prod-v1") - will be converted to UUID
+        agent_id: Unique identifier for your agent (UUID string or UUID instance)
         agent_description: Optional description of what your agent does
         agent_version: Optional version string (e.g., "1.0.0")
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var
@@ -236,7 +237,7 @@ def init(
 
         agent_control.init(
             agent_name="Customer Service Bot",
-            agent_id="csbot-prod-v1",
+            agent_id="550e8400-e29b-41d4-a716-446655440000",
             agent_description="Handles customer inquiries and support tickets",
             agent_version="2.1.0",
             steps=[
@@ -264,25 +265,19 @@ def init(
     if not agent_id:
         raise ValueError(
             "The 'agent_id' argument is required for initialization.\n"
-            "Please provide a unique string identifier for your agent, e.g.:\n"
-            '    agent_control.init(agent_name="my-agent", agent_id="my-agent-v1")'
+            "Please provide a valid UUID string for your agent, e.g.:\n"
+            '    agent_control.init(agent_name="my-agent", '
+            'agent_id="550e8400-e29b-41d4-a716-446655440000")'
         )
+
+    # Validate agent_id is a UUID (string or UUID instance)
+    _agent_uuid = ensure_uuid(agent_id)
 
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
         configure_logging(log_config)
 
     # Create agent instance with metadata
-    # Convert agent_id to UUID (accept UUID string or generate from regular string)
-    try:
-        _agent_uuid = UUID(agent_id)
-    except ValueError:
-        # If not a valid UUID, generate UUID5 (namespace-based, deterministic)
-        # Using DNS namespace for consistency
-        import uuid
-        _agent_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, agent_id)
-        logger.info("Generated UUID5 %s from agent_id '%s'", _agent_uuid, agent_id)
-
     _current_agent = Agent(
         agent_id=_agent_uuid,
         agent_name=agent_name,
@@ -331,6 +326,9 @@ def init(
                         logger.debug("Registered %d step(s)", len(steps))
 
                     return controls
+                except httpx.HTTPStatusError:
+                    # Surface API errors like UUID conflicts
+                    raise
                 except Exception as e:
                     logger.error("Failed to register agent: %s", e, exc_info=True)
                     return None
@@ -370,6 +368,9 @@ def init(
             server_controls = loop.run_until_complete(register())
             loop.close()
 
+    except httpx.HTTPStatusError:
+        # Surface server-side errors (e.g., 409 UUID conflicts)
+        raise
     except Exception as e:
         logger.error("Could not connect to server: %s", e, exc_info=True)
         logger.info("Will use local controls if available")
@@ -397,7 +398,7 @@ def init(
 
 
 async def get_agent(
-    agent_id: str,
+    agent_id: str | UUID,
     server_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
@@ -405,7 +406,7 @@ async def get_agent(
     Get agent details from the server by ID.
 
     Args:
-        agent_id: UUID or string identifier of the agent
+        agent_id: UUID string or UUID instance
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
 
@@ -423,7 +424,9 @@ async def get_agent(
 
         # Fetch agent from server
         async def main():
-            agent_data = await agent_control.get_agent("bot-123")
+            agent_data = await agent_control.get_agent(
+                "550e8400-e29b-41d4-a716-446655440000"
+            )
             print(f"Agent: {agent_data['agent']['agent_name']}")
             print(f"Steps: {len(agent_data['steps'])}")
 
@@ -431,7 +434,9 @@ async def get_agent(
 
         # Or using the client directly
         async with agent_control.AgentControlClient() as client:
-            agent_data = await agent_control.agents.get_agent(client, "bot-123")
+            agent_data = await agent_control.agents.get_agent(
+                client, "550e8400-e29b-41d4-a716-446655440000"
+            )
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
@@ -447,7 +452,10 @@ def current_agent() -> Agent | None:
         Current Agent instance or None if not initialized
 
     Example:
-        agent_control.init(agent_name="My Bot", agent_id="bot-123")
+        agent_control.init(
+            agent_name="My Bot",
+            agent_id="550e8400-e29b-41d4-a716-446655440000",
+        )
         agent = agent_control.current_agent()
         print(agent.agent_name)  # "My Bot"
     """

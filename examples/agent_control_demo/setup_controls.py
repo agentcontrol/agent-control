@@ -34,7 +34,7 @@ from agent_control import AgentControlClient
 
 # Configuration
 AGENT_NAME = "demo-chatbot"
-AGENT_ID = "demo-chatbot-v1"
+AGENT_ID = "672e50df-af4c-429f-965a-3d7f8262302f"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
@@ -44,9 +44,8 @@ async def create_agent(client: AgentControlClient) -> str:
     print("STEP 1: Creating Agent")
     print("=" * 60)
 
-    # Generate a deterministic UUID from the agent ID
-    import uuid
-    agent_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID)
+    # Use the provided UUID for the agent
+    agent_uuid = UUID(AGENT_ID)
 
     try:
         response = await client.http_client.post(
@@ -440,9 +439,8 @@ async def main():
             print("  cd server && make run")
             return
 
-        # Generate agent UUID
-        import uuid
-        agent_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
+        # Use the provided UUID for verification
+        agent_uuid = AGENT_ID
 
         # If verify-only mode, just run verification
         if args.verify_only:

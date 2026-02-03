@@ -50,7 +50,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 # --- Configuration ---
-AGENT_ID = "sql-agent-demo"
+AGENT_ID = "edf66504-0db5-4ee8-9e09-3ef37bbb8faa"
 AGENT_NAME = "SQL Demo Agent"
 AGENT_DESCRIPTION = "SQL agent with server-side controls"
 USE_LOCAL_CONTROLS = os.getenv("AGENT_CONTROL_LOCAL_EVAL", "false").lower() == "true"

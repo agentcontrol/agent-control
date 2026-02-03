@@ -66,7 +66,9 @@ async with agent_control.AgentControlClient() as client:
     )
     
     # Get agent
-    agent_data = await agent_control.agents.get_agent(client, "agent-id")
+    agent_data = await agent_control.agents.get_agent(
+        client, "550e8400-e29b-41d4-a716-446655440000"
+    )
 ```
 
 ### `policies.py` - Policy Operations
@@ -259,11 +261,13 @@ High-level convenience functions are provided in `__init__.py` for common operat
 
 ```python
 # Convenience: No need to manage client manually
-agent_data = await agent_control.get_agent("agent-id")
+agent_data = await agent_control.get_agent("550e8400-e29b-41d4-a716-446655440000")
 
 # Equivalent module-first approach:
 async with AgentControlClient() as client:
-    agent_data = await agent_control.agents.get_agent(client, "agent-id")
+    agent_data = await agent_control.agents.get_agent(
+        client, "550e8400-e29b-41d4-a716-446655440000"
+    )
 ```
 
 ### 4. API Stability
