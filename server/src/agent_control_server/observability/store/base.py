@@ -26,6 +26,9 @@ from agent_control_models.observability import (
 )
 from pydantic import BaseModel, Field
 
+# Type alias for time range literals
+TimeRange = Literal["1m", "5m", "15m", "1h", "24h", "7d", "30d", "180d", "365d"]
+
 
 class StatsResult(BaseModel):
     """Result of a stats query.
@@ -76,16 +79,19 @@ TIME_RANGE_MAP: dict[str, timedelta] = {
     "1h": timedelta(hours=1),
     "24h": timedelta(hours=24),
     "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+    "180d": timedelta(days=180),
+    "365d": timedelta(days=365),
 }
 
 
-def parse_time_range(time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d"]) -> timedelta:
+def parse_time_range(time_range: TimeRange) -> timedelta:
     """Convert time range string to timedelta."""
     return TIME_RANGE_MAP[time_range]
 
 
 # Bucket size mapping for time-series data
-# Aims for 6-28 data points per time range for clean charts
+# Aims for 6-30 data points per time range for clean charts
 BUCKET_SIZE_MAP: dict[str, timedelta] = {
     "1m": timedelta(seconds=10),   # 6 buckets
     "5m": timedelta(seconds=30),   # 10 buckets
@@ -93,10 +99,13 @@ BUCKET_SIZE_MAP: dict[str, timedelta] = {
     "1h": timedelta(minutes=5),    # 12 buckets
     "24h": timedelta(hours=1),     # 24 buckets
     "7d": timedelta(hours=6),      # 28 buckets
+    "30d": timedelta(days=1),      # 30 buckets
+    "180d": timedelta(days=7),     # ~26 buckets
+    "365d": timedelta(days=30),    # ~12 buckets
 }
 
 
-def get_bucket_size(time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d"]) -> timedelta:
+def get_bucket_size(time_range: TimeRange) -> timedelta:
     """Get bucket size for a time range."""
     return BUCKET_SIZE_MAP[time_range]
 

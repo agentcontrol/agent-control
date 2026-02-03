@@ -30,7 +30,12 @@ from fastapi import APIRouter, Depends, Request
 
 from ..auth import require_api_key
 from ..observability.ingest.base import EventIngestor
-from ..observability.store.base import EventStore, get_bucket_size, parse_time_range
+from ..observability.store.base import (
+    EventStore,
+    TimeRange,
+    get_bucket_size,
+    parse_time_range,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +161,7 @@ async def query_events(
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats(
     agent_uuid: UUID,
-    time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d"] = "5m",
+    time_range: TimeRange = "5m",
     include_timeseries: bool = False,
     store: EventStore = Depends(get_event_store),
 ) -> StatsResponse:
@@ -168,7 +173,7 @@ async def get_stats(
 
     Args:
         agent_uuid: Agent to get stats for
-        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d)
+        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
         include_timeseries: Include time-series data points for trend visualization
         store: Event store (injected)
 
@@ -205,7 +210,7 @@ async def get_stats(
 async def get_control_stats(
     control_id: int,
     agent_uuid: UUID,
-    time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d"] = "5m",
+    time_range: TimeRange = "5m",
     include_timeseries: bool = False,
     store: EventStore = Depends(get_event_store),
 ) -> ControlStatsResponse:
@@ -217,7 +222,7 @@ async def get_control_stats(
     Args:
         control_id: Control ID to get stats for
         agent_uuid: Agent to get stats for
-        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d)
+        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
         include_timeseries: Include time-series data points for trend visualization
         store: Event store (injected)
 

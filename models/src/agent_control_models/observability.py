@@ -380,12 +380,12 @@ class StatsRequest(BaseModel):
 
     Attributes:
         agent_uuid: Agent to get stats for
-        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d)
+        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
         include_timeseries: Whether to include time-series data points
     """
 
     agent_uuid: UUID = Field(..., description="Agent UUID")
-    time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d"] = Field(
+    time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d", "30d", "180d", "365d"] = Field(
         default="5m", description="Time range"
     )
     include_timeseries: bool = Field(

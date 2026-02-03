@@ -358,7 +358,7 @@ GET /api/v1/observability/stats?agent_uuid=<uuid>&time_range=<range>&include_tim
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_uuid` | UUID | Yes | Agent to get stats for |
-| `time_range` | string | No | Time range: `1m`, `5m`, `15m`, `1h`, `24h`, `7d` (default: `5m`) |
+| `time_range` | string | No | Time range: `1m`, `5m`, `15m`, `1h`, `24h`, `7d`, `30d`, `180d`, `365d` (default: `5m`) |
 | `include_timeseries` | boolean | No | Include time-series data for trend visualization (default: `false`) |
 
 **Time-Series Bucket Sizes:**
@@ -373,6 +373,9 @@ When `include_timeseries=true`, data is bucketed automatically based on the time
 | `1h` | 5 minutes | ~12 |
 | `24h` | 1 hour | ~24 |
 | `7d` | 6 hours | ~28 |
+| `30d` | 1 day | ~30 |
+| `180d` | 7 days | ~26 |
+| `365d` | 30 days | ~12 |
 
 **Example Request:**
 ```bash
@@ -523,7 +526,7 @@ GET /api/v1/observability/stats/controls/{control_id}?agent_uuid=<uuid>&time_ran
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_uuid` | UUID | Yes | Agent to get stats for |
-| `time_range` | string | No | Time range: `1m`, `5m`, `15m`, `1h`, `24h`, `7d` (default: `5m`) |
+| `time_range` | string | No | Time range: `1m`, `5m`, `15m`, `1h`, `24h`, `7d`, `30d`, `180d`, `365d` (default: `5m`) |
 | `include_timeseries` | boolean | No | Include time-series data for trend visualization (default: `false`) |
 
 **Example Request:**
