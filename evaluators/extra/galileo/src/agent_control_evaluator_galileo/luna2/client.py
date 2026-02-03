@@ -207,16 +207,16 @@ class GalileoProtectClient:
         Raises:
             ValueError: If no API key is provided or found in environment.
         """
-        self.api_key = api_key or os.getenv("GALILEO_API_KEY")
-        self.console_url = (
-            console_url or os.getenv("GALILEO_CONSOLE_URL") or "https://console.galileo.ai"
-        )
-
-        if not self.api_key:
+        resolved_api_key = api_key or os.getenv("GALILEO_API_KEY")
+        if not resolved_api_key:
             raise ValueError(
                 "GALILEO_API_KEY is required. "
                 "Set it as an environment variable or pass it to the constructor."
             )
+        self.api_key: str = resolved_api_key
+        self.console_url = (
+            console_url or os.getenv("GALILEO_CONSOLE_URL") or "https://console.galileo.ai"
+        )
 
         # Derive API base URL from console URL
         # console.galileo.ai -> api.galileo.ai
