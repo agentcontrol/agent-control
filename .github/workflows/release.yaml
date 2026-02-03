@@ -7,6 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
       id-token: write
 
     steps:
@@ -69,3 +70,11 @@ jobs:
             models/dist/*
             sdks/python/dist/*
             server/dist/*
+
+      - name: Trigger Docker publish
+        if: steps.release.outputs.released == 'true' && secrets.GALILEO_AUTOMATION_GITHUB_TOKEN == ''
+        uses: peter-evans/workflow-dispatch@v3
+        with:
+          token: ${{ github.token }}
+          workflow: docker-publish.yml
+          ref: ${{ steps.release.outputs.tag }}
