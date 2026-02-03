@@ -49,10 +49,16 @@ pnpm fetch-api-types  # regenerate API types from server (must be running on :80
 - `core/page-components/` — actual page UI logic lives here
 - `core/layouts/` — app shell, sidebar navigation
 
-### Evaluator forms (`core/page-components/agent-detail/edit-control/evaluators/`)
+### Evaluator forms (`core/evaluators/`)
 - Each evaluator type has its own folder: `json/`, `sql/`, `regex/`, `list/`, `luna2/`
 - Each folder exports: `form.tsx` (React component), `types.ts` (form types), `index.ts` (re-exports)
 - Registry in `evaluators/index.ts` maps evaluator names to form components
+
+### Form guidelines (control definition + evaluator forms)
+- **Always use the input's `label` prop** — never render a separate `<Text>` above the input as the label. Use Mantine's built-in `label` so required asterisks and layout are consistent.
+- **Label with tooltip**: Use `LabelWithTooltip` from `@/core/components/label-with-tooltip` when a field needs an (i) icon that shows help text on hover. Pass `label={<LabelWithTooltip label="Field name" tooltip="Help text..." />}` and, for inputs that support it, `labelProps={labelPropsInline}` so the label renders inline.
+- **Required fields**: Use the input's `required` prop (e.g. Select, TextInput) so Mantine renders the red asterisk. Use `labelPropsInline` from the same module when you need the label inline.
+- Applies to: control definition form (`edit-control/control-definition-form.tsx`) and all evaluator forms (`core/evaluators/*/form.tsx`).
 
 ### Reusable components (`core/components/`)
 - Create reusable components that encapsulate common patterns and logic
@@ -96,9 +102,9 @@ export function SearchInput({
 ## Common changes
 
 ### Add a new evaluator form
-1. Create folder in `core/page-components/agent-detail/edit-control/evaluators/<name>/`
+1. Create folder in `core/evaluators/<name>/`
 2. Add `types.ts` with form field types
-3. Add `form.tsx` with the form component (use Mantine form components)
+3. Add `form.tsx` with the form component — use Mantine form components with `label` prop and `LabelWithTooltip` from `@/core/components/label-with-tooltip` for fields that need a tooltip (see Form guidelines above)
 4. Add `index.ts` re-exporting form and types
 5. Register in `evaluators/index.ts`
 

@@ -3,7 +3,7 @@
 This package provides a simplified, interface-based design for observability:
 
 - **EventIngestor**: Entry point for events (direct or custom buffered processing)
-- **EventStore**: Storage backend (Postgres, in-memory for testing, or custom)
+- **EventStore**: Storage backend (Postgres or custom)
 
 The architecture is designed for flexibility:
 - Swap implementations via dependency injection
@@ -15,7 +15,6 @@ Example:
     from agent_control_server.observability import (
         DirectEventIngestor,
         PostgresEventStore,
-        MemoryEventStore,  # for testing
     )
 
     # Default setup
@@ -32,7 +31,6 @@ from .store import (
     EventQuery,
     EventQueryResult,
     EventStore,
-    MemoryEventStore,
     PostgresEventStore,
     StatsResult,
 )
@@ -49,5 +47,4 @@ __all__ = [
     "StatsResult",
     # Built-in implementations
     "PostgresEventStore",
-    "MemoryEventStore",
 ]

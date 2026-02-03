@@ -10,7 +10,7 @@ import type {
   ListAgentsResponse,
   ListControlsResponse,
 } from "@/core/api/types";
-import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-stats";
+import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-monitor";
 
 /**
  * Mock data for API responses
@@ -258,7 +258,19 @@ const evaluatorsResponse: EvaluatorsResponse = {
 const statsResponse: StatsResponse = {
   agent_uuid: "agent-1",
   time_range: "1h",
-  stats: [
+  totals: {
+    execution_count: 430,
+    match_count: 40,
+    non_match_count: 390,
+    error_count: 2,
+    action_counts: {
+      allow: 10,
+      deny: 25,
+      warn: 3,
+      log: 2,
+    },
+  },
+  controls: [
     {
       control_id: 1,
       control_name: "PII Detection",
@@ -302,27 +314,19 @@ const statsResponse: StatsResponse = {
       avg_duration_ms: 12,
     },
   ],
-  total_executions: 430,
-  total_matches: 40,
-  total_non_matches: 390,
-  total_errors: 2,
-  action_counts: {
-    allow: 10,
-    deny: 25,
-    warn: 3,
-    log: 2,
-  },
 };
 
 const emptyStatsResponse: StatsResponse = {
   agent_uuid: "agent-1",
   time_range: "1h",
-  stats: [],
-  total_executions: 0,
-  total_matches: 0,
-  total_non_matches: 0,
-  total_errors: 0,
-  action_counts: {},
+  totals: {
+    execution_count: 0,
+    match_count: 0,
+    non_match_count: 0,
+    error_count: 0,
+    action_counts: {},
+  },
+  controls: [],
 };
 
 /**
