@@ -34,7 +34,7 @@ Example error response:
 """
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import Field
@@ -42,7 +42,7 @@ from pydantic import Field
 from .base import BaseModel
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """
     Standardized error codes following OPA-style semantic naming.
 
@@ -87,7 +87,7 @@ class ErrorCode(str, Enum):
     EVALUATION_FAILED = "EVALUATION_FAILED"
 
 
-class ErrorReason(str, Enum):
+class ErrorReason(StrEnum):
     """
     Kubernetes-style reason codes for error categorization.
 

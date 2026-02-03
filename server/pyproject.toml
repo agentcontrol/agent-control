@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-server"
-version = "3.0.0"
+version = "4.0.0"
 description = "Server for Agent Control - manage and evaluate controls for AI agents"
 requires-python = ">=3.12"
 # Note: agent-control-models, agent-control-engine, and agent-control-evaluators are bundled at build time

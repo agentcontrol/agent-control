@@ -2,6 +2,107 @@
 
 <!-- version list -->
 
+## v4.0.0 (2026-02-03)
+
+### Bug Fixes
+
+- Add tab level route ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- Close all modals on success ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- Limit height of tables ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- **ci**: Fix release ([#11](https://github.com/agentcontrol/agent-control/pull/11),
+  [`9dd3dd7`](https://github.com/agentcontrol/agent-control/commit/9dd3dd795227f1d1db62e5ce2e8b336fe1c909f1))
+
+- **models**: Update StatsRequest to match split API endpoints
+  ([#6](https://github.com/agentcontrol/agent-control/pull/6),
+  [`a0fa597`](https://github.com/agentcontrol/agent-control/commit/a0fa5977bdba2080612ac43320de3e786748e865))
+
+- **sdk**: Enforce UUID agent IDs ([#9](https://github.com/agentcontrol/agent-control/pull/9),
+  [`5ccdbd0`](https://github.com/agentcontrol/agent-control/commit/5ccdbd04c73b50e86362ca3e4204cb0e84fa1b5c))
+
+- **tests**: Avoid init agent UUID conflicts
+  ([#9](https://github.com/agentcontrol/agent-control/pull/9),
+  [`5ccdbd0`](https://github.com/agentcontrol/agent-control/commit/5ccdbd04c73b50e86362ca3e4204cb0e84fa1b5c))
+
+### Chores
+
+- Control name error rendering ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- Fix tests ([#4](https://github.com/agentcontrol/agent-control/pull/4),
+  [`dda9f70`](https://github.com/agentcontrol/agent-control/commit/dda9f70eb7b6e2bfa991ed71b270251ab51d3c9d))
+
+- Folder structure cleanup and update tests
+  ([#4](https://github.com/agentcontrol/agent-control/pull/4),
+  [`dda9f70`](https://github.com/agentcontrol/agent-control/commit/dda9f70eb7b6e2bfa991ed71b270251ab51d3c9d))
+
+- Initial set of fixes for monitoring ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- Observability minor fixes, code refactoring
+  ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- Remove scrollarea for sticky header to work.
+  ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- Return agent name and id with list of controls
+  ([#4](https://github.com/agentcontrol/agent-control/pull/4),
+  [`dda9f70`](https://github.com/agentcontrol/agent-control/commit/dda9f70eb7b6e2bfa991ed71b270251ab51d3c9d))
+
+- **tests**: Remove obsolete MemoryEventStore tests
+  ([#6](https://github.com/agentcontrol/agent-control/pull/6),
+  [`a0fa597`](https://github.com/agentcontrol/agent-control/commit/a0fa5977bdba2080612ac43320de3e786748e865))
+
+- **ui**: UI fixes ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+### Features
+
+- Basic setup for evaluator store flow ([#4](https://github.com/agentcontrol/agent-control/pull/4),
+  [`dda9f70`](https://github.com/agentcontrol/agent-control/commit/dda9f70eb7b6e2bfa991ed71b270251ab51d3c9d))
+
+- Inital set of ui fixes ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- Initial setup to support qp in modals + update tests
+  ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- Observability ui updated ([#7](https://github.com/agentcontrol/agent-control/pull/7),
+  [`8e40b57`](https://github.com/agentcontrol/agent-control/commit/8e40b570f97fd9f91a25c57491eec1e0a35f3efd))
+
+- Render controls in the control store, update ui and flow changes
+  ([#4](https://github.com/agentcontrol/agent-control/pull/4),
+  [`dda9f70`](https://github.com/agentcontrol/agent-control/commit/dda9f70eb7b6e2bfa991ed71b270251ab51d3c9d))
+
+- Search driven via backend, redirections and make it sync with query param
+  ([#4](https://github.com/agentcontrol/agent-control/pull/4),
+  [`dda9f70`](https://github.com/agentcontrol/agent-control/commit/dda9f70eb7b6e2bfa991ed71b270251ab51d3c9d))
+
+- **server**: Add extended time ranges (30d, 180d, 365d)
+  ([#6](https://github.com/agentcontrol/agent-control/pull/6),
+  [`a0fa597`](https://github.com/agentcontrol/agent-control/commit/a0fa5977bdba2080612ac43320de3e786748e865))
+
+- **server**: Add time-series stats and split API endpoints
+  ([#6](https://github.com/agentcontrol/agent-control/pull/6),
+  [`a0fa597`](https://github.com/agentcontrol/agent-control/commit/a0fa5977bdba2080612ac43320de3e786748e865))
+
+- **ui**: Control Store Flow Updated ([#4](https://github.com/agentcontrol/agent-control/pull/4),
+  [`dda9f70`](https://github.com/agentcontrol/agent-control/commit/dda9f70eb7b6e2bfa991ed71b270251ab51d3c9d))
+
+### Testing
+
+- **sdk**: Add UUID validation coverage ([#9](https://github.com/agentcontrol/agent-control/pull/9),
+  [`5ccdbd0`](https://github.com/agentcontrol/agent-control/commit/5ccdbd04c73b50e86362ca3e4204cb0e84fa1b5c))
+
+
 ## v3.0.0 (2026-01-30)
 
 ### Bug Fixes
