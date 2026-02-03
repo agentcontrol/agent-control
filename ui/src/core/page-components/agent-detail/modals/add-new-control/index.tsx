@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import type { EvaluatorInfo } from "@/core/api/types";
+import { MODAL_NAMES, SUBMODAL_NAMES } from "@/core/constants/modal-routes";
 import { useAgent } from "@/core/hooks/query-hooks/use-agent";
 import { useEvaluators } from "@/core/hooks/query-hooks/use-evaluators";
 import { useModalRoute } from "@/core/hooks/use-modal-route";
@@ -68,7 +69,7 @@ export function AddNewControlModal({
   const agentName = agent?.agent?.agent_name ?? agentId;
 
   // Derive submodal open state from URL
-  const editModalOpened = submodal === "create";
+  const editModalOpened = submodal === SUBMODAL_NAMES.CREATE;
 
   // Find selected evaluator from URL or state
   const selectedEvaluator = useMemo(() => {
@@ -82,7 +83,7 @@ export function AddNewControlModal({
   }, [evaluator, evaluatorsData]);
 
   const handleAddClick = (evaluator: EvaluatorWithId) => {
-    openModal("control-store", { submodal: "create", evaluator: evaluator.id });
+    openModal(MODAL_NAMES.CONTROL_STORE, { submodal: SUBMODAL_NAMES.CREATE, evaluator: evaluator.id });
   };
 
   const handleEditModalClose = () => {

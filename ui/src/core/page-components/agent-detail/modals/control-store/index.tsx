@@ -23,6 +23,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { api } from "@/core/api/client";
 import type { AgentRef, ControlDefinition, ControlSummary } from "@/core/api/types";
 import { SearchInput } from "@/core/components/search-input";
+import { MODAL_NAMES, SUBMODAL_NAMES } from "@/core/constants/modal-routes";
 import { useControlsInfinite } from "@/core/hooks/query-hooks/use-controls-infinite";
 import { useInfiniteScroll } from "@/core/hooks/use-infinite-scroll";
 import { useModalRoute } from "@/core/hooks/use-modal-route";
@@ -59,9 +60,9 @@ export function ControlStoreModal({
   const [loadingControlId, setLoadingControlId] = useState<number | null>(null);
   
   // Derive submodal open state from URL
-  const editModalOpened = submodal === "edit";
+  const editModalOpened = submodal === SUBMODAL_NAMES.EDIT;
   // AddNewControlModal should be open when submodal is "add-new" OR "create" (create is nested inside add-new)
-  const addNewModalOpened = submodal === "add-new" || submodal === "create";
+  const addNewModalOpened = submodal === SUBMODAL_NAMES.ADD_NEW || submodal === SUBMODAL_NAMES.CREATE;
 
   // Clear search query param when modal closes
   useEffect(() => {
@@ -159,7 +160,7 @@ export function ControlStoreModal({
   }, [editModalOpened, selectedControl]);
 
   const handleCopyControl = async (control: ControlSummary) => {
-    openModal("control-store", { submodal: "edit", controlId: control.id.toString() });
+    openModal(MODAL_NAMES.CONTROL_STORE, { submodal: SUBMODAL_NAMES.EDIT, controlId: control.id.toString() });
   };
 
   const handleEditModalClose = () => {
@@ -335,7 +336,7 @@ export function ControlStoreModal({
               <Button
                 variant="filled"
                 size="sm"
-                onClick={() => openModal("control-store", { submodal: "add-new" })}
+                onClick={() => openModal(MODAL_NAMES.CONTROL_STORE, { submodal: SUBMODAL_NAMES.ADD_NEW })}
                 data-testid="footer-new-control-button"
               >
                 Create Control

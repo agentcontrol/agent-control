@@ -1,6 +1,8 @@
 import { useRouter } from "next/router";
 import { useCallback, useMemo } from "react";
 
+import { SUBMODAL_NAMES } from "@/core/constants/modal-routes";
+
 /**
  * Hook to manage modal state via URL query parameters
  * 
@@ -62,20 +64,25 @@ export function useModalRoute() {
   }, [router]);
 
   const closeSubmodal = useCallback(() => {
-    const { submodal: currentSubmodal, evaluator: _evaluator, controlId: _controlId, ...rest } = router.query;
+    // Extract and discard submodal-related params, keep the rest
+    const { submodal: currentSubmodal, evaluator, controlId, ...rest } = router.query;
+    // Silence unused vars - we're destructuring to remove them
+    void evaluator;
+    void controlId;
     
     // If closing from "create", go back to "add-new" instead of closing everything
-    if (currentSubmodal === "create") {
+    // This allows the user to select a different evaluator
+    if (currentSubmodal === SUBMODAL_NAMES.CREATE) {
       router.push(
         {
           pathname: router.pathname,
-          query: { ...rest, modal: router.query.modal, submodal: "add-new" },
+          query: { ...rest, modal: router.query.modal, submodal: SUBMODAL_NAMES.ADD_NEW },
         },
         undefined,
         { shallow: true }
       );
     } else {
-      // Otherwise, remove all submodal params
+      // Otherwise, remove all submodal params (closes back to parent modal)
       router.push(
         {
           pathname: router.pathname,
