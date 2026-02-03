@@ -37,6 +37,7 @@ Usage:
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version as get_version
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from uuid import UUID
 
@@ -177,9 +178,117 @@ except ImportError:
 _current_agent: Agent | None = None
 _control_engine = None
 _client: AgentControlClient | None = None
-_server_controls: list | None = None
+_server_controls: list[dict[str, Any]] | None = None
+_server_url: str | None = None
+_api_key: str | None = None
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+def get_server_controls() -> list[dict[str, Any]] | None:
+    """Get the cached server controls.
+
+    Returns the controls that were fetched during init() or the last
+    refresh_controls() call. Returns None if no controls are cached.
+
+    Returns:
+        List of control dicts or None if not initialized.
+
+    Example:
+        controls = agent_control.get_server_controls()
+        if controls:
+            print(f"Loaded {len(controls)} controls")
+            for c in controls:
+                print(f"  - {c['name']} (execution: {c['control'].get('execution', 'server')})")
+    """
+    return _server_controls
+
+
+async def refresh_controls_async() -> list[dict[str, Any]] | None:
+    """Refresh controls from the server asynchronously.
+
+    Fetches the latest controls from the server and updates the cache.
+    Use this when you've made changes to controls in the UI or API
+    and want the SDK to pick them up without restarting.
+
+    Returns:
+        List of control dicts or None if fetch failed.
+
+    Example:
+        # After updating a control in the UI
+        controls = await agent_control.refresh_controls_async()
+        print(f"Refreshed {len(controls)} controls")
+    """
+    global _server_controls
+
+    if _current_agent is None:
+        raise RuntimeError("Agent not initialized. Call agent_control.init() first.")
+
+    if _server_url is None:
+        raise RuntimeError("Server URL not set. Call agent_control.init() first.")
+
+    async with AgentControlClient(base_url=_server_url, api_key=_api_key) as client:
+        response = await agents.register_agent(
+            client,
+            _current_agent,
+            steps=[]
+        )
+        _server_controls = response.get('controls', [])
+        logger.info("Refreshed %d control(s) from server", len(_server_controls or []))
+        return _server_controls
+
+
+def refresh_controls() -> list[dict[str, Any]] | None:
+    """Refresh controls from the server synchronously.
+
+    Fetches the latest controls from the server and updates the cache.
+    Use this when you've made changes to controls in the UI or API
+    and want the SDK to pick them up without restarting.
+
+    Returns:
+        List of control dicts or None if fetch failed.
+
+    Example:
+        # After updating a control in the UI
+        controls = agent_control.refresh_controls()
+        print(f"Refreshed {len(controls)} controls")
+    """
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+        # We're in an async context - run in thread
+        import threading
+
+        result_container: list[list[dict[str, Any]] | None] = [None]
+        exception_container: list[Exception | None] = [None]
+
+        def run_in_thread() -> None:
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                result_container[0] = new_loop.run_until_complete(refresh_controls_async())
+            except Exception as e:
+                exception_container[0] = e
+            finally:
+                new_loop.close()
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join(timeout=10)
+
+        if exception_container[0]:
+            raise exception_container[0]
+        return result_container[0]
+
+    except RuntimeError:
+        # No running event loop - we're in a sync context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(refresh_controls_async())
+        finally:
+            loop.close()
 
 
 # ============================================================================
@@ -259,7 +368,7 @@ def init(
     Environment Variables:
         AGENT_CONTROL_URL: Server URL (default: http://localhost:8000)
     """
-    global _current_agent, _control_engine, _client, _server_controls
+    global _current_agent, _control_engine, _client, _server_controls, _server_url, _api_key
 
     if not agent_id:
         raise ValueError(
@@ -295,6 +404,7 @@ def init(
 
     # Get server URL (ensure it's always a string)
     _server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    _api_key = api_key
 
     # Register with server and fetch controls
     server_controls = None
@@ -907,6 +1017,11 @@ __all__ = [
     "init",
     "current_agent",
 
+    # Control sync
+    "get_server_controls",
+    "refresh_controls",
+    "refresh_controls_async",
+
     # SDK Logging
     "get_logger",
 
@@ -982,4 +1097,8 @@ __all__ = [
     "EvaluatorConfig",
 ]
 
-__version__ = "0.1.0"
+try:
+    __version__ = get_version("agent-control-sdk")
+except PackageNotFoundError:
+    # Package not installed (e.g., running from source without install)
+    __version__ = "0.0.0.dev"

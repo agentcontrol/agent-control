@@ -1,7 +1,7 @@
 [project]
-name = "agent-control-crewai-example"
+name = "agent-control-trip-planner-example"
 version = "0.1.0"
-description = "CrewAI content moderation example with Agent Control"
+description = "CrewAI Trip Planner example with Agent Control protection"
 requires-python = ">=3.12"
 dependencies = [
     "agent-control-sdk>=3.0.0,<4.0.0",

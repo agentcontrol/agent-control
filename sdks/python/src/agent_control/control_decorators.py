@@ -186,8 +186,16 @@ async def _evaluate(
     server_url: str,
     trace_id: str | None = None,
     span_id: str | None = None,
+    controls: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Call server evaluation endpoint asynchronously."""
+    """Call evaluation with support for local (SDK) and server execution.
+
+    If controls are provided, uses check_evaluation_with_local() which:
+    - Evaluates execution="sdk" controls locally in the SDK
+    - Sends execution="server" controls to the server
+
+    If no controls provided, falls back to server-only evaluation.
+    """
     # Build headers with trace/span IDs for distributed tracing
     headers = {}
     if trace_id:
@@ -196,6 +204,79 @@ async def _evaluate(
         headers["X-Span-Id"] = span_id
 
     async with AgentControlClient(base_url=server_url) as client:
+        # If we have controls, use local evaluation which handles both SDK and server controls
+        if controls is not None:
+            try:
+                from agent_control.evaluation import check_evaluation_with_local
+                from uuid import UUID
+
+                # Build Step object for evaluation
+                try:
+                    from agent_control_models import Step
+                    step_obj = Step(**step)
+                except ImportError:
+                    step_obj = step  # type: ignore
+
+                result = await check_evaluation_with_local(
+                    client=client,
+                    agent_uuid=UUID(agent_uuid),
+                    step=step_obj,
+                    stage=stage,  # type: ignore
+                    controls=controls,
+                )
+
+                # Convert result to dict format expected by process_result
+                return {
+                    "is_safe": result.is_safe,
+                    "confidence": result.confidence,
+                    "reason": result.reason,
+                    "matches": [
+                        {
+                            "control_id": m.control_id,
+                            "control_name": m.control_name,
+                            "action": m.action,
+                            "result": {
+                                "matched": m.result.matched,
+                                "confidence": m.result.confidence,
+                                "message": m.result.message,
+                                "error": m.result.error,
+                                "metadata": m.result.metadata,
+                            },
+                            "control_execution_id": m.control_execution_id,
+                        }
+                        for m in (result.matches or [])
+                    ] if result.matches else None,
+                    "errors": [
+                        {
+                            "control_id": e.control_id,
+                            "control_name": e.control_name,
+                            "action": e.action,
+                            "result": {
+                                "matched": e.result.matched,
+                                "confidence": e.result.confidence,
+                                "message": e.result.message,
+                                "error": e.result.error,
+                                "metadata": e.result.metadata,
+                            },
+                            "control_execution_id": e.control_execution_id,
+                        }
+                        for e in (result.errors or [])
+                    ] if result.errors else None,
+                    "non_matches": None,  # check_evaluation_with_local doesn't return non_matches
+                }
+            except ImportError:
+                logger.warning(
+                    "Local evaluation not available (missing agent_control_engine). "
+                    "Falling back to server-only evaluation. "
+                    "Controls with execution='sdk' will be skipped."
+                )
+            except Exception as e:
+                logger.warning(
+                    "Local evaluation failed: %s. Falling back to server-only evaluation.",
+                    e,
+                )
+
+        # Fallback: server-only evaluation
         response = await client.http_client.post(
             "/api/v1/evaluation",
             json={
@@ -206,8 +287,8 @@ async def _evaluate(
             headers=headers,
         )
         response.raise_for_status()
-        result: dict[str, Any] = response.json()
-        return result
+        result_dict: dict[str, Any] = response.json()
+        return result_dict
 
 
 def _extract_input_from_args(func: Callable, args: tuple, kwargs: dict) -> str:
@@ -376,6 +457,15 @@ def _log_single_control(
     )
 
 
+def _get_server_controls() -> list[dict[str, Any]] | None:
+    """Get the cached server controls from agent_control module."""
+    try:
+        import agent_control
+        return agent_control.get_server_controls()
+    except Exception:
+        return None
+
+
 async def _execute_with_control(
     func: Callable,
     args: tuple,
@@ -388,6 +478,10 @@ async def _execute_with_control(
     This function is always called in an async context (either directly with await
     for async functions, or inside asyncio.run() for sync functions), so it can
     always use await _evaluate() directly.
+
+    Uses cached controls from init() to support both SDK-side and server-side
+    evaluation. Controls with execution="sdk" are evaluated locally, while
+    execution="server" controls are sent to the server.
 
     Args:
         func: The wrapped function to execute
@@ -410,6 +504,9 @@ async def _execute_with_control(
         if is_async:
             return await func(*args, **kwargs)
         return func(*args, **kwargs)
+
+    # Get cached controls for local evaluation support
+    controls = _get_server_controls()
 
     # Get trace context: inherit trace_id if set, always generate new span_id
     # This allows multiple @control() calls to share the same trace but have unique spans
@@ -438,7 +535,8 @@ async def _execute_with_control(
         try:
             result = await _evaluate(
                 ctx.agent_uuid, ctx.pre_payload(), "pre",
-                ctx.server_url, ctx.trace_id, ctx.span_id
+                ctx.server_url, ctx.trace_id, ctx.span_id,
+                controls=controls,
             )
             ctx.process_result(result, "pre")
         except ControlViolationError:
@@ -460,7 +558,8 @@ async def _execute_with_control(
         try:
             result = await _evaluate(
                 ctx.agent_uuid, ctx.post_payload(output), "post",
-                ctx.server_url, ctx.trace_id, ctx.span_id
+                ctx.server_url, ctx.trace_id, ctx.span_id,
+                controls=controls,
             )
             ctx.process_result(result, "post")
         except ControlViolationError:
