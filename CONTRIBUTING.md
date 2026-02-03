@@ -412,6 +412,11 @@ Update `version` in respective `pyproject.toml` files:
 - `engine/pyproject.toml`
 - `evaluators/pyproject.toml`
 
+### Release Tags
+
+Release tags must be prefixed with `v` (e.g., `v4.0.0`). The Docker publish workflow
+only triggers on tags matching `v*`, so tags like `4.0.0` will not publish images.
+
 ---
 
 ## Git Workflow
