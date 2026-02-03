@@ -43,7 +43,6 @@ from uuid import UUID
 import httpx
 
 from . import agents, controls, evaluation, evaluators, policies
-from .validation import ensure_uuid
 
 # Import client and operations modules
 from .client import AgentControlClient
@@ -72,6 +71,7 @@ from .tracing import (
     is_otel_available,
     with_trace,
 )
+from .validation import ensure_uuid
 
 # Module logger
 logger = get_logger(__name__)
