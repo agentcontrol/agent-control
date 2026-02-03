@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 
 interface UseQueryParamOptions {
   /** Default value when param is not in URL */
@@ -28,50 +28,36 @@ export function useQueryParam(
   const { defaultValue = "", shallow = true } = options;
   const router = useRouter();
 
-  const [value, setValueState] = useState(defaultValue);
+  // Derive value directly from router.query (no local state needed)
+  const value = useMemo(() => {
+    if (!router.isReady) return defaultValue;
+    const urlValue = router.query[key];
+    return typeof urlValue === "string" ? urlValue : defaultValue;
+  }, [router.isReady, router.query, key, defaultValue]);
 
-  const readValueFromLocation = useCallback(() => {
-    if (typeof window === "undefined") return defaultValue;
-    const searchParams = new URLSearchParams(window.location.search);
-    return searchParams.get(key) ?? defaultValue;
-  }, [key, defaultValue]);
-
-  const updateUrl = useCallback(
-    (newValue: string) => {
-      if (typeof window === "undefined") return;
-
-      const url = new URL(window.location.href);
-      if (newValue) {
-        url.searchParams.set(key, newValue);
-      } else {
-        url.searchParams.delete(key);
-      }
-
-      const nextPath = `${url.pathname}${url.search}${url.hash}`;
-      window.history.replaceState(window.history.state, "", nextPath);
-
-      if (router.isReady) {
-        void router.replace(nextPath, undefined, { shallow });
-      }
-    },
-    [router, key, shallow]
-  );
+  // Track if we're currently updating to prevent loops
+  const isUpdatingRef = useRef(false);
 
   // Update URL when value changes
   const setValue = useCallback(
     (newValue: string) => {
-      setValueState(newValue);
-      updateUrl(newValue);
-    },
-    [updateUrl]
-  );
+      if (!router.isReady || isUpdatingRef.current) return;
 
-  useEffect(() => {
-    const nextValue = readValueFromLocation();
-    if (nextValue !== value) {
-      setValueState(nextValue);
-    }
-  }, [readValueFromLocation, router.asPath, value]);
+      isUpdatingRef.current = true;
+
+      const query = { ...router.query };
+      if (newValue) {
+        query[key] = newValue;
+      } else {
+        delete query[key];
+      }
+
+      router.replace({ pathname: router.pathname, query }, undefined, { shallow }).finally(() => {
+        isUpdatingRef.current = false;
+      });
+    },
+    [router, key, shallow]
+  );
 
   return [value, setValue];
 }

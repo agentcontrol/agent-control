@@ -1,5 +1,6 @@
 import {
   Anchor,
+  Box,
   Divider,
   Grid,
   Group,
@@ -11,6 +12,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
+import { modals } from "@mantine/modals";
 import { Button } from "@rungalileo/jupiter-ds";
 import { IconExternalLink } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -32,7 +34,7 @@ import type {
 } from "./types";
 import { applyApiErrorsToForms } from "./utils";
 
-const EVALUATOR_CONFIG_HEIGHT = 400;
+const EVALUATOR_CONFIG_HEIGHT = 450;
 
 export interface EditControlContentProps {
   /** The control to edit/create template */
@@ -92,6 +94,7 @@ export const EditControlContent = ({
       stages: ["post"],
       step_names: "",
       step_name_regex: "",
+      step_name_mode: "names",
       selector_path: "*",
       action_decision: "deny",
       execution: "server",
@@ -191,13 +194,18 @@ export const EditControlContent = ({
   useEffect(() => {
     if (control && evaluator) {
       const scope = control.control.scope ?? {};
+      const stepNamesValue = (scope.step_names ?? []).join(", ");
+      const stepRegexValue = scope.step_name_regex ?? "";
+      const stepNameMode =
+        stepRegexValue && !stepNamesValue ? "regex" : "names";
       definitionForm.setValues({
         name: control.name,
         enabled: control.control.enabled,
         step_types: scope.step_types ?? [],
         stages: scope.stages ?? [],
-        step_names: (scope.step_names ?? []).join(", "),
-        step_name_regex: scope.step_name_regex ?? "",
+        step_names: stepNamesValue,
+        step_name_regex: stepRegexValue,
+        step_name_mode: stepNameMode,
         selector_path: control.control.selector.path ?? "*",
         action_decision: control.control.action.decision,
         execution: control.control.execution ?? "server",
@@ -243,6 +251,7 @@ export const EditControlContent = ({
       .map((value) => value.trim())
       .filter(Boolean);
     const stepNameRegex = values.step_name_regex.trim();
+    const isRegexMode = values.step_name_mode === "regex";
 
     const definition = {
       ...control.control,
@@ -250,8 +259,8 @@ export const EditControlContent = ({
       execution: values.execution,
       scope: {
         step_types: stepTypes.length > 0 ? stepTypes : undefined,
-        step_names: stepNames.length > 0 ? stepNames : undefined,
-        step_name_regex: stepNameRegex || undefined,
+        step_names: !isRegexMode && stepNames.length > 0 ? stepNames : undefined,
+        step_name_regex: isRegexMode ? stepNameRegex || undefined : undefined,
         stages: values.stages.length > 0 ? values.stages : undefined,
       },
       selector: { ...control.control.selector, path: values.selector_path },
@@ -259,182 +268,221 @@ export const EditControlContent = ({
       evaluator: { ...control.control.evaluator, config: finalConfig },
     };
 
-    try {
-      if (isCreating) {
-        // Create mode: use addControlToAgent
-        await addControlToAgent.mutateAsync({
-          agentId,
-          controlName: values.name,
-          definition,
-        });
-      } else {
-        // Edit mode: use updateControl
-        await updateControl.mutateAsync({
-          agentId,
-          controlId: control.id,
-          definition,
-        });
-      }
-      onSuccess?.();
-      onClose();
-    } catch (error) {
-      if (isApiError(error)) {
-        const problemDetail = error.problemDetail;
-        setApiError(problemDetail);
-
-        if (problemDetail.errors) {
-          if (configViewMode === "form") {
-            // Apply field-level errors to forms, capture unmapped ones
-            const unmapped = applyApiErrorsToForms(
-              problemDetail.errors,
-              definitionForm,
-              evaluatorForm
-            );
-            setUnmappedErrors(
-              unmapped.map((e) => ({ field: e.field, message: e.message }))
-            );
-          } else {
-            // In JSON view, show all errors in the main alert
-            setUnmappedErrors(
-              problemDetail.errors.map((e) => ({
-                field: e.field,
-                message: e.message,
-              }))
-            );
-          }
+    const runSave = async () => {
+      try {
+        if (isCreating) {
+          await addControlToAgent.mutateAsync({
+            agentId,
+            controlName: values.name,
+            definition,
+          });
+        } else {
+          await updateControl.mutateAsync({
+            agentId,
+            controlId: control.id,
+            definition,
+          });
         }
-      } else {
-        // Unexpected error
-        setApiError({
-          type: "about:blank",
-          title: "Error",
-          status: 500,
-          detail:
-            error instanceof Error
-              ? error.message
-              : "An unexpected error occurred",
-          error_code: "UNKNOWN_ERROR",
-          reason: "Unknown",
-        });
+        // Call onSuccess first (which should close all modals)
+        // Only call onClose if onSuccess is not provided (for backward compatibility)
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          onClose();
+        }
+      } catch (error) {
+        if (isApiError(error)) {
+          const problemDetail = error.problemDetail;
+          
+          // Check if this is a "name already exists" error (409 Conflict or similar)
+          // and map it to the name field if it's not already in the errors array
+          const isNameExistsError = 
+            (problemDetail.status === 409 || 
+             problemDetail.error_code === "CONTROL_NAME_EXISTS" ||
+             (problemDetail.detail?.toLowerCase().includes("name") && 
+              problemDetail.detail?.toLowerCase().includes("already exists"))) &&
+            !problemDetail.errors?.some(e => e.field === "name");
+
+          if (isNameExistsError) {
+            // Set error directly on the name field
+            definitionForm.setFieldError("name", problemDetail.detail || "Control name already exists");
+            // Don't show it in the alert since it's now on the field
+            setApiError(null);
+            setUnmappedErrors([]);
+          } else {
+            setApiError(problemDetail);
+
+            if (problemDetail.errors) {
+              if (configViewMode === "form") {
+                const unmapped = applyApiErrorsToForms(
+                  problemDetail.errors,
+                  definitionForm,
+                  evaluatorForm
+                );
+                setUnmappedErrors(
+                  unmapped.map((e) => ({ field: e.field, message: e.message }))
+                );
+              } else {
+                setUnmappedErrors(
+                  problemDetail.errors.map((e) => ({
+                    field: e.field,
+                    message: e.message,
+                  }))
+                );
+              }
+            }
+          }
+        } else {
+          setApiError({
+            type: "about:blank",
+            title: "Error",
+            status: 500,
+            detail:
+              error instanceof Error
+                ? error.message
+                : "An unexpected error occurred",
+            error_code: "UNKNOWN_ERROR",
+            reason: "Unknown",
+          });
+        }
       }
-    }
+    };
+
+    modals.openConfirmModal({
+      title: isCreating ? "Create control?" : "Save changes?",
+      children: (
+        <Text size="sm" c="dimmed">
+          {isCreating
+            ? "This will add the new control to the agent."
+            : "This will update the control configuration."}
+        </Text>
+      ),
+      labels: { confirm: "Confirm", cancel: "Cancel" },
+      confirmProps: {
+        variant: "filled",
+        color: "violet",
+        size: "sm",
+        className: "confirm-modal-confirm-btn",
+      },
+      cancelProps: { variant: "default", size: "sm" },
+      onConfirm: runSave,
+    });
   };
 
   // Render the evaluator's form component
   const FormComponent = evaluator?.FormComponent;
 
   return (
-    <>
+    <Box>
       <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
-      <TextInput
-        label="Control name"
-        placeholder="Enter control name"
-        mb="lg"
-        size="sm"
-        {...definitionForm.getInputProps("name")}
-      />
+        <TextInput
+          label="Control name"
+          placeholder="Enter control name"
+          mb="lg"
+          size="sm"
+          required
+          {...definitionForm.getInputProps("name")}
+        />
 
-      <Grid gutter="xl">
-        <Grid.Col span={4}>
-          <ScrollArea h={EVALUATOR_CONFIG_HEIGHT + 50} type="auto">
+        <Grid gutter="xl">
+          <Grid.Col span={4}>
             <ControlDefinitionForm form={definitionForm} />
-          </ScrollArea>
-        </Grid.Col>
+          </Grid.Col>
 
-        <Grid.Col span={8}>
-          <Stack gap="md">
-            <Group justify="space-between" align="center">
-              <Group gap="xs">
-                <Text size="sm" fw={500}>
-                  Evaluator configuration
-                </Text>
-                <Anchor
-                  href="https://github.com/galileo/agent-control/blob/main/README.md"
-                  target="_blank"
+          <Grid.Col span={8}>
+            <Stack gap="md">
+              <Group justify="space-between" align="center">
+                <Group gap="xs">
+                  <Text size="sm" fw={500}>
+                    Evaluator configuration
+                  </Text>
+                  <Anchor
+                    href="https://github.com/agentcontrol/agent-control/blob/main/README.md"
+                    target="_blank"
+                    size="xs"
+                    c="blue"
+                    underline="never"
+                  >
+                    <Group gap={2} align="center">
+                      Docs <IconExternalLink size={12} />
+                    </Group>
+                  </Anchor>
+                </Group>
+                <SegmentedControl
+                  value={configViewMode}
+                  onChange={handleConfigViewModeChange}
+                  data={[
+                    { value: "form", label: "Form" },
+                    { value: "json", label: "JSON" },
+                  ]}
                   size="xs"
-                  c="blue"
-                  underline="never"
-                >
-                  <Group gap={2} align="center">
-                    Docs <IconExternalLink size={12} />
-                  </Group>
-                </Anchor>
-              </Group>
-              <SegmentedControl
-                value={configViewMode}
-                onChange={handleConfigViewModeChange}
-                data={[
-                  { value: "form", label: "Form" },
-                  { value: "json", label: "JSON" },
-                ]}
-                size="xs"
-              />
-            </Group>
-
-            <Paper withBorder radius="sm" p={16}>
-              {configViewMode === "form" && (
-                <ScrollArea h={EVALUATOR_CONFIG_HEIGHT} type="auto">
-                  {FormComponent ? (
-                    <FormComponent form={evaluatorForm} />
-                  ) : (
-                    <Text c="dimmed" ta="center" py="xl">
-                      No form available for this evaluator. Use JSON view to
-                      configure.
-                    </Text>
-                  )}
-                </ScrollArea>
-              )}
-
-              {configViewMode === "json" && (
-                <EvaluatorJsonView
-                  config={getEvaluatorConfig()}
-                  onChange={syncJsonToForm}
-                  jsonViewMode={jsonViewMode}
-                  onJsonViewModeChange={handleJsonViewModeChange}
-                  rawJsonText={rawJsonText}
-                  onRawJsonTextChange={handleRawJsonChange}
-                  rawJsonError={rawJsonError}
-                  height={EVALUATOR_CONFIG_HEIGHT}
                 />
-              )}
-            </Paper>
-          </Stack>
-        </Grid.Col>
-      </Grid>
+              </Group>
 
-      {/* API Error Alert */}
-      {apiError && (
-        <>
-          <Divider mt="xl" mb="md" />
-          <ApiErrorAlert
-            error={apiError}
-            unmappedErrors={unmappedErrors}
-            onClose={() => setApiError(null)}
-          />
-        </>
-      )}
+              <Paper withBorder radius="sm" p={16}>
+                {configViewMode === "form" && (
+                      <ScrollArea h={EVALUATOR_CONFIG_HEIGHT} type="auto">
+                        {FormComponent ? (
+                          <FormComponent form={evaluatorForm} />
+                        ) : (
+                          <Text c="dimmed" ta="center" py="xl">
+                            No form available for this evaluator. Use JSON view to
+                            configure.
+                          </Text>
+                        )}
+                      </ScrollArea>
+                    )}
 
-      <Divider mt="xl" mb="md" />
+                {configViewMode === "json" && (
+                      <EvaluatorJsonView
+                        config={getEvaluatorConfig()}
+                        onChange={syncJsonToForm}
+                        jsonViewMode={jsonViewMode}
+                        onJsonViewModeChange={handleJsonViewModeChange}
+                        rawJsonText={rawJsonText}
+                        onRawJsonTextChange={handleRawJsonChange}
+                        rawJsonError={rawJsonError}
+                        height={EVALUATOR_CONFIG_HEIGHT}
+                      />
+                    )}
+              </Paper>
+            </Stack>
+          </Grid.Col>
+            </Grid>
 
-      <Group justify="flex-end">
-        <Button
-          variant="outline"
-          onClick={onClose}
-          type="button"
-          data-testid="cancel-button"
-        >
-          Cancel
-        </Button>
-        <Button
-          variant="filled"
-          type="submit"
-          data-testid="save-button"
-          loading={isPending}
-        >
-          {isCreating ? "Create" : "Save"}
-        </Button>
-      </Group>
+        {/* API Error Alert */}
+        {apiError && (
+          <>
+            <Divider mt="xl" mb="md" />
+            <ApiErrorAlert
+              error={apiError}
+              unmappedErrors={unmappedErrors}
+              onClose={() => setApiError(null)}
+            />
+          </>
+        )}
+
+        {/* Buttons */}
+        <Divider mt="xl" mb="md" />
+        <Group justify="flex-end">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            type="button"
+            data-testid="cancel-button"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="filled"
+            type="submit"
+            data-testid="save-button"
+            loading={isPending}
+          >
+            Save
+          </Button>
+        </Group>
       </form>
-    </>
+    </Box>
   );
 };

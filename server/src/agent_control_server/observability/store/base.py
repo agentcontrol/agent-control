@@ -5,7 +5,6 @@ The interface supports raw event storage and query-time aggregation (no pre-aggr
 
 Built-in implementations:
     - PostgresEventStore: Postgres with JSONB storage and query-time aggregation
-    - MemoryEventStore: In-memory store for testing
 
 Custom implementations users can create:
     - ClickhouseEventStore: Native JSON + columnar = fast aggregation
@@ -23,8 +22,12 @@ from agent_control_models.observability import (
     ControlStats,
     EventQueryRequest,
     EventQueryResponse,
+    TimeseriesBucket,
 )
 from pydantic import BaseModel, Field
+
+# Type alias for time range literals
+TimeRange = Literal["1m", "5m", "15m", "1h", "24h", "7d", "30d", "180d", "365d"]
 
 
 class StatsResult(BaseModel):
@@ -45,6 +48,7 @@ class StatsResult(BaseModel):
         total_non_matches: Total non-matches across all controls (evaluator didn't match)
         total_errors: Total errors across all controls (evaluation failed)
         action_counts: Breakdown of actions for matched executions
+        timeseries: Optional time-series data points
     """
 
     stats: list[ControlStats] = Field(default_factory=list, description="Per-control statistics")
@@ -55,6 +59,10 @@ class StatsResult(BaseModel):
     action_counts: dict[str, int] = Field(
         default_factory=dict,
         description="Action breakdown for matches: {allow, deny, warn, log}",
+    )
+    timeseries: list[TimeseriesBucket] | None = Field(
+        default=None,
+        description="Time-series data points (only when include_timeseries=true)",
     )
 
 
@@ -71,12 +79,35 @@ TIME_RANGE_MAP: dict[str, timedelta] = {
     "1h": timedelta(hours=1),
     "24h": timedelta(hours=24),
     "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+    "180d": timedelta(days=180),
+    "365d": timedelta(days=365),
 }
 
 
-def parse_time_range(time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d"]) -> timedelta:
+def parse_time_range(time_range: TimeRange) -> timedelta:
     """Convert time range string to timedelta."""
     return TIME_RANGE_MAP[time_range]
+
+
+# Bucket size mapping for time-series data
+# Aims for 6-30 data points per time range for clean charts
+BUCKET_SIZE_MAP: dict[str, timedelta] = {
+    "1m": timedelta(seconds=10),   # 6 buckets
+    "5m": timedelta(seconds=30),   # 10 buckets
+    "15m": timedelta(minutes=1),   # 15 buckets
+    "1h": timedelta(minutes=5),    # 12 buckets
+    "24h": timedelta(hours=1),     # 24 buckets
+    "7d": timedelta(hours=6),      # 28 buckets
+    "30d": timedelta(days=1),      # 30 buckets
+    "180d": timedelta(days=7),     # ~26 buckets
+    "365d": timedelta(days=30),    # ~12 buckets
+}
+
+
+def get_bucket_size(time_range: TimeRange) -> timedelta:
+    """Get bucket size for a time range."""
+    return BUCKET_SIZE_MAP[time_range]
 
 
 class EventStore(ABC):
@@ -106,6 +137,8 @@ class EventStore(ABC):
         agent_uuid: UUID,
         time_range: timedelta,
         control_id: int | None = None,
+        include_timeseries: bool = False,
+        bucket_size: timedelta | None = None,
     ) -> StatsResult:
         """Query stats (aggregated at query time from raw events).
 
@@ -113,6 +146,8 @@ class EventStore(ABC):
             agent_uuid: UUID of the agent to query stats for
             time_range: Time range to aggregate over (from now)
             control_id: Optional control ID to filter by
+            include_timeseries: Whether to include time-series data
+            bucket_size: Bucket size for time-series (required if include_timeseries=True)
 
         Returns:
             StatsResult with per-control and total statistics

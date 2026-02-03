@@ -21,6 +21,7 @@ export interface paths {
          *     Args:
          *         cursor: Optional cursor for pagination (UUID of last agent from previous page)
          *         limit: Pagination limit (default 20, max 100)
+         *         name: Optional name filter (case-insensitive partial match)
          *         db: Database session (injected)
          *
          *     Returns:
@@ -783,21 +784,53 @@ export interface paths {
         };
         /**
          * Get Stats
-         * @description Get aggregated control execution statistics.
+         * @description Get agent-level aggregated statistics.
          *
-         *     Statistics are computed at query time from raw events. This is fast
-         *     enough for most use cases (sub-200ms for 1-hour windows).
+         *     Returns totals across all controls plus per-control breakdown.
+         *     Use /stats/controls/{control_id} for single control stats.
          *
          *     Args:
          *         agent_uuid: Agent to get stats for
-         *         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d)
-         *         control_id: Optional filter by specific control
+         *         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
+         *         include_timeseries: Include time-series data points for trend visualization
          *         store: Event store (injected)
          *
          *     Returns:
-         *         StatsResponse with per-control statistics
+         *         StatsResponse with agent-level totals and per-control breakdown
          */
         get: operations["get_stats_api_v1_observability_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/stats/controls/{control_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Control Stats
+         * @description Get statistics for a single control.
+         *
+         *     Returns stats for the specified control with optional time-series.
+         *
+         *     Args:
+         *         control_id: Control ID to get stats for
+         *         agent_uuid: Agent to get stats for
+         *         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
+         *         include_timeseries: Include time-series data points for trend visualization
+         *         store: Event store (injected)
+         *
+         *     Returns:
+         *         ControlStatsResponse with control stats and optional timeseries
+         */
+        get: operations["get_control_stats_api_v1_observability_stats_controls__control_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -921,6 +954,22 @@ export interface components {
              * @description List of controls associated with the agent via its policy
              */
             controls: components["schemas"]["Control"][];
+        };
+        /**
+         * AgentRef
+         * @description Reference to an agent (for listing which agents use a control).
+         */
+        AgentRef: {
+            /**
+             * Agent Id
+             * @description Agent UUID
+             */
+            agent_id: string;
+            /**
+             * Agent Name
+             * @description Agent name
+             */
+            agent_name: string;
         };
         /**
          * AgentSummary
@@ -1479,6 +1528,44 @@ export interface components {
             avg_duration_ms?: number | null;
         };
         /**
+         * ControlStatsResponse
+         * @description Response model for control-level statistics.
+         *
+         *     Contains stats for a single control (with optional timeseries).
+         *
+         *     Attributes:
+         *         agent_uuid: Agent UUID
+         *         time_range: Time range used
+         *         control_id: Control ID
+         *         control_name: Control name
+         *         stats: Control statistics (includes timeseries when requested)
+         */
+        ControlStatsResponse: {
+            /**
+             * Agent Uuid
+             * Format: uuid
+             * @description Agent UUID
+             */
+            agent_uuid: string;
+            /**
+             * Time Range
+             * @description Time range used
+             */
+            time_range: string;
+            /**
+             * Control Id
+             * @description Control ID
+             */
+            control_id: number;
+            /**
+             * Control Name
+             * @description Control name
+             */
+            control_name: string;
+            /** @description Control statistics */
+            stats: components["schemas"]["StatsTotals"];
+        };
+        /**
          * ControlSummary
          * @description Summary of a control for list responses.
          */
@@ -1524,6 +1611,8 @@ export interface components {
              * @description Control tags
              */
             tags?: string[];
+            /** @description Agent using this control */
+            used_by_agent?: components["schemas"]["AgentRef"] | null;
         };
         /** CreateControlRequest */
         CreateControlRequest: {
@@ -2422,22 +2511,15 @@ export interface components {
         };
         /**
          * StatsResponse
-         * @description Response model for aggregated statistics.
+         * @description Response model for agent-level aggregated statistics.
          *
-         *     Invariant: total_executions = total_matches + total_non_matches + total_errors
-         *
-         *     Matches have actions (allow, deny, warn, log) tracked in action_counts.
-         *     sum(action_counts.values()) == total_matches
+         *     Contains agent-level totals (with optional timeseries) and per-control breakdown.
          *
          *     Attributes:
          *         agent_uuid: Agent UUID
          *         time_range: Time range used
-         *         stats: List of per-control statistics
-         *         total_executions: Total executions across all controls
-         *         total_matches: Total matches across all controls (evaluator matched)
-         *         total_non_matches: Total non-matches across all controls (evaluator didn't match)
-         *         total_errors: Total errors across all controls (evaluation failed)
-         *         action_counts: Breakdown of actions for matched executions
+         *         totals: Agent-level aggregate statistics (includes timeseries)
+         *         controls: Per-control breakdown for discovery and detail
          */
         StatsResponse: {
             /**
@@ -2451,34 +2533,55 @@ export interface components {
              * @description Time range used
              */
             time_range: string;
+            /** @description Agent-level aggregate statistics */
+            totals: components["schemas"]["StatsTotals"];
             /**
-             * Stats
-             * @description Per-control statistics
+             * Controls
+             * @description Per-control breakdown
              */
-            stats: components["schemas"]["ControlStats"][];
+            controls: components["schemas"]["ControlStats"][];
+        };
+        /**
+         * StatsTotals
+         * @description Agent-level aggregate statistics.
+         *
+         *     Invariant: execution_count = match_count + non_match_count + error_count
+         *
+         *     Matches have actions (allow, deny, warn, log) tracked in action_counts.
+         *     sum(action_counts.values()) == match_count
+         *
+         *     Attributes:
+         *         execution_count: Total executions across all controls
+         *         match_count: Total matches across all controls (evaluator matched)
+         *         non_match_count: Total non-matches across all controls (evaluator didn't match)
+         *         error_count: Total errors across all controls (evaluation failed)
+         *         action_counts: Breakdown of actions for matched executions
+         *         timeseries: Time-series data points (only when include_timeseries=true)
+         */
+        StatsTotals: {
             /**
-             * Total Executions
-             * @description Total executions across all controls
+             * Execution Count
+             * @description Total executions
              */
-            total_executions: number;
+            execution_count: number;
             /**
-             * Total Matches
-             * @description Total matches across all controls
+             * Match Count
+             * @description Total matches
              * @default 0
              */
-            total_matches: number;
+            match_count: number;
             /**
-             * Total Non Matches
-             * @description Total non-matches across all controls
+             * Non Match Count
+             * @description Total non-matches
              * @default 0
              */
-            total_non_matches: number;
+            non_match_count: number;
             /**
-             * Total Errors
-             * @description Total errors across all controls
+             * Error Count
+             * @description Total errors
              * @default 0
              */
-            total_errors: number;
+            error_count: number;
             /**
              * Action Counts
              * @description Action breakdown for matches: {allow, deny, warn, log}
@@ -2486,6 +2589,11 @@ export interface components {
             action_counts?: {
                 [key: string]: number;
             };
+            /**
+             * Timeseries
+             * @description Time-series data points (only when include_timeseries=true)
+             */
+            timeseries?: components["schemas"]["TimeseriesBucket"][] | null;
         };
         /**
          * Step
@@ -2605,6 +2713,67 @@ export interface components {
             } | null;
         };
         /**
+         * TimeseriesBucket
+         * @description Single data point in a time-series.
+         *
+         *     Represents aggregated metrics for a single time bucket.
+         *
+         *     Attributes:
+         *         timestamp: Start time of the bucket (UTC, always timezone-aware)
+         *         execution_count: Total executions in this bucket
+         *         match_count: Number of matches in this bucket
+         *         non_match_count: Number of non-matches in this bucket
+         *         error_count: Number of errors in this bucket
+         *         action_counts: Breakdown of actions for matched executions
+         *         avg_confidence: Average confidence score (None if no executions)
+         *         avg_duration_ms: Average execution duration in milliseconds (None if no data)
+         */
+        TimeseriesBucket: {
+            /**
+             * Timestamp
+             * Format: date-time
+             * @description Start time of the bucket (UTC)
+             */
+            timestamp: string;
+            /**
+             * Execution Count
+             * @description Total executions in bucket
+             */
+            execution_count: number;
+            /**
+             * Match Count
+             * @description Matches in bucket
+             */
+            match_count: number;
+            /**
+             * Non Match Count
+             * @description Non-matches in bucket
+             */
+            non_match_count: number;
+            /**
+             * Error Count
+             * @description Errors in bucket
+             */
+            error_count: number;
+            /**
+             * Action Counts
+             * @description Action breakdown: {allow, deny, warn, log}
+             */
+            action_counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Avg Confidence
+             * @description Average confidence score
+             */
+            avg_confidence?: number | null;
+            /**
+             * Avg Duration Ms
+             * @description Average duration (ms)
+             */
+            avg_duration_ms?: number | null;
+        };
+        /**
          * UpdateEvaluatorConfigRequest
          * @description Request to replace an evaluator config template.
          */
@@ -2655,6 +2824,7 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                name?: string | null;
             };
             header?: never;
             path?: never;
@@ -3639,8 +3809,8 @@ export interface operations {
         parameters: {
             query: {
                 agent_uuid: string;
-                time_range?: "1m" | "5m" | "15m" | "1h" | "24h" | "7d";
-                control_id?: number | null;
+                time_range?: "1m" | "5m" | "15m" | "1h" | "24h" | "7d" | "30d" | "180d" | "365d";
+                include_timeseries?: boolean;
             };
             header?: never;
             path?: never;
@@ -3655,6 +3825,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_control_stats_api_v1_observability_stats_controls__control_id__get: {
+        parameters: {
+            query: {
+                agent_uuid: string;
+                time_range?: "1m" | "5m" | "15m" | "1h" | "24h" | "7d" | "30d" | "180d" | "365d";
+                include_timeseries?: boolean;
+            };
+            header?: never;
+            path: {
+                control_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlStatsResponse"];
                 };
             };
             /** @description Validation Error */

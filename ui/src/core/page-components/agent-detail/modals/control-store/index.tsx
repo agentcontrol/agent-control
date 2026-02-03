@@ -6,7 +6,6 @@ import {
   Loader,
   Modal,
   Paper,
-  ScrollArea,
   Stack,
   Text,
   Title,
@@ -18,7 +17,7 @@ import { Button, Table } from "@rungalileo/jupiter-ds";
 import { IconAlertCircle, IconX } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ErrorBoundary } from "@/components/error-boundary";
 import { api } from "@/core/api/client";
@@ -26,10 +25,12 @@ import type { AgentRef, ControlDefinition, ControlSummary } from "@/core/api/typ
 import { SearchInput } from "@/core/components/search-input";
 import { useControlsInfinite } from "@/core/hooks/query-hooks/use-controls-infinite";
 import { useInfiniteScroll } from "@/core/hooks/use-infinite-scroll";
+import { useModalRoute } from "@/core/hooks/use-modal-route";
 import { useQueryParam } from "@/core/hooks/use-query-param";
 
 import { AddNewControlModal } from "../add-new-control";
 import { EditControlContent } from "../edit-control/edit-control-content";
+import { sanitizeControlNamePart } from "../edit-control/utils";
 
 // Extended ControlSummary with used_by_agent (until API types are regenerated)
 type ControlSummaryWithAgent = ControlSummary & {
@@ -50,13 +51,17 @@ export function ControlStoreModal({
   // Get search value for debouncing (SearchInput handles the UI and URL sync)
   const [searchQuery, setSearchQuery] = useQueryParam("store_q");
   const [debouncedSearch] = useDebouncedValue(searchQuery, 300);
+  const { submodal, evaluator: _evaluator, controlId, openModal, closeSubmodal, closeModal } = useModalRoute();
   const [selectedControl, setSelectedControl] = useState<{
     summary: ControlSummary;
     definition: ControlDefinition;
   } | null>(null);
   const [loadingControlId, setLoadingControlId] = useState<number | null>(null);
-  const [editModalOpened, setEditModalOpened] = useState(false);
-  const [addNewModalOpened, setAddNewModalOpened] = useState(false);
+  
+  // Derive submodal open state from URL
+  const editModalOpened = submodal === "edit";
+  // AddNewControlModal should be open when submodal is "add-new" OR "create" (create is nested inside add-new)
+  const addNewModalOpened = submodal === "add-new" || submodal === "create";
 
   // Clear search query param when modal closes
   useEffect(() => {
@@ -84,50 +89,94 @@ export function ControlStoreModal({
     isFetchingNextPage,
     fetchNextPage,
   });
-
+  
   // Flatten paginated data
   const controls = useMemo(() => {
     return data?.pages.flatMap((page) => page.controls) ?? [];
   }, [data]);
-
-  const handleUseControl = async (control: ControlSummary) => {
-    setLoadingControlId(control.id);
-    try {
-      const { data: controlData, error: fetchError } = await api.controls.getData(control.id);
-      if (fetchError || !controlData) {
-        notifications.show({
-          title: "Error",
-          message: "Failed to load control configuration",
-          color: "red",
-        });
-        return;
+  
+  // Ref callback to attach to Table's scroll container when maxHeight is set
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
+  
+  // Attach scroll container ref to the Table's scroll container
+  useEffect(() => {
+    if (tableWrapperRef.current && controls.length > 0) {
+      // Find the scrollable container (the div with overflow: auto from Table's maxHeight)
+      // The Table component wraps content in a div with the "root" class when maxHeight is set
+      const scrollContainer = tableWrapperRef.current.querySelector('[class*="root"]') as HTMLElement;
+      if (scrollContainer) {
+        // Check if it's scrollable (has overflow: auto)
+        const computedStyle = window.getComputedStyle(scrollContainer);
+        if (computedStyle.overflow === 'auto' || computedStyle.overflowY === 'auto') {
+          (scrollContainerRef as React.MutableRefObject<HTMLElement | null>).current = scrollContainer;
+          
+          // Append sentinel inside the scroll container (after the table)
+          if (sentinelRef.current && sentinelRef.current.parentElement !== scrollContainer) {
+            scrollContainer.appendChild(sentinelRef.current);
+          }
+        }
       }
-      setSelectedControl({ summary: control, definition: controlData.data });
-      setEditModalOpened(true);
-    } finally {
-      setLoadingControlId(null);
     }
+  }, [controls.length, scrollContainerRef, sentinelRef]);
+
+  // Load control when controlId is in URL
+  useEffect(() => {
+    if (editModalOpened && controlId && !selectedControl) {
+      const loadControl = async () => {
+        const id = parseInt(controlId, 10);
+        if (isNaN(id)) return;
+        
+        setLoadingControlId(id);
+        try {
+          const { data: controlData, error: fetchError } = await api.controls.getData(id);
+          if (fetchError || !controlData?.data) {
+            notifications.show({
+              title: "Error",
+              message: "Failed to load control configuration",
+              color: "red",
+            });
+            return;
+          }
+          // Find the control summary from the list
+          const controlSummary = controls.find((c) => c.id === id);
+          if (controlSummary) {
+            setSelectedControl({ summary: controlSummary, definition: controlData.data });
+          }
+        } finally {
+          setLoadingControlId(null);
+        }
+      };
+      loadControl();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editModalOpened, controlId, selectedControl]);
+
+  // Clear selectedControl when edit modal closes
+  useEffect(() => {
+    if (!editModalOpened && selectedControl) {
+      setSelectedControl(null);
+    }
+  }, [editModalOpened, selectedControl]);
+
+  const handleCopyControl = async (control: ControlSummary) => {
+    openModal("control-store", { submodal: "edit", controlId: control.id.toString() });
   };
 
   const handleEditModalClose = () => {
-    setEditModalOpened(false);
-    setSelectedControl(null);
+    closeSubmodal();
   };
 
   const handleEditModalSuccess = () => {
-    handleEditModalClose();
-    onClose();
+    // Close all modals on successful create/edit
+    // Use closeModal to remove all modal query parameters from URL
+    closeModal();
   };
 
-  // Build a draft control for the edit modal with full evaluator config
+  // Build a draft control for the edit modal with full evaluator config (clone: append -copy to name)
   const draftControl = useMemo(() => {
     if (!selectedControl) return null;
     const { summary, definition } = selectedControl;
-    // Sanitize name to match pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]*$
-    // Replace spaces with hyphens, remove invalid characters, append -copy
-    const sanitizedName = summary.name
-      .replace(/\s+/g, "-") // spaces -> hyphens
-      .replace(/[^a-zA-Z0-9_-]/g, ""); // remove invalid chars
+    const sanitizedName = sanitizeControlNamePart(summary.name);
     return {
       id: 0,
       name: `${sanitizedName}-copy`,
@@ -144,6 +193,28 @@ export function ControlStoreModal({
   }, [selectedControl]);
 
   const columns: ColumnDef<ControlSummary>[] = [
+    {
+      id: "enabled",
+      header: "",
+      accessorKey: "enabled",
+      size: 40,
+      cell: ({ row }) => (
+        <Group justify="center">
+          <Tooltip label={row.original.enabled ? "Enabled" : "Disabled"}>
+            <Box
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                backgroundColor: row.original.enabled
+                  ? "var(--mantine-color-green-6)"
+                  : "var(--mantine-color-gray-5)",
+              }}
+            />
+          </Tooltip>
+        </Group>
+      ),
+    },
     {
       id: "name",
       header: "Name",
@@ -169,19 +240,8 @@ export function ControlStoreModal({
       ),
     },
     {
-      id: "enabled",
-      header: "Enabled",
-      accessorKey: "enabled",
-      size: 80,
-      cell: ({ row }) => (
-        <Text size="sm" c={row.original.enabled ? "green" : "dimmed"}>
-          {row.original.enabled ? "Yes" : "No"}
-        </Text>
-      ),
-    },
-    {
       id: "agent",
-      header: "Used by",
+      header: "Agent",
       size: 150,
       cell: ({ row }) => {
         const agent = (row.original as ControlSummaryWithAgent).used_by_agent;
@@ -189,8 +249,8 @@ export function ControlStoreModal({
         if (!agent) {
           return <Text size="sm" c="dimmed">—</Text>;
         }
-        // Link to agent detail page with control name filter
-        const href = `/agents/${agent.agent_id}?q=${encodeURIComponent(control.name)}`;
+        // Link to agent controls tab with control name filter
+        const href = `/agents/${agent.agent_id}/controls?q=${encodeURIComponent(control.name)}`;
         return (
           <Anchor
             component={Link}
@@ -216,11 +276,11 @@ export function ControlStoreModal({
           <Button
             variant="outline"
             size="sm"
-            data-testid="use-control-button"
+            data-testid="copy-control-button"
             loading={loadingControlId === row.original.id}
-            onClick={() => handleUseControl(row.original)}
+            onClick={() => handleCopyControl(row.original)}
           >
-            Use
+            Copy
           </Button>
         </Group>
       ),
@@ -228,53 +288,63 @@ export function ControlStoreModal({
   ];
 
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      size="xxl"
-      padding={0}
-      withCloseButton={false}
-      styles={{
-        body: {
-          padding: 0,
-          width: "900px",
-          height: "600px",
-        },
-      }}
-    >
-      <Box h="100%" style={{ display: "flex", flexDirection: "column" }}>
-        {/* Header */}
-        <Box p="md">
-          <Group justify="space-between" mb="xs">
-            <Title order={3} fw={600}>
-              Control store
-            </Title>
-            <Button
-              size="sm"
-              onClick={onClose}
-              data-testid="close-control-store-modal-button"
-            >
-              <IconX size={16} />
-            </Button>
-          </Group>
-          <Text size="sm" c="dimmed">
-            Browse existing controls or create a new one
-          </Text>
-        </Box>
-        <Divider />
+    <>
+      <Modal
+        opened={opened}
+        onClose={onClose}
+        size="xxl"
+        padding={0}
+        withCloseButton={false}
+        styles={{
+          body: {
+            padding: 0,
+            width: "900px",
+            height: "600px",
+          },
+        }}
+      >
+        <Box h="100%" style={{ display: "flex", flexDirection: "column" }}>
+          {/* Header */}
+          <Box p="md">
+            <Group justify="space-between" mb="xs">
+              <Title order={3} fw={600}>
+                Control store
+              </Title>
+              <Button
+                size="sm"
+                onClick={onClose}
+                data-testid="close-control-store-modal-button"
+              >
+                <IconX size={16} />
+              </Button>
+            </Group>
+            <Text size="sm" c="dimmed">
+              Browse existing controls or create a new one
+            </Text>
+          </Box>
+          <Divider />
 
-        {/* Search Bar */}
-        <Box px="md" pt="md" pb="sm">
-          <SearchInput
-            queryKey="store_q"
-            placeholder="Search controls..."
-            w={250}
-          />
-        </Box>
+          {/* Search Bar + Create Control */}
+          <Box px="md" pt="md" pb="sm">
+            <Group justify="space-between" align="flex-end">
+              <SearchInput
+                queryKey="store_q"
+                placeholder="Search controls..."
+                w={250}
+              />
+              <Button
+                variant="filled"
+                size="sm"
+                onClick={() => openModal("control-store", { submodal: "add-new" })}
+                data-testid="footer-new-control-button"
+              >
+                Create Control
+              </Button>
+            </Group>
+          </Box>
 
-        {/* Scrollable Table Content */}
-        <Box px="md" pb="md" style={{ flex: 1, minHeight: 0 }}>
-          <ScrollArea h="100%" type="auto" viewportRef={scrollContainerRef}>
+          {/* Scrollable Table Content */}
+          <Box px="md" pb="md" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             {isLoading ? (
               <Paper p="xl" ta="center" withBorder radius="sm">
                 <Loader size="sm" />
@@ -290,42 +360,32 @@ export function ControlStoreModal({
                 </Stack>
               </Paper>
             ) : controls.length > 0 ? (
-              <>
-                <Table columns={columns} data={controls} highlightOnHover />
-                {/* Load more sentinel for infinite scroll */}
+              <Box 
+                ref={tableWrapperRef}
+                style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+              >
+                <Table 
+                  columns={columns} 
+                  data={controls} 
+                  highlightOnHover 
+                  maxHeight="100%"
+                />
+                {/* Load more sentinel for infinite scroll - will be moved inside table's scroll container by useEffect */}
                 <div ref={sentinelRef} style={{ height: 1 }} />
                 {isFetchingNextPage && (
                   <Box py="md" ta="center">
                     <Loader size="sm" />
                   </Box>
                 )}
-              </>
+              </Box>
             ) : (
               <Paper p="xl" withBorder radius="sm" ta="center">
                 <Text c="dimmed">No controls found</Text>
               </Paper>
             )}
-          </ScrollArea>
+          </Box>
         </Box>
-
-        {/* Footer CTA */}
-        <Divider />
-        <Box p="md">
-          <Group justify="center" gap="xs">
-            <Text size="sm" c="dimmed">
-              Can&apos;t find what you&apos;re looking for?
-            </Text>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setAddNewModalOpened(true)}
-              data-testid="footer-new-control-button"
-            >
-              Create new control
-            </Button>
-          </Group>
-        </Box>
-      </Box>
+      </Modal>
 
       {/* Edit Control Modal */}
       <Modal
@@ -336,7 +396,7 @@ export function ControlStoreModal({
         keepMounted={false}
         styles={{
           title: { fontSize: "18px", fontWeight: 600 },
-          content: { maxWidth: "1200px", width: "90vw" },
+          content: { maxWidth: "1500px", width: "90vw" },
         }}
       >
         <ErrorBoundary variant="modal">
@@ -354,9 +414,9 @@ export function ControlStoreModal({
 
       <AddNewControlModal
         opened={addNewModalOpened}
-        onClose={() => setAddNewModalOpened(false)}
+        onClose={closeSubmodal}
         agentId={agentId}
       />
-    </Modal>
+    </>
   );
 }

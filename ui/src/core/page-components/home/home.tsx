@@ -1,9 +1,9 @@
 import {
   Alert,
+  Box,
   Center,
   Group,
   Loader,
-  ScrollArea,
   Stack,
   Text,
   Title,
@@ -43,7 +43,7 @@ const HomePage = () => {
   });
 
   // Infinite scroll setup
-  const { sentinelRef, scrollContainerRef } = useInfiniteScroll({
+  const { sentinelRef } = useInfiniteScroll({
     hasNextPage: hasNextPage ?? false,
     isFetchingNextPage,
     fetchNextPage,
@@ -106,7 +106,7 @@ const HomePage = () => {
       </Group>
 
       {/* Scrollable Table Container */}
-      <ScrollArea flex={1} pos='relative' mih={0} type='auto' viewportRef={scrollContainerRef}>
+      <Box style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         {isLoading ? (
           <Center h={400}>
             <Stack align='center' gap='md'>
@@ -130,6 +130,7 @@ const HomePage = () => {
               onRowClick={handleRowClick}
               highlightOnHover
               withColumnBorders
+              maxHeight='calc(100dvh - 270px)'
             />
 
             {/* Intersection observer trigger for infinite scroll */}
@@ -143,7 +144,7 @@ const HomePage = () => {
             )}
           </>
         )}
-      </ScrollArea>
+      </Box>
     </Stack>
   );
 };

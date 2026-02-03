@@ -360,7 +360,7 @@ class TestStatsRequest:
 
     def test_time_range_values(self):
         """Test valid time range values."""
-        for time_range in ["1m", "5m", "15m", "1h", "24h", "7d"]:
+        for time_range in ["1m", "5m", "15m", "1h", "24h", "7d", "30d", "180d", "365d"]:
             request = StatsRequest(
                 agent_uuid=uuid4(),
                 time_range=time_range,

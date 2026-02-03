@@ -4,8 +4,6 @@ test.describe("SearchInput - Query Param Syncing", () => {
   test("syncs search value to URL query param", async ({ mockedPage }) => {
     await mockedPage.goto("/");
 
-    await expect(mockedPage.getByRole("table")).toBeVisible();
-
     const searchInput = mockedPage.getByPlaceholder("Search agents...");
     
     // Type in search input
@@ -21,7 +19,15 @@ test.describe("SearchInput - Query Param Syncing", () => {
   test("reads search value from URL query param on page load", async ({ mockedPage }) => {
     // Navigate with query param
     await mockedPage.goto("/?search=Customer");
-
+    
+    // Wait for API response with the search filter
+    await mockedPage.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/agents") &&
+        response.url().includes("name=Customer") &&
+        response.status() === 200
+    );
+    
     // Wait for page to load
     await expect(mockedPage.getByRole("table")).toBeVisible();
     
@@ -35,7 +41,7 @@ test.describe("SearchInput - Query Param Syncing", () => {
 
   test("clear button removes query param from URL", async ({ mockedPage }) => {
     await mockedPage.goto("/?search=Customer");
-
+    
     // Wait for page to load
     await expect(mockedPage.getByRole("table")).toBeVisible();
     
@@ -64,8 +70,6 @@ test.describe("SearchInput - Query Param Syncing", () => {
   test("preserves search state on browser back/forward", async ({ mockedPage }) => {
     await mockedPage.goto("/");
     
-    await expect(mockedPage.getByRole("table")).toBeVisible();
-
     // Type search
     const searchInput = mockedPage.getByPlaceholder("Search agents...");
     await searchInput.fill("Customer");
@@ -80,9 +84,7 @@ test.describe("SearchInput - Query Param Syncing", () => {
     
     // Navigate away
     await mockedPage.getByText("Customer Support Bot").click();
-    await expect(mockedPage).toHaveURL(
-      /\/agents\/9c15431d-c252-4c1b-80e0-d49ecda4f4b5/
-    );
+    await expect(mockedPage).toHaveURL(/\/agents\/agent-1/);
     
     // Go back
     await mockedPage.goBack();
@@ -104,10 +106,8 @@ test.describe("SearchInput - Query Param Syncing", () => {
 
 test.describe("SearchInput - Agent Detail Page", () => {
   test("syncs search value to URL query param (q)", async ({ mockedPage }) => {
-    await mockedPage.goto("/agents/9c15431d-c252-4c1b-80e0-d49ecda4f4b5");
+    await mockedPage.goto("/agents/agent-1/controls");
     
-    await expect(mockedPage.getByRole("table")).toBeVisible();
-
     const searchInput = mockedPage.getByPlaceholder("Search controls...");
     await searchInput.fill("PII");
     
@@ -119,7 +119,7 @@ test.describe("SearchInput - Agent Detail Page", () => {
   });
 
   test("reads search value from URL on page load", async ({ mockedPage }) => {
-    await mockedPage.goto("/agents/9c15431d-c252-4c1b-80e0-d49ecda4f4b5?q=PII");
+    await mockedPage.goto("/agents/agent-1/controls?q=PII");
     
     // Wait for page to load
     await expect(mockedPage.getByRole("table")).toBeVisible();

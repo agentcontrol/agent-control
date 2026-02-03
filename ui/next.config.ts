@@ -4,6 +4,30 @@ const nextConfig: NextConfig = {
   pageExtensions: ['tsx', 'ts', 'jsx', 'js'],
   reactStrictMode: true,
   
+  // Transpile Jupiter DS package to handle CSS imports
+  transpilePackages: ['@rungalileo/jupiter-ds'],
+  
+  // Configure webpack to ignore CSS imports from Jupiter DS
+  // (we import the CSS manually in _app.tsx)
+  webpack: (config) => {
+    const webpack = require('webpack');
+    
+    // Replace CSS imports from Jupiter DS with empty module
+    config.plugins.push(
+      new webpack.NormalModuleReplacementPlugin(
+        /^@mantine\/dates\/styles\.css$/,
+        (resource: any) => {
+          // Only replace if imported from Jupiter DS
+          if (resource.context && resource.context.includes('@rungalileo/jupiter-ds')) {
+            resource.request = require.resolve('./empty-css-module.js');
+          }
+        }
+      )
+    );
+    
+    return config;
+  },
+  
   // Optimize for CI/test builds
   ...(process.env.CI && {
     // Disable source maps in CI (faster builds, not needed for tests)

@@ -380,55 +380,134 @@ class StatsRequest(BaseModel):
 
     Attributes:
         agent_uuid: Agent to get stats for
-        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d)
-        control_id: Optional specific control to filter by
+        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
+        include_timeseries: Whether to include time-series data points
     """
 
     agent_uuid: UUID = Field(..., description="Agent UUID")
-    time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d"] = Field(
+    time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d", "30d", "180d", "365d"] = Field(
         default="5m", description="Time range"
     )
-    control_id: int | None = Field(
-        default=None, description="Optional control ID filter"
+    include_timeseries: bool = Field(
+        default=False, description="Include time-series data points for trend visualization"
+    )
+
+
+class TimeseriesBucket(BaseModel):
+    """
+    Single data point in a time-series.
+
+    Represents aggregated metrics for a single time bucket.
+
+    Attributes:
+        timestamp: Start time of the bucket (UTC, always timezone-aware)
+        execution_count: Total executions in this bucket
+        match_count: Number of matches in this bucket
+        non_match_count: Number of non-matches in this bucket
+        error_count: Number of errors in this bucket
+        action_counts: Breakdown of actions for matched executions
+        avg_confidence: Average confidence score (None if no executions)
+        avg_duration_ms: Average execution duration in milliseconds (None if no data)
+    """
+
+    timestamp: datetime = Field(..., description="Start time of the bucket (UTC)")
+
+    @field_validator("timestamp")
+    @classmethod
+    def ensure_timezone_aware(cls, v: datetime) -> datetime:
+        """Ensure timestamp is timezone-aware (UTC).
+
+        Naive datetimes are assumed to be UTC and converted.
+        """
+        if v.tzinfo is None:
+            return v.replace(tzinfo=UTC)
+        return v
+
+    execution_count: int = Field(..., ge=0, description="Total executions in bucket")
+    match_count: int = Field(..., ge=0, description="Matches in bucket")
+    non_match_count: int = Field(..., ge=0, description="Non-matches in bucket")
+    error_count: int = Field(..., ge=0, description="Errors in bucket")
+    action_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Action breakdown: {allow, deny, warn, log}",
+    )
+    avg_confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Average confidence score"
+    )
+    avg_duration_ms: float | None = Field(
+        default=None, ge=0, description="Average duration (ms)"
+    )
+
+
+class StatsTotals(BaseModel):
+    """
+    Agent-level aggregate statistics.
+
+    Invariant: execution_count = match_count + non_match_count + error_count
+
+    Matches have actions (allow, deny, warn, log) tracked in action_counts.
+    sum(action_counts.values()) == match_count
+
+    Attributes:
+        execution_count: Total executions across all controls
+        match_count: Total matches across all controls (evaluator matched)
+        non_match_count: Total non-matches across all controls (evaluator didn't match)
+        error_count: Total errors across all controls (evaluation failed)
+        action_counts: Breakdown of actions for matched executions
+        timeseries: Time-series data points (only when include_timeseries=true)
+    """
+
+    execution_count: int = Field(..., ge=0, description="Total executions")
+    match_count: int = Field(default=0, ge=0, description="Total matches")
+    non_match_count: int = Field(default=0, ge=0, description="Total non-matches")
+    error_count: int = Field(default=0, ge=0, description="Total errors")
+    action_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Action breakdown for matches: {allow, deny, warn, log}",
+    )
+    timeseries: list[TimeseriesBucket] | None = Field(
+        default=None,
+        description="Time-series data points (only when include_timeseries=true)",
     )
 
 
 class StatsResponse(BaseModel):
     """
-    Response model for aggregated statistics.
+    Response model for agent-level aggregated statistics.
 
-    Invariant: total_executions = total_matches + total_non_matches + total_errors
-
-    Matches have actions (allow, deny, warn, log) tracked in action_counts.
-    sum(action_counts.values()) == total_matches
+    Contains agent-level totals (with optional timeseries) and per-control breakdown.
 
     Attributes:
         agent_uuid: Agent UUID
         time_range: Time range used
-        stats: List of per-control statistics
-        total_executions: Total executions across all controls
-        total_matches: Total matches across all controls (evaluator matched)
-        total_non_matches: Total non-matches across all controls (evaluator didn't match)
-        total_errors: Total errors across all controls (evaluation failed)
-        action_counts: Breakdown of actions for matched executions
+        totals: Agent-level aggregate statistics (includes timeseries)
+        controls: Per-control breakdown for discovery and detail
     """
 
     agent_uuid: UUID = Field(..., description="Agent UUID")
     time_range: str = Field(..., description="Time range used")
-    stats: list[ControlStats] = Field(..., description="Per-control statistics")
-    total_executions: int = Field(
-        ..., ge=0, description="Total executions across all controls"
+    totals: StatsTotals = Field(..., description="Agent-level aggregate statistics")
+    controls: list[ControlStats] = Field(
+        ..., description="Per-control breakdown"
     )
-    total_matches: int = Field(
-        default=0, ge=0, description="Total matches across all controls"
-    )
-    total_non_matches: int = Field(
-        default=0, ge=0, description="Total non-matches across all controls"
-    )
-    total_errors: int = Field(
-        default=0, ge=0, description="Total errors across all controls"
-    )
-    action_counts: dict[str, int] = Field(
-        default_factory=dict,
-        description="Action breakdown for matches: {allow, deny, warn, log}",
-    )
+
+
+class ControlStatsResponse(BaseModel):
+    """
+    Response model for control-level statistics.
+
+    Contains stats for a single control (with optional timeseries).
+
+    Attributes:
+        agent_uuid: Agent UUID
+        time_range: Time range used
+        control_id: Control ID
+        control_name: Control name
+        stats: Control statistics (includes timeseries when requested)
+    """
+
+    agent_uuid: UUID = Field(..., description="Agent UUID")
+    time_range: str = Field(..., description="Time range used")
+    control_id: int = Field(..., description="Control ID")
+    control_name: str = Field(..., description="Control name")
+    stats: StatsTotals = Field(..., description="Control statistics")

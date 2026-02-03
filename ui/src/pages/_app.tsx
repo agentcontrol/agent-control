@@ -1,5 +1,7 @@
 // Import Mantine styles
 import "@mantine/core/styles.css";
+import "@mantine/dates/styles.css";
+import "@mantine/charts/styles.css";
 // Import jupiter-ds styles
 import "@rungalileo/jupiter-ds/styles.css";
 // Import rungalileo icons styles
@@ -8,6 +10,8 @@ import "@rungalileo/icons/styles.css";
 import "@/styles/globals.css";
 
 import { MantineProvider } from "@mantine/core";
+import { DatesProvider } from "@mantine/dates";
+import { ModalsProvider } from "@mantine/modals";
 import { JupiterThemeProvider } from "@rungalileo/jupiter-ds";
 import type { AppProps } from "next/app";
 import Head from "next/head";
@@ -104,9 +108,13 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
       <ErrorBoundary variant="page">
         <QueryProvider>
           <MantineProvider defaultColorScheme="auto">
-            <JupiterThemeProvider>
-              {getLayout(<Component {...pageProps} />)}
-            </JupiterThemeProvider>
+            <DatesProvider settings={{ firstDayOfWeek: 0 }}>
+              <JupiterThemeProvider>
+                <ModalsProvider>
+                  {getLayout(<Component {...pageProps} />)}
+                </ModalsProvider>
+              </JupiterThemeProvider>
+            </DatesProvider>
           </MantineProvider>
         </QueryProvider>
       </ErrorBoundary>

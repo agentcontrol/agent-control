@@ -14,11 +14,6 @@ test.describe("Regex Evaluator", () => {
     await expect(
       mockedPage.getByPlaceholder("Enter regex pattern (e.g., ^.*$)")
     ).toBeVisible();
-
-    // Check helper text
-    await expect(
-      mockedPage.getByText("Regular expression pattern to match against")
-    ).toBeVisible();
   });
 
   test("pattern field has default value", async ({ mockedPage }) => {

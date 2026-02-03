@@ -138,3 +138,16 @@ export function applyApiErrorsToForms(
 
   return unmappedErrors;
 }
+
+/**
+ * Sanitize a string for use in a control name segment.
+ * Control names must match ^[a-zA-Z0-9][a-zA-Z0-9_-]*$
+ */
+export function sanitizeControlNamePart(s: string): string {
+  const sanitized = s
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .replace(/^[-_]+/, "");
+  return sanitized || "control";
+}
