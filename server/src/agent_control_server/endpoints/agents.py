@@ -306,6 +306,7 @@ async def init_agent(
     - If the agent name doesn't exist, creates a new agent
     - If the agent name exists with the same UUID, updates step schemas
     - If the agent name exists with a different UUID, returns 409 Conflict
+    - If the UUID exists with a different name, returns 409 Conflict (no renames)
 
     Step versioning: When step schemas change (input_schema or output_schema),
     a new version is created automatically.
@@ -348,6 +349,31 @@ async def init_agent(
 
     result = await db.execute(select(Agent).where(Agent.name == request.agent.agent_name))
     existing_by_name: Agent | None = result.scalars().first()
+
+    # If UUID exists with a different name, reject (no rename via initAgent)
+    if existing_by_uuid is not None and existing_by_uuid.name != request.agent.agent_name:
+        raise ConflictError(
+            error_code=ErrorCode.AGENT_NAME_CONFLICT,
+            detail=(
+                f"Agent ID '{request.agent.agent_id}' is already registered "
+                f"with name '{existing_by_uuid.name}'"
+            ),
+            resource="Agent",
+            resource_id=str(request.agent.agent_id),
+            hint="Use the existing agent name for this UUID or register a new UUID.",
+            errors=[
+                ValidationErrorItem(
+                    resource="Agent",
+                    field="agent_name",
+                    code="name_mismatch",
+                    message=(
+                        f"Agent ID '{request.agent.agent_id}' is already associated "
+                        f"with name '{existing_by_uuid.name}'"
+                    ),
+                    value=request.agent.agent_name,
+                )
+            ],
+        )
 
     # Use existing_by_uuid if found, otherwise existing_by_name
     existing = existing_by_uuid or existing_by_name
