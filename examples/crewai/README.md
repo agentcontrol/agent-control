@@ -35,55 +35,59 @@ Both systems work together: Agent Control provides non-negotiable security block
 - ✅ Works with existing CrewAI agent orchestration
 - ✅ Catches orchestration bypass where agent generates own responses with PII
 
+## Prerequisites
+
+Before running this example, ensure you have:
+
+- **Python 3.12+**
+- **uv** — Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **Docker** — For running PostgreSQL (required by Agent Control server)
+
 ## Installation
 
-### For External Users (PyPI)
+### 1. Install Monorepo Dependencies
 
-If you're using this example outside the monorepo:
-
-```bash
-# Create virtual environment
-cd examples/crewai
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-python -m pip install -e .
-```
-
-This will install all dependencies including `agent-control-sdk>=2.1.0` from PyPI.
-
-### For Local Development (Monorepo)
-
-If you're developing within the agent-control monorepo:
-
-**Option 1: Use installed local SDK (recommended)**
+From the monorepo root, install all workspace packages:
 
 ```bash
-# From monorepo root, activate your venv
-source .venv/bin/activate
-
-# Install local SDK in editable mode
-python -m pip install -e sdks/python
-
-# Navigate to example and install other dependencies
-cd examples/crewai
-python -m pip install crewai>=0.80.0 crewai-tools>=0.12.0 openai>=1.0.0 python-dotenv>=1.0.0 requests>=2.31.0
+cd /path/to/agent-control
+make sync
 ```
 
-**Option 2: Use uv with workspace (if configured)**
+This installs the Agent Control SDK and all workspace packages in editable mode.
+
+### 2. Install CrewAI Example Dependencies
+
+Navigate to the CrewAI example and install its specific dependencies:
 
 ```bash
 cd examples/crewai
 uv pip install -e .
 ```
 
-## Prerequisites
+This installs all dependencies from `pyproject.toml`:
+- `crewai>=0.80.0`
+- `crewai-tools>=0.12.0`
+- `openai>=1.0.0`
+- `python-dotenv>=1.0.0`
+- `requests>=2.31.0`
 
-### 1. Start the Agent Control Server
+The `agent-control-sdk` is already installed from the workspace.
+
+### 3. Set OpenAI API Key
+
+Create a `.env` file or export the environment variable:
 
 ```bash
-# From the repo root
+export OPENAI_API_KEY="your-key-here"
+```
+
+### 4. Start the Agent Control Server
+
+In a separate terminal, start the server from the monorepo root:
+
+```bash
+cd /path/to/agent-control
 make server-run
 ```
 
@@ -92,17 +96,12 @@ make server-run
 curl http://localhost:8000/health
 ```
 
-### 2. Set OpenAI API Key
+### 5. Setup Content Controls (One-Time)
+
+From the `examples/crewai` directory, run the setup script:
 
 ```bash
-export OPENAI_API_KEY="your-key-here"
-```
-
-### 3. Setup Content Controls (One-Time)
-
-```bash
-cd examples/crewai
-python setup_content_controls.py
+uv run python setup_content_controls.py
 ```
 
 This creates:
@@ -114,18 +113,10 @@ This creates:
 
 ## Running the Example
 
-Make sure you're in the `examples/crewai` directory:
+Make sure you're in the `examples/crewai` directory and run:
 
 ```bash
-cd examples/crewai
-
-# Run the example
-python content_agent_protection.py
-```
-
-Or if using uv:
-```bash
-uv run content_agent_protection.py
+uv run python content_agent_protection.py
 ```
 
 ### Expected Behavior
@@ -483,35 +474,36 @@ Return result or raise ControlViolationError
 
 ### "ModuleNotFoundError: No module named 'crewai'" or "agent_control"
 
-**Cause:** Dependencies not installed.
+**Cause:** Dependencies not installed or stale .venv.
 
 **Fix:**
 ```bash
-# Make sure you're in the crewai directory
+# Step 1: From monorepo root, clean and reinstall workspace packages
+cd /path/to/agent-control
+rm -rf .venv
+make sync
+
+# Step 2: Install CrewAI example dependencies
 cd examples/crewai
+uv pip install -e .
 
-# Activate your virtual environment if needed
-source .venv/bin/activate  # or source /path/to/monorepo/.venv/bin/activate
-
-# Install dependencies
-python -m pip install -e .
-
-# For monorepo development, also install local SDK
-python -m pip install -e ../../sdks/python
+# Step 3: Verify installation
+uv run python -c "import agent_control; import crewai; print('✓ All packages installed')"
 ```
 
-### "externally managed environment" error with pip
+### "ImportError: cannot import name 'discover_evaluators'"
 
-**Cause:** macOS Homebrew Python has protections against modifying system packages.
+**Cause:** Stale package installation in `.venv/lib/python3.13/site-packages` instead of editable workspace packages.
 
-**Fix:** Use a virtual environment:
+**Fix:**
 ```bash
-# Create and activate virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+# From monorepo root
+cd /path/to/agent-control
+rm -rf .venv
+uv sync
 
-# Now install works
-python -m pip install -e .
+# Verify engine is properly installed
+uv run python -c "from agent_control_engine import discover_evaluators; print('✓ Engine OK')"
 ```
 
 ### "event loop already running" Error
@@ -571,7 +563,7 @@ If the agent is not being blocked when requesting unauthorized data or including
 
 ```bash
 cd examples/crewai
-uv run setup_content_controls.py
+uv run python setup_content_controls.py
 ```
 
 You MUST run this BEFORE running `content_agent_protection.py`.
