@@ -33,13 +33,9 @@ test.describe("Home Page - Agents Overview", () => {
     const searchInput = mockedPage.getByPlaceholder("Search agents...");
     await searchInput.fill("Customer");
 
-    // Wait for debounced search (300ms) and API response
-    await mockedPage.waitForResponse(
-      (response) =>
-        response.url().includes("/api/v1/agents") &&
-        response.url().includes("name=Customer") &&
-        response.status() === 200
-    );
+    // Wait for debounced URL update (300ms)
+    await mockedPage.waitForTimeout(350);
+    await expect(mockedPage).toHaveURL(/.*\?search=Customer/);
 
     // Only the matching agent should be visible
     await expect(mockedPage.getByText("Customer Support Bot")).toBeVisible();
@@ -149,4 +145,3 @@ test.describe("Home Page - Agents Overview", () => {
     await expect(page.getByText("Failed to fetch agents. Please try again later.")).toBeVisible();
   });
 });
-

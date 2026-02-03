@@ -146,7 +146,10 @@ const controlSummariesList: (ControlSummary & { used_by_agent?: { agent_id: stri
     step_types: ["llm"],
     stages: ["post"],
     tags: ["pii", "compliance"],
-    used_by_agent: { agent_id: "agent-1", agent_name: "Customer Support Bot" },
+    used_by_agent: {
+      agent_id: "9c15431d-c252-4c1b-80e0-d49ecda4f4b5",
+      agent_name: "Customer Support Bot",
+    },
   },
   {
     id: 2,
@@ -157,7 +160,10 @@ const controlSummariesList: (ControlSummary & { used_by_agent?: { agent_id: stri
     step_types: ["tool"],
     stages: ["pre"],
     tags: ["security"],
-    used_by_agent: { agent_id: "agent-2", agent_name: "Data Analysis Agent" },
+    used_by_agent: {
+      agent_id: "b286abfe-6363-4593-85e0-fa71478f1906",
+      agent_name: "Data Analysis Agent",
+    },
   },
   {
     id: 3,

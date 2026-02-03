@@ -12,15 +12,8 @@ const AGENT_URL = "/agents/9c15431d-c252-4c1b-80e0-d49ecda4f4b5";
 export async function openEvaluatorForm(page: Page, evaluatorName: string) {
   await page.goto(AGENT_URL);
 
-  // Open control store modal
+  // Open control store modal (add-new flow)
   await page.getByTestId("add-control-button").first().click();
-  const controlStoreModal = page
-    .getByRole("dialog")
-    .filter({ hasText: "Browse existing controls or create a new one" });
-  await expect(controlStoreModal).toBeVisible();
-
-  // Open the add-new-control modal via footer CTA
-  await controlStoreModal.getByTestId("footer-new-control-button").click();
   const addNewModal = page
     .getByRole("dialog")
     .filter({ hasText: "Browse and add controls to your agent" });
@@ -33,4 +26,3 @@ export async function openEvaluatorForm(page: Page, evaluatorName: string) {
   // Wait for the create control modal
   await expect(page.getByRole("heading", { name: "Create Control" })).toBeVisible();
 }
-
