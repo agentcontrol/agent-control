@@ -3,7 +3,7 @@ import type { AgentControlsResponse, GetAgentResponse } from "@/core/api/types";
 import { expect, mockData, test } from "./fixtures";
 
 test.describe("Agent Detail Page", () => {
-  const agentId = "agent-1";
+  const agentId = "9c15431d-c252-4c1b-80e0-d49ecda4f4b5";
   const agentUrl = `/agents/${agentId}`;
 
   // Type-safe access to mock agent data
@@ -279,7 +279,7 @@ test.describe("Agent Detail - Empty State", () => {
       });
     });
 
-    await page.goto("/agents/agent-1");
+    await page.goto("/agents/9c15431d-c252-4c1b-80e0-d49ecda4f4b5");
 
     // Check for empty state message
     await expect(page.getByText("No controls configured")).toBeVisible();

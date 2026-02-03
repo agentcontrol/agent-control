@@ -2,7 +2,7 @@
 import { expect, mockData, test } from "./fixtures";
 
 test.describe("Control Store Modal", () => {
-  const agentUrl = "/agents/agent-1";
+  const agentUrl = "/agents/9c15431d-c252-4c1b-80e0-d49ecda4f4b5";
 
   test.beforeEach(async ({ mockedPage }) => {
     await mockedPage.goto(agentUrl);
@@ -139,7 +139,7 @@ test.describe("Control Store - Loading States", () => {
       });
     });
 
-    await page.goto("/agents/agent-1");
+    await page.goto("/agents/9c15431d-c252-4c1b-80e0-d49ecda4f4b5");
 
     // Open the control store modal
     await page.getByTestId("add-control-button").first().click();

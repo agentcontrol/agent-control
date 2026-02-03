@@ -50,7 +50,7 @@ from agent_control_models import Agent, Step
 # Create an agent
 agent = Agent(
     agent_name="Customer Support Bot",
-    agent_id="support-bot-v1",
+    agent_id="550e8400-e29b-41d4-a716-446655440000",
     agent_description="Handles customer inquiries",
     agent_version="1.0.0"
 )
@@ -129,7 +129,7 @@ Agent metadata and configuration.
 
 **Fields:**
 - `agent_name` (str): Human-readable agent name
-- `agent_id` (str): Unique identifier
+- `agent_id` (UUID): Unique identifier
 - `agent_description` (Optional[str]): Agent description
 - `agent_version` (Optional[str]): Agent version
 - `tools` (Optional[List[str]]): List of available tools
@@ -198,7 +198,7 @@ from agent_control_models import Agent
 # Create with validation
 agent = Agent(
     agent_name="My Agent",
-    agent_id="my-agent-v1"
+    agent_id="550e8400-e29b-41d4-a716-446655440000"
 )
 
 # Serialize to dict
@@ -243,7 +243,7 @@ from agent_control_models import Agent
 # Add custom metadata
 agent = Agent(
     agent_name="Support Bot",
-    agent_id="support-v1",
+    agent_id="550e8400-e29b-41d4-a716-446655440000",
     metadata={
         "team": "customer-success",
         "environment": "production",
@@ -291,4 +291,3 @@ uv run pytest
 4. **Version carefully**: Model changes affect both server and SDK
 5. **Document fields**: Use Field's `description` parameter
 6. **Use Optional appropriately**: Mark optional fields clearly
-

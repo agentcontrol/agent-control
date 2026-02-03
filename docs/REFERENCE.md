@@ -501,7 +501,7 @@ import agent_control
 
 agent_control.init(
     agent_name="my-agent",           # Required: human-readable name
-    agent_id="my-agent-v1",          # Required: unique identifier
+    agent_id="550e8400-e29b-41d4-a716-446655440000",  # Required: UUID
     server_url="http://localhost:8000",  # Optional: defaults to env var
     steps=[                          # Optional: register available steps
         {

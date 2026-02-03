@@ -15,7 +15,7 @@ from agent_control.control_decorators import ControlViolationError, control
 def mock_agent():
     """Create a mock agent."""
     agent = MagicMock()
-    agent.agent_id = "test-agent-uuid-123"
+    agent.agent_id = "550e8400-e29b-41d4-a716-446655440000"
     return agent
 
 
