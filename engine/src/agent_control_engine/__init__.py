@@ -9,7 +9,7 @@ from agent_control_evaluators import (
     reset_evaluator_discovery,
 )
 
-__version__ = "0.1.0"
+__version__ = "2.1.0"
 
 __all__ = [
     "clear_evaluator_cache",
