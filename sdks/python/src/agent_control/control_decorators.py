@@ -11,7 +11,10 @@ Architecture:
 Usage:
     import agent_control
 
-    agent_control.init(agent_name="my-agent", agent_id="agent-123")
+    agent_control.init(
+        agent_name="my-agent",
+        agent_id="550e8400-e29b-41d4-a716-446655440000",
+    )
 
     # Apply the agent's assigned policy
     @agent_control.control()
@@ -502,7 +505,10 @@ def control(policy: str | None = None) -> Callable[[F], F]:
         import agent_control
 
         # Initialize agent (connects to server, loads policy)
-        agent_control.init(agent_name="my-bot", agent_id="bot-123")
+        agent_control.init(
+            agent_name="my-bot",
+            agent_id="550e8400-e29b-41d4-a716-446655440000",
+        )
 
         # Apply the agent's policy (all controls)
         @agent_control.apply_control()

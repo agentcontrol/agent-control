@@ -10,11 +10,11 @@ Usage:
 
 import asyncio
 import os
-import uuid
+from uuid import UUID
 
 from agent_control import Agent, AgentControlClient, agents, controls, policies
 
-AGENT_ID = "support-crew-demo"
+AGENT_ID = "989d84f0-9afe-4fb2-9e9e-e9d076271e29"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
@@ -22,7 +22,7 @@ async def setup_content_controls():
     """Create PII protection and unauthorized access controls, policy, and assign to agent."""
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # 1. Register Agent
-        agent_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID)
+        agent_uuid = UUID(AGENT_ID)
 
         agent = Agent(
             agent_id=agent_uuid,

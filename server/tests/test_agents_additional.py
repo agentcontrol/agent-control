@@ -323,6 +323,29 @@ def test_init_agent_uuid_conflict_on_same_name(client: TestClient) -> None:
     assert resp.json()["error_code"] == "AGENT_UUID_CONFLICT"
 
 
+def test_init_agent_name_conflict_on_same_uuid(client: TestClient) -> None:
+    # Given: an existing agent with a specific UUID
+    agent_id = str(uuid.uuid4())
+    original_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    _init_agent(client, agent_id=agent_id, agent_name=original_name)
+
+    # When: re-registering with the same UUID but a different name
+    payload = {
+        "agent": {
+            "agent_id": agent_id,
+            "agent_name": f"{original_name}-renamed",
+            "agent_description": "desc",
+            "agent_version": "1.0",
+        },
+        "steps": [],
+    }
+    resp = client.post("/api/v1/agents/initAgent", json=payload)
+
+    # Then: name conflict is returned
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "AGENT_NAME_CONFLICT"
+
+
 def test_list_agent_controls_corrupted_control_data_returns_422(
     client: TestClient,
 ) -> None:

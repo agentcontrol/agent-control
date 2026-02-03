@@ -222,9 +222,9 @@ setup_demo_controls() {
     python setup_demo_controls.py
 }
 
-# Generate UUID5 from agent ID (matches Python's uuid.uuid5(uuid.NAMESPACE_DNS, agent_id))
+# Agent UUID used by the demo (must match support_agent.py)
 get_agent_uuid() {
-    python3 -c "import uuid; print(uuid.uuid5(uuid.NAMESPACE_DNS, 'customer-support-agent'))"
+    echo "646d5dea-c2e6-4453-b446-7035482b38e4"
 }
 
 show_observability_stats() {

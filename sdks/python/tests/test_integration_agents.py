@@ -177,7 +177,7 @@ async def test_init_function_workflow(
     """
     # Initialize agent
     agent = agent_control.init(
-        agent_name="Init Test Agent",
+        agent_name=f"Init Test Agent {test_agent_id}",
         agent_id=test_agent_id,
         agent_description="Testing init function",
         agent_version="1.0.0",
@@ -189,7 +189,7 @@ async def test_init_function_workflow(
 
     # Verify agent instance
     assert agent is not None
-    assert agent.agent_name == "Init Test Agent"
+    assert agent.agent_name == f"Init Test Agent {test_agent_id}"
     assert hasattr(agent, "agent_id")
 
     # Verify current_agent()

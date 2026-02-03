@@ -13,12 +13,10 @@ Run this after starting the server to have a working demo out of the box.
 
 import asyncio
 import os
-import uuid
-
 from agent_control import Agent, AgentControlClient, agents, controls, policies
 
 # Same agent ID as in support_agent.py
-AGENT_ID = "customer-support-agent"
+AGENT_ID = "646d5dea-c2e6-4453-b446-7035482b38e4"
 AGENT_NAME = "Customer Support Agent"
 AGENT_DESCRIPTION = "AI-powered customer support assistant"
 
@@ -228,8 +226,8 @@ DEMO_CONTROLS = [
 
 async def setup_demo(quiet: bool = False):
     """Set up the demo agent with controls."""
-    # Generate the same UUID5 that the SDK generates
-    agent_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
+    # Use the provided UUID (must match support_agent.py)
+    agent_uuid = AGENT_ID
 
     async with AgentControlClient(base_url=SERVER_URL, timeout=30.0) as client:
         # Check server health

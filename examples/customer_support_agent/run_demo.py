@@ -54,16 +54,13 @@ logger = logging.getLogger(__name__)
 # Add parent directory to path for imports
 sys.path.insert(0, str(__file__).rsplit("/", 2)[0])
 
-# Agent ID used in support_agent.py
-AGENT_ID = "customer-support-agent"
+# Agent UUID used in support_agent.py
+AGENT_ID = "646d5dea-c2e6-4453-b446-7035482b38e4"
 
 
 async def reset_agent():
     """Reset the agent by removing its policy (which disconnects all controls)."""
-    import uuid
-
-    # Generate the same UUID5 that the SDK generates
-    agent_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
+    agent_uuid = AGENT_ID
     server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
     logger.info(f"Resetting agent '{AGENT_ID}' (UUID: {agent_uuid})")

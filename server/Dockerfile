@@ -25,9 +25,21 @@ COPY evaluators/ evaluators/
 # Copy server application
 COPY server/ server/
 
-# Install the server package and its dependencies
+# Install server + bundled runtime packages (engine/evaluators/models)
 # We ignore the lockfile if it's missing or out of sync to ensure build succeeds during dev
-RUN uv sync --package agent-control-server --no-dev || uv sync --package agent-control-server --no-dev --frozen
+RUN uv sync \
+    --package agent-control-server \
+    --package agent-control-engine \
+    --package agent-control-evaluators \
+    --package agent-control-models \
+    --no-dev \
+  || uv sync \
+    --package agent-control-server \
+    --package agent-control-engine \
+    --package agent-control-evaluators \
+    --package agent-control-models \
+    --no-dev \
+    --frozen
 
 # Add the virtual environment to PATH
 ENV PATH="/app/.venv/bin:$PATH"

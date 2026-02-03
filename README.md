@@ -3,39 +3,32 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI version](https://img.shields.io/pypi/v/agent-control-sdk.svg)](https://pypi.org/project/agent-control-sdk/)
-[![CI](https://github.com/rungalileo/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/rungalileo/agent-control/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/rungalileo/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/rungalileo/agent-control)
+[![CI](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/agentcontrol/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/agentcontrol/agent-control)
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
-AI agents interact with users, tools, and external systems in unpredictable ways. Agent Control provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
+AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
 
----
+![Agent Control Architecture](docs/images/Architecture.png)
 
-## See It In Action
 
-```python
-import agent_control
-from agent_control import control, ControlViolationError
+## Why Do You Need It?
+Traditional guardrails embedded inside your agent code have critical limitations:
 
-# Initialize once at startup
-agent_control.init(
-    agent_name="Customer Support Agent",
-    agent_id="support-agent-v1",
-    server_url="http://localhost:8000"
-)
+- **Scattered Logic:** Control code is buried across your agent codebase, making it hard to audit or update. 
+- **Deployment Overhead:** Changing protection rules requires code changes and redeployment
+- **Limited Adaptability:** Hardcoded checks can't adapt to new attack patterns or production data variations
 
-# Protect any function with a decorator
-@control()
-async def chat(message: str) -> str:
-    return await llm.generate(message)
 
-# Violations are caught automatically
-try:
-    response = await chat(user_input)
-except ControlViolationError as e:
-    print(f"Blocked by control '{e.control_name}': {e.message}")
-```
+**Agent Control gives you RUNTIME control over what your agents CAN & CANNOT do.**
+1. You can enable and change controls of your agent in  runtime without deploying code through APIs. This enables instant risk mitigation for emerging threats. 
+2. For non-technical members, agent control provides an intuitive UI to manage the control configuration.
+3. The package also comes with several common out of box templates for controls that can be adapted and with a lot of flexibility to define custom controls or integrate with external evaluators.
+4. Easily reuse controls across agents in your organization. 
+
+## Core Concepts
+See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's architecture and design principles.
 
 ---
 
@@ -51,6 +44,16 @@ except ControlViolationError as e:
 
 ---
 
+### Examples
+
+- **[Examples Overview](examples/README.md)** — Working code examples and integration patterns
+- **[Customer Support Agent](examples/customer_support_agent/)** — Full example with multiple tools
+- **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection with LangChain
+- **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
+- **[CrewAI SDK Integration](examples/crewai/)** - Working example on integrating with third party Agent SDKs and using Agent Control along side their guardrails.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -63,7 +66,7 @@ except ControlViolationError as e:
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/rungalileo/agent-control.git
+git clone https://github.com/agentcontrol/agent-control.git
 cd agent-control
 make sync
 ```
@@ -95,7 +98,7 @@ Dashboard is now running at `http://localhost:4000`.
 Install the SDK:
 
 ```bash
-pip install agent-control
+pip install agent-control-sdk
 ```
 
 Use in your code:
@@ -164,7 +167,7 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "description": "Block Social Security Numbers in responses",
   "enabled": true,
   "execution": "server",
-  "scope": { "step_types": ["llm"], "stages": ["post"] },
+  "scope": { "step_names": ["generate_response"], "stages": ["post"] },
   "selector": { "path": "output" },
   "evaluator": {
     "name": "regex",
@@ -182,7 +185,7 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "description": "Block toxic or harmful user messages",
   "enabled": true,
   "execution": "server",
-  "scope": { "step_types": ["llm"], "stages": ["pre"] },
+  "scope": { "step_names": ["process_user_message"], "stages": ["pre"] },
   "selector": { "path": "input" },
   "evaluator": {
     "name": "galileo-luna2",
@@ -200,7 +203,7 @@ See [docs/REFERENCE.md](docs/REFERENCE.md#evaluators) for full evaluator documen
 
 ---
 
-## Architecture
+## Agent Control Components
 
 Agent Control is built as a monorepo with these components:
 
@@ -239,7 +242,7 @@ Agent Control is built as a monorepo with these components:
 
 | Package | Description |
 |:--------|:------------|
-| `agent-control` | Python SDK with `@control()` decorator |
+| `agent-control-sdk` | Python SDK with `@control()` decorator |
 | `agent-control-server` | FastAPI server with Control Management API |
 | `agent-control-engine` | Core evaluation logic and evaluator system |
 | `agent-control-models` | Shared Pydantic v2 models |
@@ -297,15 +300,6 @@ For detailed development workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 - **[Server](server/README.md)** — Server setup, configuration, and deployment
 - **[UI Dashboard](ui/README.md)** — Web dashboard setup and usage
 - **[Evaluators](evaluators/README.md)** — Available evaluators and custom evaluator development
-
-### Examples
-
-- **[Examples Overview](examples/README.md)** — Working code examples and integration patterns
-- **[Customer Support Agent](examples/customer_support_agent/)** — Full example with multiple tools
-- **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection with LangChain
-- **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
-
----
 
 ## Contributing
 

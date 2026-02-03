@@ -45,7 +45,7 @@ from crewai.tools import tool
 # It's a dependency of agent_control so should be available
 
 # --- Configuration ---
-AGENT_ID = "support-crew-demo"
+AGENT_ID = "989d84f0-9afe-4fb2-9e9e-e9d076271e29"
 AGENT_NAME = "Customer Support Crew"
 AGENT_DESCRIPTION = "Customer support crew with PII protection and access controls"
 
