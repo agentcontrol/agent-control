@@ -25,6 +25,8 @@ A Policy is a named collection of controls assigned to an agent. Policies enable
 
 ## Controls
 
+![Control Components](./docs/images/Control.png)
+
 A Control is a protection rule that evaluates agent interactions (inputs/outputs) and takes action based on configured criteria. It defines when to check, what to check, how to evaluate it, and what to do with the results.
 
 **Control = Scope (When) + Selector (What) + Evaluator (How) + Action (Decision)**
