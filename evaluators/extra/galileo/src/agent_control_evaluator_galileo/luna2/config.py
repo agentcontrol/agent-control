@@ -2,9 +2,8 @@
 
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
-
 from agent_control_evaluators import EvaluatorConfig
+from pydantic import Field, model_validator
 
 # Supported Luna-2 metrics
 Luna2Metric = Literal[

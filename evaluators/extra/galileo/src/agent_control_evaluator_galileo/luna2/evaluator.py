@@ -8,9 +8,8 @@ import logging
 import os
 from typing import Any
 
-from agent_control_models import EvaluatorResult
-
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
+from agent_control_models import EvaluatorResult
 
 from agent_control_evaluator_galileo.luna2.config import Luna2EvaluatorConfig
 
