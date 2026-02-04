@@ -1,4 +1,4 @@
-.PHONY: help sync test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build
+.PHONY: help sync test test-extras test-all test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build
 
 # Workspace package names
 PACK_MODELS := agent-control-models
@@ -13,6 +13,7 @@ SERVER_DIR := server
 SDK_DIR    := sdks/python
 ENGINE_DIR := engine
 EVALUATORS_DIR := evaluators/builtin
+GALILEO_DIR := evaluators/extra/galileo
 
 help:
 	@echo "Agent Control - Makefile commands"
@@ -24,7 +25,9 @@ help:
 	@echo "  make server-<target> - forward to server targets (e.g., server-help, server-alembic-upgrade)"
 	@echo ""
 	@echo "Test:"
-	@echo "  make test            - run tests for all members"
+	@echo "  make test            - run tests for core packages (server, engine, sdk, evaluators)"
+	@echo "  make test-extras     - run tests for extra evaluators (galileo, etc.)"
+	@echo "  make test-all        - run all tests (core + extras)"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make lint            - ruff check for all members"
@@ -59,6 +62,12 @@ sync:
 # ---------------------------
 
 test: server-test engine-test sdk-test evaluators-test
+
+# Run tests for extra evaluators (not included in default test target)
+test-extras: galileo-test
+
+# Run all tests (core + extras)
+test-all: test test-extras
 
 # Run tests, lint, and typecheck
 check: test lint typecheck
@@ -150,3 +159,22 @@ evaluators-build:
 .PHONY: server-%
 server-%:
 	$(MAKE) -C $(SERVER_DIR) $(patsubst server-%,%,$@)
+
+# ---------------------------
+# Extra Evaluators (Galileo)
+# ---------------------------
+
+galileo-test:
+	$(MAKE) -C $(GALILEO_DIR) test
+
+galileo-lint:
+	$(MAKE) -C $(GALILEO_DIR) lint
+
+galileo-lint-fix:
+	$(MAKE) -C $(GALILEO_DIR) lint-fix
+
+galileo-typecheck:
+	$(MAKE) -C $(GALILEO_DIR) typecheck
+
+galileo-build:
+	$(MAKE) -C $(GALILEO_DIR) build
