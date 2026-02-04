@@ -13,19 +13,14 @@ import type { GetAgentPathParams, GetAgentResponse } from "@/core/api/types";
 export function useAgent(
   agentId: GetAgentPathParams["agent_id"],
   options?: Omit<
-    UseQueryOptions<
-      GetAgentResponse,
-      unknown,
-      GetAgentResponse,
-      ["agent", GetAgentPathParams["agent_id"]]
-    >,
+    UseQueryOptions<GetAgentResponse, Error, GetAgentResponse, readonly unknown[]>,
     "queryKey" | "queryFn"
   >
-): UseQueryResult<GetAgentResponse> {
+): UseQueryResult<GetAgentResponse, Error> {
   const { enabled, ...rest } = options ?? {};
   const isEnabled = enabled ?? Boolean(agentId);
 
-  return useQuery<GetAgentResponse>({
+  return useQuery({
     queryKey: ["agent", agentId],
     queryFn: async () => {
       const { data, error } = await api.agents.get(agentId);

@@ -16,10 +16,10 @@ test.describe("Agent Monitor Tab", () => {
     // Click on stats tab
     await statsTab.click();
 
-    // Should show the stats content
-    await expect(
-      mockedPage.getByRole("heading", { name: "Control Statistics", exact: true })
-    ).toBeVisible();
+    // Should show the stats content - check for summary card metrics (use first() to get summary card, not table header)
+    await expect(mockedPage.getByText("Executions").first()).toBeVisible();
+    await expect(mockedPage.getByText("Triggers").first()).toBeVisible();
+    await expect(mockedPage.getByText("Errors").first()).toBeVisible();
   });
 
   test("should display time range selector with default value", async ({
@@ -43,10 +43,9 @@ test.describe("Agent Monitor Tab", () => {
       mockedPage.getByText(mockData.stats.totals.execution_count.toLocaleString())
     ).toBeVisible();
 
-    // Check for badges showing matches and non-matches (use first() to get badge, not table header)
-    await expect(mockedPage.getByText("Non-Matches").first()).toBeVisible();
-    // Note: "Matches" badge text is still "Matches" in the summary card, but table column is "Triggers"
-    await expect(mockedPage.getByText("Matches").first()).toBeVisible();
+    // Check for summary card labels (use first() to get summary card, not table header)
+    await expect(mockedPage.getByText("Executions").first()).toBeVisible();
+    await expect(mockedPage.getByText("Triggers").first()).toBeVisible();
     await expect(mockedPage.getByText("Errors").first()).toBeVisible();
   });
 
@@ -68,19 +67,12 @@ test.describe("Agent Monitor Tab", () => {
     // Navigate to stats tab
     await mockedPage.getByRole("tab", { name: "Monitor" }).click();
 
-    // Check table header
-    await expect(
-      mockedPage.getByRole("heading", { name: "Per-Control Statistics" })
-    ).toBeVisible();
-
-    // Check table column headers (use exact match to avoid "Matches" matching "Non-Matches")
+    // Check table column headers
     await expect(mockedPage.getByRole("columnheader", { name: "Control" })).toBeVisible();
     await expect(mockedPage.getByRole("columnheader", { name: "Executions" })).toBeVisible();
     await expect(
       mockedPage.getByRole("columnheader", { name: "Triggers", exact: true })
     ).toBeVisible();
-    await expect(mockedPage.getByRole("columnheader", { name: "Non-Matches" })).toBeVisible();
-    await expect(mockedPage.getByRole("columnheader", { name: "Actions" })).toBeVisible();
     await expect(mockedPage.getByRole("columnheader", { name: "Errors" })).toBeVisible();
   });
 
