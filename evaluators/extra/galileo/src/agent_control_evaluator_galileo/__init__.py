@@ -20,8 +20,6 @@ from agent_control_evaluator_galileo.luna2 import (
     Luna2Operator,
 )
 
-__version__ = "3.0.0"
-
 __all__ = [
     "Luna2Evaluator",
     "Luna2EvaluatorConfig",

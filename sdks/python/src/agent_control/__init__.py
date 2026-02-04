@@ -37,8 +37,6 @@ Usage:
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as get_version
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from uuid import UUID
 
@@ -1090,9 +1088,3 @@ __all__ = [
     "ControlAction",
     "EvaluatorSpec",
 ]
-
-try:
-    __version__ = get_version("agent-control-sdk")
-except PackageNotFoundError:
-    # Package not installed (e.g., running from source without install)
-    __version__ = "0.0.0.dev"

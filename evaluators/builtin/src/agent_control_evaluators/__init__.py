@@ -42,8 +42,6 @@ from agent_control_evaluators.list import ListEvaluator, ListEvaluatorConfig
 from agent_control_evaluators.regex import RegexEvaluator, RegexEvaluatorConfig
 from agent_control_evaluators.sql import SQLEvaluator, SQLEvaluatorConfig
 
-__version__ = "3.0.0"
-
 __all__ = [
     # Core infrastructure
     "Evaluator",

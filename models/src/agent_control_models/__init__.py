@@ -1,7 +1,5 @@
 """Agent Control Models - Shared data models for server and SDK."""
 
-__version__ = "0.1.0"
-
 from .agent import (
     BUILTIN_STEP_TYPES,
     STEP_TYPE_LLM,
