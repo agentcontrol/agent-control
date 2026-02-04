@@ -207,8 +207,9 @@ async def _evaluate(
         # If we have controls, use local evaluation which handles both SDK and server controls
         if controls is not None:
             try:
-                from agent_control.evaluation import check_evaluation_with_local
                 from uuid import UUID
+
+                from agent_control.evaluation import check_evaluation_with_local
 
                 # Build Step object for evaluation
                 try:

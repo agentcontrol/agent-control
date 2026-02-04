@@ -183,7 +183,15 @@ class TestPrePostExecution:
         """Test that both pre and post checks are called."""
         call_stages = []
 
-        async def mock_evaluate(agent_uuid, step, stage, server_url, trace_id=None, span_id=None):
+        async def mock_evaluate(
+            agent_uuid,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+        ):
             call_stages.append(stage)
             return mock_safe_response
 
@@ -204,7 +212,15 @@ class TestPrePostExecution:
         """Test that pre-check block prevents function execution."""
         function_executed = False
 
-        async def mock_evaluate(agent_uuid, step, stage, server_url, trace_id=None, span_id=None):
+        async def mock_evaluate(
+            agent_uuid,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+        ):
             if stage == "pre":
                 return mock_unsafe_response
             return mock_safe_response
@@ -228,7 +244,15 @@ class TestPrePostExecution:
         """Test that post-check receives the function output."""
         captured_step = {}
 
-        async def mock_evaluate(agent_uuid, step, stage, server_url, trace_id=None, span_id=None):
+        async def mock_evaluate(
+            agent_uuid,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+        ):
             if stage == "post":
                 captured_step.update(step)
             return mock_safe_response
@@ -258,7 +282,15 @@ class TestInputExtraction:
         """Test extraction of 'input' parameter."""
         captured_step = {}
 
-        async def mock_evaluate(agent_uuid, step, stage, server_url, trace_id=None, span_id=None):
+        async def mock_evaluate(
+            agent_uuid,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+        ):
             if stage == "pre":
                 captured_step.update(step)
             return mock_safe_response
@@ -279,7 +311,15 @@ class TestInputExtraction:
         """Test extraction of 'message' parameter."""
         captured_step = {}
 
-        async def mock_evaluate(agent_uuid, step, stage, server_url, trace_id=None, span_id=None):
+        async def mock_evaluate(
+            agent_uuid,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+        ):
             if stage == "pre":
                 captured_step.update(step)
             return mock_safe_response
@@ -300,7 +340,15 @@ class TestInputExtraction:
         """Test extraction of 'query' parameter."""
         captured_step = {}
 
-        async def mock_evaluate(agent_uuid, step, stage, server_url, trace_id=None, span_id=None):
+        async def mock_evaluate(
+            agent_uuid,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+        ):
             if stage == "pre":
                 captured_step.update(step)
             return mock_safe_response

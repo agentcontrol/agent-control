@@ -37,7 +37,8 @@ Usage:
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, version as get_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as get_version
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from uuid import UUID
 
