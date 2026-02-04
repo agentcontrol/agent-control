@@ -10,8 +10,8 @@ dependencies = [
     "pydantic>=2.0.0",
     "httpx>=0.24.0",
     "google-re2>=1.1",
-    "agent-control-models>=3.0.0",
-    "agent-control-sdk>=3.0.0",
+    "agent-control-models>=4.0.0,<5.0.0",
+    "agent-control-sdk>=4.0.0,<5.0.0",
 ]
 
 [project.optional-dependencies]

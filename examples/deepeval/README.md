@@ -100,14 +100,6 @@ class DeepEvalEvaluator(Evaluator[DeepEvalEvaluatorConfig]):
 The evaluator is registered via `pyproject.toml`:
 
 ```toml
-[project]
-dependencies = [
-    "agent-control-models>=3.0.0",
-    "agent-control-sdk>=3.0.0",
-    "deepeval>=1.0.0",
-    # ... other dependencies
-]
-
 [project.entry-points."agent_control.evaluators"]
 deepeval-geval = "evaluator:DeepEvalEvaluator"
 ```

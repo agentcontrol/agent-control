@@ -19,7 +19,6 @@ Run this after starting the server to have a working demo.
 import asyncio
 import os
 import sys
-import uuid
 
 import httpx
 
@@ -44,7 +43,7 @@ except ImportError as e:
     sys.exit(1)
 
 # Agent configuration
-AGENT_ID = "qa-agent-deepeval"
+AGENT_ID = "7d3e8f9a-2b1c-4a5e-9f8d-6c7b5a4e3d2f"
 AGENT_NAME = "Q&A Agent with DeepEval"
 AGENT_DESCRIPTION = "Question answering agent with DeepEval quality controls"
 
@@ -148,12 +147,8 @@ DEEPEVAL_CONTROLS = [
 
 async def setup_demo(quiet: bool = False):
     """Set up the demo agent with DeepEval controls."""
-    # Generate the same UUID5 that the SDK generates
-    agent_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
-
     print(f"Setting up agent: {AGENT_NAME}")
     print(f"Agent ID: {AGENT_ID}")
-    print(f"Agent UUID: {agent_uuid}")
     print(f"Server URL: {SERVER_URL}")
     print()
 
@@ -175,7 +170,7 @@ async def setup_demo(quiet: bool = False):
                 "/api/v1/agents/initAgent",
                 json={
                     "agent": {
-                        "agent_id": agent_uuid,
+                        "agent_id": AGENT_ID,
                         "agent_name": AGENT_NAME,
                         "agent_description": AGENT_DESCRIPTION,
                     },
@@ -196,7 +191,7 @@ async def setup_demo(quiet: bool = False):
 
         # Check if agent already has a policy
         try:
-            resp = await client.get(f"/api/v1/agents/{agent_uuid}/policy")
+            resp = await client.get(f"/api/v1/agents/{AGENT_ID}/policy")
             if resp.status_code == 200:
                 policy_id = resp.json().get("policy_id")
                 print(f"✓ Found existing policy: {policy_id}")
@@ -224,7 +219,7 @@ async def setup_demo(quiet: bool = False):
                 print(f"✓ Created policy: {policy_name}")
 
                 # Assign policy to agent
-                resp = await client.post(f"/api/v1/agents/{agent_uuid}/policy/{policy_id}")
+                resp = await client.post(f"/api/v1/agents/{AGENT_ID}/policy/{policy_id}")
                 resp.raise_for_status()
                 print(f"✓ Assigned policy to agent")
             except httpx.HTTPError as e:
