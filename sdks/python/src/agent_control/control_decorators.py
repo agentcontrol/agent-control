@@ -463,7 +463,11 @@ def _get_server_controls() -> list[dict[str, Any]] | None:
     try:
         import agent_control
         return agent_control.get_server_controls()
-    except Exception:
+    except Exception as exc:
+        logger.debug(
+            "Unable to access cached server controls; proceeding without local cache.",
+            exc_info=exc,
+        )
         return None
 
 
