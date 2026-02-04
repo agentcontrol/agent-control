@@ -242,10 +242,14 @@ class JSONEvaluator(Evaluator[JSONEvaluatorConfig]):
             # Get only leaf paths to avoid flagging parent containers
             actual_paths = self._get_all_paths(data, leaves_only=True)
 
-            # Include both field_types and required_fields as allowed paths
+            # Include all explicitly referenced fields as allowed paths
             specified_paths = set(self.config.field_types.keys())
             if self.config.required_fields:
                 specified_paths.update(self.config.required_fields)
+            if self.config.field_constraints:
+                specified_paths.update(self.config.field_constraints.keys())
+            if self.config.field_patterns:
+                specified_paths.update(self.config.field_patterns.keys())
 
             extra_paths = actual_paths - specified_paths
             if extra_paths:

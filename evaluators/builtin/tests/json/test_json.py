@@ -310,6 +310,80 @@ class TestTypesValidation:
         assert result.matched is True  # Failed
         assert "Extra fields not allowed" in result.message
 
+    @pytest.mark.asyncio
+    async def test_strict_mode_allows_field_constraints_fields(self):
+        """Test that fields in field_constraints are not flagged as extra.
+
+        Regression test: field_constraints fields should be in the allow-list
+        when allow_extra_fields=False.
+        """
+        evaluator = JSONEvaluator(
+            JSONEvaluatorConfig(
+                field_types={"id": "string"},
+                field_constraints={"score": {"min": 0.0, "max": 1.0}},
+                allow_extra_fields=False,
+            )
+        )
+        # Should pass: "score" is referenced in field_constraints
+        result = await evaluator.evaluate({"id": "123", "score": 0.5})
+        assert result.matched is False  # Validation passed
+        assert "passed" in result.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_strict_mode_allows_field_patterns_fields(self):
+        """Test that fields in field_patterns are not flagged as extra.
+
+        Regression test: field_patterns fields should be in the allow-list
+        when allow_extra_fields=False.
+        """
+        evaluator = JSONEvaluator(
+            JSONEvaluatorConfig(
+                field_types={"id": "string"},
+                field_patterns={"email": r"^.+@.+$"},
+                allow_extra_fields=False,
+            )
+        )
+        # Should pass: "email" is referenced in field_patterns
+        result = await evaluator.evaluate({"id": "123", "email": "test@example.com"})
+        assert result.matched is False  # Validation passed
+        assert "passed" in result.message.lower()
+
+    @pytest.mark.asyncio
+    async def test_strict_mode_with_all_field_references(self):
+        """Test strict mode with fields from all config options.
+
+        Ensures that required_fields, field_types, field_constraints, and
+        field_patterns are all included in the allow-list.
+        """
+        evaluator = JSONEvaluator(
+            JSONEvaluatorConfig(
+                required_fields=["name"],
+                field_types={"id": "string"},
+                field_constraints={"score": {"min": 0.0, "max": 1.0}},
+                field_patterns={"email": r"^.+@.+$"},
+                allow_extra_fields=False,
+            )
+        )
+        # Should pass: all fields are referenced in some config option
+        result = await evaluator.evaluate({
+            "id": "123",
+            "name": "Test",
+            "score": 0.75,
+            "email": "test@example.com",
+        })
+        assert result.matched is False  # Validation passed
+
+        # Should fail: "extra" is not referenced anywhere
+        result = await evaluator.evaluate({
+            "id": "123",
+            "name": "Test",
+            "score": 0.75,
+            "email": "test@example.com",
+            "extra": "not allowed",
+        })
+        assert result.matched is True  # Failed
+        assert "Extra fields not allowed" in result.message
+
 
 class TestConstraintsValidation:
     """Test field constraints validation mode."""
