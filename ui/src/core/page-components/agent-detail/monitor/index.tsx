@@ -1,19 +1,12 @@
 "use client";
 
-import {
-  Box,
-  Group,
-  Loader,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
-import { type TimeRangeOption,TimeRangeSwitch } from "@rungalileo/jupiter-ds";
+import { Box, Loader, Stack, Text } from "@mantine/core";
+import type { TimeRangeOption, TimeRangeValue } from "@rungalileo/jupiter-ds";
 import { IconAlertCircle } from "@tabler/icons-react";
 import React, { useMemo } from "react";
 
 // Custom segment options from 5m to 1Y
-const TIME_RANGE_SEGMENTS: TimeRangeOption[] = [
+export const TIME_RANGE_SEGMENTS: TimeRangeOption[] = [
   { label: "5m", value: "last5Mins" },
   { label: "15m", value: "last15Mins" },
   { label: "1H", value: "lastHour" },
@@ -26,7 +19,6 @@ const TIME_RANGE_SEGMENTS: TimeRangeOption[] = [
 
 import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-monitor";
 import { useAgentMonitor } from "@/core/hooks/query-hooks/use-agent-monitor";
-import { useTimeRangePreference } from "@/core/hooks/use-time-range-preference";
 
 import { ControlStatsTable } from "./control-stats-table";
 import { SummaryCard } from "./summary-card";
@@ -35,6 +27,8 @@ import { mapTimeRangeTypeToTimeRange } from "./utils";
 
 interface AgentsMonitorProps {
   agentUuid: string;
+  timeRangeValue: TimeRangeValue;
+  onTimeRangeChange: (value: TimeRangeValue) => void;
 }
 
 function calculateSummary(stats: StatsResponse | undefined): SummaryMetrics | null {
@@ -45,22 +39,19 @@ function calculateSummary(stats: StatsResponse | undefined): SummaryMetrics | nu
   return {
     totalExecutions: stats.totals.execution_count,
     totalMatches: stats.totals.match_count,
-    totalNonMatches: stats.totals.non_match_count,
     totalErrors: stats.totals.error_count,
     denyRate: stats.totals.execution_count > 0
       ? ((actionCounts.deny || 0) / stats.totals.execution_count) * 100
-      : 0,
-    matchRate: stats.totals.execution_count > 0
-      ? (stats.totals.match_count / stats.totals.execution_count) * 100
       : 0,
     actionCounts,
   };
 }
 
-export function AgentsMonitor({ agentUuid }: AgentsMonitorProps) {
-  // Use localStorage preference hook (defaults to 1W)
-  const [timeRangeValue, setTimeRangeValue] = useTimeRangePreference();
-  
+export function AgentsMonitor({
+  agentUuid,
+  timeRangeValue,
+  onTimeRangeChange: _onTimeRangeChange,
+}: AgentsMonitorProps) {
   // Convert to API TimeRange only when calling the API
   const apiTimeRange = useMemo(
     () => mapTimeRangeTypeToTimeRange(timeRangeValue.type),
@@ -110,28 +101,13 @@ export function AgentsMonitor({ agentUuid }: AgentsMonitorProps) {
   const displaySummary = summary || {
     totalExecutions: 0,
     totalMatches: 0,
-    totalNonMatches: 0,
     totalErrors: 0,
     denyRate: 0,
-    matchRate: 0,
     actionCounts: {},
   };
 
   return (
     <Stack gap="lg">
-      {/* Header with time range selector - always visible */}
-      <Group justify="space-between" align="flex-end">
-        <Title order={3} fw={600}>
-          Control Statistics
-        </Title>
-        <TimeRangeSwitch
-          value={timeRangeValue}
-          onChange={setTimeRangeValue}
-          segmentOptions={TIME_RANGE_SEGMENTS}
-          allowCustomSelection={false}
-        />
-      </Group>
-
       {/* Always show the summary card - it handles empty state internally */}
       <SummaryCard 
         summary={displaySummary} 

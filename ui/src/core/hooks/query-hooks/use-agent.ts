@@ -1,3 +1,4 @@
+import type { UseQueryOptions, UseQueryResult } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/core/api/client";
@@ -9,7 +10,21 @@ import type { GetAgentPathParams, GetAgentResponse } from "@/core/api/types";
  * @param agentId - UUID of the agent (required)
  *
  */
-export function useAgent(agentId: GetAgentPathParams["agent_id"]) {
+export function useAgent(
+  agentId: GetAgentPathParams["agent_id"],
+  options?: Omit<
+    UseQueryOptions<
+      GetAgentResponse,
+      unknown,
+      GetAgentResponse,
+      ["agent", GetAgentPathParams["agent_id"]]
+    >,
+    "queryKey" | "queryFn"
+  >
+): UseQueryResult<GetAgentResponse> {
+  const { enabled, ...rest } = options ?? {};
+  const isEnabled = enabled ?? Boolean(agentId);
+
   return useQuery<GetAgentResponse>({
     queryKey: ["agent", agentId],
     queryFn: async () => {
@@ -17,5 +32,7 @@ export function useAgent(agentId: GetAgentPathParams["agent_id"]) {
       if (error) throw error;
       return data;
     },
+    enabled: isEnabled,
+    ...rest,
   });
 }
