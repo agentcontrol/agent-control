@@ -50,7 +50,6 @@ from fastapi.responses import JSONResponse
 _logger = logging.getLogger(__name__)
 
 _MAX_PUBLIC_TEXT_LENGTH = 500
-_MAX_LABEL_LENGTH = 120
 _REDACTED_VALUE = "[REDACTED]"
 _GENERIC_INTERNAL_DETAIL = "An unexpected error occurred. Please try again or contact support."
 _GENERIC_DATABASE_DETAIL = "A database error occurred while processing the request."
@@ -67,25 +66,14 @@ _DEFAULT_5XX_DETAIL_BY_CODE: dict[ErrorCode, str] = {
     ErrorCode.DATABASE_ERROR: _GENERIC_DATABASE_DETAIL,
     ErrorCode.AUTH_MISCONFIGURED: _GENERIC_AUTH_MISCONFIGURED_DETAIL,
 }
-
-
-def _default_safe_detail(status_code: int, error_code: ErrorCode | None) -> str:
-    """Return a fallback safe detail for the given status and error code."""
-    if status_code >= 500:
-        if error_code is not None and error_code in _DEFAULT_5XX_DETAIL_BY_CODE:
-            return _DEFAULT_5XX_DETAIL_BY_CODE[error_code]
-        return _GENERIC_INTERNAL_DETAIL
-    if status_code in (400, 422):
-        return _GENERIC_BAD_REQUEST_DETAIL
-    if status_code == 401:
-        return _GENERIC_UNAUTHORIZED_DETAIL
-    if status_code == 403:
-        return _GENERIC_FORBIDDEN_DETAIL
-    if status_code == 404:
-        return _GENERIC_NOT_FOUND_DETAIL
-    if status_code == 409:
-        return _GENERIC_CONFLICT_DETAIL
-    return _GENERIC_BAD_REQUEST_DETAIL
+_DEFAULT_4XX_DETAIL_BY_STATUS: dict[int, str] = {
+    400: _GENERIC_BAD_REQUEST_DETAIL,
+    401: _GENERIC_UNAUTHORIZED_DETAIL,
+    403: _GENERIC_FORBIDDEN_DETAIL,
+    404: _GENERIC_NOT_FOUND_DETAIL,
+    409: _GENERIC_CONFLICT_DETAIL,
+    422: _GENERIC_BAD_REQUEST_DETAIL,
+}
 
 
 def _normalize_public_text(text: str) -> str:
@@ -96,53 +84,33 @@ def _normalize_public_text(text: str) -> str:
     return normalized
 
 
-def _sanitize_label(value: str, *, fallback: str) -> str:
-    """Normalize a short identifier-like field for response payloads."""
-    normalized = _normalize_public_text(value)
-    if not normalized:
-        return fallback
-    if len(normalized) > _MAX_LABEL_LENGTH:
-        return normalized[:_MAX_LABEL_LENGTH]
-    return normalized
+def _default_public_detail(status_code: int, error_code: ErrorCode | None) -> str:
+    """Return the default public-safe detail template for this status/code."""
+    if status_code >= 500:
+        if error_code is not None and error_code in _DEFAULT_5XX_DETAIL_BY_CODE:
+            return _DEFAULT_5XX_DETAIL_BY_CODE[error_code]
+        return _GENERIC_INTERNAL_DETAIL
+    return _DEFAULT_4XX_DETAIL_BY_STATUS.get(status_code, _GENERIC_BAD_REQUEST_DETAIL)
 
 
-def _safe_detail(
-    text: str,
-    *,
-    status_code: int,
-    fallback: str | None = None,
-    error_code: ErrorCode | None = None,
-) -> str:
+def _public_detail(status_code: int, error_code: ErrorCode | None, detail: str) -> str:
     """
     Return safe client-facing detail text.
 
     For 5xx statuses, this always returns a fixed safe template.
     For 4xx statuses, this keeps caller-provided text after normalization.
     """
-    safe_fallback = (
-        fallback if fallback is not None else _default_safe_detail(status_code, error_code)
-    )
+    safe_fallback = _default_public_detail(status_code, error_code)
     if status_code >= 500:
         return safe_fallback
 
-    normalized = _normalize_public_text(text)
+    normalized = _normalize_public_text(detail)
     if not normalized:
         return safe_fallback
     return normalized
 
 
-def _safe_optional_text(text: str | None) -> str | None:
-    """Normalize optional advisory text; empty values become None."""
-    if text is None:
-        return None
-
-    normalized = _normalize_public_text(text)
-    if normalized == "":
-        return None
-    return normalized
-
-
-def _sanitize_validation_error_value(value: Any) -> Any | None:
+def _sanitize_validation_error_value(value: Any) -> bool | int | float | str | None:
     """
     Redact potentially sensitive invalid values before returning them to clients.
 
@@ -159,55 +127,40 @@ def _sanitize_validation_error_value(value: Any) -> Any | None:
 
 def _sanitize_validation_errors(
     items: list[ValidationErrorItem] | None,
-    *,
-    status_code: int,
 ) -> list[ValidationErrorItem] | None:
     """Sanitize validation error arrays for safe client output."""
     if items is None:
         return None
 
-    sanitized: list[ValidationErrorItem] = []
-    for item in items:
-        sanitized.append(
-            item.model_copy(
-                update={
-                    "resource": _sanitize_label(item.resource, fallback="Request"),
-                    "field": (
-                        _sanitize_label(item.field, fallback="field")
-                        if item.field is not None
-                        else None
-                    ),
-                    "code": _sanitize_label(item.code, fallback="validation_error"),
-                    "message": _safe_detail(
-                        item.message,
-                        status_code=status_code,
-                        fallback="Invalid value.",
-                    ),
-                    "value": _sanitize_validation_error_value(item.value),
-                }
-            )
+    return [
+        item.model_copy(
+            update={
+                "value": _sanitize_validation_error_value(item.value),
+            }
         )
-    return sanitized
+        for item in items
+    ]
 
 
 def _sanitize_problem_detail(problem: ProblemDetail) -> ProblemDetail:
     """Apply public-safe sanitization rules to a ProblemDetail payload."""
-    problem.detail = _safe_detail(
-        problem.detail,
-        status_code=problem.status,
-        error_code=problem.error_code,
-    )
+    problem.detail = _public_detail(problem.status, problem.error_code, problem.detail)
+
+    if problem.status >= 500:
+        problem.hint = None
+        problem.errors = None
+        if problem.details is not None:
+            problem.details.causes = None
+        return problem
 
     if problem.hint is not None:
-        problem.hint = _safe_optional_text(problem.hint)
+        normalized_hint = _normalize_public_text(problem.hint)
+        problem.hint = normalized_hint if normalized_hint else None
 
-    problem.errors = _sanitize_validation_errors(problem.errors, status_code=problem.status)
+    problem.errors = _sanitize_validation_errors(problem.errors)
 
     if problem.details is not None and problem.details.causes is not None:
-        problem.details.causes = _sanitize_validation_errors(
-            problem.details.causes,
-            status_code=problem.status,
-        )
+        problem.details.causes = _sanitize_validation_errors(problem.details.causes)
 
     return problem
 
