@@ -29,6 +29,7 @@ _logger = get_logger(__name__)
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
 _MAX_PAGINATION_LIMIT = 100
+_INVALID_PARAMETERS_MESSAGE = "Invalid config parameters for evaluator."
 
 router = APIRouter(prefix="/evaluator-configs", tags=["evaluator-configs"])
 
@@ -100,14 +101,19 @@ def _validate_known_evaluator_config(evaluator: str, config: dict[str, Any]) -> 
             detail=f"Config validation failed for evaluator '{evaluator}'",
             hint="Check the evaluator's config schema for required fields and types.",
         )
-    except TypeError as e:
+    except TypeError:
+        _logger.warning(
+            "Evaluator config parameter validation raised TypeError for '%s'",
+            evaluator,
+            exc_info=True,
+        )
         _raise_invalid_config(
             [
                 ValidationErrorItem(
                     resource="EvaluatorConfig",
                     field="config",
                     code="invalid_parameters",
-                    message=str(e),
+                    message=_INVALID_PARAMETERS_MESSAGE,
                 )
             ],
             detail=f"Invalid config parameters for evaluator '{evaluator}'",

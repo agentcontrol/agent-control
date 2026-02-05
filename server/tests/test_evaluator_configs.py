@@ -167,6 +167,11 @@ def test_create_evaluator_config_invalid_parameters_type_error_422(
     data = resp.json()
     assert data["error_code"] == "INVALID_CONFIG"
     assert any(err.get("code") == "invalid_parameters" for err in data.get("errors", []))
+    assert any(
+        err.get("message") == "Invalid config parameters for evaluator."
+        for err in data.get("errors", [])
+    )
+    assert "unexpected parameter" not in resp.text
 
 
 def test_create_evaluator_config_integrity_error_name_conflict(

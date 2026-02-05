@@ -136,11 +136,14 @@ async def add_control_to_policy(
         )
         await db.execute(stmt)
         await db.commit()
-    except Exception as e:
+    except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to add control '{control.name}' ({control_id}) "
-            f"to policy '{policy.name}' ({policy_id}): {e}",
+            "Failed to add control '%s' (%s) to policy '%s' (%s)",
+            control.name,
+            control_id,
+            policy.name,
+            policy_id,
             exc_info=True,
         )
         raise DatabaseError(

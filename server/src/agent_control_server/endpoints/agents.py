@@ -63,6 +63,7 @@ _BUILTIN_EVALUATOR_NAMES: set[str] | None = None
 _DEFAULT_PAGINATION_OFFSET = 0
 _DEFAULT_PAGINATION_LIMIT = 20
 _MAX_PAGINATION_LIMIT = 100
+_CORRUPTED_AGENT_DATA_MESSAGE = "Stored agent data is corrupted and cannot be parsed."
 
 type StepKeyTuple = tuple[str, str]
 
@@ -441,7 +442,7 @@ async def init_agent(
     # Parse existing data via AgentData Pydantic model
     try:
         data_model = AgentData.model_validate(existing.data)
-    except ValidationError as e:
+    except ValidationError:
         if not request.force_replace:
             _logger.error(
                 f"Failed to parse existing agent data for '{request.agent.agent_name}'",
@@ -459,14 +460,15 @@ async def init_agent(
                         resource="Agent",
                         field="data",
                         code="corrupted_data",
-                        message=str(e),
+                        message=_CORRUPTED_AGENT_DATA_MESSAGE,
                     )
                 ],
             )
         # User explicitly requested replacement
         _logger.warning(
             f"Force-replacing corrupted data for agent '{request.agent.agent_name}' "
-            f"due to force_replace=true. Original error: {e}"
+            "due to force_replace=true.",
+            exc_info=True,
         )
         data_model = AgentData(agent_metadata={}, steps=[], evaluators=[])
 

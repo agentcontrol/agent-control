@@ -263,6 +263,10 @@ def test_init_agent_logs_warning_on_bad_existing_data(client: TestClient, caplog
         assert "corrupted data" in response_data.get("detail", "").lower()
         # Check hint contains force_replace suggestion
         assert "force_replace" in response_data.get("hint", "").lower()
+        assert response_data["errors"][0]["message"] == (
+            "Stored agent data is corrupted and cannot be parsed."
+        )
+        assert "ValidationError" not in response_data["errors"][0]["message"]
         # Then: an error is logged about parse failure
         messages = [rec.getMessage() for rec in caplog.records]
         assert any("Failed to parse existing agent data" in m for m in messages)
