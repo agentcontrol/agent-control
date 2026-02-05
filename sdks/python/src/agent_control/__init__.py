@@ -54,9 +54,12 @@ if TYPE_CHECKING:
         Agent,
         ControlAction,
         ControlDefinition,
+        ControlMatch,
+        ControlScope,
         ControlSelector,
         EvaluationRequest,
         EvaluationResult,
+        EvaluatorResult,
         EvaluatorSpec,
         Step,
         StepSchema,
@@ -102,9 +105,12 @@ try:
         Agent,
         ControlAction,
         ControlDefinition,
+        ControlMatch,
+        ControlScope,
         ControlSelector,
         EvaluationRequest,
         EvaluationResult,
+        EvaluatorResult,
         EvaluatorSpec,
         Step,
         StepSchema,
@@ -117,6 +123,15 @@ except ImportError:
             pass
 
         class ControlSelector:
+            pass
+
+        class ControlScope:
+            pass
+
+        class ControlMatch:
+            pass
+
+        class EvaluatorResult:
             pass
 
         class ControlAction:
@@ -1092,6 +1107,9 @@ __all__ = [
     "EvaluationResult",
     "ControlDefinition",
     "ControlSelector",
+    "ControlScope",
     "ControlAction",
+    "ControlMatch",
     "EvaluatorSpec",
+    "EvaluatorResult",
 ]
