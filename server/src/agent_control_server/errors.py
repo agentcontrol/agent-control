@@ -32,7 +32,6 @@ Usage:
 
 import logging
 import re
-import traceback
 import uuid
 from typing import Any
 
@@ -612,22 +611,12 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
     # Generate a correlation ID for support to look up the full error in logs
     # In production, you'd want to use a proper request ID from middleware
     error_id = str(uuid.uuid4())[:8]
-    if exc.__traceback__ is not None:
-        trace_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    else:
-        stack_text = "".join(traceback.format_stack())
-        trace_text = (
-            f"Traceback unavailable for propagated exception: {type(exc).__name__}: {exc}\n"
-            "Stack (most recent call last):\n"
-            f"{stack_text}"
-        )
-
     _logger.error(
-        "Unhandled exception (error_id=%s, path=%s, method=%s)\n%s",
+        "Unhandled exception (error_id=%s, path=%s, method=%s)",
         error_id,
         request.url.path,
         request.method,
-        trace_text,
+        exc_info=True,
     )
 
     problem = ProblemDetail(

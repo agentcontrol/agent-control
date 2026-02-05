@@ -205,13 +205,13 @@ class ControlEngine:
                 except asyncio.CancelledError:
                     # Task was cancelled due to another deny - that's OK
                     raise
-                except TimeoutError as exc:
+                except TimeoutError:
                     # Evaluator timed out
                     error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
                     logger.warning(
                         f"Evaluator timeout for control '{eval_task.item.name}' "
                         f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}",
-                        exc_info=(type(exc), exc, exc.__traceback__),
+                        exc_info=True,
                     )
                     eval_task.result = EvaluatorResult(
                         matched=False,
@@ -226,7 +226,7 @@ class ControlEngine:
                     logger.error(
                         f"Evaluator error for control '{eval_task.item.name}' "
                         f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}",
-                        exc_info=(type(e), e, e.__traceback__),
+                        exc_info=True,
                     )
                     eval_task.result = EvaluatorResult(
                         matched=False,

@@ -57,8 +57,11 @@ async def test_generic_exception_handler_logs_full_traceback(
     caplog.set_level(logging.ERROR, logger="agent_control_server.errors")
     request = Request({"type": "http", "method": "GET", "path": "/boom", "headers": []})
 
-    # When: handling the exception
-    await generic_exception_handler(request, ValueError("boom"))
+    # When: handling the exception while inside an except block
+    try:
+        raise ValueError("boom")
+    except ValueError as exc:
+        await generic_exception_handler(request, exc)
 
     # Then: server logs include traceback details
     assert "Unhandled exception (error_id=" in caplog.text
