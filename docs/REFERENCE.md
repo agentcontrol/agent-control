@@ -8,7 +8,7 @@ This document provides comprehensive technical reference for Agent Control. Each
 
 - [Introduction](#introduction)
 - [Concepts](#concepts)
-- [Architecture](#architecture)
+- [Architecture](#agent-control-architecture)
 - [Evaluators](#evaluators)
 - [SDK Reference](#sdk-reference)
 - [Server API](#server-api)
@@ -135,62 +135,143 @@ Controls can scope to different step types:
 
 ---
 
-## Architecture
+## Agent Control Architecture
 
-Agent Control is built as a monorepo with these components:
+```mermaid
+graph TB
+    subgraph "User Application Layer"
+        APP[Your AI Agent Application]
+        SDK[Agent Control SDK<br/>@control decorator]
+        APP --> SDK
+    end
 
+    subgraph "Agent Control Platform"
+        subgraph "Server Layer"
+            API[REST API Server<br/>FastAPI]
+            AUTH[Authentication<br/>API Keys]
+            API --> AUTH
+        end
+
+        subgraph "Processing Layer"
+            ENGINE[Control Engine<br/>Evaluation Logic]
+            REGISTRY[Evaluator Registry<br/>Evaluator Discovery]
+            ENGINE --> REGISTRY
+        end
+
+        subgraph "Evaluator Ecosystem"
+            BUILTIN[Built-in Evaluators<br/>Regex, List, JSON, SQL]
+            LUNA[Luna-2 Evaluator<br/>AI-powered Detection]
+            CUSTOM[Custom Evaluators<br/>User Extensions]
+        end
+
+        subgraph "Data Layer"
+            DB[(PostgreSQL<br/>Controls & Observability)]
+            MODELS[Shared Models<br/>Pydantic v2]
+        end
+
+        subgraph "Management Layer"
+            UI[Web Dashboard<br/>Next.js + React]
+            UIAPI[Dashboard API Client]
+            UI --> UIAPI
+        end
+    end
+
+    %% SDK to Server connections
+    SDK -->|HTTP/REST| API
+
+    %% Server to Engine connections
+    API --> ENGINE
+    API --> DB
+
+    %% Engine to Evaluators connections
+    REGISTRY --> BUILTIN
+    REGISTRY --> LUNA
+    REGISTRY --> CUSTOM
+
+    %% Engine to Models
+    ENGINE --> MODELS
+    API --> MODELS
+
+    %% Dashboard connections
+    UIAPI -->|HTTP/REST| API
+
+    %% Database connections
+    ENGINE --> DB
+
+    %% External services
+    LUNA -.->|API Calls| GALILEO[Galileo Luna-2 API]
+    CUSTOM -.->|Optional| EXTERNAL[External APIs<br/>DeepEval, etc.]
+
+    classDef userLayer fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef serverLayer fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef engineLayer fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef evaluatorLayer fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef dataLayer fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef uiLayer fill:#e0f2f1,stroke:#004d40,stroke-width:2px
+
+    class APP,SDK userLayer
+    class API,AUTH serverLayer
+    class ENGINE,REGISTRY engineLayer
+    class BUILTIN,LUNA,CUSTOM evaluatorLayer
+    class DB,MODELS dataLayer
+    class UI,UIAPI uiLayer
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Your Application                         │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │                     @control() decorator                   │  │
-│  │                            │                               │  │
-│  │                            ▼                               │  │
-│  │  ┌──────────┐    ┌─────────────────┐    ┌──────────────┐   │  │
-│  │  │  Input   │───▶│  Agent Control  │───▶│    Output    │   │  │
-│  │  │          │    │     Engine      │    │              │   │  │
-│  │  └──────────┘    └─────────────────┘    └──────────────┘   │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                      Agent Control Server                        │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
-│  │    API     │  │    API     │  │  Registry  │  │    API     │  │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                       Evaluator Ecosystem                        │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │   Regex    │  │    List    │  │   Luna-2   │  │   Custom   │  │
-│  │ Evaluator  │  │ Evaluator  │  │ Evaluator  │  │ Evaluators │  │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-```
 
-### Components
+## Component Overview
 
-| Component | Package | Description |
-|-----------|---------|-------------|
-| SDK | `agent-control` | Python client library with `@control()` decorator |
-| Server | `agent-control-server` | FastAPI service that stores and evaluates controls |
-| Engine | `agent-control-engine` | Core evaluation logic (can run locally or server-side) |
-| Evaluators | `agent-control-evaluators` | Extensible evaluators for different detection methods |
-| Models | `agent-control-models` | Shared Pydantic models for type-safe communication |
-| UI | `ui/` | Next.js web dashboard for control management |
+### User Application Layer
+- **Your AI Agent Application**: Any Python application using AI agents (LangChain, CrewAI, custom, etc.)
+- **Agent Control SDK**: Python package with `@control()` decorator for protecting functions
 
-### Data Flow
+### Server Layer
+- **REST API Server**: FastAPI-based server exposing control management endpoints
+- **Authentication**: Optional API key authentication for production deployments
 
-1. Agent initializes with `agent_control.init()`, registering with the server
-2. Server returns the agent's assigned policy and controls
-3. When a decorated function is called, the SDK evaluates `pre` controls
-4. If all `pre` controls pass, the function executes
-5. After execution, `post` controls evaluate the output
-6. If any control with `deny` action matches, `ControlViolationError` is raised
+### Processing Layer
+- **Control Engine**: Core evaluation engine that processes control rules and evaluates data
+- **Evaluator Registry**: Evaluator system for discovering and loading evaluators via entry points
+
+### Evaluator Ecosystem
+- **Built-in Evaluators**: Out-of-the-box evaluators (regex, list matching, JSON validation, SQL injection detection)
+- **Luna-2 Evaluator**: AI-powered detection using Galileo's Luna-2 API
+- **Custom Evaluators**: User-defined evaluators extending the base `Evaluator` class
+
+### Data Layer
+- **PostgreSQL**: Persistent storage for controls, agents, and observability data
+- **Shared Models**: Pydantic v2 models shared across all components
+
+### Management Layer
+- **Web Dashboard**: Next.js + React UI for managing agents and controls
+- **Dashboard API Client**: Type-safe API client for frontend-backend communication
+
+## Data Flow
+
+### Agent Initialization
+1. **Agent Registration**: Agent initializes with `agent_control.init()`, registering with the server
+2. **Policy Assignment**: Server returns the agent's assigned policy and active controls
+
+### Control Execution Flow
+1. **Function Invocation**: User calls a function decorated with `@control()`
+2. **Pre-Stage Evaluation**: SDK evaluates `pre` controls before function execution
+3. **Function Execution**: If all `pre` controls pass, the protected function executes
+4. **Post-Stage Evaluation**: SDK evaluates `post` controls on the output
+5. **Server Processing**: Server receives evaluation request and fetches active controls
+6. **Engine Evaluation**: Engine runs applicable evaluators based on control configuration
+7. **Decision Enforcement**: If any control with `deny` action matches, `ControlViolationError` is raised; otherwise execution continues
+
+### Control Management Flow
+1. **User Configures**: Admin uses Web Dashboard or API to create/modify controls
+2. **Server Stores**: Server validates and stores control configuration in database
+3. **Runtime Updates**: Changes take effect immediately for new requests (no deployment needed)
+4. **Observability**: All control executions are logged for monitoring and analysis
+
+## Key Features
+
+- **Runtime Configuration**: Update controls without redeploying applications
+- **Extensible**: Evaluator architecture for custom evaluators
+- **Fail-Safe**: Configurable error handling (fail open/closed)
+- **Observable**: Full audit trail of control executions
+- **Production-Ready**: API authentication, PostgreSQL, horizontal scaling support
 
 ---
 
@@ -501,7 +582,7 @@ import agent_control
 
 agent_control.init(
     agent_name="my-agent",           # Required: human-readable name
-    agent_id="my-agent-v1",          # Required: unique identifier
+    agent_id="550e8400-e29b-41d4-a716-446655440000",  # Required: UUID
     server_url="http://localhost:8000",  # Optional: defaults to env var
     steps=[                          # Optional: register available steps
         {

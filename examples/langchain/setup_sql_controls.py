@@ -13,13 +13,13 @@ you may need to either:
 import asyncio
 import os
 import pathlib
-import uuid
+from uuid import UUID
 
 import requests
 
 from agent_control import Agent, AgentControlClient, agents, controls, policies
 
-AGENT_ID = "sql-agent-demo"
+AGENT_ID = "edf66504-0db5-4ee8-9e09-3ef37bbb8faa"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
@@ -52,7 +52,7 @@ async def setup_sql_controls():
     """Create SQL control, policy, and assign to agent."""
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # 1. Register Agent
-        agent_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID)
+        agent_uuid = UUID(AGENT_ID)
         
         agent = Agent(
             agent_id=agent_uuid,

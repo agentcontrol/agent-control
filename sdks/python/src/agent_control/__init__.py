@@ -10,7 +10,7 @@ Usage:
     # Initialize at the base of your agent file
     agent_control.init(
         agent_name="my-customer-service-bot",
-        agent_id="csbot-prod-v1"
+        agent_id="550e8400-e29b-41d4-a716-446655440000"
     )
 
     # Apply server-defined controls using the decorator
@@ -37,8 +37,12 @@ Usage:
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as get_version
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from uuid import UUID
+
+import httpx
 
 from . import agents, controls, evaluation, evaluators, policies
 
@@ -69,6 +73,7 @@ from .tracing import (
     is_otel_available,
     with_trace,
 )
+from .validation import ensure_uuid
 
 # Module logger
 logger = get_logger(__name__)
@@ -177,9 +182,117 @@ except ImportError:
 _current_agent: Agent | None = None
 _control_engine = None
 _client: AgentControlClient | None = None
-_server_controls: list | None = None
+_server_controls: list[dict[str, Any]] | None = None
+_server_url: str | None = None
+_api_key: str | None = None
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+def get_server_controls() -> list[dict[str, Any]] | None:
+    """Get the cached server controls.
+
+    Returns the controls that were fetched during init() or the last
+    refresh_controls() call. Returns None if no controls are cached.
+
+    Returns:
+        List of control dicts or None if not initialized.
+
+    Example:
+        controls = agent_control.get_server_controls()
+        if controls:
+            print(f"Loaded {len(controls)} controls")
+            for c in controls:
+                print(f"  - {c['name']} (execution: {c['control'].get('execution', 'server')})")
+    """
+    return _server_controls
+
+
+async def refresh_controls_async() -> list[dict[str, Any]] | None:
+    """Refresh controls from the server asynchronously.
+
+    Fetches the latest controls from the server and updates the cache.
+    Use this when you've made changes to controls in the UI or API
+    and want the SDK to pick them up without restarting.
+
+    Returns:
+        List of control dicts or None if fetch failed.
+
+    Example:
+        # After updating a control in the UI
+        controls = await agent_control.refresh_controls_async()
+        print(f"Refreshed {len(controls)} controls")
+    """
+    global _server_controls
+
+    if _current_agent is None:
+        raise RuntimeError("Agent not initialized. Call agent_control.init() first.")
+
+    if _server_url is None:
+        raise RuntimeError("Server URL not set. Call agent_control.init() first.")
+
+    async with AgentControlClient(base_url=_server_url, api_key=_api_key) as client:
+        response = await agents.register_agent(
+            client,
+            _current_agent,
+            steps=[]
+        )
+        _server_controls = response.get('controls', [])
+        logger.info("Refreshed %d control(s) from server", len(_server_controls or []))
+        return _server_controls
+
+
+def refresh_controls() -> list[dict[str, Any]] | None:
+    """Refresh controls from the server synchronously.
+
+    Fetches the latest controls from the server and updates the cache.
+    Use this when you've made changes to controls in the UI or API
+    and want the SDK to pick them up without restarting.
+
+    Returns:
+        List of control dicts or None if fetch failed.
+
+    Example:
+        # After updating a control in the UI
+        controls = agent_control.refresh_controls()
+        print(f"Refreshed {len(controls)} controls")
+    """
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+        # We're in an async context - run in thread
+        import threading
+
+        result_container: list[list[dict[str, Any]] | None] = [None]
+        exception_container: list[Exception | None] = [None]
+
+        def run_in_thread() -> None:
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                result_container[0] = new_loop.run_until_complete(refresh_controls_async())
+            except Exception as e:
+                exception_container[0] = e
+            finally:
+                new_loop.close()
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join(timeout=10)
+
+        if exception_container[0]:
+            raise exception_container[0]
+        return result_container[0]
+
+    except RuntimeError:
+        # No running event loop - we're in a sync context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(refresh_controls_async())
+        finally:
+            loop.close()
 
 
 # ============================================================================
@@ -188,7 +301,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def init(
     agent_name: str,
-    agent_id: str,
+    agent_id: str | UUID,
     agent_description: str | None = None,
     agent_version: str | None = None,
     server_url: str | None = None,
@@ -212,9 +325,7 @@ def init(
 
     Args:
         agent_name: Human-readable name for your agent (e.g., "Customer Service Bot")
-        agent_id: Unique identifier for your agent. Can be:
-                 - A UUID string (e.g., "550e8400-e29b-41d4-a716-446655440000")
-                 - Any string (e.g., "csbot-prod-v1") - will be converted to UUID
+        agent_id: Unique identifier for your agent (UUID string or UUID instance)
         agent_description: Optional description of what your agent does
         agent_version: Optional version string (e.g., "1.0.0")
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var
@@ -236,7 +347,7 @@ def init(
 
         agent_control.init(
             agent_name="Customer Service Bot",
-            agent_id="csbot-prod-v1",
+            agent_id="550e8400-e29b-41d4-a716-446655440000",
             agent_description="Handles customer inquiries and support tickets",
             agent_version="2.1.0",
             steps=[
@@ -259,30 +370,24 @@ def init(
     Environment Variables:
         AGENT_CONTROL_URL: Server URL (default: http://localhost:8000)
     """
-    global _current_agent, _control_engine, _client, _server_controls
+    global _current_agent, _control_engine, _client, _server_controls, _server_url, _api_key
 
     if not agent_id:
         raise ValueError(
             "The 'agent_id' argument is required for initialization.\n"
-            "Please provide a unique string identifier for your agent, e.g.:\n"
-            '    agent_control.init(agent_name="my-agent", agent_id="my-agent-v1")'
+            "Please provide a valid UUID string for your agent, e.g.:\n"
+            '    agent_control.init(agent_name="my-agent", '
+            'agent_id="550e8400-e29b-41d4-a716-446655440000")'
         )
+
+    # Validate agent_id is a UUID (string or UUID instance)
+    _agent_uuid = ensure_uuid(agent_id)
 
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
         configure_logging(log_config)
 
     # Create agent instance with metadata
-    # Convert agent_id to UUID (accept UUID string or generate from regular string)
-    try:
-        _agent_uuid = UUID(agent_id)
-    except ValueError:
-        # If not a valid UUID, generate UUID5 (namespace-based, deterministic)
-        # Using DNS namespace for consistency
-        import uuid
-        _agent_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, agent_id)
-        logger.info("Generated UUID5 %s from agent_id '%s'", _agent_uuid, agent_id)
-
     _current_agent = Agent(
         agent_id=_agent_uuid,
         agent_name=agent_name,
@@ -295,6 +400,7 @@ def init(
 
     # Get server URL (ensure it's always a string)
     _server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    _api_key = api_key
 
     # Register with server and fetch controls
     server_controls = None
@@ -331,6 +437,9 @@ def init(
                         logger.debug("Registered %d step(s)", len(steps))
 
                     return controls
+                except httpx.HTTPStatusError:
+                    # Surface API errors like UUID conflicts
+                    raise
                 except Exception as e:
                     logger.error("Failed to register agent: %s", e, exc_info=True)
                     return None
@@ -370,6 +479,9 @@ def init(
             server_controls = loop.run_until_complete(register())
             loop.close()
 
+    except httpx.HTTPStatusError:
+        # Surface server-side errors (e.g., 409 UUID conflicts)
+        raise
     except Exception as e:
         logger.error("Could not connect to server: %s", e, exc_info=True)
         logger.info("Will use local controls if available")
@@ -397,7 +509,7 @@ def init(
 
 
 async def get_agent(
-    agent_id: str,
+    agent_id: str | UUID,
     server_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
@@ -405,7 +517,7 @@ async def get_agent(
     Get agent details from the server by ID.
 
     Args:
-        agent_id: UUID or string identifier of the agent
+        agent_id: UUID string or UUID instance
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
 
@@ -423,7 +535,9 @@ async def get_agent(
 
         # Fetch agent from server
         async def main():
-            agent_data = await agent_control.get_agent("bot-123")
+            agent_data = await agent_control.get_agent(
+                "550e8400-e29b-41d4-a716-446655440000"
+            )
             print(f"Agent: {agent_data['agent']['agent_name']}")
             print(f"Steps: {len(agent_data['steps'])}")
 
@@ -431,7 +545,9 @@ async def get_agent(
 
         # Or using the client directly
         async with agent_control.AgentControlClient() as client:
-            agent_data = await agent_control.agents.get_agent(client, "bot-123")
+            agent_data = await agent_control.agents.get_agent(
+                client, "550e8400-e29b-41d4-a716-446655440000"
+            )
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
@@ -447,7 +563,10 @@ def current_agent() -> Agent | None:
         Current Agent instance or None if not initialized
 
     Example:
-        agent_control.init(agent_name="My Bot", agent_id="bot-123")
+        agent_control.init(
+            agent_name="My Bot",
+            agent_id="550e8400-e29b-41d4-a716-446655440000",
+        )
         agent = agent_control.current_agent()
         print(agent.agent_name)  # "My Bot"
     """
@@ -907,6 +1026,11 @@ __all__ = [
     "init",
     "current_agent",
 
+    # Control sync
+    "get_server_controls",
+    "refresh_controls",
+    "refresh_controls_async",
+
     # SDK Logging
     "get_logger",
 
@@ -982,4 +1106,8 @@ __all__ = [
     "EvaluatorConfig",
 ]
 
-__version__ = "0.1.0"
+try:
+    __version__ = get_version("agent-control-sdk")
+except PackageNotFoundError:
+    # Package not installed (e.g., running from source without install)
+    __version__ = "0.0.0.dev"

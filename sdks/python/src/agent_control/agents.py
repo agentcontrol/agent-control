@@ -6,6 +6,7 @@ from uuid import UUID
 from agent_control_engine import ensure_evaluators_discovered
 
 from .client import AgentControlClient
+from .validation import ensure_uuid_str
 
 # Import models if available
 try:
@@ -74,14 +75,14 @@ async def register_agent(
 
 async def get_agent(
     client: AgentControlClient,
-    agent_id: str
+    agent_id: str | UUID
 ) -> dict[str, Any]:
     """
     Get agent details by ID from the server.
 
     Args:
         client: AgentControlClient instance
-        agent_id: UUID or string identifier of the agent
+        agent_id: UUID string or UUID instance
 
     Returns:
         Dictionary containing:
@@ -97,7 +98,8 @@ async def get_agent(
             print(f"Agent: {agent_data['agent']['agent_name']}")
             print(f"Steps: {len(agent_data['steps'])}")
     """
-    response = await client.http_client.get(f"/api/v1/agents/{agent_id}")
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 
@@ -146,14 +148,14 @@ async def list_agents(
 
 async def get_agent_policy(
     client: AgentControlClient,
-    agent_id: str,
+    agent_id: str | UUID,
 ) -> dict[str, Any]:
     """
     Get the policy assigned to an agent.
 
     Args:
         client: AgentControlClient instance
-        agent_id: UUID or string identifier of the agent
+        agent_id: UUID string or UUID instance
 
     Returns:
         Dictionary containing:
@@ -167,21 +169,22 @@ async def get_agent_policy(
             policy = await get_agent_policy(client, agent_id)
             print(f"Policy ID: {policy['policy_id']}")
     """
-    response = await client.http_client.get(f"/api/v1/agents/{agent_id}/policy")
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/policy")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 
 
 async def remove_agent_policy(
     client: AgentControlClient,
-    agent_id: str,
+    agent_id: str | UUID,
 ) -> dict[str, Any]:
     """
     Remove the policy assignment from an agent.
 
     Args:
         client: AgentControlClient instance
-        agent_id: UUID or string identifier of the agent
+        agent_id: UUID string or UUID instance
 
     Returns:
         Dictionary containing success flag/details
@@ -189,6 +192,7 @@ async def remove_agent_policy(
     Raises:
         httpx.HTTPError: If request fails or agent has no policy
     """
-    response = await client.http_client.delete(f"/api/v1/agents/{agent_id}/policy")
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.delete(f"/api/v1/agents/{agent_id_str}/policy")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())

@@ -102,7 +102,7 @@ def unique_name() -> str:
 @pytest.fixture
 def test_agent_id() -> str:
     """Generate a unique agent ID for testing."""
-    return f"test-agent-{uuid.uuid4().hex[:12]}"
+    return str(uuid.uuid4())
 
 
 @pytest_asyncio.fixture
