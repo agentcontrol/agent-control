@@ -20,6 +20,13 @@ Custom evaluators are Evaluator classes deployed with the engine.
 Their schemas are registered via initAgent for validation purposes.
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("agent-control-evaluators")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev"
+
 # Core infrastructure - export from _base and _registry
 from agent_control_evaluators._base import Evaluator, EvaluatorConfig, EvaluatorMetadata
 from agent_control_evaluators._discovery import (

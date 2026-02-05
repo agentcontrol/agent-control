@@ -34,6 +34,13 @@ Usage:
         )
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("agent-control-sdk")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev"
+
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime

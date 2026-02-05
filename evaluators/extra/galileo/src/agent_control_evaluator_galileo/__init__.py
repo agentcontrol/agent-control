@@ -12,6 +12,13 @@ Or via the agent-control-evaluators convenience extra:
     pip install agent-control-evaluators[galileo]
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("agent-control-evaluator-galileo")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev"
+
 from agent_control_evaluator_galileo.luna2 import (
     LUNA2_AVAILABLE,
     Luna2Evaluator,

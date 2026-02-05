@@ -1,5 +1,12 @@
 """Agent Control Models - Shared data models for server and SDK."""
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("agent-control-models")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev"
+
 from .agent import (
     BUILTIN_STEP_TYPES,
     STEP_TYPE_LLM,
