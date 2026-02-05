@@ -31,7 +31,6 @@ Usage:
 """
 
 import logging
-import re
 import uuid
 from typing import Any
 
@@ -51,6 +50,7 @@ from fastapi.responses import JSONResponse
 _logger = logging.getLogger(__name__)
 
 _MAX_PUBLIC_TEXT_LENGTH = 500
+_MAX_LABEL_LENGTH = 120
 _REDACTED_VALUE = "[REDACTED]"
 _GENERIC_INTERNAL_DETAIL = "An unexpected error occurred. Please try again or contact support."
 _GENERIC_DATABASE_DETAIL = "A database error occurred while processing the request."
@@ -62,37 +62,18 @@ _GENERIC_UNAUTHORIZED_DETAIL = "Authentication failed."
 _GENERIC_FORBIDDEN_DETAIL = "Permission denied."
 _GENERIC_NOT_FOUND_DETAIL = "Requested resource was not found."
 _GENERIC_CONFLICT_DETAIL = "Request conflicts with existing state."
-
-_EXCEPTION_PREFIX_RE = re.compile(r"^[A-Za-z_][\w.]{0,80}(Error|Exception):\s+")
-_TRACEBACK_RE = re.compile(r"traceback \(most recent call last\):", re.IGNORECASE)
-_STACK_FRAME_RE = re.compile(r'File ".*?\.py", line \d+', re.IGNORECASE)
-_PYDANTIC_INTERNAL_RE = re.compile(r"\bvalidation error for\b", re.IGNORECASE)
-_SECRET_KV_RE = re.compile(
-    r"(?i)\b(password|passwd|secret|token|api[-_]?key|authorization)\b\s*[:=]\s*\S+"
-)
-_BEARER_TOKEN_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-/+=]+")
-_CONNECTION_STRING_RE = re.compile(r"(?i)\b(postgresql|postgres|mysql|sqlite)://\S+")
-_ABSOLUTE_PATH_RE = re.compile(r"(?i)(/Users/|/home/|/var/|[A-Z]:\\)")
-_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_.:\-\[\]/]+$")
-_SENSITIVE_PATTERNS = (
-    _TRACEBACK_RE,
-    _STACK_FRAME_RE,
-    _EXCEPTION_PREFIX_RE,
-    _PYDANTIC_INTERNAL_RE,
-    _SECRET_KV_RE,
-    _BEARER_TOKEN_RE,
-    _CONNECTION_STRING_RE,
-    _ABSOLUTE_PATH_RE,
-)
+_DEFAULT_5XX_DETAIL_BY_CODE: dict[ErrorCode, str] = {
+    ErrorCode.INTERNAL_ERROR: _GENERIC_INTERNAL_DETAIL,
+    ErrorCode.DATABASE_ERROR: _GENERIC_DATABASE_DETAIL,
+    ErrorCode.AUTH_MISCONFIGURED: _GENERIC_AUTH_MISCONFIGURED_DETAIL,
+}
 
 
 def _default_safe_detail(status_code: int, error_code: ErrorCode | None) -> str:
     """Return a fallback safe detail for the given status and error code."""
-    if error_code == ErrorCode.DATABASE_ERROR:
-        return _GENERIC_DATABASE_DETAIL
-    if error_code == ErrorCode.AUTH_MISCONFIGURED:
-        return _GENERIC_AUTH_MISCONFIGURED_DETAIL
     if status_code >= 500:
+        if error_code is not None and error_code in _DEFAULT_5XX_DETAIL_BY_CODE:
+            return _DEFAULT_5XX_DETAIL_BY_CODE[error_code]
         return _GENERIC_INTERNAL_DETAIL
     if status_code in (400, 422):
         return _GENERIC_BAD_REQUEST_DETAIL
@@ -115,12 +96,17 @@ def _normalize_public_text(text: str) -> str:
     return normalized
 
 
-def _contains_internal_or_sensitive_data(text: str) -> bool:
-    """Detect content that should never be returned to API callers."""
-    return any(pattern.search(text) for pattern in _SENSITIVE_PATTERNS)
+def _sanitize_label(value: str, *, fallback: str) -> str:
+    """Normalize a short identifier-like field for response payloads."""
+    normalized = _normalize_public_text(value)
+    if not normalized:
+        return fallback
+    if len(normalized) > _MAX_LABEL_LENGTH:
+        return normalized[:_MAX_LABEL_LENGTH]
+    return normalized
 
 
-def sanitize_public_error_text(
+def _safe_detail(
     text: str,
     *,
     status_code: int,
@@ -128,11 +114,10 @@ def sanitize_public_error_text(
     error_code: ErrorCode | None = None,
 ) -> str:
     """
-    Sanitize a string for client-facing error responses.
+    Return safe client-facing detail text.
 
-    This is intentionally strict:
-    - All 5xx content is replaced with a safe template.
-    - 4xx content is preserved only if it does not look internal/sensitive.
+    For 5xx statuses, this always returns a fixed safe template.
+    For 4xx statuses, this keeps caller-provided text after normalization.
     """
     safe_fallback = (
         fallback if fallback is not None else _default_safe_detail(status_code, error_code)
@@ -143,33 +128,17 @@ def sanitize_public_error_text(
     normalized = _normalize_public_text(text)
     if not normalized:
         return safe_fallback
-    if _contains_internal_or_sensitive_data(normalized):
-        return safe_fallback
     return normalized
 
 
-def _sanitize_optional_public_text(text: str | None) -> str | None:
-    """Sanitize optional advisory text; returns None when unsafe."""
+def _safe_optional_text(text: str | None) -> str | None:
+    """Normalize optional advisory text; empty values become None."""
     if text is None:
         return None
 
     normalized = _normalize_public_text(text)
-    if not normalized:
+    if normalized == "":
         return None
-    if _contains_internal_or_sensitive_data(normalized):
-        return None
-    return normalized
-
-
-def _sanitize_identifier(value: str, *, fallback: str) -> str:
-    """Sanitize resource/field/code identifiers in validation payloads."""
-    normalized = _normalize_public_text(value)
-    if not normalized:
-        return fallback
-    if len(normalized) > 120:
-        normalized = normalized[:120]
-    if not _SAFE_IDENTIFIER_RE.fullmatch(normalized):
-        return fallback
     return normalized
 
 
@@ -202,14 +171,14 @@ def _sanitize_validation_errors(
         sanitized.append(
             item.model_copy(
                 update={
-                    "resource": _sanitize_identifier(item.resource, fallback="Request"),
+                    "resource": _sanitize_label(item.resource, fallback="Request"),
                     "field": (
-                        _sanitize_identifier(item.field, fallback="field")
+                        _sanitize_label(item.field, fallback="field")
                         if item.field is not None
                         else None
                     ),
-                    "code": _sanitize_identifier(item.code, fallback="validation_error"),
-                    "message": sanitize_public_error_text(
+                    "code": _sanitize_label(item.code, fallback="validation_error"),
+                    "message": _safe_detail(
                         item.message,
                         status_code=status_code,
                         fallback="Invalid value.",
@@ -223,14 +192,14 @@ def _sanitize_validation_errors(
 
 def _sanitize_problem_detail(problem: ProblemDetail) -> ProblemDetail:
     """Apply public-safe sanitization rules to a ProblemDetail payload."""
-    problem.detail = sanitize_public_error_text(
+    problem.detail = _safe_detail(
         problem.detail,
         status_code=problem.status,
         error_code=problem.error_code,
     )
 
     if problem.hint is not None:
-        problem.hint = _sanitize_optional_public_text(problem.hint)
+        problem.hint = _safe_optional_text(problem.hint)
 
     problem.errors = _sanitize_validation_errors(problem.errors, status_code=problem.status)
 
