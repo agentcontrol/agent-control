@@ -35,11 +35,7 @@ Documentation = "https://github.com/yourusername/agent-control#readme"
 Repository = "https://github.com/yourusername/agent-control"
 
 [project.optional-dependencies]
-# TODO: Uncomment luna2 extra once agent-control-evaluator-galileo is published to PyPI
-# Tracking: This enables `pip install agent-control[luna2]` convenience install
-# luna2 = [
-#     "agent-control-evaluator-galileo>=3.0.0",
-# ]
+galileo = ["agent-control-evaluator-galileo>=3.0.0"]
 
 [dependency-groups]
 dev = [
@@ -82,3 +78,5 @@ known-first-party = ["agent_control"]
 agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
 agent-control-evaluators = { workspace = true }
+# For local dev: use local galileo package instead of PyPI
+agent-control-evaluator-galileo = { path = "../../evaluators/extra/galileo", editable = true }

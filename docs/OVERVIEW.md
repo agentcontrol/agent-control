@@ -597,10 +597,10 @@ pip install agent-control
 # Server
 pip install agent-control-server
 
-# With Luna-2 evaluator support (Galileo)
+# With Galileo Luna-2 evaluator support
 pip install agent-control-evaluator-galileo
 # Or via convenience extra:
-pip install agent-control-server[luna2]
+pip install agent-control-server[galileo]
 ```
 
 ### Quick Start

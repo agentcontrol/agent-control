@@ -42,6 +42,7 @@ jobs:
           uv sync
           uv run python scripts/build.py all
 
+      # Publish in dependency order: models -> evaluators -> sdk -> evaluator-galileo
       - name: Publish agent-control-models to PyPI
         if: steps.release.outputs.released == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -50,11 +51,27 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
+      - name: Publish agent-control-evaluators to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: evaluators/builtin/dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
       - name: Publish agent-control-sdk to PyPI
         if: steps.release.outputs.released == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: sdks/python/dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Publish agent-control-evaluator-galileo to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: evaluators/extra/galileo/dist/
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
@@ -67,5 +84,7 @@ jobs:
           root_options: "-vv"
           dist_glob: |
             models/dist/*
+            evaluators/builtin/dist/*
             sdks/python/dist/*
             server/dist/*
+            evaluators/extra/galileo/dist/*

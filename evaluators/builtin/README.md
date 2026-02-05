@@ -39,12 +39,12 @@ Additional evaluators are available via separate packages:
 - `agent-control-evaluator-galileo` - Galileo Luna2 evaluator
 
 ```bash
+# Direct install
 pip install agent-control-evaluator-galileo
-```
 
-<!-- TODO: Enable convenience extras once packages are published to PyPI:
-     pip install agent-control-evaluators[galileo]
-     See: evaluators/builtin/pyproject.toml [project.optional-dependencies] -->
+# Or via convenience extra
+pip install agent-control-evaluators[galileo]
+```
 
 ## Creating Custom Evaluators
 
