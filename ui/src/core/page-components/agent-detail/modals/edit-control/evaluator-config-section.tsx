@@ -19,7 +19,7 @@ import type { ConfigViewMode, JsonViewMode } from "./types";
 const DEFAULT_HEIGHT = 450;
 type ValidationStatus = "idle" | "validating" | "valid" | "invalid";
 
-interface EvaluatorConfigSectionProps {
+type EvaluatorConfigSectionProps = {
   config: {
     configViewMode: ConfigViewMode;
     jsonViewMode: JsonViewMode;

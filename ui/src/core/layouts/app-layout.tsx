@@ -25,11 +25,11 @@ import { Logo } from "@/components/icons/galileo-logos.constants";
 // import { useAgentsInfinite } from "@/core/hooks/query-hooks/use-agents-infinite";
 import classes from "./app-layout.module.css";
 
-interface AppLayoutProps {
+type AppLayoutProps = {
   children: ReactNode;
 }
 
-interface NavItemProps {
+type NavItemProps = {
   href: string;
   icon: ReactNode;
   label: string;

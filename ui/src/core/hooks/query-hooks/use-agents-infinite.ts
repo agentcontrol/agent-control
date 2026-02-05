@@ -5,7 +5,7 @@ import type { ListAgentsResponse } from "@/core/api/types";
 
 const AGENTS_PAGE_SIZE = 10;
 
-export interface UseAgentsInfiniteParams {
+export type UseAgentsInfiniteParams = {
   name?: string;
   enabled?: boolean;
 }

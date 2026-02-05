@@ -1,6 +1,6 @@
 import React from 'react';
 
-export interface LogoProps {
+export type LogoProps = {
   theme?: 'light' | 'dark';
   width?: string | number;
   height?: string | number;
@@ -164,7 +164,7 @@ export const Logo = ({
 // Add the missing component to fix the error
 export const GenAILogoWithText = LogoWithText;
 
-export interface GenAILogoProps {
+export type GenAILogoProps = {
   fill?: string;
   height?: number;
   width?: number;

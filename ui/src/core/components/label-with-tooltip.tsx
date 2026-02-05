@@ -1,7 +1,7 @@
 import { Group, Text, Tooltip } from "@mantine/core";
 import { IconInfoCircle } from "@tabler/icons-react";
 
-export interface LabelWithTooltipProps {
+export type LabelWithTooltipProps = {
   label: string;
   tooltip: string;
 }

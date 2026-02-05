@@ -1,7 +1,7 @@
 import { AppShell } from '@mantine/core';
 import { type ReactNode } from 'react';
 
-interface MainLayoutProps {
+type MainLayoutProps = {
   children: ReactNode;
 }
 

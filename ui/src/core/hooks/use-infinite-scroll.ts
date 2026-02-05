@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-interface UseInfiniteScrollOptions {
+type UseInfiniteScrollOptions = {
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;

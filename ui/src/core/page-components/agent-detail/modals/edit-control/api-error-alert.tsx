@@ -3,7 +3,7 @@ import { IconAlertCircle } from "@tabler/icons-react";
 
 import type { ProblemDetail } from "@/core/api/types";
 
-export interface ApiErrorAlertProps {
+export type ApiErrorAlertProps = {
   /** The API error to display */
   error: ProblemDetail | null;
   /** Unmapped field errors to show in the list */

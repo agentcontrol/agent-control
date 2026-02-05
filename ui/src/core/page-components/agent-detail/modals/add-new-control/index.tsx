@@ -51,7 +51,7 @@ function getDefaultConfigForEvaluator(
   return DEFAULT_EVALUATOR_CONFIGS[evaluatorId] ?? {};
 }
 
-interface AddNewControlModalProps {
+type AddNewControlModalProps = {
   opened: boolean;
   onClose: () => void;
   agentId: string;

@@ -24,7 +24,7 @@ import type { TimeseriesBucket } from "@/core/hooks/query-hooks/use-agent-monito
 
 import type { SummaryMetrics } from "./types";
 
-interface SummaryCardProps {
+type SummaryCardProps = {
   summary: SummaryMetrics;
   timeseries?: TimeseriesBucket[] | null;
   timeRange: string;

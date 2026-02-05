@@ -33,7 +33,7 @@ import { SummaryCard } from "./summary-card";
 import type { SummaryMetrics } from "./types";
 import { mapTimeRangeTypeToTimeRange } from "./utils";
 
-interface AgentsMonitorProps {
+type AgentsMonitorProps = {
   agentUuid: string;
 }
 

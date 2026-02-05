@@ -20,7 +20,7 @@ import { applyApiErrorsToForms } from "./utils";
 
 const EVALUATOR_CONFIG_HEIGHT = 450;
 
-export interface EditControlContentProps {
+export type EditControlContentProps = {
   /** The control to edit/create template */
   control: Control;
   /** Agent ID for invalidating queries on save */

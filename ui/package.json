@@ -55,6 +55,7 @@
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "eslint-plugin-unused-imports": "^4.3.0",
     "openapi-typescript": "^7.10.1",
+    "typescript-eslint": "^8.32.1",
     "postcss-preset-mantine": "1.17.0",
     "postcss-simple-vars": "7.0.1",
     "tailwindcss": "^4",

@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/core/api/client";
 import type { ControlDefinition } from "@/core/api/types";
 
-interface CreateControlParams {
+type CreateControlParams = {
   name: string;
   definition: ControlDefinition;
 }

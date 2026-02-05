@@ -38,7 +38,7 @@ type ControlSummaryWithAgent = ControlSummary & {
   used_by_agent?: AgentRef | null;
 };
 
-interface ControlStoreModalProps {
+type ControlStoreModalProps = {
   opened: boolean;
   onClose: () => void;
   agentId: string;

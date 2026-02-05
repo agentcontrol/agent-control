@@ -4,13 +4,13 @@ import type { ProblemDetail } from "@/core/api/types";
 
 import type { ConfigViewMode, JsonViewMode } from "./types";
 
-export interface UseEvaluatorConfigStateArgs {
+export type UseEvaluatorConfigStateArgs = {
   getConfigFromForm: () => Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
   onValidateConfig: (config: Record<string, unknown>) => Promise<void>;
 }
 
-export interface EvaluatorConfigState {
+export type EvaluatorConfigState = {
   getConfigFromForm: () => Record<string, unknown>;
   configViewMode: ConfigViewMode;
   jsonViewMode: JsonViewMode;

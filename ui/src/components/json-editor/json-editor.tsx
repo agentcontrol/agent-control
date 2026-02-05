@@ -3,7 +3,7 @@ import { JsonEditor as JsonEditReactEditor } from "json-edit-react";
 
 import { DARK_THEME, LIGHT_THEME } from "./theme";
 
-interface JsonEditorProps {
+type JsonEditorProps = {
   data: any;
   setData: (data: any) => void;
   rootName?: string;

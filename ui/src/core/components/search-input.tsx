@@ -5,11 +5,10 @@ import { useMemo } from "react";
 
 import { useQueryParam } from "@/core/hooks/use-query-param";
 
-interface SearchInputProps
-  extends Omit<TextInputProps, "value" | "onChange" | "leftSection" | "rightSection"> {
+type SearchInputProps = {
   /** Query parameter key to sync with URL (e.g., "search", "q", "store_q") */
   queryKey: string;
-}
+} & Omit<TextInputProps, "value" | "onChange" | "leftSection" | "rightSection">
 
 /**
  * Reusable search input component that syncs with URL query parameters.

@@ -12,7 +12,7 @@ import type { ValidationErrorItem } from "@/core/api/types";
 /**
  * Mapping result indicating which form and field an API error belongs to
  */
-interface FieldMapping {
+type FieldMapping = {
   form: "definition" | "evaluator";
   field: string;
 }

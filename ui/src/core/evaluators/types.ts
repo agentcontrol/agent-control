@@ -10,7 +10,7 @@ import type { UseFormReturnType } from "@mantine/form";
  *
  * The main edit-control component will automatically pick it up.
  */
-export interface EvaluatorDefinition<TFormValues = any> {
+export type EvaluatorDefinition<TFormValues = any> = {
   /** Unique evaluator ID (must match backend evaluator name) */
   id: string;
 
@@ -60,7 +60,7 @@ export type AnyEvaluatorDefinition = EvaluatorDefinition<any>;
 /**
  * Props passed to evaluator form components.
  */
-export interface EvaluatorFormProps<TFormValues> {
+export type EvaluatorFormProps<TFormValues> = {
   form: UseFormReturnType<TFormValues>;
 }
 

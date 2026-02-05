@@ -41,7 +41,7 @@ import { ControlStoreModal } from "./modals/control-store";
 import { EditControlContent } from "./modals/edit-control/edit-control-content";
 import { AgentsMonitor } from "./monitor";
 
-interface AgentDetailPageProps {
+type AgentDetailPageProps = {
   agentId: string;
   defaultTab?: "controls" | "monitor";
 }

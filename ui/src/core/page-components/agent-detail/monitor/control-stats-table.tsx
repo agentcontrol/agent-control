@@ -14,7 +14,7 @@ import {
 
 import type { ControlStats } from "@/core/hooks/query-hooks/use-agent-monitor";
 
-interface ControlStatsTableProps {
+type ControlStatsTableProps = {
   stats: ControlStats[];
 }
 

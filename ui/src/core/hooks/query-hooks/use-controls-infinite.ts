@@ -5,7 +5,7 @@ import type { ListControlsResponse } from "@/core/api/types";
 
 const CONTROLS_PAGE_SIZE = 10;
 
-export interface UseControlsInfiniteParams {
+export type UseControlsInfiniteParams = {
   name?: string;
   enabled?: boolean;
   step_type?: string;

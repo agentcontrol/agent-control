@@ -4,7 +4,7 @@ import { api } from "@/core/api/client";
 import { parseApiError } from "@/core/api/errors";
 import type { ControlDefinition } from "@/core/api/types";
 
-interface UpdateControlParams {
+type UpdateControlParams = {
   agentId: string;
   controlId: number;
   definition: ControlDefinition;

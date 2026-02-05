@@ -1,7 +1,7 @@
 import { useRouter } from "next/router";
 import { useCallback, useMemo, useRef } from "react";
 
-interface UseQueryParamOptions {
+type UseQueryParamOptions = {
   /** Default value when param is not in URL */
   defaultValue?: string;
   /** Whether to use shallow routing (no data fetching, default: true) */

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/core/api/client";
 
-export interface UseControlsParams {
+export type UseControlsParams = {
   cursor?: number;
   limit?: number;
   name?: string;

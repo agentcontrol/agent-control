@@ -2,7 +2,7 @@ import { Alert, Button, Stack, Text, Title } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-export interface ErrorBoundaryProps {
+export type ErrorBoundaryProps = {
   children: ReactNode;
   /** Fallback UI to show on error. If not provided, uses default error UI */
   fallback?: ReactNode;
@@ -12,7 +12,7 @@ export interface ErrorBoundaryProps {
   variant?: "page" | "content" | "modal";
 }
 
-interface ErrorBoundaryState {
+type ErrorBoundaryState = {
   hasError: boolean;
   error: Error | null;
 }

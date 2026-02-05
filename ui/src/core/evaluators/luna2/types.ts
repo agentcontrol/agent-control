@@ -29,7 +29,7 @@ export type Luna2Operator =
  * Form values for the Luna2 (Galileo) evaluator.
  * Uses snake_case to match API field names directly.
  */
-export interface Luna2FormValues {
+export type Luna2FormValues = {
   stage_type: "local" | "central";
   // Local stage fields
   metric: Luna2Metric;

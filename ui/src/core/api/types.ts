@@ -11,7 +11,7 @@ import type { components, operations } from "./generated/api-types";
 /**
  * Validation error item (GitHub-style field-level error)
  */
-export interface ValidationErrorItem {
+export type ValidationErrorItem = {
   /** Resource type where error occurred (e.g., 'Control') */
   resource: string;
   /** Field path that caused the error (e.g., 'data.evaluator.config.pattern') */
@@ -27,7 +27,7 @@ export interface ValidationErrorItem {
 /**
  * RFC 7807 Problem Detail error response
  */
-export interface ProblemDetail {
+export type ProblemDetail = {
   /** Error type URI */
   type: string;
   /** Short error title */
@@ -95,10 +95,10 @@ export type GetControlDataResponse =
 
 // Validate control data types (not yet in generated schemas)
 // TODO: replace these with generated types after running pnpm fetch-api-types
-export interface ValidateControlDataRequest {
+export type ValidateControlDataRequest = {
   data: ControlDefinition;
 }
-export interface ValidateControlDataResponse {
+export type ValidateControlDataResponse = {
   success: boolean;
 }
 export type ControlSummary = components["schemas"]["ControlSummary"];
@@ -106,7 +106,7 @@ export type ListControlsResponse = components["schemas"]["ListControlsResponse"]
 
 // AgentRef - reference to an agent (for used_by_agents)
 // Note: This will be in generated types after running pnpm fetch-api-types
-export interface AgentRef {
+export type AgentRef = {
   agent_id: string;
   agent_name: string;
 }

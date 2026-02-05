@@ -2,7 +2,7 @@
  * Form values for the JSON evaluator.
  * Uses snake_case to match API field names directly.
  */
-export interface JsonFormValues {
+export type JsonFormValues = {
   /** JSON Schema specification (Draft 7 or later) */
   json_schema: string;
   /** Comma-separated list of required fields (dot notation) */

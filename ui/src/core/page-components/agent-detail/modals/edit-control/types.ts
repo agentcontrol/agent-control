@@ -24,7 +24,7 @@ export type JsonViewMode = "tree" | "raw";
 
 // Form values type for control definition
 // Uses snake_case to match API field names directly
-export interface ControlDefinitionFormValues {
+export type ControlDefinitionFormValues = {
   name: string;
   enabled: boolean;
   step_types: string[];
@@ -40,7 +40,7 @@ export interface ControlDefinitionFormValues {
 /** Mode for the EditControl modal */
 export type EditControlMode = "create" | "edit";
 
-export interface EditControlProps {
+export type EditControlProps = {
   /** Whether the modal is open */
   opened: boolean;
   /** The control to edit/create template */
@@ -55,7 +55,7 @@ export interface EditControlProps {
   onSuccess?: () => void;
 }
 
-export interface EvaluatorJsonViewProps {
+export type EvaluatorJsonViewProps = {
   config: Record<string, unknown>;
   onChange: (config: Record<string, unknown>) => void;
   jsonViewMode: JsonViewMode;
@@ -75,6 +75,6 @@ export interface EvaluatorJsonViewProps {
   height?: number;
 }
 
-export interface ControlDefinitionFormProps {
+export type ControlDefinitionFormProps = {
   form: UseFormReturnType<ControlDefinitionFormValues>;
 }

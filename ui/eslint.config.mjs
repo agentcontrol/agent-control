@@ -2,6 +2,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import unusedImports from "eslint-plugin-unused-imports";
+import tseslint from "typescript-eslint";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -12,11 +13,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Auto-generated files
+    "src/core/api/generated/**",
   ]),
   {
     plugins: {
       "simple-import-sort": simpleImportSort,
       "unused-imports": unusedImports,
+      "@typescript-eslint": tseslint.plugin,
     },
     rules: {
       // Import sorting
@@ -34,6 +38,9 @@ const eslintConfig = defineConfig([
           argsIgnorePattern: "^_",
         },
       ],
+
+      // Prefer type over interface
+      "@typescript-eslint/consistent-type-definitions": ["error", "type"],
     },
   },
 ]);
