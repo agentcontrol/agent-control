@@ -9,12 +9,12 @@ Based on DeepEval documentation: https://deepeval.com/docs/metrics-llm-evals
 import logging
 from typing import Any
 
-from agent_control_models import (
+from agent_control_evaluators import (
     Evaluator,
     EvaluatorMetadata,
-    EvaluatorResult,
     register_evaluator,
 )
+from agent_control_models import EvaluatorResult
 
 from config import DeepEvalEvaluatorConfig
 

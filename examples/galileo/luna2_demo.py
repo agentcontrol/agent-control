@@ -37,7 +37,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # Import our direct API client (no SDK required)
 try:
-    from agent_control_evaluators.galileo_luna2.client import (
+    from agent_control_evaluator_galileo.luna2.client import (
         GalileoProtectClient,
         Payload,
     )

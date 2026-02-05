@@ -56,7 +56,7 @@ examples/deepeval/
 
 5. **Entry Point Registration** ([pyproject.toml](pyproject.toml))
    - Registers evaluator with server via `project.entry-points`
-   - Depends on `agent-control-models>=3.0.0` and `agent-control-sdk>=3.0.0`
+   - Depends on `agent-control-evaluators>=5.0.0`, `agent-control-models>=5.0.0`, and `agent-control-sdk>=5.0.0`
    - In monorepo: uses workspace dependencies (editable installs)
    - For third-party: can use published PyPI packages
    - Enables automatic discovery when server starts
@@ -68,7 +68,7 @@ examples/deepeval/
 The evaluator follows the standard pattern for all agent-control evaluators:
 
 ```python
-from agent_control_models import Evaluator, EvaluatorMetadata, register_evaluator
+from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 
 @register_evaluator
 class DeepEvalEvaluator(Evaluator[DeepEvalEvaluatorConfig]):
@@ -102,8 +102,9 @@ The evaluator is registered via `pyproject.toml`:
 ```toml
 [project]
 dependencies = [
-    "agent-control-models>=3.0.0",
-    "agent-control-sdk>=3.0.0",
+    "agent-control-evaluators>=5.0.0",
+    "agent-control-models>=5.0.0",
+    "agent-control-sdk>=5.0.0",
     "deepeval>=1.0.0",
     # ... other dependencies
 ]
@@ -340,7 +341,7 @@ This example shows the **evaluator architecture** for extending agent-control. W
 
 To create your own evaluator:
 
-1. **Extend the Evaluator base class** from `agent-control-models` (published on PyPI)
+1. **Extend the Evaluator base class** from `agent-control-evaluators` (published on PyPI)
 2. **Define a configuration model** using Pydantic
 3. **Register via entry points** in your `pyproject.toml`
 4. **Install your package** so the server can discover the entry point
@@ -350,8 +351,8 @@ For standalone packages outside the monorepo, use published versions:
 ```toml
 [project]
 dependencies = [
-    "agent-control-models>=3.0.0",  # From PyPI
-    "agent-control-sdk>=3.0.0",      # From PyPI
+    "agent-control-evaluators>=5.0.0",  # From PyPI - base classes
+    "agent-control-models>=5.0.0",       # From PyPI - data models
     "your-evaluation-library>=1.0.0"
 ]
 ```
@@ -405,7 +406,7 @@ Follow this pattern to create evaluators for other libraries:
 
 2. **Implement the Evaluator**
    ```python
-   from agent_control_models import Evaluator, EvaluatorMetadata, register_evaluator
+   from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 
    @register_evaluator
    class MyEvaluator(Evaluator[MyEvaluatorConfig]):
@@ -445,7 +446,7 @@ You can create specialized evaluators for specific use cases:
 
 - **DeepEval Documentation**: https://deepeval.com/docs/metrics-llm-evals
 - **G-Eval Guide**: https://www.confident-ai.com/blog/g-eval-the-definitive-guide
-- **Agent Control Evaluators**: [Base evaluator class](../../models/src/agent_control_models/evaluator.py)
+- **Agent Control Evaluators**: [Base evaluator class](../../evaluators/builtin/src/agent_control_evaluators/_base.py)
 - **CrewAI Example**: [Using agent-control as a consumer](../crewai/)
 
 ## Key Takeaways

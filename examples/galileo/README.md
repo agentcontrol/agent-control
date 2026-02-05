@@ -84,5 +84,5 @@ Testing toxicity detection with Central Stage...
 
 - [Galileo Protect Overview](https://v2docs.galileo.ai/concepts/protect/overview)
 - [Luna-2 Python API Reference](https://v2docs.galileo.ai/sdk-api/python/reference/protect)
-- [Agent Control Luna-2 Evaluator](../../evaluators/src/agent_control_evaluators/galileo_luna2/)
+- [Agent Control Luna-2 Evaluator](../../evaluators/extra/galileo/)
 
