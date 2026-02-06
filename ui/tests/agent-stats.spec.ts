@@ -5,7 +5,9 @@ test.describe("Agent Monitor Tab", () => {
     // Navigate to agent detail page
     await mockedPage.goto("/agents/agent-1/monitor");
     // Wait for the page to load
-    await expect(mockedPage.getByText("Customer Support Bot")).toBeVisible();
+    await expect(
+      mockedPage.getByRole("heading", { name: "Customer Support Bot" })
+    ).toBeVisible();
   });
 
   test("should display stats tab and navigate to it", async ({ mockedPage }) => {
@@ -126,7 +128,9 @@ test.describe("Agent Monitor Tab - Empty State", () => {
 
     // Navigate to agent detail page
     await page.goto("/agents/agent-1/monitor");
-    await expect(page.getByText("Customer Support Bot")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Customer Support Bot" })
+    ).toBeVisible();
 
     // Navigate to stats tab
     await page.getByRole("tab", { name: "Monitor" }).click();
@@ -211,7 +215,9 @@ test.describe("Agent Monitor Tab - Refetch Flow", () => {
 
     // Navigate to agent detail page
     await page.goto("/agents/agent-1/monitor");
-    await expect(page.getByText("Customer Support Bot")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Customer Support Bot" })
+    ).toBeVisible();
 
     // Navigate to stats tab
     await page.getByRole("tab", { name: "Monitor" }).click();
@@ -243,7 +249,9 @@ test.describe("Agent Monitor Tab - Error State", () => {
 
     // Navigate to agent detail page
     await page.goto("/agents/agent-1/monitor");
-    await expect(page.getByText("Customer Support Bot")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Customer Support Bot" })
+    ).toBeVisible();
 
     // Navigate to stats tab
     await page.getByRole("tab", { name: "Monitor" }).click();
