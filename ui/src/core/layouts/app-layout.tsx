@@ -302,7 +302,7 @@ function Header() {
           My agents
         </Text>
         <AnimatePresence mode='wait'>
-          {agentDisplayName && (
+          {!!agentDisplayName && (
             <motion.span
               key='agent-breadcrumb'
               initial={{ opacity: 0, x: -6 }}

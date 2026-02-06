@@ -45,10 +45,10 @@ import { AgentsMonitor, TIME_RANGE_SEGMENTS } from "./monitor";
 type AgentDetailPageProps = {
   agentId: string;
   defaultTab?: "controls" | "monitor";
-}
+};
 
 const getStepTypeLabelAndColor = (
-  stepType: string
+  stepType: string,
 ): { label: string; color: string } => {
   switch (stepType) {
     case "llm":
@@ -83,17 +83,15 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     isLoading: controlsLoading,
     error: controlsError,
   } = useAgentControls(agentId);
-  
+
   // Lightweight check to determine initial tab (when no defaultTab specified)
   // Only checks if stats exist, doesn't fetch full data
   const needsInitialTabCheck = !defaultTab;
-  const {
-    data: hasMonitorData,
-    isLoading: checkingMonitorData,
-  } = useHasMonitorData(agentId, {
-    enabled: needsInitialTabCheck,
-  });
-  
+  const { data: hasMonitorData, isLoading: checkingMonitorData } =
+    useHasMonitorData(agentId, {
+      enabled: needsInitialTabCheck,
+    });
+
   const updateControl = useUpdateControl();
 
   // Determine initial tab based on:
@@ -112,13 +110,17 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     // Only check if no defaultTab is specified (i.e., accessing /agents/[id] directly)
     if (!defaultTab && !hasCheckedInitialTab.current && !checkingMonitorData) {
       hasCheckedInitialTab.current = true;
-      
+
       if (hasMonitorData) {
         setActiveTab("monitor");
-        router.replace(`/agents/${agentId}/monitor`, undefined, { shallow: true });
+        router.replace(`/agents/${agentId}/monitor`, undefined, {
+          shallow: true,
+        });
       } else {
         setActiveTab("controls");
-        router.replace(`/agents/${agentId}/controls`, undefined, { shallow: true });
+        router.replace(`/agents/${agentId}/controls`, undefined, {
+          shallow: true,
+        });
       }
     }
   }, [defaultTab, checkingMonitorData, hasMonitorData, agentId, router]);
@@ -131,14 +133,21 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     return allControls.filter(
       (control) =>
         control.name.toLowerCase().includes(query) ||
-        control.control?.description?.toLowerCase().includes(query)
+        control.control?.description?.toLowerCase().includes(query),
     );
   }, [controlsResponse, searchQuery]);
 
   // Load control when controlId is in URL (only if not already selected)
   React.useEffect(() => {
-    if (editModalOpened && controlId && controlsResponse?.controls && !selectedControl) {
-      const control = controlsResponse.controls.find((c) => c.id.toString() === controlId);
+    if (
+      editModalOpened &&
+      controlId &&
+      controlsResponse?.controls &&
+      !selectedControl
+    ) {
+      const control = controlsResponse.controls.find(
+        (c) => c.id.toString() === controlId,
+      );
       if (control) {
         setSelectedControl(control);
       }
@@ -168,16 +177,16 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           title='Error loading agent'
           color='red'
         >
-          <Stack gap="xs">
+          <Stack gap='xs'>
             <Text>Failed to fetch agent details. Please try again later.</Text>
-            <Text size="sm" c="dimmed" mt="xs">
+            <Text size='sm' c='dimmed' mt='xs'>
               Possible reasons:
             </Text>
-            <Stack gap={4} pl="md">
-              <Text size="sm" c="dimmed">
+            <Stack gap={4} pl='md'>
+              <Text size='sm' c='dimmed'>
                 • Check server for API errors
               </Text>
-              <Text size="sm" c="dimmed">
+              <Text size='sm' c='dimmed'>
                 • The agent ID might be incorrect
               </Text>
             </Stack>
@@ -199,13 +208,13 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         return (
           <Switch
             checked={enabled}
-            color="green.5"
+            color='green.5'
             onChange={(e) => {
               const newEnabled = e.currentTarget.checked;
               modals.openConfirmModal({
                 title: newEnabled ? "Enable control?" : "Disable control?",
                 children: (
-                  <Text size="sm" c="dimmed">
+                  <Text size='sm' c='dimmed'>
                     {newEnabled
                       ? `Enable "${control.name}"?`
                       : `Disable "${control.name}"?`}
@@ -338,21 +347,18 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   };
 
   return (
-    <Box 
-      p='xl' 
-      maw={1400} 
-      mx='auto' 
-      my={0}
-    >
+    <Box p='xl' maw={1400} mx='auto' my={0}>
       <Stack gap='lg'>
         {/* Header */}
         <Stack gap={4}>
           <Title order={2} fw={600}>
             {agent.agent.agent_name}
           </Title>
-          {agent.agent.agent_description ? <Text size='sm' c='dimmed'>
+          {agent.agent.agent_description ? (
+            <Text size='sm' c='dimmed'>
               {agent.agent.agent_description}
-            </Text> : null}
+            </Text>
+          ) : null}
         </Stack>
 
         {/* Tabs */}
@@ -362,9 +368,13 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
             setActiveTab(value);
             // Update URL when tab changes
             if (value === "monitor") {
-              router.push(`/agents/${agentId}/monitor`, undefined, { shallow: true });
+              router.push(`/agents/${agentId}/monitor`, undefined, {
+                shallow: true,
+              });
             } else if (value === "controls") {
-              router.push(`/agents/${agentId}/controls`, undefined, { shallow: true });
+              router.push(`/agents/${agentId}/controls`, undefined, {
+                shallow: true,
+              });
             }
           }}
         >
@@ -389,8 +399,8 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                 {activeTab === "controls" ? (
                   <>
                     <SearchInput
-                      queryKey="q"
-                      placeholder="Search controls..."
+                      queryKey='q'
+                      placeholder='Search controls...'
                       w={250}
                       size='sm'
                     />
@@ -410,22 +420,8 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                     onChange={setTimeRangeValue}
                     segmentOptions={TIME_RANGE_SEGMENTS}
                   />
-<<<<<<< siddhant/json-validation
-                  <Button
-                    variant='filled'
-                    size='sm'
-                    data-testid='add-control-button'
-                    h={32}
-                    onClick={() => openModal(MODAL_NAMES.CONTROL_STORE)}
-                  >
-                    Add Control
-                  </Button>
-                </Group>
-              )}
-=======
                 )}
               </Group>
->>>>>>> main
             </Group>
           </Box>
 
@@ -476,29 +472,25 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                   maxHeight='calc(100dvh - 270px)'
                   highlightOnHover
                   withColumnBorders
-                      // scrollContainerProps={{
-                      //   style: {
-                      //     maxHeight: "calc(100dvh - 200px)",
-                      //   },
-                      // }}
+                  // scrollContainerProps={{
+                  //   style: {
+                  //     maxHeight: "calc(100dvh - 200px)",
+                  //   },
+                  // }}
                 />
               </Box>
             )}
           </Tabs.Panel>
 
           <Tabs.Panel value='monitor' pt='lg'>
-            <ErrorBoundary variant="page">
+            <ErrorBoundary variant='page'>
               {/* Only render AgentsMonitor when monitor tab is active to prevent polling on controls page */}
-<<<<<<< siddhant/json-validation
-              {agent?.agent.agent_id && activeTab === "monitor" ? <AgentsMonitor agentUuid={agent.agent.agent_id} /> : null}
-=======
-              {agent?.agent.agent_id && activeTab === "monitor" && (
+              {agent?.agent.agent_id && activeTab === "monitor" ? (
                 <AgentsMonitor
                   agentUuid={agent.agent.agent_id}
                   timeRangeValue={timeRangeValue}
                 />
-              )}
->>>>>>> main
+              ) : null}
             </ErrorBoundary>
           </Tabs.Panel>
         </Tabs>
@@ -515,20 +507,22 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
       <Modal
         opened={editModalOpened}
         onClose={handleCloseEditModal}
-        title="Edit Control"
-        size="xl"
+        title='Edit Control'
+        size='xl'
         styles={{
           title: { fontSize: "18px", fontWeight: 600 },
           content: { maxWidth: "1500px", width: "95vw" },
         }}
       >
-        <ErrorBoundary variant="modal">
-          {selectedControl ? <EditControlContent
+        <ErrorBoundary variant='modal'>
+          {selectedControl ? (
+            <EditControlContent
               control={selectedControl}
               agentId={agentId}
               onClose={handleCloseEditModal}
               onSuccess={handleEditControlSuccess}
-            /> : null}
+            />
+          ) : null}
         </ErrorBoundary>
       </Modal>
     </Box>
