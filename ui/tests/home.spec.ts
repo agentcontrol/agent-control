@@ -154,7 +154,9 @@ test.describe("Home Page - Agents Overview", () => {
     const emptyAgents: ListAgentsResponse = {
       agents: [],
       pagination: {
-        cursor: null,
+        limit: 0,
+        total: 0,
+        next_cursor: null,
         has_more: false,
       },
     };
