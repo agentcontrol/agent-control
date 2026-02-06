@@ -64,7 +64,10 @@ export type EvaluatorJsonViewProps = {
   setJsonError?: (error: string | null) => void;
   validationError?: ProblemDetail | null;
   setValidationError?: (error: ProblemDetail | null) => void;
-  onValidateConfig?: (config: Record<string, unknown>) => Promise<void>;
+  onValidateConfig?: (
+    config: Record<string, unknown>,
+    options?: { signal?: AbortSignal }
+  ) => Promise<void>;
   onValidationStatusChange?: (
     status: "idle" | "validating" | "valid" | "invalid"
   ) => void;

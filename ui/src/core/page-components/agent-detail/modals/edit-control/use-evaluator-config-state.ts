@@ -7,7 +7,10 @@ import type { ConfigViewMode } from "./types";
 export type UseEvaluatorConfigStateArgs = {
   getConfigFromForm: () => Record<string, unknown>;
   onConfigChange: (config: Record<string, unknown>) => void;
-  onValidateConfig: (config: Record<string, unknown>) => Promise<void>;
+  onValidateConfig: (
+    config: Record<string, unknown>,
+    options?: { signal?: AbortSignal }
+  ) => Promise<void>;
 }
 
 export type EvaluatorConfigState = {

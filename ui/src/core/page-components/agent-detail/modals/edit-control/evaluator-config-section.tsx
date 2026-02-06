@@ -30,7 +30,10 @@ type EvaluatorConfigSectionProps = {
     setJsonError: (error: string | null) => void;
     setValidationError: (error: ProblemDetail | null) => void;
   };
-  onValidateConfig: (config: Record<string, unknown>) => Promise<void>;
+  onValidateConfig: (
+    config: Record<string, unknown>,
+    options?: { signal?: AbortSignal }
+  ) => Promise<void>;
   onConfigChange: (config: Record<string, unknown>) => void;
   evaluatorForm: UseFormReturnType<any>;
   formComponent?: React.ComponentType<{ form: UseFormReturnType<any> }>;

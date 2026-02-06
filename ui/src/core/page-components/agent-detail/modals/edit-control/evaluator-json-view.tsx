@@ -1,6 +1,6 @@
 import { Box, Textarea } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { isApiError } from "@/core/api/errors";
 
@@ -8,6 +8,7 @@ import { ApiErrorAlert } from "./api-error-alert";
 import type { EvaluatorJsonViewProps } from "./types";
 
 const DEFAULT_HEIGHT = 400;
+const DEFAULT_VALIDATE_DEBOUNCE_MS = 500;
 
 export const EvaluatorJsonView = ({
   jsonText,
@@ -18,10 +19,11 @@ export const EvaluatorJsonView = ({
   setValidationError,
   onValidateConfig,
   onValidationStatusChange,
-  validateDebounceMs = 500,
+  validateDebounceMs = DEFAULT_VALIDATE_DEBOUNCE_MS,
   height = DEFAULT_HEIGHT,
 }: EvaluatorJsonViewProps) => {
   const [debouncedJsonText] = useDebouncedValue(jsonText, validateDebounceMs);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!onValidateConfig) return;
@@ -42,14 +44,19 @@ export const EvaluatorJsonView = ({
       return;
     }
 
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setJsonError?.(null);
     onValidationStatusChange?.("validating");
-    onValidateConfig(parsed)
+    onValidateConfig(parsed, { signal: controller.signal })
       .then(() => {
         setValidationError?.(null);
         onValidationStatusChange?.("valid");
       })
       .catch((error) => {
+        if (controller.signal.aborted) return;
         if (isApiError(error)) {
           setValidationError?.(error.problemDetail);
           onValidationStatusChange?.("invalid");
@@ -59,6 +66,8 @@ export const EvaluatorJsonView = ({
           onValidationStatusChange?.("invalid");
         }
       });
+
+    return () => controller.abort();
   }, [
     debouncedJsonText,
     setJsonError,
@@ -83,9 +92,11 @@ export const EvaluatorJsonView = ({
         error={jsonError}
         data-testid='raw-json-textarea'
       />
-      {validationError ? <Box mt='sm'>
+      {validationError ? (
+        <Box mt='sm'>
           <ApiErrorAlert error={validationError} unmappedErrors={[]} />
-        </Box> : null}
+        </Box>
+      ) : null}
     </Box>
   );
 };

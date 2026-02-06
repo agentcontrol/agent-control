@@ -106,14 +106,20 @@ export const api = {
         params: { path: { control_id: controlId } },
         body: data,
       }),
-    validateData: (data: ValidateControlDataRequest) =>
+    validateData: ({
+      data,
+      signal,
+    }: {
+      data: ValidateControlDataRequest["data"];
+      signal?: AbortSignal;
+    }) =>
       // TODO: remove cast after regenerating api types
       (apiClient.POST as unknown as (
         path: "/api/v1/controls/validate",
-        init: { body: ValidateControlDataRequest }
-      ) => Promise<{ data: ValidateControlDataResponse; error?: unknown; response?: Response }>)( 
+        init: { body: ValidateControlDataRequest; signal?: AbortSignal }
+      ) => Promise<{ data: ValidateControlDataResponse; error?: unknown; response?: Response }>)(
         "/api/v1/controls/validate",
-        { body: data }
+        { body: { data }, signal }
       ),
   },
   policies: {

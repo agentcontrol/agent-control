@@ -150,8 +150,14 @@ export const EditControlContent = ({
   );
 
   const validateEvaluatorConfig = useCallback(
-    async (config: Record<string, unknown>) => {
-      await validateControlDataAsync(buildDefinitionForValidation(config));
+    async (
+      config: Record<string, unknown>,
+      options?: { signal?: AbortSignal }
+    ) => {
+      await validateControlDataAsync({
+        definition: buildDefinitionForValidation(config),
+        signal: options?.signal,
+      });
     },
     [buildDefinitionForValidation, validateControlDataAsync],
   );
