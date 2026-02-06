@@ -641,6 +641,11 @@ def control(policy: str | None = None) -> Callable[[F], F]:
     _ = policy
 
     def decorator(func: F) -> F:
+        # Register this function's step schema for auto-discovery by init()
+        from agent_control._control_registry import register
+
+        register(func, policy)
+
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             return await _execute_with_control(func, args, kwargs, is_async=True)

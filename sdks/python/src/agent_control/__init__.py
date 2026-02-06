@@ -66,6 +66,8 @@ if TYPE_CHECKING:
     )
 
 from . import agents, controls, evaluation, evaluators, policies
+from ._control_registry import clear as clear_step_registry
+from ._control_registry import get_registered_steps
 
 # Import client and operations modules
 from .client import AgentControlClient
@@ -434,6 +436,21 @@ def init(
     # Get server URL (ensure it's always a string)
     _server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
     _api_key = api_key
+
+    # Merge auto-discovered steps from @control() decorators with explicit steps.
+    # Explicit steps take precedence (by name) over auto-discovered ones.
+    from agent_control._control_registry import get_registered_steps
+
+    auto_steps = get_registered_steps()
+    if auto_steps:
+        explicit_names = {s["name"] for s in (steps or [])}
+        merged = list(steps or []) + [s for s in auto_steps if s["name"] not in explicit_names]
+        steps = merged
+        logger.debug(
+            "Auto-discovered %d step(s) from @control() decorators (%d after merge)",
+            len(auto_steps),
+            len(steps),
+        )
 
     # Register with server and fetch controls
     server_controls = None
@@ -1054,6 +1071,9 @@ __all__ = [
     "get_server_controls",
     "refresh_controls",
     "refresh_controls_async",
+    # Step registry (auto-discovered from @control decorators)
+    "get_registered_steps",
+    "clear_step_registry",
 
     # SDK Logging
     "get_logger",
