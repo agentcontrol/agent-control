@@ -33,12 +33,12 @@
  * ```
  */
 
-import { jsonEvaluator } from "./json";
-import { listEvaluator } from "./list";
-import { luna2Evaluator } from "./luna2";
-import { regexEvaluator } from "./regex";
-import { sqlEvaluator } from "./sql";
-import type { AnyEvaluatorDefinition } from "./types";
+import { jsonEvaluator } from './json';
+import { listEvaluator } from './list';
+import { luna2Evaluator } from './luna2';
+import { regexEvaluator } from './regex';
+import { sqlEvaluator } from './sql';
+import type { AnyEvaluatorDefinition } from './types';
 
 /**
  * All registered evaluators.
@@ -63,9 +63,8 @@ export const evaluatorRegistry = new Map<string, AnyEvaluatorDefinition>(
  * Get an evaluator by ID.
  * Returns undefined if the evaluator is not found.
  */
-export const getEvaluator = (
-  id: string
-): AnyEvaluatorDefinition | undefined => evaluatorRegistry.get(id);
+export const getEvaluator = (id: string): AnyEvaluatorDefinition | undefined =>
+  evaluatorRegistry.get(id);
 
 /**
  * Check if an evaluator exists.
@@ -73,13 +72,13 @@ export const getEvaluator = (
 export const hasEvaluator = (id: string): boolean => evaluatorRegistry.has(id);
 
 // Re-export types and individual evaluators for direct imports
-export { jsonEvaluator } from "./json";
-export { listEvaluator } from "./list";
-export { luna2Evaluator } from "./luna2";
-export { regexEvaluator } from "./regex";
-export { sqlEvaluator } from "./sql";
+export { jsonEvaluator } from './json';
+export { listEvaluator } from './list';
+export { luna2Evaluator } from './luna2';
+export { regexEvaluator } from './regex';
+export { sqlEvaluator } from './sql';
 export type {
   AnyEvaluatorDefinition,
   EvaluatorDefinition,
   EvaluatorFormProps,
-} from "./types";
+} from './types';

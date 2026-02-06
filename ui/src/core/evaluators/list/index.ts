@@ -1,6 +1,6 @@
-import type { EvaluatorDefinition } from "../types";
-import { ListForm } from "./form";
-import type { ListFormValues } from "./types";
+import type { EvaluatorDefinition } from '../types';
+import { ListForm } from './form';
+import type { ListFormValues } from './types';
 
 /**
  * List evaluator definition.
@@ -8,24 +8,24 @@ import type { ListFormValues } from "./types";
  * Validates content against a list of values with configurable matching logic.
  */
 export const listEvaluator: EvaluatorDefinition<ListFormValues> = {
-  id: "list",
-  displayName: "List",
+  id: 'list',
+  displayName: 'List',
 
   initialValues: {
-    values: "",
-    logic: "any",
-    match_on: "match",
-    match_mode: "exact",
+    values: '',
+    logic: 'any',
+    match_on: 'match',
+    match_mode: 'exact',
     case_sensitive: false,
   },
 
   validate: {
     values: (value) => {
       const trimmedValues = (value as string)
-        .split("\n")
-        .filter((v) => v.trim() !== "");
+        .split('\n')
+        .filter((v) => v.trim() !== '');
       if (trimmedValues.length === 0) {
-        return "At least one value is required";
+        return 'At least one value is required';
       }
       return null;
     },
@@ -33,7 +33,7 @@ export const listEvaluator: EvaluatorDefinition<ListFormValues> = {
 
   toConfig: (values) => {
     // Convert newline-separated string to array, pass rest through directly
-    const valuesList = values.values.split("\n").filter((v) => v.trim() !== "");
+    const valuesList = values.values.split('\n').filter((v) => v.trim() !== '');
     return {
       ...values,
       values: valuesList,
@@ -42,14 +42,14 @@ export const listEvaluator: EvaluatorDefinition<ListFormValues> = {
 
   fromConfig: (config) => ({
     // Convert array to newline-separated string, pass rest through directly
-    values: ((config.values as string[]) || []).join("\n"),
-    logic: (config.logic as ListFormValues["logic"]) || "any",
-    match_on: (config.match_on as ListFormValues["match_on"]) || "match",
-    match_mode: (config.match_mode as ListFormValues["match_mode"]) || "exact",
+    values: ((config.values as string[]) || []).join('\n'),
+    logic: (config.logic as ListFormValues['logic']) || 'any',
+    match_on: (config.match_on as ListFormValues['match_on']) || 'match',
+    match_mode: (config.match_mode as ListFormValues['match_mode']) || 'exact',
     case_sensitive: (config.case_sensitive as boolean) || false,
   }),
 
   FormComponent: ListForm,
 };
 
-export type { ListFormValues } from "./types";
+export type { ListFormValues } from './types';

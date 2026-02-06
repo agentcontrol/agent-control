@@ -41,21 +41,25 @@ pnpm test:integration:report
 ## Test Patterns
 
 ### Mock Data
+
 - All mock data is typed using generated API types (`@/core/api/types`)
 - Mock data is centralized in `fixtures.ts`
 - Type safety ensures tests break if backend API changes
 
 ### API Mocking
+
 - Uses Playwright's `page.route()` to intercept API calls
 - `mockedPage` fixture automatically sets up all route mocks
 - Individual tests can override mocks for specific scenarios
 
 ### Selectors
+
 - Prefer semantic selectors: `getByRole()`, `getByText()`, `getByTestId()`
 - Use `{ exact: true }` when text might match multiple elements
 - Scope selectors to modals/dialogs when needed
 
 ### Test Organization
+
 - Group related tests with `test.describe()`
 - Use descriptive test names that explain what is being tested
 - Keep tests focused on single behaviors
@@ -69,12 +73,12 @@ pnpm test:integration:report
 ### Example Test
 
 ```typescript
-import { expect, test } from "./fixtures";
+import { expect, test } from './fixtures';
 
-test.describe("My Feature", () => {
-  test("does something", async ({ mockedPage }) => {
-    await mockedPage.goto("/my-page");
-    await expect(mockedPage.getByText("Expected text")).toBeVisible();
+test.describe('My Feature', () => {
+  test('does something', async ({ mockedPage }) => {
+    await mockedPage.goto('/my-page');
+    await expect(mockedPage.getByText('Expected text')).toBeVisible();
   });
 });
 ```
@@ -82,8 +86,8 @@ test.describe("My Feature", () => {
 ## CI Integration
 
 Tests run automatically in GitHub Actions on every push/PR. The CI:
+
 - Starts the Next.js dev server
 - Installs Playwright browsers
 - Runs all tests
 - Uploads test reports on failure
-

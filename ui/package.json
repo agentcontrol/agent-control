@@ -14,7 +14,9 @@
     "test:integration:ui": "playwright test --ui",
     "test:integration:headed": "playwright test --headed",
     "test:integration:debug": "playwright test --debug",
-    "test:integration:report": "playwright show-report"
+    "test:integration:report": "playwright show-report",
+    "prettify": "prettier --write .",
+    "prettify:check": "prettier --check ."
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.4.0",
@@ -58,6 +60,7 @@
     "openapi-typescript": "^7.10.1",
     "postcss-preset-mantine": "1.17.0",
     "postcss-simple-vars": "7.0.1",
+    "prettier": "^3.4.2",
     "tailwindcss": "^4",
     "typescript": "^5",
     "typescript-eslint": "^8.32.1"

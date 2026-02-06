@@ -6,18 +6,18 @@ import {
   SegmentedControl,
   Stack,
   Text,
-} from "@mantine/core";
-import type { UseFormReturnType } from "@mantine/form";
-import { IconExternalLink } from "@tabler/icons-react";
-import { useState } from "react";
+} from '@mantine/core';
+import type { UseFormReturnType } from '@mantine/form';
+import { IconExternalLink } from '@tabler/icons-react';
+import { useState } from 'react';
 
-import type { ProblemDetail } from "@/core/api/types";
+import type { ProblemDetail } from '@/core/api/types';
 
-import { EvaluatorJsonView } from "./evaluator-json-view";
-import type { ConfigViewMode } from "./types";
+import { EvaluatorJsonView } from './evaluator-json-view';
+import type { ConfigViewMode } from './types';
 
 const DEFAULT_HEIGHT = 450;
-type ValidationStatus = "idle" | "validating" | "valid" | "invalid";
+type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
 
 type EvaluatorConfigSectionProps = {
   config: {
@@ -48,7 +48,7 @@ export function EvaluatorConfigSection({
   height = DEFAULT_HEIGHT,
 }: EvaluatorConfigSectionProps) {
   const [validationStatus, setValidationStatus] =
-    useState<ValidationStatus>("idle");
+    useState<ValidationStatus>('idle');
 
   const {
     configViewMode,
@@ -58,35 +58,35 @@ export function EvaluatorConfigSection({
   } = config;
 
   const statusLabel = (() => {
-    if (configViewMode !== "json") return null;
-    if (validationStatus === "validating") return "Validating...";
-    if (validationStatus === "valid") return "JSON valid";
-    if (validationStatus === "invalid") return "JSON invalid";
+    if (configViewMode !== 'json') return null;
+    if (validationStatus === 'validating') return 'Validating...';
+    if (validationStatus === 'valid') return 'JSON valid';
+    if (validationStatus === 'invalid') return 'JSON invalid';
     return null;
   })();
 
   const statusColor =
-    validationStatus === "valid"
-      ? "green"
-      : validationStatus === "invalid"
-        ? "red"
-        : "dimmed";
+    validationStatus === 'valid'
+      ? 'green'
+      : validationStatus === 'invalid'
+        ? 'red'
+        : 'dimmed';
 
   return (
-    <Stack gap='md'>
-      <Group justify='space-between' align='center'>
-        <Group gap='xs'>
-          <Text size='sm' fw={500}>
+    <Stack gap="md">
+      <Group justify="space-between" align="center">
+        <Group gap="xs">
+          <Text size="sm" fw={500}>
             Evaluator configuration
           </Text>
           <Anchor
-            href='https://github.com/agentcontrol/agent-control/blob/main/README.md'
-            target='_blank'
-            size='xs'
-            c='blue'
-            underline='never'
+            href="https://github.com/agentcontrol/agent-control/blob/main/README.md"
+            target="_blank"
+            size="xs"
+            c="blue"
+            underline="never"
           >
-            <Group gap={2} align='center'>
+            <Group gap={2} align="center">
               Docs <IconExternalLink size={12} />
             </Group>
           </Anchor>
@@ -94,27 +94,27 @@ export function EvaluatorConfigSection({
         <SegmentedControl
           value={configViewMode}
           onChange={handleConfigViewModeChange}
-          disabled={configViewMode === "json" && !!jsonError}
+          disabled={configViewMode === 'json' && !!jsonError}
           data={[
-            { value: "form", label: "Form" },
-            { value: "json", label: "JSON" },
+            { value: 'form', label: 'Form' },
+            { value: 'json', label: 'JSON' },
           ]}
-          size='xs'
+          size="xs"
         />
       </Group>
       {statusLabel ? (
-        <Text size='xs' c={statusColor}>
+        <Text size="xs" c={statusColor}>
           {statusLabel}
         </Text>
       ) : null}
 
-      <Paper withBorder radius='sm' p={16}>
-        {configViewMode === "form" && (
-          <ScrollArea h={height} type='auto'>
+      <Paper withBorder radius="sm" p={16}>
+        {configViewMode === 'form' && (
+          <ScrollArea h={height} type="auto">
             {FormComponent ? (
               <FormComponent form={evaluatorForm} />
             ) : (
-              <Text c='dimmed' ta='center' py='xl'>
+              <Text c="dimmed" ta="center" py="xl">
                 No form available for this evaluator. Use JSON view to
                 configure.
               </Text>
@@ -122,7 +122,7 @@ export function EvaluatorConfigSection({
           </ScrollArea>
         )}
 
-        {configViewMode === "json" && (
+        {configViewMode === 'json' && (
           <EvaluatorJsonView
             onValidateConfig={onValidateConfig}
             onValidationStatusChange={setValidationStatus}

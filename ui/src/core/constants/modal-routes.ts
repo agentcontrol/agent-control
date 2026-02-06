@@ -4,14 +4,14 @@
  */
 
 export const MODAL_NAMES = {
-  CONTROL_STORE: "control-store",
-  EDIT: "edit",
+  CONTROL_STORE: 'control-store',
+  EDIT: 'edit',
 } as const;
 
 export const SUBMODAL_NAMES = {
-  ADD_NEW: "add-new",
-  CREATE: "create",
-  EDIT: "edit",
+  ADD_NEW: 'add-new',
+  CREATE: 'create',
+  EDIT: 'edit',
 } as const;
 
 export type ModalName = (typeof MODAL_NAMES)[keyof typeof MODAL_NAMES];

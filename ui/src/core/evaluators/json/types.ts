@@ -18,9 +18,9 @@ export type JsonFormValues = {
   /** Allow null values in required fields */
   allow_null_required: boolean;
   /** Logic for field_patterns validation */
-  pattern_match_logic: "all" | "any";
+  pattern_match_logic: 'all' | 'any';
   /** Case-sensitive enum matching */
   case_sensitive_enums: boolean;
   /** Treat invalid JSON as non-match instead of triggering */
   allow_invalid_json: boolean;
-}
+};

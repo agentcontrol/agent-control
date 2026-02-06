@@ -1,4 +1,4 @@
-import type { UseFormReturnType } from "@mantine/form";
+import type { UseFormReturnType } from '@mantine/form';
 
 /**
  * Base interface for evaluator definitions.
@@ -49,7 +49,7 @@ export type EvaluatorDefinition<TFormValues = any> = {
   FormComponent: React.ComponentType<{
     form: UseFormReturnType<TFormValues>;
   }>;
-}
+};
 
 /**
  * Type helper for creating strongly-typed evaluator definitions.
@@ -62,11 +62,10 @@ export type AnyEvaluatorDefinition = EvaluatorDefinition<any>;
  */
 export type EvaluatorFormProps<TFormValues> = {
   form: UseFormReturnType<TFormValues>;
-}
+};
 
 /**
  * Utility type for extracting form values type from an evaluator definition.
  */
-export type EvaluatorFormValues<T> = T extends EvaluatorDefinition<infer V>
-  ? V
-  : never;
+export type EvaluatorFormValues<T> =
+  T extends EvaluatorDefinition<infer V> ? V : never;

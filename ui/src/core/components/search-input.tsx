@@ -1,14 +1,14 @@
-import type { TextInputProps } from "@mantine/core";
-import { TextInput } from "@mantine/core";
-import { IconSearch, IconX } from "@tabler/icons-react";
-import { useMemo } from "react";
+import type { TextInputProps } from '@mantine/core';
+import { TextInput } from '@mantine/core';
+import { IconSearch, IconX } from '@tabler/icons-react';
+import { useMemo } from 'react';
 
-import { useQueryParam } from "@/core/hooks/use-query-param";
+import { useQueryParam } from '@/core/hooks/use-query-param';
 
 type SearchInputProps = {
   /** Query parameter key to sync with URL (e.g., "search", "q", "store_q") */
   queryKey: string;
-} & Omit<TextInputProps, "value" | "onChange" | "leftSection" | "rightSection">
+} & Omit<TextInputProps, 'value' | 'onChange' | 'leftSection' | 'rightSection'>;
 
 /**
  * Reusable search input component that syncs with URL query parameters.
@@ -20,7 +20,7 @@ type SearchInputProps = {
  */
 export function SearchInput({
   queryKey,
-  placeholder = "Search...",
+  placeholder = 'Search...',
   w = 250,
   ...rest
 }: SearchInputProps) {
@@ -31,7 +31,7 @@ export function SearchInput({
   }, [searchQuery]);
 
   const handleClear = () => {
-    setSearchQuery("");
+    setSearchQuery('');
   };
 
   return (
@@ -42,7 +42,7 @@ export function SearchInput({
         showClearButton ? (
           <IconX
             size={16}
-            style={{ cursor: "pointer" }}
+            style={{ cursor: 'pointer' }}
             onClick={handleClear}
             data-testid={`search-clear-${queryKey}`}
           />

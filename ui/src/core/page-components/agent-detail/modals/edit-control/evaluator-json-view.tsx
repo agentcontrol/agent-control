@@ -1,11 +1,11 @@
-import { Box, Textarea } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
-import { useEffect, useRef } from "react";
+import { Box, Textarea } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
+import { useEffect, useRef } from 'react';
 
-import { isApiError } from "@/core/api/errors";
+import { isApiError } from '@/core/api/errors';
 
-import { ApiErrorAlert } from "./api-error-alert";
-import type { EvaluatorJsonViewProps } from "./types";
+import { ApiErrorAlert } from './api-error-alert';
+import type { EvaluatorJsonViewProps } from './types';
 
 const DEFAULT_HEIGHT = 400;
 const DEFAULT_VALIDATE_DEBOUNCE_MS = 500;
@@ -30,7 +30,7 @@ export const EvaluatorJsonView = ({
     if (!debouncedJsonText) {
       setJsonError?.(null);
       setValidationError?.(null);
-      onValidationStatusChange?.("idle");
+      onValidationStatusChange?.('idle');
       return;
     }
 
@@ -38,9 +38,9 @@ export const EvaluatorJsonView = ({
     try {
       parsed = JSON.parse(debouncedJsonText);
     } catch {
-      setJsonError?.("Invalid JSON");
+      setJsonError?.('Invalid JSON');
       setValidationError?.(null);
-      onValidationStatusChange?.("invalid");
+      onValidationStatusChange?.('invalid');
       return;
     }
 
@@ -49,21 +49,21 @@ export const EvaluatorJsonView = ({
     abortControllerRef.current = controller;
 
     setJsonError?.(null);
-    onValidationStatusChange?.("validating");
+    onValidationStatusChange?.('validating');
     onValidateConfig(parsed, { signal: controller.signal })
       .then(() => {
         setValidationError?.(null);
-        onValidationStatusChange?.("valid");
+        onValidationStatusChange?.('valid');
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
         if (isApiError(error)) {
           setValidationError?.(error.problemDetail);
-          onValidationStatusChange?.("invalid");
+          onValidationStatusChange?.('invalid');
         } else {
-          setJsonError?.("Validation failed.");
+          setJsonError?.('Validation failed.');
           setValidationError?.(null);
-          onValidationStatusChange?.("invalid");
+          onValidationStatusChange?.('invalid');
         }
       });
 
@@ -83,17 +83,17 @@ export const EvaluatorJsonView = ({
         onChange={(e) => handleJsonChange(e.currentTarget.value)}
         styles={{
           input: {
-            fontFamily: "monospace",
+            fontFamily: 'monospace',
             fontSize: 12,
             height,
-            overflow: "auto",
+            overflow: 'auto',
           },
         }}
         error={jsonError}
-        data-testid='raw-json-textarea'
+        data-testid="raw-json-textarea"
       />
       {validationError ? (
-        <Box mt='sm'>
+        <Box mt="sm">
           <ApiErrorAlert error={validationError} unmappedErrors={[]} />
         </Box>
       ) : null}

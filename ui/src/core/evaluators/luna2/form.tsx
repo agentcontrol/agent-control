@@ -5,18 +5,18 @@ import {
   Stack,
   Textarea,
   TextInput,
-} from "@mantine/core";
+} from '@mantine/core';
 
 import {
   labelPropsInline,
   LabelWithTooltip,
-} from "@/core/components/label-with-tooltip";
+} from '@/core/components/label-with-tooltip';
 
-import type { EvaluatorFormProps } from "../types";
-import type { Luna2FormValues } from "./types";
+import type { EvaluatorFormProps } from '../types';
+import type { Luna2FormValues } from './types';
 
 export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
-  const isLocalStage = form.values.stage_type === "local";
+  const isLocalStage = form.values.stage_type === 'local';
 
   return (
     <Stack gap="md">
@@ -29,18 +29,18 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "local", label: "Local (define rules at runtime)" },
+          { value: 'local', label: 'Local (define rules at runtime)' },
           {
-            value: "central",
-            label: "Central (reference pre-defined stages)",
+            value: 'central',
+            label: 'Central (reference pre-defined stages)',
           },
         ]}
         size="sm"
-        {...form.getInputProps("stage_type")}
+        {...form.getInputProps('stage_type')}
         onChange={(value) =>
           form.setFieldValue(
-            "stage_type",
-            (value as Luna2FormValues["stage_type"]) || "local"
+            'stage_type',
+            (value as Luna2FormValues['stage_type']) || 'local'
           )
         }
       />
@@ -58,22 +58,22 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
             }
             labelProps={labelPropsInline}
             data={[
-              { value: "input_toxicity", label: "Input Toxicity" },
-              { value: "output_toxicity", label: "Output Toxicity" },
-              { value: "input_sexism", label: "Input Sexism" },
-              { value: "output_sexism", label: "Output Sexism" },
-              { value: "prompt_injection", label: "Prompt Injection" },
-              { value: "pii_detection", label: "PII Detection" },
-              { value: "hallucination", label: "Hallucination" },
-              { value: "tone", label: "Tone" },
+              { value: 'input_toxicity', label: 'Input Toxicity' },
+              { value: 'output_toxicity', label: 'Output Toxicity' },
+              { value: 'input_sexism', label: 'Input Sexism' },
+              { value: 'output_sexism', label: 'Output Sexism' },
+              { value: 'prompt_injection', label: 'Prompt Injection' },
+              { value: 'pii_detection', label: 'PII Detection' },
+              { value: 'hallucination', label: 'Hallucination' },
+              { value: 'tone', label: 'Tone' },
             ]}
             size="sm"
             placeholder="Select a metric"
-            {...form.getInputProps("metric")}
+            {...form.getInputProps('metric')}
             onChange={(value) =>
               form.setFieldValue(
-                "metric",
-                (value as Luna2FormValues["metric"]) || ""
+                'metric',
+                (value as Luna2FormValues['metric']) || ''
               )
             }
           />
@@ -87,21 +87,21 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
             }
             labelProps={labelPropsInline}
             data={[
-              { value: "gt", label: "> (greater than)" },
-              { value: "gte", label: ">= (greater than or equal)" },
-              { value: "lt", label: "< (less than)" },
-              { value: "lte", label: "<= (less than or equal)" },
-              { value: "eq", label: "= (equal)" },
-              { value: "contains", label: "Contains" },
-              { value: "any", label: "Any" },
+              { value: 'gt', label: '> (greater than)' },
+              { value: 'gte', label: '>= (greater than or equal)' },
+              { value: 'lt', label: '< (less than)' },
+              { value: 'lte', label: '<= (less than or equal)' },
+              { value: 'eq', label: '= (equal)' },
+              { value: 'contains', label: 'Contains' },
+              { value: 'any', label: 'Any' },
             ]}
             size="sm"
             placeholder="Select an operator"
-            {...form.getInputProps("operator")}
+            {...form.getInputProps('operator')}
             onChange={(value) =>
               form.setFieldValue(
-                "operator",
-                (value as Luna2FormValues["operator"]) || ""
+                'operator',
+                (value as Luna2FormValues['operator']) || ''
               )
             }
           />
@@ -116,7 +116,7 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
             labelProps={labelPropsInline}
             placeholder="0.5"
             size="sm"
-            {...form.getInputProps("target_value")}
+            {...form.getInputProps('target_value')}
           />
         </>
       ) : (
@@ -133,7 +133,7 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
             labelProps={labelPropsInline}
             placeholder="production-guard"
             size="sm"
-            {...form.getInputProps("stage_name")}
+            {...form.getInputProps('stage_name')}
           />
 
           <NumberInput
@@ -147,7 +147,7 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
             placeholder="Leave empty for latest"
             min={1}
             size="sm"
-            {...form.getInputProps("stage_version")}
+            {...form.getInputProps('stage_version')}
           />
         </>
       )}
@@ -164,7 +164,7 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
         labelProps={labelPropsInline}
         placeholder="my-project"
         size="sm"
-        {...form.getInputProps("galileo_project")}
+        {...form.getInputProps('galileo_project')}
       />
 
       <Select
@@ -176,17 +176,17 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "", label: "Auto-detect" },
-          { value: "input", label: "Input" },
-          { value: "output", label: "Output" },
+          { value: '', label: 'Auto-detect' },
+          { value: 'input', label: 'Input' },
+          { value: 'output', label: 'Output' },
         ]}
         size="sm"
         clearable
-        {...form.getInputProps("payload_field")}
+        {...form.getInputProps('payload_field')}
         onChange={(value) =>
           form.setFieldValue(
-            "payload_field",
-            (value as Luna2FormValues["payload_field"]) || ""
+            'payload_field',
+            (value as Luna2FormValues['payload_field']) || ''
           )
         }
       />
@@ -204,7 +204,7 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
         max={60000}
         step={1000}
         size="sm"
-        {...form.getInputProps("timeout_ms")}
+        {...form.getInputProps('timeout_ms')}
       />
 
       <Select
@@ -217,17 +217,17 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
         labelProps={labelPropsInline}
         data={[
           {
-            value: "allow",
-            label: "Allow (fail open - pass through on error)",
+            value: 'allow',
+            label: 'Allow (fail open - pass through on error)',
           },
-          { value: "deny", label: "Deny (fail closed - block on error)" },
+          { value: 'deny', label: 'Deny (fail closed - block on error)' },
         ]}
         size="sm"
-        {...form.getInputProps("on_error")}
+        {...form.getInputProps('on_error')}
         onChange={(value) =>
           form.setFieldValue(
-            "on_error",
-            (value as Luna2FormValues["on_error"]) || "allow"
+            'on_error',
+            (value as Luna2FormValues['on_error']) || 'allow'
           )
         }
       />
@@ -245,8 +245,8 @@ export const Luna2Form = ({ form }: EvaluatorFormProps<Luna2FormValues>) => {
         maxRows={6}
         autosize
         size="sm"
-        styles={{ input: { fontFamily: "monospace" } }}
-        {...form.getInputProps("metadata")}
+        styles={{ input: { fontFamily: 'monospace' } }}
+        {...form.getInputProps('metadata')}
       />
     </Stack>
   );

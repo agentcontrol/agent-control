@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import { Badge, Card, Group, Table, Text } from "@mantine/core";
-import { DataPill } from "@rungalileo/jupiter-ds";
+import { Badge, Card, Group, Table, Text } from '@mantine/core';
+import { DataPill } from '@rungalileo/jupiter-ds';
 
-import type { ControlStats } from "@/core/hooks/query-hooks/use-agent-monitor";
+import type { ControlStats } from '@/core/hooks/query-hooks/use-agent-monitor';
 
 type ControlStatsTableProps = {
   stats: ControlStats[];
-}
+};
 
 export function ControlStatsTable({ stats }: ControlStatsTableProps) {
   return (
@@ -38,17 +38,19 @@ export function ControlStatsTable({ stats }: ControlStatsTableProps) {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
-                      <Text size="sm">{control.execution_count.toLocaleString()}</Text>
+                      <Text size="sm">
+                        {control.execution_count.toLocaleString()}
+                      </Text>
                       {control.execution_count > 0 && (
                         <DataPill
                           value={`${triggerRate.toFixed(1)}%`}
                           size="sm"
                           variant={
                             triggerRate < 10
-                              ? "positive"
+                              ? 'positive'
                               : triggerRate <= 20
-                                ? "orange"
-                                : "negative"
+                                ? 'orange'
+                                : 'negative'
                           }
                         />
                       )}

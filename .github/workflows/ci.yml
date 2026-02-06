@@ -110,6 +110,10 @@ jobs:
         working-directory: ./ui
         run: pnpm run lint
 
+      - name: Prettier check
+        working-directory: ./ui
+        run: pnpm run prettify:check
+
       - name: Type check
         working-directory: ./ui
         run: pnpm run typecheck

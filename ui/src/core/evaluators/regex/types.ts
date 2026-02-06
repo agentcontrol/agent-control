@@ -3,4 +3,4 @@
  */
 export type RegexFormValues = {
   pattern: string;
-}
+};

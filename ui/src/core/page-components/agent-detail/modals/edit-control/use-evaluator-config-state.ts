@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from 'react';
 
-import type { ProblemDetail } from "@/core/api/types";
+import type { ProblemDetail } from '@/core/api/types';
 
-import type { ConfigViewMode } from "./types";
+import type { ConfigViewMode } from './types';
 
 export type UseEvaluatorConfigStateArgs = {
   getConfigFromForm: () => Record<string, unknown>;
@@ -11,7 +11,7 @@ export type UseEvaluatorConfigStateArgs = {
     config: Record<string, unknown>,
     options?: { signal?: AbortSignal }
   ) => Promise<void>;
-}
+};
 
 export type EvaluatorConfigState = {
   getConfigFromForm: () => Record<string, unknown>;
@@ -28,21 +28,23 @@ export type EvaluatorConfigState = {
   getJsonConfig: () => Record<string, unknown> | null;
   isJsonInvalid: boolean;
   reset: () => void;
-}
+};
 
 export function useEvaluatorConfigState({
   getConfigFromForm,
   onConfigChange,
   onValidateConfig,
 }: UseEvaluatorConfigStateArgs): EvaluatorConfigState {
-  const [configViewMode, setConfigViewMode] = useState<ConfigViewMode>("form");
-  const [jsonText, setJsonText] = useState("");
+  const [configViewMode, setConfigViewMode] = useState<ConfigViewMode>('form');
+  const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const [validationError, setValidationError] = useState<ProblemDetail | null>(null);
+  const [validationError, setValidationError] = useState<ProblemDetail | null>(
+    null
+  );
 
   const reset = useCallback(() => {
-    setConfigViewMode("form");
-    setJsonText("");
+    setConfigViewMode('form');
+    setJsonText('');
     setJsonError(null);
     setValidationError(null);
   }, []);
@@ -54,9 +56,9 @@ export function useEvaluatorConfigState({
 
   const getJsonConfig = useCallback(() => {
     try {
-      return JSON.parse(jsonText || "{}");
+      return JSON.parse(jsonText || '{}');
     } catch {
-      setJsonError("Invalid JSON. Please fix before saving.");
+      setJsonError('Invalid JSON. Please fix before saving.');
       return null;
     }
   }, [jsonText]);
@@ -65,19 +67,19 @@ export function useEvaluatorConfigState({
     async (value: string) => {
       const mode = value as ConfigViewMode;
 
-      if (mode === "json") {
+      if (mode === 'json') {
         setJsonText(JSON.stringify(getConfigFromForm(), null, 2));
         setJsonError(null);
         setConfigViewMode(mode);
         return;
       }
 
-      if (mode === "form") {
+      if (mode === 'form') {
         let finalConfig: Record<string, unknown>;
         try {
-          finalConfig = JSON.parse(jsonText || "{}");
+          finalConfig = JSON.parse(jsonText || '{}');
         } catch {
-          setJsonError("Invalid JSON. Please fix before switching to form.");
+          setJsonError('Invalid JSON. Please fix before switching to form.');
           setValidationError(null);
           return;
         }
@@ -87,13 +89,13 @@ export function useEvaluatorConfigState({
           setJsonError(null);
           setValidationError(null);
         } catch (error) {
-          if (error && typeof error === "object" && "problemDetail" in error) {
+          if (error && typeof error === 'object' && 'problemDetail' in error) {
             setValidationError(
               (error as { problemDetail: ProblemDetail }).problemDetail
             );
             setJsonError(null);
           } else {
-            setJsonError("Validation failed.");
+            setJsonError('Validation failed.');
             setValidationError(null);
           }
           return;
@@ -107,7 +109,7 @@ export function useEvaluatorConfigState({
   );
 
   const isJsonInvalid = useMemo(() => {
-    if (configViewMode !== "json") return false;
+    if (configViewMode !== 'json') return false;
     return jsonError !== null || validationError !== null;
   }, [configViewMode, jsonError, validationError]);
 

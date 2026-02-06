@@ -1,4 +1,4 @@
-import type { UseFormReturnType } from "@mantine/form";
+import type { UseFormReturnType } from '@mantine/form';
 
 import type {
   Control,
@@ -6,20 +6,20 @@ import type {
   ControlExecution,
   ControlStage,
   ProblemDetail,
-} from "@/core/api/types";
+} from '@/core/api/types';
 
 // Re-export evaluator form types for convenience
-export type { JsonFormValues } from "@/core/evaluators/json/types";
-export type { ListFormValues } from "@/core/evaluators/list/types";
+export type { JsonFormValues } from '@/core/evaluators/json/types';
+export type { ListFormValues } from '@/core/evaluators/list/types';
 export type {
   Luna2FormValues,
   Luna2Metric,
   Luna2Operator,
-} from "@/core/evaluators/luna2/types";
-export type { RegexFormValues } from "@/core/evaluators/regex/types";
-export type { SqlFormValues } from "@/core/evaluators/sql/types";
+} from '@/core/evaluators/luna2/types';
+export type { RegexFormValues } from '@/core/evaluators/regex/types';
+export type { SqlFormValues } from '@/core/evaluators/sql/types';
 
-export type ConfigViewMode = "form" | "json";
+export type ConfigViewMode = 'form' | 'json';
 
 // Form values type for control definition
 // Uses snake_case to match API field names directly
@@ -30,14 +30,14 @@ export type ControlDefinitionFormValues = {
   stages: ControlStage[];
   step_names: string;
   step_name_regex: string;
-  step_name_mode: "names" | "regex";
+  step_name_mode: 'names' | 'regex';
   selector_path: string;
   action_decision: ControlActionDecision;
   execution: ControlExecution;
-}
+};
 
 /** Mode for the EditControl modal */
-export type EditControlMode = "create" | "edit";
+export type EditControlMode = 'create' | 'edit';
 
 export type EditControlProps = {
   /** Whether the modal is open */
@@ -52,7 +52,7 @@ export type EditControlProps = {
   onClose: () => void;
   /** Callback when save succeeds */
   onSuccess?: () => void;
-}
+};
 
 export type EvaluatorJsonViewProps = {
   /** Current JSON text shown in the editor */
@@ -69,13 +69,13 @@ export type EvaluatorJsonViewProps = {
     options?: { signal?: AbortSignal }
   ) => Promise<void>;
   onValidationStatusChange?: (
-    status: "idle" | "validating" | "valid" | "invalid"
+    status: 'idle' | 'validating' | 'valid' | 'invalid'
   ) => void;
   validateDebounceMs?: number;
   /** Optional height for the editor area */
   height?: number;
-}
+};
 
 export type ControlDefinitionFormProps = {
   form: UseFormReturnType<ControlDefinitionFormValues>;
-}
+};
