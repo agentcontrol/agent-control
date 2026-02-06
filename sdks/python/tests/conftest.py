@@ -175,8 +175,6 @@ async def test_policy(
 
     yield result
 
-    # TODO: Add cleanup when delete endpoint is available
-
 
 @pytest_asyncio.fixture
 async def test_control(
@@ -195,8 +193,6 @@ async def test_control(
     )
 
     yield result
-
-    # TODO: Add cleanup when delete endpoint is available
 
 
 @pytest.fixture

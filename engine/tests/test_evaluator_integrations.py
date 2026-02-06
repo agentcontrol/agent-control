@@ -8,14 +8,9 @@ from typing import Any
 # Import to ensure built-in evaluators are registered
 import agent_control_evaluators  # noqa: F401
 import pytest
-from agent_control_engine.evaluators import get_evaluator_instance
-from agent_control_models import (
-    Evaluator,
-    EvaluatorConfig,
-    EvaluatorMetadata,
-    EvaluatorResult,
-    register_evaluator,
-)
+from agent_control_engine import get_evaluator_instance
+from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
+from agent_control_models import EvaluatorResult, EvaluatorSpec
 from pydantic import BaseModel
 
 
@@ -91,7 +86,7 @@ class TestMockEvaluatorEvaluation:
     async def test_evaluate_matched(self):
         """Test evaluation when threshold exceeded."""
         # Given: Mock evaluator with threshold 0.5
-        config = EvaluatorConfig(name="test-mock-evaluator", config={"threshold": 0.5})
+        config = EvaluatorSpec(name="test-mock-evaluator", config={"threshold": 0.5})
         evaluator = get_evaluator_instance(config)
 
         # When: Evaluating value above threshold
@@ -107,7 +102,7 @@ class TestMockEvaluatorEvaluation:
     async def test_evaluate_not_matched(self):
         """Test evaluation when below threshold."""
         # Given: Mock evaluator with threshold 0.9
-        config = EvaluatorConfig(name="test-mock-evaluator", config={"threshold": 0.9})
+        config = EvaluatorSpec(name="test-mock-evaluator", config={"threshold": 0.9})
         evaluator = get_evaluator_instance(config)
 
         # When: Evaluating value below threshold
@@ -120,7 +115,7 @@ class TestMockEvaluatorEvaluation:
     async def test_multiple_evaluations(self):
         """Test multiple evaluations with same evaluator."""
         # Given: Mock evaluator with threshold 0.5
-        config = EvaluatorConfig(name="test-mock-evaluator", config={"threshold": 0.5})
+        config = EvaluatorSpec(name="test-mock-evaluator", config={"threshold": 0.5})
         evaluator = get_evaluator_instance(config)
 
         # When: Evaluating multiple values
@@ -193,7 +188,7 @@ class TestRegexEvaluatorFlags:
         Then: Only exact case matches
         """
         # Given: Regex for "SECRET" without flags
-        config = EvaluatorConfig(
+        config = EvaluatorSpec(
             name="regex",
             config={"pattern": "SECRET"}
         )
@@ -219,7 +214,7 @@ class TestRegexEvaluatorFlags:
         Then: All cases match
         """
         # Given: Regex for "SECRET" with IGNORECASE flag
-        config = EvaluatorConfig(
+        config = EvaluatorSpec(
             name="regex",
             config={"pattern": "SECRET", "flags": ["IGNORECASE"]}
         )
@@ -247,7 +242,7 @@ class TestRegexEvaluatorFlags:
         Then: All cases match
         """
         # Given: Regex with short "I" flag
-        config = EvaluatorConfig(
+        config = EvaluatorSpec(
             name="regex",
             config={"pattern": "password", "flags": ["I"]}
         )
@@ -272,7 +267,7 @@ class TestRegexEvaluatorFlags:
         Then: All cases match
         """
         # Given: Regex with lowercase flag variant
-        config = EvaluatorConfig(
+        config = EvaluatorSpec(
             name="regex",
             config={"pattern": "admin", "flags": ["ignorecase"]}
         )

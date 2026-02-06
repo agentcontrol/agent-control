@@ -22,7 +22,7 @@ from agent_control_engine import (
     ensure_evaluators_discovered,
     list_evaluators,
 )
-from agent_control_models import register_evaluator
+from agent_control_evaluators import register_evaluator
 
 from .base import Evaluator, EvaluatorMetadata
 
@@ -37,7 +37,7 @@ __all__ = [
 
 # Optionally export Luna-2 types when available
 try:
-    from agent_control_evaluators.luna2 import (  # noqa: F401
+    from agent_control_evaluator_galileo.luna2 import (  # type: ignore[import-not-found]  # noqa: F401
         LUNA2_AVAILABLE,
         Luna2Evaluator,
         Luna2EvaluatorConfig,

@@ -1,0 +1,35 @@
+[project]
+name = "agent-control-evaluator-{{ORG}}"
+version = "3.0.0"
+description = "{{ORG}} evaluators for agent-control"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "{{AUTHOR}}" }]
+dependencies = [
+    "agent-control-evaluators>=3.0.0",
+    "agent-control-models>=3.0.0",
+    # Add your package-specific dependencies here
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+]
+
+[project.entry-points."agent_control.evaluators"]
+# Format: "org.evaluator_name" = "package.module:Class"
+"{{ORG}}.{{EVALUATOR}}" = "agent_control_evaluator_{{ORG}}.{{EVALUATOR}}:{{CLASS}}"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_control_evaluator_{{ORG}}"]
+
+[tool.uv.sources]
+agent-control-evaluators = { path = "../../builtin", editable = true }
+agent-control-models = { path = "../../../models", editable = true }

@@ -2,6 +2,61 @@
 
 <!-- version list -->
 
+## v5.1.0 (2026-02-05)
+
+### Documentation
+
+- **examples**: Update examples and docs for evaluators reorganization
+  ([#19](https://github.com/agentcontrol/agent-control/pull/19),
+  [`9cb1851`](https://github.com/agentcontrol/agent-control/commit/9cb1851c442536aeb344bdbd889629167984e7da))
+
+### Features
+
+- **sdk**: Export ControlScope, ControlMatch, and EvaluatorResult models
+  ([#18](https://github.com/agentcontrol/agent-control/pull/18),
+  [`0d49cad`](https://github.com/agentcontrol/agent-control/commit/0d49cad9da5c9e76c32d652fadbc69cec698a611))
+
+
+## v5.0.0 (2026-02-05)
+
+### Bug Fixes
+
+- **docs**: Add Example for Evaluator Extension
+  ([#3](https://github.com/agentcontrol/agent-control/pull/3),
+  [`c2a70b3`](https://github.com/agentcontrol/agent-control/commit/c2a70b335fb55481ad63b367ca87ba46de085343))
+
+- **docs**: Update README ([#2](https://github.com/agentcontrol/agent-control/pull/2),
+  [`379bb15`](https://github.com/agentcontrol/agent-control/commit/379bb158700b93aa549ef00eda57ccc2f88cb71f))
+
+- **infra**: Install engine/evaluators in server image
+  ([#14](https://github.com/agentcontrol/agent-control/pull/14),
+  [`d5ae157`](https://github.com/agentcontrol/agent-control/commit/d5ae1571071afd34a00b376e650d9e1ce02f0b2d))
+
+- **models**: Use StrEnum for error enums
+  ([#12](https://github.com/agentcontrol/agent-control/pull/12),
+  [`3f41c9f`](https://github.com/agentcontrol/agent-control/commit/3f41c9f974ba5afe873f30197aba7f2ff142f616))
+
+- **server**: Reject initAgent UUID/name mismatch
+  ([#13](https://github.com/agentcontrol/agent-control/pull/13),
+  [`19d61ff`](https://github.com/agentcontrol/agent-control/commit/19d61ff1e1605925162eca31bacbe35eddeb5c17))
+
+### Features
+
+- **sdk**: Get Agent Controls from SDK Init
+  ([#15](https://github.com/agentcontrol/agent-control/pull/15),
+  [`a485f93`](https://github.com/agentcontrol/agent-control/commit/a485f93e15e49ddb975dee4bf4e24dfa3310d976))
+
+### Refactoring
+
+- **evaluators**: Split into builtin + extra packages for PyPI
+  ([#5](https://github.com/agentcontrol/agent-control/pull/5),
+  [`0e0a78a`](https://github.com/agentcontrol/agent-control/commit/0e0a78a9fa9c39a5709299c2e3d77c0609110280))
+
+### Breaking Changes
+
+- **evaluators**: Evaluator reorganization with new package structure
+
+
 ## v4.0.0 (2026-02-03)
 
 ### Bug Fixes

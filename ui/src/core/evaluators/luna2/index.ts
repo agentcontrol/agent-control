@@ -33,7 +33,7 @@ const numberOrNull = (value: number | ""): number | null =>
  * prompt injection, PII detection, and more.
  */
 export const luna2Evaluator: EvaluatorDefinition<Luna2FormValues> = {
-  id: "galileo-luna2",
+  id: "galileo.luna2",
   displayName: "Galileo Luna-2",
 
   initialValues: {

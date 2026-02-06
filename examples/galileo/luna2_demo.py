@@ -14,7 +14,7 @@ Setup:
        python luna2_demo.py
 
 Requirements:
-    pip install agent-control-evaluators[luna2]
+    pip install agent-control-evaluators[galileo]
 """
 
 import asyncio
@@ -37,7 +37,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # Import our direct API client (no SDK required)
 try:
-    from agent_control_evaluators.luna2.client import (
+    from agent_control_evaluator_galileo.luna2.client import (
         GalileoProtectClient,
         Payload,
     )
@@ -45,7 +45,7 @@ try:
     GALILEO_AVAILABLE = True
 except ImportError as e:
     print(f"❌ agent-control-evaluators not available: {e}")
-    print("   Install with: pip install agent-control-evaluators[luna2]")
+    print("   Install with: pip install agent-control-evaluators[galileo]")
     sys.exit(1)
 
 

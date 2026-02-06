@@ -1,9 +1,11 @@
 [project]
 name = "agent-control-sdk"
-version = "4.0.0"
+version = "5.1.0"
 description = "Python SDK for Agent Control - protect your AI agents with controls"
 requires-python = ">=3.12"
 # Note: agent-control-models and agent-control-engine are bundled at build time
+# Note: agent-control-evaluators is a runtime dependency (NOT vendored) to avoid
+#       duplicate module conflict when galileo extras are installed
 dependencies = [
     "httpx>=0.26.0",
     "pydantic>=2.5.0",
@@ -11,6 +13,7 @@ dependencies = [
     "docstring-parser>=0.15",  # For @tool decorator schema inference
     "google-re2>=1.1",  # For engine (bundled)
     "jsonschema>=4.0.0",  # For models/engine (bundled)
+    "agent-control-evaluators>=3.0.0",  # NOT vendored - avoid conflict with galileo
 ]
 authors = [
     {name = "Agent Control Team"}
@@ -32,10 +35,7 @@ Documentation = "https://github.com/yourusername/agent-control#readme"
 Repository = "https://github.com/yourusername/agent-control"
 
 [project.optional-dependencies]
-# Optional: Luna-2 evaluator requires additional dependencies
-luna2 = [
-    "httpx>=0.24.0",
-]
+galileo = ["agent-control-evaluator-galileo>=3.0.0"]
 
 [dependency-groups]
 dev = [
@@ -78,3 +78,5 @@ known-first-party = ["agent_control"]
 agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
 agent-control-evaluators = { workspace = true }
+# For local dev: use local galileo package instead of PyPI
+agent-control-evaluator-galileo = { path = "../../evaluators/extra/galileo", editable = true }

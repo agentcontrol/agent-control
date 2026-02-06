@@ -1,0 +1,37 @@
+[project]
+name = "agent-control-evaluators"
+version = "5.1.0"
+description = "Builtin evaluators for agent-control"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Agent Control Team" }]
+dependencies = [
+    "agent-control-models",
+    "pydantic>=2.12.4",
+    "google-re2>=1.1",
+    "jsonschema>=4.0.0",
+    "sqlglot[rs]>=20.0.0",
+]
+
+[project.optional-dependencies]
+galileo = ["agent-control-evaluator-galileo>=3.0.0"]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
+
+[project.entry-points."agent_control.evaluators"]
+regex = "agent_control_evaluators.regex:RegexEvaluator"
+list = "agent_control_evaluators.list:ListEvaluator"
+json = "agent_control_evaluators.json:JSONEvaluator"
+sql = "agent_control_evaluators.sql:SQLEvaluator"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_control_evaluators"]
+
+[tool.uv.sources]
+agent-control-models = { workspace = true }
+# For local dev: use local galileo package instead of PyPI
+agent-control-evaluator-galileo = { path = "../extra/galileo", editable = true }

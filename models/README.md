@@ -157,7 +157,7 @@ Complete control specification.
 - `execution` (str): Execution mode ("server" or "local")
 - `scope` (ControlScope): When to apply the control
 - `selector` (ControlSelector): What data to evaluate
-- `evaluator` (EvaluatorConfig): How to evaluate
+- `evaluator` (EvaluatorSpec): How to evaluate
 - `action` (ControlAction): What to do on match
 
 #### EvaluationRequest

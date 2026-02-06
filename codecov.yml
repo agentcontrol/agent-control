@@ -2,5 +2,5 @@ fixes:
   - "agent_control_server/::server/src/agent_control_server/"
   - "agent_control_engine/::engine/src/agent_control_engine/"
   - "agent_control_models/::models/src/agent_control_models/"
-  - "agent_control_evaluators/::evaluators/src/agent_control_evaluators/"
+  - "agent_control_evaluators/::evaluators/builtin/src/agent_control_evaluators/"
   - "agent_control/::sdks/python/src/agent_control/"

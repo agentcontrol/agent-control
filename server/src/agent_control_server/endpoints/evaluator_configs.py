@@ -22,7 +22,7 @@ from ..db import get_async_db
 from ..errors import APIValidationError, ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import EvaluatorConfigDB
-from ..services.evaluator_utils import parse_evaluator_ref
+from ..services.evaluator_utils import is_agent_scoped
 
 _logger = get_logger(__name__)
 
@@ -46,8 +46,7 @@ def _to_item(config: EvaluatorConfigDB) -> EvaluatorConfigItem:
 
 
 def _ensure_not_agent_scoped(evaluator: str) -> None:
-    agent_name, _ = parse_evaluator_ref(evaluator)
-    if agent_name is not None:
+    if is_agent_scoped(evaluator):
         raise APIValidationError(
             error_code=ErrorCode.VALIDATION_ERROR,
             detail="Agent-scoped evaluators are not supported for evaluator configs",

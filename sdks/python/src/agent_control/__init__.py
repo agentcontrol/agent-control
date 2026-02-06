@@ -34,15 +34,36 @@ Usage:
         )
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("agent-control-sdk")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev"
+
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as get_version
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from uuid import UUID
 
 import httpx
+
+if TYPE_CHECKING:
+    from agent_control_models import (
+        Agent,
+        ControlAction,
+        ControlDefinition,
+        ControlMatch,
+        ControlScope,
+        ControlSelector,
+        EvaluationRequest,
+        EvaluationResult,
+        EvaluatorResult,
+        EvaluatorSpec,
+        Step,
+        StepSchema,
+    )
 
 from . import agents, controls, evaluation, evaluators, policies
 
@@ -84,10 +105,13 @@ try:
         Agent,
         ControlAction,
         ControlDefinition,
+        ControlMatch,
+        ControlScope,
         ControlSelector,
         EvaluationRequest,
         EvaluationResult,
-        EvaluatorConfig,
+        EvaluatorResult,
+        EvaluatorSpec,
         Step,
         StepSchema,
     )
@@ -101,10 +125,19 @@ except ImportError:
         class ControlSelector:
             pass
 
+        class ControlScope:
+            pass
+
+        class ControlMatch:
+            pass
+
+        class EvaluatorResult:
+            pass
+
         class ControlAction:
             pass
 
-        class EvaluatorConfig:
+        class EvaluatorSpec:
             pass
 
         class Agent:  # runtime fallback
@@ -1012,15 +1045,6 @@ async def list_policy_controls(
         return await policies.list_policy_controls(client, policy_id)
 
 
-# Note: The @control decorator is imported from control_decorators.py
-# It applies server-defined policies to agent functions.
-# See: from agent_control import control
-
-
-# ============================================================================
-# Exports
-# ============================================================================
-
 __all__ = [
     # Initialization
     "init",
@@ -1033,56 +1057,38 @@ __all__ = [
 
     # SDK Logging
     "get_logger",
-
     # Agent management
     "get_agent",
     "list_agents",
-
     # Control management
     "create_control",
     "list_controls",
     "get_control",
     "delete_control",
     "update_control",
-
-    # Decorator (server-side policy evaluation)
-    "control",
-
-    # Control Decorator
+    # Decorator
     "control",
     "ControlViolationError",
-
     # Client
     "AgentControlClient",
-
     # Operation modules
     "agents",
     "policies",
     "controls",
     "evaluation",
     "evaluators",
-
     # Policy-Control management
     "add_control_to_policy",
     "remove_control_from_policy",
     "list_policy_controls",
-
-
-    # Tool inference utilities
-    "tool",
-    "extract_tools_from_functions",
-    "tools_from_module",
-
     # Local evaluation
     "check_evaluation_with_local",
-
     # Tracing
     "get_trace_and_span_ids",
     "get_current_trace_id",
     "get_current_span_id",
     "with_trace",
     "is_otel_available",
-
     # Observability
     "init_observability",
     "add_event",
@@ -1093,8 +1099,7 @@ __all__ = [
     "get_log_config",
     "log_control_evaluation",
     "LogConfig",
-
-    # Models (if available)
+    # Models (re-exported when available)
     "Agent",
     "Step",
     "StepSchema",
@@ -1102,12 +1107,9 @@ __all__ = [
     "EvaluationResult",
     "ControlDefinition",
     "ControlSelector",
+    "ControlScope",
     "ControlAction",
-    "EvaluatorConfig",
+    "ControlMatch",
+    "EvaluatorSpec",
+    "EvaluatorResult",
 ]
-
-try:
-    __version__ = get_version("agent-control-sdk")
-except PackageNotFoundError:
-    # Package not installed (e.g., running from source without install)
-    __version__ = "0.0.0.dev"

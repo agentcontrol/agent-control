@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Build SDK and server packages with vendored dependencies.
+"""Build packages for PyPI distribution.
 
-This script copies internal packages (models, engine, evaluators) into the SDK and server
-source directories before building, then cleans up afterward. This allows the published
-wheels to be self-contained without requiring separate PyPI dependencies.
+This script builds all publishable packages. For SDK and server, it copies internal
+packages (models, engine) into the source directories before building, then cleans up
+afterward. This allows the published wheels to be self-contained.
 
 Usage:
-    python scripts/build.py [models|sdk|server|all]
+    python scripts/build.py [models|evaluators|sdk|server|galileo|all]
 """
 
 import shutil
@@ -127,7 +127,11 @@ def build_sdk() -> None:
 
 
 def build_server() -> None:
-    """Build agent-control-server with vendored packages."""
+    """Build agent-control-server with vendored packages.
+
+    Note: evaluators are NOT vendored - server uses agent-control-evaluators as a
+    runtime dependency to avoid duplicate module conflicts with galileo extras.
+    """
     version = get_global_version()
     server_dir = ROOT / "server"
     server_src = server_dir / "src"
@@ -135,7 +139,7 @@ def build_server() -> None:
     print(f"Building agent-control-server v{version}")
 
     # Clean previous builds and vendored code
-    for pkg in ["agent_control_models", "agent_control_engine", "agent_control_evaluators"]:
+    for pkg in ["agent_control_models", "agent_control_engine"]:
         target = server_src / pkg
         if target.exists():
             shutil.rmtree(target)
@@ -144,7 +148,7 @@ def build_server() -> None:
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
 
-    # Copy vendored packages
+    # Copy vendored packages (models and engine only, NOT evaluators)
     shutil.copytree(
         ROOT / "models" / "src" / "agent_control_models",
         server_src / "agent_control_models",
@@ -152,10 +156,6 @@ def build_server() -> None:
     shutil.copytree(
         ROOT / "engine" / "src" / "agent_control_engine",
         server_src / "agent_control_engine",
-    )
-    shutil.copytree(
-        ROOT / "evaluators" / "src" / "agent_control_evaluators",
-        server_src / "agent_control_evaluators",
     )
 
     # Inject bundle metadata for conflict detection
@@ -169,11 +169,6 @@ def build_server() -> None:
         "agent-control-server",
         version,
     )
-    inject_bundle_metadata(
-        server_src / "agent_control_evaluators" / "__init__.py",
-        "agent-control-server",
-        version,
-    )
 
     # Set version
     set_package_version(server_dir / "pyproject.toml", version)
@@ -183,18 +178,58 @@ def build_server() -> None:
         print(f"  Built agent-control-server v{version}")
     finally:
         # Clean up vendored code (don't commit it)
-        for pkg in ["agent_control_models", "agent_control_engine", "agent_control_evaluators"]:
+        for pkg in ["agent_control_models", "agent_control_engine"]:
             target = server_src / pkg
             if target.exists():
                 shutil.rmtree(target)
+
+
+def build_evaluators() -> None:
+    """Build agent-control-evaluators (standalone, no vendoring needed)."""
+    version = get_global_version()
+    evaluators_dir = ROOT / "evaluators" / "builtin"
+
+    print(f"Building agent-control-evaluators v{version}")
+
+    # Clean previous builds
+    dist_dir = evaluators_dir / "dist"
+    if dist_dir.exists():
+        shutil.rmtree(dist_dir)
+
+    # Set version
+    set_package_version(evaluators_dir / "pyproject.toml", version)
+
+    subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=evaluators_dir, check=True)
+    print(f"  Built agent-control-evaluators v{version}")
+
+
+def build_evaluator_galileo() -> None:
+    """Build agent-control-evaluator-galileo (standalone, no vendoring needed)."""
+    version = get_global_version()
+    galileo_dir = ROOT / "evaluators" / "extra" / "galileo"
+
+    print(f"Building agent-control-evaluator-galileo v{version}")
+
+    # Clean previous builds
+    dist_dir = galileo_dir / "dist"
+    if dist_dir.exists():
+        shutil.rmtree(dist_dir)
+
+    # Set version
+    set_package_version(galileo_dir / "pyproject.toml", version)
+
+    subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=galileo_dir, check=True)
+    print(f"  Built agent-control-evaluator-galileo v{version}")
 
 
 def build_all() -> None:
     """Build all packages."""
     print(f"Building all packages (version {get_global_version()})\n")
     build_models()
+    build_evaluators()
     build_sdk()
     build_server()
+    build_evaluator_galileo()
     print("\nAll packages built successfully!")
 
 
@@ -205,12 +240,16 @@ if __name__ == "__main__":
 
     if target == "models":
         build_models()
+    elif target == "evaluators":
+        build_evaluators()
     elif target == "sdk":
         build_sdk()
     elif target == "server":
         build_server()
+    elif target == "galileo":
+        build_evaluator_galileo()
     elif target == "all":
         build_all()
     else:
-        print("Usage: python scripts/build.py [models|sdk|server|all]")
+        print("Usage: python scripts/build.py [models|evaluators|sdk|server|galileo|all]")
         sys.exit(1)

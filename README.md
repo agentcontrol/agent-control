@@ -188,7 +188,7 @@ Controls are defined via the API or dashboard. Each control specifies what to ch
   "scope": { "step_names": ["process_user_message"], "stages": ["pre"] },
   "selector": { "path": "input" },
   "evaluator": {
-    "name": "galileo-luna2",
+    "name": "galileo.luna2",
     "config": {
       "metric": "input_toxicity",
       "operator": "gt",

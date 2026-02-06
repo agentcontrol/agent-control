@@ -240,7 +240,7 @@ const evaluatorsResponse: EvaluatorsResponse = {
       required: ["schema"],
     },
   },
-  "galileo-luna2": {
+  "galileo.luna2": {
     name: "Galileo Luna-2",
     version: "1.0.0",
     description: "AI-powered content moderation using Galileo Luna-2",

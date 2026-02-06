@@ -302,9 +302,12 @@ scope:
 selector:
   path: input
 evaluator:
-  name: luna2
+  name: galileo.luna2
   config:
-    threshold: 0.8
+    stage_type: local
+    metric: input_toxicity
+    operator: gt
+    target_value: 0.8
 action:
   decision: deny
   message: "Inappropriate content detected"

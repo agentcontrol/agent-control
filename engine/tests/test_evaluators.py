@@ -1,16 +1,17 @@
 """Tests for unified evaluator factory."""
 
 import pytest
-from agent_control_engine import list_evaluators
-from agent_control_engine.evaluators import (
+from agent_control_engine import (
     clear_evaluator_cache,
     get_evaluator_instance,
+    list_evaluators,
 )
-from agent_control_models import (
-    EvaluatorConfig,
+from agent_control_models import EvaluatorSpec
+from agent_control_evaluators import (
+    ListEvaluator,
+    RegexEvaluator,
     RegexEvaluatorConfig,
 )
-from agent_control_evaluators import ListEvaluator, RegexEvaluator
 
 
 class TestRegexEvaluator:
@@ -20,7 +21,7 @@ class TestRegexEvaluator:
     async def test_basic_match(self):
         """Test regex matches SSN pattern."""
         # Given: A regex evaluator with SSN pattern
-        config = EvaluatorConfig(name="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
+        config = EvaluatorSpec(name="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
         evaluator = get_evaluator_instance(config)
 
         # When: Evaluating text containing SSN
@@ -34,7 +35,7 @@ class TestRegexEvaluator:
     async def test_no_match(self):
         """Test regex doesn't match when pattern not found."""
         # Given: A regex evaluator with SSN pattern
-        config = EvaluatorConfig(name="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
+        config = EvaluatorSpec(name="regex", config={"pattern": r"\d{3}-\d{2}-\d{4}"})
         evaluator = get_evaluator_instance(config)
 
         # When: Evaluating text without pattern
@@ -48,7 +49,7 @@ class TestRegexEvaluator:
     async def test_non_string_input(self):
         """Test non-string input is converted to string."""
         # Given: A regex evaluator
-        config = EvaluatorConfig(name="regex", config={"pattern": r"123"})
+        config = EvaluatorSpec(name="regex", config={"pattern": r"123"})
         evaluator = get_evaluator_instance(config)
 
         # When: Evaluating non-string input
@@ -61,7 +62,7 @@ class TestRegexEvaluator:
     async def test_none_input(self):
         """Test handling of None input."""
         # Given: A regex evaluator
-        config = EvaluatorConfig(name="regex", config={"pattern": r".*"})
+        config = EvaluatorSpec(name="regex", config={"pattern": r".*"})
         evaluator = get_evaluator_instance(config)
 
         # When: Evaluating None
@@ -82,7 +83,7 @@ class TestRegexEvaluator:
     async def test_empty_pattern_matches_everything(self):
         """Test empty pattern matches everything."""
         # Given: A regex evaluator with empty pattern
-        config = EvaluatorConfig(name="regex", config={"pattern": ""})
+        config = EvaluatorSpec(name="regex", config={"pattern": ""})
         evaluator = get_evaluator_instance(config)
 
         # When: Evaluating any text
@@ -99,7 +100,7 @@ class TestListEvaluator:
     async def test_any_match(self):
         """Test list evaluator with any/match logic."""
         # Given: A list evaluator with blocklist items
-        config = EvaluatorConfig(
+        config = EvaluatorSpec(
             name="list",
             config={"values": ["bad", "evil"], "logic": "any", "match_on": "match"},
         )
@@ -114,7 +115,7 @@ class TestListEvaluator:
     async def test_any_no_match(self):
         """Test list evaluator as allowlist (any/no_match)."""
         # Given: A list evaluator as allowlist
-        config = EvaluatorConfig(
+        config = EvaluatorSpec(
             name="list",
             config={"values": ["safe", "ok"], "logic": "any", "match_on": "no_match"},
         )
@@ -129,7 +130,7 @@ class TestListEvaluator:
     async def test_all_match(self):
         """Test list evaluator with all/match logic."""
         # Given: A list evaluator with all/match logic
-        config = EvaluatorConfig(
+        config = EvaluatorSpec(
             name="list",
             config={"values": ["valid1", "valid2"], "logic": "all", "match_on": "match"},
         )
@@ -144,7 +145,7 @@ class TestListEvaluator:
     async def test_case_insensitive(self):
         """Test case-insensitive matching."""
         # Given: A case-insensitive list evaluator
-        config = EvaluatorConfig(
+        config = EvaluatorSpec(
             name="list",
             config={"values": ["MixedCase"], "case_sensitive": False, "match_on": "match"},
         )
@@ -161,7 +162,7 @@ class TestGetEvaluatorInstance:
     def test_get_evaluator_instance_returns_correct_type(self):
         """Test factory returns correct evaluator type."""
         # Given: An evaluator config
-        config = EvaluatorConfig(name="regex", config={"pattern": "abc"})
+        config = EvaluatorSpec(name="regex", config={"pattern": "abc"})
         # When: Getting evaluator
         evaluator = get_evaluator_instance(config)
 
@@ -172,7 +173,7 @@ class TestGetEvaluatorInstance:
     def test_get_evaluator_instance_unknown_evaluator(self):
         """Test error when evaluator not found."""
         # Given: Config for nonexistent evaluator
-        config = EvaluatorConfig(name="nonexistent", config={})
+        config = EvaluatorSpec(name="nonexistent", config={})
 
         # When/Then: Should raise ValueError
         with pytest.raises(ValueError, match="not found"):
@@ -202,7 +203,7 @@ class TestEvaluatorCache:
     def test_evaluator_cache_hit(self):
         """Test that same config returns same cached instance."""
         # Given: An evaluator config
-        config = EvaluatorConfig(name="regex", config={"pattern": "test"})
+        config = EvaluatorSpec(name="regex", config={"pattern": "test"})
 
         # When: First call creates instance
         evaluator1 = get_evaluator_instance(config)
@@ -215,8 +216,8 @@ class TestEvaluatorCache:
     def test_evaluator_cache_miss_different_config(self):
         """Test that different configs return different instances."""
         # Given: Two different configs
-        config1 = EvaluatorConfig(name="regex", config={"pattern": "test1"})
-        config2 = EvaluatorConfig(name="regex", config={"pattern": "test2"})
+        config1 = EvaluatorSpec(name="regex", config={"pattern": "test1"})
+        config2 = EvaluatorSpec(name="regex", config={"pattern": "test2"})
 
         # When: Getting evaluators
         evaluator1 = get_evaluator_instance(config1)
@@ -228,8 +229,8 @@ class TestEvaluatorCache:
     def test_evaluator_cache_miss_different_evaluator(self):
         """Test that same config but different evaluators return different instances."""
         # Given: Two configs with different evaluators
-        config1 = EvaluatorConfig(name="regex", config={"pattern": "bad"})
-        config2 = EvaluatorConfig(name="list", config={"values": ["bad"]})
+        config1 = EvaluatorSpec(name="regex", config={"pattern": "bad"})
+        config2 = EvaluatorSpec(name="list", config={"values": ["bad"]})
 
         # When: Getting evaluators
         evaluator1 = get_evaluator_instance(config1)
@@ -243,8 +244,8 @@ class TestEvaluatorCache:
     def test_evaluator_cache_clear_all(self):
         """Test that clear_evaluator_cache clears all entries."""
         # Given: Two cached evaluators
-        config1 = EvaluatorConfig(name="regex", config={"pattern": "test1"})
-        config2 = EvaluatorConfig(name="list", config={"values": ["test"]})
+        config1 = EvaluatorSpec(name="regex", config={"pattern": "test1"})
+        config2 = EvaluatorSpec(name="list", config={"values": ["test"]})
         evaluator1a = get_evaluator_instance(config1)
         evaluator2a = get_evaluator_instance(config2)
 
@@ -270,7 +271,7 @@ class TestCacheSizeClamping:
         When: Module is imported
         Then: The value should be at least 1 (MIN_CACHE_SIZE)
         """
-        from agent_control_engine.evaluators import EVALUATOR_CACHE_SIZE, MIN_CACHE_SIZE
+        from agent_control_evaluators._factory import EVALUATOR_CACHE_SIZE, MIN_CACHE_SIZE
 
         assert EVALUATOR_CACHE_SIZE >= MIN_CACHE_SIZE
         assert MIN_CACHE_SIZE == 1

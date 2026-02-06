@@ -33,7 +33,10 @@ from ..errors import (
 )
 from ..logging_utils import get_logger
 from ..models import Agent, AgentData, Control, Policy, policy_controls
-from ..services.evaluator_utils import parse_evaluator_ref, validate_config_against_schema
+from ..services.evaluator_utils import (
+    parse_evaluator_ref_full,
+    validate_config_against_schema,
+)
 
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
@@ -49,18 +52,20 @@ async def _validate_control_definition(
 ) -> None:
     """Validate evaluator config for a control definition."""
     evaluator_ref = control_def.evaluator.name
-    agent_name, eval_name = parse_evaluator_ref(evaluator_ref)
+    parsed = parse_evaluator_ref_full(evaluator_ref)
 
-    if agent_name is not None:
+    if parsed.type == "agent":
         # Agent-scoped evaluator: validate against agent's registered schema
-        agent_result = await db.execute(select(Agent).where(Agent.name == agent_name))
+        agent_result = await db.execute(
+            select(Agent).where(Agent.name == parsed.namespace)
+        )
         agent = agent_result.scalars().first()
         if agent is None:
             raise NotFoundError(
                 error_code=ErrorCode.AGENT_NOT_FOUND,
-                detail=f"Agent '{agent_name}' not found",
+                detail=f"Agent '{parsed.namespace}' not found",
                 resource="Agent",
-                resource_id=agent_name,
+                resource_id=parsed.namespace,
                 hint=(
                     "Ensure the agent exists before creating controls "
                     "that reference its evaluators."
@@ -72,7 +77,7 @@ async def _validate_control_definition(
         except ValidationError as e:
             raise APIValidationError(
                 error_code=ErrorCode.CORRUPTED_DATA,
-                detail=f"Agent '{agent_name}' has invalid data",
+                detail=f"Agent '{parsed.namespace}' has invalid data",
                 resource="Agent",
                 errors=[
                     ValidationErrorItem(
@@ -86,7 +91,7 @@ async def _validate_control_definition(
             )
 
         evaluator = next(
-            (e for e in (agent_data.evaluators or []) if e.name == eval_name),
+            (e for e in (agent_data.evaluators or []) if e.name == parsed.local_name),
             None,
         )
         if evaluator is None:
@@ -94,7 +99,8 @@ async def _validate_control_definition(
             raise APIValidationError(
                 error_code=ErrorCode.EVALUATOR_NOT_FOUND,
                 detail=(
-                    f"Evaluator '{eval_name}' is not registered with agent '{agent_name}'"
+                    f"Evaluator '{parsed.local_name}' is not registered "
+                    f"with agent '{parsed.namespace}'"
                 ),
                 resource="Evaluator",
                 hint=(
@@ -106,7 +112,10 @@ async def _validate_control_definition(
                         resource="Control",
                         field="data.evaluator.name",
                         code="evaluator_not_found",
-                        message=f"Evaluator '{eval_name}' not found on agent '{agent_name}'",
+                        message=(
+                            f"Evaluator '{parsed.local_name}' not found "
+                            f"on agent '{parsed.namespace}'"
+                        ),
                         value=evaluator_ref,
                     )
                 ],
@@ -121,9 +130,7 @@ async def _validate_control_definition(
             except JSONSchemaValidationError as e:
                 raise APIValidationError(
                     error_code=ErrorCode.INVALID_CONFIG,
-                    detail=(
-                        f"Config validation failed for evaluator '{agent_name}:{eval_name}'"
-                    ),
+                    detail=f"Config validation failed for evaluator '{evaluator_ref}'",
                     resource="Control",
                     hint="Check the evaluator's config schema for required fields and types.",
                     errors=[
@@ -136,15 +143,15 @@ async def _validate_control_definition(
                     ],
                 )
     else:
-        # Built-in or server-side evaluator: validate if registered
-        evaluator_cls = list_evaluators().get(eval_name)
+        # Built-in or external evaluator: validate if registered
+        evaluator_cls = list_evaluators().get(parsed.name)
         if evaluator_cls is not None:
             try:
                 evaluator_cls.config_model(**control_def.evaluator.config)
             except ValidationError as e:
                 raise APIValidationError(
                     error_code=ErrorCode.INVALID_CONFIG,
-                    detail=f"Config validation failed for evaluator '{eval_name}'",
+                    detail=f"Config validation failed for evaluator '{parsed.name}'",
                     resource="Control",
                     hint="Check the evaluator's config schema for required fields and types.",
                     errors=[
@@ -163,7 +170,7 @@ async def _validate_control_definition(
             except TypeError as e:
                 raise APIValidationError(
                     error_code=ErrorCode.INVALID_CONFIG,
-                    detail=f"Invalid config parameters for evaluator '{eval_name}'",
+                    detail=f"Invalid config parameters for evaluator '{parsed.name}'",
                     resource="Control",
                     hint="Check the evaluator's config schema for valid parameter names.",
                     errors=[
@@ -386,7 +393,7 @@ async def set_control_data(
             hint="Verify the control ID is correct and the control has been created.",
         )
 
-    # Validate evaluator config
+    # Validate evaluator config using shared logic
     await _validate_control_definition(request.data, db)
 
     data_json = request.data.model_dump(mode="json", exclude_none=True, exclude_unset=True)
