@@ -55,11 +55,9 @@ export function ControlStatsTable({ stats }: ControlStatsTableProps) {
                     </Group>
                   </Table.Td>
                   <Table.Td>
-                    <Group gap="xs" wrap="nowrap">
-                      <Text size="sm" fw={500}>
-                        {control.match_count}
-                      </Text>
-                    </Group>
+                    <Text size="sm" fw={500}>
+                      {control.match_count}
+                    </Text>
                   </Table.Td>
                   <Table.Td>
                     {control.error_count > 0 ? (

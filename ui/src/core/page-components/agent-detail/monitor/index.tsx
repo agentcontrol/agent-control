@@ -28,7 +28,6 @@ import { mapTimeRangeTypeToTimeRange } from "./utils";
 interface AgentsMonitorProps {
   agentUuid: string;
   timeRangeValue: TimeRangeValue;
-  onTimeRangeChange: (value: TimeRangeValue) => void;
 }
 
 function calculateSummary(stats: StatsResponse | undefined): SummaryMetrics | null {
@@ -50,7 +49,6 @@ function calculateSummary(stats: StatsResponse | undefined): SummaryMetrics | nu
 export function AgentsMonitor({
   agentUuid,
   timeRangeValue,
-  onTimeRangeChange: _onTimeRangeChange,
 }: AgentsMonitorProps) {
   // Convert to API TimeRange only when calling the API
   const apiTimeRange = useMemo(

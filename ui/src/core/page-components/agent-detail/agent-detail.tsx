@@ -393,11 +393,10 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                       queryKey="q"
                       placeholder="Search controls..."
                       w={250}
-                      size="sm"
+                      size='sm'
                     />
                     <Button
                       variant='filled'
-                      // color='violet'
                       size='sm'
                       data-testid='add-control-button'
                       h={32}
@@ -417,7 +416,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
             </Group>
           </Box>
 
-          <Tabs.Panel value='controls'>
+          <Tabs.Panel value='controls' pt='lg'>
             {/* Loading state for controls */}
             {controlsLoading ? (
               <Center py='xl'>
@@ -474,14 +473,13 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
             )}
           </Tabs.Panel>
 
-          <Tabs.Panel value='monitor' style={{ marginTop: "var(--mantine-spacing-lg)" }}>
+          <Tabs.Panel value='monitor' pt='lg'>
             <ErrorBoundary variant="page">
               {/* Only render AgentsMonitor when monitor tab is active to prevent polling on controls page */}
               {agent?.agent.agent_id && activeTab === "monitor" && (
                 <AgentsMonitor
                   agentUuid={agent.agent.agent_id}
                   timeRangeValue={timeRangeValue}
-                  onTimeRangeChange={setTimeRangeValue}
                 />
               )}
             </ErrorBoundary>
