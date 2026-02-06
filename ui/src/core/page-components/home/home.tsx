@@ -176,7 +176,7 @@ const HomePage = () => {
           >
             Failed to fetch agents. Please try again later.
           </Alert>
-        ) : agents.length >= 0 ? (
+        ) : agents.length === 0 ? (
           <Box mt='xl'>
             <EmptyAgentsState />
           </Box>
