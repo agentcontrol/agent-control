@@ -2,6 +2,7 @@
 import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
 import "@mantine/charts/styles.css";
+import "@mantine/code-highlight/styles.css";
 // Import jupiter-ds styles
 import "@rungalileo/jupiter-ds/styles.css";
 // Import rungalileo icons styles
