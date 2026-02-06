@@ -407,15 +407,17 @@ test.describe("Agent Detail Page", () => {
     const modal = mockedPage.getByRole("dialog", { name: "Edit Control" });
     await expect(modal).toBeVisible();
 
-    // Switch to JSON mode
-    await modal.getByRole("radio", { name: "JSON" }).click();
+    // Switch to JSON mode (Mantine hides the native radio; click the visible segment label)
+    await modal.getByText("JSON", { exact: true }).click();
 
     // Enter invalid JSON
     const jsonInput = modal.getByTestId("raw-json-textarea");
     await jsonInput.fill("{");
 
-    // Form option should be disabled when JSON is invalid
-    await expect(modal.getByRole("radio", { name: "Form" })).toBeDisabled();
+    // Form option should be disabled when JSON is invalid (validation is debounced ~500ms)
+    await expect(modal.getByRole("radio", { name: "Form" })).toBeDisabled({
+      timeout: 2000,
+    });
   });
 
   test("valid JSON triggers validation call", async ({ mockedPage }) => {
@@ -439,14 +441,15 @@ test.describe("Agent Detail Page", () => {
     const modal = mockedPage.getByRole("dialog", { name: "Edit Control" });
     await expect(modal).toBeVisible();
 
-    // Switch to JSON mode
-    await modal.getByRole("radio", { name: "JSON" }).click();
+    // Switch to JSON mode (Mantine hides the native radio; click the visible segment label)
+    await modal.getByText("JSON", { exact: true }).click();
 
-    // Wait for validation request after entering valid JSON
+    // Validation is debounced (~500ms); start waiting for request before filling
     const validateRequest = mockedPage.waitForRequest(
       (request) =>
         request.url().includes("/api/v1/controls/validate") &&
-        request.method() === "POST"
+        request.method() === "POST",
+      { timeout: 10000 }
     );
 
     await modal.getByTestId("raw-json-textarea").fill(

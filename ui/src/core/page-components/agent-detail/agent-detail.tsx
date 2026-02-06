@@ -348,11 +348,9 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           <Title order={2} fw={600}>
             {agent.agent.agent_name}
           </Title>
-          {agent.agent.agent_description && (
-            <Text size='sm' c='dimmed'>
+          {agent.agent.agent_description ? <Text size='sm' c='dimmed'>
               {agent.agent.agent_description}
-            </Text>
-          )}
+            </Text> : null}
         </Stack>
 
         {/* Tabs */}
@@ -468,9 +466,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           <Tabs.Panel value='monitor' pt='lg'>
             <ErrorBoundary variant="page">
               {/* Only render AgentsMonitor when monitor tab is active to prevent polling on controls page */}
-              {agent?.agent.agent_id && activeTab === "monitor" && (
-                <AgentsMonitor agentUuid={agent.agent.agent_id} />
-              )}
+              {agent?.agent.agent_id && activeTab === "monitor" ? <AgentsMonitor agentUuid={agent.agent.agent_id} /> : null}
             </ErrorBoundary>
           </Tabs.Panel>
         </Tabs>
@@ -495,14 +491,12 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         }}
       >
         <ErrorBoundary variant="modal">
-          {selectedControl && (
-            <EditControlContent
+          {selectedControl ? <EditControlContent
               control={selectedControl}
               agentId={agentId}
               onClose={handleCloseEditModal}
               onSuccess={handleEditControlSuccess}
-            />
-          )}
+            /> : null}
         </ErrorBoundary>
       </Modal>
     </Box>

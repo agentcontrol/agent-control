@@ -20,7 +20,6 @@ export type { RegexFormValues } from "@/core/evaluators/regex/types";
 export type { SqlFormValues } from "@/core/evaluators/sql/types";
 
 export type ConfigViewMode = "form" | "json";
-export type JsonViewMode = "tree" | "raw";
 
 // Form values type for control definition
 // Uses snake_case to match API field names directly
@@ -56,16 +55,15 @@ export type EditControlProps = {
 }
 
 export type EvaluatorJsonViewProps = {
-  config: Record<string, unknown>;
-  onChange: (config: Record<string, unknown>) => void;
-  jsonViewMode: JsonViewMode;
-  onJsonViewModeChange: (mode: JsonViewMode) => void;
-  rawJsonText: string;
-  onRawJsonTextChange: (text: string) => void;
-  rawJsonError: string | null;
-  onRawJsonErrorChange?: (error: string | null) => void;
+  /** Current JSON text shown in the editor */
+  jsonText: string;
+  /** Update handler when JSON text changes */
+  handleJsonChange: (text: string) => void;
+  /** Syntactic/validation error message for the JSON text */
+  jsonError?: string | null;
+  setJsonError?: (error: string | null) => void;
   validationError?: ProblemDetail | null;
-  onValidationErrorChange?: (error: ProblemDetail | null) => void;
+  setValidationError?: (error: ProblemDetail | null) => void;
   onValidateConfig?: (config: Record<string, unknown>) => Promise<void>;
   onValidationStatusChange?: (
     status: "idle" | "validating" | "valid" | "invalid"

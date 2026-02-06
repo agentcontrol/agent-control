@@ -1,14 +1,7 @@
-import {
-  Box,
-  // Group,
-  ScrollArea,
-  // SegmentedControl,
-  Textarea,
-} from "@mantine/core";
+import { Box, Textarea } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { useEffect } from "react";
 
-import { JsonEditor } from "@/components/json-editor";
 import { isApiError } from "@/core/api/errors";
 
 import { ApiErrorAlert } from "./api-error-alert";
@@ -17,103 +10,68 @@ import type { EvaluatorJsonViewProps } from "./types";
 const DEFAULT_HEIGHT = 400;
 
 export const EvaluatorJsonView = ({
-  config,
-  onChange,
-  jsonViewMode,
-  onJsonViewModeChange: _onJsonViewModeChange,
-  rawJsonText,
-  onRawJsonTextChange,
-  rawJsonError,
-  onRawJsonErrorChange,
+  jsonText,
+  handleJsonChange,
+  jsonError,
+  setJsonError,
   validationError,
-  onValidationErrorChange,
+  setValidationError,
   onValidateConfig,
   onValidationStatusChange,
   validateDebounceMs = 500,
   height = DEFAULT_HEIGHT,
 }: EvaluatorJsonViewProps) => {
-  const [debouncedRawJsonText] = useDebouncedValue(rawJsonText, validateDebounceMs);
+  const [debouncedJsonText] = useDebouncedValue(jsonText, validateDebounceMs);
 
   useEffect(() => {
     if (!onValidateConfig) return;
-    if (!debouncedRawJsonText) {
-      onRawJsonErrorChange?.(null);
-      onValidationErrorChange?.(null);
+    if (!debouncedJsonText) {
+      setJsonError?.(null);
+      setValidationError?.(null);
       onValidationStatusChange?.("idle");
       return;
     }
 
     let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(debouncedRawJsonText);
+      parsed = JSON.parse(debouncedJsonText);
     } catch {
-      onRawJsonErrorChange?.("Invalid JSON");
-      onValidationErrorChange?.(null);
+      setJsonError?.("Invalid JSON");
+      setValidationError?.(null);
       onValidationStatusChange?.("invalid");
       return;
     }
 
-    onRawJsonErrorChange?.(null);
+    setJsonError?.(null);
     onValidationStatusChange?.("validating");
     onValidateConfig(parsed)
       .then(() => {
-        onValidationErrorChange?.(null);
+        setValidationError?.(null);
         onValidationStatusChange?.("valid");
       })
       .catch((error) => {
         if (isApiError(error)) {
-          onValidationErrorChange?.(error.problemDetail);
+          setValidationError?.(error.problemDetail);
           onValidationStatusChange?.("invalid");
         } else {
-          onRawJsonErrorChange?.("Validation failed.");
-          onValidationErrorChange?.(null);
+          setJsonError?.("Validation failed.");
+          setValidationError?.(null);
           onValidationStatusChange?.("invalid");
         }
       });
   }, [
-    debouncedRawJsonText,
-    onRawJsonErrorChange,
+    debouncedJsonText,
+    setJsonError,
     onValidateConfig,
-    onValidationErrorChange,
+    setValidationError,
     onValidationStatusChange,
   ]);
-  // TODO: Re-enable tree/raw toggle when needed
-  // <Group justify='flex-end'>
-  //   <SegmentedControl
-  //     value={jsonViewMode}
-  //     onChange={handleModeChange}
-  //     data={[
-  //       { value: "tree", label: "Tree" },
-  //       { value: "raw", label: "Raw" },
-  //     ]}
-  //     size='xs'
-  //   />
-  // </Group>
-
-  if (jsonViewMode === "tree") {
-    return (
-      <ScrollArea h={height} type="auto">
-        <Box p="xs">
-          <JsonEditor
-            data={config}
-            setData={onChange}
-            rootName="config"
-            restrictEdit={false}
-            restrictDelete={false}
-            restrictAdd={false}
-            collapse={false}
-            rootFontSize={12}
-          />
-        </Box>
-      </ScrollArea>
-    );
-  }
 
   return (
     <Box>
       <Textarea
-        value={rawJsonText}
-        onChange={(e) => onRawJsonTextChange(e.currentTarget.value)}
+        value={jsonText}
+        onChange={(e) => handleJsonChange(e.currentTarget.value)}
         styles={{
           input: {
             fontFamily: "monospace",
@@ -122,17 +80,12 @@ export const EvaluatorJsonView = ({
             overflow: "auto",
           },
         }}
-        error={rawJsonError}
-        data-testid="raw-json-textarea"
+        error={jsonError}
+        data-testid='raw-json-textarea'
       />
-      {validationError && (
-        <Box mt="sm">
-          <ApiErrorAlert
-            error={validationError}
-            unmappedErrors={[]}
-          />
-        </Box>
-      )}
+      {validationError ? <Box mt='sm'>
+          <ApiErrorAlert error={validationError} unmappedErrors={[]} />
+        </Box> : null}
     </Box>
   );
 };

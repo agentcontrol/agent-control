@@ -293,15 +293,13 @@ export function AddNewControlModal({
         }}
       >
         <ErrorBoundary variant="modal">
-          {draftControl && (
-            <EditControlContent
+          {draftControl ? <EditControlContent
               control={draftControl}
               agentId={agentId}
               mode="create"
               onClose={handleEditModalClose}
               onSuccess={handleEditModalSuccess}
-            />
-          )}
+            /> : null}
         </ErrorBoundary>
       </Modal>
     </Modal>

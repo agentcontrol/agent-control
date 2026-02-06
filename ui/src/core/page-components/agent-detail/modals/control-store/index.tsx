@@ -374,11 +374,9 @@ export function ControlStoreModal({
                 />
                 {/* Load more sentinel for infinite scroll - will be moved inside table's scroll container by useEffect */}
                 <div ref={sentinelRef} style={{ height: 1 }} />
-                {isFetchingNextPage && (
-                  <Box py="md" ta="center">
+                {isFetchingNextPage ? <Box py="md" ta="center">
                     <Loader size="sm" />
-                  </Box>
-                )}
+                  </Box> : null}
               </Box>
             ) : (
               <Paper p="xl" withBorder radius="sm" ta="center">
@@ -402,15 +400,13 @@ export function ControlStoreModal({
         }}
       >
         <ErrorBoundary variant="modal">
-          {draftControl && (
-            <EditControlContent
+          {draftControl ? <EditControlContent
               control={draftControl}
               agentId={agentId}
               mode="create"
               onClose={handleEditModalClose}
               onSuccess={handleEditModalSuccess}
-            />
-          )}
+            /> : null}
         </ErrorBoundary>
       </Modal>
 

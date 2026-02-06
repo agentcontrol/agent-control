@@ -137,11 +137,9 @@ const HomePage = () => {
             <div ref={sentinelRef} style={{ height: 1 }} />
 
             {/* Loading indicator for next page */}
-            {isFetchingNextPage && (
-              <Center p='md'>
+            {isFetchingNextPage ? <Center p='md'>
                 <Loader size='sm' />
-              </Center>
-            )}
+              </Center> : null}
           </>
         )}
       </Box>

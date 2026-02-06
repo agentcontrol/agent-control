@@ -41,6 +41,13 @@ const eslintConfig = defineConfig([
 
       // Prefer type over interface
       "@typescript-eslint/consistent-type-definitions": ["error", "type"],
+
+      // Prevent leaked renders in JSX (e.g., {count && <Component />} rendering "0")
+      // Requires either: ternary {x ? <C /> : null} or coercion {!!x && <C />}
+      "react/jsx-no-leaked-render": [
+        "error",
+        { validStrategies: ["ternary", "coerce"] },
+      ],
     },
   },
 ]);

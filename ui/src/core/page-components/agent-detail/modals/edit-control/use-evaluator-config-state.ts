@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import type { ProblemDetail } from "@/core/api/types";
 
-import type { ConfigViewMode, JsonViewMode } from "./types";
+import type { ConfigViewMode } from "./types";
 
 export type UseEvaluatorConfigStateArgs = {
   getConfigFromForm: () => Record<string, unknown>;
@@ -13,17 +13,15 @@ export type UseEvaluatorConfigStateArgs = {
 export type EvaluatorConfigState = {
   getConfigFromForm: () => Record<string, unknown>;
   configViewMode: ConfigViewMode;
-  jsonViewMode: JsonViewMode;
-  rawJsonText: string;
-  rawJsonError: string | null;
+  jsonText: string;
+  jsonError: string | null;
   validationError: ProblemDetail | null;
-  setRawJsonText: (value: string) => void;
-  setRawJsonError: (error: string | null) => void;
+  setJsonText: (value: string) => void;
+  setJsonError: (error: string | null) => void;
   setValidationError: (error: ProblemDetail | null) => void;
-  setJsonViewMode: (mode: JsonViewMode) => void;
   setConfigViewMode: (mode: ConfigViewMode) => void;
   handleConfigViewModeChange: (value: string) => Promise<void>;
-  handleRawJsonChange: (value: string) => void;
+  handleJsonChange: (value: string) => void;
   getJsonConfig: () => Record<string, unknown> | null;
   isJsonInvalid: boolean;
   reset: () => void;
@@ -35,95 +33,93 @@ export function useEvaluatorConfigState({
   onValidateConfig,
 }: UseEvaluatorConfigStateArgs): EvaluatorConfigState {
   const [configViewMode, setConfigViewMode] = useState<ConfigViewMode>("form");
-  const [jsonViewMode, setJsonViewMode] = useState<JsonViewMode>("raw");
-  const [rawJsonText, setRawJsonText] = useState("");
-  const [rawJsonError, setRawJsonError] = useState<string | null>(null);
+  const [jsonText, setJsonText] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<ProblemDetail | null>(null);
 
   const reset = useCallback(() => {
     setConfigViewMode("form");
-    setJsonViewMode("raw");
-    setRawJsonText("");
-    setRawJsonError(null);
+    setJsonText("");
+    setJsonError(null);
     setValidationError(null);
   }, []);
 
-  const handleRawJsonChange = useCallback((value: string) => {
-    setRawJsonText(value);
+  const handleJsonChange = useCallback((value: string) => {
+    setJsonText(value);
     setValidationError(null);
   }, []);
 
   const getJsonConfig = useCallback(() => {
     try {
-      return JSON.parse(rawJsonText || "{}");
+      return JSON.parse(jsonText || "{}");
     } catch {
-      setRawJsonError("Invalid JSON. Please fix before saving.");
+      setJsonError("Invalid JSON. Please fix before saving.");
       return null;
     }
-  }, [rawJsonText]);
+  }, [jsonText]);
 
   const handleConfigViewModeChange = useCallback(
     async (value: string) => {
-      if (value === "json" && configViewMode === "form") {
-        setRawJsonText(JSON.stringify(getConfigFromForm(), null, 2));
-        setRawJsonError(null);
-        setConfigViewMode(value as ConfigViewMode);
+      const mode = value as ConfigViewMode;
+
+      if (mode === "json") {
+        setJsonText(JSON.stringify(getConfigFromForm(), null, 2));
+        setJsonError(null);
+        setConfigViewMode(mode);
         return;
       }
 
-      if (value === "form" && configViewMode === "json") {
+      if (mode === "form") {
         let finalConfig: Record<string, unknown>;
         try {
-          finalConfig = JSON.parse(rawJsonText || "{}");
+          finalConfig = JSON.parse(jsonText || "{}");
         } catch {
-          setRawJsonError("Invalid JSON. Please fix before switching to form.");
+          setJsonError("Invalid JSON. Please fix before switching to form.");
           setValidationError(null);
           return;
         }
 
         try {
           await onValidateConfig(finalConfig);
-          setRawJsonError(null);
+          setJsonError(null);
           setValidationError(null);
         } catch (error) {
           if (error && typeof error === "object" && "problemDetail" in error) {
             setValidationError(
               (error as { problemDetail: ProblemDetail }).problemDetail
             );
-            setRawJsonError(null);
+            setJsonError(null);
           } else {
-            setRawJsonError("Validation failed.");
+            setJsonError("Validation failed.");
             setValidationError(null);
           }
           return;
         }
 
         onConfigChange(finalConfig);
-        setConfigViewMode(value as ConfigViewMode);
+        setConfigViewMode(mode);
       }
     },
-    [configViewMode, getConfigFromForm, onConfigChange, onValidateConfig, rawJsonText]
+    [getConfigFromForm, onConfigChange, onValidateConfig, jsonText]
   );
 
   const isJsonInvalid = useMemo(() => {
     if (configViewMode !== "json") return false;
-    return rawJsonError !== null || validationError !== null;
-  }, [configViewMode, rawJsonError, validationError]);
+    return jsonError !== null || validationError !== null;
+  }, [configViewMode, jsonError, validationError]);
 
   return {
     getConfigFromForm,
     configViewMode,
-    jsonViewMode,
-    rawJsonText,
-    rawJsonError,
+    jsonText,
+    jsonError,
     validationError,
-    setRawJsonText,
-    setRawJsonError,
+    setJsonText,
+    setJsonError,
     setValidationError,
-    setJsonViewMode,
     setConfigViewMode,
     handleConfigViewModeChange,
-    handleRawJsonChange,
+    handleJsonChange,
     getJsonConfig,
     isJsonInvalid,
     reset,

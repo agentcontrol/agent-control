@@ -31,21 +31,17 @@ export const ApiErrorAlert = ({
       onClose={onClose}
     >
       <Text size='sm'>{error.detail}</Text>
-      {error.hint && (
-        <Text size='xs' c='dimmed' mt={4}>
+      {error.hint ? <Text size='xs' c='dimmed' mt={4}>
           💡 {error.hint}
-        </Text>
-      )}
+        </Text> : null}
       {unmappedErrors.length > 0 && (
         <List size='sm' mt='xs' spacing={2}>
           {unmappedErrors.map((err, i) => (
             <List.Item key={i}>
-              {err.field && (
-                <Text component='span' fw={500} ff='monospace' size='xs'>
+              {err.field ? <Text component='span' fw={500} ff='monospace' size='xs'>
                   {err.field}
-                </Text>
-              )}
-              {err.field && ": "}
+                </Text> : null}
+              {err.field ? ": " : null}
               {err.message}
             </List.Item>
           ))}

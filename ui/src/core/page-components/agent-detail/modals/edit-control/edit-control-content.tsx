@@ -31,7 +31,7 @@ export type EditControlContentProps = {
   onClose: () => void;
   /** Callback when save succeeds */
   onSuccess?: () => void;
-}
+};
 
 export const EditControlContent = ({
   control,
@@ -40,7 +40,6 @@ export const EditControlContent = ({
   onClose,
   onSuccess,
 }: EditControlContentProps) => {
-
   // API error state
   const [apiError, setApiError] = useState<ProblemDetail | null>(null);
   // Errors that couldn't be mapped to form fields (shown in Alert)
@@ -91,7 +90,6 @@ export const EditControlContent = ({
     validate: evaluator?.validate,
   });
 
-
   // Get config from evaluator form
   // If form hasn't been initialized for current evaluator yet, use initial values to avoid crashes
   const getEvaluatorConfig = () => {
@@ -112,7 +110,7 @@ export const EditControlContent = ({
   const buildControlDefinition = useCallback(
     (
       values: ControlDefinitionFormValues,
-      finalConfig: Record<string, unknown>
+      finalConfig: Record<string, unknown>,
     ) => {
       const stepTypes = values.step_types
         .map((value) => value.trim())
@@ -130,7 +128,8 @@ export const EditControlContent = ({
         execution: values.execution,
         scope: {
           step_types: stepTypes.length > 0 ? stepTypes : undefined,
-          step_names: !isRegexMode && stepNames.length > 0 ? stepNames : undefined,
+          step_names:
+            !isRegexMode && stepNames.length > 0 ? stepNames : undefined,
           step_name_regex: isRegexMode ? stepNameRegex || undefined : undefined,
           stages: values.stages.length > 0 ? values.stages : undefined,
         },
@@ -139,7 +138,7 @@ export const EditControlContent = ({
         evaluator: { ...control.control.evaluator, config: finalConfig },
       };
     },
-    [control.control]
+    [control.control],
   );
 
   const buildDefinitionForValidation = useCallback(
@@ -147,14 +146,14 @@ export const EditControlContent = ({
       ...control.control,
       evaluator: { ...control.control.evaluator, config: finalConfig },
     }),
-    [control.control]
+    [control.control],
   );
 
   const validateEvaluatorConfig = useCallback(
     async (config: Record<string, unknown>) => {
       await validateControlDataAsync(buildDefinitionForValidation(config));
     },
-    [buildDefinitionForValidation, validateControlDataAsync]
+    [buildDefinitionForValidation, validateControlDataAsync],
   );
 
   const evaluatorConfig = useEvaluatorConfigState({
@@ -193,7 +192,7 @@ export const EditControlContent = ({
         execution: control.control.execution ?? "server",
       });
       evaluatorForm.setValues(
-        evaluator.fromConfig(control.control.evaluator.config)
+        evaluator.fromConfig(control.control.evaluator.config),
       );
       // Mark form as initialized for this evaluator
       formInitializedForEvaluator.current = evaluatorId;
@@ -249,19 +248,24 @@ export const EditControlContent = ({
       } catch (error) {
         if (isApiError(error)) {
           const problemDetail = error.problemDetail;
-          
+
           // Check if this is a "name already exists" error (409 Conflict or similar)
           // and map it to the name field if it's not already in the errors array
-          const isNameExistsError = 
-            (problemDetail.status === 409 || 
-             problemDetail.error_code === "CONTROL_NAME_EXISTS" ||
-             (problemDetail.detail?.toLowerCase().includes("name") && 
-              problemDetail.detail?.toLowerCase().includes("already exists"))) &&
-            !problemDetail.errors?.some(e => e.field === "name");
+          const isNameExistsError =
+            (problemDetail.status === 409 ||
+              problemDetail.error_code === "CONTROL_NAME_EXISTS" ||
+              (problemDetail.detail?.toLowerCase().includes("name") &&
+                problemDetail.detail
+                  ?.toLowerCase()
+                  .includes("already exists"))) &&
+            !problemDetail.errors?.some((e) => e.field === "name");
 
           if (isNameExistsError) {
             // Set error directly on the name field
-            definitionForm.setFieldError("name", problemDetail.detail || "Control name already exists");
+            definitionForm.setFieldError(
+              "name",
+              problemDetail.detail || "Control name already exists",
+            );
             // Don't show it in the alert since it's now on the field
             setApiError(null);
             setUnmappedErrors([]);
@@ -273,17 +277,17 @@ export const EditControlContent = ({
                 const unmapped = applyApiErrorsToForms(
                   problemDetail.errors,
                   definitionForm,
-                  evaluatorForm
+                  evaluatorForm,
                 );
                 setUnmappedErrors(
-                  unmapped.map((e) => ({ field: e.field, message: e.message }))
+                  unmapped.map((e) => ({ field: e.field, message: e.message })),
                 );
               } else {
                 setUnmappedErrors(
                   problemDetail.errors.map((e) => ({
                     field: e.field,
                     message: e.message,
-                  }))
+                  })),
                 );
               }
             }
@@ -307,7 +311,7 @@ export const EditControlContent = ({
     modals.openConfirmModal({
       title: isCreating ? "Create control?" : "Save changes?",
       children: (
-        <Text size="sm" c="dimmed">
+        <Text size='sm' c='dimmed'>
           {isCreating
             ? "This will add the new control to the agent."
             : "This will update the control configuration."}
@@ -332,15 +336,15 @@ export const EditControlContent = ({
     <Box>
       <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
         <TextInput
-          label="Control name"
-          placeholder="Enter control name"
-          mb="lg"
-          size="sm"
+          label='Control name'
+          placeholder='Enter control name'
+          mb='lg'
+          size='sm'
           required
           {...definitionForm.getInputProps("name")}
         />
 
-        <Grid gutter="xl">
+        <Grid gutter='xl'>
           <Grid.Col span={4}>
             <ControlDefinitionForm form={definitionForm} />
           </Grid.Col>
@@ -355,35 +359,33 @@ export const EditControlContent = ({
               onValidateConfig={validateEvaluatorConfig}
             />
           </Grid.Col>
-            </Grid>
+        </Grid>
 
         {/* API Error Alert */}
-        {apiError && (
-          <>
-            <Divider mt="xl" mb="md" />
+        {apiError ? <>
+            <Divider mt='xl' mb='md' />
             <ApiErrorAlert
               error={apiError}
               unmappedErrors={unmappedErrors}
               onClose={() => setApiError(null)}
             />
-          </>
-        )}
+          </> : null}
 
         {/* Buttons */}
-        <Divider mt="xl" mb="md" />
-        <Group justify="flex-end">
+        <Divider mt='xl' mb='md' />
+        <Group justify='flex-end'>
           <Button
-            variant="outline"
+            variant='outline'
             onClick={onClose}
-            type="button"
-            data-testid="cancel-button"
+            type='button'
+            data-testid='cancel-button'
           >
             Cancel
           </Button>
           <Button
-            variant="filled"
-            type="submit"
-            data-testid="save-button"
+            variant='filled'
+            type='submit'
+            data-testid='save-button'
             loading={isPending}
             disabled={isJsonInvalid}
           >
