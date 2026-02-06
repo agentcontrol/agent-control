@@ -14,7 +14,7 @@ import {
   Title,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { Button, Switch, Table } from "@rungalileo/jupiter-ds";
+import { Button, Switch, Table, TimeRangeSwitch } from "@rungalileo/jupiter-ds";
 import {
   IconAlertCircle,
   IconChartBar,
@@ -36,10 +36,11 @@ import { useHasMonitorData } from "@/core/hooks/query-hooks/use-has-monitor-data
 import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
 import { useModalRoute } from "@/core/hooks/use-modal-route";
 import { useQueryParam } from "@/core/hooks/use-query-param";
+import { useTimeRangePreference } from "@/core/hooks/use-time-range-preference";
 
 import { ControlStoreModal } from "./modals/control-store";
 import { EditControlContent } from "./modals/edit-control/edit-control-content";
-import { AgentsMonitor } from "./monitor";
+import { AgentsMonitor, TIME_RANGE_SEGMENTS } from "./monitor";
 
 type AgentDetailPageProps = {
   agentId: string;
@@ -65,6 +66,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   const [selectedControl, setSelectedControl] = useState<Control | null>(null);
   // Get search value for filtering (SearchInput handles the UI and URL sync)
   const [searchQuery] = useQueryParam("q");
+  const [timeRangeValue, setTimeRangeValue] = useTimeRangePreference();
 
   // Derive modal open state from URL
   const controlStoreOpened = modal === MODAL_NAMES.CONTROL_STORE;
@@ -383,15 +385,32 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                 </Tabs.Tab>
               </Tabs.List>
 
-              {activeTab === "controls" && (
-                <Group gap='md' pos='absolute' right={0} top='-8px'>
-                  <SearchInput
-                    queryKey="q"
-                    placeholder="Search controls..."
-                    w={250}
-                    h={32}
-                    size="xs"
+              <Group gap='md' pos='absolute' right={0} top='-8px'>
+                {activeTab === "controls" ? (
+                  <>
+                    <SearchInput
+                      queryKey="q"
+                      placeholder="Search controls..."
+                      w={250}
+                      size='sm'
+                    />
+                    <Button
+                      variant='filled'
+                      size='sm'
+                      data-testid='add-control-button'
+                      h={32}
+                      onClick={() => openModal("control-store")}
+                    >
+                      Add Control
+                    </Button>
+                  </>
+                ) : (
+                  <TimeRangeSwitch
+                    value={timeRangeValue}
+                    onChange={setTimeRangeValue}
+                    segmentOptions={TIME_RANGE_SEGMENTS}
                   />
+<<<<<<< siddhant/json-validation
                   <Button
                     variant='filled'
                     size='sm'
@@ -403,6 +422,10 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                   </Button>
                 </Group>
               )}
+=======
+                )}
+              </Group>
+>>>>>>> main
             </Group>
           </Box>
 
@@ -466,7 +489,16 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           <Tabs.Panel value='monitor' pt='lg'>
             <ErrorBoundary variant="page">
               {/* Only render AgentsMonitor when monitor tab is active to prevent polling on controls page */}
+<<<<<<< siddhant/json-validation
               {agent?.agent.agent_id && activeTab === "monitor" ? <AgentsMonitor agentUuid={agent.agent.agent_id} /> : null}
+=======
+              {agent?.agent.agent_id && activeTab === "monitor" && (
+                <AgentsMonitor
+                  agentUuid={agent.agent.agent_id}
+                  timeRangeValue={timeRangeValue}
+                />
+              )}
+>>>>>>> main
             </ErrorBoundary>
           </Tabs.Panel>
         </Tabs>

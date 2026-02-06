@@ -1,5 +1,7 @@
+import { CodeHighlight } from "@mantine/code-highlight";
 import {
   Alert,
+  Anchor,
   Box,
   Center,
   Group,
@@ -10,7 +12,7 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Table } from "@rungalileo/jupiter-ds";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAlertCircle, IconExternalLink } from "@tabler/icons-react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { useRouter } from "next/router";
 import { useMemo } from "react";
@@ -23,6 +25,51 @@ import { useQueryParam } from "@/core/hooks/use-query-param";
 
 // Table row type - uses real API data
 type AgentTableRow = AgentSummary;
+
+function EmptyAgentsState() {
+  return (
+    <Center h={400}>
+      <Stack align='center' gap='md' maw={600}>
+        <Title order={3} fw={600}>
+          No agents yet
+        </Title>
+        <Text size='sm' c='dimmed' ta='center'>
+          Get started by registering your first agent with the Python SDK. Once
+          an agent connects to the control server, it will appear here.
+        </Text>
+        <Box w='100%'>
+          <CodeHighlight
+            language='python'
+            code={`import agent_control
+from agent_control import control, ControlViolationError
+
+agent_control.init(
+    agent_name="Customer Support Agent",
+    agent_id="support-agent-v1",
+    server_url="http://localhost:8000",
+)
+
+@control()
+async def chat(message: str) -> str:
+    return await llm.generate(message)`}
+          />
+        </Box>
+        <Anchor
+          href='https://github.com/rungalileo/agent-control#quick-start'
+          target='_blank'
+          size='sm'
+          c='blue'
+          underline='hover'
+        >
+          <Group gap={4} align='center'>
+            <Text size='sm'>View docs</Text>
+            <IconExternalLink size={14} />
+          </Group>
+        </Anchor>
+      </Stack>
+    </Center>
+  );
+}
 
 const HomePage = () => {
   const router = useRouter();
@@ -102,11 +149,18 @@ const HomePage = () => {
         </Stack>
 
         {/* Search and Filters */}
-        <SearchInput queryKey="search" placeholder="Search agents..." />
+        <SearchInput queryKey='search' placeholder='Search agents...' />
       </Group>
 
       {/* Scrollable Table Container */}
-      <Box style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <Box
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         {isLoading ? (
           <Center h={400}>
             <Stack align='center' gap='md'>
@@ -122,6 +176,10 @@ const HomePage = () => {
           >
             Failed to fetch agents. Please try again later.
           </Alert>
+        ) : agents.length === 0 ? (
+          <Box mt='xl'>
+            <EmptyAgentsState />
+          </Box>
         ) : (
           <>
             <Table

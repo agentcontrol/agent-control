@@ -149,5 +149,35 @@ test.describe("Home Page - Agents Overview", () => {
     await expect(page.getByText("Error loading agents")).toBeVisible();
     await expect(page.getByText("Failed to fetch agents. Please try again later.")).toBeVisible();
   });
+
+  test("shows empty state when no agents are returned", async ({ page }) => {
+    const emptyAgents: ListAgentsResponse = {
+      agents: [],
+      pagination: {
+        limit: 0,
+        total: 0,
+        next_cursor: null,
+        has_more: false,
+      },
+    };
+
+    await page.route("**/api/v1/agents?**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(emptyAgents),
+      });
+    });
+
+    await page.goto("/");
+
+    await expect(page.getByRole("heading", { name: "No agents yet" })).toBeVisible();
+    await expect(
+      page.getByText(
+        "Get started by registering your first agent with the Python SDK. Once an agent connects to the control server, it will appear here."
+      )
+    ).toBeVisible();
+    await expect(page.getByText("View docs")).toBeVisible();
+  });
 });
 

@@ -280,9 +280,9 @@ test.describe("Agent Detail Page", () => {
 
     // Click Stats tab
     await mockedPage.getByRole("tab", { name: /Monitor/i }).click();
-    await expect(
-      mockedPage.getByRole("heading", { name: "Control Statistics", exact: true })
-    ).toBeVisible();
+    // Check for summary card metrics to verify monitor tab is displayed (use first() to get summary card, not table header)
+    await expect(mockedPage.getByText("Executions").first()).toBeVisible();
+    await expect(mockedPage.getByText("Triggers").first()).toBeVisible();
 
     // Switch back to Controls
     await mockedPage.getByRole("tab", { name: /Controls/i }).click();

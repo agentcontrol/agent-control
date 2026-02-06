@@ -12,12 +12,6 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import {
-  IconActivity,
-  IconAlertTriangle,
-  IconCheck,
-  IconX,
-} from "@tabler/icons-react";
 import React, { useEffect, useMemo, useState } from "react";
 
 import type { TimeseriesBucket } from "@/core/hooks/query-hooks/use-agent-monitor";
@@ -60,51 +54,29 @@ function formatTimestamp(timestamp: string, timeRange: string): string {
 function MetricCard({ 
   label, 
   value, 
-  icon: Icon, 
-  color,
   tooltip,
 }: { 
   label: string; 
   value: number; 
-  icon: React.ElementType;
-  color: string;
   tooltip?: string;
 }) {
   const content = (
     <Box
-      p="md"
+      p="xs"
       style={{
         borderRadius: "var(--mantine-radius-md)",
         backgroundColor: "var(--mantine-color-default)",
         border: "1px solid var(--mantine-color-default-border)",
-        borderLeft: `4px solid var(--mantine-color-${color}-6)`,
       }}
     >
-      <Group gap="sm" wrap="nowrap">
-        <Box
-          p={8}
-          style={{
-            borderRadius: "var(--mantine-radius-sm)",
-            backgroundColor: `var(--mantine-color-${color}-light)`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Icon 
-            size={20} 
-            style={{ color: `var(--mantine-color-${color}-6)` }}
-          />
-        </Box>
-        <Stack gap={2}>
-          <Text size="sm" fw={500}>
-            {label}
-          </Text>
-          <Text size="xl" fw={700} c={`${color}.6`}>
-            {value.toLocaleString()}
-          </Text>
-        </Stack>
-      </Group>
+      <Stack gap={2}>
+        <Text size="xs" fw={500} c="var(--mantine-color-text)">
+          {label}
+        </Text>
+        <Text size="md" fw={700} c="var(--mantine-color-text)">
+          {value.toLocaleString()}
+        </Text>
+      </Stack>
     </Box>
   );
 
@@ -168,7 +140,6 @@ export function SummaryCard({ summary, timeseries, timeRange }: SummaryCardProps
     return timeseries.map((bucket) => ({
       timestamp: formatTimestamp(bucket.timestamp, timeRange),
       Triggers: bucket.match_count,
-      "Non-Matches": bucket.non_match_count,
       Errors: bucket.error_count,
     }));
   }, [timeseries, timeRange]);
@@ -177,7 +148,6 @@ export function SummaryCard({ summary, timeseries, timeRange }: SummaryCardProps
   const hasChartData = timeseries && timeseries.some(
     (bucket) => 
       bucket.match_count > 0 || 
-      bucket.non_match_count > 0 || 
       bucket.error_count > 0
   );
 
@@ -185,33 +155,20 @@ export function SummaryCard({ summary, timeseries, timeRange }: SummaryCardProps
     <Card withBorder p="lg" radius="md">
       <Stack gap="lg">
         {/* Top: Metrics Row */}
-        <SimpleGrid cols={4} spacing="md">
+        <SimpleGrid cols={3} spacing="md">
           <MetricCard
             label="Executions"
             value={summary.totalExecutions}
-            icon={IconActivity}
-            color="blue"
             tooltip="Total control evaluations"
           />
           <MetricCard
             label="Triggers"
             value={summary.totalMatches}
-            icon={IconAlertTriangle}
-            color="orange"
             tooltip="Controls that matched (triggered action)"
-          />
-          <MetricCard
-            label="Non-Matches"
-            value={summary.totalNonMatches}
-            icon={IconCheck}
-            color="green"
-            tooltip="Controls that did not match (passed)"
           />
           <MetricCard
             label="Errors"
             value={summary.totalErrors}
-            icon={IconX}
-            color="red"
             tooltip="Errors during control evaluation"
           />
         </SimpleGrid>
@@ -242,7 +199,7 @@ export function SummaryCard({ summary, timeseries, timeRange }: SummaryCardProps
                         h={10}
                         style={{
                           borderRadius: 2,
-                          backgroundColor: "var(--mantine-color-orange-5)",
+                          backgroundColor: "var(--mantine-color-violet-5)",
                         }}
                       />
                       <Text size="xs" c="dimmed">Triggers</Text>
@@ -253,18 +210,7 @@ export function SummaryCard({ summary, timeseries, timeRange }: SummaryCardProps
                         h={10}
                         style={{
                           borderRadius: 2,
-                          backgroundColor: "var(--mantine-color-green-5)",
-                        }}
-                      />
-                      <Text size="xs" c="dimmed">Non-Matches</Text>
-                    </Group>
-                    <Group gap={4}>
-                      <Box
-                        w={10}
-                        h={10}
-                        style={{
-                          borderRadius: 2,
-                          backgroundColor: "var(--mantine-color-red-5)",
+                          backgroundColor: "var(--mantine-color-orange-5)",
                         }}
                       />
                       <Text size="xs" c="dimmed">Errors</Text>
@@ -279,9 +225,8 @@ export function SummaryCard({ summary, timeseries, timeRange }: SummaryCardProps
                     data={chartData}
                     dataKey="timestamp"
                     series={[
-                      { name: "Triggers", color: "orange.5" },
-                      { name: "Non-Matches", color: "green.5" },
-                      { name: "Errors", color: "red.5" },
+                      { name: "Triggers", color: "violet.5" },
+                      { name: "Errors", color: "orange.5" },
                     ]}
                     curveType="monotone"
                     withLegend={false}

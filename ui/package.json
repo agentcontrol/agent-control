@@ -37,6 +37,7 @@
     "classix": "2.2.0",
     "date-fns": "4.1.0",
     "json-edit-react": "^1.29.0",
+    "motion": "^12.33.0",
     "next": "15.4.10",
     "openapi-fetch": "0.14.0",
     "react": "^19.1.4",
