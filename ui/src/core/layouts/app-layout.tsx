@@ -11,7 +11,6 @@ import {
 import {
   IconBook,
   IconChevronRight,
-  IconHelp,
   IconHexagons,
   IconMoon,
   IconSun,
@@ -91,12 +90,24 @@ function BottomSection() {
     <Stack gap={0} p='md'>
       <Divider mb='md' className={classes.divider} />
 
-      {/* Docs */}
-      <NavItem
-        href='/docs'
-        icon={<IconBook size={18} stroke={2} />}
-        label='Docs'
-      />
+      {/* Docs - GitHub README */}
+      <UnstyledButton
+        component='a'
+        href='https://github.com/agentcontrol/agent-control/blob/main/README.md'
+        target='_blank'
+        rel='noopener noreferrer'
+        className={classes.navItem}
+        title='Docs'
+      >
+        <Group gap='sm' wrap='nowrap'>
+          <Box className={classes.navIcon}>
+            <IconBook size={18} stroke={2} />
+          </Box>
+          <Text size='sm' className={classes.navLabel}>
+            Docs
+          </Text>
+        </Group>
+      </UnstyledButton>
 
       {/* Light/Dark Mode Toggle */}
       <UnstyledButton
@@ -118,13 +129,6 @@ function BottomSection() {
           </Text>
         </Group>
       </UnstyledButton>
-
-      {/* Help */}
-      <NavItem
-        href='/help'
-        icon={<IconHelp size={18} stroke={2} />}
-        label='Help'
-      />
     </Stack>
   );
 }

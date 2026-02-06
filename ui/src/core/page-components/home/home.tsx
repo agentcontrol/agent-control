@@ -55,7 +55,7 @@ async def chat(message: str) -> str:
           />
         </Box>
         <Anchor
-          href='https://github.com/rungalileo/agent-control#quick-start'
+          href='https://github.com/agentcontrol/agent-control/blob/main/README.md'
           target='_blank'
           size='sm'
           c='blue'
@@ -195,9 +195,11 @@ const HomePage = () => {
             <div ref={sentinelRef} style={{ height: 1 }} />
 
             {/* Loading indicator for next page */}
-            {isFetchingNextPage ? <Center p='md'>
+            {isFetchingNextPage ? (
+              <Center p='md'>
                 <Loader size='sm' />
-              </Center> : null}
+              </Center>
+            ) : null}
           </>
         )}
       </Box>
