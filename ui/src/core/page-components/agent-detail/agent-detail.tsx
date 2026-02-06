@@ -418,6 +418,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                   <TimeRangeSwitch
                     value={timeRangeValue}
                     onChange={setTimeRangeValue}
+                    allowCustomSelection={false}
                     segmentOptions={TIME_RANGE_SEGMENTS}
                   />
                 )}
