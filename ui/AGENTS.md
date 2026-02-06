@@ -1,5 +1,7 @@
 # UI: instructions for coding agents
 
+This document is for **contributors and coding agents** working on the Agent Control UI. It describes conventions, patterns, and how to make common changes. For repository-wide workflow (branch naming, commits, PRs), see the [Contributing guide](../CONTRIBUTING.md) in the repo root.
+
 Next.js 15 app (Pages Router) with React 19, TypeScript, Mantine 7, and TanStack Query.
 
 ## Quick commands
@@ -11,6 +13,8 @@ pnpm build            # production build
 pnpm lint             # lint
 pnpm lint:fix         # lint + auto-fix
 pnpm typecheck        # TypeScript check
+pnpm prettify         # format all files with Prettier
+pnpm prettify:check   # check formatting (CI)
 pnpm fetch-api-types  # regenerate API types from server (must be running on :8000)
 ```
 
