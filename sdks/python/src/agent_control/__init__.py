@@ -24,6 +24,11 @@ Usage:
     async def process(input: str) -> str:
         return await pipeline.run(input)
 
+    # Use custom step name for control matching
+    @agent_control.control(step_name="user_query_handler")
+    async def handle_input(user_message: str) -> str:
+        return await process_query(user_message)
+
     # Or use the client directly for server-side checks
     async with agent_control.AgentControlClient() as client:
         result = await agent_control.evaluation.check_evaluation(

@@ -622,6 +622,30 @@ async def chat(message: str) -> str:
 
 **Works with both sync and async functions**.
 
+**Parameters**:
+
+- `policy` (str, optional): Policy name for documentation purposes. The agent's assigned policy is automatically used.
+- `step_name` (str, optional): Custom name for this step. If not provided, uses the function name. Useful for:
+  - Grouping multiple functions under the same step name for control purposes
+  - Overriding auto-detected names when they don't match your control configuration
+  - Applying the same controls to functions with different names
+
+**Custom Step Name Example**:
+
+```python
+# Use custom step name for control matching
+@control(step_name="user_input_handler")
+async def handle_customer_query(text: str) -> str:
+    return await process(text)
+
+@control(step_name="user_input_handler")
+async def handle_support_request(request: str) -> str:
+    return await process(request)
+
+# Both functions are evaluated using the same "user_input_handler" step name,
+# allowing you to apply the same controls to both without duplicating configuration
+```
+
 ### Error Handling
 
 ```python

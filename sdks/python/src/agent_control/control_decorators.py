@@ -69,6 +69,7 @@ class ControlContext:
     trace_id: str
     span_id: str
     start_time: float
+    step_name: str | None = None
 
     # Stats (mutually exclusive: errors vs matches vs non_matches)
     total_executions: int = 0
@@ -98,11 +99,11 @@ class ControlContext:
 
     def pre_payload(self) -> dict[str, Any]:
         """Build payload for pre-execution check (supports tool call detection)."""
-        return _create_evaluation_payload(self.func, self.args, self.kwargs, output=None)
+        return _create_evaluation_payload(self.func, self.args, self.kwargs, output=None, step_name=self.step_name)
 
     def post_payload(self, output: Any) -> dict[str, Any]:
         """Build payload for post-execution check (supports tool call detection)."""
-        return _create_evaluation_payload(self.func, self.args, self.kwargs, output=output)
+        return _create_evaluation_payload(self.func, self.args, self.kwargs, output=output, step_name=self.step_name)
 
     def process_result(self, result: dict[str, Any], check_stage: str) -> None:
         """
@@ -327,25 +328,47 @@ def _create_evaluation_payload(
     func: Callable,
     args: tuple,
     kwargs: dict,
-    output: Any = None
+    output: Any = None,
+    step_name: str | None = None
 ) -> dict[str, Any]:
     """
     Create evaluation payload for server, detecting if it's a tool step or LLM step.
 
     Returns a Step payload structure.
+
+    Args:
+        func: The function being evaluated
+        args: Function positional arguments
+        kwargs: Function keyword arguments
+        output: Function output (None for pre-execution)
+        step_name: Optional explicit step name to override auto-detection
     """
     sig = inspect.signature(func)
     bound = sig.bind(*args, **kwargs)
     bound.apply_defaults()
 
-    # Check if this function is a tool (has tool_name attribute from @tool decorator)
-    tool_name = getattr(func, "name", None) or getattr(func, "tool_name", None)
+    # Determine step name priority: explicit step_name > tool_name > func.__name__
+    if step_name:
+        # Explicit step_name provided - use it
+        determined_name = step_name
+        # Try to detect if it's a tool based on attributes
+        is_tool = getattr(func, "name", None) is not None or getattr(func, "tool_name", None) is not None
+        step_type = "tool" if is_tool else "llm"
+    else:
+        # Auto-detect: Check if this function is a tool (has tool_name attribute from @tool decorator)
+        tool_name = getattr(func, "name", None) or getattr(func, "tool_name", None)
+        if tool_name:
+            determined_name = tool_name
+            step_type = "tool"
+        else:
+            determined_name = func.__name__
+            step_type = "llm"
 
-    if tool_name:
+    if step_type == "tool":
         # This is a tool step
         return {
             "type": "tool",
-            "name": tool_name,
+            "name": determined_name,
             "input": dict(bound.arguments),
             "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
                 None if output is None else str(output)
@@ -356,7 +379,7 @@ def _create_evaluation_payload(
     input_data = _extract_input_from_args(func, args, kwargs)
     return {
         "type": "llm",
-        "name": func.__name__,
+        "name": determined_name,
         "input": input_data,
         "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
             None if output is None else str(output)
@@ -479,6 +502,7 @@ async def _execute_with_control(
     args: tuple,
     kwargs: dict,
     is_async: bool,
+    step_name: str | None = None,
 ) -> Any:
     """
     Core control execution logic for both async and sync functions.
@@ -496,6 +520,7 @@ async def _execute_with_control(
         args: Positional arguments for the function
         kwargs: Keyword arguments for the function
         is_async: Whether the wrapped function is async
+        step_name: Optional explicit step name for control matching
 
     Returns:
         The result of the wrapped function
@@ -535,6 +560,7 @@ async def _execute_with_control(
         trace_id=trace_id,
         span_id=span_id,
         start_time=time.perf_counter(),
+        step_name=step_name,
     )
     ctx.log_start()
 
@@ -580,7 +606,7 @@ async def _execute_with_control(
         ctx.log_end()
 
 
-def control(policy: str | None = None) -> Callable[[F], F]:
+def control(policy: str | None = None, step_name: str | None = None) -> Callable[[F], F]:
     """
     Decorator to apply server-defined policy at this code location.
 
@@ -591,6 +617,10 @@ def control(policy: str | None = None) -> Callable[[F], F]:
         policy: Optional policy name for documentation. The agent's assigned
                 policy is automatically used. This parameter is for clarity
                 in code when multiple policies exist.
+        step_name: Optional custom name for this step. If not provided, uses
+                   the function name. Useful for grouping multiple functions
+                   under the same step name for control purposes, or when the
+                   function name doesn't accurately represent the step.
 
     Returns:
         Decorated function
@@ -615,14 +645,19 @@ def control(policy: str | None = None) -> Callable[[F], F]:
         )
 
         # Apply the agent's policy (all controls)
-        @agent_control.apply_control()
+        @agent_control.control()
         async def chat(message: str) -> str:
             return await assistant.respond(message)
 
         # Document which policy this uses (optional, for clarity)
-        @agent_control.apply_control(policy="safety-policy")
+        @agent_control.control(policy="safety-policy")
         async def process(input: str) -> str:
             return await pipeline.run(input)
+
+        # Custom step name for control matching
+        @agent_control.control(step_name="user_query_handler")
+        async def handle_user_input(user_message: str) -> str:
+            return await process_query(user_message)
 
     Server Setup (separate from agent code):
         1. Create controls via API:
@@ -643,7 +678,7 @@ def control(policy: str | None = None) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            return await _execute_with_control(func, args, kwargs, is_async=True)
+            return await _execute_with_control(func, args, kwargs, is_async=True, step_name=step_name)
 
         # Copy over ALL attributes from the original function (important for LangChain tools)
         for attr in dir(func):
@@ -656,7 +691,7 @@ def control(policy: str | None = None) -> Callable[[F], F]:
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             return asyncio.run(
-                _execute_with_control(func, args, kwargs, is_async=False)
+                _execute_with_control(func, args, kwargs, is_async=False, step_name=step_name)
             )
 
         if inspect.iscoroutinefunction(func):

@@ -461,3 +461,116 @@ class TestControlViolationError:
 
         with pytest.raises(ControlViolationError):
             raise violation
+
+
+# =============================================================================
+# STEP NAME TESTS
+# =============================================================================
+
+class TestStepName:
+    """Tests for custom step_name parameter."""
+
+    @pytest.mark.asyncio
+    async def test_custom_step_name_used_in_payload(self, mock_agent, mock_safe_response):
+        """Test that custom step_name is passed to evaluation payload."""
+        captured_steps = []
+
+        async def mock_evaluate(
+            agent_uuid,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+        ):
+            captured_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control(step_name="custom_handler")
+            async def my_function(message: str) -> str:
+                return f"Response: {message}"
+
+            await my_function("test")
+
+            # Should have captured pre and post steps
+            assert len(captured_steps) == 2
+
+            # Both should use custom step name
+            assert captured_steps[0]["name"] == "custom_handler"
+            assert captured_steps[1]["name"] == "custom_handler"
+
+    @pytest.mark.asyncio
+    async def test_default_step_name_uses_function_name(self, mock_agent, mock_safe_response):
+        """Test that without step_name, function name is used."""
+        captured_steps = []
+
+        async def mock_evaluate(
+            agent_uuid,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+        ):
+            captured_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def my_special_function(message: str) -> str:
+                return f"Response: {message}"
+
+            await my_special_function("test")
+
+            # Should have captured pre and post steps
+            assert len(captured_steps) == 2
+
+            # Both should use function name
+            assert captured_steps[0]["name"] == "my_special_function"
+            assert captured_steps[1]["name"] == "my_special_function"
+
+    @pytest.mark.asyncio
+    async def test_step_name_with_tool_decorator(self, mock_agent, mock_safe_response):
+        """Test step_name overrides tool name from @tool decorator."""
+        captured_steps = []
+
+        async def mock_evaluate(
+            agent_uuid,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+        ):
+            captured_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            # Simulate a function with tool_name attribute (from @tool decorator)
+            @control(step_name="custom_tool_name")
+            async def search_tool(query: str) -> str:
+                return f"Results for: {query}"
+
+            # Add tool_name attribute to simulate @tool decorator
+            search_tool.tool_name = "search"
+
+            await search_tool("test query")
+
+            # Should have captured pre and post steps
+            assert len(captured_steps) == 2
+
+            # Both should use custom step_name, not tool_name
+            assert captured_steps[0]["name"] == "custom_tool_name"
+            assert captured_steps[1]["name"] == "custom_tool_name"
+            # Verify it's still detected as a tool type
+            assert captured_steps[0]["type"] == "tool"
