@@ -556,13 +556,16 @@ class TestStepName:
         with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
              patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
 
-            # Simulate a function with tool_name attribute (from @tool decorator)
-            @control(step_name="custom_tool_name")
+            # Create function and add tool_name BEFORE decoration
+            # (simulates @tool decorator being applied before @control)
             async def search_tool(query: str) -> str:
                 return f"Results for: {query}"
 
             # Add tool_name attribute to simulate @tool decorator
             search_tool.tool_name = "search"
+
+            # Now apply @control decorator
+            search_tool = control(step_name="custom_tool_name")(search_tool)
 
             await search_tool("test query")
 

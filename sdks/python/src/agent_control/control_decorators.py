@@ -99,11 +99,15 @@ class ControlContext:
 
     def pre_payload(self) -> dict[str, Any]:
         """Build payload for pre-execution check (supports tool call detection)."""
-        return _create_evaluation_payload(self.func, self.args, self.kwargs, output=None, step_name=self.step_name)
+        return _create_evaluation_payload(
+            self.func, self.args, self.kwargs, output=None, step_name=self.step_name
+        )
 
     def post_payload(self, output: Any) -> dict[str, Any]:
         """Build payload for post-execution check (supports tool call detection)."""
-        return _create_evaluation_payload(self.func, self.args, self.kwargs, output=output, step_name=self.step_name)
+        return _create_evaluation_payload(
+            self.func, self.args, self.kwargs, output=output, step_name=self.step_name
+        )
 
     def process_result(self, result: dict[str, Any], check_stage: str) -> None:
         """
@@ -352,10 +356,13 @@ def _create_evaluation_payload(
         # Explicit step_name provided - use it
         determined_name = step_name
         # Try to detect if it's a tool based on attributes
-        is_tool = getattr(func, "name", None) is not None or getattr(func, "tool_name", None) is not None
+        is_tool = (
+            getattr(func, "name", None) is not None
+            or getattr(func, "tool_name", None) is not None
+        )
         step_type = "tool" if is_tool else "llm"
     else:
-        # Auto-detect: Check if this function is a tool (has tool_name attribute from @tool decorator)
+        # Auto-detect: Check if function has tool_name from @tool decorator
         tool_name = getattr(func, "name", None) or getattr(func, "tool_name", None)
         if tool_name:
             determined_name = tool_name
@@ -678,7 +685,9 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
     def decorator(func: F) -> F:
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            return await _execute_with_control(func, args, kwargs, is_async=True, step_name=step_name)
+            return await _execute_with_control(
+                func, args, kwargs, is_async=True, step_name=step_name
+            )
 
         # Copy over ALL attributes from the original function (important for LangChain tools)
         for attr in dir(func):
