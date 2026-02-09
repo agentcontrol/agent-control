@@ -7,35 +7,37 @@ import {
   Text,
   UnstyledButton,
   useMantineColorScheme,
-} from "@mantine/core";
+} from '@mantine/core';
 import {
   IconBook,
-  IconHelp,
+  IconChevronRight,
   IconHexagons,
   IconMoon,
   IconSun,
-} from "@tabler/icons-react";
-import Link from "next/link";
-import { useRouter } from "next/router";
-import { type ReactNode, useState } from "react";
+} from '@tabler/icons-react';
+import { AnimatePresence, motion } from 'motion/react';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { type ReactNode, useState } from 'react';
 
-import { ErrorBoundary } from "@/components/error-boundary";
-import { Logo } from "@/components/icons/galileo-logos.constants";
+import { ErrorBoundary } from '@/components/error-boundary';
+import { Logo } from '@/components/icons/galileo-logos.constants';
+import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 
 // import { useAgentsInfinite } from "@/core/hooks/query-hooks/use-agents-infinite";
-import classes from "./app-layout.module.css";
+import classes from './app-layout.module.css';
 
-interface AppLayoutProps {
+type AppLayoutProps = {
   children: ReactNode;
-}
+};
 
-interface NavItemProps {
+type NavItemProps = {
   href: string;
   icon: ReactNode;
   label: string;
   active?: boolean;
   onClick?: () => void;
-}
+};
 
 // TODO: Re-enable when agent list is added back
 // interface AgentItemProps {
@@ -55,9 +57,9 @@ function NavItem({ href, icon, label, active, onClick }: NavItemProps) {
       onClick={onClick}
       title={label}
     >
-      <Group gap='sm' wrap='nowrap'>
+      <Group gap="sm" wrap="nowrap">
         <Box className={classes.navIcon}>{icon}</Box>
-        <Text size='sm' className={classes.navLabel}>
+        <Text size="sm" className={classes.navLabel}>
           {label}
         </Text>
       </Group>
@@ -85,22 +87,34 @@ function BottomSection() {
     useMantineColorScheme();
 
   return (
-    <Stack gap={0} p='md'>
-      <Divider mb='md' className={classes.divider} />
+    <Stack gap={0} p="md">
+      <Divider mb="md" className={classes.divider} />
 
-      {/* Docs */}
-      <NavItem
-        href='/docs'
-        icon={<IconBook size={18} stroke={2} />}
-        label='Docs'
-      />
+      {/* Docs - GitHub README */}
+      <UnstyledButton
+        component="a"
+        href="https://github.com/agentcontrol/agent-control/blob/main/README.md"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={classes.navItem}
+        title="Docs"
+      >
+        <Group gap="sm" wrap="nowrap">
+          <Box className={classes.navIcon}>
+            <IconBook size={18} stroke={2} />
+          </Box>
+          <Text size="sm" className={classes.navLabel}>
+            Docs
+          </Text>
+        </Group>
+      </UnstyledButton>
 
       {/* Light/Dark Mode Toggle */}
       <UnstyledButton
         className={classes.navItem}
         onClick={() => toggleColorScheme()}
       >
-        <Group gap='sm' wrap='nowrap'>
+        <Group gap="sm" wrap="nowrap">
           <Box className={classes.navIcon}>
             <Box className={classes.lightIcon}>
               <IconMoon size={18} stroke={2} />
@@ -109,19 +123,12 @@ function BottomSection() {
               <IconSun size={18} stroke={2} />
             </Box>
           </Box>
-          <Text size='sm' className={classes.navLabel}>
+          <Text size="sm" className={classes.navLabel}>
             <span className={classes.lightIcon}>Dark mode</span>
             <span className={classes.darkIcon}>Light mode</span>
           </Text>
         </Group>
       </UnstyledButton>
-
-      {/* Help */}
-      <NavItem
-        href='/help'
-        icon={<IconHelp size={18} stroke={2} />}
-        label='Help'
-      />
     </Stack>
   );
 }
@@ -149,7 +156,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     <AppShell
       navbar={{
         width: desktopOpened ? 220 : 70,
-        breakpoint: "sm",
+        breakpoint: 'sm',
         collapsed: { mobile: !mobileOpened },
       }}
       padding={0}
@@ -162,15 +169,15 @@ export function AppLayout({ children }: AppLayoutProps) {
         className={classes.navbar}
         data-collapsed={!desktopOpened || undefined}
       >
-        <Stack gap={0} h='100%' justify='space-between'>
+        <Stack gap={0} h="100%" justify="space-between">
           {/* Top Section */}
           <Stack gap={0}>
-            <Stack px='md'>
-              <Group h='50px' justify='space-between' align="center">
-                <UnstyledButton component={Link} href='/'>
-                  <Group gap='xs'>
+            <Stack px="md">
+              <Group h="50px" justify="space-between" align="center">
+                <UnstyledButton component={Link} href="/">
+                  <Group gap="xs">
                     <Logo />
-                    <Text size='md' fw={600}>
+                    <Text size="md" fw={600}>
                       Agent Control
                     </Text>
                   </Group>
@@ -190,20 +197,20 @@ export function AppLayout({ children }: AppLayoutProps) {
 
             <Divider className={classes.divider} />
 
-            <Stack gap={4} p='md'>
+            <Stack gap={4} p="md">
               <NavItem
-                href='/'
+                href="/"
                 icon={
                   <IconHexagons
-                    color='var(--jds-color-muted-foreground)'
+                    color="var(--jds-color-muted-foreground)"
                     size={18}
                     stroke={2}
                   />
                 }
-                label='My agents'
+                label="My agents"
                 active={
-                  router.pathname === "/" ||
-                  router.pathname.startsWith("/agents")
+                  router.pathname === '/' ||
+                  router.pathname.startsWith('/agents')
                 }
                 onClick={closeNavbar}
               />
@@ -255,56 +262,80 @@ export function AppLayout({ children }: AppLayoutProps) {
         </Stack>
       </AppShell.Navbar>
 
-        <AppShell.Main className={classes.main}>
-          <ErrorBoundary variant="content">{children}</ErrorBoundary>
-        </AppShell.Main>
+      <AppShell.Main className={classes.main}>
+        <ErrorBoundary variant="content">{children}</ErrorBoundary>
+      </AppShell.Main>
     </AppShell>
   );
 }
 
+const BREADCRUMB_TRANSITION = { duration: 0.2, ease: 'easeOut' as const };
+
 function Header() {
   const router = useRouter();
-  // TODO: Re-enable when agent list is added back to sidebar
-  // const { data } = useAgentsInfinite();
-  // const allAgents = data?.pages.flatMap((page) => page.agents) || [];
+  const isAgentPage =
+    router.pathname.startsWith('/agents') && !!router.query.id;
+  const agentId = isAgentPage ? (router.query.id as string) : '';
+  const { data: agentData } = useAgent(agentId);
+  const agentDisplayName = agentData?.agent?.agent_name ?? agentId ?? null;
 
-  // Determine the breadcrumb text based on the current route
   const getBreadcrumb = () => {
-    // Check if we're on an agent detail page
-    if (router.pathname === "/agents/[id]" && router.query.id) {
-      // TODO: Fetch agent name for breadcrumb when needed
-      // const agent = allAgents.find((a) => a.agent_id === router.query.id);
-      // if (agent) {
-      //   return (
-      //     <Group gap='xs'>
-      //       <JupiterLink href='/' data-testid='breadcrumb-my-agents'>
-      //         <Text size='sm' fw={500} c='dimmed'>
-      //           My agents
-      //         </Text>
-      //       </JupiterLink>
-      //       <IconChevronRight size={14} color='var(--mantine-color-dimmed)' />
-      //       <Text size='sm' fw={500}>
-      //         {agent.agent_name}
-      //       </Text>
-      //     </Group>
-      //   );
-      // }
+    if (router.pathname !== '/' && !router.pathname.startsWith('/agents')) {
+      return null;
     }
 
-    // Default to "My agents" for home/agents page
-    if (router.pathname === "/" || router.pathname.startsWith("/agents")) {
+    if (!isAgentPage) {
       return (
-        <Text size='sm' fw={500}>
+        <Text size="sm" fw={500}>
           My agents
         </Text>
       );
     }
 
-    return null;
+    return (
+      <Group gap="xs" align="center" wrap="nowrap">
+        <Text
+          component={Link}
+          href="/"
+          size="sm"
+          fw={500}
+          c="dimmed"
+          style={{ textDecoration: 'none' }}
+          data-testid="breadcrumb-my-agents"
+        >
+          My agents
+        </Text>
+        <AnimatePresence mode="wait">
+          {!!agentDisplayName && (
+            <motion.span
+              key="agent-breadcrumb"
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -6 }}
+              transition={BREADCRUMB_TRANSITION}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 'var(--mantine-spacing-xs)',
+              }}
+            >
+              <IconChevronRight
+                size={14}
+                color="var(--mantine-color-dimmed)"
+                style={{ flexShrink: 0 }}
+              />
+              <Text size="sm" fw={500} component="span">
+                {agentDisplayName}
+              </Text>
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </Group>
+    );
   };
 
   return (
-    <Group h='100%' px='md' ml={200}>
+    <Group h="100%" px="md" ml={200}>
       {getBreadcrumb()}
     </Group>
   );

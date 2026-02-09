@@ -1,10 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from '@tanstack/react-query';
 
-import { api } from "@/core/api/client";
+import { api } from '@/core/api/client';
 import type {
   AgentControlsResponse,
   GetAgentControlsPathParams,
-} from "@/core/api/types";
+} from '@/core/api/types';
 
 /**
  * Query hook to fetch active controls for an agent
@@ -12,10 +12,10 @@ import type {
  * @param agentId - UUID of the agent (required)
  */
 export function useAgentControls(
-  agentId: GetAgentControlsPathParams["agent_id"]
+  agentId: GetAgentControlsPathParams['agent_id']
 ) {
   return useQuery<AgentControlsResponse>({
-    queryKey: ["agent", agentId, "controls"],
+    queryKey: ['agent', agentId, 'controls'],
     queryFn: async () => {
       const { data, error } = await api.agents.getControls(agentId);
       if (error) throw error;

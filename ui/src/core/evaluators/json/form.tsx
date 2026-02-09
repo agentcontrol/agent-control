@@ -5,15 +5,15 @@ import {
   Stack,
   Textarea,
   TextInput,
-} from "@mantine/core";
+} from '@mantine/core';
 
 import {
   labelPropsInline,
   LabelWithTooltip,
-} from "@/core/components/label-with-tooltip";
+} from '@/core/components/label-with-tooltip';
 
-import type { EvaluatorFormProps } from "../types";
-import type { JsonFormValues } from "./types";
+import type { EvaluatorFormProps } from '../types';
+import type { JsonFormValues } from './types';
 
 export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
   return (
@@ -33,8 +33,8 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
         maxRows={10}
         autosize
         size="sm"
-        styles={{ input: { fontFamily: "monospace" } }}
-        {...form.getInputProps("json_schema")}
+        styles={{ input: { fontFamily: 'monospace' } }}
+        {...form.getInputProps('json_schema')}
       />
 
       <Divider label="Field Validation" labelPosition="left" />
@@ -49,7 +49,7 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
         labelProps={labelPropsInline}
         placeholder="field1, nested.field, data.items"
         size="sm"
-        {...form.getInputProps("required_fields")}
+        {...form.getInputProps('required_fields')}
       />
 
       <Textarea
@@ -65,8 +65,8 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
         maxRows={8}
         autosize
         size="sm"
-        styles={{ input: { fontFamily: "monospace" } }}
-        {...form.getInputProps("field_types")}
+        styles={{ input: { fontFamily: 'monospace' } }}
+        {...form.getInputProps('field_types')}
       />
 
       <Textarea
@@ -82,8 +82,8 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
         maxRows={8}
         autosize
         size="sm"
-        styles={{ input: { fontFamily: "monospace" } }}
-        {...form.getInputProps("field_constraints")}
+        styles={{ input: { fontFamily: 'monospace' } }}
+        {...form.getInputProps('field_constraints')}
       />
 
       <Textarea
@@ -99,8 +99,8 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
         maxRows={8}
         autosize
         size="sm"
-        styles={{ input: { fontFamily: "monospace" } }}
-        {...form.getInputProps("field_patterns")}
+        styles={{ input: { fontFamily: 'monospace' } }}
+        {...form.getInputProps('field_patterns')}
       />
 
       <Divider label="Validation Behavior" labelPosition="left" />
@@ -113,7 +113,7 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
           />
         }
         size="sm"
-        {...form.getInputProps("allow_extra_fields", { type: "checkbox" })}
+        {...form.getInputProps('allow_extra_fields', { type: 'checkbox' })}
       />
 
       <Checkbox
@@ -124,7 +124,7 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
           />
         }
         size="sm"
-        {...form.getInputProps("allow_null_required", { type: "checkbox" })}
+        {...form.getInputProps('allow_null_required', { type: 'checkbox' })}
       />
 
       <Select
@@ -136,15 +136,15 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "all", label: "All (all patterns must match)" },
-          { value: "any", label: "Any (at least one pattern must match)" },
+          { value: 'all', label: 'All (all patterns must match)' },
+          { value: 'any', label: 'Any (at least one pattern must match)' },
         ]}
         size="sm"
-        {...form.getInputProps("pattern_match_logic")}
+        {...form.getInputProps('pattern_match_logic')}
         onChange={(value) =>
           form.setFieldValue(
-            "pattern_match_logic",
-            (value as JsonFormValues["pattern_match_logic"]) || "all"
+            'pattern_match_logic',
+            (value as JsonFormValues['pattern_match_logic']) || 'all'
           )
         }
       />
@@ -157,7 +157,7 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
           />
         }
         size="sm"
-        {...form.getInputProps("case_sensitive_enums", { type: "checkbox" })}
+        {...form.getInputProps('case_sensitive_enums', { type: 'checkbox' })}
       />
 
       <Divider label="Error Handling" labelPosition="left" />
@@ -170,7 +170,7 @@ export const JsonForm = ({ form }: EvaluatorFormProps<JsonFormValues>) => {
           />
         }
         size="sm"
-        {...form.getInputProps("allow_invalid_json", { type: "checkbox" })}
+        {...form.getInputProps('allow_invalid_json', { type: 'checkbox' })}
       />
     </Stack>
   );

@@ -5,15 +5,15 @@ import {
   Select,
   Stack,
   TextInput,
-} from "@mantine/core";
+} from '@mantine/core';
 
 import {
   labelPropsInline,
   LabelWithTooltip,
-} from "@/core/components/label-with-tooltip";
+} from '@/core/components/label-with-tooltip';
 
-import type { EvaluatorFormProps } from "../types";
-import type { SqlFormValues } from "./types";
+import type { EvaluatorFormProps } from '../types';
+import type { SqlFormValues } from './types';
 
 export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
   return (
@@ -27,18 +27,18 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "postgres", label: "PostgreSQL" },
-          { value: "mysql", label: "MySQL" },
-          { value: "tsql", label: "T-SQL (SQL Server)" },
-          { value: "oracle", label: "Oracle" },
-          { value: "sqlite", label: "SQLite" },
+          { value: 'postgres', label: 'PostgreSQL' },
+          { value: 'mysql', label: 'MySQL' },
+          { value: 'tsql', label: 'T-SQL (SQL Server)' },
+          { value: 'oracle', label: 'Oracle' },
+          { value: 'sqlite', label: 'SQLite' },
         ]}
         size="sm"
-        {...form.getInputProps("dialect")}
+        {...form.getInputProps('dialect')}
         onChange={(value) =>
           form.setFieldValue(
-            "dialect",
-            (value as SqlFormValues["dialect"]) || "postgres"
+            'dialect',
+            (value as SqlFormValues['dialect']) || 'postgres'
           )
         }
       />
@@ -53,13 +53,13 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
           />
         }
         size="sm"
-        {...form.getInputProps("allow_multi_statements", {
-          type: "checkbox",
+        {...form.getInputProps('allow_multi_statements', {
+          type: 'checkbox',
         })}
         onChange={(event) => {
-          form.setFieldValue("allow_multi_statements", event.target.checked);
+          form.setFieldValue('allow_multi_statements', event.target.checked);
           if (!event.target.checked) {
-            form.setFieldValue("max_statements", "");
+            form.setFieldValue('max_statements', '');
           }
         }}
       />
@@ -77,7 +77,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         max={100}
         size="sm"
         disabled={!form.values.allow_multi_statements}
-        {...form.getInputProps("max_statements")}
+        {...form.getInputProps('max_statements')}
       />
 
       <Divider label="Operation Controls" labelPosition="left" />
@@ -93,7 +93,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         placeholder="DROP, DELETE, TRUNCATE"
         size="sm"
         disabled={!!form.values.allowed_operations}
-        {...form.getInputProps("blocked_operations")}
+        {...form.getInputProps('blocked_operations')}
       />
 
       <TextInput
@@ -107,7 +107,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         placeholder="SELECT, INSERT, UPDATE"
         size="sm"
         disabled={!!form.values.blocked_operations}
-        {...form.getInputProps("allowed_operations")}
+        {...form.getInputProps('allowed_operations')}
       />
 
       <Checkbox
@@ -118,7 +118,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
           />
         }
         size="sm"
-        {...form.getInputProps("block_ddl", { type: "checkbox" })}
+        {...form.getInputProps('block_ddl', { type: 'checkbox' })}
       />
 
       <Checkbox
@@ -129,7 +129,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
           />
         }
         size="sm"
-        {...form.getInputProps("block_dcl", { type: "checkbox" })}
+        {...form.getInputProps('block_dcl', { type: 'checkbox' })}
       />
 
       <Divider label="Table/Schema Access" labelPosition="left" />
@@ -145,7 +145,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         placeholder="users, orders, products"
         size="sm"
         disabled={!!form.values.blocked_tables}
-        {...form.getInputProps("allowed_tables")}
+        {...form.getInputProps('allowed_tables')}
       />
 
       <TextInput
@@ -159,7 +159,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         placeholder="admin_users, secrets"
         size="sm"
         disabled={!!form.values.allowed_tables}
-        {...form.getInputProps("blocked_tables")}
+        {...form.getInputProps('blocked_tables')}
       />
 
       <TextInput
@@ -173,7 +173,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         placeholder="public, analytics"
         size="sm"
         disabled={!!form.values.blocked_schemas}
-        {...form.getInputProps("allowed_schemas")}
+        {...form.getInputProps('allowed_schemas')}
       />
 
       <TextInput
@@ -187,7 +187,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         placeholder="system, admin, internal"
         size="sm"
         disabled={!!form.values.allowed_schemas}
-        {...form.getInputProps("blocked_schemas")}
+        {...form.getInputProps('blocked_schemas')}
       />
 
       <Divider label="Column Presence Controls" labelPosition="left" />
@@ -202,7 +202,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         labelProps={labelPropsInline}
         placeholder="tenant_id, user_id"
         size="sm"
-        {...form.getInputProps("required_columns")}
+        {...form.getInputProps('required_columns')}
       />
 
       <Select
@@ -214,15 +214,15 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "any", label: "Any (at least one required column)" },
-          { value: "all", label: "All (all required columns)" },
+          { value: 'any', label: 'Any (at least one required column)' },
+          { value: 'all', label: 'All (all required columns)' },
         ]}
         size="sm"
-        {...form.getInputProps("column_presence_logic")}
+        {...form.getInputProps('column_presence_logic')}
         onChange={(value) =>
           form.setFieldValue(
-            "column_presence_logic",
-            (value as SqlFormValues["column_presence_logic"]) || "any"
+            'column_presence_logic',
+            (value as SqlFormValues['column_presence_logic']) || 'any'
           )
         }
       />
@@ -236,17 +236,17 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "", label: "Anywhere in query" },
-          { value: "where", label: "WHERE clause only" },
-          { value: "select", label: "SELECT clause only" },
+          { value: '', label: 'Anywhere in query' },
+          { value: 'where', label: 'WHERE clause only' },
+          { value: 'select', label: 'SELECT clause only' },
         ]}
         size="sm"
         clearable
-        {...form.getInputProps("column_context")}
+        {...form.getInputProps('column_context')}
         onChange={(value) =>
           form.setFieldValue(
-            "column_context",
-            (value as SqlFormValues["column_context"]) || ""
+            'column_context',
+            (value as SqlFormValues['column_context']) || ''
           )
         }
       />
@@ -260,18 +260,18 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "all", label: "All (including subqueries)" },
+          { value: 'all', label: 'All (including subqueries)' },
           {
-            value: "top_level",
-            label: "Top level only (recommended for RLS)",
+            value: 'top_level',
+            label: 'Top level only (recommended for RLS)',
           },
         ]}
         size="sm"
-        {...form.getInputProps("column_context_scope")}
+        {...form.getInputProps('column_context_scope')}
         onChange={(value) =>
           form.setFieldValue(
-            "column_context_scope",
-            (value as SqlFormValues["column_context_scope"]) || "all"
+            'column_context_scope',
+            (value as SqlFormValues['column_context_scope']) || 'all'
           )
         }
       />
@@ -286,7 +286,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
           />
         }
         size="sm"
-        {...form.getInputProps("require_limit", { type: "checkbox" })}
+        {...form.getInputProps('require_limit', { type: 'checkbox' })}
       />
 
       <NumberInput
@@ -300,7 +300,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         placeholder="1000"
         min={1}
         size="sm"
-        {...form.getInputProps("max_limit")}
+        {...form.getInputProps('max_limit')}
       />
 
       <NumberInput
@@ -314,7 +314,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         placeholder="10000"
         min={1}
         size="sm"
-        {...form.getInputProps("max_result_window")}
+        {...form.getInputProps('max_result_window')}
       />
 
       <Divider label="Query Complexity Limits" labelPosition="left" />
@@ -331,7 +331,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         min={1}
         max={100}
         size="sm"
-        {...form.getInputProps("max_subquery_depth")}
+        {...form.getInputProps('max_subquery_depth')}
       />
 
       <NumberInput
@@ -346,7 +346,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         min={1}
         max={100}
         size="sm"
-        {...form.getInputProps("max_joins")}
+        {...form.getInputProps('max_joins')}
       />
 
       <NumberInput
@@ -361,7 +361,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
         min={1}
         max={100}
         size="sm"
-        {...form.getInputProps("max_union_count")}
+        {...form.getInputProps('max_union_count')}
       />
 
       <Divider label="Options" labelPosition="left" />
@@ -374,7 +374,7 @@ export const SqlForm = ({ form }: EvaluatorFormProps<SqlFormValues>) => {
           />
         }
         size="sm"
-        {...form.getInputProps("case_sensitive", { type: "checkbox" })}
+        {...form.getInputProps('case_sensitive', { type: 'checkbox' })}
       />
     </Stack>
   );

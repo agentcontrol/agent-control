@@ -1,14 +1,14 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { api } from "@/core/api/client";
-import { parseApiError } from "@/core/api/errors";
-import type { ControlDefinition } from "@/core/api/types";
+import { api } from '@/core/api/client';
+import { parseApiError } from '@/core/api/errors';
+import type { ControlDefinition } from '@/core/api/types';
 
-interface AddControlToAgentParams {
+type AddControlToAgentParams = {
   agentId: string;
   controlName: string;
   definition: ControlDefinition;
-}
+};
 
 /**
  * Mutation hook to add a control to an agent
@@ -45,7 +45,7 @@ export function useAddControlToAgent() {
         if (createPolicyError || !createPolicyResult) {
           throw parseApiError(
             createPolicyError,
-            "Failed to create policy",
+            'Failed to create policy',
             createPolicyResponse?.status
           );
         }
@@ -59,7 +59,7 @@ export function useAddControlToAgent() {
         if (assignError) {
           throw parseApiError(
             assignError,
-            "Failed to assign policy to agent",
+            'Failed to assign policy to agent',
             assignResponse?.status
           );
         }
@@ -77,7 +77,7 @@ export function useAddControlToAgent() {
       if (createControlError || !createControlResult) {
         throw parseApiError(
           createControlError,
-          "Failed to create control",
+          'Failed to create control',
           createControlResponse?.status
         );
       }
@@ -93,7 +93,7 @@ export function useAddControlToAgent() {
       if (setDataError) {
         throw parseApiError(
           setDataError,
-          "Failed to set control data",
+          'Failed to set control data',
           setDataResponse?.status
         );
       }
@@ -105,7 +105,7 @@ export function useAddControlToAgent() {
       if (addControlError) {
         throw parseApiError(
           addControlError,
-          "Failed to add control to policy",
+          'Failed to add control to policy',
           addControlResponse?.status
         );
       }
@@ -114,10 +114,10 @@ export function useAddControlToAgent() {
     },
     onSuccess: (_data, variables) => {
       // Invalidate relevant queries to refetch data
-      queryClient.invalidateQueries({ queryKey: ["controls"] });
-      queryClient.invalidateQueries({ queryKey: ["agent", variables.agentId] });
+      queryClient.invalidateQueries({ queryKey: ['controls'] });
+      queryClient.invalidateQueries({ queryKey: ['agent', variables.agentId] });
       queryClient.invalidateQueries({
-        queryKey: ["agentControls", variables.agentId],
+        queryKey: ['agentControls', variables.agentId],
       });
     },
   });

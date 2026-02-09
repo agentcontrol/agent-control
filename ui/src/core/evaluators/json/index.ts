@@ -1,10 +1,10 @@
-import type { EvaluatorDefinition } from "../types";
-import { JsonForm } from "./form";
-import type { JsonFormValues } from "./types";
+import type { EvaluatorDefinition } from '../types';
+import { JsonForm } from './form';
+import type { JsonFormValues } from './types';
 
 /** Helper to safely parse JSON or return null */
 const parseJsonOrNull = (value: string): unknown => {
-  if (!value || value.trim() === "") return null;
+  if (!value || value.trim() === '') return null;
   try {
     return JSON.parse(value);
   } catch {
@@ -14,7 +14,7 @@ const parseJsonOrNull = (value: string): unknown => {
 
 /** Helper to stringify JSON or return empty string */
 const stringifyOrEmpty = (value: unknown): string => {
-  if (value == null) return "";
+  if (value == null) return '';
   return JSON.stringify(value, null, 2);
 };
 
@@ -24,63 +24,63 @@ const stringifyOrEmpty = (value: unknown): string => {
  * Validates JSON structure, types, constraints, and patterns.
  */
 export const jsonEvaluator: EvaluatorDefinition<JsonFormValues> = {
-  id: "json",
-  displayName: "JSON",
+  id: 'json',
+  displayName: 'JSON',
 
   initialValues: {
-    json_schema: "",
-    required_fields: "",
-    field_types: "",
-    field_constraints: "",
-    field_patterns: "",
+    json_schema: '',
+    required_fields: '',
+    field_types: '',
+    field_constraints: '',
+    field_patterns: '',
     allow_extra_fields: true,
     allow_null_required: false,
-    pattern_match_logic: "all",
+    pattern_match_logic: 'all',
     case_sensitive_enums: true,
     allow_invalid_json: false,
   },
 
   validate: {
     json_schema: (value) => {
-      if (value && (value as string).trim() !== "") {
+      if (value && (value as string).trim() !== '') {
         try {
           JSON.parse(value as string);
           return null;
         } catch {
-          return "Invalid JSON schema";
+          return 'Invalid JSON schema';
         }
       }
       return null;
     },
     field_types: (value) => {
-      if (value && (value as string).trim() !== "") {
+      if (value && (value as string).trim() !== '') {
         try {
           JSON.parse(value as string);
           return null;
         } catch {
-          return "Invalid JSON for field types";
+          return 'Invalid JSON for field types';
         }
       }
       return null;
     },
     field_constraints: (value) => {
-      if (value && (value as string).trim() !== "") {
+      if (value && (value as string).trim() !== '') {
         try {
           JSON.parse(value as string);
           return null;
         } catch {
-          return "Invalid JSON for field constraints";
+          return 'Invalid JSON for field constraints';
         }
       }
       return null;
     },
     field_patterns: (value) => {
-      if (value && (value as string).trim() !== "") {
+      if (value && (value as string).trim() !== '') {
         try {
           JSON.parse(value as string);
           return null;
         } catch {
-          return "Invalid JSON for field patterns";
+          return 'Invalid JSON for field patterns';
         }
       }
       return null;
@@ -90,9 +90,9 @@ export const jsonEvaluator: EvaluatorDefinition<JsonFormValues> = {
   toConfig: (values) => {
     // Convert comma-separated string to array, parse JSON fields
     const requiredFields = values.required_fields
-      .split(",")
+      .split(',')
       .map((f) => f.trim())
-      .filter((f) => f !== "");
+      .filter((f) => f !== '');
     return {
       json_schema: parseJsonOrNull(values.json_schema),
       required_fields: requiredFields.length > 0 ? requiredFields : null,
@@ -109,15 +109,15 @@ export const jsonEvaluator: EvaluatorDefinition<JsonFormValues> = {
 
   fromConfig: (config) => ({
     json_schema: stringifyOrEmpty(config.json_schema),
-    required_fields: ((config.required_fields as string[]) || []).join(", "),
+    required_fields: ((config.required_fields as string[]) || []).join(', '),
     field_types: stringifyOrEmpty(config.field_types),
     field_constraints: stringifyOrEmpty(config.field_constraints),
     field_patterns: stringifyOrEmpty(config.field_patterns),
     allow_extra_fields: (config.allow_extra_fields as boolean) ?? true,
     allow_null_required: (config.allow_null_required as boolean) || false,
     pattern_match_logic:
-      (config.pattern_match_logic as JsonFormValues["pattern_match_logic"]) ||
-      "all",
+      (config.pattern_match_logic as JsonFormValues['pattern_match_logic']) ||
+      'all',
     case_sensitive_enums: (config.case_sensitive_enums as boolean) ?? true,
     allow_invalid_json: (config.allow_invalid_json as boolean) || false,
   }),
@@ -125,4 +125,4 @@ export const jsonEvaluator: EvaluatorDefinition<JsonFormValues> = {
   FormComponent: JsonForm,
 };
 
-export type { JsonFormValues } from "./types";
+export type { JsonFormValues } from './types';

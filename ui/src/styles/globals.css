@@ -3,9 +3,10 @@
 :root {
   --max-width: 1100px;
   --border-radius: 12px;
-  --font-mono: ui-monospace, Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono",
-    "Roboto Mono", "Oxygen Mono", "Ubuntu Monospace", "Source Code Pro",
-    "Fira Mono", "Droid Sans Mono", "Courier New", monospace;
+  --font-mono:
+    ui-monospace, Menlo, Monaco, 'Cascadia Mono', 'Segoe UI Mono',
+    'Roboto Mono', 'Oxygen Mono', 'Ubuntu Monospace', 'Source Code Pro',
+    'Fira Mono', 'Droid Sans Mono', 'Courier New', monospace;
 }
 
 * {
@@ -26,9 +27,9 @@ a {
 }
 
 /* Confirm modal button: white text in light mode, black in dark mode */
-[data-mantine-color-scheme="light"] .confirm-modal-confirm-btn {
+[data-mantine-color-scheme='light'] .confirm-modal-confirm-btn {
   color: var(--mantine-color-white);
 }
-[data-mantine-color-scheme="dark"] .confirm-modal-confirm-btn {
+[data-mantine-color-scheme='dark'] .confirm-modal-confirm-btn {
   color: var(--mantine-color-black);
 }

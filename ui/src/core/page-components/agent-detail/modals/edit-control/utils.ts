@@ -5,17 +5,17 @@
  * the mapping logic is simple - just extract the field name from the path.
  */
 
-import type { UseFormReturnType } from "@mantine/form";
+import type { UseFormReturnType } from '@mantine/form';
 
-import type { ValidationErrorItem } from "@/core/api/types";
+import type { ValidationErrorItem } from '@/core/api/types';
 
 /**
  * Mapping result indicating which form and field an API error belongs to
  */
-interface FieldMapping {
-  form: "definition" | "evaluator";
+type FieldMapping = {
+  form: 'definition' | 'evaluator';
   field: string;
-}
+};
 
 /**
  * Map an API error field path to a form field.
@@ -38,12 +38,12 @@ export function mapApiFieldToFormField(
   if (!apiField) return null;
 
   // Handle "name" directly (control name)
-  if (apiField === "name") {
-    return { form: "definition", field: "name" };
+  if (apiField === 'name') {
+    return { form: 'definition', field: 'name' };
   }
 
   // Handle "data." prefix
-  const dataPrefix = "data.";
+  const dataPrefix = 'data.';
   if (!apiField.startsWith(dataPrefix)) {
     return null;
   }
@@ -53,54 +53,54 @@ export function mapApiFieldToFormField(
   // Handle evaluator fields - API may return either:
   // - "evaluator.{field}" (e.g., "evaluator.field_types")
   // - "evaluator.config.{field}" (e.g., "evaluator.config.pattern")
-  const evalPrefix = "evaluator.";
+  const evalPrefix = 'evaluator.';
   if (fieldPath.startsWith(evalPrefix)) {
     let configField = fieldPath.slice(evalPrefix.length);
 
     // Strip "config." prefix if present
-    const configPrefix = "config.";
+    const configPrefix = 'config.';
     if (configField.startsWith(configPrefix)) {
       configField = configField.slice(configPrefix.length);
     }
 
     // For nested paths like "field_types.name", use the first segment
-    const firstDotIndex = configField.indexOf(".");
+    const firstDotIndex = configField.indexOf('.');
     const field =
       firstDotIndex > 0 ? configField.slice(0, firstDotIndex) : configField;
 
-    return { form: "evaluator", field };
+    return { form: 'evaluator', field };
   }
 
   // Handle definition fields
   // Map nested paths like "selector.path" to "selector_path"
-  if (fieldPath === "selector.path") {
-    return { form: "definition", field: "selector_path" };
+  if (fieldPath === 'selector.path') {
+    return { form: 'definition', field: 'selector_path' };
   }
-  if (fieldPath === "action.decision") {
-    return { form: "definition", field: "action_decision" };
+  if (fieldPath === 'action.decision') {
+    return { form: 'definition', field: 'action_decision' };
   }
-  if (fieldPath.startsWith("scope.")) {
-    const scopeField = fieldPath.slice("scope.".length);
-    const scopeFieldBase = scopeField.split(".")[0];
+  if (fieldPath.startsWith('scope.')) {
+    const scopeField = fieldPath.slice('scope.'.length);
+    const scopeFieldBase = scopeField.split('.')[0];
     const scopeMap: Record<string, string> = {
-      step_types: "step_types",
-      step_names: "step_names",
-      step_name_regex: "step_name_regex",
-      stages: "stages",
+      step_types: 'step_types',
+      step_names: 'step_names',
+      step_name_regex: 'step_name_regex',
+      stages: 'stages',
     };
     const mappedField = scopeMap[scopeFieldBase];
     if (mappedField) {
-      return { form: "definition", field: mappedField };
+      return { form: 'definition', field: mappedField };
     }
   }
 
   // For other definition fields, use the field path directly
   // (e.g., "execution", "enabled")
-  const firstDotIndex = fieldPath.indexOf(".");
+  const firstDotIndex = fieldPath.indexOf('.');
   const field =
     firstDotIndex > 0 ? fieldPath.slice(0, firstDotIndex) : fieldPath;
 
-  return { form: "definition", field };
+  return { form: 'definition', field };
 }
 
 /**
@@ -126,9 +126,9 @@ export function applyApiErrorsToForms(
     const mapping = mapApiFieldToFormField(error.field);
 
     if (mapping) {
-      if (mapping.form === "definition") {
+      if (mapping.form === 'definition') {
         definitionForm.setFieldError(mapping.field, error.message);
-      } else if (mapping.form === "evaluator") {
+      } else if (mapping.form === 'evaluator') {
         evaluatorForm.setFieldError(mapping.field, error.message);
       }
     } else {
@@ -146,8 +146,8 @@ export function applyApiErrorsToForms(
 export function sanitizeControlNamePart(s: string): string {
   const sanitized = s
     .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9_-]/g, "")
-    .replace(/^[-_]+/, "");
-  return sanitized || "control";
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .replace(/^[-_]+/, '');
+  return sanitized || 'control';
 }

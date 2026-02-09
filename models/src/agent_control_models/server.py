@@ -178,8 +178,21 @@ class SetControlDataRequest(BaseModel):
     )
 
 
+class ValidateControlDataRequest(BaseModel):
+    """Request to validate control configuration data without saving."""
+
+    data: ControlDefinition = Field(
+        ...,
+        description="Control configuration data to validate",
+    )
+
+
 class SetControlDataResponse(BaseModel):
     success: bool = Field(description="Whether the control data was updated")
+
+
+class ValidateControlDataResponse(BaseModel):
+    success: bool = Field(description="Whether the control data is valid")
 
 
 class StepKey(BaseModel):

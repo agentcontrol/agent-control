@@ -2,7 +2,7 @@
  * Re-export commonly used types from the generated API types
  * This makes it easier to import types without the verbose path
  */
-import type { components, operations } from "./generated/api-types";
+import type { components, operations } from './generated/api-types';
 
 // =============================================================================
 // Error Types (RFC 7807 ProblemDetail)
@@ -11,7 +11,7 @@ import type { components, operations } from "./generated/api-types";
 /**
  * Validation error item (GitHub-style field-level error)
  */
-export interface ValidationErrorItem {
+export type ValidationErrorItem = {
   /** Resource type where error occurred (e.g., 'Control') */
   resource: string;
   /** Field path that caused the error (e.g., 'data.evaluator.config.pattern') */
@@ -22,12 +22,12 @@ export interface ValidationErrorItem {
   message: string;
   /** The invalid value (omitted for sensitive data) */
   value?: unknown;
-}
+};
 
 /**
  * RFC 7807 Problem Detail error response
  */
-export interface ProblemDetail {
+export type ProblemDetail = {
   /** Error type URI */
   type: string;
   /** Short error title */
@@ -46,61 +46,71 @@ export interface ProblemDetail {
   errors?: ValidationErrorItem[];
   /** Actionable hint for resolution */
   hint?: string;
-}
+};
 
 // Agent types
-export type Agent = components["schemas"]["Agent"];
-export type EvaluatorSchema = components["schemas"]["EvaluatorSchema"];
-export type StepSchema = components["schemas"]["StepSchema"];
-export type AgentSummary = components["schemas"]["AgentSummary"];
-export type ListAgentsResponse = components["schemas"]["ListAgentsResponse"];
+export type Agent = components['schemas']['Agent'];
+export type EvaluatorSchema = components['schemas']['EvaluatorSchema'];
+export type StepSchema = components['schemas']['StepSchema'];
+export type AgentSummary = components['schemas']['AgentSummary'];
+export type ListAgentsResponse = components['schemas']['ListAgentsResponse'];
 
 // Evaluator types
-export type EvaluatorInfo = components["schemas"]["EvaluatorInfo"];
+export type EvaluatorInfo = components['schemas']['EvaluatorInfo'];
 export type EvaluatorsResponse = Record<string, EvaluatorInfo>;
-export type EvaluatorConfigItem = components["schemas"]["EvaluatorConfigItem"];
+export type EvaluatorConfigItem = components['schemas']['EvaluatorConfigItem'];
 export type ListEvaluatorConfigsResponse =
-  components["schemas"]["ListEvaluatorConfigsResponse"];
+  components['schemas']['ListEvaluatorConfigsResponse'];
 
 // Request/Response types
-export type InitAgentRequest = components["schemas"]["InitAgentRequest"];
-export type InitAgentResponse = components["schemas"]["InitAgentResponse"];
-export type GetAgentResponse = components["schemas"]["GetAgentResponse"];
+export type InitAgentRequest = components['schemas']['InitAgentRequest'];
+export type InitAgentResponse = components['schemas']['InitAgentResponse'];
+export type GetAgentResponse = components['schemas']['GetAgentResponse'];
 export type ControlActionDecision =
-  components["schemas"]["ControlAction"]["decision"];
+  components['schemas']['ControlAction']['decision'];
 export type ControlExecution =
-  components["schemas"]["ControlDefinition"]["execution"];
+  components['schemas']['ControlDefinition']['execution'];
 export type ControlStage = NonNullable<
-  components["schemas"]["ControlScope"]["stages"]
+  components['schemas']['ControlScope']['stages']
 >[number];
-export type ControlScope = components["schemas"]["ControlScope"];
-export type ControlSelector = components["schemas"]["ControlSelector"];
-export type ControlAction = components["schemas"]["ControlAction"];
-export type ControlDefinition = components["schemas"]["ControlDefinition"];
-export type Control = components["schemas"]["Control"];
+export type ControlScope = components['schemas']['ControlScope'];
+export type ControlSelector = components['schemas']['ControlSelector'];
+export type ControlAction = components['schemas']['ControlAction'];
+export type ControlDefinition = components['schemas']['ControlDefinition'];
+export type Control = components['schemas']['Control'];
 export type AgentControlsResponse =
-  components["schemas"]["AgentControlsResponse"];
+  components['schemas']['AgentControlsResponse'];
 
 // Control types
 export type CreateControlRequest =
-  components["schemas"]["CreateControlRequest"];
+  components['schemas']['CreateControlRequest'];
 export type CreateControlResponse =
-  components["schemas"]["CreateControlResponse"];
+  components['schemas']['CreateControlResponse'];
 export type SetControlDataRequest =
-  components["schemas"]["SetControlDataRequest"];
+  components['schemas']['SetControlDataRequest'];
 export type SetControlDataResponse =
-  components["schemas"]["SetControlDataResponse"];
+  components['schemas']['SetControlDataResponse'];
 export type GetControlDataResponse =
-  components["schemas"]["GetControlDataResponse"];
-export type ControlSummary = components["schemas"]["ControlSummary"];
-export type ListControlsResponse = components["schemas"]["ListControlsResponse"];
+  components['schemas']['GetControlDataResponse'];
+
+// Validate control data types (not yet in generated schemas)
+// TODO: replace these with generated types after running pnpm fetch-api-types
+export type ValidateControlDataRequest = {
+  data: ControlDefinition;
+};
+export type ValidateControlDataResponse = {
+  success: boolean;
+};
+export type ControlSummary = components['schemas']['ControlSummary'];
+export type ListControlsResponse =
+  components['schemas']['ListControlsResponse'];
 
 // AgentRef - reference to an agent (for used_by_agents)
 // Note: This will be in generated types after running pnpm fetch-api-types
-export interface AgentRef {
+export type AgentRef = {
   agent_id: string;
   agent_name: string;
-}
+};
 
 // Helper type to extract query parameters from operations
 type ExtractQueryParams<T> = T extends { parameters: { query?: infer Q } }
@@ -114,23 +124,23 @@ type ExtractPathParams<T> = T extends { parameters: { path?: infer P } }
 
 // Helper type to extract request body from operations
 type ExtractRequestBody<T> = T extends {
-  requestBody?: { content: { "application/json": infer B } };
+  requestBody?: { content: { 'application/json': infer B } };
 }
   ? B
   : never;
 
 // Specific parameter types using operations
 export type ListAgentsQueryParams = ExtractQueryParams<
-  operations["list_agents_api_v1_agents_get"]
+  operations['list_agents_api_v1_agents_get']
 >;
 export type GetAgentPathParams = ExtractPathParams<
-  operations["get_agent_api_v1_agents__agent_id__get"]
+  operations['get_agent_api_v1_agents__agent_id__get']
 >;
 export type GetAgentControlsPathParams = ExtractPathParams<
-  operations["list_agent_controls_api_v1_agents__agent_id__controls_get"]
+  operations['list_agent_controls_api_v1_agents__agent_id__controls_get']
 >;
 
 // Request body types
 export type InitAgentRequestBody = ExtractRequestBody<
-  operations["init_agent_api_v1_agents_initAgent_post"]
+  operations['init_agent_api_v1_agents_initAgent_post']
 >;

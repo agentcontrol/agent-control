@@ -6,16 +6,16 @@ import {
   Text,
   TextInput,
   Tooltip,
-} from "@mantine/core";
-import { IconInfoCircle } from "@tabler/icons-react";
+} from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
 
-import type { ControlDefinitionFormProps } from "./types";
+import type { ControlDefinitionFormProps } from './types';
 
 export function StepNameInput({ form }: ControlDefinitionFormProps) {
-  const isRegexMode = form.values.step_name_mode === "regex";
+  const isRegexMode = form.values.step_name_mode === 'regex';
 
   const handleRegexToggle = (enabled: boolean) => {
-    form.setFieldValue("step_name_mode", enabled ? "regex" : "names");
+    form.setFieldValue('step_name_mode', enabled ? 'regex' : 'names');
   };
 
   return (
@@ -30,13 +30,13 @@ export function StepNameInput({ form }: ControlDefinitionFormProps) {
               <Stack gap={0}>
                 <Text size="xs">
                   {isRegexMode
-                    ? "Optional RE2 pattern to match step names."
-                    : "Comma-separated step names to scope this control."}
+                    ? 'Optional RE2 pattern to match step names.'
+                    : 'Comma-separated step names to scope this control.'}
                 </Text>
                 <Text size="xs">
                   {isRegexMode
-                    ? "Toggle off to use comma-separated step names."
-                    : "Toggle on to use a regex pattern instead."}
+                    ? 'Toggle off to use comma-separated step names.'
+                    : 'Toggle on to use a regex pattern instead.'}
                 </Text>
               </Stack>
             }
@@ -55,13 +55,13 @@ export function StepNameInput({ form }: ControlDefinitionFormProps) {
         <TextInput
           size="sm"
           placeholder="^db_.*"
-          {...form.getInputProps("step_name_regex")}
+          {...form.getInputProps('step_name_regex')}
         />
       ) : (
         <TextInput
           size="sm"
           placeholder="search_db, fetch_user"
-          {...form.getInputProps("step_names")}
+          {...form.getInputProps('step_names')}
         />
       )}
     </Box>

@@ -10,38 +10,43 @@ import {
   Text,
   Title,
   Tooltip,
-} from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
-import { Button, Table } from "@rungalileo/jupiter-ds";
-import { IconAlertCircle, IconX } from "@tabler/icons-react";
-import { type ColumnDef } from "@tanstack/react-table";
-import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+} from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
+import { Button, Table } from '@rungalileo/jupiter-ds';
+import { IconAlertCircle, IconX } from '@tabler/icons-react';
+import { type ColumnDef } from '@tanstack/react-table';
+import Link from 'next/link';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { ErrorBoundary } from "@/components/error-boundary";
-import { api } from "@/core/api/client";
-import type { AgentRef, ControlDefinition, ControlSummary } from "@/core/api/types";
-import { SearchInput } from "@/core/components/search-input";
-import { useControlsInfinite } from "@/core/hooks/query-hooks/use-controls-infinite";
-import { useInfiniteScroll } from "@/core/hooks/use-infinite-scroll";
-import { useModalRoute } from "@/core/hooks/use-modal-route";
-import { useQueryParam } from "@/core/hooks/use-query-param";
+import { ErrorBoundary } from '@/components/error-boundary';
+import { api } from '@/core/api/client';
+import type {
+  AgentRef,
+  ControlDefinition,
+  ControlSummary,
+} from '@/core/api/types';
+import { SearchInput } from '@/core/components/search-input';
+import { MODAL_NAMES, SUBMODAL_NAMES } from '@/core/constants/modal-routes';
+import { useControlsInfinite } from '@/core/hooks/query-hooks/use-controls-infinite';
+import { useInfiniteScroll } from '@/core/hooks/use-infinite-scroll';
+import { useModalRoute } from '@/core/hooks/use-modal-route';
+import { useQueryParam } from '@/core/hooks/use-query-param';
 
-import { AddNewControlModal } from "../add-new-control";
-import { EditControlContent } from "../edit-control/edit-control-content";
-import { sanitizeControlNamePart } from "../edit-control/utils";
+import { AddNewControlModal } from '../add-new-control';
+import { EditControlContent } from '../edit-control/edit-control-content';
+import { sanitizeControlNamePart } from '../edit-control/utils';
 
 // Extended ControlSummary with used_by_agent (until API types are regenerated)
 type ControlSummaryWithAgent = ControlSummary & {
   used_by_agent?: AgentRef | null;
 };
 
-interface ControlStoreModalProps {
+type ControlStoreModalProps = {
   opened: boolean;
   onClose: () => void;
   agentId: string;
-}
+};
 
 export function ControlStoreModal({
   opened,
@@ -49,24 +54,32 @@ export function ControlStoreModal({
   agentId,
 }: ControlStoreModalProps) {
   // Get search value for debouncing (SearchInput handles the UI and URL sync)
-  const [searchQuery, setSearchQuery] = useQueryParam("store_q");
+  const [searchQuery, setSearchQuery] = useQueryParam('store_q');
   const [debouncedSearch] = useDebouncedValue(searchQuery, 300);
-  const { submodal, evaluator: _evaluator, controlId, openModal, closeSubmodal, closeModal } = useModalRoute();
+  const {
+    submodal,
+    evaluator: _evaluator,
+    controlId,
+    openModal,
+    closeSubmodal,
+    closeModal,
+  } = useModalRoute();
   const [selectedControl, setSelectedControl] = useState<{
     summary: ControlSummary;
     definition: ControlDefinition;
   } | null>(null);
   const [loadingControlId, setLoadingControlId] = useState<number | null>(null);
-  
+
   // Derive submodal open state from URL
-  const editModalOpened = submodal === "edit";
+  const editModalOpened = submodal === SUBMODAL_NAMES.EDIT;
   // AddNewControlModal should be open when submodal is "add-new" OR "create" (create is nested inside add-new)
-  const addNewModalOpened = submodal === "add-new" || submodal === "create";
+  const addNewModalOpened =
+    submodal === SUBMODAL_NAMES.ADD_NEW || submodal === SUBMODAL_NAMES.CREATE;
 
   // Clear search query param when modal closes
   useEffect(() => {
     if (!opened && searchQuery) {
-      setSearchQuery("");
+      setSearchQuery('');
     }
   }, [opened, searchQuery, setSearchQuery]);
 
@@ -89,29 +102,40 @@ export function ControlStoreModal({
     isFetchingNextPage,
     fetchNextPage,
   });
-  
+
   // Flatten paginated data
   const controls = useMemo(() => {
     return data?.pages.flatMap((page) => page.controls) ?? [];
   }, [data]);
-  
+
   // Ref callback to attach to Table's scroll container when maxHeight is set
   const tableWrapperRef = useRef<HTMLDivElement>(null);
-  
+
   // Attach scroll container ref to the Table's scroll container
+  // TODO: Revisit scroll container handling for control-store
   useEffect(() => {
     if (tableWrapperRef.current && controls.length > 0) {
       // Find the scrollable container (the div with overflow: auto from Table's maxHeight)
       // The Table component wraps content in a div with the "root" class when maxHeight is set
-      const scrollContainer = tableWrapperRef.current.querySelector('[class*="root"]') as HTMLElement;
+      const scrollContainer = tableWrapperRef.current.querySelector(
+        '[class*="root"]'
+      ) as HTMLElement;
       if (scrollContainer) {
         // Check if it's scrollable (has overflow: auto)
         const computedStyle = window.getComputedStyle(scrollContainer);
-        if (computedStyle.overflow === 'auto' || computedStyle.overflowY === 'auto') {
-          (scrollContainerRef as React.MutableRefObject<HTMLElement | null>).current = scrollContainer;
-          
+        if (
+          computedStyle.overflow === 'auto' ||
+          computedStyle.overflowY === 'auto'
+        ) {
+          (
+            scrollContainerRef as React.MutableRefObject<HTMLElement | null>
+          ).current = scrollContainer;
+
           // Append sentinel inside the scroll container (after the table)
-          if (sentinelRef.current && sentinelRef.current.parentElement !== scrollContainer) {
+          if (
+            sentinelRef.current &&
+            sentinelRef.current.parentElement !== scrollContainer
+          ) {
             scrollContainer.appendChild(sentinelRef.current);
           }
         }
@@ -125,22 +149,26 @@ export function ControlStoreModal({
       const loadControl = async () => {
         const id = parseInt(controlId, 10);
         if (isNaN(id)) return;
-        
+
         setLoadingControlId(id);
         try {
-          const { data: controlData, error: fetchError } = await api.controls.getData(id);
+          const { data: controlData, error: fetchError } =
+            await api.controls.getData(id);
           if (fetchError || !controlData?.data) {
             notifications.show({
-              title: "Error",
-              message: "Failed to load control configuration",
-              color: "red",
+              title: 'Error',
+              message: 'Failed to load control configuration',
+              color: 'red',
             });
             return;
           }
           // Find the control summary from the list
           const controlSummary = controls.find((c) => c.id === id);
           if (controlSummary) {
-            setSelectedControl({ summary: controlSummary, definition: controlData.data });
+            setSelectedControl({
+              summary: controlSummary,
+              definition: controlData.data,
+            });
           }
         } finally {
           setLoadingControlId(null);
@@ -159,7 +187,10 @@ export function ControlStoreModal({
   }, [editModalOpened, selectedControl]);
 
   const handleCopyControl = async (control: ControlSummary) => {
-    openModal("control-store", { submodal: "edit", controlId: control.id.toString() });
+    openModal(MODAL_NAMES.CONTROL_STORE, {
+      submodal: SUBMODAL_NAMES.EDIT,
+      controlId: control.id.toString(),
+    });
   };
 
   const handleEditModalClose = () => {
@@ -183,10 +214,10 @@ export function ControlStoreModal({
       control: {
         ...definition,
         // Ensure we have the proper types
-        execution: (definition.execution ?? "server") as "server" | "sdk",
+        execution: (definition.execution ?? 'server') as 'server' | 'sdk',
         scope: {
           ...definition.scope,
-          stages: (definition.scope?.stages ?? ["post"]) as ("post" | "pre")[],
+          stages: (definition.scope?.stages ?? ['post']) as ('post' | 'pre')[],
         },
       },
     };
@@ -194,21 +225,21 @@ export function ControlStoreModal({
 
   const columns: ColumnDef<ControlSummary>[] = [
     {
-      id: "enabled",
-      header: "",
-      accessorKey: "enabled",
+      id: 'enabled',
+      header: '',
+      accessorKey: 'enabled',
       size: 40,
       cell: ({ row }) => (
         <Group justify="center">
-          <Tooltip label={row.original.enabled ? "Enabled" : "Disabled"}>
+          <Tooltip label={row.original.enabled ? 'Enabled' : 'Disabled'}>
             <Box
               style={{
                 width: 10,
                 height: 10,
-                borderRadius: "50%",
+                borderRadius: '50%',
                 backgroundColor: row.original.enabled
-                  ? "var(--mantine-color-green-6)"
-                  : "var(--mantine-color-gray-5)",
+                  ? 'var(--mantine-color-green-6)'
+                  : 'var(--mantine-color-gray-5)',
               }}
             />
           </Tooltip>
@@ -216,9 +247,9 @@ export function ControlStoreModal({
       ),
     },
     {
-      id: "name",
-      header: "Name",
-      accessorKey: "name",
+      id: 'name',
+      header: 'Name',
+      accessorKey: 'name',
       size: 150,
       cell: ({ row }) => (
         <Text size="sm" fw={500}>
@@ -227,27 +258,35 @@ export function ControlStoreModal({
       ),
     },
     {
-      id: "description",
-      header: "Description",
-      accessorKey: "description",
+      id: 'description',
+      header: 'Description',
+      accessorKey: 'description',
       size: 200,
       cell: ({ row }) => (
-        <Tooltip label={row.original.description} withArrow disabled={!row.original.description}>
+        <Tooltip
+          label={row.original.description}
+          withArrow
+          disabled={!row.original.description}
+        >
           <Text size="sm" c="dimmed" lineClamp={1}>
-            {row.original.description || "—"}
+            {row.original.description || '—'}
           </Text>
         </Tooltip>
       ),
     },
     {
-      id: "agent",
-      header: "Agent",
+      id: 'agent',
+      header: 'Agent',
       size: 150,
       cell: ({ row }) => {
         const agent = (row.original as ControlSummaryWithAgent).used_by_agent;
         const control = row.original;
         if (!agent) {
-          return <Text size="sm" c="dimmed">—</Text>;
+          return (
+            <Text size="sm" c="dimmed">
+              —
+            </Text>
+          );
         }
         // Link to agent controls tab with control name filter
         const href = `/agents/${agent.agent_id}/controls?q=${encodeURIComponent(control.name)}`;
@@ -268,8 +307,8 @@ export function ControlStoreModal({
       },
     },
     {
-      id: "actions",
-      header: "",
+      id: 'actions',
+      header: '',
       size: 100,
       cell: ({ row }) => (
         <Group gap="md" justify="flex-end" wrap="nowrap">
@@ -298,12 +337,12 @@ export function ControlStoreModal({
         styles={{
           body: {
             padding: 0,
-            width: "900px",
-            height: "600px",
+            width: '900px',
+            height: '600px',
           },
         }}
       >
-        <Box h="100%" style={{ display: "flex", flexDirection: "column" }}>
+        <Box h="100%" style={{ display: 'flex', flexDirection: 'column' }}>
           {/* Header */}
           <Box p="md">
             <Group justify="space-between" mb="xs">
@@ -335,7 +374,11 @@ export function ControlStoreModal({
               <Button
                 variant="filled"
                 size="sm"
-                onClick={() => openModal("control-store", { submodal: "add-new" })}
+                onClick={() =>
+                  openModal(MODAL_NAMES.CONTROL_STORE, {
+                    submodal: SUBMODAL_NAMES.ADD_NEW,
+                  })
+                }
                 data-testid="footer-new-control-button"
               >
                 Create Control
@@ -344,7 +387,16 @@ export function ControlStoreModal({
           </Box>
 
           {/* Scrollable Table Content */}
-          <Box px="md" pb="md" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <Box
+            px="md"
+            pb="md"
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
             {isLoading ? (
               <Paper p="xl" ta="center" withBorder radius="sm">
                 <Loader size="sm" />
@@ -360,23 +412,28 @@ export function ControlStoreModal({
                 </Stack>
               </Paper>
             ) : controls.length > 0 ? (
-              <Box 
+              <Box
                 ref={tableWrapperRef}
-                style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
               >
-                <Table 
-                  columns={columns} 
-                  data={controls} 
-                  highlightOnHover 
+                <Table
+                  columns={columns}
+                  data={controls}
+                  highlightOnHover
                   maxHeight="100%"
                 />
                 {/* Load more sentinel for infinite scroll - will be moved inside table's scroll container by useEffect */}
                 <div ref={sentinelRef} style={{ height: 1 }} />
-                {isFetchingNextPage && (
+                {isFetchingNextPage ? (
                   <Box py="md" ta="center">
                     <Loader size="sm" />
                   </Box>
-                )}
+                ) : null}
               </Box>
             ) : (
               <Paper p="xl" withBorder radius="sm" ta="center">
@@ -395,12 +452,12 @@ export function ControlStoreModal({
         size="xl"
         keepMounted={false}
         styles={{
-          title: { fontSize: "18px", fontWeight: 600 },
-          content: { maxWidth: "1500px", width: "90vw" },
+          title: { fontSize: '18px', fontWeight: 600 },
+          content: { maxWidth: '1500px', width: '90vw' },
         }}
       >
         <ErrorBoundary variant="modal">
-          {draftControl && (
+          {draftControl ? (
             <EditControlContent
               control={draftControl}
               agentId={agentId}
@@ -408,7 +465,7 @@ export function ControlStoreModal({
               onClose={handleEditModalClose}
               onSuccess={handleEditModalSuccess}
             />
-          )}
+          ) : null}
         </ErrorBoundary>
       </Modal>
 

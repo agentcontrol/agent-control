@@ -1,10 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef } from 'react';
 
-interface UseInfiniteScrollOptions {
+type UseInfiniteScrollOptions = {
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
-}
+};
 
 /**
  * Custom hook for infinite scroll with IntersectionObserver.

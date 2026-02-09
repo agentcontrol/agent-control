@@ -1,29 +1,23 @@
-import {
-  MultiSelect,
-  Select,
-  Stack,
-  Switch,
-  TagsInput,
-} from "@mantine/core";
+import { MultiSelect, Select, Stack, Switch, TagsInput } from '@mantine/core';
 
 import type {
   ControlActionDecision,
   ControlExecution,
   ControlStage,
-} from "@/core/api/types";
+} from '@/core/api/types';
 import {
   labelPropsInline,
   LabelWithTooltip,
-} from "@/core/components/label-with-tooltip";
+} from '@/core/components/label-with-tooltip';
 
-import { StepNameInput } from "./step-name-input";
-import type { ControlDefinitionFormProps } from "./types";
+import { StepNameInput } from './step-name-input';
+import type { ControlDefinitionFormProps } from './types';
 
 export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
   return (
-    <Stack gap='md'>
+    <Stack gap="md">
       <Switch
-        size='sm'
+        size="sm"
         color="green.5"
         label={
           <LabelWithTooltip
@@ -31,7 +25,7 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
             tooltip="Whether this control is active"
           />
         }
-        {...form.getInputProps("enabled", { type: "checkbox" })}
+        {...form.getInputProps('enabled', { type: 'checkbox' })}
       />
 
       <StepNameInput form={form} />
@@ -45,15 +39,15 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "pre", label: "Pre (before execution)" },
-          { value: "post", label: "Post (after execution)" },
+          { value: 'pre', label: 'Pre (before execution)' },
+          { value: 'post', label: 'Post (after execution)' },
         ]}
-        size='sm'
-        placeholder='All stages'
+        size="sm"
+        placeholder="All stages"
         clearable
         value={form.values.stages}
         onChange={(value) =>
-          form.setFieldValue("stages", value as ControlStage[])
+          form.setFieldValue('stages', value as ControlStage[])
         }
       />
 
@@ -67,20 +61,18 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
         labelProps={labelPropsInline}
         required
         data={[
-          { value: "*", label: "* (entire payload)" },
-          { value: "input", label: "input" },
-          { value: "output", label: "output" },
-          { value: "context", label: "context" },
-          { value: "name", label: "name" },
-          { value: "type", label: "type" },
+          { value: '*', label: '* (entire payload)' },
+          { value: 'input', label: 'input' },
+          { value: 'output', label: 'output' },
+          { value: 'context', label: 'context' },
+          { value: 'name', label: 'name' },
+          { value: 'type', label: 'type' },
         ]}
         size="sm"
         searchable
         allowDeselect={false}
-        {...form.getInputProps("selector_path")}
-        onChange={(value) =>
-          form.setFieldValue("selector_path", value || "*")
-        }
+        {...form.getInputProps('selector_path')}
+        onChange={(value) => form.setFieldValue('selector_path', value || '*')}
       />
 
       <Select
@@ -92,17 +84,17 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "allow", label: "Allow" },
-          { value: "deny", label: "Deny" },
-          { value: "warn", label: "Warn" },
-          { value: "log", label: "Log" },
+          { value: 'allow', label: 'Allow' },
+          { value: 'deny', label: 'Deny' },
+          { value: 'warn', label: 'Warn' },
+          { value: 'log', label: 'Log' },
         ]}
-        size='sm'
-        {...form.getInputProps("action_decision")}
+        size="sm"
+        {...form.getInputProps('action_decision')}
         onChange={(value) =>
           form.setFieldValue(
-            "action_decision",
-            (value as ControlActionDecision) || "deny"
+            'action_decision',
+            (value as ControlActionDecision) || 'deny'
           )
         }
       />
@@ -116,15 +108,15 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "server", label: "Server" },
-          { value: "sdk", label: "SDK" },
+          { value: 'server', label: 'Server' },
+          { value: 'sdk', label: 'SDK' },
         ]}
-        size='sm'
-        {...form.getInputProps("execution")}
+        size="sm"
+        {...form.getInputProps('execution')}
         onChange={(value) =>
           form.setFieldValue(
-            "execution",
-            (value as ControlExecution) || "server"
+            'execution',
+            (value as ControlExecution) || 'server'
           )
         }
       />
@@ -137,12 +129,12 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
           />
         }
         labelProps={labelPropsInline}
-        data={["llm", "tool"]}
-        size='sm'
-        placeholder='All step types'
+        data={['llm', 'tool']}
+        size="sm"
+        placeholder="All step types"
         clearable
         value={form.values.step_types}
-        onChange={(value) => form.setFieldValue("step_types", value)}
+        onChange={(value) => form.setFieldValue('step_types', value)}
       />
     </Stack>
   );

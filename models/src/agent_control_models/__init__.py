@@ -75,6 +75,8 @@ from .server import (
     PatchControlResponse,
     StepKey,
     UpdateEvaluatorConfigRequest,
+    ValidateControlDataRequest,
+    ValidateControlDataResponse,
 )
 
 __all__ = [
@@ -131,6 +133,8 @@ __all__ = [
     "PatchControlResponse",
     "StepKey",
     "UpdateEvaluatorConfigRequest",
+    "ValidateControlDataRequest",
+    "ValidateControlDataResponse",
     # Observability models
     "ControlExecutionEvent",
     "BatchEventsRequest",
