@@ -1,11 +1,12 @@
 """Evaluation check operations for Agent Control SDK."""
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal, cast
 from uuid import UUID
 
 from .client import AgentControlClient
-from .observability import get_logger
+from .observability import add_event, get_logger, is_observability_enabled
 
 _logger = get_logger(__name__)
 
@@ -15,6 +16,7 @@ try:
     from agent_control_engine.core import ControlEngine
     from agent_control_models import (
         ControlDefinition,
+        ControlExecutionEvent,
         ControlMatch,
         EvaluationRequest,
         EvaluationResponse,
@@ -37,6 +39,71 @@ except ImportError:
     ControlDefinition = Any  # type: ignore
     ControlMatch = Any  # type: ignore
     ControlEngine = Any  # type: ignore
+    ControlExecutionEvent = Any  # type: ignore
+
+
+def _map_applies_to(step_type: str) -> Literal["llm_call", "tool_call"]:
+    """Map step type to observability applies_to value.
+
+    Matches the server pattern at endpoints/evaluation.py.
+    """
+    return "tool_call" if step_type == "tool" else "llm_call"
+
+
+def _emit_local_events(
+    local_result: "EvaluationResponse",
+    request: "EvaluationRequest",
+    local_controls: list["_ControlAdapter"],
+    trace_id: str,
+    span_id: str,
+    agent_name: str | None,
+) -> None:
+    """Emit observability events for locally-evaluated controls.
+
+    Mirrors the server's _emit_observability_events() so that SDK-evaluated
+    controls are visible in the observability pipeline.
+
+    Only runs when observability is enabled.
+    """
+    if not is_observability_enabled():
+        return
+    if not ENGINE_AVAILABLE:
+        return
+
+    applies_to = _map_applies_to(request.step.type)
+    control_lookup = {c.id: c for c in local_controls}
+    now = datetime.now(UTC)
+
+    def _emit_matches(matches: list[ControlMatch] | None, matched: bool) -> None:
+        if not matches:
+            return
+        for m in matches:
+            ctrl = control_lookup.get(m.control_id)
+            add_event(
+                ControlExecutionEvent(
+                    control_execution_id=m.control_execution_id,
+                    trace_id=trace_id,
+                    span_id=span_id,
+                    agent_uuid=request.agent_uuid,
+                    agent_name=agent_name or "unknown",
+                    control_id=m.control_id,
+                    control_name=m.control_name,
+                    check_stage=request.stage,
+                    applies_to=applies_to,
+                    action=m.action,
+                    matched=matched,
+                    confidence=m.result.confidence,
+                    timestamp=now,
+                    evaluator_name=ctrl.control.evaluator.name if ctrl else None,
+                    selector_path=ctrl.control.selector.path if ctrl else None,
+                    error_message=m.result.error if not matched else None,
+                    metadata=m.result.metadata or {},
+                )
+            )
+
+    _emit_matches(local_result.matches, matched=True)
+    _emit_matches(local_result.errors, matched=False)
+    _emit_matches(local_result.non_matches, matched=False)
 
 
 async def check_evaluation(
@@ -166,6 +233,11 @@ def _merge_results(
     if local_result.errors or server_result.errors:
         errors = (local_result.errors or []) + (server_result.errors or [])
 
+    # Combine non_matches
+    non_matches: list[ControlMatch] | None = None
+    if local_result.non_matches or server_result.non_matches:
+        non_matches = (local_result.non_matches or []) + (server_result.non_matches or [])
+
     # Combine reasons
     reason = None
     if local_result.reason and server_result.reason:
@@ -181,6 +253,7 @@ def _merge_results(
         reason=reason,
         matches=matches if matches else None,
         errors=errors if errors else None,
+        non_matches=non_matches if non_matches else None,
     )
 
 
@@ -190,6 +263,9 @@ async def check_evaluation_with_local(
     step: "Step",
     stage: Literal["pre", "post"],
     controls: list[dict[str, Any]],
+    trace_id: str | None = None,
+    span_id: str | None = None,
+    agent_name: str | None = None,
 ) -> EvaluationResult:
     """
     Check if agent interaction is safe, running local controls first.
@@ -315,6 +391,7 @@ async def check_evaluation_with_local(
             reason=result.reason,
             matches=result.matches,
             errors=combined_errors,
+            non_matches=result.non_matches,
         )
 
     # Build evaluation request
@@ -330,6 +407,14 @@ async def check_evaluation_with_local(
         engine = ControlEngine(local_controls, context="sdk")
         local_result = await engine.process(request)
 
+        # Emit observability events for locally-evaluated controls
+        # (before short-circuit so events are always emitted for local controls)
+        if trace_id and span_id:
+            _emit_local_events(
+                local_result, request, local_controls,
+                trace_id, span_id, agent_name,
+            )
+
         # Short-circuit on local deny
         if not local_result.is_safe:
             return _with_parse_errors(
@@ -339,13 +424,22 @@ async def check_evaluation_with_local(
                     reason=local_result.reason,
                     matches=local_result.matches,
                     errors=local_result.errors,
+                    non_matches=local_result.non_matches,
                 )
             )
 
     # Call server for non-local controls (if any exist)
     if has_server_controls:
         request_payload = request.model_dump(mode="json", exclude_none=True)
-        response = await client.http_client.post("/api/v1/evaluation", json=request_payload)
+        # Forward trace context as headers so server-emitted events have correct IDs
+        headers: dict[str, str] = {}
+        if trace_id:
+            headers["X-Trace-Id"] = trace_id
+        if span_id:
+            headers["X-Span-Id"] = span_id
+        response = await client.http_client.post(
+            "/api/v1/evaluation", json=request_payload, headers=headers,
+        )
         response.raise_for_status()
         server_result = EvaluationResponse.model_validate(response.json())
 
@@ -360,6 +454,7 @@ async def check_evaluation_with_local(
                 reason=server_result.reason,
                 matches=server_result.matches,
                 errors=server_result.errors,
+                non_matches=server_result.non_matches,
             )
         )
 
@@ -372,6 +467,7 @@ async def check_evaluation_with_local(
                 reason=local_result.reason,
                 matches=local_result.matches,
                 errors=local_result.errors,
+                non_matches=local_result.non_matches,
             )
         )
 

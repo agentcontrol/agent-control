@@ -191,6 +191,7 @@ class TestPrePostExecution:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             call_stages.append(stage)
             return mock_safe_response
@@ -220,6 +221,7 @@ class TestPrePostExecution:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "pre":
                 return mock_unsafe_response
@@ -252,6 +254,7 @@ class TestPrePostExecution:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "post":
                 captured_step.update(step)
@@ -290,6 +293,7 @@ class TestInputExtraction:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "pre":
                 captured_step.update(step)
@@ -319,6 +323,7 @@ class TestInputExtraction:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "pre":
                 captured_step.update(step)
@@ -348,6 +353,7 @@ class TestInputExtraction:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "pre":
                 captured_step.update(step)
@@ -484,6 +490,7 @@ class TestStepName:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             captured_steps.append(step)
             return mock_safe_response
@@ -521,6 +528,7 @@ class TestStepName:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             captured_steps.append(step)
             return mock_safe_response
@@ -558,6 +566,7 @@ class TestStepName:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             captured_steps.append(step)
             return mock_safe_response
