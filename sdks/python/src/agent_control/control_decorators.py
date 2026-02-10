@@ -625,9 +625,7 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                 policy is automatically used. This parameter is for clarity
                 in code when multiple policies exist.
         step_name: Optional custom name for this step. If not provided, uses
-                   the function name. Useful for grouping multiple functions
-                   under the same step name for control purposes, or when the
-                   function name doesn't accurately represent the step.
+                   the function name.
 
     Returns:
         Decorated function

@@ -626,7 +626,6 @@ async def chat(message: str) -> str:
 
 - `policy` (str, optional): Policy name for documentation purposes. The agent's assigned policy is automatically used.
 - `step_name` (str, optional): Custom name for this step. If not provided, uses the function name. Useful for:
-  - Grouping multiple functions under the same step name for control purposes
   - Overriding auto-detected names when they don't match your control configuration
   - Applying the same controls to functions with different names
 
