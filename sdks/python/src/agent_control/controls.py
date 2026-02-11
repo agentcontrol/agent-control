@@ -237,7 +237,7 @@ async def add_rule_to_control(
     Associate a rule with a control.
 
     This operation is idempotent - adding the same rule multiple times has no effect.
-    Agents with policies containing this control will immediately see the added rule.
+    Agents using this control will immediately see the added rule.
 
     Args:
         client: AgentControlClient instance
@@ -274,7 +274,7 @@ async def remove_rule_from_control(
     Remove a rule from a control.
 
     This operation is idempotent - removing a non-associated rule has no effect.
-    Agents with policies containing this control will immediately lose the removed rule.
+    Agents using this control will immediately lose the removed rule.
 
     Args:
         client: AgentControlClient instance
@@ -342,7 +342,7 @@ async def delete_control(
     """
     Delete a control by ID.
 
-    By default, deletion fails if the control is associated with any policy.
+    By default, deletion fails if the control is associated with any agent.
     Use force=True to automatically dissociate and delete.
 
     Args:
@@ -353,7 +353,7 @@ async def delete_control(
     Returns:
         Dictionary containing:
             - success: True if control was deleted
-            - dissociated_from: List of policy IDs the control was removed from
+            - dissociated_from: List of agent IDs the control was removed from
 
     Raises:
         httpx.HTTPError: If request fails
@@ -369,7 +369,7 @@ async def delete_control(
                 if e.response.status_code == 409:
                     # Force delete
                     result = await delete_control(client, control_id=5, force=True)
-                    print(f"Removed from {len(result['dissociated_from'])} policies")
+                    print(f"Removed from {len(result['dissociated_from'])} agents")
     """
     params = {"force": force}
     response = await client.http_client.delete(

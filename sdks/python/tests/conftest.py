@@ -158,25 +158,6 @@ async def test_agent(
 
 
 @pytest_asyncio.fixture
-async def test_policy(
-    client: agent_control.AgentControlClient,
-    unique_name: str
-) -> AsyncGenerator[dict[str, Any], None]:
-    """
-    Create a test policy.
-
-    Returns the policy data. Note: Cleanup should be done manually
-    as we don't have a delete endpoint yet.
-    """
-    result = await agent_control.policies.create_policy(
-        client,
-        f"test-policy-{unique_name}"
-    )
-
-    yield result
-
-
-@pytest_asyncio.fixture
 async def test_control(
     client: agent_control.AgentControlClient,
     unique_name: str

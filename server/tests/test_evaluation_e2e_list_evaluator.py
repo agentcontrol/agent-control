@@ -2,7 +2,7 @@
 import uuid
 from fastapi.testclient import TestClient
 from agent_control_models import EvaluationRequest, Step
-from .utils import create_and_assign_policy
+from .utils import create_and_assign_control
 
 def test_list_evaluator_denylist_behavior(client: TestClient):
     """Test DenyList behavior: Block if ANY value matches."""
@@ -23,7 +23,7 @@ def test_list_evaluator_denylist_behavior(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="DenyListAgent")
+    agent_uuid, control_name = create_and_assign_control(client, control_data, agent_name="DenyListAgent")
 
     # Case 1: Safe Value
     # When: Sending a tool step with a safe command "ls"
@@ -71,7 +71,7 @@ def test_list_evaluator_allowlist_behavior(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="AllowListAgent")
+    agent_uuid, control_name = create_and_assign_control(client, control_data, agent_name="AllowListAgent")
 
     # Case 1: Allowed Value
     # When: Sending a tool step with the allowed tool "safe_tool"
@@ -118,7 +118,7 @@ def test_list_evaluator_case_insensitive(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="CaseAgent")
+    agent_uuid, control_name = create_and_assign_control(client, control_data, agent_name="CaseAgent")
 
     # When: Sending input "blockme" (lowercase)
     req = EvaluationRequest(
@@ -151,7 +151,7 @@ def test_list_evaluator_list_input_any_match(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="TagAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_data, agent_name="TagAgent")
 
     # Case 1: List containing restricted item
     # When: Sending tags ["public", "restricted"]
@@ -198,7 +198,7 @@ def test_list_evaluator_list_input_all_match(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="SafeTagAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_data, agent_name="SafeTagAgent")
 
     # Case 1: All items match
     # When: Sending only safe tags
@@ -244,7 +244,7 @@ def test_list_evaluator_disallow_name(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="NoDangerousTools")
+    agent_uuid, control_name = create_and_assign_control(client, control_data, agent_name="NoDangerousTools")
 
     # Case 1: Allowed Tool
     # When: Calling a safe tool
@@ -289,7 +289,7 @@ def test_list_evaluator_allow_only_argument_values(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="RegionPolicy")
+    agent_uuid, control_name = create_and_assign_control(client, control_data, agent_name="RegionAgent")
 
     # Case 1: Allowed Value
     # When: Using an allowed region
@@ -335,7 +335,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_empty, agent_name="EmptyControlAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_empty, agent_name="EmptyControlAgent")
 
     # When: Calling any tool
     req = EvaluationRequest(
@@ -365,7 +365,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_types, agent_name="TypeAgent")
+    agent_uuid, control_name = create_and_assign_control(client, control_types, agent_name="TypeAgent")
 
     # When: Input is integer 10
     req_int = EvaluationRequest(
@@ -405,7 +405,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_special, agent_name="SpecialCharAgent")
+    agent_uuid, control_name = create_and_assign_control(client, control_special, agent_name="SpecialCharAgent")
 
     # When: Input exactly matches "(test)"
     req_special = EvaluationRequest(
@@ -446,7 +446,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_null, agent_name="NullAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_null, agent_name="NullAgent")
 
     # When: Selector returns None
     req_null = EvaluationRequest(
@@ -482,7 +482,7 @@ def test_list_evaluator_re2_corner_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_large, agent_name="LargeListAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_large, agent_name="LargeListAgent")
 
     # When: Matching the last item
     req = EvaluationRequest(
@@ -514,7 +514,7 @@ def test_list_evaluator_newline_strictness(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_strict, agent_name="StrictAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_strict, agent_name="StrictAgent")
 
     # When: Sending "exact\n" (trailing newline)
     req_newline = EvaluationRequest(

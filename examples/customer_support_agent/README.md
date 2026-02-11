@@ -122,7 +122,7 @@ Run all test scenarios automatically:
 python examples/customer_support_agent/run_demo.py --automated
 ```
 
-### Reset Agent Controls
+### Remove Agent Controls
 
 To remove all controls from the agent (keeps the agent registered):
 ```bash
@@ -168,7 +168,7 @@ agent_control.init(
 
 This:
 - Registers the agent with the server
-- Fetches the assigned policy and controls
+- Fetches the agent's assigned controls
 - Enables the `@control()` decorator
 
 ### 2. Protecting Functions
@@ -209,10 +209,10 @@ except ControlViolationError as e:
 **Important**: Controls are defined on the server via the UI, not in code.
 
 This design provides:
-- **Centralized management**: Security team controls policies without code changes
+- **Centralized management**: Security team manages controls without code changes
 - **Instant updates**: Change controls without redeploying agents
 - **Audit trail**: Server logs all control evaluations
-- **Separation of concerns**: Developers focus on features, security team on policies
+- **Separation of concerns**: Developers focus on features, security team on controls
 
 ## Project Structure
 

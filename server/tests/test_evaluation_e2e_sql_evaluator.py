@@ -3,7 +3,7 @@
 from agent_control_models import EvaluationRequest, Step
 from fastapi.testclient import TestClient
 
-from .utils import create_and_assign_policy
+from .utils import create_and_assign_control
 
 # =============================================================================
 # Step Tests - Pre-check validation
@@ -30,7 +30,7 @@ def test_sql_read_only_agent(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_uuid, control_name = create_and_assign_control(
         client, control_data, agent_name="ReadOnlyAgent"
     )
 
@@ -114,7 +114,7 @@ def test_sql_multi_tenant_security(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_uuid, control_name = create_and_assign_control(
         client, control_data, agent_name="MultiTenantAgent"
     )
 
@@ -182,7 +182,7 @@ def test_sql_block_destructive_operations(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_uuid, control_name = create_and_assign_control(
         client, control_data, agent_name="SafeAgent"
     )
 
@@ -280,7 +280,7 @@ def test_sql_table_restrictions(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_uuid, control_name = create_and_assign_control(
         client, control_data, agent_name="AnalyticsAgent"
     )
 
@@ -363,7 +363,7 @@ def test_sql_multi_statement_blocking(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_uuid, control_name = create_and_assign_control(
         client, control_data, agent_name="SingleStatementAgent"
     )
 
@@ -417,7 +417,7 @@ def test_sql_limit_enforcement(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_uuid, control_name = create_and_assign_control(
         client, control_data, agent_name="LimitAgent"
     )
 
@@ -522,7 +522,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_uuid, control_name = create_and_assign_control(
         client, control_data, agent_name="LlmReadOnlyAgent"
     )
 
@@ -587,7 +587,7 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_uuid, control_name = create_and_assign_control(
         client, control_data, agent_name="LlmSingleStatementAgent"
     )
 
@@ -638,7 +638,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_uuid, control_name = create_and_assign_control(
         client, control_data, agent_name="LlmAnalyticsAgent"
     )
 

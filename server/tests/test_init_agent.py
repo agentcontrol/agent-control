@@ -270,111 +270,86 @@ def test_init_agent_logs_warning_on_bad_existing_data(client: TestClient, caplog
 
 import uuid
 
-def _create_policy(client: TestClient) -> int:
-    # Helper: create a policy via API and return id
-    name = f"pol-{uuid.uuid4()}"
-    resp = client.put("/api/v1/policies", json={"name": name})
-    assert resp.status_code == 200
-    pid = resp.json()["policy_id"]
-    assert isinstance(pid, int)
-    return pid
 
-
-def test_set_agent_policy_first_time(client: TestClient) -> None:
-    # Given: a created policy and agent
-    policy_id = _create_policy(client)
+def test_add_control_to_agent(client: TestClient) -> None:
+    # Given: an agent and a configured control
     payload = make_agent_payload()
     r = client.post("/api/v1/agents/initAgent", json=payload)
     assert r.status_code == 200
     agent_id = payload["agent"]["agent_id"]
 
-    # When: assigning policy the first time
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-    # Then: success and no old policy
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["success"] is True
-    assert body["old_policy_id"] is None
+    from .utils import VALID_CONTROL_PAYLOAD
 
+    ctl_name = f"control-{uuid.uuid4()}"
+    ctl = client.put("/api/v1/controls", json={"name": ctl_name})
+    assert ctl.status_code == 200
+    control_id = ctl.json()["control_id"]
+    client.put(f"/api/v1/controls/{control_id}/data", json={"data": VALID_CONTROL_PAYLOAD})
 
-def test_get_agent_policy_after_assignment(client: TestClient) -> None:
-    # Given: an agent with a policy assigned
-    policy_id = _create_policy(client)
-    payload = make_agent_payload()
-    client.post("/api/v1/agents/initAgent", json=payload)
-    agent_id = payload["agent"]["agent_id"]
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-
-    # When: retrieving policy
-    resp = client.get(f"/api/v1/agents/{agent_id}/policy")
-    # Then: we see the assigned policy id
-    assert resp.status_code == 200
-    assert resp.json()["policy_id"] == policy_id
-
-
-def test_reassign_agent_policy_returns_old_id(client: TestClient) -> None:
-    # Given: an agent with an existing policy
-    first = _create_policy(client)
-    second = _create_policy(client)
-    payload = make_agent_payload()
-    client.post("/api/v1/agents/initAgent", json=payload)
-    agent_id = payload["agent"]["agent_id"]
-    client.post(f"/api/v1/agents/{agent_id}/policy/{first}")
-
-    # When: reassigning to another policy
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{second}")
-    # Then: success and old_policy_id equals the first policy id
+    # When: adding control to agent
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    # Then: success
     assert resp.status_code == 200
     assert resp.json()["success"] is True
-    assert resp.json()["old_policy_id"] == first
 
 
-def test_delete_agent_policy_then_get_404(client: TestClient) -> None:
-    # Given: an agent with a policy assigned
-    policy_id = _create_policy(client)
+def test_remove_control_from_agent(client: TestClient) -> None:
+    # Given: an agent with a control assigned
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
 
-    # When: removing the policy association
-    del_resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
-    # Then: deletion success
-    assert del_resp.status_code == 200
-    assert del_resp.json()["success"] is True
+    from .utils import VALID_CONTROL_PAYLOAD
 
-    # When: fetching policy after deletion
-    get_resp = client.get(f"/api/v1/agents/{agent_id}/policy")
-    # Then: not found
-    assert get_resp.status_code == 404
+    ctl_name = f"control-{uuid.uuid4()}"
+    ctl = client.put("/api/v1/controls", json={"name": ctl_name})
+    control_id = ctl.json()["control_id"]
+    client.put(f"/api/v1/controls/{control_id}/data", json={"data": VALID_CONTROL_PAYLOAD})
+    client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+
+    # When: removing control from agent
+    resp = client.delete(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    # Then: success
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    # When: listing controls after removal
+    r = client.get(f"/api/v1/agents/{agent_id}/controls")
+    # Then: empty list
+    assert r.status_code == 200
+    assert r.json()["controls"] == []
 
 
-def test_set_policy_agent_not_found_returns_404(client: TestClient) -> None:
-    # Given: a policy id and a random agent uuid
-    policy_id = _create_policy(client)
+def test_add_control_agent_not_found_returns_404(client: TestClient) -> None:
+    # Given: a control and a missing agent uuid
+    from .utils import VALID_CONTROL_PAYLOAD
+
+    ctl = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    control_id = ctl.json()["control_id"]
+    client.put(f"/api/v1/controls/{control_id}/data", json={"data": VALID_CONTROL_PAYLOAD})
+
     missing_agent = str(uuid.uuid4())
 
-    # When: assigning to missing agent
-    resp = client.post(f"/api/v1/agents/{missing_agent}/policy/{policy_id}")
+    # When: adding control to missing agent
+    resp = client.post(f"/api/v1/agents/{missing_agent}/controls/{control_id}")
     # Then: 404
     assert resp.status_code == 404
 
 
-def test_set_policy_not_found_returns_404(client: TestClient) -> None:
-    # Given: an agent and a bogus policy id
+def test_add_control_not_found_returns_404(client: TestClient) -> None:
+    # Given: an agent and a bogus control id
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
-    bogus_policy = "999999999"
 
-    # When: assigning a non-existent policy
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{bogus_policy}")
+    # When: adding a non-existent control
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/999999999")
     # Then: 404
     assert resp.status_code == 404
 
 
-def test_list_agent_controls_no_policy_returns_empty(client: TestClient) -> None:
-    # Given: an agent without a policy
+def test_list_agent_controls_no_controls_returns_empty(client: TestClient) -> None:
+    # Given: an agent without controls
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
@@ -386,16 +361,11 @@ def test_list_agent_controls_no_policy_returns_empty(client: TestClient) -> None
     assert r.json()["controls"] == []
 
 
-def test_list_agent_controls_with_policy(client: TestClient) -> None:
-    # Given: an agent with a policy containing one control set and one control
+def test_list_agent_controls_with_control(client: TestClient) -> None:
+    # Given: an agent with a directly assigned control
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
-
-    # Create policy, control, and wire them
-    pol_name = f"pol-{uuid.uuid4()}"
-    pol = client.put("/api/v1/policies", json={"name": pol_name})
-    policy_id = pol.json()["policy_id"]
 
     ctl_name = f"control-{uuid.uuid4()}"
     ctl = client.put("/api/v1/controls", json={"name": ctl_name})
@@ -406,9 +376,8 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
     data_payload = VALID_CONTROL_PAYLOAD
     client.put(f"/api/v1/controls/{control_id}/data", json={"data": data_payload})
 
-    # Associate control -> policy; assign policy to agent
-    client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    # Assign control directly to agent
+    client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
 
     # When: listing controls
     r = client.get(f"/api/v1/agents/{agent_id}/controls")
@@ -505,33 +474,37 @@ def test_list_agents_returns_created_agents(client: TestClient) -> None:
     assert agent1["agent_name"] == "Agent One"
     assert agent1["step_count"] == 1  # from make_agent_payload
     assert agent1["evaluator_count"] == 1
-    assert agent1["policy_id"] is None
+    assert agent1["active_controls_count"] == 0
 
     assert agent2_id in agent_map
     agent2 = agent_map[agent2_id]
     assert agent2["agent_name"] == "Agent Two"
     assert agent2["step_count"] == 2
     assert agent2["evaluator_count"] == 0
-    assert agent2["policy_id"] is None
+    assert agent2["active_controls_count"] == 0
 
 
-def test_list_agents_with_policy(client: TestClient) -> None:
-    """Test that list agents shows policy_id when assigned."""
-    # Given: an agent with a policy assigned
+def test_list_agents_with_controls(client: TestClient) -> None:
+    """Test that list agents shows active_controls_count when controls are assigned."""
+    # Given: an agent with a control assigned
+    from .utils import VALID_CONTROL_PAYLOAD
+
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
 
-    policy_id = _create_policy(client)
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    ctl = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    control_id = ctl.json()["control_id"]
+    client.put(f"/api/v1/controls/{control_id}/data", json={"data": VALID_CONTROL_PAYLOAD})
+    client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
 
     # When: listing agents
     resp = client.get("/api/v1/agents")
-    # Then: the agent shows the policy_id
+    # Then: the agent shows the active_controls_count
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["agents"]) == 1
-    assert body["agents"][0]["policy_id"] == policy_id
+    assert body["agents"][0]["active_controls_count"] == 1
 
 
 def test_list_agents_pagination(client: TestClient) -> None:

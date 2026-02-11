@@ -5,15 +5,14 @@ Setup script that creates demo controls for the Customer Support Agent.
 This script:
 1. Registers the agent with the server
 2. Creates demo controls (PII detection, prompt injection)
-3. Creates a policy and attaches controls
-4. Assigns the policy to the agent
+3. Assigns controls directly to the agent
 
 Run this after starting the server to have a working demo out of the box.
 """
 
 import asyncio
 import os
-from agent_control import Agent, AgentControlClient, agents, controls, policies
+from agent_control import Agent, AgentControlClient, agents, controls
 
 # Same agent ID as in support_agent.py
 AGENT_ID = "646d5dea-c2e6-4453-b446-7035482b38e4"

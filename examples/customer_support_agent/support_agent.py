@@ -26,7 +26,7 @@ from agent_control.tracing import with_trace
 # SDK INITIALIZATION
 # =============================================================================
 # Call this once at the start of your application.
-# The agent registers with the server and loads its assigned policy.
+# The agent registers with the server and loads its assigned controls.
 
 agent_control.init(
     agent_name="Customer Support Agent",
@@ -176,7 +176,7 @@ class TicketSystem:
 # PROTECTED AGENT FUNCTIONS
 # =============================================================================
 # These functions are protected by the @control() decorator.
-# The server evaluates controls and blocks/allows based on policy.
+# The server evaluates controls and blocks/allows based on the agent's assigned controls.
 
 
 @control()

@@ -56,8 +56,8 @@ from .observability import (
     StatsTotals,
     TimeseriesBucket,
 )
-from .policy import Policy
 from .server import (
+    AddControlToAgentResponse,
     AgentRef,
     AgentSummary,
     ControlSummary,
@@ -66,13 +66,13 @@ from .server import (
     DeleteEvaluatorConfigResponse,
     EvaluatorConfigItem,
     EvaluatorSchema,
-    GetPolicyControlsResponse,
     ListAgentsResponse,
     ListControlsResponse,
     ListEvaluatorConfigsResponse,
     PaginationInfo,
     PatchControlRequest,
     PatchControlResponse,
+    RemoveControlFromAgentResponse,
     StepKey,
     UpdateEvaluatorConfigRequest,
     ValidateControlDataRequest,
@@ -91,8 +91,6 @@ __all__ = [
     "STEP_TYPE_TOOL",
     "STEP_TYPE_LLM",
     "BUILTIN_STEP_TYPES",
-    # Policy
-    "Policy",
     # Evaluation
     "EvaluationRequest",
     "EvaluationResponse",
@@ -116,6 +114,7 @@ __all__ = [
     "get_error_title",
     "ERROR_TITLES",
     # Server models
+    "AddControlToAgentResponse",
     "AgentRef",
     "AgentSummary",
     "ControlSummary",
@@ -124,13 +123,13 @@ __all__ = [
     "DeleteControlResponse",
     "EvaluatorConfigItem",
     "EvaluatorSchema",
-    "GetPolicyControlsResponse",
     "ListAgentsResponse",
     "ListControlsResponse",
     "ListEvaluatorConfigsResponse",
     "PaginationInfo",
     "PatchControlRequest",
     "PatchControlResponse",
+    "RemoveControlFromAgentResponse",
     "StepKey",
     "UpdateEvaluatorConfigRequest",
     "ValidateControlDataRequest",

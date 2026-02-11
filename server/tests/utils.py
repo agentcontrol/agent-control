@@ -15,12 +15,12 @@ VALID_CONTROL_PAYLOAD = {
 }
 
 
-def create_and_assign_policy(
+def create_and_assign_control(
     client: TestClient,
     control_config: dict[str, Any] | None = None,
     agent_name: str = "MyTestAgent",
 ) -> tuple[uuid.UUID, str]:
-    """Helper to setup Agent -> Policy -> Control hierarchy.
+    """Helper to setup Agent -> Control direct association.
 
     Args:
         client: Test client
@@ -43,17 +43,7 @@ def create_and_assign_policy(
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": control_config})
     assert resp.status_code == 200
 
-    # 3. Create Policy
-    policy_name = f"policy-{uuid.uuid4()}"
-    resp = client.put("/api/v1/policies", json={"name": policy_name})
-    assert resp.status_code == 200
-    policy_id = resp.json()["policy_id"]
-
-    # 4. Add Control to Policy (direct relationship)
-    resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert resp.status_code == 200
-
-    # 5. Register Agent
+    # 3. Register Agent
     agent_uuid = uuid.uuid4()
     resp = client.post("/api/v1/agents/initAgent", json={
         "agent": {
@@ -64,8 +54,8 @@ def create_and_assign_policy(
     })
     assert resp.status_code == 200
 
-    # 6. Assign Policy to Agent
-    resp = client.post(f"/api/v1/agents/{str(agent_uuid)}/policy/{policy_id}")
+    # 4. Assign Control to Agent directly
+    resp = client.post(f"/api/v1/agents/{str(agent_uuid)}/controls/{control_id}")
     assert resp.status_code == 200
 
     return agent_uuid, control_name

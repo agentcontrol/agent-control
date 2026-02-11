@@ -2,11 +2,11 @@
 import uuid
 from fastapi.testclient import TestClient
 from agent_control_models import EvaluationRequest, Step
-from .utils import create_and_assign_policy
+from .utils import create_and_assign_control
 
 
 def test_evaluation_flow_deny(client: TestClient):
-    # Given: A registered agent with a policy blocking "secret"
+    # Given: A registered agent with a control blocking "secret"
     control_data = {
         "description": "Block secret",
         "enabled": True,
@@ -19,7 +19,7 @@ def test_evaluation_flow_deny(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data)
+    agent_uuid, control_name = create_and_assign_control(client, control_data)
 
     # When: Sending a request containing "secret"
     payload = Step(type="llm", name="test-step", input="This contains a secret", output=None)
@@ -38,44 +38,14 @@ def test_evaluation_flow_deny(client: TestClient):
     assert data["matches"][0]["control_name"] == control_name
 
 
-def test_evaluation_no_policy(client: TestClient):
-    """Test that an agent with no policy assigned is safe."""
-    # Given: an agent with no policy assigned
+def test_evaluation_no_controls(client: TestClient):
+    """Test that an agent with no controls assigned is safe."""
+    # Given: an agent with no controls assigned
     agent_uuid = uuid.uuid4()
     client.post("/api/v1/agents/initAgent", json={
-        "agent": {"agent_id": str(agent_uuid), "agent_name": "NoPolicyAgent"},
+        "agent": {"agent_id": str(agent_uuid), "agent_name": "NoControlsAgent"},
         "steps": []
     })
-
-    # When: evaluating content for that agent
-    req = EvaluationRequest(
-        agent_uuid=agent_uuid,
-        step=Step(type="llm", name="test-step", input="anything", output=None),
-        stage="pre"
-    )
-    resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
-
-    # Then: evaluation is safe with no matches
-    assert resp.status_code == 200
-    assert resp.json()["is_safe"] is True
-    assert not resp.json()["matches"]
-
-
-def test_evaluation_empty_policy(client: TestClient):
-    """Test that an agent with an empty policy is safe."""
-    # Given: an empty policy
-    resp = client.put("/api/v1/policies", json={"name": "empty-policy"})
-    assert resp.status_code == 200
-    policy_id = resp.json()["policy_id"]
-
-    # And: an agent assigned to that policy
-    agent_uuid = uuid.uuid4()
-    client.post("/api/v1/agents/initAgent", json={
-        "agent": {"agent_id": str(agent_uuid), "agent_name": "EmptyPolicyAgent"},
-        "steps": []
-    })
-
-    client.post(f"/api/v1/agents/{str(agent_uuid)}/policy/{policy_id}")
 
     # When: evaluating content for that agent
     req = EvaluationRequest(
@@ -106,7 +76,7 @@ def test_evaluation_path_failure(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="PathFailAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_data, agent_name="PathFailAgent")
 
     # When: Sending a request
     payload = Step(type="llm", name="test-step", input="some content", output=None)
@@ -135,7 +105,7 @@ def test_evaluation_selector_star_uses_full_step_json(client: TestClient):
         "evaluator": {"name": "json", "config": {"required_fields": ["type"]}},
         "action": {"decision": "deny"},
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="JsonStarAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_data, agent_name="JsonStarAgent")
 
     # When: evaluating a valid step payload
     payload = Step(type="llm", name="test-step", input="hello", output=None)
@@ -163,11 +133,13 @@ def test_evaluation_tool_step_nested(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="ToolNestedAgent")
+    agent_uuid, control_name = create_and_assign_control(
+        client, control_data, agent_name="ToolNestedAgent"
+    )
 
     # Case 1: Safe value
     # When: Sending safe nested value
-    safe_payload = Step(type="tool", 
+    safe_payload = Step(type="tool",
         name="configure_system",
         input={"config": {"risk_level": "low"}},
         output=None
@@ -178,14 +150,14 @@ def test_evaluation_tool_step_nested(client: TestClient):
         stage="pre"
     )
     resp = client.post("/api/v1/evaluation", json=req_safe.model_dump(mode="json"))
-    
+
     # Then: Allowed
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
 
     # Case 2: Unsafe value
     # When: Sending unsafe nested value
-    unsafe_payload = Step(type="tool", 
+    unsafe_payload = Step(type="tool",
         name="configure_system",
         input={"config": {"risk_level": "critical"}},
         output=None
@@ -206,7 +178,7 @@ def test_evaluation_tool_step_nested(client: TestClient):
 
 def test_evaluation_deny_precedence(client: TestClient):
     """Test that Deny takes precedence over other controls."""
-    # Given: A policy with two controls: one Warn, one Deny
+    # Given: An agent with two controls: one Warn, one Deny
     control_warn = {
         "description": "Warn on keyword",
         "enabled": True,
@@ -217,14 +189,11 @@ def test_evaluation_deny_precedence(client: TestClient):
         "action": {"decision": "warn"}
     }
     # Use helper to setup agent with first control
-    agent_uuid, warn_control_name = create_and_assign_policy(client, control_warn, agent_name="PrecedenceAgent")
+    agent_uuid, warn_control_name = create_and_assign_control(
+        client, control_warn, agent_name="PrecedenceAgent"
+    )
 
-    # Create and add second (Deny) control to the same policy
-    # Actually, easiest is to fetch the agent's policy ID
-    resp = client.get(f"/api/v1/agents/{agent_uuid}/policy")
-    policy_id = resp.json()["policy_id"]
-
-    # Create Deny Control
+    # Create and add second (Deny) control directly to the agent
     control_deny = {
         "description": "Deny on keyword",
         "enabled": True,
@@ -238,8 +207,8 @@ def test_evaluation_deny_precedence(client: TestClient):
     deny_control_id = resp.json()["control_id"]
     client.put(f"/api/v1/controls/{deny_control_id}/data", json={"data": control_deny})
 
-    # Add Control to Agent's Policy
-    client.post(f"/api/v1/policies/{policy_id}/controls/{deny_control_id}")
+    # Add Control to Agent directly
+    client.post(f"/api/v1/agents/{agent_uuid}/controls/{deny_control_id}")
 
     # When: Sending request matching "keyword"
     req = EvaluationRequest(
@@ -271,12 +240,12 @@ def test_evaluation_stage_filtering(client: TestClient):
         "evaluator": {"name": "regex", "config": {"pattern": "bad_output"}},
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="StageAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_data, agent_name="StageAgent")
 
     # When: evaluating at the pre stage
     req_pre = EvaluationRequest(
         agent_uuid=agent_uuid,
-        # Even if we provide output, the control shouldn't run in 'pre' stage? 
+        # Even if we provide output, the control shouldn't run in 'pre' stage?
         # Actually the control says stage='post'. If we send request with stage='pre', it skips.
         step=Step(type="llm", name="test-step", input="bad_output", output="bad_output"),
         stage="pre"
@@ -310,10 +279,9 @@ def test_evaluation_step_type_filtering(client: TestClient):
         "evaluator": {"name": "regex", "config": {"pattern": "rm_rf"}},
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="AppliesToAgent")
+    agent_uuid, _ = create_and_assign_control(client, control_data, agent_name="AppliesToAgent")
 
     # When: evaluating an LLM step (control should not apply)
-    # Note: LLM steps don't have tool names, but the engine filters by step type.
     req_llm = EvaluationRequest(
         agent_uuid=agent_uuid,
         step=Step(type="llm", name="test-step", input="rm_rf", output=None),
@@ -349,7 +317,9 @@ def test_evaluation_denylist_step_name(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="ToolBlockAgent")
+    agent_uuid, control_name = create_and_assign_control(
+        client, control_data, agent_name="ToolBlockAgent"
+    )
 
     # When: evaluating a safe tool (not in list)
     req_safe = EvaluationRequest(

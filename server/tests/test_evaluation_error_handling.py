@@ -6,15 +6,15 @@ from fastapi.testclient import TestClient
 
 from agent_control_models import EvaluationRequest, Step
 from agent_control_server.observability.ingest.base import IngestResult
-from .utils import create_and_assign_policy
+from .utils import create_and_assign_control
 
 
 def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
-    """Test that referencing missing agent evaluator fails at policy assignment.
+    """Test that referencing missing agent evaluator fails at control creation.
 
     Given: A control referencing agent:evaluator that doesn't exist
-    When: Attempting to assign policy
-    Then: Returns 400 with clear error message
+    When: Attempting to set control data
+    Then: Returns 404/422 with clear error message
     """
     # Given: an agent without evaluators
     agent_uuid = uuid.uuid4()
@@ -112,7 +112,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data)
+    agent_uuid, control_name = create_and_assign_control(client, control_data)
 
     # And: an evaluator instance that throws during evaluation
     mock_evaluator = MagicMock()
@@ -169,7 +169,7 @@ def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypat
         "evaluator": {"name": "regex", "config": {"pattern": "test"}},
         "action": {"decision": "deny"},
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data)
+    agent_uuid, _ = create_and_assign_control(client, control_data)
 
     # And: the engine raises a ValueError during processing
     import agent_control_engine.core as core_module
@@ -194,7 +194,7 @@ def test_evaluation_warns_when_observability_drops_events(
     client: TestClient, app, caplog
 ) -> None:
     # Given: an agent with a control that will match
-    agent_uuid, _ = create_and_assign_policy(client)
+    agent_uuid, _ = create_and_assign_control(client)
 
     class DroppingIngestor:
         async def ingest(self, events):  # type: ignore[no-untyped-def]

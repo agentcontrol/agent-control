@@ -13,8 +13,8 @@ class EvaluationRequest(BaseModel):
     """
     Request model for evaluation analysis.
 
-    Used to analyze agent interactions for safety violations,
-    policy compliance, and control rules.
+    Used to analyze agent interactions for safety violations
+    and control rules.
 
     Attributes:
         agent_uuid: UUID of the agent making the request

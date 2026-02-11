@@ -45,12 +45,6 @@ def _create_control_with_data(client: TestClient, data: dict) -> int:
     return control_id
 
 
-def _create_policy(client: TestClient) -> int:
-    resp = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
-    assert resp.status_code == 200
-    return resp.json()["policy_id"]
-
-
 def test_list_agent_evaluators_pagination_and_get(client: TestClient) -> None:
     # Given: an agent with multiple evaluators
     evaluators = [
@@ -206,7 +200,7 @@ def test_patch_agent_remove_steps_and_evaluators(client: TestClient) -> None:
 
 
 def test_patch_agent_remove_evaluator_in_use_conflict(client: TestClient) -> None:
-    # Given: agent with evaluator and a policy containing a control that references it
+    # Given: agent with evaluator and a control that references it
     evaluators = [
         {
             "name": "custom",
@@ -227,11 +221,9 @@ def test_patch_agent_remove_evaluator_in_use_conflict(client: TestClient) -> Non
     }
     control_id = _create_control_with_data(client, control_payload)
 
-    policy_id = _create_policy(client)
-    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-    assert assign.status_code == 200
+    # Assign control directly to agent
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    assert resp.status_code == 200
 
     # When: attempting to remove evaluator in use
     resp = client.patch(
@@ -244,8 +236,8 @@ def test_patch_agent_remove_evaluator_in_use_conflict(client: TestClient) -> Non
     assert resp.json()["error_code"] == "EVALUATOR_IN_USE"
 
 
-def test_set_agent_policy_incompatible_controls(client: TestClient) -> None:
-    # Given: a policy with a control referencing an evaluator from Agent A
+def test_add_control_to_agent_incompatible(client: TestClient) -> None:
+    # Given: a control referencing an evaluator from Agent A
     evaluators = [
         {
             "name": "custom",
@@ -262,19 +254,15 @@ def test_set_agent_policy_incompatible_controls(client: TestClient) -> None:
     }
     control_id = _create_control_with_data(client, control_payload)
 
-    policy_id = _create_policy(client)
-    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc.status_code == 200
-
     # Given: a different agent B without that evaluator
     agent_b_id, _ = _init_agent(client)
 
-    # When: assigning policy to agent B
-    resp = client.post(f"/api/v1/agents/{agent_b_id}/policy/{policy_id}")
+    # When: adding control to agent B
+    resp = client.post(f"/api/v1/agents/{agent_b_id}/controls/{control_id}")
 
-    # Then: incompatible controls error
+    # Then: incompatible control error
     assert resp.status_code == 400
-    assert resp.json()["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert resp.json()["error_code"] == "CONTROL_INCOMPATIBLE"
 
 
 def test_init_agent_rejects_builtin_evaluator_name(client: TestClient) -> None:
@@ -349,22 +337,19 @@ def test_init_agent_name_conflict_on_same_uuid(client: TestClient) -> None:
 def test_list_agent_controls_corrupted_control_data_returns_422(
     client: TestClient,
 ) -> None:
-    # Given: an agent with a policy that includes a control
+    # Given: an agent with a control assigned
     agent_id, _ = _init_agent(client)
     control_payload = deepcopy(VALID_CONTROL_PAYLOAD)
     control_payload["evaluator"] = {"name": "regex", "config": {"pattern": "x"}}
     control_id = _create_control_with_data(client, control_payload)
-    policy_id = _create_policy(client)
-    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-    assert assign.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    assert resp.status_code == 200
 
     # And: the control data is corrupted in the DB
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
-            {"data": "{\"bad\": \"data\"}", "id": control_id},
+            {"data": '{"bad": "data"}', "id": control_id},
         )
 
     # When: listing agent controls
@@ -401,7 +386,7 @@ def test_list_agent_evaluators_corrupted_data_returns_empty(client: TestClient) 
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
-            {"data": "{\"bad\": \"data\"}", "id": agent_id},
+            {"data": '{"bad": "data"}', "id": agent_id},
         )
 
     # When: listing evaluator schemas
@@ -414,13 +399,10 @@ def test_list_agent_evaluators_corrupted_data_returns_empty(client: TestClient) 
     assert body["pagination"]["total"] == 0
 
 
-def test_set_agent_policy_rejects_corrupted_agent_data(client: TestClient) -> None:
-    # Given: an agent with corrupted stored data and a policy with a control
+def test_add_control_to_agent_rejects_corrupted_agent_data(client: TestClient) -> None:
+    # Given: an agent with corrupted stored data and a configured control
     agent_id, _ = _init_agent(client)
-    policy_id = _create_policy(client)
     control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
-    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc.status_code == 200
 
     with engine.begin() as conn:
         conn.execute(
@@ -428,23 +410,29 @@ def test_set_agent_policy_rejects_corrupted_agent_data(client: TestClient) -> No
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
-    # When: assigning policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    # Manually set control to reference agent-scoped evaluator
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
+            {
+                "data": json.dumps({"evaluator": {"name": "any-agent:custom", "config": {}}}),
+                "id": control_id,
+            },
+        )
 
-    # Then: incompatible controls error is returned
+    # When: adding control to the agent
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+
+    # Then: incompatible control error is returned
     assert resp.status_code == 400
     body = resp.json()
-    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
-    assert any("corrupted data" in err.get("message", "").lower() for err in body.get("errors", []))
+    assert body["error_code"] == "CONTROL_INCOMPATIBLE"
 
 
-def test_set_agent_policy_rejects_missing_agent_evaluator(client: TestClient) -> None:
+def test_add_control_to_agent_rejects_missing_evaluator(client: TestClient) -> None:
     # Given: an agent with no evaluators and a control referencing a missing evaluator
     agent_id, agent_name = _init_agent(client)
-    policy_id = _create_policy(client)
     control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
-    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc.status_code == 200
 
     with engine.begin() as conn:
         conn.execute(
@@ -457,18 +445,18 @@ def test_set_agent_policy_rejects_missing_agent_evaluator(client: TestClient) ->
             },
         )
 
-    # When: assigning policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    # When: adding control to the agent
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
 
-    # Then: incompatible controls error is returned
+    # Then: incompatible control error is returned
     assert resp.status_code == 400
     body = resp.json()
-    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert body["error_code"] == "CONTROL_INCOMPATIBLE"
     assert any("not registered" in err.get("message", "").lower() for err in body.get("errors", []))
 
 
-def test_set_agent_policy_rejects_invalid_agent_evaluator_config(client: TestClient) -> None:
-    # Given: an agent with an evaluator schema requiring \"pattern\"
+def test_add_control_to_agent_rejects_invalid_evaluator_config(client: TestClient) -> None:
+    # Given: an agent with an evaluator schema requiring "pattern"
     agent_id, agent_name = _init_agent(
         client,
         evaluators=[
@@ -483,10 +471,7 @@ def test_set_agent_policy_rejects_invalid_agent_evaluator_config(client: TestCli
             }
         ],
     )
-    policy_id = _create_policy(client)
     control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
-    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc.status_code == 200
 
     with engine.begin() as conn:
         conn.execute(
@@ -499,185 +484,35 @@ def test_set_agent_policy_rejects_invalid_agent_evaluator_config(client: TestCli
             },
         )
 
-    # When: assigning policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    # When: adding control to the agent
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
 
-    # Then: incompatible controls error is returned
+    # Then: incompatible control error is returned
     assert resp.status_code == 400
     body = resp.json()
-    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert body["error_code"] == "CONTROL_INCOMPATIBLE"
     assert any("invalid config" in err.get("message", "").lower() for err in body.get("errors", []))
 
 
-def test_get_agent_policy_agent_not_found(client: TestClient) -> None:
-    # Given: a missing agent id
-    missing_agent = str(uuid.uuid4())
-
-    # When: retrieving policy for a non-existent agent
-    resp = client.get(f"/api/v1/agents/{missing_agent}/policy")
-
-    # Then: not found error is returned
-    assert resp.status_code == 404
-    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
-
-
-def test_delete_agent_policy_agent_not_found(client: TestClient) -> None:
-    # Given: a missing agent id
-    missing_agent = str(uuid.uuid4())
-
-    # When: deleting policy for a non-existent agent
-    resp = client.delete(f"/api/v1/agents/{missing_agent}/policy")
-
-    # Then: not found error is returned
-    assert resp.status_code == 404
-    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
-
-
-def test_delete_agent_policy_no_policy_assigned_returns_404(client: TestClient) -> None:
-    # Given: an agent with no policy assigned
+def test_add_control_to_agent_skips_controls_without_data(client: TestClient) -> None:
+    # Given: an agent and a control that has no data configured
     agent_id, _ = _init_agent(client)
-
-    # When: deleting policy
-    resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
-
-    # Then: policy not found error is returned
-    assert resp.status_code == 404
-    assert resp.json()["error_code"] == "POLICY_NOT_FOUND"
-
-
-def test_list_agents_corrupted_data_sets_zero_counts(client: TestClient) -> None:
-    # Given: an agent with corrupted data stored in the DB
-    agent_id, _ = _init_agent(
-        client,
-        steps=[{"type": "tool", "name": "tool-a", "input_schema": {}, "output_schema": {}}],
-        evaluators=[{"name": "eval-a", "config_schema": {}}],
-    )
-    with engine.begin() as conn:
-        conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
-            {"data": json.dumps({"bad": "data"}), "id": agent_id},
-        )
-
-    # When: listing agents
-    resp = client.get("/api/v1/agents")
-
-    # Then: step/evaluator counts are zeroed for corrupted data
-    assert resp.status_code == 200
-    agents = {a["agent_id"]: a for a in resp.json()["agents"]}
-    agent = agents[agent_id]
-    assert agent["step_count"] == 0
-    assert agent["evaluator_count"] == 0
-
-
-def test_get_agent_corrupted_data_returns_422(client: TestClient) -> None:
-    # Given: an agent with corrupted stored data
-    agent_id, _ = _init_agent(client)
-    with engine.begin() as conn:
-        conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
-            {"data": json.dumps({"bad": "data"}), "id": agent_id},
-        )
-
-    # When: fetching the agent
-    resp = client.get(f"/api/v1/agents/{agent_id}")
-
-    # Then: corrupted data error is returned
-    assert resp.status_code == 422
-    assert resp.json()["error_code"] == "CORRUPTED_DATA"
-
-
-def test_get_agent_corrupted_metadata_returns_422(client: TestClient) -> None:
-    # Given: an agent with invalid agent_metadata payload
-    agent_id, _ = _init_agent(client)
-    corrupted = {"agent_metadata": {}, "steps": [], "evaluators": []}
-    with engine.begin() as conn:
-        conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
-            {"data": json.dumps(corrupted), "id": agent_id},
-        )
-
-    # When: fetching the agent
-    resp = client.get(f"/api/v1/agents/{agent_id}")
-
-    # Then: corrupted metadata error is returned
-    assert resp.status_code == 422
-    assert resp.json()["error_code"] == "CORRUPTED_DATA"
-
-
-def test_get_agent_policy_missing_policy_returns_404(client: TestClient) -> None:
-    # Given: an agent assigned to a policy that cannot be found
-    agent_id, _ = _init_agent(client)
-    policy_id = _create_policy(client)
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-    assert assign.status_code == 200
-
-    from agent_control_server.db import get_async_db
-    from agent_control_server.main import app
-    from agent_control_server.models import Agent as AgentModel
-    from sqlalchemy.orm import Session
-    from unittest.mock import AsyncMock, MagicMock
-    from collections.abc import AsyncGenerator
-    from sqlalchemy.ext.asyncio import AsyncSession
-    from sqlalchemy import select
-
-    with Session(engine) as session:
-        agent_row = (
-            session.execute(
-                select(AgentModel).where(AgentModel.agent_uuid == agent_id)
-            )
-            .scalars()
-            .first()
-        )
-        assert agent_row is not None
-
-    async def mock_db_missing_policy() -> AsyncGenerator[AsyncSession, None]:
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_agent_result = MagicMock()
-        mock_agent_result.scalars.return_value.first.return_value = agent_row
-        mock_policy_result = MagicMock()
-        mock_policy_result.scalars.return_value.first.return_value = None
-        mock_session.execute = AsyncMock(
-            side_effect=[mock_agent_result, mock_policy_result]
-        )
-        yield mock_session
-
-    # When: retrieving the agent policy and policy lookup returns None
-    app.dependency_overrides[get_async_db] = mock_db_missing_policy
-    try:
-        resp = client.get(f"/api/v1/agents/{agent_id}/policy")
-    finally:
-        app.dependency_overrides.clear()
-
-    # Then: policy not found error is returned
-    assert resp.status_code == 404
-    assert resp.json()["error_code"] == "POLICY_NOT_FOUND"
-
-
-def test_set_agent_policy_skips_controls_without_data(client: TestClient) -> None:
-    # Given: an agent and a policy with a control that has no data configured
-    agent_id, _ = _init_agent(client)
-    policy_id = _create_policy(client)
     control_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
     assert control_resp.status_code == 200
     control_id = control_resp.json()["control_id"]
-    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc.status_code == 200
 
-    # When: assigning the policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    # When: adding the control to the agent
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
 
-    # Then: assignment succeeds because empty data is ignored during validation
+    # Then: succeeds because empty data is ignored during validation
     assert resp.status_code == 200
     assert resp.json()["success"] is True
 
 
-def test_set_agent_policy_skips_controls_without_evaluator_name(client: TestClient) -> None:
-    # Given: an agent and a policy with a control missing evaluator name
+def test_add_control_to_agent_skips_controls_without_evaluator_name(client: TestClient) -> None:
+    # Given: an agent and a control missing evaluator name
     agent_id, _ = _init_agent(client)
-    policy_id = _create_policy(client)
     control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
-    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc.status_code == 200
 
     with engine.begin() as conn:
         conn.execute(
@@ -685,32 +520,29 @@ def test_set_agent_policy_skips_controls_without_evaluator_name(client: TestClie
             {"data": json.dumps({"evaluator": {}}), "id": control_id},
         )
 
-    # When: assigning the policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    # When: adding control to the agent
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
 
-    # Then: assignment succeeds because evaluator name is missing
+    # Then: succeeds because evaluator name is missing
     assert resp.status_code == 200
     assert resp.json()["success"] is True
 
 
 def test_list_agents_includes_active_controls_count(client: TestClient) -> None:
-    # Given: an agent assigned to a policy with two controls
+    # Given: an agent with two controls assigned
     agent_id, _ = _init_agent(client)
-    policy_id = _create_policy(client)
     control_ids = [
         _create_control_with_data(client, VALID_CONTROL_PAYLOAD),
         _create_control_with_data(client, VALID_CONTROL_PAYLOAD),
     ]
     for control_id in control_ids:
-        assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-        assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-    assert assign.status_code == 200
+        resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+        assert resp.status_code == 200
 
     # When: listing agents
     resp = client.get("/api/v1/agents")
 
-    # Then: active_controls_count reflects the policy controls
+    # Then: active_controls_count reflects the assigned controls
     assert resp.status_code == 200
     agent = resp.json()["agents"][0]
     assert agent["active_controls_count"] == 2
@@ -775,8 +607,8 @@ def test_init_agent_adds_new_evaluator(client: TestClient) -> None:
     assert names == {"eval-a", "eval-b"}
 
 
-def test_init_agent_returns_controls_when_policy_assigned(client: TestClient) -> None:
-    # Given: an agent assigned to a policy with a control
+def test_init_agent_returns_controls_when_assigned(client: TestClient) -> None:
+    # Given: an agent with a control assigned
     agent_id = str(uuid.uuid4())
     agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
     init_resp = client.post(
@@ -794,12 +626,9 @@ def test_init_agent_returns_controls_when_policy_assigned(client: TestClient) ->
     )
     assert init_resp.status_code == 200
 
-    policy_id = _create_policy(client)
     control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
-    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-    assert assign.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    assert resp.status_code == 200
 
     # When: re-initializing the agent with the same UUID
     resp = client.post(
@@ -858,3 +687,121 @@ def test_get_agent_evaluator_corrupted_data_returns_404(client: TestClient) -> N
     # Then: evaluator not found is returned due to corrupted data
     assert resp.status_code == 404
     assert resp.json()["error_code"] == "EVALUATOR_NOT_FOUND"
+
+
+def test_list_agents_corrupted_data_sets_zero_counts(client: TestClient) -> None:
+    # Given: an agent with corrupted data stored in the DB
+    agent_id, _ = _init_agent(
+        client,
+        steps=[{"type": "tool", "name": "tool-a", "input_schema": {}, "output_schema": {}}],
+        evaluators=[{"name": "eval-a", "config_schema": {}}],
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            {"data": json.dumps({"bad": "data"}), "id": agent_id},
+        )
+
+    # When: listing agents
+    resp = client.get("/api/v1/agents")
+
+    # Then: step/evaluator counts are zeroed for corrupted data
+    assert resp.status_code == 200
+    agents = {a["agent_id"]: a for a in resp.json()["agents"]}
+    agent = agents[agent_id]
+    assert agent["step_count"] == 0
+    assert agent["evaluator_count"] == 0
+
+
+def test_get_agent_corrupted_data_returns_422(client: TestClient) -> None:
+    # Given: an agent with corrupted stored data
+    agent_id, _ = _init_agent(client)
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            {"data": json.dumps({"bad": "data"}), "id": agent_id},
+        )
+
+    # When: fetching the agent
+    resp = client.get(f"/api/v1/agents/{agent_id}")
+
+    # Then: corrupted data error is returned
+    assert resp.status_code == 422
+    assert resp.json()["error_code"] == "CORRUPTED_DATA"
+
+
+def test_get_agent_corrupted_metadata_returns_422(client: TestClient) -> None:
+    # Given: an agent with invalid agent_metadata payload
+    agent_id, _ = _init_agent(client)
+    corrupted = {"agent_metadata": {}, "steps": [], "evaluators": []}
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            {"data": json.dumps(corrupted), "id": agent_id},
+        )
+
+    # When: fetching the agent
+    resp = client.get(f"/api/v1/agents/{agent_id}")
+
+    # Then: corrupted metadata error is returned
+    assert resp.status_code == 422
+    assert resp.json()["error_code"] == "CORRUPTED_DATA"
+
+
+def test_add_control_to_agent_not_found(client: TestClient) -> None:
+    # Given: a missing agent id
+    missing_agent = str(uuid.uuid4())
+
+    # When: adding control to non-existent agent
+    resp = client.post(f"/api/v1/agents/{missing_agent}/controls/1")
+
+    # Then: not found error
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
+
+
+def test_add_control_to_agent_control_not_found(client: TestClient) -> None:
+    # Given: an existing agent
+    agent_id, _ = _init_agent(client)
+
+    # When: adding non-existent control
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/99999")
+
+    # Then: control not found
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
+
+
+def test_remove_control_from_agent(client: TestClient) -> None:
+    # Given: an agent with a control assigned
+    agent_id, _ = _init_agent(client)
+    control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    assert resp.status_code == 200
+
+    # When: removing the control
+    resp = client.delete(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+
+    # Then: success
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    # Then: control is no longer listed
+    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    assert resp.status_code == 200
+    assert resp.json()["controls"] == []
+
+
+def test_add_control_idempotent(client: TestClient) -> None:
+    # Given: an agent with a control assigned
+    agent_id, _ = _init_agent(client)
+    control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    assert resp.status_code == 200
+
+    # When: adding the same control again
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+
+    # Then: still succeeds (idempotent)
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True

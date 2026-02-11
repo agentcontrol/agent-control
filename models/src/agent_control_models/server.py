@@ -23,16 +23,6 @@ class EvaluatorSchema(BaseModel):
     description: str | None = Field(None, max_length=1000, description="Optional description")
 
 
-class CreatePolicyRequest(BaseModel):
-    name: str = Field(
-        ...,
-        min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
-        description="Unique policy name (letters, numbers, hyphens, underscores)",
-    )
-
-
 class CreateControlRequest(BaseModel):
     name: str = Field(
         ...,
@@ -102,7 +92,7 @@ class InitAgentResponse(BaseModel):
     )
     controls: list[Control] = Field(
         default_factory=list,
-        description="Active protection controls for the agent (if policy assigned)",
+        description="Active protection controls assigned to the agent",
     )
 
 
@@ -115,28 +105,21 @@ class GetAgentResponse(BaseModel):
     )
 
 
-class CreatePolicyResponse(BaseModel):
-    policy_id: int = Field(description="Identifier of the created policy")
+class AddControlToAgentResponse(BaseModel):
+    """Response for adding a control to an agent."""
+
+    success: bool = Field(description="Whether the control was successfully added to the agent")
 
 
-class SetPolicyResponse(BaseModel):
-    success: bool = Field(description="Whether the policy was successfully assigned")
-    old_policy_id: int | None = Field(
-        default=None, description="Previous policy id if one was replaced"
-    )
+class RemoveControlFromAgentResponse(BaseModel):
+    """Response for removing a control from an agent."""
 
-
-class GetPolicyResponse(BaseModel):
-    policy_id: int = Field(description="Identifier of the policy assigned to the agent")
-
-
-class DeletePolicyResponse(BaseModel):
-    success: bool = Field(description="Whether the policy was successfully removed")
+    success: bool = Field(description="Whether the control was successfully removed from the agent")
 
 
 class AgentControlsResponse(BaseModel):
     controls: list[Control] = Field(
-        description="List of controls associated with the agent via its policy"
+        description="List of controls assigned to the agent"
     )
 
 
@@ -151,14 +134,6 @@ class GetControlResponse(BaseModel):
     name: str = Field(..., description="Control name")
     data: ControlDefinition | None = Field(
         None, description="Control configuration data (None if not yet configured)"
-    )
-
-
-class GetPolicyControlsResponse(BaseModel):
-    """Response containing control IDs associated with a policy."""
-
-    control_ids: list[int] = Field(
-        description="List of control IDs associated with the policy"
     )
 
 
@@ -229,12 +204,11 @@ class AgentSummary(BaseModel):
 
     agent_id: str = Field(..., description="UUID of the agent")
     agent_name: str = Field(..., description="Human-readable name of the agent")
-    policy_id: int | None = Field(None, description="ID of assigned policy, if any")
     created_at: str | None = Field(None, description="ISO 8601 timestamp when agent was created")
     step_count: int = Field(0, description="Number of steps registered with the agent")
     evaluator_count: int = Field(0, description="Number of evaluators registered with the agent")
     active_controls_count: int = Field(
-        0, description="Number of active controls from agent's policy"
+        0, description="Number of active controls assigned to the agent"
     )
 
 
@@ -293,9 +267,9 @@ class DeleteControlResponse(BaseModel):
     """Response for deleting a control."""
 
     success: bool = Field(..., description="Whether the control was deleted")
-    dissociated_from: list[int] = Field(
+    dissociated_from: list[str] = Field(
         default_factory=list,
-        description="Policy IDs the control was removed from before deletion",
+        description="Agent IDs the control was removed from before deletion",
     )
 
 

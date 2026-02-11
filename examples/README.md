@@ -37,7 +37,7 @@ uv run python examples/agent_control_demo/update_controls.py --block-ssn
 
 **Files:**
 - `setup_controls.py` - Create and configure controls via SDK
-- `demo_agent.py` - Agent that uses `@control` decorator with server-side policies
+- `demo_agent.py` - Agent that uses `@control` decorator with server-side controls
 - `update_controls.py` - Dynamically update controls without code changes
 - `agent_luna_demo.py` - Luna-2 evaluator integration for AI safety checks
 
@@ -91,13 +91,13 @@ uv run python examples/luna2_demo.py
 import agent_control
 from agent_control import control, ControlViolationError
 
-# Initialize agent (connects to server, loads policy)
+# Initialize agent (connects to server, loads controls)
 agent_control.init(
     agent_name="my-bot",
     agent_id="550e8400-e29b-41d4-a716-446655440000",
 )
 
-# Apply the agent's assigned policy
+# Apply the agent's assigned controls
 @control()
 async def chat(message: str) -> str:
     return await assistant.respond(message)

@@ -1,4 +1,4 @@
-"""Tests for new features: evaluators endpoint, policy validation, PATCH agents."""
+"""Tests for new features: evaluators endpoint, control validation, PATCH agents."""
 
 import uuid
 
@@ -242,51 +242,40 @@ def test_patch_agent_empty_request_is_noop(client: TestClient) -> None:
 
 
 # =============================================================================
-# Policy assignment validation
+# Agent-control assignment validation
 # =============================================================================
 
 
-def _create_policy_with_control(
-    client: TestClient, policy_name: str, control_name: str, control_data: dict
-) -> tuple[int, int]:
-    """Helper to create a policy with a control.
+def _create_control(
+    client: TestClient, control_name: str, control_data: dict
+) -> int:
+    """Helper to create a configured control.
 
-    Returns (policy_id, control_id).
+    Returns control_id.
     """
-    # Create policy
-    pol_resp = client.put("/api/v1/policies", json={"name": policy_name})
-    assert pol_resp.status_code == 200
-    policy_id = pol_resp.json()["policy_id"]
-
-    # Create control
     ctl_resp = client.put("/api/v1/controls", json={"name": control_name})
     assert ctl_resp.status_code == 200
     control_id = ctl_resp.json()["control_id"]
 
-    # Set control data
     data_resp = client.put(
         f"/api/v1/controls/{control_id}/data",
         json={"data": control_data},
     )
     assert data_resp.status_code == 200
 
-    # Add control to policy
-    client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-
-    return policy_id, control_id
+    return control_id
 
 
-def test_policy_assignment_with_builtin_evaluator(client: TestClient) -> None:
-    """Given an agent and a policy with built-in evaluator control, when assigning policy, then succeeds."""
+def test_add_control_with_builtin_evaluator(client: TestClient) -> None:
+    """Given an agent and a control with built-in evaluator, when adding control, then succeeds."""
     # Given:
     agent_id = str(uuid.uuid4())
     name = f"Test Agent {uuid.uuid4().hex[:8]}"
     payload = make_agent_payload(agent_id=agent_id, name=name)
     client.post("/api/v1/agents/initAgent", json=payload)
 
-    policy_id, _ = _create_policy_with_control(
+    control_id = _create_control(
         client,
-        f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
         {
             "execution": "server",
@@ -298,14 +287,14 @@ def test_policy_assignment_with_builtin_evaluator(client: TestClient) -> None:
     )
 
     # When:
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
 
     # Then:
     assert resp.status_code == 200
 
 
-def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -> None:
-    """Given an agent with custom evaluator and matching policy, when assigning policy, then succeeds."""
+def test_add_control_with_registered_agent_evaluator(client: TestClient) -> None:
+    """Given an agent with custom evaluator and matching control, when adding control, then succeeds."""
     # Given:
     agent_id = str(uuid.uuid4())
     agent_name = f"Test Agent {uuid.uuid4().hex[:8]}"
@@ -316,9 +305,8 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
     )
     client.post("/api/v1/agents/initAgent", json=payload)
 
-    policy_id, _ = _create_policy_with_control(
+    control_id = _create_control(
         client,
-        f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
         {
             "execution": "server",
@@ -330,7 +318,7 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
     )
 
     # When:
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
 
     # Then:
     assert resp.status_code == 200
@@ -368,8 +356,8 @@ def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) 
     assert "not registered" in response_data.get("detail", "")
 
 
-def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> None:
-    """Given policy with Agent A's evaluator, when assigning to Agent B, then fails."""
+def test_add_control_cross_agent_evaluator_fails(client: TestClient) -> None:
+    """Given a control with Agent A's evaluator, when adding to Agent B, then fails."""
     # Given: Agent A has evaluator, Agent B does not
     agent_a_id = str(uuid.uuid4())
     agent_a_name = f"Agent-A-{uuid.uuid4().hex[:8]}"
@@ -385,9 +373,8 @@ def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> No
     payload_b = make_agent_payload(agent_id=agent_b_id, name=agent_b_name)
     client.post("/api/v1/agents/initAgent", json=payload_b)
 
-    policy_id, _ = _create_policy_with_control(
+    control_id = _create_control(
         client,
-        f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
         {
             "execution": "server",
@@ -398,14 +385,14 @@ def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> No
         },
     )
 
-    # When: Assign to Agent A (should succeed)
-    resp_a = client.post(f"/api/v1/agents/{agent_a_id}/policy/{policy_id}")
+    # When: Add to Agent A (should succeed)
+    resp_a = client.post(f"/api/v1/agents/{agent_a_id}/controls/{control_id}")
 
     # Then:
     assert resp_a.status_code == 200
 
-    # When: Assign same policy to Agent B (should fail)
-    resp_b = client.post(f"/api/v1/agents/{agent_b_id}/policy/{policy_id}")
+    # When: Add same control to Agent B (should fail)
+    resp_b = client.post(f"/api/v1/agents/{agent_b_id}/controls/{control_id}")
 
     # Then: (RFC 7807 format)
     assert resp_b.status_code == 400
@@ -546,10 +533,9 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
     )
     client.post("/api/v1/agents/initAgent", json=payload)
 
-    # And: A control set up to use that evaluator
-    policy_id, _ = _create_policy_with_control(
+    # And: A control set up to use that evaluator, assigned directly to agent
+    control_id = _create_control(
         client,
-        f"policy-{uuid.uuid4().hex[:8]}",
         f"control-{uuid.uuid4().hex[:8]}",
         {
             "execution": "server",
@@ -560,8 +546,8 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
         },
     )
 
-    # And: Policy assigned to agent
-    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    # And: Control assigned to agent
+    assign_resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
     assert assign_resp.status_code == 200
 
     # When: Trying to remove the evaluator
@@ -580,14 +566,14 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
     assert any("my-eval" in e.get("message", "") for e in errors)
 
 
-def test_patch_agent_remove_evaluator_allowed_without_policy(client: TestClient) -> None:
-    """Given an agent with evaluator but no policy, when removing evaluator, then succeeds.
+def test_patch_agent_remove_evaluator_allowed_without_controls(client: TestClient) -> None:
+    """Given an agent with evaluator but no controls, when removing evaluator, then succeeds.
 
-    Given: An agent with evaluator "my-eval" but no policy assigned
+    Given: An agent with evaluator "my-eval" but no controls assigned
     When: Trying to remove "my-eval" via PATCH
     Then: Succeeds since no controls can reference it
     """
-    # Given: Agent with custom evaluator but no policy
+    # Given: Agent with custom evaluator but no controls
     agent_id = str(uuid.uuid4())
     agent_name = f"Test Agent {uuid.uuid4().hex[:8]}"
     payload = make_agent_payload(
@@ -597,7 +583,7 @@ def test_patch_agent_remove_evaluator_allowed_without_policy(client: TestClient)
     )
     client.post("/api/v1/agents/initAgent", json=payload)
 
-    # When: Removing the evaluator (no policy = no controls can reference it)
+    # When: Removing the evaluator (no controls assigned = safe to remove)
     patch_resp = client.patch(
         f"/api/v1/agents/{agent_id}",
         json={"remove_evaluators": ["my-eval"]},

@@ -22,7 +22,6 @@ const agentsList: AgentSummary[] = [
   {
     agent_id: 'agent-1',
     agent_name: 'Customer Support Bot',
-    policy_id: 1,
     created_at: '2024-01-01T00:00:00Z',
     step_count: 5,
     evaluator_count: 2,
@@ -31,7 +30,6 @@ const agentsList: AgentSummary[] = [
   {
     agent_id: 'agent-2',
     agent_name: 'Data Analysis Agent',
-    policy_id: 2,
     created_at: '2024-01-02T00:00:00Z',
     step_count: 3,
     evaluator_count: 1,
@@ -40,7 +38,6 @@ const agentsList: AgentSummary[] = [
   {
     agent_id: 'agent-3',
     agent_name: 'Code Review Assistant',
-    policy_id: 3,
     created_at: '2024-01-03T00:00:00Z',
     step_count: 8,
     evaluator_count: 4,

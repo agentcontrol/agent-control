@@ -65,17 +65,13 @@ export const api = {
       apiClient.GET('/api/v1/agents/{agent_id}/controls', {
         params: { path: { agent_id: agentId } },
       }),
-    setPolicy: (agentId: GetAgentPathParams['agent_id'], policyId: number) =>
-      apiClient.POST('/api/v1/agents/{agent_id}/policy/{policy_id}', {
-        params: { path: { agent_id: agentId, policy_id: policyId } },
+    addControl: (agentId: GetAgentPathParams['agent_id'], controlId: number) =>
+      apiClient.POST('/api/v1/agents/{agent_id}/controls/{control_id}', {
+        params: { path: { agent_id: agentId, control_id: controlId } },
       }),
-    getPolicy: (agentId: GetAgentPathParams['agent_id']) =>
-      apiClient.GET('/api/v1/agents/{agent_id}/policy', {
-        params: { path: { agent_id: agentId } },
-      }),
-    deletePolicy: (agentId: GetAgentPathParams['agent_id']) =>
-      apiClient.DELETE('/api/v1/agents/{agent_id}/policy', {
-        params: { path: { agent_id: agentId } },
+    removeControl: (agentId: GetAgentPathParams['agent_id'], controlId: number) =>
+      apiClient.DELETE('/api/v1/agents/{agent_id}/controls/{control_id}', {
+        params: { path: { agent_id: agentId, control_id: controlId } },
       }),
   },
   evaluators: {
@@ -124,14 +120,6 @@ export const api = {
           response?: Response;
         }>
       )('/api/v1/controls/validate', { body: { data }, signal }),
-  },
-  policies: {
-    create: (name: string) =>
-      apiClient.PUT('/api/v1/policies', { body: { name } }),
-    addControl: (policyId: number, controlId: number) =>
-      apiClient.POST('/api/v1/policies/{policy_id}/controls/{control_id}', {
-        params: { path: { policy_id: policyId, control_id: controlId } },
-      }),
   },
   observability: {
     getStats: (params: {

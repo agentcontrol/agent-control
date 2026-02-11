@@ -479,28 +479,6 @@ test.describe('Modal Routing', () => {
     await expect(createModal).toBeVisible();
 
     // Mock successful API response for control creation
-    // Agent already has a policy (return 200 with policy_id)
-    await mockedPage.route(
-      '**/api/v1/agents/*/policy',
-      async (route, request) => {
-        if (request.method() === 'GET') {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({ policy_id: 1 }),
-          });
-        } else if (request.method() === 'POST') {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({}),
-          });
-        } else {
-          await route.continue();
-        }
-      }
-    );
-
     await mockedPage.route('**/api/v1/controls', async (route, request) => {
       if (request.method() === 'PUT') {
         await route.fulfill({
@@ -528,14 +506,15 @@ test.describe('Modal Routing', () => {
       }
     );
 
+    // Mock adding control to agent directly
     await mockedPage.route(
-      '**/api/v1/policies/*/controls/*',
+      '**/api/v1/agents/*/controls/*',
       async (route, request) => {
         if (request.method() === 'POST') {
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({}),
+            body: JSON.stringify({ success: true }),
           });
         } else {
           await route.continue();
@@ -568,7 +547,7 @@ test.describe('Modal Routing', () => {
 
     // Start waiting for API response before clicking (must be set up before the action)
     const responsePromise = mockedPage.waitForResponse(
-      '**/api/v1/policies/*/controls/*',
+      '**/api/v1/agents/*/controls/*',
       { timeout: 10000 }
     );
     await confirmButton.click();
@@ -611,14 +590,6 @@ test.describe('Modal Routing', () => {
     await expect(controlNameInput).toHaveValue(/.*-copy$/, { timeout: 5000 });
 
     // Set up mock routes for control creation flow (copying creates a new control)
-    await mockedPage.route('**/api/v1/agents/*/policy', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ policy_id: 1 }),
-      });
-    });
-
     await mockedPage.route('**/api/v1/controls', async (route, request) => {
       if (request.method() === 'PUT') {
         await route.fulfill({
@@ -646,14 +617,15 @@ test.describe('Modal Routing', () => {
       }
     );
 
+    // Mock adding control to agent directly
     await mockedPage.route(
-      '**/api/v1/policies/*/controls/*',
+      '**/api/v1/agents/*/controls/*',
       async (route, request) => {
         if (request.method() === 'POST') {
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({}),
+            body: JSON.stringify({ success: true }),
           });
         } else {
           await route.continue();
@@ -674,7 +646,7 @@ test.describe('Modal Routing', () => {
 
     // Start waiting for API response before clicking (must be set up before the action)
     const responsePromise = mockedPage.waitForResponse(
-      '**/api/v1/policies/*/controls/*',
+      '**/api/v1/agents/*/controls/*',
       { timeout: 10000 }
     );
     await confirmButton.click();

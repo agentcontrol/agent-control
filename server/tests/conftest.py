@@ -59,6 +59,17 @@ def db_schema() -> None:
                 conn.execute(text(f'CREATE DATABASE "{db_config.database}"'))
         admin_engine.dispose()
 
+    # Drop legacy tables/columns that may remain from before the policy-removal
+    # refactor. These are not in the current Base.metadata, so drop_all() won't
+    # touch them, but their FK constraints block dropping `controls` and `agents`.
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS policy_controls CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS policies CASCADE"))
+        # Remove leftover policy_id column from agents (if present)
+        conn.execute(text(
+            "ALTER TABLE IF EXISTS agents DROP COLUMN IF EXISTS policy_id"
+        ))
+
     # Recreate tables for tests in the configured database
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -107,9 +118,8 @@ def clean_db():
     with engine.begin() as conn:
         # Delete in dependency order (children before parents)
         conn.execute(text("DELETE FROM evaluator_configs"))
+        conn.execute(text("DELETE FROM agent_controls"))
         conn.execute(text("DELETE FROM agents"))
-        conn.execute(text("DELETE FROM policy_controls"))
-        conn.execute(text("DELETE FROM policies"))
         conn.execute(text("DELETE FROM controls"))
         conn.execute(text("DELETE FROM control_execution_events"))
     yield

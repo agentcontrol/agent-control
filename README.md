@@ -8,7 +8,7 @@
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
-AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
+AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
 
 ![Agent Control Architecture](docs/images/Architecture.png)
 
@@ -36,7 +36,7 @@ See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's archi
 
 - **Safety Without Code Changes** — Add guardrails with a `@control()` decorator
 - **Runtime Configuration** — Update controls without redeploying your application
-- **Centralized Policies** — Define controls once, apply to multiple agents
+- **Reusable Controls** — Define controls once, assign to multiple agents
 - **Web Dashboard** — Manage agents and controls through the UI
 - **API Key Authentication** — Secure your control server in production
 - **Pluggable Evaluators** — Regex, list matching, AI-powered detection (Luna-2), or custom evaluators
@@ -224,10 +224,10 @@ Agent Control is built as a monorepo with these components:
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                      Agent Control Server                        │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
-│  │    API     │  │    API     │  │  Registry  │  │    API     │  │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐                  │
+│  │  Controls  │  │ Evaluators │  │   Agents   │                  │
+│  │    API     │  │  Registry  │  │    API     │                  │
+│  └────────────┘  └────────────┘  └────────────┘                  │
 └──────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼

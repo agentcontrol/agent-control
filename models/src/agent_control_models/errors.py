@@ -58,7 +58,6 @@ class ErrorCode(StrEnum):
     # Resource Not Found (2xx pattern)
     RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"  # Generic fallback
     AGENT_NOT_FOUND = "AGENT_NOT_FOUND"
-    POLICY_NOT_FOUND = "POLICY_NOT_FOUND"
     CONTROL_NOT_FOUND = "CONTROL_NOT_FOUND"
     EVALUATOR_NOT_FOUND = "EVALUATOR_NOT_FOUND"
     EVALUATOR_CONFIG_NOT_FOUND = "EVALUATOR_CONFIG_NOT_FOUND"
@@ -66,7 +65,6 @@ class ErrorCode(StrEnum):
     # Conflict Errors (3xx pattern)
     AGENT_NAME_CONFLICT = "AGENT_NAME_CONFLICT"
     AGENT_UUID_CONFLICT = "AGENT_UUID_CONFLICT"
-    POLICY_NAME_CONFLICT = "POLICY_NAME_CONFLICT"
     CONTROL_NAME_CONFLICT = "CONTROL_NAME_CONFLICT"
     EVALUATOR_NAME_CONFLICT = "EVALUATOR_NAME_CONFLICT"
     EVALUATOR_CONFIG_NAME_CONFLICT = "EVALUATOR_CONFIG_NAME_CONFLICT"
@@ -79,7 +77,7 @@ class ErrorCode(StrEnum):
     INVALID_CONFIG = "INVALID_CONFIG"
     INVALID_SCHEMA = "INVALID_SCHEMA"
     CORRUPTED_DATA = "CORRUPTED_DATA"
-    POLICY_CONTROL_INCOMPATIBLE = "POLICY_CONTROL_INCOMPATIBLE"
+    CONTROL_INCOMPATIBLE = "CONTROL_INCOMPATIBLE"
 
     # Server Errors (5xx pattern)
     DATABASE_ERROR = "DATABASE_ERROR"
@@ -174,7 +172,7 @@ class ErrorDetails(BaseModel):
     )
     kind: str | None = Field(
         default=None,
-        description="Kind/type of the resource (e.g., 'Agent', 'Policy', 'Control')",
+        description="Kind/type of the resource (e.g., 'Agent', 'Control')",
     )
     causes: list[ValidationErrorItem] | None = Field(
         default=None,
@@ -350,14 +348,12 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     # Not found errors
     ErrorCode.RESOURCE_NOT_FOUND: "Resource Not Found",
     ErrorCode.AGENT_NOT_FOUND: "Agent Not Found",
-    ErrorCode.POLICY_NOT_FOUND: "Policy Not Found",
     ErrorCode.CONTROL_NOT_FOUND: "Control Not Found",
     ErrorCode.EVALUATOR_NOT_FOUND: "Evaluator Not Found",
     ErrorCode.EVALUATOR_CONFIG_NOT_FOUND: "Evaluator Config Not Found",
     # Conflict errors
     ErrorCode.AGENT_NAME_CONFLICT: "Agent Name Already Exists",
     ErrorCode.AGENT_UUID_CONFLICT: "Agent UUID Conflict",
-    ErrorCode.POLICY_NAME_CONFLICT: "Policy Name Already Exists",
     ErrorCode.CONTROL_NAME_CONFLICT: "Control Name Already Exists",
     ErrorCode.EVALUATOR_NAME_CONFLICT: "Evaluator Name Conflict",
     ErrorCode.EVALUATOR_CONFIG_NAME_CONFLICT: "Evaluator Config Name Conflict",
@@ -369,7 +365,7 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.INVALID_CONFIG: "Invalid Configuration",
     ErrorCode.INVALID_SCHEMA: "Invalid Schema",
     ErrorCode.CORRUPTED_DATA: "Corrupted Data",
-    ErrorCode.POLICY_CONTROL_INCOMPATIBLE: "Policy Control Incompatible",
+    ErrorCode.CONTROL_INCOMPATIBLE: "Control Incompatible",
     # Server errors
     ErrorCode.DATABASE_ERROR: "Database Error",
     ErrorCode.INTERNAL_ERROR: "Internal Server Error",

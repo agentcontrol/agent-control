@@ -1,7 +1,7 @@
 {
   "name": "Agent Control by Galileo - Runtime Guardrails for AI Agents",
   "short_name": "Agent Control by Galileo",
-  "description": "Policy-based control layer for AI agents. Block harmful content, prompt injections, and PII leakage in production.",
+  "description": "Control layer for AI agents. Block harmful content, prompt injections, and PII leakage in production.",
   "icons": [
     {
       "src": "/favicon-32x32.png",

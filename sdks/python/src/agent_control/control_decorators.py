@@ -1,12 +1,12 @@
 """
 Control decorator for server-side protection of agent functions.
 
-This module provides a decorator that applies server-defined policies to agent functions.
-Policies contain multiple controls (regex, list, Luna2, etc.) that are managed server-side.
+This module provides a decorator that applies server-defined controls to agent functions.
+Controls (regex, list, Luna2, etc.) are managed server-side and assigned directly to agents.
 
 Architecture:
-    SERVER defines: Policies -> Controls (stage, selector, evaluator, action)
-    SDK decorator: just marks WHERE the policy applies
+    SERVER defines: Controls (stage, selector, evaluator, action) assigned to Agents
+    SDK decorator: just marks WHERE controls are applied
 
 Usage:
     import agent_control
@@ -16,12 +16,12 @@ Usage:
         agent_id="550e8400-e29b-41d4-a716-446655440000",
     )
 
-    # Apply the agent's assigned policy
+    # Apply the agent's assigned controls
     @agent_control.control()
     async def chat(message: str) -> str:
         return await assistant.respond(message)
 
-    # The server's policy contains controls that define:
+    # The server's controls define:
     # - stage: "pre" or "post"
     # - selector.path: "input" or "output"
     # - evaluator: regex, list, Luna2 evaluator, etc.
@@ -580,17 +580,12 @@ async def _execute_with_control(
         ctx.log_end()
 
 
-def control(policy: str | None = None) -> Callable[[F], F]:
+def control() -> Callable[[F], F]:
     """
-    Decorator to apply server-defined policy at this code location.
+    Decorator to apply server-defined controls at this code location.
 
-    The policy's controls (stage, selector, evaluator, action) are defined
-    on the SERVER. This decorator just marks WHERE to apply the policy.
-
-    Args:
-        policy: Optional policy name for documentation. The agent's assigned
-                policy is automatically used. This parameter is for clarity
-                in code when multiple policies exist.
+    Controls (stage, selector, evaluator, action) are defined on the SERVER
+    and assigned directly to agents. This decorator marks WHERE to apply them.
 
     Returns:
         Decorated function
@@ -600,46 +595,33 @@ def control(policy: str | None = None) -> Callable[[F], F]:
 
     How it works:
         1. Before function execution: Calls server with stage="pre"
-           - Server evaluates all "pre" controls in the agent's policy
+           - Server evaluates all "pre" controls assigned to the agent
         2. Function executes
         3. After function execution: Calls server with stage="post"
-           - Server evaluates all "post" controls in the agent's policy
+           - Server evaluates all "post" controls assigned to the agent
 
     Example:
         import agent_control
 
-        # Initialize agent (connects to server, loads policy)
+        # Initialize agent (connects to server, loads controls)
         agent_control.init(
             agent_name="my-bot",
             agent_id="550e8400-e29b-41d4-a716-446655440000",
         )
 
-        # Apply the agent's policy (all controls)
-        @agent_control.apply_control()
+        # Apply the agent's controls
+        @agent_control.control()
         async def chat(message: str) -> str:
             return await assistant.respond(message)
-
-        # Document which policy this uses (optional, for clarity)
-        @agent_control.apply_control(policy="safety-policy")
-        async def process(input: str) -> str:
-            return await pipeline.run(input)
 
     Server Setup (separate from agent code):
         1. Create controls via API:
            PUT /api/v1/controls {"name": "block-toxic-inputs"}
            PUT /api/v1/controls/{id}/data {"data": {...}}
 
-        2. Create policy and add controls:
-           PUT /api/v1/policies {"name": "safety-policy"}
-           POST /api/v1/policies/{policy_id}/controls/{control_id}
-
-        3. Assign policy to agent:
-           POST /api/v1/agents/{agent_id}/policy/{policy_id}
+        2. Assign controls to agent:
+           POST /api/v1/agents/{agent_id}/controls/{control_id}
     """
-    # The policy parameter is for documentation only - the server uses
-    # the agent's assigned policy automatically
-    _ = policy
-
     def decorator(func: F) -> F:
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:

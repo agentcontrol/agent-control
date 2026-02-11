@@ -137,8 +137,8 @@ class TestControl:
 # CONTROL NAME TESTS
 # =============================================================================
 
-class TestPolicyHandling:
-    """Tests for policy-based control evaluation."""
+class TestControlEvaluation:
+    """Tests for control evaluation."""
 
     @pytest.mark.asyncio
     async def test_control_triggers_raise_exception(self, mock_agent, mock_unsafe_response):
@@ -156,12 +156,12 @@ class TestPolicyHandling:
             assert exc_info.value.control_name == "test-control"
 
     @pytest.mark.asyncio
-    async def test_policy_evaluates_all_controls(self, mock_agent, mock_safe_response):
-        """Test that policy evaluates all controls."""
+    async def test_control_evaluates_all_controls(self, mock_agent, mock_safe_response):
+        """Test that control evaluates all assigned controls."""
         with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
              patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response) as mock_eval:
 
-            @control()  # Apply agent's assigned policy
+            @control()  # Apply agent's assigned controls
             async def chat(message: str) -> str:
                 return f"Response to: {message}"
 
@@ -417,8 +417,8 @@ class TestStackedDecorators:
         with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
              patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
 
-            @control(policy="policy-1")
-            @control(policy="policy-2")
+            @control()
+            @control()
             async def process(input: str) -> str:
                 return input
 

@@ -23,7 +23,6 @@ from .endpoints.evaluation import router as evaluation_router
 from .endpoints.evaluator_configs import router as evaluator_config_router
 from .endpoints.evaluators import router as evaluator_router
 from .endpoints.observability import router as observability_router
-from .endpoints.policies import router as policy_router
 from .errors import (
     APIError,
     api_error_handler,
@@ -115,28 +114,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title="Agent Control Server",
-    description="""Server component for Agent Control - policy-based control for AI agents.
+    description="""Server component for Agent Control - runtime control layer for AI agents.
 
 ## Architecture
 
-The system uses a simple hierarchical model:
+The system uses a simple model:
 - **Agents**: AI systems that need control
-- **Policies**: Collections of controls assigned to agents
-- **Controls**: Individual control configurations
+- **Controls**: Individual control configurations assigned directly to agents
 
 ## Hierarchy
 
 ```
-Agent → Policy → Control(s)
+Agent → Control(s)
 ```
 
 ## Quick Start
 
 1. Register your agent with `/api/v1/agents/initAgent`
 2. Create controls with `/api/v1/controls` and configure them
-3. Create a policy and add controls to it
-4. Assign the policy to your agent
-5. Query agent's active controls with `/api/v1/agents/{agent_id}/controls`
+3. Assign controls to your agent with `/api/v1/agents/{agent_id}/controls/{control_id}`
+4. Query agent's active controls with `/api/v1/agents/{agent_id}/controls`
     """,
     version="0.1.0",
     lifespan=lifespan,
@@ -180,11 +177,6 @@ api_v1_prefix = f"{settings.api_prefix}/{settings.api_version}"
 # Protected routes (require valid API key)
 app.include_router(
     agent_router,
-    prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
-)
-app.include_router(
-    policy_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(require_api_key)],
 )

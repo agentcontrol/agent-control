@@ -70,11 +70,11 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
         </title>
         <meta
           name="description"
-          content="Production-ready runtime guardrails for AI agents. Policy-based control layer that blocks harmful content, prompt injections, and PII leakage without changing your code."
+          content="Production-ready runtime guardrails for AI agents. Control layer that blocks harmful content, prompt injections, and PII leakage without changing your code."
         />
         <meta
           name="keywords"
-          content="AI agents, guardrails, runtime safety, prompt injection, PII detection, agent control, AI safety, policy enforcement, production AI"
+          content="AI agents, guardrails, runtime safety, prompt injection, PII detection, agent control, AI safety, control enforcement, production AI"
         />
         <meta name="author" content="Rungalileo" />
 
@@ -87,7 +87,7 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
         />
         <meta
           property="og:description"
-          content="Policy-based control layer for AI agents. Block harmful content, prompt injections, and PII leakage in production."
+          content="Control layer for AI agents. Block harmful content, prompt injections, and PII leakage in production."
         />
         <meta property="og:site_name" content="Agent Control by Galileo" />
 
@@ -99,7 +99,7 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
         />
         <meta
           name="twitter:description"
-          content="Policy-based control layer for AI agents. Block harmful content, prompt injections, and PII leakage in production."
+          content="Control layer for AI agents. Block harmful content, prompt injections, and PII leakage in production."
         />
 
         {/* Theme Color */}

@@ -120,7 +120,7 @@ async def list_agents(
     Returns:
         Dictionary containing:
             - agents: List of agent summaries with agent_id, agent_name,
-                      policy_id, created_at, step_count, evaluator_count
+                      created_at, step_count, evaluator_count, active_controls_count
             - pagination: Object with limit, total, next_cursor, has_more
 
     Raises:
@@ -146,53 +146,75 @@ async def list_agents(
     return cast(dict[str, Any], response.json())
 
 
-async def get_agent_policy(
+async def add_control_to_agent(
     client: AgentControlClient,
     agent_id: str | UUID,
+    control_id: int,
 ) -> dict[str, Any]:
     """
-    Get the policy assigned to an agent.
+    Add a control to an agent.
+
+    The agent will immediately start using this control for evaluation.
+    This operation is idempotent - adding the same control again has no effect.
 
     Args:
         client: AgentControlClient instance
         agent_id: UUID string or UUID instance
+        control_id: ID of the control to add
 
     Returns:
         Dictionary containing:
-            - policy_id: ID of the policy assigned to the agent
+            - success: Whether the control was added
 
     Raises:
-        httpx.HTTPError: If request fails or agent has no policy
+        httpx.HTTPError: If request fails
+        HTTPException 404: Agent or control not found
+        HTTPException 400: Control is incompatible with agent
 
     Example:
         async with AgentControlClient() as client:
-            policy = await get_agent_policy(client, agent_id)
-            print(f"Policy ID: {policy['policy_id']}")
+            result = await add_control_to_agent(client, agent_id, control_id=5)
+            print(f"Success: {result['success']}")
     """
     agent_id_str = ensure_uuid_str(agent_id)
-    response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/policy")
+    response = await client.http_client.post(
+        f"/api/v1/agents/{agent_id_str}/controls/{control_id}"
+    )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 
 
-async def remove_agent_policy(
+async def remove_control_from_agent(
     client: AgentControlClient,
     agent_id: str | UUID,
+    control_id: int,
 ) -> dict[str, Any]:
     """
-    Remove the policy assignment from an agent.
+    Remove a control from an agent.
+
+    The agent will immediately stop using this control for evaluation.
 
     Args:
         client: AgentControlClient instance
         agent_id: UUID string or UUID instance
+        control_id: ID of the control to remove
 
     Returns:
-        Dictionary containing success flag/details
+        Dictionary containing:
+            - success: Whether the control was removed
 
     Raises:
-        httpx.HTTPError: If request fails or agent has no policy
+        httpx.HTTPError: If request fails
+        HTTPException 404: Agent not found
+
+    Example:
+        async with AgentControlClient() as client:
+            result = await remove_control_from_agent(client, agent_id, control_id=5)
+            print(f"Success: {result['success']}")
     """
     agent_id_str = ensure_uuid_str(agent_id)
-    response = await client.http_client.delete(f"/api/v1/agents/{agent_id_str}/policy")
+    response = await client.http_client.delete(
+        f"/api/v1/agents/{agent_id_str}/controls/{control_id}"
+    )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())

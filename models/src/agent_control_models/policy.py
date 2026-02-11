@@ -12,15 +12,3 @@ class Control(BaseModel):
     id: int
     name: str
     control: ControlDefinition
-
-
-class Policy(BaseModel):
-    """A policy with its associated controls.
-
-    Policies define a collection of controls that can be assigned to agents.
-    Controls are directly associated with policies (no intermediate layer).
-    """
-
-    id: int
-    name: str
-    controls: list[Control]

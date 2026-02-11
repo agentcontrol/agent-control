@@ -359,17 +359,19 @@ def test_list_controls_cursor_with_name_and_enabled_filters(client: TestClient) 
 
 
 def test_delete_control_force_dissociates(client: TestClient) -> None:
-    # Given: a control associated with a policy
+    # Given: a control associated with an agent
     control_id, _ = _create_control(client)
     data = deepcopy(VALID_CONTROL_PAYLOAD)
     _set_control_data(client, control_id, data)
 
-    policy_name = f"pol-{uuid.uuid4()}"
-    policy_resp = client.put("/api/v1/policies", json={"name": policy_name})
-    assert policy_resp.status_code == 200
-    policy_id = policy_resp.json()["policy_id"]
+    agent_uuid = str(uuid.uuid4())
+    agent_resp = client.post("/api/v1/agents/initAgent", json={
+        "agent": {"agent_id": agent_uuid, "agent_name": f"agent-{uuid.uuid4()}"},
+        "steps": [],
+    })
+    assert agent_resp.status_code == 200
 
-    assoc_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assoc_resp = client.post(f"/api/v1/agents/{agent_uuid}/controls/{control_id}")
     assert assoc_resp.status_code == 200
 
     # When: deleting without force
@@ -382,12 +384,12 @@ def test_delete_control_force_dissociates(client: TestClient) -> None:
     assert resp2.status_code == 200
     body = resp2.json()
     assert body["success"] is True
-    assert policy_id in body.get("dissociated_from", [])
+    assert agent_uuid in body.get("dissociated_from", [])
 
-    # Then: policy no longer lists the control
-    list_resp = client.get(f"/api/v1/policies/{policy_id}/controls")
+    # Then: agent no longer has the control
+    list_resp = client.get(f"/api/v1/agents/{agent_uuid}/controls")
     assert list_resp.status_code == 200
-    assert control_id not in list_resp.json()["control_ids"]
+    assert len(list_resp.json()["controls"]) == 0
 
 
 def test_get_control_corrupted_data_returns_none(client: TestClient) -> None:

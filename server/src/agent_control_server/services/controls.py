@@ -12,20 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import APIValidationError
-from ..models import Agent, Control, Policy, policy_controls
+from ..models import Control, agent_controls
 
 _logger = logging.getLogger(__name__)
-
-
-async def list_controls_for_policy(policy_id: int, db: AsyncSession) -> list[Control]:
-    """Return DB Control objects for all controls directly associated with a policy."""
-    stmt = (
-        select(Control)
-        .join(policy_controls, Control.id == policy_controls.c.control_id)
-        .where(policy_controls.c.policy_id == policy_id)
-    )
-    result = await db.execute(stmt)
-    return list(result.scalars().unique().all())
 
 
 async def list_controls_for_agent(
@@ -34,19 +23,17 @@ async def list_controls_for_agent(
     *,
     allow_invalid_step_name_regex: bool = False,
 ) -> list[APIControl]:
-    """Return API Control models for all configured controls associated with the agent's policy.
+    """Return API Control models for all controls directly associated with an agent.
 
-    Traversal: Agent -> Policy -> Controls (direct relationship).
+    Traversal: Agent -> agent_controls -> Controls.
     Uses explicit joins over association table to avoid async relationship loading.
 
     Note: Invalid ControlDefinition data triggers an APIValidationError.
     """
     stmt = (
         select(Control)
-        .join(policy_controls, Control.id == policy_controls.c.control_id)
-        .join(Policy, policy_controls.c.policy_id == Policy.id)
-        .join(Agent, Policy.id == Agent.policy_id)
-        .where(Agent.agent_uuid == agent_id)
+        .join(agent_controls, Control.id == agent_controls.c.control_id)
+        .where(agent_controls.c.agent_uuid == agent_id)
     )
 
     result = await db.execute(stmt)

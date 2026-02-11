@@ -20,7 +20,7 @@ This document provides comprehensive technical reference for Agent Control. Each
 
 ## Introduction
 
-Agent Control provides a policy-based control layer that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules, blocking harmful content, prompt injections, PII leakage, and other risks.
+Agent Control provides a control layer that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules, blocking harmful content, prompt injections, PII leakage, and other risks.
 
 ### Why Agent Control?
 
@@ -64,16 +64,16 @@ Example: *"If the output contains an SSN pattern, block the response."*
 }
 ```
 
-### Policies
+### Agent-Control Association
 
-A **Policy** is a named collection of controls assigned to agents. Policies enable you to:
+Controls are directly associated with agents in a **many-to-many** relationship. This enables you to:
 
-- Reuse control sets across multiple agents
-- Version and audit your safety rules
-- Apply different policies to different environments (dev/staging/prod)
+- Assign any combination of controls to each agent
+- Reuse controls across multiple agents
+- Add or remove controls from agents at runtime
 
 ```
-Policy → Controls → Agents
+Agents ↔ Controls (many-to-many)
 ```
 
 ### Check Stages
@@ -248,7 +248,7 @@ graph TB
 
 ### Agent Initialization
 1. **Agent Registration**: Agent initializes with `agent_control.init()`, registering with the server
-2. **Policy Assignment**: Server returns the agent's assigned policy and active controls
+2. **Control Loading**: Server returns the agent's assigned controls
 
 ### Control Execution Flow
 1. **Function Invocation**: User calls a function decorated with `@control()`
@@ -602,7 +602,7 @@ agent_control.init(
 
 ### The @control Decorator
 
-The `@control()` decorator applies server-side policies to any function.
+The `@control()` decorator applies server-side controls to any function.
 
 ```python
 from agent_control import control
@@ -718,22 +718,14 @@ async with AgentControlClient() as client:
 | `agent_control.get_control()` | Get control by ID |
 | `agent_control.update_control()` | Update control properties |
 | `agent_control.delete_control()` | Delete a control |
-| `agent_control.add_control_to_policy()` | Add control to policy |
-| `agent_control.remove_control_from_policy()` | Remove control from policy |
-| `agent_control.list_policy_controls()` | List controls in a policy |
-
-**Policy management** (via `agent_control.policies` module):
-
-| Function | Description |
-|----------|-------------|
-| `policies.create_policy()` | Create a new policy |
-| `policies.assign_policy_to_agent()` | Assign policy to agent |
+| `agent_control.add_control_to_agent()` | Add a control to an agent |
+| `agent_control.remove_control_from_agent()` | Remove a control from an agent |
 
 ---
 
 ## Server API
 
-The Agent Control server exposes a RESTful API for managing agents, controls, and policies.
+The Agent Control server exposes a RESTful API for managing agents and controls.
 
 ### Base URL
 
@@ -750,9 +742,8 @@ Default: `http://localhost:8000/api/v1`
 | `GET` | `/agents/{agent_id}` | Get agent details |
 | `PATCH` | `/agents/{agent_id}` | Update agent |
 | `GET` | `/agents/{agent_id}/controls` | List controls for agent |
-| `GET` | `/agents/{agent_id}/policy` | Get agent's policy |
-| `POST` | `/agents/{agent_id}/policy/{policy_id}` | Assign policy |
-| `DELETE` | `/agents/{agent_id}/policy` | Remove policy |
+| `POST` | `/agents/{agent_id}/controls/{control_id}` | Add control to agent |
+| `DELETE` | `/agents/{agent_id}/controls/{control_id}` | Remove control from agent |
 
 **Controls**:
 
@@ -763,15 +754,6 @@ Default: `http://localhost:8000/api/v1`
 | `GET` | `/controls/{control_id}` | Get control |
 | `PATCH` | `/controls/{control_id}` | Update control |
 | `DELETE` | `/controls/{control_id}` | Delete control |
-
-**Policies**:
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `PUT` | `/policies` | Create policy |
-| `GET` | `/policies/{policy_id}/controls` | List controls in policy |
-| `POST` | `/policies/{policy_id}/controls/{control_id}` | Add control to policy |
-| `DELETE` | `/policies/{policy_id}/controls/{control_id}` | Remove control |
 
 **System**:
 

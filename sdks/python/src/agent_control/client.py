@@ -12,7 +12,7 @@ class AgentControlClient:
 
     This is the base client that provides the HTTP connection management.
     Specific operations are organized into separate modules:
-    agents, policies, controls, evaluation.
+    agents, controls, evaluation.
 
     Authentication:
         The client supports API key authentication via the X-API-Key header.

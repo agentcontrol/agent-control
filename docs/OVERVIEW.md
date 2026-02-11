@@ -2,7 +2,7 @@
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
-Agent Control provides a policy-based control layer that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules, blocking harmful content, prompt injections, PII leakage, and other risks — all without changing your agent's code.
+Agent Control provides a control layer that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules, blocking harmful content, prompt injections, PII leakage, and other risks — all without changing your agent's code.
 
 ---
 
@@ -47,25 +47,16 @@ Example: *"If the output contains an SSN pattern, block the response."*
 }
 ```
 
-### 📋 Control Sets
+### 🔗 Agent-Control Association
 
-A **Control Set** is a named group of related controls. Use them to organize controls by purpose.
+Controls are directly associated with agents in a **many-to-many** relationship. This enables you to:
 
-| Control Set | Controls |
-|-------------|----------|
-| `safety-controls` | block-toxicity, block-harassment, block-violence |
-| `compliance-controls` | block-pii, block-phi, audit-logging |
-| `quality-controls` | check-hallucination, verify-sources |
-
-### 📜 Policies
-
-A **Policy** combines one or more Control Sets and is assigned to agents. Policies let you:
-- Reuse control sets across multiple agents
-- Version and audit your safety rules
-- Apply different policies to different environments (dev/staging/prod)
+- Assign any combination of controls to each agent
+- Reuse the same control across multiple agents
+- Add or remove controls from agents at runtime without redeployment
 
 ```
-Policy → Control Sets → Controls → Agents
+Agents ↔ Controls (many-to-many)
 ```
 
 ### 🎯 Selectors
@@ -334,22 +325,20 @@ async def chat(message: str) -> str:
 Update controls without redeploying your application. Critical for:
 - Responding to emerging threats
 - Tuning thresholds based on real-world data
-- A/B testing different safety policies
+- A/B testing different control configurations
 
-### 🎯 Centralized Policy Management
-Define controls once, apply them to multiple agents. Security teams can manage policies independently from development teams.
+### 🎯 Centralized Control Management
+Define controls once, assign them directly to multiple agents. Security teams can manage controls independently from development teams.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Policy                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │ Control Set │  │ Control Set │  │ Control Set │ │
-│  │  (Safety)   │  │ (Compliance)│  │  (Quality)  │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘ │
-└─────────────────────────────────────────────────────┘
-                         │
-        ┌────────────────┼────────────────┐
-        ▼                ▼                ▼
+   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+   │   Control    │  │   Control    │  │   Control    │
+   │  (Safety)    │  │ (Compliance) │  │  (Quality)   │
+   └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+          │                 │                 │
+          │    many-to-many │                 │
+        ┌─┼─────────────────┼─────────────────┼─┐
+        │ ▼                 ▼                 ▼ │
    ┌─────────┐      ┌─────────┐      ┌─────────┐
    │ Agent A │      │ Agent B │      │ Agent C │
    └─────────┘      └─────────┘      └─────────┘
@@ -396,10 +385,10 @@ Choose how to handle failures:
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                      Agent Control Server                         │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
-│  │    API     │  │    API     │  │  Registry  │  │    API     │  │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐                  │
+│  │  Controls  │  │ Evaluators │  │   Agents   │                  │
+│  │    API     │  │  Registry  │  │    API     │                  │
+│  └────────────┘  └────────────┘  └────────────┘                  │
 └──────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼

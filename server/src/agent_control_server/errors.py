@@ -489,7 +489,6 @@ async def validation_exception_handler(
                 "steps": "Step",
                 "evaluators": "Evaluator",
                 "data": "Control",
-                "policy": "Policy",
             }
             first_part = field_parts[0].lower()
             resource = prefix_map.get(first_part, resource)
