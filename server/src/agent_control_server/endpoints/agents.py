@@ -347,11 +347,11 @@ async def init_agent(
                 ],
             )
 
-    # Validate no duplicate step names within the same request
-    seen_step_keys: set[StepKeyTuple] = set()
+    # Build incoming_steps_by_key and validate no duplicates in single pass
+    incoming_steps_by_key: dict[StepKeyTuple, StepSchema] = {}
     for step in request.steps:
         step_key: StepKeyTuple = (step.type, step.name)
-        if step_key in seen_step_keys:
+        if step_key in incoming_steps_by_key:
             raise BadRequestError(
                 error_code=ErrorCode.VALIDATION_ERROR,
                 detail=f"Duplicate step name detected: type='{step.type}', name='{step.name}'. "
@@ -368,42 +368,44 @@ async def init_agent(
                     )
                 ],
             )
-        seen_step_keys.add(step_key)
+        incoming_steps_by_key[step_key] = step
 
-    # Look up by UUID first (primary key), then by name
+    # Look up by UUID first (primary key)
     result = await db.execute(select(Agent).where(Agent.agent_uuid == request.agent.agent_id))
     existing_by_uuid: Agent | None = result.scalars().first()
 
-    result = await db.execute(select(Agent).where(Agent.name == request.agent.agent_name))
-    existing_by_name: Agent | None = result.scalars().first()
-
-    # If UUID exists with a different name, reject (no rename via initAgent)
-    if existing_by_uuid is not None and existing_by_uuid.name != request.agent.agent_name:
-        raise ConflictError(
-            error_code=ErrorCode.AGENT_NAME_CONFLICT,
-            detail=(
-                f"Agent ID '{request.agent.agent_id}' is already registered "
-                f"with name '{existing_by_uuid.name}'"
-            ),
-            resource="Agent",
-            resource_id=str(request.agent.agent_id),
-            hint="Use the existing agent name for this UUID or register a new UUID.",
-            errors=[
-                ValidationErrorItem(
-                    resource="Agent",
-                    field="agent_name",
-                    code="name_mismatch",
-                    message=(
-                        f"Agent ID '{request.agent.agent_id}' is already associated "
-                        f"with name '{existing_by_uuid.name}'"
-                    ),
-                    value=request.agent.agent_name,
-                )
-            ],
-        )
-
-    # Use existing_by_uuid if found, otherwise existing_by_name
-    existing = existing_by_uuid or existing_by_name
+    # Perf optimization: If UUID exists, skip name query on hot path
+    if existing_by_uuid is not None:
+        # Validate name hasn't changed (no rename via initAgent)
+        if existing_by_uuid.name != request.agent.agent_name:
+            raise ConflictError(
+                error_code=ErrorCode.AGENT_NAME_CONFLICT,
+                detail=(
+                    f"Agent ID '{request.agent.agent_id}' is already registered "
+                    f"with name '{existing_by_uuid.name}'"
+                ),
+                resource="Agent",
+                resource_id=str(request.agent.agent_id),
+                hint="Use the existing agent name for this UUID or register a new UUID.",
+                errors=[
+                    ValidationErrorItem(
+                        resource="Agent",
+                        field="agent_name",
+                        code="name_mismatch",
+                        message=(
+                            f"Agent ID '{request.agent.agent_id}' is already associated "
+                            f"with name '{existing_by_uuid.name}'"
+                        ),
+                        value=request.agent.agent_name,
+                    )
+                ],
+            )
+        existing: Agent | None = existing_by_uuid
+    else:
+        # UUID doesn't exist, check if name is taken by different agent
+        result = await db.execute(select(Agent).where(Agent.name == request.agent.agent_name))
+        existing_by_name: Agent | None = result.scalars().first()
+        existing = existing_by_name
 
     created = False
 
@@ -504,9 +506,7 @@ async def init_agent(
         data_model.agent_metadata = new_metadata
 
     # --- Process steps ---
-    incoming_steps_by_key: dict[StepKeyTuple, StepSchema] = {
-        (s.type, s.name): s for s in request.steps
-    }
+    # Note: incoming_steps_by_key already built during validation above
     new_steps: list[StepSchema] = []
     seen_steps: set[StepKeyTuple] = set()
 
@@ -515,11 +515,11 @@ async def init_agent(
         if key in incoming_steps_by_key:
             if key not in seen_steps:
                 incoming_step = incoming_steps_by_key[key]
-                existing_schema = step.model_dump(mode="json")
-                incoming_schema = incoming_step.model_dump(mode="json")
 
-                # Reject if schema changed
-                if existing_schema != incoming_schema:
+                # Compare only schema fields (type/name already matched by key)
+                # Avoid model_dump() allocations by direct field comparison
+                if (step.input_schema != incoming_step.input_schema or
+                    step.output_schema != incoming_step.output_schema):
                     raise ConflictError(
                         error_code=ErrorCode.SCHEMA_INCOMPATIBLE,
                         detail=(
@@ -570,28 +570,30 @@ async def init_agent(
             old_schema = existing_ev.config_schema
             new_schema = incoming_ev.config_schema
 
-            # Check compatibility
-            is_compatible, compat_errors = check_schema_compatibility(old_schema, new_schema)
-            if not is_compatible:
-                raise ConflictError(
-                    error_code=ErrorCode.SCHEMA_INCOMPATIBLE,
-                    detail=format_compatibility_error(name, compat_errors),
-                    resource="Evaluator",
-                    resource_id=name,
-                    hint="Ensure backward compatibility or use a new evaluator name.",
-                    errors=[
-                        ValidationErrorItem(
-                            resource="Evaluator",
-                            field="config_schema",
-                            code="schema_incompatible",
-                            message=err,
-                        )
-                        for err in compat_errors
-                    ],
-                )
+            # Short-circuit: only check compatibility if schemas differ
+            if old_schema != new_schema:
+                is_compatible, compat_errors = check_schema_compatibility(old_schema, new_schema)
+                if not is_compatible:
+                    raise ConflictError(
+                        error_code=ErrorCode.SCHEMA_INCOMPATIBLE,
+                        detail=format_compatibility_error(name, compat_errors),
+                        resource="Evaluator",
+                        resource_id=name,
+                        hint="Ensure backward compatibility or use a new evaluator name.",
+                        errors=[
+                            ValidationErrorItem(
+                                resource="Evaluator",
+                                field="config_schema",
+                                code="schema_incompatible",
+                                message=err,
+                            )
+                            for err in compat_errors
+                        ],
+                    )
 
-            # Schema is compatible - update if changed
-            if existing_ev.model_dump(mode="json") != incoming_ev.model_dump(mode="json"):
+            # Check if evaluator changed (compare fields directly, avoid model_dump())
+            if (existing_ev.config_schema != incoming_ev.config_schema or
+                existing_ev.description != incoming_ev.description):
                 evaluators_changed = True
             new_evaluators.append(incoming_ev)
         else:
