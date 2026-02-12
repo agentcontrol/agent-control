@@ -347,6 +347,29 @@ async def init_agent(
                 ],
             )
 
+    # Validate no duplicate step names within the same request
+    seen_step_keys: set[StepKeyTuple] = set()
+    for step in request.steps:
+        step_key: StepKeyTuple = (step.type, step.name)
+        if step_key in seen_step_keys:
+            raise BadRequestError(
+                error_code=ErrorCode.VALIDATION_ERROR,
+                detail=f"Duplicate step name detected: type='{step.type}', name='{step.name}'. "
+                f"Each step must have a unique (type, name) combination within an agent.",
+                errors=[
+                    ValidationErrorItem(
+                        resource="Step",
+                        field="name",
+                        code="duplicate_step_name",
+                        message=(
+                            f"Step (type='{step.type}', name='{step.name}') "
+                            f"appears multiple times in request"
+                        ),
+                    )
+                ],
+            )
+        seen_step_keys.add(step_key)
+
     # Look up by UUID first (primary key), then by name
     result = await db.execute(select(Agent).where(Agent.agent_uuid == request.agent.agent_id))
     existing_by_uuid: Agent | None = result.scalars().first()
@@ -492,8 +515,33 @@ async def init_agent(
         if key in incoming_steps_by_key:
             if key not in seen_steps:
                 incoming_step = incoming_steps_by_key[key]
-                if step.model_dump(mode="json") != incoming_step.model_dump(mode="json"):
-                    steps_changed = True
+                existing_schema = step.model_dump(mode="json")
+                incoming_schema = incoming_step.model_dump(mode="json")
+
+                # Reject if schema changed
+                if existing_schema != incoming_schema:
+                    raise ConflictError(
+                        error_code=ErrorCode.SCHEMA_INCOMPATIBLE,
+                        detail=(
+                            f"Step schema conflict for (type='{step.type}', name='{step.name}'). "
+                            f"A step with this name already exists with a different schema."
+                        ),
+                        resource="Step",
+                        resource_id=step.name,
+                        hint="Please use a different step name or ensure schemas match exactly.",
+                        errors=[
+                            ValidationErrorItem(
+                                resource="Step",
+                                field="schema",
+                                code="schema_mismatch",
+                                message=(
+                                    f"Existing schema differs from incoming schema "
+                                    f"for step '{step.name}'"
+                                ),
+                            )
+                        ],
+                    )
+
                 new_steps.append(incoming_step)
                 seen_steps.add(key)
         else:

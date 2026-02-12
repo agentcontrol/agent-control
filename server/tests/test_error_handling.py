@@ -142,15 +142,23 @@ def test_init_agent_rollback_on_update_failure(
     r1 = client.post("/api/v1/agents/initAgent", json=payload)
     assert r1.status_code == 200
 
-    # When: updating with new tool and commit fails
+    # When: adding a new tool and commit fails
     updated_payload = {
         **payload,
         "steps": [
+            # Keep original tool_a unchanged (to avoid schema conflict)
             {
                 "type": "tool",
                 "name": "tool_a",
-                "input_schema": {"a": "str"},  # changed
+                "input_schema": {"a": "int"},
                 "output_schema": {"ok": "bool"},
+            },
+            # Add new tool_b
+            {
+                "type": "tool",
+                "name": "tool_b",
+                "input_schema": {"b": "str"},
+                "output_schema": {"result": "bool"},
             }
         ],
     }

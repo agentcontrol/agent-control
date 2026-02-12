@@ -193,18 +193,11 @@ def test_init_agent_overwrites_step_on_signature_change(client: TestClient) -> N
         ],
     )
     r2 = client.post("/api/v1/agents/initAgent", json=changed)
-    assert r2.status_code == 200
-    # Then: it's an update, not a create
-    assert r2.json()["created"] is False
-
-    # Then: verify overwrite in raw JSONB (single entry for tool_a with updated schema)
-    with engine.begin() as conn:
-        row = conn.execute(text("SELECT data FROM agents WHERE agent_uuid = :id"), {"id": agent_id}).first()
-        assert row is not None
-        steps = row[0].get("steps", [])
-        tool_a_entries = [s for s in steps if s.get("name") == "tool_a" and s.get("type") == "tool"]
-        assert len(tool_a_entries) == 1
-        assert tool_a_entries[0]["input_schema"] == {"a": "str"}
+    # Then: schema conflict error is returned (schema changes are now rejected)
+    assert r2.status_code == 409
+    body = r2.json()
+    assert body["error_code"] == "SCHEMA_INCOMPATIBLE"
+    assert "schema conflict" in body["detail"].lower()
 
 
 def test_get_agent_returns_evaluators(client: TestClient) -> None:

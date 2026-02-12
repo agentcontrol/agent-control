@@ -858,3 +858,129 @@ def test_get_agent_evaluator_corrupted_data_returns_404(client: TestClient) -> N
     # Then: evaluator not found is returned due to corrupted data
     assert resp.status_code == 404
     assert resp.json()["error_code"] == "EVALUATOR_NOT_FOUND"
+
+
+def test_init_agent_rejects_duplicate_step_names_in_single_request(
+    client: TestClient,
+) -> None:
+    # Given: a payload with duplicate step names
+    payload = {
+        "agent": {
+            "agent_id": str(uuid.uuid4()),
+            "agent_name": f"Agent-{uuid.uuid4().hex[:6]}",
+            "agent_description": "desc",
+            "agent_version": "1.0",
+        },
+        "steps": [
+            {"type": "tool", "name": "duplicate", "input_schema": {}, "output_schema": {}},
+            {"type": "tool", "name": "duplicate", "input_schema": {}, "output_schema": {}},
+        ],
+        "evaluators": [],
+    }
+
+    # When: initializing the agent
+    resp = client.post("/api/v1/agents/initAgent", json=payload)
+
+    # Then: validation error is returned
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error_code"] == "VALIDATION_ERROR"
+    assert "duplicate" in body["detail"].lower()
+    assert any(
+        "duplicate" in err.get("message", "").lower() for err in body.get("errors", [])
+    )
+
+
+def test_init_agent_rejects_step_schema_conflict_across_registrations(
+    client: TestClient,
+) -> None:
+    # Given: an agent registered with a step
+    agent_id = str(uuid.uuid4())
+    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    original_payload = {
+        "agent": {
+            "agent_id": agent_id,
+            "agent_name": agent_name,
+            "agent_description": "desc",
+            "agent_version": "1.0",
+        },
+        "steps": [
+            {
+                "type": "tool",
+                "name": "search",
+                "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+                "output_schema": {"type": "array"},
+            }
+        ],
+        "evaluators": [],
+    }
+    resp = client.post("/api/v1/agents/initAgent", json=original_payload)
+    assert resp.status_code == 200
+
+    # When: re-registering with same step name but different schema
+    conflicting_payload = {
+        "agent": {
+            "agent_id": agent_id,
+            "agent_name": agent_name,
+            "agent_description": "desc",
+            "agent_version": "1.0",
+        },
+        "steps": [
+            {
+                "type": "tool",
+                "name": "search",
+                "input_schema": {"type": "object", "properties": {"text": {"type": "string"}}},  # Different schema
+                "output_schema": {"type": "object"},  # Different schema
+            }
+        ],
+        "evaluators": [],
+    }
+    resp = client.post("/api/v1/agents/initAgent", json=conflicting_payload)
+
+    # Then: schema conflict error is returned
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["error_code"] == "SCHEMA_INCOMPATIBLE"
+    assert "schema conflict" in body["detail"].lower()
+    assert "search" in body["detail"]
+
+
+def test_init_agent_accepts_identical_step_schema_across_registrations(
+    client: TestClient,
+) -> None:
+    # Given: an agent registered with a step
+    agent_id = str(uuid.uuid4())
+    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    payload = {
+        "agent": {
+            "agent_id": agent_id,
+            "agent_name": agent_name,
+            "agent_description": "desc",
+            "agent_version": "1.0",
+        },
+        "steps": [
+            {
+                "type": "tool",
+                "name": "search",
+                "input_schema": {"type": "object"},
+                "output_schema": {"type": "array"},
+            }
+        ],
+        "evaluators": [],
+    }
+    resp = client.post("/api/v1/agents/initAgent", json=payload)
+    assert resp.status_code == 200
+
+    # When: re-registering with identical step schema
+    resp2 = client.post("/api/v1/agents/initAgent", json=payload)
+
+    # Then: registration succeeds
+    assert resp2.status_code == 200
+    assert resp2.json()["created"] is False  # Agent already exists
+
+    # And: step is preserved
+    get_resp = client.get(f"/api/v1/agents/{agent_id}")
+    assert get_resp.status_code == 200
+    steps = get_resp.json()["steps"]
+    assert len(steps) == 1
+    assert steps[0]["name"] == "search"
