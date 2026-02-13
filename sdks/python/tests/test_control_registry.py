@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
+import functools
 import logging
+from collections.abc import Generator
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
-
 from agent_control._control_registry import (
     clear,
     get_registered_steps,
     merge_explicit_and_auto_steps,
     register,
 )
+from pydantic import BaseModel
 
 
 @pytest.fixture(autouse=True)
@@ -171,7 +171,7 @@ class TestRegister:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         # Given a function registered before its forward-referenced model is available in globals.
-        def my_func(payload: "LaterModel") -> str:
+        def my_func(payload: LaterModel) -> str:
             ...
 
         register(my_func)
@@ -305,6 +305,34 @@ class TestDecoratorRegistration:
         assert steps[0]["name"] == "stacked"
         assert steps[0]["metadata"] == {"policy": "p1"}
 
+    def test_control_with_prior_wrapper_preserves_schema_fields(self) -> None:
+        # Given a user wrapper applied before @control() using functools.wraps.
+        from agent_control.control_decorators import control
+
+        def with_tracing(func: Any) -> Any:
+            @functools.wraps(func)
+            async def wrapped(*args: Any, **kwargs: Any) -> Any:
+                return await func(*args, **kwargs)
+
+            return wrapped
+
+        @control()
+        @with_tracing
+        async def wrapped_chat(message: str, include_context: bool = False) -> str:
+            return message
+
+        # When registered steps are materialized.
+        steps = get_registered_steps()
+
+        # Then registration keeps the original step identity and inferred schema fields.
+        assert len(steps) == 1
+        step = steps[0]
+        assert step["type"] == "llm"
+        assert step["name"] == "wrapped_chat"
+        assert step["input_schema"]["properties"]["message"]["type"] == "string"
+        assert step["input_schema"]["properties"]["include_context"]["type"] == "boolean"
+        assert step["output_schema"]["type"] == "string"
+
 
 class TestInitMerge:
     """Tests the explicit+auto merge behavior used by init()."""
@@ -345,7 +373,7 @@ class TestInitMerge:
         merge_result = merge_explicit_and_auto_steps(explicit_steps, auto_steps)
         merged = merge_result.steps
 
-        # Then the explicit version wins for the duplicate key while unrelated auto steps are retained.
+        # Then explicit wins for duplicates while unrelated auto steps are retained.
         my_step_entries = [s for s in merged if (s["type"], s["name"]) == ("llm", "my_step")]
         assert len(my_step_entries) == 1
         assert my_step_entries[0]["input_schema"] == {"custom": True}
