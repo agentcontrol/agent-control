@@ -46,12 +46,23 @@ class StepMergeResult:
     overridden_keys: list[StepKey]
 
 
+@dataclass(frozen=True)
+class _RegisteredControl:
+    """Internal metadata stored at decorator-registration time."""
+
+    func: Callable[..., Any]
+    step_type: str
+    step_name: str
+    description: str | None
+    metadata: dict[str, Any]
+
+
 # ---------------------------------------------------------------------------
 # Internal registry
 # ---------------------------------------------------------------------------
 
-_registered_steps: dict[StepKey, StepSchemaDict] = {}
-"""Maps ``(type, name)`` -> step schema dict. Keyed by type+name to deduplicate."""
+_registered_steps: dict[StepKey, _RegisteredControl] = {}
+"""Maps ``(type, name)`` -> registration metadata. Keyed by type+name to deduplicate."""
 
 
 # ---------------------------------------------------------------------------
@@ -62,9 +73,12 @@ _registered_steps: dict[StepKey, StepSchemaDict] = {}
 def register(func: Callable[..., Any], policy: str | None = None) -> None:
     """Register a decorated function's step schema in the registry.
 
-    Extracts name, type (tool vs llm), description, and input/output schemas
-    from the function and stores them for later retrieval via
-    ``get_registered_steps()``.
+    Extracts step metadata from the function and stores it for later retrieval
+    via ``get_registered_steps()``.
+
+    Input/output schema derivation is intentionally deferred to retrieval time
+    so forward references are more likely to be resolvable by the time
+    ``init()`` runs.
 
     Args:
         func: The original (unwrapped) function being decorated.
@@ -82,24 +96,18 @@ def register(func: Callable[..., Any], policy: str | None = None) -> None:
         if first_line:
             description = first_line
 
-    schemas = derive_schemas(func)
-
-    step: StepSchemaDict = {
-        "type": step_type,
-        "name": step_name,
-        "input_schema": schemas.input_schema,
-        "output_schema": schemas.output_schema,
-    }
-    if description is not None:
-        step["description"] = description
-
     metadata: dict[str, Any] = {}
     if policy is not None:
         metadata["policy"] = policy
-    if metadata:
-        step["metadata"] = metadata
 
     key = _step_key(step_type, step_name)
+    registered = _RegisteredControl(
+        func=func,
+        step_type=step_type,
+        step_name=step_name,
+        description=description,
+        metadata=metadata,
+    )
 
     # Store (last-write-wins for duplicate type+name pairs).
     if key in _registered_steps:
@@ -108,7 +116,7 @@ def register(func: Callable[..., Any], policy: str | None = None) -> None:
             step_name,
             step_type,
         )
-    _registered_steps[key] = step
+    _registered_steps[key] = registered
     logger.debug("Registered step schema: %s (type=%s)", step_name, step_type)
 
 
@@ -118,7 +126,21 @@ def get_registered_steps() -> list[StepSchemaDict]:
     The returned dicts conform to the ``StepSchema`` model format expected
     by ``init(steps=...)``.
     """
-    return list(_registered_steps.values())
+    steps: list[StepSchemaDict] = []
+    for registered in _registered_steps.values():
+        schemas = derive_schemas(registered.func)
+        step: StepSchemaDict = {
+            "type": registered.step_type,
+            "name": registered.step_name,
+            "input_schema": schemas.input_schema,
+            "output_schema": schemas.output_schema,
+        }
+        if registered.description is not None:
+            step["description"] = registered.description
+        if registered.metadata:
+            step["metadata"] = dict(registered.metadata)
+        steps.append(step)
+    return steps
 
 
 def merge_explicit_and_auto_steps(

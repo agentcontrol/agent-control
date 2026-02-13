@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+import logging
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
 from agent_control._control_registry import (
     clear,
@@ -15,10 +18,10 @@ from agent_control._control_registry import (
 
 
 @pytest.fixture(autouse=True)
-def _clean_registry() -> None:  # noqa: PT004
+def _clean_registry() -> Generator[None, None, None]:
     """Ensure each test starts with an empty registry."""
     clear()
-    yield  # type: ignore[misc]
+    yield
     clear()
 
 
@@ -163,6 +166,29 @@ class TestRegister:
         assert steps[0]["input_schema"]["type"] == "object"
         assert set(steps[0]["input_schema"]["properties"]) == {"x", "y"}
         assert steps[0]["output_schema"] == {}
+
+    def test_forward_reference_can_resolve_at_retrieval_time(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Given a function registered before its forward-referenced model is available in globals.
+        def my_func(payload: "LaterModel") -> str:
+            ...
+
+        register(my_func)
+
+        class LaterModel(BaseModel):
+            value: str
+
+        my_func.__globals__["LaterModel"] = LaterModel
+
+        # When registered steps are materialized (schema derivation occurs at retrieval time).
+        with caplog.at_level(logging.WARNING):
+            steps = get_registered_steps()
+
+        # Then the forward reference resolves successfully without fallback warnings.
+        payload_schema = steps[0]["input_schema"]["properties"]["payload"]
+        assert ("$ref" in payload_schema) or (payload_schema.get("type") == "object")
+        assert "failed to resolve type hints" not in caplog.text
 
 
 class TestClear:
