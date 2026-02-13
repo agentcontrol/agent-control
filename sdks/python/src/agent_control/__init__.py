@@ -438,14 +438,32 @@ def init(
     _api_key = api_key
 
     # Merge auto-discovered steps from @control() decorators with explicit steps.
-    # Explicit steps take precedence (by name) over auto-discovered ones.
-    from agent_control._control_registry import get_registered_steps
-
+    # Explicit steps take precedence when (type, name) collides.
     auto_steps = get_registered_steps()
     if auto_steps:
-        explicit_names = {s["name"] for s in (steps or [])}
-        merged = list(steps or []) + [s for s in auto_steps if s["name"] not in explicit_names]
-        steps = merged
+        explicit_steps = list(steps or [])
+        explicit_keys = {(step["type"], step["name"]) for step in explicit_steps}
+        merged_auto_steps: list[dict[str, Any]] = []
+        overridden_keys: list[tuple[str, str]] = []
+
+        for auto_step in auto_steps:
+            key = (auto_step["type"], auto_step["name"])
+            if key in explicit_keys:
+                overridden_keys.append(key)
+                continue
+            merged_auto_steps.append(auto_step)
+
+        if overridden_keys:
+            formatted = ", ".join(
+                f"{step_type}:{step_name}" for step_type, step_name in overridden_keys
+            )
+            logger.warning(
+                "Skipping %d auto-discovered step(s) overridden by explicit steps: %s",
+                len(overridden_keys),
+                formatted,
+            )
+
+        steps = explicit_steps + merged_auto_steps
         logger.debug(
             "Auto-discovered %d step(s) from @control() decorators (%d after merge)",
             len(auto_steps),

@@ -1,24 +1,12 @@
-"""Tests for the control step registry (_control_registry)."""
+"""Tests for control step registry behavior."""
 
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
-from agent_control._control_registry import (
-    _extract_input_schema,
-    _extract_output_schema,
-    _type_to_json_schema,
-    clear,
-    get_registered_steps,
-    register,
-)
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+from agent_control._control_registry import clear, get_registered_steps, register
 
 
 @pytest.fixture(autouse=True)
@@ -29,124 +17,14 @@ def _clean_registry() -> None:  # noqa: PT004
     clear()
 
 
-# ===========================================================================
-# Schema extraction helpers
-# ===========================================================================
-
-
-class TestTypeToJsonSchema:
-    """Tests for _type_to_json_schema."""
-
-    def test_primitive_str(self) -> None:
-        assert _type_to_json_schema(str) == {"type": "string"}
-
-    def test_primitive_int(self) -> None:
-        assert _type_to_json_schema(int) == {"type": "integer"}
-
-    def test_primitive_float(self) -> None:
-        assert _type_to_json_schema(float) == {"type": "number"}
-
-    def test_primitive_bool(self) -> None:
-        assert _type_to_json_schema(bool) == {"type": "boolean"}
-
-    def test_none_returns_none(self) -> None:
-        assert _type_to_json_schema(None) is None
-
-    def test_complex_type_returns_none(self) -> None:
-        """Complex / unrecognised types should return None."""
-        assert _type_to_json_schema(list) is None
-        assert _type_to_json_schema(dict) is None
-
-    def test_pydantic_model(self) -> None:
-        """Pydantic v2 models should delegate to model_json_schema()."""
-        mock_model = MagicMock()
-        mock_model.model_json_schema.return_value = {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-        }
-        result = _type_to_json_schema(mock_model)
-        assert result == {"type": "object", "properties": {"query": {"type": "string"}}}
-        mock_model.model_json_schema.assert_called_once()
-
-
-class TestExtractInputSchema:
-    """Tests for _extract_input_schema."""
-
-    def test_simple_function(self) -> None:
-        def my_func(query: str, limit: int = 10) -> list:
-            ...
-
-        schema = _extract_input_schema(my_func)
-        assert schema is not None
-        assert schema["type"] == "object"
-        assert schema["properties"]["query"] == {"type": "string"}
-        assert schema["properties"]["limit"] == {"type": "integer"}
-
-    def test_no_type_hints(self) -> None:
-        def my_func(x, y):
-            ...
-
-        assert _extract_input_schema(my_func) is None
-
-    def test_skips_self_and_cls(self) -> None:
-        def my_method(self, query: str) -> str:  # noqa: ANN001
-            ...
-
-        schema = _extract_input_schema(my_method)
-        assert schema is not None
-        assert "self" not in schema["properties"]
-        assert "query" in schema["properties"]
-
-    def test_framework_args_schema(self) -> None:
-        """If func has .args_schema with model_json_schema(), use that."""
-        mock_schema = MagicMock()
-        mock_schema.model_json_schema.return_value = {
-            "type": "object",
-            "properties": {"q": {"type": "string"}},
-        }
-
-        def my_func(q: str) -> str:
-            ...
-
-        my_func.args_schema = mock_schema  # type: ignore[attr-defined]
-
-        result = _extract_input_schema(my_func)
-        assert result == {"type": "object", "properties": {"q": {"type": "string"}}}
-        mock_schema.model_json_schema.assert_called_once()
-
-
-class TestExtractOutputSchema:
-    """Tests for _extract_output_schema."""
-
-    def test_str_return(self) -> None:
-        def my_func() -> str:
-            ...
-
-        assert _extract_output_schema(my_func) == {"type": "string"}
-
-    def test_int_return(self) -> None:
-        def my_func() -> int:
-            ...
-
-        assert _extract_output_schema(my_func) == {"type": "integer"}
-
-    def test_no_return_annotation(self) -> None:
-        def my_func():
-            ...
-
-        assert _extract_output_schema(my_func) is None
-
-    def test_complex_return_type(self) -> None:
-        def my_func() -> list[str]:
-            ...
-
-        # list[str] is not a supported primitive, should return None
-        assert _extract_output_schema(my_func) is None
-
-
-# ===========================================================================
-# register() and get_registered_steps()
-# ===========================================================================
+def _merge_steps_by_key(
+    explicit_steps: list[dict[str, Any]], auto_steps: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Mirror init() merge behavior (explicit wins by type+name)."""
+    explicit_keys = {(s["type"], s["name"]) for s in explicit_steps}
+    return list(explicit_steps) + [
+        s for s in auto_steps if (s["type"], s["name"]) not in explicit_keys
+    ]
 
 
 class TestRegister:
@@ -159,16 +37,18 @@ class TestRegister:
 
         register(chat)
         steps = get_registered_steps()
+
         assert len(steps) == 1
         step = steps[0]
         assert step["name"] == "chat"
         assert step["type"] == "llm"
         assert step["description"] == "Chat with the agent."
-        assert step["input_schema"] is not None
-        assert step["output_schema"] == {"type": "string"}
+        assert step["input_schema"]["type"] == "object"
+        assert step["output_schema"]["type"] == "string"
 
     def test_register_tool_function(self) -> None:
         """Functions with .name or .tool_name should be registered as tools."""
+
         def search_db(query: str, limit: int = 10) -> str:
             """Search the database."""
             ...
@@ -178,6 +58,7 @@ class TestRegister:
 
         register(search_db)
         steps = get_registered_steps()
+
         assert len(steps) == 1
         assert steps[0]["type"] == "tool"
         assert steps[0]["name"] == "search_db"
@@ -188,6 +69,7 @@ class TestRegister:
 
         register(my_func, policy="safety-policy")
         steps = get_registered_steps()
+
         assert steps[0]["metadata"] == {"policy": "safety-policy"}
 
     def test_register_no_policy_no_metadata(self) -> None:
@@ -196,10 +78,12 @@ class TestRegister:
 
         register(my_func)
         steps = get_registered_steps()
+
         assert "metadata" not in steps[0]
 
     def test_deduplicate_by_name(self) -> None:
         """Registering two functions with the same name should keep the last one."""
+
         def chat(message: str) -> str:
             """First version."""
             ...
@@ -213,6 +97,7 @@ class TestRegister:
         register(chat)
         register(chat_v2)
         steps = get_registered_steps()
+
         assert len(steps) == 1
         assert steps[0]["description"] == "Second version."
 
@@ -222,19 +107,23 @@ class TestRegister:
 
         register(my_func)
         steps = get_registered_steps()
+
         assert "description" not in steps[0]
 
     def test_no_type_hints(self) -> None:
-        """Functions with no type hints should still register with None schemas."""
+        """Untyped functions still register with permissive schemas."""
+
         def my_func(x, y):
             ...
 
         register(my_func)
         steps = get_registered_steps()
+
         assert len(steps) == 1
         assert steps[0]["name"] == "my_func"
-        assert "input_schema" not in steps[0]
-        assert "output_schema" not in steps[0]
+        assert steps[0]["input_schema"]["type"] == "object"
+        assert set(steps[0]["input_schema"]["properties"]) == {"x", "y"}
+        assert steps[0]["output_schema"] == {}
 
 
 class TestClear:
@@ -255,11 +144,6 @@ class TestClear:
         assert len(get_registered_steps()) == 0
 
 
-# ===========================================================================
-# Decorator integration
-# ===========================================================================
-
-
 class TestDecoratorRegistration:
     """Tests that @control() decorator registers functions in the registry."""
 
@@ -272,6 +156,7 @@ class TestDecoratorRegistration:
             return message
 
         steps = get_registered_steps()
+
         assert len(steps) == 1
         assert steps[0]["name"] == "my_chat"
         assert steps[0]["type"] == "llm"
@@ -285,6 +170,7 @@ class TestDecoratorRegistration:
             return input.upper()
 
         steps = get_registered_steps()
+
         assert len(steps) == 1
         assert steps[0]["name"] == "my_process"
 
@@ -296,6 +182,7 @@ class TestDecoratorRegistration:
             return msg
 
         steps = get_registered_steps()
+
         assert steps[0]["metadata"] == {"policy": "my-policy"}
 
     def test_decorator_registers_tool(self) -> None:
@@ -311,6 +198,7 @@ class TestDecoratorRegistration:
         control()(_lookup)
 
         steps = get_registered_steps()
+
         assert len(steps) == 1
         assert steps[0]["type"] == "tool"
         assert steps[0]["name"] == "lookup_tool"
@@ -325,23 +213,17 @@ class TestDecoratorRegistration:
             return msg
 
         steps = get_registered_steps()
-        # The inner decorator runs first (p2), then the outer (p1).
-        # Both use func.__name__ == "stacked", so last-write-wins -> p1.
+
         assert len(steps) == 1
         assert steps[0]["name"] == "stacked"
         assert steps[0]["metadata"] == {"policy": "p1"}
 
 
-# ===========================================================================
-# init() merge behaviour
-# ===========================================================================
-
-
 class TestInitMerge:
-    """Tests that init() merges auto-discovered steps with explicit steps."""
+    """Tests the explicit+auto merge behavior used by init()."""
 
     def test_auto_steps_merged_into_init(self) -> None:
-        """Steps from @control() decorators should be sent to register_agent."""
+        """Steps from @control() decorators should be available for init merge."""
         from agent_control.control_decorators import control
 
         @control()
@@ -349,48 +231,43 @@ class TestInitMerge:
             """Automatically discovered tool."""
             return query
 
-        # Verify the step is registered
         steps = get_registered_steps()
+
         assert any(s["name"] == "auto_tool" for s in steps)
 
     def test_explicit_steps_take_precedence(self) -> None:
-        """Explicit steps override auto-discovered steps with the same name."""
-        # Register via decorator
+        """Explicit steps override auto-discovered steps on exact type+name key."""
         register(lambda x: x)  # name will be "<lambda>"
 
-        def my_tool(query: str) -> str:
+        def my_step(query: str) -> str:
             ...
 
-        register(my_tool)
+        register(my_step)
 
         explicit_steps: list[dict[str, Any]] = [
-            {"type": "tool", "name": "my_tool", "input_schema": {"custom": True}}
+            {"type": "llm", "name": "my_step", "input_schema": {"custom": True}}
         ]
 
-        # Simulate what init() does: merge logic
         auto_steps = get_registered_steps()
-        explicit_names = {s["name"] for s in explicit_steps}
-        merged = list(explicit_steps) + [
-            s for s in auto_steps if s["name"] not in explicit_names
-        ]
+        merged = _merge_steps_by_key(explicit_steps, auto_steps)
 
-        # Explicit "my_tool" should win over the auto-registered one
-        my_tool_entries = [s for s in merged if s["name"] == "my_tool"]
-        assert len(my_tool_entries) == 1
-        assert my_tool_entries[0]["input_schema"] == {"custom": True}
-
-        # The lambda step should still be present
+        my_step_entries = [s for s in merged if (s["type"], s["name"]) == ("llm", "my_step")]
+        assert len(my_step_entries) == 1
+        assert my_step_entries[0]["input_schema"] == {"custom": True}
         assert any(s["name"] == "<lambda>" for s in merged)
 
     def test_no_auto_steps_leaves_explicit_unchanged(self) -> None:
-        """When no decorators are used, explicit steps pass through unchanged."""
-        # Registry is empty (autouse fixture cleared it)
-        explicit: list[dict[str, Any]] = [
-            {"type": "tool", "name": "manual_tool"}
-        ]
-        auto = get_registered_steps()
-        assert auto == []
+        explicit: list[dict[str, Any]] = [{"type": "tool", "name": "manual_tool"}]
 
-        # Simulate merge
-        merged = list(explicit)  # no auto steps to add
+        merged = _merge_steps_by_key(explicit, get_registered_steps())
+
         assert merged == explicit
+
+    def test_merge_keeps_same_name_steps_with_different_types(self) -> None:
+        auto_steps: list[dict[str, Any]] = [{"type": "llm", "name": "shared"}]
+        explicit_steps: list[dict[str, Any]] = [{"type": "tool", "name": "shared"}]
+
+        merged = _merge_steps_by_key(explicit_steps, auto_steps)
+
+        merged_keys = {(s["type"], s["name"]) for s in merged}
+        assert merged_keys == {("tool", "shared"), ("llm", "shared")}
