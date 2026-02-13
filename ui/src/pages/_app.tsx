@@ -41,7 +41,10 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
         />
 
         {/* Canonical URL */}
-        <link rel="canonical" href="https://github.com/agentcontrol/agent-control" />
+        <link
+          rel="canonical"
+          href="https://github.com/agentcontrol/agent-control"
+        />
 
         {/* Favicons */}
         <link
@@ -65,9 +68,7 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
         <link color="#644DF9" href="/safari-pinned-tab.svg" rel="mask-icon" />
 
         {/* SEO Meta Tags */}
-        <title>
-          Agent Control - Runtime Guardrails for AI Agents
-        </title>
+        <title>Agent Control - Runtime Guardrails for AI Agents</title>
         <meta
           name="description"
           content="Production-ready runtime guardrails for AI agents. Policy-based control layer that blocks harmful content, prompt injections, and PII leakage without changing your code."
@@ -80,7 +81,10 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
 
         {/* Open Graph / Facebook */}
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://github.com/agentcontrol/agent-control" />
+        <meta
+          property="og:url"
+          content="https://github.com/agentcontrol/agent-control"
+        />
         <meta
           property="og:title"
           content="Agent Control - Runtime Guardrails for AI Agents"
