@@ -109,15 +109,16 @@ def cmd_install_skill(args: argparse.Namespace) -> int:
         if not selected:
             print("No AI coding tools detected.")
             print(f"Looked for: {', '.join(c['display_name'] for c in TOOL_CONFIGS.values())}")
-            print(f"\nSpecify tools explicitly with --tools, e.g.:")
-            print(f"  agent-control install-skill --tools claude-code cursor")
+            print("\nSpecify tools explicitly with --tools, e.g.:")
+            print("  agent-control install-skill --tools claude-code cursor")
             return 1
 
         print("Detected AI coding tools:")
         for tool_id in selected:
             print(f"  - {TOOL_CONFIGS[tool_id]['display_name']}")
 
-        if not args.yes and not _confirm(f"\nInstall Agent Control skill for these tools ({mode})?"):
+        prompt = f"\nInstall Agent Control skill for these tools ({mode})?"
+        if not args.yes and not _confirm(prompt):
             print("Cancelled.")
             return 0
 
