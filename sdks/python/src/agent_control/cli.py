@@ -3,6 +3,7 @@
 Usage:
     agent-control install-skill          # Detect tools & install SKILL.md
     agent-control install-skill --project # Install to current project
+    agent-control update-skill           # Update SKILL.md to latest version
     agent-control --version              # Show version
 """
 
@@ -175,6 +176,28 @@ def main(argv: list[str] | None = None) -> int:
         help=f"Specify tools explicitly ({TOOL_NAMES})",
     )
 
+    update_parser = subparsers.add_parser(
+        "update-skill",
+        help="Update SKILL.md to the latest version (overwrites existing)",
+    )
+    update_parser.add_argument(
+        "--project",
+        action="store_true",
+        help="Update in current project directory instead of ~/",
+    )
+    update_parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="Skip confirmation prompt",
+    )
+    update_parser.add_argument(
+        "--tools",
+        nargs="+",
+        metavar="TOOL",
+        help=f"Specify tools explicitly ({TOOL_NAMES})",
+    )
+
     args = parser.parse_args(argv)
 
     if args.version:
@@ -187,6 +210,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "install-skill":
+        return cmd_install_skill(args)
+
+    if args.command == "update-skill":
+        args.force = True
         return cmd_install_skill(args)
 
     parser.print_help()
