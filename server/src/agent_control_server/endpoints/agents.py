@@ -24,7 +24,7 @@ from agent_control_models.server import (
 from fastapi import APIRouter, Depends
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
@@ -39,6 +39,7 @@ from ..logging_utils import get_logger
 from ..models import (
     Agent,
     AgentData,
+    Control,
     Policy,
     policy_controls,
 )
@@ -236,8 +237,10 @@ async def list_agents(
         next_cursor = str(agents[-1].agent_uuid)
 
     # Batch query: Get control counts for all agents at once
-    # Join: Agent -> Policy -> policy_controls (junction table)
-    # Group by agent_uuid and count distinct control IDs from junction table
+    # Join: Agent -> Policy -> policy_controls (junction table) -> Control
+    # Count distinct enabled control IDs per agent
+    # Performance: Filter NULL controls explicitly to avoid JSONB parsing on NULL rows
+    # This allows the query planner to optimize better
     control_counts_map: dict[UUID, int] = {}
     if agents:
         control_counts_query = (
@@ -247,7 +250,17 @@ async def list_agents(
             )
             .outerjoin(Policy, Agent.policy_id == Policy.id)
             .outerjoin(policy_controls, Policy.id == policy_controls.c.policy_id)
-            .where(Agent.agent_uuid.in_([agent.agent_uuid for agent in agents]))
+            .outerjoin(Control, policy_controls.c.control_id == Control.id)
+            .where(
+                Agent.agent_uuid.in_([agent.agent_uuid for agent in agents]),
+                # Only count enabled controls: Control must exist AND be enabled
+                # (enabled=true OR enabled key missing, default is True)
+                Control.id.is_not(None),  # Exclude NULL controls (agents without policies)
+                or_(
+                    Control.data["enabled"].astext == "true",
+                    ~Control.data.has_key("enabled"),
+                ),
+            )
             .group_by(Agent.agent_uuid)
         )
         control_counts_result = await db.execute(control_counts_query)
