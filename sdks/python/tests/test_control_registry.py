@@ -347,3 +347,40 @@ class TestInitMerge:
         # Then both entries are preserved because their type dimension differs.
         merged_keys = {(s["type"], s["name"]) for s in merged}
         assert merged_keys == {("tool", "shared"), ("llm", "shared")}
+
+
+class TestStepSchemaContract:
+    """Contract tests that merged registry payloads satisfy StepSchema model."""
+
+    def test_merged_steps_validate_against_stepschema_model(self) -> None:
+        # Given one auto-discovered step and one explicit override for the same (type, name).
+        from agent_control_models import StepSchema
+
+        def auto_llm_step(query: str) -> str:
+            """Auto-discovered llm step."""
+            ...
+
+        register(auto_llm_step)
+
+        explicit_steps: list[dict[str, Any]] = [
+            {
+                "type": "llm",
+                "name": "auto_llm_step",
+                "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+                "output_schema": {"type": "string"},
+            },
+            {
+                "type": "tool",
+                "name": "manual_tool",
+                "input_schema": {"type": "object"},
+                "output_schema": {"type": "object"},
+            },
+        ]
+
+        # When explicit and auto steps are merged by the registry helper.
+        merge_result = merge_explicit_and_auto_steps(explicit_steps, get_registered_steps())
+
+        # Then every merged payload validates against the shared StepSchema contract.
+        validated_steps = [StepSchema.model_validate(step) for step in merge_result.steps]
+        assert len(validated_steps) == len(merge_result.steps)
+        assert merge_result.overridden_keys == [("llm", "auto_llm_step")]
