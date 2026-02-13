@@ -6,7 +6,12 @@ from typing import Any
 
 import pytest
 
-from agent_control._control_registry import clear, get_registered_steps, register
+from agent_control._control_registry import (
+    clear,
+    get_registered_steps,
+    merge_explicit_and_auto_steps,
+    register,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -15,16 +20,6 @@ def _clean_registry() -> None:  # noqa: PT004
     clear()
     yield  # type: ignore[misc]
     clear()
-
-
-def _merge_steps_by_key(
-    explicit_steps: list[dict[str, Any]], auto_steps: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """Mirror init() merge behavior (explicit wins by type+name)."""
-    explicit_keys = {(s["type"], s["name"]) for s in explicit_steps}
-    return list(explicit_steps) + [
-        s for s in auto_steps if (s["type"], s["name"]) not in explicit_keys
-    ]
 
 
 class TestRegister:
@@ -115,6 +110,29 @@ class TestRegister:
         # Then only the second registration remains for that name.
         assert len(steps) == 1
         assert steps[0]["description"] == "Second version."
+
+    def test_same_name_different_types_are_kept_distinct(self) -> None:
+        # Given two controls that share a name but represent different step types.
+        def llm_step(message: str) -> str:
+            """LLM variant."""
+            ...
+
+        def tool_step(query: str) -> str:
+            """Tool variant."""
+            ...
+
+        llm_step.__name__ = "shared_name"
+        tool_step.name = "shared_name"  # type: ignore[attr-defined]
+        tool_step.tool_name = "shared_name"  # type: ignore[attr-defined]
+
+        # When both controls are registered.
+        register(llm_step)
+        register(tool_step)
+        steps = get_registered_steps()
+
+        # Then both entries are retained because deduplication key is (type, name).
+        keys = {(step["type"], step["name"]) for step in steps}
+        assert keys == {("llm", "shared_name"), ("tool", "shared_name")}
 
     def test_no_docstring(self) -> None:
         # Given a typed function without a docstring.
@@ -298,20 +316,22 @@ class TestInitMerge:
 
         # When explicit and auto steps are merged with explicit-first precedence.
         auto_steps = get_registered_steps()
-        merged = _merge_steps_by_key(explicit_steps, auto_steps)
+        merge_result = merge_explicit_and_auto_steps(explicit_steps, auto_steps)
+        merged = merge_result.steps
 
         # Then the explicit version wins for the duplicate key while unrelated auto steps are retained.
         my_step_entries = [s for s in merged if (s["type"], s["name"]) == ("llm", "my_step")]
         assert len(my_step_entries) == 1
         assert my_step_entries[0]["input_schema"] == {"custom": True}
         assert any(s["name"] == "<lambda>" for s in merged)
+        assert merge_result.overridden_keys == [("llm", "my_step")]
 
     def test_no_auto_steps_leaves_explicit_unchanged(self) -> None:
         # Given only explicit steps and no auto-registered steps.
         explicit: list[dict[str, Any]] = [{"type": "tool", "name": "manual_tool"}]
 
         # When merge logic runs against an empty auto-step set.
-        merged = _merge_steps_by_key(explicit, get_registered_steps())
+        merged = merge_explicit_and_auto_steps(explicit, get_registered_steps()).steps
 
         # Then the output matches the explicit list unchanged.
         assert merged == explicit
@@ -322,7 +342,7 @@ class TestInitMerge:
         explicit_steps: list[dict[str, Any]] = [{"type": "tool", "name": "shared"}]
 
         # When merge logic deduplicates by (type, name) rather than by name only.
-        merged = _merge_steps_by_key(explicit_steps, auto_steps)
+        merged = merge_explicit_and_auto_steps(explicit_steps, auto_steps).steps
 
         # Then both entries are preserved because their type dimension differs.
         merged_keys = {(s["type"], s["name"]) for s in merged}

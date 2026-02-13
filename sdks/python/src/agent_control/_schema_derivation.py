@@ -42,11 +42,45 @@ def derive_schemas(func: Callable[..., Any]) -> DerivedSchemas:
     Returns:
         DerivedSchemas containing input and output JSON schemas.
     """
-    input_schema = _extract_args_schema_override(func)
-    if input_schema is None:
-        input_schema = _infer_input_schema(func)
+    input_schema_override = _extract_args_schema_override(func)
+    unwrapped = inspect.unwrap(func)
 
-    output_schema = _infer_output_schema(func)
+    try:
+        hints = get_type_hints(unwrapped, include_extras=True)
+    except Exception as exc:
+        if input_schema_override is not None:
+            _warn(
+                func,
+                phase="output",
+                reason="failed to resolve type hints",
+                exc=exc,
+                fallback=_OUTPUT_FALLBACK_SCHEMA,
+            )
+            return DerivedSchemas(
+                input_schema=input_schema_override,
+                output_schema=_fallback_output_schema(),
+            )
+
+        _warn(
+            func,
+            phase="input/output",
+            reason="failed to resolve type hints",
+            exc=exc,
+            fallback={
+                "input": _INPUT_FALLBACK_SCHEMA,
+                "output": _OUTPUT_FALLBACK_SCHEMA,
+            },
+        )
+        return DerivedSchemas(
+            input_schema=_fallback_input_schema(),
+            output_schema=_fallback_output_schema(),
+        )
+
+    input_schema = input_schema_override
+    if input_schema is None:
+        input_schema = _infer_input_schema(func, unwrapped, hints)
+
+    output_schema = _infer_output_schema(func, hints)
     return DerivedSchemas(input_schema=input_schema, output_schema=output_schema)
 
 
@@ -82,21 +116,12 @@ def _extract_args_schema_override(func: Callable[..., Any]) -> dict[str, Any] | 
     return schema
 
 
-def _infer_input_schema(func: Callable[..., Any]) -> dict[str, Any]:
+def _infer_input_schema(
+    func: Callable[..., Any],
+    unwrapped: Callable[..., Any],
+    hints: dict[str, Any],
+) -> dict[str, Any]:
     """Infer input schema from signature + type hints using dynamic Pydantic model."""
-    unwrapped = inspect.unwrap(func)
-
-    try:
-        hints = get_type_hints(unwrapped, include_extras=True)
-    except Exception as exc:
-        _warn(
-            func,
-            phase="input",
-            reason="failed to resolve type hints",
-            exc=exc,
-            fallback=_INPUT_FALLBACK_SCHEMA,
-        )
-        return _fallback_input_schema()
 
     try:
         signature = inspect.signature(unwrapped)
@@ -147,22 +172,8 @@ def _infer_input_schema(func: Callable[..., Any]) -> dict[str, Any]:
     return schema
 
 
-def _infer_output_schema(func: Callable[..., Any]) -> dict[str, Any]:
+def _infer_output_schema(func: Callable[..., Any], hints: dict[str, Any]) -> dict[str, Any]:
     """Infer output schema from return type annotation using ``TypeAdapter``."""
-    unwrapped = inspect.unwrap(func)
-
-    try:
-        hints = get_type_hints(unwrapped, include_extras=True)
-    except Exception as exc:
-        _warn(
-            func,
-            phase="output",
-            reason="failed to resolve type hints",
-            exc=exc,
-            fallback=_OUTPUT_FALLBACK_SCHEMA,
-        )
-        return _fallback_output_schema()
-
     if "return" not in hints:
         _warn(
             func,

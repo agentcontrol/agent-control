@@ -66,8 +66,14 @@ if TYPE_CHECKING:
     )
 
 from . import agents, controls, evaluation, evaluators, policies
-from ._control_registry import clear as clear_step_registry
-from ._control_registry import get_registered_steps
+from ._control_registry import (
+    StepSchemaDict,
+    get_registered_steps,
+    merge_explicit_and_auto_steps,
+)
+from ._control_registry import (
+    clear as clear_step_registry,
+)
 
 # Import client and operations modules
 from .client import AgentControlClient
@@ -342,7 +348,7 @@ def init(
     server_url: str | None = None,
     api_key: str | None = None,
     controls_file: str | None = None,
-    steps: list[dict[str, Any]] | None = None,
+    steps: list[StepSchemaDict] | None = None,
     observability_enabled: bool | None = None,
     log_config: dict[str, Any] | None = None,
     **kwargs: object
@@ -440,34 +446,24 @@ def init(
     # Merge auto-discovered steps from @control() decorators with explicit steps.
     # Explicit steps take precedence when (type, name) collides.
     auto_steps = get_registered_steps()
+    merge_result = merge_explicit_and_auto_steps(steps, auto_steps)
+    registration_steps: list[dict[str, Any]] = [dict(step) for step in merge_result.steps]
+
     if auto_steps:
-        explicit_steps = list(steps or [])
-        explicit_keys = {(step["type"], step["name"]) for step in explicit_steps}
-        merged_auto_steps: list[dict[str, Any]] = []
-        overridden_keys: list[tuple[str, str]] = []
-
-        for auto_step in auto_steps:
-            key = (auto_step["type"], auto_step["name"])
-            if key in explicit_keys:
-                overridden_keys.append(key)
-                continue
-            merged_auto_steps.append(auto_step)
-
-        if overridden_keys:
+        if merge_result.overridden_keys:
             formatted = ", ".join(
-                f"{step_type}:{step_name}" for step_type, step_name in overridden_keys
+                f"{step_type}:{step_name}" for step_type, step_name in merge_result.overridden_keys
             )
             logger.warning(
                 "Skipping %d auto-discovered step(s) overridden by explicit steps: %s",
-                len(overridden_keys),
+                len(merge_result.overridden_keys),
                 formatted,
             )
 
-        steps = explicit_steps + merged_auto_steps
         logger.debug(
             "Auto-discovered %d step(s) from @control() decorators (%d after merge)",
             len(auto_steps),
-            len(steps),
+            len(registration_steps),
         )
 
     # Register with server and fetch controls
@@ -491,7 +487,7 @@ def init(
                     response = await agents.register_agent(
                         client,
                         _current_agent,
-                        steps=steps or []
+                        steps=registration_steps
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])
@@ -501,8 +497,8 @@ def init(
                     else:
                         logger.info("Agent updated: %s (ID: %s)", agent_name, _agent_uuid)
 
-                    if steps:
-                        logger.debug("Registered %d step(s)", len(steps))
+                    if registration_steps:
+                        logger.debug("Registered %d step(s)", len(registration_steps))
 
                     return controls
                 except httpx.HTTPStatusError:
