@@ -55,6 +55,23 @@ cd examples/langchain
 uv run sql_agent_protection.py
 ```
 
+## Auto-Derived Step Schema Example (LangGraph)
+
+This repository now also includes a LangGraph example that demonstrates
+automatic step schema derivation from `@control()`-decorated functions.
+
+Key behavior:
+- `agent_control.init(...)` is called **without** explicit `steps=...`
+- Tool step schemas are auto-discovered from decorated functions
+- Input/output JSON schema is inferred from Python type hints (via Pydantic)
+
+Run:
+
+```bash
+cd examples/langchain
+uv run langgraph_auto_schema_agent.py
+```
+
 ### Local vs Remote Control Execution
 
 **Remote (server-side) controls**:
