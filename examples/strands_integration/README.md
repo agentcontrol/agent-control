@@ -1,8 +1,16 @@
 # 🛡️ AgentControl + AWS Strands Integration
 
-**Interactive demo showing real-time safety protection in multi-agent systems.**
+**Interactive demos showing agent governance in multi-agent systems.**
 
-This Streamlit app demonstrates AgentControl's value through an interactive customer support chatbot. Users can chat with the bot, try "attack prompts," and watch AgentControl block unsafe content in real-time through a live safety dashboard.
+This directory contains two complementary demos:
+
+## 📁 Demos
+
+### 1. 🛡️ [Interactive Demo](interactive_demo/) - Safety Protection
+Real-time PII detection and blocking with visual feedback. Perfect for showing safety enforcement.
+
+### 2. 🎯 [Steering Demo](steering_demo/) - Layered Governance
+AgentControl (safety) + Strands Steering (quality) working together. Shows how to combine hard enforcement with soft guidance.
 
 ---
 
