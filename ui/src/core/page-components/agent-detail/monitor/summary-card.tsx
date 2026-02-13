@@ -55,10 +55,12 @@ function MetricCard({
   label,
   value,
   tooltip,
+  percentage,
 }: {
   label: string;
   value: number;
   tooltip?: string;
+  percentage?: number;
 }) {
   const content = (
     <Box
@@ -76,6 +78,11 @@ function MetricCard({
         <Text size="md" fw={700} c="var(--mantine-color-text)">
           {value.toLocaleString()}
         </Text>
+        {percentage !== undefined && (
+          <Text size="xs" c="dimmed">
+            {percentage.toFixed(1)}%
+          </Text>
+        )}
       </Stack>
     </Box>
   );
@@ -169,6 +176,11 @@ export function SummaryCard({
             label="Triggers"
             value={summary.totalMatches}
             tooltip="Controls that matched (triggered action)"
+            percentage={
+              summary.totalExecutions > 0
+                ? (summary.totalMatches / summary.totalExecutions) * 100
+                : undefined
+            }
           />
           <MetricCard
             label="Errors"
