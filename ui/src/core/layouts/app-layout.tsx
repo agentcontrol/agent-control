@@ -133,7 +133,7 @@ function BottomSection() {
   );
 }
 
-// Simple Galileo logo icon (red asterisk/flower)
+// Simple logo icon (red asterisk/flower)
 
 export function AppLayout({ children }: AppLayoutProps) {
   const router = useRouter();

@@ -37,9 +37,14 @@ export function ControlStatsTable({ stats }: ControlStatsTableProps) {
                     </Text>
                   </Table.Td>
                   <Table.Td>
+                    <Text size="sm">
+                      {control.execution_count.toLocaleString()}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
                     <Group gap="xs" wrap="nowrap">
-                      <Text size="sm">
-                        {control.execution_count.toLocaleString()}
+                      <Text size="sm" fw={500}>
+                        {control.match_count}
                       </Text>
                       {control.execution_count > 0 && (
                         <DataPill
@@ -55,11 +60,6 @@ export function ControlStatsTable({ stats }: ControlStatsTableProps) {
                         />
                       )}
                     </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" fw={500}>
-                      {control.match_count}
-                    </Text>
                   </Table.Td>
                   <Table.Td>
                     {control.error_count > 0 ? (
