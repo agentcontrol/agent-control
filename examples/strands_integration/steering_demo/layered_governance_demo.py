@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
-Layered Governance Demo with Intelligent Routing
+Layered Governance Demo - AgentControl + Strands Steering
 
-This demo shows how governance can intelligently route requests:
-- When PII is detected → Route to Security Agent
-- When customer is angry → Route to Escalation Agent
-- Normal requests → Route to Support Agent
+This demo shows how two governance layers work together:
+- Safety Layer (AgentControl): Hard blocks for PII protection
+- Quality Layer (Steering): Contextual guidance for agent responses
 
-REAL-WORLD FLOW:
-1. User submits request
-2. Safety layer detects issue (e.g., PII)
-3. Intelligent routing steers to specialist agent
-4. Specialist agent handles the scenario properly
-5. User gets helpful response instead of just "blocked"
+DEMONSTRATION:
+1. User submits request with security concern + PII (SSN)
+2. Safety layer (AgentControl) detects and blocks PII
+3. Intelligent routing sends to Security Specialist
+4. Quality layer (Steering) provides contextual guidance when security topics detected
+5. Security Specialist provides expert help WITHOUT processing PII
+
+VALUE: Customer protected from PII exposure AND receives helpful expert guidance
 
 Prerequisites:
     1. AgentControl server running: cd server && make run
@@ -37,6 +38,7 @@ from strands import Agent
 from strands.hooks import HookRegistry, AfterModelCallEvent, BeforeInvocationEvent
 from strands.models.openai import OpenAIModel
 from strands.multiagent.graph import Graph, GraphNode, GraphEdge
+from strands.experimental.steering import SteeringHandler, Guide, Proceed
 
 import agent_control
 from agent_control_models import Step
@@ -55,6 +57,8 @@ class GovernancePipeline:
     def __init__(self):
         self.stages = []
         self.routed_to = None  # Track which agent handled the request
+        self.needs_security_escalation = False  # NEW: Track if quality steering detected security topic
+        self.escalation_response = None  # Store support agent's escalation message
 
     def add_stage(self, layer: str, action: str, detail: str, passed: bool):
         """Record a governance stage."""
@@ -69,6 +73,243 @@ class GovernancePipeline:
     def set_routing(self, agent_type: str, reason: str):
         """Record routing decision."""
         self.routed_to = {"agent": agent_type, "reason": reason}
+
+    def trigger_security_escalation(self, escalation_msg: str):
+        """Mark that quality steering detected a security topic requiring specialist."""
+        self.needs_security_escalation = True
+        self.escalation_response = escalation_msg
+
+
+# ============================================================================
+# Quality Steering Handler - Realistic Business Scenarios
+# ============================================================================
+
+class QualitySteeringHandler(SteeringHandler):
+    """
+    Provides realistic quality steering for customer support agents.
+
+    Scenarios covered:
+    1. Unauthorized Promise Detection - Prevents agents from making commitments beyond authority
+    2. Hallucination Detection - Catches when agents fabricate specific details
+    3. Policy Compliance - Ensures responses follow company policies
+    4. Accuracy Guidance - Guides agents to verify information instead of guessing
+    """
+
+    def __init__(self, pipeline: GovernancePipeline):
+        super().__init__()
+        self.pipeline = pipeline
+        print(f"✅ QualitySteeringHandler initialized for pipeline")
+
+    async def steer_after_model(self, *, agent, message, stop_reason, **kwargs):
+        """Check agent responses for quality issues and provide guidance.
+
+        Args:
+            agent: The agent instance
+            message: The model's generated message
+            stop_reason: The reason the model stopped generating
+            **kwargs: Additional keyword arguments
+
+        Returns:
+            ModelSteeringAction (Guide or Proceed)
+        """
+        # Log that we're being called
+        print(f"🔍 Quality Steering: steer_after_model() called!")
+        print(f"🔍 Quality Steering: Agent: {agent.name}")
+        print(f"🔍 Quality Steering: Message type: {type(message)}")
+        print(f"🔍 Quality Steering: Stop reason: {stop_reason}")
+
+        # Extract response text from message (can be dict or object)
+        response_text = ""
+
+        # Try dict access first (Strands 1.26.0 format)
+        if isinstance(message, dict):
+            content = message.get('content', [])
+            print(f"🔍 Quality Steering: Message content (dict): {content}")
+        # Try attribute access (object format)
+        elif hasattr(message, 'content'):
+            content = message.content
+            print(f"🔍 Quality Steering: Message content (attr): {content}")
+        else:
+            content = None
+            print(f"🔍 Quality Steering: Could not extract content from message")
+
+        # Extract text from content
+        if isinstance(content, str):
+            response_text = content
+        elif isinstance(content, list):
+            # Message content is list of content blocks
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and 'text' in block:
+                    text_parts.append(block['text'])
+                elif hasattr(block, 'text'):
+                    text_parts.append(block.text)
+                else:
+                    text_parts.append(str(block))
+            response_text = ' '.join(text_parts)
+
+        print(f"🔍 Quality Steering: Response text: {response_text[:100] if response_text else 'EMPTY'}...")
+
+        if not response_text:
+            print("🔍 Quality Steering: No response text, proceeding")
+            return Proceed()
+
+        response_lower = response_text.lower()
+
+        # 1. Check for unauthorized promises (including subtle ones)
+        # Check for refund promises without verification
+        refund_keywords = ["refund", "money back", "full credit"]
+        verification_keywords = ["let me check", "need to verify", "need to look up", "let me see", "first, i need"]
+
+        has_refund_mention = any(keyword in response_lower for keyword in refund_keywords)
+        has_verification = any(keyword in response_lower for keyword in verification_keywords)
+
+        # Check for problematic patterns
+        unauthorized_patterns = [
+            ("yes, you can" in response_lower and has_refund_mention and not has_verification,
+             "promising refund without verification"),
+            ("i'll refund" in response_lower, "direct refund promise"),
+            ("i'll give you" in response_lower, "direct compensation promise"),
+            ("i guarantee" in response_lower, "unauthorized guarantee"),
+            ("you'll definitely get" in response_lower, "definite outcome promise"),
+            ("i'll extend your warranty" in response_lower, "warranty promise without authority"),
+            ("i'll waive the fee" in response_lower, "fee waiver without approval"),
+            ("no problem, " in response_lower and has_refund_mention and not has_verification,
+             "casual refund promise without checking")
+        ]
+
+        for condition, issue in unauthorized_patterns:
+            if condition:
+                guidance_message = (
+                    f"⚠️ Don't promise refunds or actions without verification. Instead say: "
+                    f"'Let me check your order and our policy for damaged items. Can you provide your order number so I can verify and see what options are available?' "
+                    f"Always verify before promising outcomes."
+                )
+                self.pipeline.add_stage(
+                    "Quality Steering",
+                    "GUIDED",
+                    f"Unauthorized promise: {issue} - must verify before promising",
+                    False
+                )
+                print(f"🚨 Quality Steering: GUIDING - {issue}")
+                print(f"   Guidance: {guidance_message[:100]}...")
+                return Guide(guidance_message)
+
+        # 2. Check for specific fabricated details (hallucinations)
+        hallucination_patterns = [
+            ("will arrive on", "specific delivery date"),
+            ("will be delivered at", "specific delivery time"),
+            ("tracking number is", "fabricated tracking number"),
+            ("arrives tomorrow", "unverified delivery promise"),
+            ("in exactly", "fabricated timeframe")
+        ]
+
+        for pattern, issue in hallucination_patterns:
+            if pattern in response_lower and "let me check" not in response_lower:
+                self.pipeline.add_stage(
+                    "Quality Steering",
+                    "GUIDED",
+                    f"Possible hallucination: '{issue}' - guiding to verify tracking details",
+                    False
+                )
+                return Guide(
+                    f"⚠️ Don't fabricate specific details. Instead of stating '{pattern}', "
+                    f"say 'Let me look up the tracking information' or 'I'll check the delivery status'. "
+                    f"Only provide specific dates/times/numbers from actual data, not estimates."
+                )
+
+        # 3. Check for policy violations
+        policy_violations = [
+            ("60 day return", "extended return window"),
+            ("90 day warranty", "incorrect warranty period"),
+            ("unlimited exchanges", "unauthorized exchange policy"),
+            ("no questions asked refund", "unauthorized refund policy")
+        ]
+
+        for violation, issue in policy_violations:
+            if violation in response_lower:
+                self.pipeline.add_stage(
+                    "Quality Steering",
+                    "GUIDED",
+                    f"Policy violation: '{issue}' - guiding to correct policy",
+                    False
+                )
+                return Guide(
+                    f"⚠️ That's not our policy. Instead of saying '{violation}', "
+                    f"state the correct policy: '30-day return window' or 'Let me check our current policy for your situation'. "
+                    f"Don't invent policies - stick to what's documented."
+                )
+
+        # 4. Check if agent should escalate but isn't
+        escalation_triggers = [
+            "legal action",
+            "lawyer",
+            "sue",
+            "fraud",
+            "stolen credit card",
+            "unauthorized charge"
+        ]
+
+        has_escalation_trigger = any(trigger in response_lower for trigger in escalation_triggers)
+        mentions_escalation = any(word in response_lower for word in ["manager", "supervisor", "specialist", "escalate"])
+
+        if has_escalation_trigger and not mentions_escalation:
+            self.pipeline.add_stage(
+                "Quality Steering",
+                "GUIDED",
+                "Escalation needed but not mentioned - guiding to escalate to specialist",
+                False
+            )
+            return Guide(
+                "⚠️ This issue requires specialist handling. Include: "
+                "'This requires attention from our specialist team. Let me connect you with [security/legal/escalation] team who can help immediately.' "
+                "Don't try to handle legal/fraud issues yourself."
+            )
+
+        # 5. Check if agent is handling security/privacy topics without authority
+        security_topics = [
+            "password",
+            "two-factor",
+            "2fa",
+            "account security",
+            "data breach",
+            "privacy concern",
+            "personal information",
+            "data protection",
+            "security settings"
+        ]
+
+        has_security_topic = any(topic in response_lower for topic in security_topics)
+        is_support_agent = agent.name == "support_agent"
+        mentions_security_specialist = "security specialist" in response_lower or "security team" in response_lower
+
+        if has_security_topic and is_support_agent and not mentions_security_specialist:
+            self.pipeline.add_stage(
+                "Quality Steering",
+                "ESCALATING",
+                "Security topic detected - triggering handoff to Security Specialist",
+                False
+            )
+            # Mark that we need to escalate to security agent
+            self.pipeline.trigger_security_escalation(
+                "I understand your concern about account security. Let me connect you with our Security Specialist team who can provide expert guidance on password strength and account protection."
+            )
+            print(f"🔄 Quality Steering: ESCALATING to Security Specialist")
+            # Guide the support agent to acknowledge and prepare for handoff
+            return Guide(
+                "⚠️ This is a security topic. Acknowledge the customer's concern briefly (1 sentence) and tell them "
+                "you're connecting them to the security specialist team for expert help with their account security."
+            )
+
+        # All quality checks passed
+        self.pipeline.add_stage(
+            "Quality Steering",
+            "PASSED",
+            "No quality issues detected - response approved",
+            True
+        )
+        print("✅ Quality Steering: All checks passed, proceeding")
+        return Proceed()
 
 
 # ============================================================================
@@ -240,15 +481,25 @@ def create_support_agent(pipeline: GovernancePipeline) -> Agent:
     """Standard support agent for normal requests."""
     model = OpenAIModel(model_id="gpt-4o-mini")
 
+    print(f"🔧 Creating support agent with hooks...")
+    quality_handler = QualitySteeringHandler(pipeline)
+    print(f"🔧 QualitySteeringHandler instance: {quality_handler}")
+    print(f"🔧 QualitySteeringHandler type: {type(quality_handler)}")
+    print(f"🔧 Is SteeringHandler subclass: {isinstance(quality_handler, SteeringHandler)}")
+
     agent = Agent(
         name="support_agent",
         model=model,
         system_prompt="""You are a friendly customer support agent. Help customers with their
         questions about orders, returns, and shipping. Be warm, empathetic, and professional.
         Keep responses concise (under 3 sentences).""",
-        hooks=[SafetyControlHook("support", pipeline)]
+        hooks=[
+            SafetyControlHook("support", pipeline),
+            quality_handler
+        ]
     )
 
+    print(f"🔧 Support agent created")
     return agent
 
 
@@ -272,7 +523,10 @@ def create_security_agent(pipeline: GovernancePipeline) -> Agent:
           in transit and should arrive in 2-3 business days. I'll send you tracking info!"
 
         Be warm, helpful, and solve their actual problem. Keep it concise (2-3 sentences).""",
-        hooks=[SafetyControlHook("security", pipeline)]
+        hooks=[
+            SafetyControlHook("security", pipeline),
+            QualitySteeringHandler(pipeline)
+        ]
     )
 
     return agent
@@ -292,7 +546,10 @@ def create_escalation_agent(pipeline: GovernancePipeline) -> Agent:
         3. Take ownership and offer immediate help
 
         Be exceptionally empathetic. Keep it concise (2-3 sentences).""",
-        hooks=[SafetyControlHook("escalation", pipeline)]
+        hooks=[
+            SafetyControlHook("escalation", pipeline),
+            QualitySteeringHandler(pipeline)
+        ]
     )
 
     return agent
@@ -433,6 +690,76 @@ async def get_governed_response(user_message: str) -> tuple[str, str, str, Gover
                 else:
                     response_text = str(content)
 
+    # Check if Quality Steering triggered a security escalation
+    if pipeline.needs_security_escalation:
+        print(f"🔄 Escalation detected! Routing to Security Specialist...")
+
+        # Add handoff stage
+        pipeline.add_stage(
+            "Quality Steering Handoff",
+            "ESCALATING",
+            "Support agent acknowledged → Transferring to Security Specialist",
+            True
+        )
+
+        # Store the support agent's escalation message
+        support_escalation_msg = response_text
+
+        # Create security agent and execute
+        security_agent = create_security_agent(pipeline)
+        security_node = GraphNode(executor=security_agent, node_id="security")
+        security_graph = Graph(
+            nodes={"security": security_node},
+            edges=set(),
+            entry_points={security_node}
+        )
+
+        # Execute security agent with original user message
+        security_result = await security_graph.invoke_async(user_message)
+
+        # Extract security agent response
+        security_response = "No response generated"
+        if security_result.results and security_result.execution_order:
+            last_node = security_result.execution_order[-1]
+            node_result = security_result.results.get(last_node.node_id)
+
+            if node_result and hasattr(node_result.result, 'message'):
+                agent_message = node_result.result.message
+                content = None
+
+                if isinstance(agent_message, dict):
+                    content = agent_message.get('content')
+                elif hasattr(agent_message, 'content'):
+                    content = agent_message.content
+
+                if content is not None:
+                    if isinstance(content, list):
+                        text_parts = []
+                        for block in content:
+                            if isinstance(block, dict) and 'text' in block:
+                                text_parts.append(block['text'])
+                            elif hasattr(block, 'text'):
+                                text_parts.append(block.text)
+                            else:
+                                text_parts.append(str(block))
+                        security_response = ' '.join(text_parts)
+                    else:
+                        security_response = str(content)
+
+        # Update pipeline routing to show final destination
+        pipeline.set_routing("security", "Quality Steering escalated security topic")
+
+        # Return security agent's response as final response
+        # Routing message shows the escalation path
+        escalation_routing = (
+            f"🎯 **Initial Route:** Support Agent\n\n"
+            f"💬 **Support Agent:** {support_escalation_msg}\n\n"
+            f"🔄 **Quality Steering:** Detected security topic → Escalating to Security Specialist...\n\n"
+            f"🔒 **Security Specialist:** Taking over..."
+        )
+
+        return escalation_routing, "🔒 Security Specialist", security_response, pipeline
+
     return routing_message, agent_name, response_text, pipeline
 
 
@@ -442,92 +769,121 @@ async def get_governed_response(user_message: str) -> tuple[str, str, str, Gover
 
 def render_header():
     """Render the app header."""
-    st.title("🎯 Intelligent Agent Routing Demo")
-    st.subheader("Governance + Smart Routing = Better UX")
+    st.title("🎯 Layered Governance Demo")
+    st.subheader("Safety (AgentControl) + Quality (Steering) = Complete Protection")
 
     st.markdown("""
-    **How it works:**
-    1. 🔍 **Detect the situation** (PII, angry customer, normal request)
-    2. 🎯 **Route to specialist** (Security, Escalation, or Support agent)
-    3. ✅ **Get expert help** instead of generic "blocked" message
+    **Two Governance Layers:**
 
-    Try the scenarios below to see intelligent routing in action!
+    🛡️ **Safety Layer (AgentControl)** - Hard stops for compliance
+    - Blocks PII leakage (SSN, credit cards, emails)
+    - Enforces security policies
+    - *Action: BLOCK and re-route*
+
+    ✨ **Quality Layer (Steering)** - Contextual guidance through modular prompting
+    - Provides just-in-time feedback that appears when relevant, rather than front-loading all instructions
+    - Helps agents respond appropriately to security topics by steering them to specialists
+    - Detects when specialized expertise is needed and guides handoff
+    - *Action: GUIDE with contextual feedback*
+
+    Try the scenario below to see both layers working together!
     """)
 
 
 def render_sidebar():
     """Render the dashboard."""
-    st.sidebar.title("📊 Routing Dashboard")
+    st.sidebar.title("📊 Governance Dashboard")
 
-    # AgentControl status
-    st.sidebar.subheader("🛡️ Safety Layer")
+    # Layer Status
+    st.sidebar.subheader("🛡️ Safety Layer (AgentControl)")
     if st.session_state.get("agentcontrol_initialized"):
-        st.sidebar.success("Active")
+        st.sidebar.success("✅ Active - PII Detection Enabled")
     else:
-        st.sidebar.error("Inactive")
+        st.sidebar.error("❌ Inactive")
 
-    # Routing statistics
-    st.sidebar.subheader("📈 Routing Stats")
+    st.sidebar.subheader("✨ Quality Layer (Steering)")
+    st.sidebar.success("✅ Active - Contextual Guidance")
+    st.sidebar.caption("• Detects security topics\n• Guides agent handoffs\n• Provides just-in-time feedback\n• Helps agents respond appropriately")
+
+    # Governance statistics
+    st.sidebar.subheader("📈 Governance Stats")
 
     pipelines = st.session_state.get("pipelines", [])
 
+    # Count safety blocks
+    safety_blocks = sum(
+        1 for p in pipelines
+        for stage in p.stages
+        if "Safety" in stage["layer"] and not stage["passed"]
+    )
+
+    # Count quality guidances
+    quality_guidances = sum(
+        1 for p in pipelines
+        for stage in p.stages
+        if "Quality" in stage["layer"] and stage["action"] == "GUIDED"
+    )
+
+    # Count routing
     security_routes = sum(1 for p in pipelines if p.routed_to and p.routed_to["agent"] == "security")
     escalation_routes = sum(1 for p in pipelines if p.routed_to and p.routed_to["agent"] == "escalation")
     support_routes = sum(1 for p in pipelines if p.routed_to and p.routed_to["agent"] == "support")
 
     col1, col2 = st.sidebar.columns(2)
     with col1:
-        st.metric("🔒 Security", security_routes)
-        st.metric("⚠️ Escalation", escalation_routes)
+        st.metric("🛡️ Safety Blocks", safety_blocks)
+        st.metric("🔒 Security Routes", security_routes)
     with col2:
-        st.metric("💬 Support", support_routes)
-        st.metric("Total", len(pipelines))
+        st.metric("✨ Quality Guides", quality_guidances)
+        st.metric("Total Requests", len(pipelines))
 
-    # Recent routings
+    # Recent activity
     if pipelines:
-        st.sidebar.subheader("📋 Recent Routes")
-        for idx, pipeline in enumerate(reversed(pipelines[-5:])):
+        st.sidebar.subheader("🕐 Recent Activity")
+        for idx, pipeline in enumerate(reversed(pipelines[-3:])):
             if pipeline.routed_to:
                 agent = pipeline.routed_to["agent"]
-                reason = pipeline.routed_to["reason"]
                 icon = {"security": "🔒", "escalation": "⚠️", "support": "💬"}.get(agent, "❓")
 
-                with st.sidebar.expander(f"{icon} {agent.title()} #{len(pipelines) - idx}", expanded=False):
-                    st.caption(f"**Reason:** {reason}")
-                    for stage in pipeline.stages:
-                        status = "✅" if stage["passed"] else "🔄"
-                        st.caption(f"{status} {stage['layer']}: {stage['action']}")
+                # Count issues in this pipeline
+                safety_issues = sum(1 for s in pipeline.stages if "Safety" in s["layer"] and not s["passed"])
+                quality_issues = sum(1 for s in pipeline.stages if "Quality" in s["layer"] and s["action"] == "GUIDED")
+
+                with st.sidebar.expander(f"#{len(pipelines) - idx}: {icon} {agent.title()}", expanded=False):
+                    if safety_issues > 0:
+                        st.caption(f"🛡️ Safety: {safety_issues} issue(s)")
+                    if quality_issues > 0:
+                        st.caption(f"✨ Quality: {quality_issues} guidance(s)")
+                    if safety_issues == 0 and quality_issues == 0:
+                        st.caption("✅ All checks passed")
 
 
 def render_scenarios():
-    """Render test scenarios."""
-    st.subheader("🎬 Try These Examples")
-    st.caption("Click any button to see intelligent routing in action")
+    """Render test scenario."""
+    st.subheader("🎬 Demo Scenario")
+    st.caption("Click the button to see both governance layers in action")
 
-    scenarios = {
-        "🔒 PII Detected": {
-            "prompt": "My order ORD-12345 hasn't arrived. My SSN is 123-45-6789, can you help?",
-            "expected": "Detects PII → Routes to Security Agent → Explains security concerns warmly"
-        },
-        "😤 Angry Customer": {
-            "prompt": "This is absolutely TERRIBLE! WORST service I've ever experienced! UNACCEPTABLE!",
-            "expected": "Detects frustration → Routes to Escalation Agent → Shows extra empathy"
-        },
-        "💬 Normal Request": {
-            "prompt": "What's your return policy?",
-            "expected": "Standard request → Routes to Support Agent → Provides helpful response"
-        }
+    # Single scenario showing both layers
+    scenario = {
+        "label": "🔐 Security Topic + PII Detection",
+        "prompt": "I'm worried about my account security. My SSN is 123-45-6789 - can you help me make my password stronger?",
+        "expected": """**What happens:**
+
+1. **Safety Layer (AgentControl):** Detects SSN in user input → Blocks PII from being processed
+2. **Routing:** PII detected → Routes to Security Specialist agent
+3. **Quality Layer (Steering):** Support agent detects security topic → Provides contextual guidance to escalate to Security Specialist
+4. **Final Response:** Security Specialist handles password guidance WITHOUT processing SSN
+
+**Result:** Customer protected from PII exposure AND receives expert security guidance"""
     }
 
-    cols = st.columns(3)
-    for idx, (label, scenario) in enumerate(scenarios.items()):
-        with cols[idx]:
-            if st.button(label, key=f"scenario_{idx}", use_container_width=True):
-                st.session_state.scenario_prompt = scenario["prompt"]
-                st.rerun()
+    # Single button for the scenario
+    if st.button(scenario["label"], key="scenario_main", use_container_width=True):
+        st.session_state.scenario_prompt = scenario["prompt"]
+        st.rerun()
 
-            with st.expander("What happens?", expanded=False):
-                st.caption(scenario["expected"])
+    with st.expander("What happens?", expanded=False):
+        st.markdown(scenario["expected"])
 
 
 def render_pipeline_visualization(pipeline: GovernancePipeline):

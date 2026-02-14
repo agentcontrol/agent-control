@@ -16,13 +16,13 @@ This demo showcases how two complementary governance systems work together to cr
   - ❌ Blocks toxic/inappropriate language
   - ❌ Blocks policy violations
 
-### Layer 2: Quality (Strands Steering) - Soft Guidance
-- **Purpose**: Behavior optimization and quality improvement
-- **Action**: GUIDES toward better responses (soft retry)
+### Layer 2: Quality (Strands Steering) - Contextual Guidance
+- **Purpose**: Provides modular prompting through just-in-time feedback
+- **Action**: GUIDES agents with contextual feedback that appears when relevant, rather than front-loading all instructions
 - **Examples**:
-  - ✨ Guides toward more empathetic language
-  - ✨ Guides back on-topic when agent wanders
-  - ✨ Guides toward concise responses
+  - ✨ Detects when specialized expertise is needed
+  - ✨ Guides agents to escalate security topics to specialists
+  - ✨ Provides contextual feedback for appropriate responses
 
 ---
 
@@ -68,36 +68,28 @@ streamlit run layered_governance_demo.py
 
 ## 🎮 How to Use
 
-### Test Safety Layer (AgentControl)
+### Demo Scenario: Both Layers Working Together
 
-Click the **🛡️ Safety Tests** buttons:
+Click the **🔐 Security Topic + PII Detection** button to see:
 
-**🔢 PII Leak**
+**User Input:**
 ```
-"My order is ORD-123 and my SSN is 123-45-6789"
+"I'm worried about my account security. My SSN is 123-45-6789 - can you help me make my password stronger?"
 ```
-→ AgentControl **BLOCKS** (hard stop)
 
-**💳 Credit Card**
-```
-"My card number is 4532-1234-5678-9010"
-```
-→ AgentControl **BLOCKS** (hard stop)
+**What Happens:**
 
-### Test Quality Layer (Steering)
+1. **Safety Layer (AgentControl):** Detects SSN in user input → Blocks PII from being processed
+2. **Routing:** PII detected → Routes to Security Specialist agent
+3. **Quality Layer (Steering):** Support agent detects security topic → Provides contextual guidance to escalate to Security Specialist
+4. **Final Response:** Security Specialist handles password guidance WITHOUT processing SSN
 
-Click the **✨ Quality Tests** buttons:
+**Result:** Customer protected from PII exposure AND receives expert security guidance
 
-**🤖 Too Robotic**
-```
-"Tell me about your return policy in technical terms"
-```
-→ Steering **GUIDES** toward warm, conversational tone
-
-**📝 Too Verbose**
-```
-"Explain everything about shipping in extreme detail"
-```
+This demonstrates the complete value proposition:
+- ✅ **Safety**: AgentControl blocks SSN (compliance)
+- ✅ **Quality**: Steering guides appropriate handoff (customer experience)
+- ✅ **Complete Protection**: Both layers work together seamlessly
 → Steering **GUIDES** toward concise response
 
 **💬 Off Topic**
@@ -158,28 +150,34 @@ Bot: "I'd be happy to help with your order! Let me look that up for you..."
 ## 🏗️ Architecture
 
 ```
-User Input
+User Input with Security Topic + PII (SSN)
     ↓
 ┌─────────────────────────────────┐
-│  Agent Processing              │
+│  LAYER 1: Safety (AgentControl) │  ← Hard Stop
+│  Detects SSN in input           │
+│  Blocks PII from processing     │
+└─────────┬───────────────────────┘
+          │ PII detected → Route to Security Agent
+          ↓
+┌─────────────────────────────────┐
+│  Support Agent Processing       │
+│  Receives security-related query│
 └─────────┬───────────────────────┘
           ↓
-    ┌─────────────────────┐
-    │ LAYER 1: Safety     │  ← AgentControl (Hard Stop)
-    │ Check for PII       │
-    │ Check for violations│
-    └──────┬──────────────┘
-           │ If unsafe → BLOCK
-           ↓
-    ┌─────────────────────┐
-    │ LAYER 2: Quality    │  ← Strands Steering (Soft Guidance)
-    │ Check empathy       │
-    │ Check topic         │
-    │ Check brevity       │
-    └──────┬──────────────┘
-           │ If poor quality → GUIDE (retry)
-           ↓
-    Safe + Quality Response
+┌─────────────────────────────────┐
+│  LAYER 2: Quality (Steering)    │  ← Contextual Guidance
+│  Detects security topic         │
+│  Guides handoff to specialist   │
+└─────────┬───────────────────────┘
+          │ Security topic → Escalate to Security Specialist
+          ↓
+┌─────────────────────────────────┐
+│  Security Specialist Agent      │
+│  Handles password guidance      │
+│  WITHOUT processing PII         │
+└─────────┬───────────────────────┘
+          ↓
+    Safe + Expert Response
 ```
 
 ---
@@ -202,20 +200,27 @@ class SafetyControlHook:
 
 ### Quality Layer (Strands Steering)
 
-Uses Strands SteeringHandler for soft guidance:
+Uses Strands SteeringHandler for contextual guidance:
 
 ```python
-from strands.experimental.steering import SteeringHandler, ModelSteeringAction, Guide, Proceed
+from strands.experimental.steering import SteeringHandler, Guide, Proceed
 
-class QualitySteering(SteeringHandler):
-    async def steer_after_model(self, event) -> ModelSteeringAction:
-        if self._is_too_robotic(output):
-            return Guide("Be more warm and empathetic")  # SOFT GUIDANCE
+class QualitySteeringHandler(SteeringHandler):
+    async def steer_after_model(self, *, agent, message, stop_reason, **kwargs):
+        # Extract response text
+        response_text = extract_response(message)
 
-        if self._is_off_topic(output):
-            return Guide("Stay focused on support issue")
+        # Check for security topics
+        security_topics = ["password", "two-factor", "account security"]
+        has_security_topic = any(topic in response_text.lower() for topic in security_topics)
 
-        return Proceed()  # All quality checks passed
+        # Provide contextual guidance when relevant
+        if has_security_topic and agent.name == "support_agent":
+            # Trigger escalation to Security Specialist
+            pipeline.trigger_security_escalation(...)
+            return Guide("Acknowledge the security concern and connect to Security Specialist")
+
+        return Proceed()  # No guidance needed
 ```
 
 ### Combined Usage
@@ -237,28 +242,30 @@ agent = Agent(
 
 ### For Executives
 
-**Key Message**: "Safety isn't enough - you need quality too"
+**Key Message**: "Layered governance protects customers AND delivers excellent service"
 
-1. Show safety block → "We prevent violations"
-2. Show quality guidance → "We also ensure great customer experience"
-3. Show combined result → "Safe + Delightful = Competitive advantage"
+1. Run the demo scenario: "I'm worried about my account security. My SSN is 123-45-6789..."
+2. Point out: "Safety layer blocked the SSN - preventing identity theft risk"
+3. Show: "Quality layer guided the agent to security specialist - ensuring expert help"
+4. Result: "Customer protected from PII exposure AND received expert security guidance"
 
 ### For Engineers
 
-**Key Message**: "Layered architecture for different concerns"
+**Key Message**: "Modular architecture with contextual guidance"
 
-1. Safety layer: Hard enforcement via AgentControl
-2. Quality layer: Soft guidance via Steering
-3. Clean separation of concerns
-4. Each layer independently testable
+1. Safety layer: Hard enforcement via AgentControl (server-side PII blocking)
+2. Quality layer: Contextual guidance via Steering (just-in-time feedback, not front-loaded instructions)
+3. Clean separation: Safety = compliance, Quality = experience
+4. Steering provides feedback when relevant, guiding appropriate handoffs
 
 ### For Product Managers
 
-**Key Message**: "Compliance AND customer satisfaction"
+**Key Message**: "Compliance AND customer delight through intelligent governance"
 
-1. Compliance team happy → Safety blocks prevent fines
-2. Customer team happy → Quality guidance improves CSAT
-3. Engineering team happy → Clean, maintainable architecture
+1. Compliance: Safety blocks prevent regulatory fines (GDPR, PII protection)
+2. Experience: Quality steering ensures customers get expert help when needed
+3. Scalability: Both layers work automatically - no manual intervention needed
+4. Observability: Complete visibility into governance decisions via dashboard
 
 ---
 
