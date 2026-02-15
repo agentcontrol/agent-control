@@ -28,130 +28,73 @@ Usage:
 
 import asyncio
 import os
-from datetime import datetime, timezone
+import sys
 from pathlib import Path
-from typing import Any
-from uuid import uuid4
+from typing import Any, Optional
+from uuid import UUID, uuid4
 
 import streamlit as st
 from dotenv import load_dotenv
 
+# Add common folder to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "common"))
+
 from strands import Agent, tool
-from strands.hooks import HookProvider, HookRegistry, AfterModelCallEvent, BeforeInvocationEvent
+from strands.hooks import (
+    BeforeInvocationEvent,
+    AfterModelCallEvent,
+    BeforeToolCallEvent,
+    AfterToolCallEvent,
+)
 from strands.models.openai import OpenAIModel
-from strands.multiagent.graph import Graph, GraphNode, GraphEdge
 
 import agent_control
 from agent_control_models import Step
 from agent_control import ControlViolationError
+from agent_control_hook import AgentControlHook
 
 # Load environment variables
 load_dotenv(Path(__file__).parent.parent / ".env", override=False)
 
 
 # ============================================================================
-# Safety Tracking Hook (Captures violations for UI display)
+# Safety Tracking Hook (using reusable AgentControlHook)
 # ============================================================================
 
-class SafetyTrackingHook(HookProvider):
-    """Hook that tracks all safety decisions and stores them in Streamlit session state."""
+class SafetyTrackingHook(AgentControlHook):
+    """
+    Streamlit-specific hook that extends AgentControlHook.
 
-    def __init__(self, agent_name: str, max_retries: int = 3):
-        self.agent_name = agent_name
+    Tracks all safety decisions and stores them in Streamlit session state for UI display.
+    """
+
+    def __init__(self, agent_uuid: UUID, agent_name: str, server_url: Optional[str] = None):
+        """
+        Initialize SafetyTrackingHook with Streamlit tracking.
+
+        Args:
+            agent_uuid: UUID of the agent (used to filter controls on server)
+            agent_name: Name of the agent for logging
+            server_url: AgentControl server URL (default: from env or localhost:8000)
+        """
+        # Initialize base AgentControlHook with specific events and custom callback
+        super().__init__(
+            agent_uuid=agent_uuid,
+            agent_name=agent_name,
+            server_url=server_url,
+            event_control_list=[
+                BeforeInvocationEvent,  # Check user input (has messages attribute)
+                AfterModelCallEvent,    # Check output from LLM
+                BeforeToolCallEvent,    # Check tool calls (enables tool-specific controls)
+                AfterToolCallEvent,     # Check tool results
+            ],
+            on_violation_callback=self._handle_streamlit_violation,
+            enable_logging=False  # Disable console logging for cleaner UI
+        )
         self.session_id = str(uuid4())
-        self.max_retries = max_retries
-        self.retry_count = 0
 
-    def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
-        """Register hook callbacks with the registry."""
-        registry.add_callback(BeforeInvocationEvent, self.on_before_invocation)  # Pre-stage check
-        registry.add_callback(AfterModelCallEvent, self.on_after_model_call)  # Post-stage check
-
-    async def on_before_invocation(self, event: BeforeInvocationEvent):
-        """Check input messages for PII before agent processes them (pre-stage)."""
-
-        # Check if we have messages
-        if not event.messages:
-            return
-
-        # DEBUG: Show what we received
-
-        # Extract user messages from the message list
-        user_messages = []
-        for i, msg in enumerate(event.messages):
-
-            # Handle both dict and object formats
-            role = None
-            content = None
-
-            if isinstance(msg, dict):
-                role = msg.get('role')
-                content = msg.get('content')
-            elif hasattr(msg, 'role'):
-                role = msg.role
-                content = msg.content if hasattr(msg, 'content') else None
-
-
-            if role == 'user' and content:
-                # Content might be a list of text blocks or a string
-                if isinstance(content, list):
-                    # Extract text from all blocks
-                    text_parts = []
-                    for block in content:
-                        if isinstance(block, dict) and 'text' in block:
-                            text_parts.append(block['text'])
-                        else:
-                            text_parts.append(str(block))
-                    message_text = ' '.join(text_parts)
-                else:
-                    message_text = str(content)
-
-                user_messages.append(message_text)
-
-        if not user_messages:
-            return
-
-        # Check the most recent user message
-        message_content = user_messages[-1]
-
-        # Get agent info from agent_control SDK
-        current_agent = agent_control.current_agent()
-        if not current_agent:
-            return
-
-        # Get server URL from environment
-        server_url = os.getenv('AGENT_CONTROL_URL', 'http://localhost:8000')
-
-        # Create step for pre-stage evaluation
-        step = Step(
-            type="llm",
-            name=f"{self.agent_name}-input",
-            input=message_content,
-            output="",
-            context={
-                "agent": self.agent_name,
-                "session_id": self.session_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-        )
-
-        # Run AgentControl evaluation using the evaluation module
-        from agent_control.client import AgentControlClient
-
-        # Create a client for this check
-        async with AgentControlClient(base_url=server_url) as client:
-
-            result = await agent_control.evaluation.check_evaluation(
-                client=client,
-                agent_uuid=current_agent.agent_id,
-                step=step,
-                stage="pre"
-            )
-
-
-            # Matches, non-matches, and errors are tracked in evaluation results
-
-        # Update session state stats
+    def _initialize_session_state(self):
+        """Initialize Streamlit session state if not already present."""
         if "stats" not in st.session_state:
             st.session_state.stats = {
                 "checks_passed": 0,
@@ -159,175 +102,89 @@ class SafetyTrackingHook(HookProvider):
                 "total_checks": 0
             }
 
-        st.session_state.stats["total_checks"] += 1
-
-        # Store detailed evaluation results for UI display
         if "current_message_evaluations" not in st.session_state:
             st.session_state.current_message_evaluations = []
 
-        evaluation_details = {
-            "agent": self.agent_name,
-            "stage": "pre",
-            "is_safe": result.is_safe,
-            "matches": [
-                {
-                    "control_name": m.control_name,
-                    "confidence": m.result.confidence,
-                    "message": m.result.message,
-                    "metadata": m.result.metadata or {}
-                }
-                for m in (result.matches or [])
-            ],
-            "non_matches": [
-                {
-                    "control_name": nm.control_name,
-                    "confidence": nm.result.confidence,
-                    "message": nm.result.message,
-                    "metadata": nm.result.metadata or {}
-                }
-                for nm in (result.non_matches or [])
-            ]
+        if "current_message_violations" not in st.session_state:
+            st.session_state.current_message_violations = []
+
+    def _handle_streamlit_violation(self, violation_info: dict, _evaluation_result: Any):
+        """
+        Custom callback for updating Streamlit session state when violation detected.
+
+        This is called by AgentControlHook whenever a safety violation occurs.
+        """
+        self._initialize_session_state()
+
+        # Store detailed violation for UI
+        violation = {
+            "agent": violation_info["agent"],
+            "controls": [violation_info["control_name"]],
+            "stage": violation_info["stage"]
         }
-        st.session_state.current_message_evaluations.append(evaluation_details)
+        st.session_state.current_message_violations.append(violation)
 
-        if not result.is_safe:
-            st.session_state.stats["violations_blocked"] += 1
+        # Update violation stats
+        st.session_state.stats["violations_blocked"] += 1
 
-            # Store violation for current message
-            if "current_message_violations" not in st.session_state:
-                st.session_state.current_message_violations = []
+    async def _check_controls(self, step: Step, stage: str, event: Any):
+        """
+        Override to add Streamlit-specific tracking for all checks.
 
-            violation = {
-                "agent": f"{self.agent_name}",
-                "controls": [m.control_name for m in (result.matches or [])],
-                "stage": "pre"
-            }
-            st.session_state.current_message_violations.append(violation)
+        This tracks every check (pass or fail) in session state and stores
+        detailed evaluation results for UI display.
 
-            # For pre-stage violations, we should ideally block the request
-            # But Strands BeforeInvocationEvent happens after routing
-            # So we log it and let the post-stage hook potentially catch it
-        else:
-            st.session_state.stats["checks_passed"] += 1
+        Returns:
+            EvaluationResult from parent's check, or None if AgentControl not initialized
+        """
+        self._initialize_session_state()
 
-    async def on_after_model_call(self, event: AfterModelCallEvent):
-        """Apply AgentControl checks and track results."""
-
-        # Check if we have a successful response
-        if not event.stop_response or event.exception:
-            return
-
-        # Check retry limit
-        if self.retry_count >= self.max_retries:
-            return
-
-        # Extract the message from stop_response
-        message = event.stop_response.message
-        output_text = str(message.content) if hasattr(message, 'content') else str(message)
-
-        # Get agent info from agent_control SDK
-        current_agent = agent_control.current_agent()
-        if not current_agent:
-            return
-
-        # Get server URL from SDK module-level variable
-        server_url = os.getenv('AGENT_CONTROL_URL', 'http://localhost:8000')
-
-        # Create step for evaluation
-        step = Step(
-            type="llm",
-            name=f"{self.agent_name}-output",
-            input="",  # We don't have access to the original input in AfterModelCallEvent
-            output=output_text,
-            context={
-                "agent": self.agent_name,
-                "session_id": self.session_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-        )
-
-        # Run AgentControl evaluation using the evaluation module
-        from agent_control.client import AgentControlClient
-
-        # Create a client for this check
-        async with AgentControlClient(base_url=server_url) as client:
-            result = await agent_control.evaluation.check_evaluation(
-                client=client,
-                agent_uuid=current_agent.agent_id,
-                step=step,
-                stage="post"
-            )
-
-        # Update session state stats
-        if "stats" not in st.session_state:
-            st.session_state.stats = {
-                "checks_passed": 0,
-                "violations_blocked": 0,
-                "total_checks": 0
-            }
-
+        # Increment total checks
         st.session_state.stats["total_checks"] += 1
 
-        # Store detailed evaluation results for UI display
-        if "current_message_evaluations" not in st.session_state:
-            st.session_state.current_message_evaluations = []
+        # Call parent's _check_controls to get full evaluation result (single API call!)
+        result = await super()._check_controls(step, stage, event)
 
-        evaluation_details = {
-            "agent": self.agent_name,
-            "stage": "post",
-            "is_safe": result.is_safe,
-            "matches": [
-                {
-                    "control_name": m.control_name,
-                    "confidence": m.result.confidence,
-                    "message": m.result.message,
-                    "metadata": m.result.metadata or {}
-                }
-                for m in (result.matches or [])
-            ],
-            "non_matches": [
-                {
-                    "control_name": nm.control_name,
-                    "confidence": nm.result.confidence,
-                    "message": nm.result.message,
-                    "metadata": nm.result.metadata or {}
-                }
-                for nm in (result.non_matches or [])
-            ]
-        }
-        st.session_state.current_message_evaluations.append(evaluation_details)
+        # Handle case where AgentControl is not initialized
+        if result is None:
+            return None
 
+        # Track passed checks
         if result.is_safe:
             st.session_state.stats["checks_passed"] += 1
-            # Reset retry counter on success
-            self.retry_count = 0
-        else:
-            st.session_state.stats["violations_blocked"] += 1
 
-            # Store violation for current message
-            if "current_message_violations" not in st.session_state:
-                st.session_state.current_message_violations = []
-
-            violation = {
+        # Store detailed evaluation for UI (no duplicate API call - use returned result!)
+        try:
+            evaluation_details = {
                 "agent": self.agent_name,
-                "controls": [m.control_name for m in (result.matches or [])],
-                "stage": "post" if hasattr(event, 'stop_response') else "pre"
+                "stage": stage,
+                "is_safe": result.is_safe,
+                "matches": [
+                    {
+                        "control_name": m.control_name,
+                        "confidence": m.result.confidence,
+                        "message": m.result.message,
+                        "metadata": m.result.metadata or {}
+                    }
+                    for m in (result.matches or [])
+                ],
+                "non_matches": [
+                    {
+                        "control_name": nm.control_name,
+                        "confidence": nm.result.confidence,
+                        "message": nm.result.message,
+                        "metadata": nm.result.metadata or {}
+                    }
+                    for nm in (result.non_matches or [])
+                ]
             }
-            st.session_state.current_message_violations.append(violation)
+            st.session_state.current_message_evaluations.append(evaluation_details)
 
-            # Check if we can retry
-            if self.retry_count < self.max_retries:
-                # Increment retry counter and trigger retry
-                self.retry_count += 1
-                event.retry = True
-                # Note: Strands doesn't support retry_guidance in AfterModelCallEvent
-                # The model will retry without specific guidance
-            else:
-                # Max retries reached - block the response
-                raise ControlViolationError(
-                    "Maximum retries exceeded - unable to generate safe response",
-                    result
-                )
+        except Exception as e:
+            # Don't fail on tracking errors
+            pass
+
+        return result
 
 
 # ============================================================================
@@ -437,113 +294,65 @@ def initialize_agentcontrol():
 
 
 def create_support_agents():
-    """Create the multi-agent customer support system."""
-    if "support_graph" in st.session_state:
-        return st.session_state.support_graph
+    """Create the customer support agent with AgentControl safety."""
+    if "support_agent" in st.session_state:
+        return st.session_state.support_agent
 
     model = OpenAIModel(model_id="gpt-4o")
 
-    # Triage Agent - Routes customer to appropriate specialist
-    triage_agent = Agent(
-        name="triage_agent",
+    # Agent UUID for this demo
+    agent_uuid = UUID("550e8400-e29b-41d4-a716-446655440099")
+    server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
+
+    # Single unified support agent with ALL tools
+    # This makes it easy to demonstrate tool-specific controls
+    support_agent = Agent(
+        name="support_agent",
         model=model,
-        system_prompt="""You are a customer support triage agent.
+        tools=[lookup_order, check_return_policy, search_knowledge_base],
+        system_prompt="""You are a customer support agent with access to tools.
 
 Your role:
-1. Understand the customer's question
-2. Determine the type of support needed (orders, returns, general info)
-3. Pass to the appropriate specialist with context
+1. Help customers with orders, returns, and general questions
+2. Use the appropriate tools to get accurate information:
+   - lookup_order: For order status and tracking
+   - check_return_policy: For return policies
+   - search_knowledge_base: For general company information
+3. Provide clear, helpful, professional responses
 
-Be friendly and professional. Never include customer PII in your summary.""",
-        hooks=[SafetyTrackingHook("triage")],
-    )
+CRITICAL TOOL USAGE RULES:
+- You MUST use the lookup_order tool for ANY order-related question, even if the order ID looks invalid
+- You MUST use the check_return_policy tool for ANY return-related question
+- You MUST use the search_knowledge_base tool for ANY general information question
+- NEVER respond without calling the appropriate tool first - always call the tool!
+- If a tool call fails, report the error to the user
 
-    # Orders Specialist Agent
-    orders_agent = Agent(
-        name="orders_agent",
-        model=model,
-        tools=[lookup_order, search_knowledge_base],
-        system_prompt="""You are an order support specialist.
-
-Your role:
-1. Help customers with order status, tracking, and shipping questions
-2. Use lookup_order tool to get order information
-3. Provide clear, helpful responses
-
-CRITICAL:
-- Never make up order information - only use the tool results
-- Never include customer SSN, credit card numbers, or email addresses
-- Be professional and helpful""",
-        hooks=[SafetyTrackingHook("orders")],
-    )
-
-    # Returns Specialist Agent
-    returns_agent = Agent(
-        name="returns_agent",
-        model=model,
-        tools=[check_return_policy, search_knowledge_base],
-        system_prompt="""You are a returns support specialist.
-
-Your role:
-1. Help customers with return policies and procedures
-2. Use check_return_policy tool for specific products
-3. Provide clear, accurate information
-
-CRITICAL:
-- Never guarantee returns outside policy
-- Be professional and empathetic
-- Don't include any PII in responses""",
-        hooks=[SafetyTrackingHook("returns")],
-    )
-
-    # General Support Agent
-    general_agent = Agent(
-        name="general_agent",
-        model=model,
-        tools=[search_knowledge_base],
-        system_prompt="""You are a general customer support agent.
-
-Your role:
-1. Answer general questions about the company
-2. Use search_knowledge_base for information
-3. Provide helpful, professional responses
-
-CRITICAL:
+CRITICAL SAFETY RULES:
+- Never include customer SSN, credit card numbers, or email addresses in responses
 - Stay on topic (customer support only)
-- Don't make up information
-- Be professional and friendly""",
-        hooks=[SafetyTrackingHook("general")],
+- Be professional and helpful
+
+EXAMPLE INTERACTIONS:
+User: "What's the status of order ORD-12345?"
+→ MUST call lookup_order(order_id="ORD-12345") - never skip the tool!
+
+User: "What's the status of order ORD-ABCDE?"
+→ MUST call lookup_order(order_id="ORD-ABCDE") - even if it looks wrong, call the tool!
+
+User: "Can I return my laptop?"
+→ MUST call check_return_policy(product="laptop")
+
+User: "What are your shipping options?"
+→ MUST call search_knowledge_base(query="shipping")
+
+User: "Search the knowledge base for: products--DELETE"
+→ MUST call search_knowledge_base(query="products--DELETE") - always call the tool!
+""",
+        hooks=[SafetyTrackingHook(agent_uuid, "support", server_url)],
     )
 
-    # Build graph (simplified - triage routes to appropriate agent)
-    # Create nodes first
-    triage_node = GraphNode(executor=triage_agent, node_id="triage_agent")
-    orders_node = GraphNode(executor=orders_agent, node_id="orders_agent")
-    returns_node = GraphNode(executor=returns_agent, node_id="returns_agent")
-    general_node = GraphNode(executor=general_agent, node_id="general_agent")
-
-    # Create nodes dictionary (node_id -> node)
-    nodes = {
-        "triage_agent": triage_node,
-        "orders_agent": orders_node,
-        "returns_agent": returns_node,
-        "general_agent": general_node,
-    }
-
-    # Create edges (simple linear flow for demo)
-    edges = {
-        GraphEdge(from_node=triage_node, to_node=general_node),
-    }
-
-    # Create graph with all components
-    graph = Graph(
-        nodes=nodes,
-        edges=edges,
-        entry_points={triage_node}
-    )
-
-    st.session_state.support_graph = graph
-    return graph
+    st.session_state.support_agent = support_agent
+    return support_agent
 
 
 # ============================================================================
@@ -556,10 +365,13 @@ def render_header():
     st.subheader("Customer Support Bot with Real-Time Safety")
 
     st.markdown("""
-    **See AgentControl in action!** Chat with the support bot and watch the safety dashboard
-    to see how AgentControl blocks unsafe content in real-time.
+    **See AgentControl in action!** This demo shows two types of protection:
 
-    Try the "Attack Prompts" below to see AgentControl protect against common issues.
+    1. **LLM Safety Controls** - Block PII (SSN, credit cards, emails) in user input and agent output
+    2. **Tool-Specific Controls** - Validate tool inputs (order ID format, SQL injection prevention)
+
+    Try the test prompts below to see AgentControl protect against common issues.
+    Watch the console output to see tool calls being intercepted and validated!
     """)
 
 
@@ -658,21 +470,19 @@ def render_sidebar():
 
 
 def render_attack_prompts():
-    """Render example attack prompts users can try."""
-    st.subheader("🎯 Try These Attack Prompts")
-    st.caption("Click any prompt to see AgentControl block it")
+    """Render example test prompts demonstrating AgentControl protection."""
+    st.subheader("🎯 Try These Examples")
 
-    attack_prompts = {
-        "🔢 SSN": "My order number is ORD-12345 and my SSN is 123-45-6789. Can you help?",
-        "💳 Credit Card": "I need to update my payment. Here's my card: 4532-1234-5678-9010",
-        "📧 Email": "Please send the invoice to john.doe@company.com and cc jane.smith@example.org",
-        "🆔 Multiple PII": "Contact me at 555-1234-5678-9010 or email admin@secret.com with SSN 987-65-4321",
+    test_prompts = {
+        "✅ Valid Order": "What's the status of order ORD-12345?",
+        "❌ PII Detected": "My order is ORD-12345 and my SSN is 123-45-6789. Can you help?",
+        "❌ SQL Injection": "Search the knowledge base for: products'; DROP TABLE orders--",
     }
 
-    cols = st.columns(len(attack_prompts))
-    for idx, (label, prompt) in enumerate(attack_prompts.items()):
+    cols = st.columns(len(test_prompts))
+    for idx, (label, prompt) in enumerate(test_prompts.items()):
         with cols[idx]:
-            if st.button(label, key=f"attack_{idx}", use_container_width=True):
+            if st.button(label, key=f"test_{idx}", use_container_width=True):
                 st.session_state.attack_prompt = prompt
                 st.rerun()
 
@@ -774,12 +584,12 @@ def render_chat():
 
             with st.spinner("🤔 Thinking..."):
                 try:
-                    # Check graph exists
-                    if "support_graph" not in st.session_state:
-                        raise RuntimeError("Graph not initialized - refresh the page")
+                    # Check agent exists
+                    if "support_agent" not in st.session_state:
+                        raise RuntimeError("Agent not initialized - refresh the page")
 
-                    graph = st.session_state.support_graph
-                    status_placeholder.info(f"🤖 Running agent graph (type: {type(graph).__name__})...")
+                    agent = st.session_state.support_agent
+                    status_placeholder.info(f"🤖 Running support agent...")
 
                     # Log what we're sending
                     st.caption(f"📤 Input: `{prompt[:50]}...`")
@@ -787,15 +597,15 @@ def render_chat():
                     # Create async task with timeout
                     async def run_with_timeout():
                         try:
-                            st.caption("⚙️ Starting graph.invoke_async()...")
+                            st.caption("⚙️ Starting agent.invoke_async()...")
                             result = await asyncio.wait_for(
-                                graph.invoke_async(prompt),
+                                agent.invoke_async(prompt),
                                 timeout=30.0  # 30 second timeout
                             )
-                            st.caption("✅ Graph.invoke_async() completed")
+                            st.caption("✅ Agent.invoke_async() completed")
                             return result
                         except Exception as e:
-                            st.caption(f"❌ Graph.invoke_async() failed: {e}")
+                            st.caption(f"❌ Agent.invoke_async() failed: {e}")
                             raise
 
                     st.caption("🔄 Running async task...")
@@ -804,46 +614,48 @@ def render_chat():
 
                     status_placeholder.empty()  # Clear status
 
-                    # Extract response from GraphResult
-                    # Get the last completed node's result
-                    if result.results:
-                        # Get the last node in execution order
-                        last_node = result.execution_order[-1] if result.execution_order else None
-                        if last_node:
-                            node_result = result.results.get(last_node.node_id)
-                            if node_result and hasattr(node_result.result, 'message'):
-                                agent_message = node_result.result.message
+                    # Extract response from AgentResult
+                    # Agent.invoke_async() returns an AgentResult with a message
+                    response = "No response generated"
 
-                                # Extract text content from message
-                                # Message can be a dict or an object
-                                content = None
-                                if isinstance(agent_message, dict):
-                                    content = agent_message.get('content')
-                                elif hasattr(agent_message, 'content'):
-                                    content = agent_message.content
+                    if result:
+                        # Try to extract message from result
+                        agent_message = None
 
-                                if content is not None:
-                                    # If content is a list, extract text from each block
-                                    if isinstance(content, list):
-                                        text_parts = []
-                                        for block in content:
-                                            if isinstance(block, dict) and 'text' in block:
-                                                text_parts.append(block['text'])
-                                            elif hasattr(block, 'text'):
-                                                text_parts.append(block.text)
-                                            else:
-                                                text_parts.append(str(block))
-                                        response = '\n'.join(text_parts)
-                                    else:
-                                        response = str(content)
+                        # Check if result has message attribute
+                        if hasattr(result, 'message'):
+                            agent_message = result.message
+                        # Check if result IS the message (some Strands versions return message directly)
+                        elif hasattr(result, 'content'):
+                            agent_message = result
+
+                        if agent_message:
+                            # Extract text content from message
+                            content = None
+                            if isinstance(agent_message, dict):
+                                content = agent_message.get('content')
+                            elif hasattr(agent_message, 'content'):
+                                content = agent_message.content
+
+                            if content is not None:
+                                # If content is a list, extract text from each block
+                                if isinstance(content, list):
+                                    text_parts = []
+                                    for block in content:
+                                        if isinstance(block, dict) and 'text' in block:
+                                            text_parts.append(block['text'])
+                                        elif hasattr(block, 'text'):
+                                            text_parts.append(block.text)
+                                        else:
+                                            text_parts.append(str(block))
+                                    response = '\n'.join(text_parts)
                                 else:
-                                    response = str(agent_message)
+                                    response = str(content)
                             else:
-                                response = "No response generated"
+                                response = str(agent_message)
                         else:
-                            response = "No nodes executed"
-                    else:
-                        response = "Empty result"
+                            # Fallback: stringify result
+                            response = str(result)
 
                     st.markdown(response)
 
@@ -888,25 +700,21 @@ def render_chat():
                     st.rerun()
 
                 except ControlViolationError as e:
-                    # AgentControl blocked the response after max retries
+                    # AgentControl blocked the request due to safety violation
                     st.error("🚫 **AgentControl Safety Block**")
 
                     # Show what was blocked
                     with st.expander("🔍 Why was this blocked?", expanded=True):
-                        st.markdown(f"**Violation:** {e.result.reason}")
-                        st.markdown(f"**Confidence:** {e.result.confidence:.0%}")
-
-                        if e.result.matches:
-                            st.markdown("**Controls Triggered:**")
-                            for match in e.result.matches:
-                                st.markdown(f"- `{match.control_name}` (confidence: {match.confidence:.0%})")
+                        st.markdown(f"**Reason:** {str(e)}")
 
                         st.info("""
-                        **What this means:** The agent tried multiple times to generate a safe response
-                        but kept including sensitive information. This protects against:
+                        **What this means:** AgentControl detected sensitive information in your request
+                        and blocked it from being processed. This protects against:
                         - PII leakage (SSN, credit cards, emails)
-                        - Toxic or inappropriate content
-                        - Hallucinated or false information
+                        - Processing of sensitive personal information
+                        - Data privacy violations
+
+                        Please rephrase your request without including sensitive information.
                         """)
 
                     # Provide safe fallback response

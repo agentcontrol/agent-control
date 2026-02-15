@@ -5,8 +5,8 @@ Setup script for Layered Governance Demo controls.
 This script creates AgentControl safety controls for the steering demo.
 Steering (quality layer) is implemented in code and doesn't need server setup.
 
-Controls created:
-1. block-pii-output - Blocks SSN, credit cards, emails in agent output (regex)
+Control created:
+- validate-refund-amount: Blocks refund amounts over $10,000 (regex pattern matching)
 
 Usage:
     python setup_steering_controls.py
@@ -35,58 +35,34 @@ AGENT_ID = "550e8400-e29b-41d4-a716-446655440010"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
-# Safety controls for the demo
+# Safety control for the demo
 SAFETY_CONTROLS = [
+    # Tool-Specific Control - Validates refund amounts
     {
-        "name": "block-pii-input",
-        "description": "CRITICAL: Block PII in user input (SSN, credit cards, emails)",
+        "name": "validate-refund-amount",
+        "description": "Block excessive refund amounts (over $10,000)",
         "definition": {
-            "description": "Block PII patterns in user messages to prevent sensitive data processing",
+            "description": "Enforce refund amount policy limit of $10,000",
             "enabled": True,
             "execution": "server",
             "scope": {
-                "step_types": ["llm"],
-                "stages": ["pre"]  # Check user input
+                "step_types": ["tool"],
+                "step_names": ["process_refund"],
+                "stages": ["pre"]
             },
-            "selector": {"path": "input"},  # Check input field
+            "selector": {"path": "input.amount"},
             "evaluator": {
                 "name": "regex",
                 "config": {
-                    # Combined PII pattern (SSN, credit card, email)
-                    "pattern": r"\b\d{3}-\d{2}-\d{4}\b|\b\d{9}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
+                    # Match amounts over $10,000 (5+ digits)
+                    "pattern": r"^\d{5,}\.?\d*$|^[1-9]\d{4,}\.?\d*$"
                 }
             },
             "action": {
                 "decision": "deny",
-                "message": "PII detected in user input - cannot process"
+                "message": "Refund amount exceeds maximum allowed ($10,000)"
             },
-            "tags": ["pii", "safety", "critical", "demo", "input"]
-        }
-    },
-    {
-        "name": "block-pii-output",
-        "description": "CRITICAL: Block PII in agent responses (SSN, credit cards, emails)",
-        "definition": {
-            "description": "Block PII patterns in agent outputs to prevent data leaks",
-            "enabled": True,
-            "execution": "server",
-            "scope": {
-                "step_types": ["llm"],
-                "stages": ["post"]  # Check agent output
-            },
-            "selector": {"path": "output"},  # Check output field
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    # Combined PII pattern (SSN, credit card, email)
-                    "pattern": r"\b\d{3}-\d{2}-\d{4}\b|\b\d{9}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-                }
-            },
-            "action": {
-                "decision": "deny",
-                "message": "PII detected - regenerating safe response"
-            },
-            "tags": ["pii", "safety", "critical", "demo", "output"]
+            "tags": ["financial-policy", "demo"]
         }
     }
 ]
@@ -283,28 +259,14 @@ async def main():
             print(f"""
 ✅ Layered Governance Demo Ready
 
-LAYER 1 - Safety (AgentControl):
-  → block-pii-input: Blocks SSN, credit cards, emails in user input (regex, pre-stage)
-  → block-pii-output: Blocks SSN, credit cards, emails in agent output (regex, post-stage)
+Control created:
+  • validate-refund-amount - Blocks refunds over $10,000 (AgentControl)
 
-LAYER 2 - Quality (Strands Steering):
-  → Empathy guidance (code-based)
-  → On-topic guidance (code-based)
-  → Brevity guidance (code-based)
+Quality layer:
+  • QualitySteeringHandler - Guides graceful error handling (Steering)
 
-Next Steps:
-  Run the demo:
-    streamlit run layered_governance_demo.py
-
-  Try both types of test prompts to see:
-    🛡️ Safety Layer: Hard blocks for PII violations
-    ✨ Quality Layer: Soft guidance for better responses
-
-Value Demonstrated:
-  ✓ Safety enforcement (AgentControl)
-  ✓ Quality optimization (Steering)
-  ✓ Layered governance approach
-  ✓ Complete observability
+Run the demo:
+  streamlit run layered_governance_demo.py
 """)
 
         except Exception as e:

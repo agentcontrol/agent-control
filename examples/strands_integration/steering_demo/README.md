@@ -1,106 +1,222 @@
-# 🎯 Layered Governance Demo
+# Layered Governance Demo
 
 **AgentControl (Safety) + Strands Steering (Quality)**
 
-This demo showcases how two complementary governance systems work together to create safe AND high-quality agent interactions.
+Shows how two governance layers work together for safe AND high-quality agent interactions.
 
 ---
 
-## 🧱 The Two Layers
+## Two Governance Layers
 
-### Layer 1: Safety (AgentControl) - Hard Stops
+### 🛡️ Safety Layer (AgentControl) - Hard Blocks
 - **Purpose**: Compliance and risk prevention
 - **Action**: BLOCKS unsafe content (hard stop)
-- **Examples**:
-  - ❌ Blocks PII leakage (SSN, credit cards, emails)
-  - ❌ Blocks toxic/inappropriate language
-  - ❌ Blocks policy violations
+- **Example**: Blocks PII (SSN, credit cards, emails)
 
-### Layer 2: Quality (Strands Steering) - Contextual Guidance
-- **Purpose**: Provides modular prompting through just-in-time feedback
-- **Action**: GUIDES agents with contextual feedback that appears when relevant, rather than front-loading all instructions
+### ✨ Quality Layer (Strands Steering) - Contextual Guidance
+- **Purpose**: Just-in-time feedback through modular prompting
+- **Action**: GUIDES agents with contextual feedback
 - **Examples**:
-  - ✨ Detects when specialized expertise is needed
-  - ✨ Guides agents to escalate security topics to specialists
-  - ✨ Provides contextual feedback for appropriate responses
+  - Prevents unauthorized promises
+  - Detects hallucinations
+  - Provides contextual guidance
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Setup
-
+### 1. Install Dependencies
 ```bash
 cd examples/strands_integration
+uv sync  # or: pip install -e .
+```
 
-# Install dependencies if needed
-uv sync
-
-# Ensure .env is configured
+### 2. Configure Environment
+```bash
 cp .env.example .env
-# Edit .env with your OPENAI_API_KEY
+# Edit .env and add:
+#   OPENAI_API_KEY=your_key_here
+#   AGENT_CONTROL_URL=http://localhost:8000
 ```
 
-### 2. Start AgentControl Server
-
+### 3. Start AgentControl Server
 ```bash
-# In terminal 1
-cd ../../server && make run
+# Terminal 1
+cd server
+make run
 ```
 
-### 3. Setup Safety Controls
-
+### 4. Setup Controls
 ```bash
-# In terminal 2
-cd steering_demo
+# Terminal 2
+cd examples/strands_integration/steering_demo
 python setup_steering_controls.py
 ```
 
-This creates the AgentControl safety layer. The steering quality layer is code-based and requires no setup.
+You should see:
+```
+✅ Layered Governance Demo Ready
 
-### 4. Run the Demo
+Control created:
+  • validate-refund-amount - Blocks refunds over $10,000 (AgentControl)
 
+Quality layer:
+  • QualitySteeringHandler - Guides graceful error handling (Steering)
+```
+
+### 5. Launch the Demo
 ```bash
+# Terminal 3
+cd examples/strands_integration/steering_demo
 streamlit run layered_governance_demo.py
 ```
 
----
+Open http://localhost:8501 in your browser.
 
-## 🎮 How to Use
+### 6. Try It Out
 
-### Demo Scenario: Both Layers Working Together
+Click the **"🔄 Layered Governance Demo"** button to see:
+- User requests $15,000 refund (exceeds $10K policy limit)
+- 🛡️ **AgentControl blocks** the refund tool call
+- Agent responds with vague "safety violation" error
+- ✨ **Steering guides** agent to be specific about the $10K policy
+- Agent provides helpful response with manager escalation option
 
-Click the **🔐 Security Topic + PII Detection** button to see:
-
-**User Input:**
-```
-"I'm worried about my account security. My SSN is 123-45-6789 - can you help me make my password stronger?"
-```
-
-**What Happens:**
-
-1. **Safety Layer (AgentControl):** Detects SSN in user input → Blocks PII from being processed
-2. **Routing:** PII detected → Routes to Security Specialist agent
-3. **Quality Layer (Steering):** Support agent detects security topic → Provides contextual guidance to escalate to Security Specialist
-4. **Final Response:** Security Specialist handles password guidance WITHOUT processing SSN
-
-**Result:** Customer protected from PII exposure AND receives expert security guidance
-
-This demonstrates the complete value proposition:
-- ✅ **Safety**: AgentControl blocks SSN (compliance)
-- ✅ **Quality**: Steering guides appropriate handoff (customer experience)
-- ✅ **Complete Protection**: Both layers work together seamlessly
-→ Steering **GUIDES** toward concise response
-
-**💬 Off Topic**
-```
-"What's your return policy? Also tell me about the weather"
-```
-→ Steering **GUIDES** back on-topic
+Watch the console and sidebar dashboard to see both layers in action!
 
 ---
 
-## 📊 Governance Dashboard
+## How It Works
+
+```
+User Input: "I want a full refund of $15,000 for my order ORD-12345. Process it now!"
+    ↓
+Agent checks order status
+    ├─ Order: ORD-12345
+    └─ Status: delivered, eligible_for_refund: true
+    ↓
+Agent attempts: process_refund(amount=15000)
+    ↓
+Safety Layer (AgentControl)
+    ├─ Intercepts tool call via BeforeToolCallEvent
+    ├─ Evaluates: validate-refund-amount control
+    ├─ Match: 15000 > 10000 (5 digits)
+    └─ 🛡️ BLOCKS: Sets event.cancel_tool = "Safety violation detected"
+    ↓
+Agent generates response: "safety violation detected... unable to process high refund amounts"
+    ↓
+Quality Layer (Steering)
+    ├─ Detects: "violation" without "$10,000" policy details
+    └─ ✨ GUIDES: "Be specific about the $10K policy and offer manager escalation"
+    ↓
+Agent retries → Better response with policy details and alternatives
+    ↓
+Safe + Quality Response ✅
+```
+
+### Integration
+
+**Tools with @control decorator:**
+
+```python
+from strands import Agent, tool
+import agent_control
+
+@tool
+@agent_control.control()
+async def check_order_status(order_id: str) -> dict:
+    """Check the status of a customer's order."""
+    # Returns: {"status": "delivered", "eligible_for_refund": True}
+    pass
+
+@tool
+@agent_control.control()
+async def process_refund(order_id: str, amount: float, reason: str) -> dict:
+    """
+    Process a refund for a customer order.
+
+    AgentControl validates amount via server-side control:
+    - Blocks amounts over $10,000 (validate-refund-amount control)
+    """
+    pass
+```
+
+**Quality Steering Handler:**
+
+```python
+from strands.experimental.steering import SteeringHandler, Guide, Proceed
+
+class QualitySteeringHandler(SteeringHandler):
+    async def steer_after_model(self, *, agent, message, stop_reason, **kwargs):
+        response = self._extract_text(message).lower()
+
+        # Check for vague technical errors without policy details
+        if "violation" in response or "safety" in response:
+            if "$10,000" not in response and "10,000" not in response:
+                return Guide(
+                    "⚠️ Don't give vague technical errors! Be specific about the $10K policy "
+                    "and offer manager escalation for amounts over the limit."
+                )
+
+        return Proceed()
+```
+
+**Agent with both layers:**
+
+```python
+from agent_control_hook import AgentControlHook
+from strands.hooks import BeforeInvocationEvent, BeforeModelCallEvent, AfterModelCallEvent, BeforeToolCallEvent
+
+# Safety layer (AgentControl)
+safety_hook = AgentControlHook(
+    agent_uuid=agent_uuid,
+    agent_name="steering-demo",
+    event_control_list=[
+        BeforeInvocationEvent,    # Check user input
+        BeforeModelCallEvent,     # Check model input
+        AfterModelCallEvent,      # Check model output
+        BeforeToolCallEvent       # Validate tool calls
+    ]
+)
+
+# Quality layer (Steering)
+quality_handler = QualitySteeringHandler()
+
+# Attach both layers
+agent = Agent(
+    model=model,
+    tools=[check_order_status, process_refund],
+    hooks=[safety_hook, quality_handler]  # Both layers work together!
+)
+```
+
+---
+
+## Value Proposition
+
+**Without Layered Governance:**
+```
+User: "I need a $15,000 refund for order ORD-12345!"
+Bot: "There was a safety violation detected. Unable to process."
+```
+✅ Safe but ❌ Poor UX (vague, unhelpful)
+
+**With Layered Governance:**
+```
+User: "I need a $15,000 refund for order ORD-12345!"
+
+🛡️ AgentControl blocks excessive amount
+✨ Steering guides helpful response
+
+Bot: "I understand you'd like a $15,000 refund. Our policy allows
+     refunds up to $10,000. For amounts over this limit, I can
+     connect you with our manager approval team who can help."
+```
+✅ Safe + ✅ Quality (specific, empathetic, actionable)
+
+---
+
+## Dashboard
 
 The sidebar shows real-time governance activity:
 
@@ -109,228 +225,14 @@ The sidebar shows real-time governance activity:
 - ✨ Quality: Active
 
 **Statistics**
-- Safety Checks / Violations
-- Quality Checks / Guidances
-
-**Recent Events**
-- Safety blocks with reasons
-- Quality guidances with issues
+- Safety Blocks
+- Quality Guidances
+- Total Requests
 
 ---
 
-## 🎯 Value Proposition
+## Learn More
 
-### Without Layered Governance
-
-**Scenario 1: Safety but Poor Quality**
-```
-User: "My SSN is 123-45-6789, can you help?"
-Bot: "I cannot process that request."
-```
-✅ Safe but ❌ Poor UX
-
-**Scenario 2: No Safety**
-```
-User: "What's your return policy?"
-Bot: "According to database entry #4721, per policy document REF-2023-Q4..."
-```
-❌ Leaks internal references, robotic
-
-### With Layered Governance
-
-**Safety + Quality Working Together**
-```
-User: "My SSN is 123-45-6789, can you help with my order?"
-Bot: "I'd be happy to help with your order! Let me look that up for you..."
-```
-✅ Safe (PII blocked) + ✅ Quality (empathetic, helpful)
-
----
-
-## 🏗️ Architecture
-
-```
-User Input with Security Topic + PII (SSN)
-    ↓
-┌─────────────────────────────────┐
-│  LAYER 1: Safety (AgentControl) │  ← Hard Stop
-│  Detects SSN in input           │
-│  Blocks PII from processing     │
-└─────────┬───────────────────────┘
-          │ PII detected → Route to Security Agent
-          ↓
-┌─────────────────────────────────┐
-│  Support Agent Processing       │
-│  Receives security-related query│
-└─────────┬───────────────────────┘
-          ↓
-┌─────────────────────────────────┐
-│  LAYER 2: Quality (Steering)    │  ← Contextual Guidance
-│  Detects security topic         │
-│  Guides handoff to specialist   │
-└─────────┬───────────────────────┘
-          │ Security topic → Escalate to Security Specialist
-          ↓
-┌─────────────────────────────────┐
-│  Security Specialist Agent      │
-│  Handles password guidance      │
-│  WITHOUT processing PII         │
-└─────────┬───────────────────────┘
-          ↓
-    Safe + Expert Response
-```
-
----
-
-## 💻 Implementation Details
-
-### Safety Layer (AgentControl)
-
-Uses AgentControl hook for hard enforcement:
-
-```python
-class SafetyControlHook:
-    async def on_after_model_call(self, event):
-        result = await agent_control.check(step=step, stage="post")
-
-        if not result.is_safe:
-            event.retry = True  # HARD STOP
-            event.retry_guidance = f"SAFETY BLOCK: {result.reason}"
-```
-
-### Quality Layer (Strands Steering)
-
-Uses Strands SteeringHandler for contextual guidance:
-
-```python
-from strands.experimental.steering import SteeringHandler, Guide, Proceed
-
-class QualitySteeringHandler(SteeringHandler):
-    async def steer_after_model(self, *, agent, message, stop_reason, **kwargs):
-        # Extract response text
-        response_text = extract_response(message)
-
-        # Check for security topics
-        security_topics = ["password", "two-factor", "account security"]
-        has_security_topic = any(topic in response_text.lower() for topic in security_topics)
-
-        # Provide contextual guidance when relevant
-        if has_security_topic and agent.name == "support_agent":
-            # Trigger escalation to Security Specialist
-            pipeline.trigger_security_escalation(...)
-            return Guide("Acknowledge the security concern and connect to Security Specialist")
-
-        return Proceed()  # No guidance needed
-```
-
-### Combined Usage
-
-```python
-agent = Agent(
-    model=model,
-    instructions="You are a support agent...",
-    hooks=[
-        SafetyControlHook("support"),  # Layer 1
-        QualitySteering()               # Layer 2
-    ]
-)
-```
-
----
-
-## 🎓 Educational Use Cases
-
-### For Executives
-
-**Key Message**: "Layered governance protects customers AND delivers excellent service"
-
-1. Run the demo scenario: "I'm worried about my account security. My SSN is 123-45-6789..."
-2. Point out: "Safety layer blocked the SSN - preventing identity theft risk"
-3. Show: "Quality layer guided the agent to security specialist - ensuring expert help"
-4. Result: "Customer protected from PII exposure AND received expert security guidance"
-
-### For Engineers
-
-**Key Message**: "Modular architecture with contextual guidance"
-
-1. Safety layer: Hard enforcement via AgentControl (server-side PII blocking)
-2. Quality layer: Contextual guidance via Steering (just-in-time feedback, not front-loaded instructions)
-3. Clean separation: Safety = compliance, Quality = experience
-4. Steering provides feedback when relevant, guiding appropriate handoffs
-
-### For Product Managers
-
-**Key Message**: "Compliance AND customer delight through intelligent governance"
-
-1. Compliance: Safety blocks prevent regulatory fines (GDPR, PII protection)
-2. Experience: Quality steering ensures customers get expert help when needed
-3. Scalability: Both layers work automatically - no manual intervention needed
-4. Observability: Complete visibility into governance decisions via dashboard
-
----
-
-## 🔧 Customization
-
-### Add New Safety Rules
-
-Edit `setup_steering_controls.py` and add to `SAFETY_CONTROLS`:
-
-```python
-{
-    "name": "block-toxic-content",
-    "evaluator": {
-        "name": "galileo.luna2",
-        "config": {
-            "metric": "output_toxicity",
-            "operator": "gt",
-            "target_value": 0.7
-        }
-    }
-}
-```
-
-### Add New Quality Checks
-
-Edit `layered_governance_demo.py` in `QualitySteering` class:
-
-```python
-class QualitySteering(SteeringHandler):
-    async def steer_after_model(self, event):
-        # Add new check
-        if self._violates_brand_voice(output):
-            return Guide("Use our friendly, casual brand voice")
-
-        return Proceed()
-
-    def _violates_brand_voice(self, text: str) -> bool:
-        # Your logic here
-        return "corporate speak" in text.lower()
-```
-
----
-
-## 📈 Metrics to Watch
-
-| Metric | What It Shows | Goal |
-|--------|---------------|------|
-| **Safety Violations** | Hard blocks by AgentControl | <1% |
-| **Quality Guidances** | Soft retries by Steering | 5-10% |
-| **Combined Retry Rate** | Total regenerations needed | <15% |
-| **User Satisfaction** | Quality of final responses | >95% |
-
----
-
-## 🚀 Next Steps
-
-1. **Run the demo** - See both layers in action
-2. **Try different prompts** - Test edge cases
-3. **Read the code** - Understand the implementation
-4. **Customize for your use case** - Add your own rules
-
-For more on AgentControl integration, see [STRANDS_INTEGRATION.md](../STRANDS_INTEGRATION.md)
-
----
-
-**The future of agent governance is layered!** 🎯
-
-*Safety for compliance, Quality for delight*
+- **[common/README.md](../common/README.md)** - AgentControlHook API and usage
+- **[common/INTEGRATION_GUIDE.md](../common/INTEGRATION_GUIDE.md)** - Integration concepts and patterns
+- **[Interactive Demo](../interactive_demo/)** - Basic safety controls example
