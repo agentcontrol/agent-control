@@ -10,6 +10,13 @@ from .observability import add_event, get_logger, is_observability_enabled
 
 _logger = get_logger(__name__)
 
+# Fallback IDs used when trace context is missing.
+# All-zero values are invalid trace/span IDs per OpenTelemetry, making them
+# easy to filter in observability queries while still recording the event.
+_FALLBACK_TRACE_ID = "0" * 32
+_FALLBACK_SPAN_ID = "0" * 16
+_trace_warning_logged = False
+
 # Import models if available
 try:
     from agent_control_engine import list_evaluators
@@ -54,8 +61,8 @@ def _emit_local_events(
     local_result: "EvaluationResponse",
     request: "EvaluationRequest",
     local_controls: list["_ControlAdapter"],
-    trace_id: str,
-    span_id: str,
+    trace_id: str | None,
+    span_id: str | None,
     agent_name: str | None,
 ) -> None:
     """Emit observability events for locally-evaluated controls.
@@ -63,12 +70,27 @@ def _emit_local_events(
     Mirrors the server's _emit_observability_events() so that SDK-evaluated
     controls are visible in the observability pipeline.
 
+    When trace_id/span_id are missing, fallback all-zero IDs are used so events
+    are still recorded (but clearly marked as uncorrelated).
+
     Only runs when observability is enabled.
     """
     if not is_observability_enabled():
         return
     if not ENGINE_AVAILABLE:
         return
+
+    global _trace_warning_logged  # noqa: PLW0603
+    if not trace_id or not span_id:
+        if not _trace_warning_logged:
+            _logger.warning(
+                "Emitting local control events without trace context; "
+                "events will use fallback IDs and cannot be correlated with traces. "
+                "Pass trace_id/span_id for full observability."
+            )
+            _trace_warning_logged = True
+        trace_id = trace_id or _FALLBACK_TRACE_ID
+        span_id = span_id or _FALLBACK_SPAN_ID
 
     applies_to = _map_applies_to(request.step.type)
     control_lookup = {c.id: c for c in local_controls}
@@ -409,11 +431,10 @@ async def check_evaluation_with_local(
 
         # Emit observability events for locally-evaluated controls
         # (before short-circuit so events are always emitted for local controls)
-        if trace_id and span_id:
-            _emit_local_events(
-                local_result, request, local_controls,
-                trace_id, span_id, agent_name,
-            )
+        _emit_local_events(
+            local_result, request, local_controls,
+            trace_id, span_id, agent_name,
+        )
 
         # Short-circuit on local deny
         if not local_result.is_safe:

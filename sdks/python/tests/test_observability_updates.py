@@ -213,6 +213,59 @@ class TestEmitLocalEvents:
             event = mock_add.call_args_list[0][0][0]
             assert event.applies_to == "tool_call"
 
+    def test_uses_fallback_ids_when_trace_context_missing(self):
+        """Should emit events with all-zero fallback IDs when trace context is absent."""
+        import agent_control.evaluation as eval_mod
+        from agent_control.evaluation import (
+            _FALLBACK_SPAN_ID,
+            _FALLBACK_TRACE_ID,
+            _emit_local_events,
+        )
+
+        ctrl = self._make_control_adapter(1, "ctrl-1")
+        match = self._make_match(1, "ctrl-1")
+        response = self._make_response(matches=[match])
+        request = self._make_request()
+
+        # Reset the once-only warning flag so the warning fires in this test
+        eval_mod._trace_warning_logged = False
+
+        with patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
+             patch("agent_control.evaluation.add_event") as mock_add, \
+             patch("agent_control.evaluation._logger") as mock_logger:
+            _emit_local_events(
+                response, request, [ctrl],
+                None, None, "test-agent",
+            )
+            assert mock_add.call_count == 1
+            event = mock_add.call_args_list[0][0][0]
+            assert event.trace_id == _FALLBACK_TRACE_ID
+            assert event.span_id == _FALLBACK_SPAN_ID
+            assert event.trace_id == "0" * 32
+            assert event.span_id == "0" * 16
+            # Warning should have been logged
+            mock_logger.warning.assert_called_once()
+            assert "fallback" in mock_logger.warning.call_args[0][0].lower()
+
+    def test_fallback_warning_logged_only_once(self):
+        """The missing-trace-context warning should fire only on the first call."""
+        import agent_control.evaluation as eval_mod
+        from agent_control.evaluation import _emit_local_events
+
+        ctrl = self._make_control_adapter(1, "ctrl-1")
+        match = self._make_match(1, "ctrl-1")
+        response = self._make_response(matches=[match])
+        request = self._make_request()
+
+        eval_mod._trace_warning_logged = False
+
+        with patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
+             patch("agent_control.evaluation.add_event"), \
+             patch("agent_control.evaluation._logger") as mock_logger:
+            _emit_local_events(response, request, [ctrl], None, None, "a")
+            _emit_local_events(response, request, [ctrl], None, None, "a")
+            assert mock_logger.warning.call_count == 1
+
 
 # =============================================================================
 # check_evaluation_with_local event emission + header forwarding
@@ -291,8 +344,8 @@ class TestCheckEvaluationWithLocal:
         assert len(result.non_matches) == 1
 
     @pytest.mark.asyncio
-    async def test_does_not_emit_without_trace_context(self):
-        """Should skip event emission when trace_id/span_id not provided."""
+    async def test_emits_events_without_trace_context(self):
+        """Should still emit events when trace_id/span_id not provided (fallback IDs)."""
         from agent_control_models import EvaluationResponse, Step
 
         mock_response = EvaluationResponse(
@@ -328,7 +381,10 @@ class TestCheckEvaluationWithLocal:
                 controls=controls,
                 # No trace_id/span_id
             )
-            mock_emit.assert_not_called()
+            mock_emit.assert_called_once()
+            call_args = mock_emit.call_args
+            assert call_args[0][3] is None  # trace_id passed as None
+            assert call_args[0][4] is None  # span_id passed as None
 
     @pytest.mark.asyncio
     async def test_forwards_trace_headers_to_server(self):
