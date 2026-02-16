@@ -1947,6 +1947,298 @@ class TestMultiTenantRLSSecurityBypass:
         assert result.matched is True
 
 
+class TestRequiredColumnValues:
+    """Tests for value-aware multi-tenant SQL enforcement."""
+
+    @pytest.mark.asyncio
+    async def test_exact_equality_match_passes(self):
+        """Required column value match in top-level WHERE should pass."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {"query": "SELECT * FROM users WHERE user_id = 'u1'", "context": {"user_id": "u1"}}
+        )
+        assert result.error is None
+        assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_full_step_payload_format_passes(self):
+        """Full step payload should provide query and context to the evaluator."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {
+                "type": "tool",
+                "name": "execute_sql",
+                "input": {"query": "SELECT * FROM users WHERE user_id = 'u1'"},
+                "context": {"user_id": "u1"},
+            }
+        )
+        assert result.error is None
+        assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_case_insensitive_column_match_passes(self):
+        """Column matching should follow case-insensitive default behavior."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {"query": "SELECT * FROM users WHERE User_ID = 'u1'", "context": {"user_id": "u1"}}
+        )
+        assert result.error is None
+        assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_numeric_literal_match_passes(self):
+        """Numeric SQL literals should match equivalent scalar context values."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {"query": "SELECT * FROM users WHERE user_id = 123", "context": {"user_id": 123}}
+        )
+        assert result.error is None
+        assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_value_mismatch_is_blocked(self):
+        """Mismatched literal value should be blocked."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {"query": "SELECT * FROM users WHERE user_id = 'u2'", "context": {"user_id": "u1"}}
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_or_invalid_value_predicate"
+
+    @pytest.mark.asyncio
+    async def test_neq_operator_is_blocked(self):
+        """Negated comparison should not satisfy required_column_values."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {"query": "SELECT * FROM users WHERE user_id != 'u1'", "context": {"user_id": "u1"}}
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_or_invalid_value_predicate"
+
+    @pytest.mark.asyncio
+    async def test_not_wrapper_is_blocked(self):
+        """NOT-wrapped equality should be blocked."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {
+                "query": "SELECT * FROM users WHERE NOT user_id = 'u1'",
+                "context": {"user_id": "u1"},
+            }
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_or_invalid_value_predicate"
+
+    @pytest.mark.asyncio
+    async def test_or_bypass_is_blocked(self):
+        """OR-branch predicates should be rejected for tenant checks."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {
+                "query": "SELECT * FROM users WHERE user_id = 'u1' OR 1 = 1",
+                "context": {"user_id": "u1"},
+            }
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_or_invalid_value_predicate"
+
+    @pytest.mark.asyncio
+    async def test_parameterized_rhs_is_blocked(self):
+        """Parameterized comparisons should fail closed."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {"query": "SELECT * FROM users WHERE user_id = $1", "context": {"user_id": "u1"}}
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_or_invalid_value_predicate"
+
+    @pytest.mark.asyncio
+    async def test_function_rhs_is_blocked(self):
+        """Function-based RHS should fail closed."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {
+                "query": "SELECT * FROM users WHERE user_id = get_user_id()",
+                "context": {"user_id": "u1"},
+            }
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_or_invalid_value_predicate"
+
+    @pytest.mark.asyncio
+    async def test_missing_context_key_is_blocked(self):
+        """Missing context key should fail closed."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate({"query": "SELECT * FROM users WHERE user_id = 'u1'"})
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_context_value"
+
+    @pytest.mark.asyncio
+    async def test_non_scalar_context_value_is_blocked(self):
+        """Context values must be scalar."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {"query": "SELECT * FROM users WHERE user_id = 'u1'", "context": {"user_id": ["u1"]}}
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "invalid_context_value_type"
+
+    @pytest.mark.asyncio
+    async def test_none_context_value_is_blocked(self):
+        """None context values must be rejected."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {"query": "SELECT * FROM users WHERE user_id = 'u1'", "context": {"user_id": None}}
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "invalid_context_value_type"
+
+    @pytest.mark.asyncio
+    async def test_missing_top_level_where_is_blocked(self):
+        """Table-accessing statements must have top-level WHERE."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {"query": "SELECT * FROM users", "context": {"user_id": "u1"}}
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_top_level_where"
+
+    @pytest.mark.asyncio
+    async def test_subquery_only_predicate_is_blocked(self):
+        """Predicates only inside subqueries must not satisfy the rule."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {
+                "query": (
+                    "SELECT * FROM users WHERE id IN "
+                    "(SELECT user_id FROM orders WHERE user_id = 'u1')"
+                ),
+                "context": {"user_id": "u1"},
+            }
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_or_invalid_value_predicate"
+
+    @pytest.mark.asyncio
+    async def test_table_qualified_rule_with_alias_resolves_to_base_table(self):
+        """Qualified rules should resolve aliases to base tables."""
+        config = SQLEvaluatorConfig(required_column_values={"users.user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {
+                "query": "SELECT * FROM users u WHERE u.user_id = 'u1'",
+                "context": {"user_id": "u1"},
+            }
+        )
+        assert result.error is None
+        assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_table_alias_spoofing_is_blocked(self):
+        """Alias spoofing should not satisfy qualified base-table rules."""
+        config = SQLEvaluatorConfig(required_column_values={"users.user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {
+                "query": "SELECT * FROM orders AS users WHERE users.user_id = 'u1'",
+                "context": {"user_id": "u1"},
+            }
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "missing_or_invalid_value_predicate"
+
+    @pytest.mark.asyncio
+    async def test_unqualified_column_with_multi_table_query_is_blocked(self):
+        """Unqualified rules should fail closed when statement has multiple tables."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {
+                "query": (
+                    "SELECT * FROM users u JOIN orders o ON u.id = o.user_id "
+                    "WHERE u.user_id = 'u1'"
+                ),
+                "context": {"user_id": "u1"},
+            }
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["violation"] == "ambiguous_unqualified_column"
+
+    @pytest.mark.asyncio
+    async def test_multi_statement_requires_each_statement_to_be_scoped(self):
+        """Each table-accessing statement must satisfy required_column_values."""
+        config = SQLEvaluatorConfig(required_column_values={"user_id": "user_id"})
+        evaluator = SQLEvaluator(config)
+
+        result = await evaluator.evaluate(
+            {
+                "query": (
+                    "SELECT * FROM users WHERE user_id = 'u1'; "
+                    "SELECT * FROM users WHERE status = 'active'"
+                ),
+                "context": {"user_id": "u1"},
+            }
+        )
+        assert result.error is None
+        assert result.matched is True
+        assert result.metadata["statement_index"] == 1
+        assert result.metadata["violation"] == "missing_or_invalid_value_predicate"
+
+    def test_required_column_values_warns_with_select_context(self):
+        """Value-based rules should warn when select context is configured."""
+        with pytest.warns(UserWarning, match="value checks only apply to WHERE"):
+            SQLEvaluatorConfig(
+                required_columns=["user_id"],
+                column_context="select",
+                required_column_values={"user_id": "user_id"},
+            )
+
+
 class TestLimitBypassSubqueries:
     """Tests for Issue #3: LIMIT checking doesn't recurse."""
 
