@@ -1,7 +1,5 @@
 SHELL := /bin/bash
 
-SPEAKEASY_VERSION ?= v1.721.5-rc.0
-
 .PHONY: help install install-no-frozen speakeasy-install generate generate-check lint typecheck test build clean
 
 help:
@@ -22,7 +20,7 @@ install-no-frozen:
 	pnpm install
 
 speakeasy-install:
-	SPEAKEASY_VERSION=$(SPEAKEASY_VERSION) ./scripts/install-speakeasy.sh
+	./scripts/install-speakeasy.sh
 
 generate: speakeasy-install
 	./scripts/generate-sdk.sh

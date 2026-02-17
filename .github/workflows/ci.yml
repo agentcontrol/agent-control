@@ -187,6 +187,9 @@ jobs:
         working-directory: ./sdks/typescript
         run: pnpm install --frozen-lockfile
 
+      - name: Install pinned Speakeasy CLI
+        run: make -C sdks/typescript speakeasy-install
+
       - name: Lint TypeScript SDK
         run: make sdk-ts-lint
 

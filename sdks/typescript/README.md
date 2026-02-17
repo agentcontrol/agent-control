@@ -18,4 +18,4 @@ make build
 
 - OpenAPI source: `../../server/openapi.json`
 - Generated code location: `src/generated/`
-- Speakeasy CLI binary is pinned and downloaded into `.speakeasy/bin/`
+- Speakeasy CLI version is sourced from `.speakeasy/workflow.yaml` and downloaded into `.speakeasy/bin/`

@@ -13,7 +13,7 @@ typescript:
   version: 0.1.0
   packageName: agent-control
   author: Agent Control
-  moduleFormat: commonjs
+  moduleFormat: esm
   enumFormat: union
   flattenGlobalSecurity: true
   templateVersion: v2
