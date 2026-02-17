@@ -1,0 +1,4 @@
+node_modules/
+dist/
+.speakeasy/bin/
+.speakeasy/tmp-generated/

@@ -1,4 +1,4 @@
-.PHONY: help sync test test-extras test-all test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build
+.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build sdk-ts-generate sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck
 
 # Workspace package names
 PACK_MODELS := agent-control-models
@@ -11,6 +11,7 @@ PACK_EVALUATORS := agent-control-evaluators
 MODELS_DIR := models
 SERVER_DIR := server
 SDK_DIR    := sdks/python
+TS_SDK_DIR := sdks/typescript
 ENGINE_DIR := engine
 EVALUATORS_DIR := evaluators/builtin
 GALILEO_DIR := evaluators/extra/galileo
@@ -23,17 +24,21 @@ help:
 	@echo ""
 	@echo "Run:"
 	@echo "  make server-<target> - forward to server targets (e.g., server-help, server-alembic-upgrade)"
+	@echo "  make openapi-spec    - generate committed OpenAPI spec at server/openapi.json"
+	@echo "  make openapi-spec-check - regenerate OpenAPI spec and fail on drift"
 	@echo ""
 	@echo "Test:"
 	@echo "  make test            - run tests for core packages (server, engine, sdk, evaluators)"
 	@echo "  make test-extras     - run tests for extra evaluators (galileo, etc.)"
 	@echo "  make test-all        - run all tests (core + extras)"
+	@echo "  make sdk-ts-test     - run TypeScript SDK tests"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make lint            - ruff check for all members"
 	@echo "  make lint-fix        - ruff check --fix (auto-fix) for all members"
 	@echo "  make typecheck       - mypy for all members"
 	@echo "  make check           - run test, lint, and typecheck"
+	@echo "  make sdk-ts-lint | sdk-ts-typecheck | sdk-ts-build | sdk-ts-generate"
 	@echo ""
 	@echo "Build / Publish:"
 	@echo "  make build           - build wheels for all members"
@@ -52,6 +57,16 @@ help:
 
 sync:
 	uv sync --all-packages
+
+# ---------------------------
+# OpenAPI spec
+# ---------------------------
+
+openapi-spec:
+	uv run --package $(PACK_SERVER) python server/openapi.py --output server/openapi.json
+
+openapi-spec-check: openapi-spec
+	git diff --exit-code -- server/openapi.json
 
 # ---------------------------
 # Run
@@ -134,6 +149,27 @@ hooks-uninstall:
 
 prepush:
 	bash $(HOOKS_DIR)/pre-push
+
+sdk-ts-generate: openapi-spec
+	$(MAKE) -C $(TS_SDK_DIR) generate
+
+sdk-ts-generate-check: openapi-spec-check
+	$(MAKE) -C $(TS_SDK_DIR) generate-check
+
+sdk-ts-build:
+	$(MAKE) -C $(TS_SDK_DIR) build
+
+sdk-ts-test:
+	$(MAKE) -C $(TS_SDK_DIR) test
+
+sdk-ts-lint:
+	$(MAKE) -C $(TS_SDK_DIR) lint
+
+sdk-ts-typecheck:
+	$(MAKE) -C $(TS_SDK_DIR) typecheck
+
+sdk-ts-%:
+	$(MAKE) -C $(TS_SDK_DIR) $(patsubst sdk-ts-%,%,$@)
 
 engine-%:
 	$(MAKE) -C $(ENGINE_DIR) $(patsubst engine-%,%,$@)
