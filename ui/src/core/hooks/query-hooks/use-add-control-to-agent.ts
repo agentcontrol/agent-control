@@ -119,6 +119,10 @@ export function useAddControlToAgent() {
       queryClient.invalidateQueries({
         queryKey: ['agentControls', variables.agentId],
       });
+      // Invalidate agents list query to refresh active controls count
+      queryClient.invalidateQueries({
+        queryKey: ['agents', 'infinite'],
+      });
     },
   });
 }

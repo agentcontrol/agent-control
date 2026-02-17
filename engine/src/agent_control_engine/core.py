@@ -210,7 +210,8 @@ class ControlEngine:
                     error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
                     logger.warning(
                         f"Evaluator timeout for control '{eval_task.item.name}' "
-                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}"
+                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}",
+                        exc_info=True,
                     )
                     eval_task.result = EvaluatorResult(
                         matched=False,
@@ -222,9 +223,10 @@ class ControlEngine:
                     # Evaluation error - fail open but mark as error
                     # The error field signals to callers that this was not a real evaluation
                     error_msg = f"{type(e).__name__}: {e}"
-                    logger.warning(
+                    logger.error(
                         f"Evaluator error for control '{eval_task.item.name}' "
-                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}"
+                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}",
+                        exc_info=True,
                     )
                     eval_task.result = EvaluatorResult(
                         matched=False,

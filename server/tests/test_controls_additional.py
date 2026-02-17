@@ -443,6 +443,8 @@ def test_patch_control_enabled_with_corrupted_data(client: TestClient) -> None:
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "CORRUPTED_DATA"
+    assert body["errors"][0]["message"] == "Stored control data is corrupted and cannot be parsed."
+    assert "ValidationError" not in body["errors"][0]["message"]
 
 
 def test_set_control_data_agent_scoped_agent_not_found(client: TestClient) -> None:
@@ -679,6 +681,11 @@ def test_set_control_data_builtin_evaluator_invalid_parameters(
     body = resp.json()
     assert body["error_code"] == "INVALID_CONFIG"
     assert any(err.get("code") == "invalid_parameters" for err in body.get("errors", []))
+    assert any(
+        err.get("message") == "Invalid config parameters for evaluator."
+        for err in body.get("errors", [])
+    )
+    assert "unexpected parameter" not in resp.text
 
 
 @pytest.mark.asyncio

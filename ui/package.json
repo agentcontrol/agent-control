@@ -30,7 +30,7 @@
     "@mantine/modals": "7.17.7",
     "@mantine/notifications": "7.17.7",
     "@rungalileo/icons": "^0.0.1",
-    "@rungalileo/jupiter-ds": "^0.0.7",
+    "@rungalileo/jupiter-ds": "^0.0.8",
     "@tabler/icons-react": "3.31",
     "@tanstack/react-query": "5.74.4",
     "@tanstack/react-query-devtools": "5.72.2",

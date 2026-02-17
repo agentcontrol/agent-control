@@ -41,6 +41,9 @@ from ..services.evaluator_utils import (
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
 _MAX_PAGINATION_LIMIT = 100
+_INVALID_PARAMETERS_MESSAGE = "Invalid config parameters for evaluator."
+_CORRUPTED_CONTROL_DATA_MESSAGE = "Stored control data is corrupted and cannot be parsed."
+_SCHEMA_VALIDATION_FAILED_MESSAGE = "Config does not satisfy the evaluator schema."
 
 router = APIRouter(prefix="/controls", tags=["controls"])
 
@@ -127,7 +130,7 @@ async def _validate_control_definition(
                 validate_config_against_schema(
                     control_def.evaluator.config, evaluator.config_schema
                 )
-            except JSONSchemaValidationError as e:
+            except JSONSchemaValidationError:
                 raise APIValidationError(
                     error_code=ErrorCode.INVALID_CONFIG,
                     detail=f"Config validation failed for evaluator '{evaluator_ref}'",
@@ -138,7 +141,7 @@ async def _validate_control_definition(
                             resource="Control",
                             field="data.evaluator.config",
                             code="schema_validation_error",
-                            message=e.message,
+                            message=_SCHEMA_VALIDATION_FAILED_MESSAGE,
                         )
                     ],
                 )
@@ -167,7 +170,12 @@ async def _validate_control_definition(
                         for err in e.errors()
                     ],
                 )
-            except TypeError as e:
+            except TypeError:
+                _logger.warning(
+                    "Config validation raised TypeError for evaluator '%s'",
+                    parsed.name,
+                    exc_info=True,
+                )
                 raise APIValidationError(
                     error_code=ErrorCode.INVALID_CONFIG,
                     detail=f"Invalid config parameters for evaluator '{parsed.name}'",
@@ -178,7 +186,7 @@ async def _validate_control_definition(
                             resource="Control",
                             field="data.evaluator.config",
                             code="invalid_parameters",
-                            message=str(e),
+                            message=_INVALID_PARAMETERS_MESSAGE,
                         )
                     ],
                 )
@@ -279,13 +287,13 @@ async def get_control(
     if control.data:
         try:
             control_data = ControlDefinition.model_validate(control.data)
-        except ValidationError as e:
+        except ValidationError:
             # Data exists but is corrupted - log and return None
             _logger.warning(
-                "Control '%s' (id=%s) has corrupted data that failed validation: %s",
+                "Control '%s' (id=%s) has corrupted data that failed validation",
                 control.name,
                 control_id,
-                str(e),
+                exc_info=True,
             )
             control_data = None
 
@@ -850,7 +858,13 @@ async def patch_control(
                 control.data = new_data
                 updated = True
             current_enabled = request.enabled if updated else ctrl_def.enabled
-        except ValidationError as e:
+        except ValidationError:
+            _logger.error(
+                "Control '%s' (%s) has corrupted data in patch request",
+                control.name,
+                control_id,
+                exc_info=True,
+            )
             raise APIValidationError(
                 error_code=ErrorCode.CORRUPTED_DATA,
                 detail=f"Control '{control.name}' has corrupted data",
@@ -861,7 +875,7 @@ async def patch_control(
                         resource="Control",
                         field="data",
                         code="corrupted_data",
-                        message=str(e),
+                        message=_CORRUPTED_CONTROL_DATA_MESSAGE,
                     )
                 ],
             )

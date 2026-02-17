@@ -42,8 +42,8 @@ importers:
         specifier: ^0.0.1
         version: 0.0.1(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
       '@rungalileo/jupiter-ds':
-        specifier: ^0.0.7
-        version: 0.0.7(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/dates@7.17.5(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(dayjs@1.11.19)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(@tabler/icons-react@3.31.0(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
+        specifier: ^0.0.8
+        version: 0.0.8(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/dates@7.17.5(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(dayjs@1.11.19)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(@tabler/icons-react@3.31.0(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
       '@tabler/icons-react':
         specifier: '3.31'
         version: 3.31.0(react@19.1.4)
@@ -629,8 +629,8 @@ packages:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
 
-  '@rungalileo/jupiter-ds@0.0.7':
-    resolution: {integrity: sha512-edBB7pw62+dKZKtDd3duk1uZ2NQD0iEfl9mQEVjsC+th5ORUpQDKNrgIccC3311e8VBlWYDwBx68FjfwySkwKg==}
+  '@rungalileo/jupiter-ds@0.0.8':
+    resolution: {integrity: sha512-SX8hieIARusS/1bByDxHOPg5L45FZFNMXe/ui/kHP5eNiUOnaX9wWFseDCXX/GHZmrcVvNlum4p9X6h6cjBhjg==}
     peerDependencies:
       '@mantine/core': ^7.17.0
       '@mantine/dates': ^7.17.0
@@ -3156,7 +3156,7 @@ snapshots:
       react: 19.1.4
       react-dom: 19.1.4(react@19.1.4)
 
-  '@rungalileo/jupiter-ds@0.0.7(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/dates@7.17.5(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(dayjs@1.11.19)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(@tabler/icons-react@3.31.0(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)':
+  '@rungalileo/jupiter-ds@0.0.8(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/dates@7.17.5(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(dayjs@1.11.19)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(@tabler/icons-react@3.31.0(react@19.1.4))(react-dom@19.1.4(react@19.1.4))(react@19.1.4)':
     dependencies:
       '@mantine/core': 7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4)
       '@mantine/dates': 7.17.5(@mantine/core@7.17.5(@mantine/hooks@7.17.5(react@19.1.4))(@types/react@19.2.7)(react-dom@19.1.4(react@19.1.4))(react@19.1.4))(@mantine/hooks@7.17.5(react@19.1.4))(dayjs@1.11.19)(react-dom@19.1.4(react@19.1.4))(react@19.1.4)

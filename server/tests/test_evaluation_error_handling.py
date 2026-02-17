@@ -150,8 +150,12 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     assert data["errors"] is not None
     assert len(data["errors"]) == 1
     assert data["errors"][0]["control_name"] == control_name
-    assert "RuntimeError" in data["errors"][0]["result"]["error"]
-    assert "Simulated evaluator crash" in data["errors"][0]["result"]["error"]
+    assert (
+        data["errors"][0]["result"]["error"]
+        == "Evaluation failed due to an internal evaluator error."
+    )
+    assert "RuntimeError" not in data["errors"][0]["result"]["error"]
+    assert "Simulated evaluator crash" not in data["errors"][0]["result"]["error"]
 
     # And: no matches are returned because evaluation failed
     assert data["matches"] is None or len(data["matches"]) == 0
@@ -188,6 +192,8 @@ def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypat
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "EVALUATION_FAILED"
+    assert "bad config" not in body["detail"]
+    assert body["errors"][0]["message"] == "Invalid evaluation request or control configuration."
 
 
 def test_evaluation_warns_when_observability_drops_events(

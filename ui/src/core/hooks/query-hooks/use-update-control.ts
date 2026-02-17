@@ -37,6 +37,11 @@ export function useUpdateControl() {
       queryClient.invalidateQueries({
         queryKey: ['agent', variables.agentId, 'controls'],
       });
+      // Invalidate agents list query to refresh active controls count
+      // (enabled status affects the active_controls_count shown on agents home page)
+      queryClient.invalidateQueries({
+        queryKey: ['agents', 'infinite'],
+      });
     },
   });
 }

@@ -31,8 +31,6 @@ Usage:
 """
 
 import logging
-import os
-import traceback
 import uuid
 from typing import Any
 
@@ -49,7 +47,122 @@ from agent_control_models.errors import (
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from .config import settings
+_logger = logging.getLogger(__name__)
+
+_MAX_PUBLIC_TEXT_LENGTH = 500
+_REDACTED_VALUE = "[REDACTED]"
+_GENERIC_INTERNAL_DETAIL = "An unexpected error occurred. Please try again or contact support."
+_GENERIC_DATABASE_DETAIL = "A database error occurred while processing the request."
+_GENERIC_AUTH_MISCONFIGURED_DETAIL = (
+    "Server authentication is misconfigured. Contact administrator."
+)
+_GENERIC_BAD_REQUEST_DETAIL = "Request validation failed."
+_GENERIC_UNAUTHORIZED_DETAIL = "Authentication failed."
+_GENERIC_FORBIDDEN_DETAIL = "Permission denied."
+_GENERIC_NOT_FOUND_DETAIL = "Requested resource was not found."
+_GENERIC_CONFLICT_DETAIL = "Request conflicts with existing state."
+_DEFAULT_5XX_DETAIL_BY_CODE: dict[ErrorCode, str] = {
+    ErrorCode.INTERNAL_ERROR: _GENERIC_INTERNAL_DETAIL,
+    ErrorCode.DATABASE_ERROR: _GENERIC_DATABASE_DETAIL,
+    ErrorCode.AUTH_MISCONFIGURED: _GENERIC_AUTH_MISCONFIGURED_DETAIL,
+}
+_DEFAULT_4XX_DETAIL_BY_STATUS: dict[int, str] = {
+    400: _GENERIC_BAD_REQUEST_DETAIL,
+    401: _GENERIC_UNAUTHORIZED_DETAIL,
+    403: _GENERIC_FORBIDDEN_DETAIL,
+    404: _GENERIC_NOT_FOUND_DETAIL,
+    409: _GENERIC_CONFLICT_DETAIL,
+    422: _GENERIC_BAD_REQUEST_DETAIL,
+}
+
+
+def _normalize_public_text(text: str) -> str:
+    """Collapse repeated whitespace and trim to keep response payloads concise."""
+    normalized = " ".join(text.split())
+    if len(normalized) > _MAX_PUBLIC_TEXT_LENGTH:
+        return normalized[: _MAX_PUBLIC_TEXT_LENGTH - 3] + "..."
+    return normalized
+
+
+def _default_public_detail(status_code: int, error_code: ErrorCode | None) -> str:
+    """Return the default public-safe detail template for this status/code."""
+    if status_code >= 500:
+        if error_code is not None and error_code in _DEFAULT_5XX_DETAIL_BY_CODE:
+            return _DEFAULT_5XX_DETAIL_BY_CODE[error_code]
+        return _GENERIC_INTERNAL_DETAIL
+    return _DEFAULT_4XX_DETAIL_BY_STATUS.get(status_code, _GENERIC_BAD_REQUEST_DETAIL)
+
+
+def _public_detail(status_code: int, error_code: ErrorCode | None, detail: str) -> str:
+    """
+    Return safe client-facing detail text.
+
+    For 5xx statuses, this always returns a fixed safe template.
+    For 4xx statuses, this keeps caller-provided text after normalization.
+    """
+    safe_fallback = _default_public_detail(status_code, error_code)
+    if status_code >= 500:
+        return safe_fallback
+
+    normalized = _normalize_public_text(detail)
+    if not normalized:
+        return safe_fallback
+    return normalized
+
+
+def _sanitize_validation_error_value(value: Any) -> bool | int | float | str | None:
+    """
+    Redact potentially sensitive invalid values before returning them to clients.
+
+    Preserve primitive scalar values when safe.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return _REDACTED_VALUE
+    return _REDACTED_VALUE
+
+
+def _sanitize_validation_errors(
+    items: list[ValidationErrorItem] | None,
+) -> list[ValidationErrorItem] | None:
+    """Sanitize validation error arrays for safe client output."""
+    if items is None:
+        return None
+
+    return [
+        item.model_copy(
+            update={
+                "value": _sanitize_validation_error_value(item.value),
+            }
+        )
+        for item in items
+    ]
+
+
+def _sanitize_problem_detail(problem: ProblemDetail) -> ProblemDetail:
+    """Apply public-safe sanitization rules to a ProblemDetail payload."""
+    problem.detail = _public_detail(problem.status, problem.error_code, problem.detail)
+
+    if problem.status >= 500:
+        problem.hint = None
+        problem.errors = None
+        if problem.details is not None:
+            problem.details.causes = None
+        return problem
+
+    if problem.hint is not None:
+        normalized_hint = _normalize_public_text(problem.hint)
+        problem.hint = normalized_hint if normalized_hint else None
+
+    problem.errors = _sanitize_validation_errors(problem.errors)
+
+    if problem.details is not None and problem.details.causes is not None:
+        problem.details.causes = _sanitize_validation_errors(problem.details.causes)
+
+    return problem
 
 
 class APIError(HTTPException):
@@ -341,7 +454,7 @@ async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
 
     Converts APIError exceptions to RFC 7807 JSON responses.
     """
-    problem = exc.to_problem_detail(instance=str(request.url.path))
+    problem = _sanitize_problem_detail(exc.to_problem_detail(instance=str(request.url.path)))
 
     # Add headers for auth errors
     headers: dict[str, str] | None = None
@@ -380,7 +493,8 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
     # Extract detail - handle both string and dict details
     if isinstance(exc.detail, dict):
-        detail_str = exc.detail.get("message", str(exc.detail))
+        detail_value = exc.detail.get("message")
+        detail_str = str(detail_value) if detail_value is not None else str(exc.detail)
     else:
         detail_str = str(exc.detail)
 
@@ -394,6 +508,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         reason=reason,
         metadata=ErrorMetadata(),
     )
+    problem = _sanitize_problem_detail(problem)
 
     headers: dict[str, str] | None = None
     if exc.status_code == 401:
@@ -415,46 +530,29 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
     SECURITY NOTE: Stack traces are NEVER exposed to users, even in debug mode.
     Debug information is only logged server-side.
     """
-    # Always log the full exception server-side for debugging
-    logging.error(f"Unhandled exception: {exc}", exc_info=True)
-
-    # SECURITY: Never expose internal details to users
-    # Stack traces and exception messages may contain:
-    # - File paths revealing server structure
-    # - Database queries or credentials
-    # - Internal logic details useful to attackers
-    detail = "An unexpected error occurred. Please try again or contact support."
-
     # Generate a correlation ID for support to look up the full error in logs
     # In production, you'd want to use a proper request ID from middleware
     error_id = str(uuid.uuid4())[:8]
-    logging.error(f"Error ID {error_id}: {traceback.format_exc()}")
+    _logger.error(
+        "Unhandled exception (error_id=%s, path=%s, method=%s)",
+        error_id,
+        request.url.path,
+        request.method,
+        exc_info=True,
+    )
 
     problem = ProblemDetail(
         type=make_error_type(ErrorCode.INTERNAL_ERROR),
         title="Internal Server Error",
         status=500,
-        detail=detail,
+        detail=_GENERIC_INTERNAL_DETAIL,
         instance=str(request.url.path),
         error_code=ErrorCode.INTERNAL_ERROR,
         reason=ErrorReason.INTERNAL_ERROR,
         metadata=ErrorMetadata(request_id=error_id),
         hint=f"Reference error ID '{error_id}' when contacting support.",
     )
-
-    # SECURITY: Only in explicitly local development, allow exception type
-    # This requires BOTH debug=true AND running on localhost
-    is_local_dev = (
-        settings.debug
-        and os.environ.get("AGENT_CONTROL_EXPOSE_ERRORS", "").lower() == "true"
-    )
-    if is_local_dev:
-        logging.warning(
-            "SECURITY: Exposing error details. "
-            "Ensure AGENT_CONTROL_EXPOSE_ERRORS is not set in production!"
-        )
-        # Only expose exception type and message, never full traceback
-        problem.detail = f"{type(exc).__name__}: {exc}"
+    problem = _sanitize_problem_detail(problem)
 
     return JSONResponse(
         status_code=500,
@@ -498,8 +596,8 @@ async def validation_exception_handler(
             ValidationErrorItem(
                 resource=resource,
                 field=field,
-                code=error.get("type", "validation_error"),
-                message=error.get("msg", "Validation failed"),
+                code=str(error.get("type", "validation_error")),
+                message=str(error.get("msg", "Validation failed")),
                 value=error.get("input"),
             )
         )
@@ -516,6 +614,7 @@ async def validation_exception_handler(
         errors=errors,
         hint="Check the 'errors' array for field-level validation details.",
     )
+    problem = _sanitize_problem_detail(problem)
 
     return JSONResponse(
         status_code=422,

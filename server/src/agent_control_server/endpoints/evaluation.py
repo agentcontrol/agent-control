@@ -8,6 +8,7 @@ from agent_control_engine.core import ControlEngine
 from agent_control_models import (
     ControlDefinition,
     ControlExecutionEvent,
+    ControlMatch,
     EvaluationRequest,
     EvaluationResponse,
 )
@@ -33,6 +34,10 @@ _logger = get_logger(__name__)
 # These are immediately recognizable as "not traced" and can be filtered in queries.
 INVALID_TRACE_ID = "0" * 32  # 128-bit, 32 hex chars
 INVALID_SPAN_ID = "0" * 16   # 64-bit, 16 hex chars
+SAFE_EVALUATOR_ERROR = "Evaluation failed due to an internal evaluator error."
+SAFE_EVALUATOR_TIMEOUT_ERROR = "Evaluation timed out before completion."
+SAFE_INVALID_STEP_REGEX_ERROR = "Control configuration error: invalid step name regex."
+SAFE_ENGINE_VALIDATION_MESSAGE = "Invalid evaluation request or control configuration."
 
 
 class ControlAdapter:
@@ -42,6 +47,54 @@ class ControlAdapter:
         self.id = id
         self.name = name
         self.control = control
+
+
+def _sanitize_evaluator_error(error_message: str) -> str:
+    """Convert evaluator runtime errors into safe client-facing text."""
+    if "invalid step_name_regex" in error_message.lower():
+        return SAFE_INVALID_STEP_REGEX_ERROR
+    if "timeout" in error_message.lower():
+        return SAFE_EVALUATOR_TIMEOUT_ERROR
+    return SAFE_EVALUATOR_ERROR
+
+
+def _sanitize_control_match(match: ControlMatch) -> ControlMatch:
+    """Redact internal evaluator error strings from a control match."""
+    if match.result.error is None:
+        return match
+
+    safe_error = _sanitize_evaluator_error(match.result.error)
+    safe_message = safe_error
+    sanitized_result = match.result.model_copy(
+        update={
+            "error": safe_error,
+            "message": safe_message,
+        }
+    )
+    return match.model_copy(update={"result": sanitized_result})
+
+
+def _sanitize_evaluation_response(response: EvaluationResponse) -> EvaluationResponse:
+    """Return a copy of the evaluation response with safe public error text."""
+    return response.model_copy(
+        update={
+            "matches": (
+                [_sanitize_control_match(match) for match in response.matches]
+                if response.matches
+                else None
+            ),
+            "errors": (
+                [_sanitize_control_match(match) for match in response.errors]
+                if response.errors
+                else None
+            ),
+            "non_matches": (
+                [_sanitize_control_match(match) for match in response.non_matches]
+                if response.non_matches
+                else None
+            ),
+        }
+    )
 
 
 @router.post(
@@ -118,8 +171,8 @@ async def evaluate(
     engine = ControlEngine(engine_controls)
     try:
         response = await engine.process(request)
-    except ValueError as e:
-        _logger.error(f"Evaluation failed: {e}")
+    except ValueError:
+        _logger.exception("Evaluation failed due to invalid configuration or input")
         raise APIValidationError(
             error_code=ErrorCode.EVALUATION_FAILED,
             detail="Evaluation failed due to invalid configuration or input",
@@ -130,10 +183,12 @@ async def evaluate(
                     resource="Evaluation",
                     field=None,
                     code="evaluation_error",
-                    message=str(e),
+                    message=SAFE_ENGINE_VALIDATION_MESSAGE,
                 )
             ],
         )
+
+    response = _sanitize_evaluation_response(response)
 
     # Calculate total execution time
     total_duration_ms = (time.perf_counter() - start_time) * 1000

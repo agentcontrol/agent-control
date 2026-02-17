@@ -41,7 +41,10 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
         />
 
         {/* Canonical URL */}
-        <link rel="canonical" href="https://galileo.ai" />
+        <link
+          rel="canonical"
+          href="https://github.com/agentcontrol/agent-control"
+        />
 
         {/* Favicons */}
         <link
@@ -65,9 +68,7 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
         <link color="#644DF9" href="/safari-pinned-tab.svg" rel="mask-icon" />
 
         {/* SEO Meta Tags */}
-        <title>
-          Agent Control by Galileo - Runtime Guardrails for AI Agents
-        </title>
+        <title>Agent Control - Runtime Guardrails for AI Agents</title>
         <meta
           name="description"
           content="Production-ready runtime guardrails for AI agents. Policy-based control layer that blocks harmful content, prompt injections, and PII leakage without changing your code."
@@ -76,26 +77,29 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
           name="keywords"
           content="AI agents, guardrails, runtime safety, prompt injection, PII detection, agent control, AI safety, policy enforcement, production AI"
         />
-        <meta name="author" content="Rungalileo" />
+        <meta name="author" content="Agent Control" />
 
         {/* Open Graph / Facebook */}
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://galileo.ai" />
+        <meta
+          property="og:url"
+          content="https://github.com/agentcontrol/agent-control"
+        />
         <meta
           property="og:title"
-          content="Agent Control by Galileo - Runtime Guardrails for AI Agents"
+          content="Agent Control - Runtime Guardrails for AI Agents"
         />
         <meta
           property="og:description"
           content="Policy-based control layer for AI agents. Block harmful content, prompt injections, and PII leakage in production."
         />
-        <meta property="og:site_name" content="Agent Control by Galileo" />
+        <meta property="og:site_name" content="Agent Control" />
 
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta
           name="twitter:title"
-          content="Agent Control by Galileo - Runtime Guardrails for AI Agents"
+          content="Agent Control - Runtime Guardrails for AI Agents"
         />
         <meta
           name="twitter:description"
