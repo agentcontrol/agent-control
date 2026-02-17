@@ -1,12 +1,33 @@
 {
   "name": "agent-control",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "TypeScript SDK for Agent Control",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentcontrol/agent-control.git",
+    "directory": "sdks/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/agentcontrol/agent-control/issues"
+  },
+  "homepage": "https://github.com/agentcontrol/agent-control/tree/main/sdks/typescript#readme",
+  "keywords": [
+    "agent-control",
+    "ai-agents",
+    "guardrails",
+    "sdk",
+    "typescript",
+    "safety"
+  ],
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

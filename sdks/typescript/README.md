@@ -19,3 +19,8 @@ make build
 - OpenAPI source: `../../server/openapi.json`
 - Generated code location: `src/generated/`
 - Speakeasy CLI version is sourced from `.speakeasy/workflow.yaml` and downloaded into `.speakeasy/bin/`
+
+## Release
+
+- Package name: `agent-control`
+- Release runbook: `RELEASING.md`

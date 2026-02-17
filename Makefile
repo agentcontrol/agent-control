@@ -1,4 +1,4 @@
-.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build sdk-ts-generate sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck
+.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build sdk-ts-generate sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish
 
 # Workspace package names
 PACK_MODELS := agent-control-models
@@ -39,6 +39,8 @@ help:
 	@echo "  make typecheck       - mypy for all members"
 	@echo "  make check           - run test, lint, and typecheck"
 	@echo "  make sdk-ts-lint | sdk-ts-typecheck | sdk-ts-build | sdk-ts-generate"
+	@echo "  make sdk-ts-release-check - run TypeScript SDK publish gate checks"
+	@echo "  make sdk-ts-publish-dry-run - run npm publish dry-run for TypeScript SDK"
 	@echo ""
 	@echo "Build / Publish:"
 	@echo "  make build           - build wheels for all members"
@@ -167,6 +169,15 @@ sdk-ts-lint:
 
 sdk-ts-typecheck:
 	$(MAKE) -C $(TS_SDK_DIR) typecheck
+
+sdk-ts-release-check:
+	$(MAKE) -C $(TS_SDK_DIR) release-check
+
+sdk-ts-publish-dry-run:
+	$(MAKE) -C $(TS_SDK_DIR) publish-dry-run
+
+sdk-ts-publish:
+	$(MAKE) -C $(TS_SDK_DIR) publish
 
 sdk-ts-%:
 	$(MAKE) -C $(TS_SDK_DIR) $(patsubst sdk-ts-%,%,$@)
