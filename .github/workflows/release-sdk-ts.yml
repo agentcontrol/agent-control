@@ -15,15 +15,20 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup uv and Python
-        uses: astral-sh/setup-uv@v3
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
 
       - name: Sync Python dependencies
         run: make sync
