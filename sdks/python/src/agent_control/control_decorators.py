@@ -510,6 +510,7 @@ async def _execute_with_control(
     kwargs: dict,
     is_async: bool,
     step_name: str | None = None,
+    stage_override: str | None = None,
 ) -> Any:
     """
     Core control execution logic for both async and sync functions.
@@ -528,6 +529,11 @@ async def _execute_with_control(
         kwargs: Keyword arguments for the function
         is_async: Whether the wrapped function is async
         step_name: Optional explicit step name for control matching
+        stage_override: Optional stage override ("pre", "post", "both", or None for default "both")
+                       - "pre": Only run pre-execution checks
+                       - "post": Only run post-execution checks
+                       - "both": Run both pre and post checks (default)
+                       - None: Same as "both" (default behavior)
 
     Returns:
         The result of the wrapped function
@@ -571,23 +577,29 @@ async def _execute_with_control(
     )
     ctx.log_start()
 
+    # Determine which stages to run based on stage_override. Make it backwards compatible
+    # NOTE: if stage_override is None (default to running both stages).
+    run_pre = stage_override != "post"  # Run pre unless explicitly set to "post"
+    run_post = stage_override != "pre"  # Run post unless explicitly set to "pre"
+
     try:
-        # PRE-EXECUTION: Check controls with check_stage="pre"
-        try:
-            result = await _evaluate(
-                ctx.agent_uuid, ctx.pre_payload(), "pre",
-                ctx.server_url, ctx.trace_id, ctx.span_id,
-                controls=controls,
-            )
-            ctx.process_result(result, "pre")
-        except ControlViolationError:
-            raise
-        except Exception as e:
-            # FAIL-SAFE: If control check fails, DO NOT execute the function
-            logger.error(f"Pre-execution control check failed: {e}")
-            raise RuntimeError(
-                f"Control check failed unexpectedly. Execution blocked for safety. Error: {e}"
-            ) from e
+        # PRE-EXECUTION: Check controls with check_stage="pre" (if enabled)
+        if run_pre:
+            try:
+                result = await _evaluate(
+                    ctx.agent_uuid, ctx.pre_payload(), "pre",
+                    ctx.server_url, ctx.trace_id, ctx.span_id,
+                    controls=controls,
+                )
+                ctx.process_result(result, "pre")
+            except ControlViolationError:
+                raise
+            except Exception as e:
+                # FAIL-SAFE: If control check fails, DO NOT execute the function
+                logger.error(f"Pre-execution control check failed: {e}")
+                raise RuntimeError(
+                    f"Control check failed unexpectedly. Execution blocked for safety. Error: {e}"
+                ) from e
 
         # Execute the function
         if is_async:
@@ -595,25 +607,30 @@ async def _execute_with_control(
         else:
             output = func(*args, **kwargs)
 
-        # POST-EXECUTION: Check controls with check_stage="post"
-        try:
-            result = await _evaluate(
-                ctx.agent_uuid, ctx.post_payload(output), "post",
-                ctx.server_url, ctx.trace_id, ctx.span_id,
-                controls=controls,
-            )
-            ctx.process_result(result, "post")
-        except ControlViolationError:
-            raise
-        except Exception as e:
-            logger.error(f"Post-execution control check failed: {e}")
+        # POST-EXECUTION: Check controls with check_stage="post" (if enabled)
+        if run_post:
+            try:
+                result = await _evaluate(
+                    ctx.agent_uuid, ctx.post_payload(output), "post",
+                    ctx.server_url, ctx.trace_id, ctx.span_id,
+                    controls=controls,
+                )
+                ctx.process_result(result, "post")
+            except ControlViolationError:
+                raise
+            except Exception as e:
+                logger.error(f"Post-execution control check failed: {e}")
 
         return output
     finally:
         ctx.log_end()
 
 
-def control(policy: str | None = None, step_name: str | None = None) -> Callable[[F], F]:
+def control(
+    policy: str | None = None,
+    step_name: str | None = None,
+    stage_override: str | None = None,
+) -> Callable[[F], F]:
     """
     Decorator to apply server-defined policy at this code location.
 
@@ -626,6 +643,10 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                 in code when multiple policies exist.
         step_name: Optional custom name for this step. If not provided, uses
                    the function name.
+        stage_override: Optional stage override to control when evaluations run.
+                       - "pre": Only run pre-execution checks (skip post)
+                       - "post": Only run post-execution checks (skip pre)
+                       - None: Run both pre and post checks (default)
 
     Returns:
         Decorated function
@@ -633,7 +654,7 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
     Raises:
         ControlViolationError: If any control triggers with "deny" action
 
-    How it works:
+    How it works (default behavior, stage_override=None):
         1. Before function execution: Calls server with stage="pre"
            - Server evaluates all "pre" controls in the agent's policy
         2. Function executes
@@ -664,6 +685,18 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         async def handle_user_input(user_message: str) -> str:
             return await process_query(user_message)
 
+        # Only check outputs (skip pre-execution checks)
+        @agent_control.control(stage_override="post")
+        async def generate_response(context: str) -> str:
+            # Only validate the generated output, not the input
+            return await llm.generate(context)
+
+        # Only check inputs (skip post-execution checks)
+        @agent_control.control(stage_override="pre")
+        async def send_notification(message: str) -> None:
+            # Only validate the input before sending, response not needed
+            await notification_service.send(message)
+
     Server Setup (separate from agent code):
         1. Create controls via API:
            PUT /api/v1/controls {"name": "block-toxic-inputs"}
@@ -684,7 +717,12 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             return await _execute_with_control(
-                func, args, kwargs, is_async=True, step_name=step_name
+                func,
+                args,
+                kwargs,
+                is_async=True,
+                step_name=step_name,
+                stage_override=stage_override,
             )
 
         # Copy over ALL attributes from the original function (important for LangChain tools)
@@ -698,7 +736,14 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             return asyncio.run(
-                _execute_with_control(func, args, kwargs, is_async=False, step_name=step_name)
+                _execute_with_control(
+                    func,
+                    args,
+                    kwargs,
+                    is_async=False,
+                    step_name=step_name,
+                    stage_override=stage_override,
+                )
             )
 
         if inspect.iscoroutinefunction(func):
