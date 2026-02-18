@@ -32,7 +32,7 @@ AGENT_ID = "550e8400-e29b-41d4-a716-446655440099"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 INTERACTIVE_CONTROLS = [
-    # LLM Controls - Apply to all model interactions
+    # LLM Controls - Target hook callback events
     {
         "name": "block-pii-input",
         "description": "Block PII in user input (SSN, credit cards, emails)",
@@ -40,7 +40,10 @@ INTERACTIVE_CONTROLS = [
             "description": "Block PII patterns in user messages",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "scope": {
+                "step_names": ["check_before_invocation", "check_before_model"],
+                "stages": ["post"]  # Hook callbacks use post-execution
+            },
             "selector": {"path": "input"},
             "evaluator": {
                 "name": "regex",
@@ -59,7 +62,10 @@ INTERACTIVE_CONTROLS = [
             "description": "Block PII patterns in agent outputs",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["llm"], "stages": ["post"]},
+            "scope": {
+                "step_names": ["check_after_model"],
+                "stages": ["post"]  # Hook callbacks use post-execution
+            },
             "selector": {"path": "output"},
             "evaluator": {
                 "name": "regex",
@@ -72,18 +78,17 @@ INTERACTIVE_CONTROLS = [
         }
     },
 
-    # Tool-Specific Controls - Target specific tools by name
+    # Tool Controls - Target hook callback events (applies to ALL tools)
     {
         "name": "validate-order-id-format",
-        "description": "Validate order ID format for lookup_order tool",
+        "description": "Validate order ID format for all tool calls",
         "definition": {
             "description": "Ensure order IDs follow ORD-XXXXX format",
             "enabled": True,
             "execution": "server",
             "scope": {
-                "step_types": ["tool"],
-                "step_names": ["lookup_order"],
-                "stages": ["pre"]
+                "step_names": ["check_before_tool"],
+                "stages": ["post"]  # Hook callbacks use post-execution
             },
             "selector": {"path": "input.order_id"},
             "evaluator": {
@@ -98,16 +103,15 @@ INTERACTIVE_CONTROLS = [
         }
     },
     {
-        "name": "prevent-sql-injection-kb-query",
-        "description": "Prevent SQL injection in knowledge base queries",
+        "name": "prevent-sql-injection-tool-input",
+        "description": "Prevent SQL injection in all tool inputs",
         "definition": {
-            "description": "Block SQL injection patterns in search queries",
+            "description": "Block SQL injection patterns in tool inputs",
             "enabled": True,
             "execution": "server",
             "scope": {
-                "step_types": ["tool"],
-                "step_names": ["search_knowledge_base"],
-                "stages": ["pre"]
+                "step_names": ["check_before_tool"],
+                "stages": ["post"]  # Hook callbacks use post-execution
             },
             "selector": {"path": "input.query"},
             "evaluator": {
@@ -254,10 +258,10 @@ async def main():
 ✅ Ready to run demo
 
 Controls created:
-  • block-pii-input (LLM, pre-stage)
-  • block-pii-output (LLM, post-stage)
-  • validate-order-id-format (Tool: lookup_order)
-  • prevent-sql-injection-kb-query (Tool: search_knowledge_base)
+  • block-pii-input (Hook: check_before_invocation, check_before_model)
+  • block-pii-output (Hook: check_after_model)
+  • validate-order-id-format (Hook: check_before_tool - applies to all tools)
+  • prevent-sql-injection-tool-input (Hook: check_before_tool - applies to all tools)
 
 Run the demo:
   streamlit run examples/strands_integration/interactive_demo/interactive_support_demo.py

@@ -6,7 +6,10 @@ This script creates AgentControl safety controls for the steering demo.
 Steering (quality layer) is implemented in code and doesn't need server setup.
 
 Control created:
-- validate-refund-amount: Blocks refund amounts over $10,000 (regex pattern matching)
+- validate-refund-amount: Blocks refund amounts over $10,000 (targets hook callback)
+
+Note: The control targets the hook callback 'check_before_tool' rather than
+specific tool names, allowing it to apply to all tools via the hook.
 
 Usage:
     python setup_steering_controls.py
@@ -37,7 +40,7 @@ SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 # Safety control for the demo
 SAFETY_CONTROLS = [
-    # Tool-Specific Control - Validates refund amounts
+    # Tool Control - Validates refund amounts (targets hook callback)
     {
         "name": "validate-refund-amount",
         "description": "Block excessive refund amounts (over $10,000)",
@@ -46,9 +49,8 @@ SAFETY_CONTROLS = [
             "enabled": True,
             "execution": "server",
             "scope": {
-                "step_types": ["tool"],
-                "step_names": ["process_refund"],
-                "stages": ["pre"]
+                "step_names": ["check_before_tool"],  # Hook callback name
+                "stages": ["post"]  # Hook callbacks use post-execution
             },
             "selector": {"path": "input.amount"},
             "evaluator": {
@@ -260,10 +262,13 @@ async def main():
 ✅ Layered Governance Demo Ready
 
 Control created:
-  • validate-refund-amount - Blocks refunds over $10,000 (AgentControl)
+  • validate-refund-amount (Hook: check_before_tool) - Blocks refunds over $10,000
 
 Quality layer:
   • QualitySteeringHandler - Guides graceful error handling (Steering)
+
+Note: The control targets the hook callback 'check_before_tool', allowing it
+to validate tool calls across all tools via the AgentControlHook.
 
 Run the demo:
   streamlit run layered_governance_demo.py

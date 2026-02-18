@@ -351,6 +351,14 @@ def _create_evaluation_payload(
     bound = sig.bind(*args, **kwargs)
     bound.apply_defaults()
 
+    if output and isinstance(output, dict) and "step" in output:
+        return {
+            "type": output["step"].get("type", "llm"),
+            "name": output["step"].get("name", func.__name__),
+            "input": output["step"].get("input"),
+            "output": output["step"].get("output"),
+        }
+    
     # Determine step name priority: explicit step_name > tool_name > func.__name__
     if step_name:
         # Explicit step_name provided - use it

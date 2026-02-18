@@ -89,7 +89,7 @@ class SafetyTrackingHook(AgentControlHook):
                 AfterToolCallEvent,     # Check tool results
             ],
             on_violation_callback=self._handle_streamlit_violation,
-            enable_logging=False  # Disable console logging for cleaner UI
+            enable_logging=True  # Enable console logging to see control checks
         )
         self.session_id = str(uuid4())
 
@@ -701,6 +701,8 @@ def render_chat():
 
                 except ControlViolationError as e:
                     # AgentControl blocked the request due to safety violation
+                    print(f"\n🚫 CONTROL VIOLATION (caught by Streamlit)")
+                    print(f"   Error: {e}")
                     st.error("🚫 **AgentControl Safety Block**")
 
                     # Show what was blocked

@@ -152,19 +152,25 @@ class AgentControlHook(HookProvider):
     # Event Callbacks (following Strands naming conventions)
     # ============================================================================
 
-    @agent_control.control()
+    @agent_control.control(stage_override="post")
     async def check_before_invocation(self, event: BeforeInvocationEvent):
         """
         Check controls before agent invocation (user input stage).
 
         This callback intercepts the initial user input before the agent processes it.
-        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+        Uses @control decorator directly - NO wrapper needed.
+
+        Why No Wrapper Needed:
+            This runs before any agent processing starts. If a control violation occurs
+            and ControlViolationError is raised, the agent simply never starts executing.
+            No conversation state exists yet, so there's no OpenAI conversation state
+            issue to handle.
 
         Hook Mode Flow:
             1. Callback executes and extracts user input from event
             2. Returns dict with step data to @control decorator
             3. Decorator evaluates controls in POST-EXECUTION flow
-            4. If unsafe, decorator raises ControlViolationError
+            4. If unsafe, decorator raises ControlViolationError (safe to propagate)
 
         Returns:
             Dict with agent_uuid, server_url, event, step, and stage for control evaluation
@@ -184,23 +190,28 @@ class AgentControlHook(HookProvider):
             **self._base_request(event),
             "step": {
                 "input": input_text,
-            },
-            "stage": "post",
+            }
         }
 
-    @agent_control.control()
+    @agent_control.control(stage_override="post")
     async def check_before_model(self, event: BeforeModelCallEvent):
         """
         Check controls before LLM call.
 
         This callback intercepts messages before they're sent to the LLM.
-        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+        Uses @control decorator directly - NO wrapper needed.
+
+        Why No Wrapper Needed:
+            This runs BEFORE the LLM is called. If a control violation occurs and
+            ControlViolationError is raised, the LLM call is prevented. Since the
+            LLM never executes, no response is generated and no conversation state
+            is created. Therefore, there's no OpenAI conversation state issue.
 
         Hook Mode Flow:
             1. Callback executes and extracts messages from event
             2. Returns dict with step data to @control decorator
             3. Decorator evaluates controls in POST-EXECUTION flow
-            4. If unsafe, decorator raises ControlViolationError
+            4. If unsafe, decorator raises ControlViolationError (safe to propagate)
 
         Returns:
             Dict with agent_uuid, server_url, event, step, and stage for control evaluation
@@ -219,25 +230,31 @@ class AgentControlHook(HookProvider):
         return {
             **self._base_request(event),
             "step": {
-                "type": "llm",
-                "input": {"messages": input_text},
-            },
-            "stage": "post",
+                "type": "llm",  
+                "input": input_text,
+            }
         }
 
-    @agent_control.control()
+    @agent_control.control(stage_override="post")
     async def check_after_model(self, event: AfterModelCallEvent):
         """
         Check controls after LLM call.
 
         This callback intercepts the LLM's response before it's returned to the agent.
-        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+        Uses @control decorator directly - NO wrapper needed.
+
+        Why No Wrapper Needed:
+            This runs AFTER the LLM generates a response but BEFORE it's added to the
+            conversation history. If a control violation occurs and ControlViolationError
+            is raised, the LLM's response is simply not added to the conversation.
+            The conversation remains valid because we control when messages are added.
+            No OpenAI conversation state issue occurs.
 
         Hook Mode Flow:
             1. Callback executes and extracts model output from event
             2. Returns dict with step data to @control decorator
             3. Decorator evaluates controls in POST-EXECUTION flow
-            4. If unsafe, decorator raises ControlViolationError
+            4. If unsafe, decorator raises ControlViolationError (safe to propagate)
 
         Returns:
             Dict with agent_uuid, server_url, event, step, and stage for control evaluation
@@ -250,28 +267,67 @@ class AgentControlHook(HookProvider):
         return {
             **self._base_request(event),
             "step": {
-                "type": "llm",
-                "output": output_text,
-            },
-            "stage": "post",
+                "type": "llm",  
+                "output": output_text
+            }
         }
 
-    @agent_control.control()
     async def check_before_tool(self, event: BeforeToolCallEvent):
         """
-        Check controls before tool call.
+        Check controls before tool call - WRAPPER with error handling.
 
-        This callback intercepts tool calls before they execute.
-        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+        This wrapper catches ControlViolationError to prevent OpenAI conversation state issues.
 
-        Hook Mode Flow:
-            1. Callback executes and extracts tool name and input from event
-            2. Returns dict with step data to @control decorator
-            3. Decorator evaluates controls in POST-EXECUTION flow
-            4. If unsafe, decorator raises ControlViolationError
+        Why Wrapper IS Needed:
+            Tool calls are different from other events because the LLM has ALREADY
+            decided to call the tool and generated a message with 'tool_calls' in the
+            conversation history. OpenAI requires a response message for each tool_call.
 
-        Important: The step name is set to the actual tool name (e.g., "process_refund"),
-        enabling server-side controls to target specific tools using step_names.
+            If we block the tool (raise ControlViolationError), there's no response
+            message, and OpenAI rejects the conversation as invalid with error:
+            "An assistant message with 'tool_calls' must be followed by tool messages"
+
+            The wrapper catches ControlViolationError and returns None to gracefully
+            skip the tool execution without breaking the conversation state.
+
+        Pattern:
+            Wrapper (this function) → Calls decorated implementation → Catches errors
+
+        Returns:
+            None if control violation detected, otherwise delegates to implementation
+        """
+        try:
+            return await self._check_before_tool_impl(event)
+        except Exception as e:
+            # Catch ControlViolationError (avoid importing to prevent circular dependency)
+            if "ControlViolationError" in type(e).__name__:
+                print(f"\n🚫 CONTROL VIOLATION - Tool execution blocked")
+                print(f"   Error: {e}")
+
+                # Track violation if callback provided
+                if self.on_violation_callback:
+                    # Extract control name from error message
+                    control_name = str(e).split("[")[1].split("]")[0] if "[" in str(e) else "unknown"
+                    violation_info = {
+                        "agent": self.agent_name,
+                        "control_name": control_name,
+                        "stage": "pre",
+                    }
+                    self.on_violation_callback(violation_info, None)
+
+                # Return None to skip tool execution gracefully
+                return None
+            else:
+                # Re-raise non-control-violation exceptions
+                raise
+
+    @agent_control.control(stage_override="post")
+    async def _check_before_tool_impl(self, event: BeforeToolCallEvent):
+        """
+        Internal implementation for checking controls before tool call.
+
+        This is the decorated implementation that's called by the wrapper.
+        DO NOT call this directly - use check_before_tool() instead.
 
         Returns:
             Dict with agent_uuid, server_url, event, step, and stage for control evaluation
@@ -297,28 +353,76 @@ class AgentControlHook(HookProvider):
         print(f"   → Controls with step_names=['{tool_name}'] will now be checked!")
         print(f"{'='*70}")
 
-        return {
+        result = {
             **self._base_request(event),
             "step": {
                 "type": "tool",
-                "input": tool_input,
-            },
-            "stage": "post",
+                "name": "check_before_tool",  # Explicit name (overrides func.__name__)
+                "input": tool_input,  # Keep input as dict for tool steps
+            }
         }
 
-    @agent_control.control()
+        # DEBUG: Print what we're returning
+        print(f"🔍 DEBUG: _check_before_tool_impl returning:")
+        print(f"   Keys: {list(result.keys())}")
+        print(f"   Has 'step': {'step' in result}")
+        print(f"   Step name: {result.get('step', {}).get('name')}")
+
+        return result
+
     async def check_after_tool(self, event: AfterToolCallEvent):
         """
-        Check controls after tool call.
+        Check controls after tool call - WRAPPER with error handling.
 
-        This callback intercepts tool results after they execute.
-        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+        This wrapper catches ControlViolationError to prevent OpenAI conversation state issues.
 
-        Hook Mode Flow:
-            1. Callback executes and extracts tool name and output from event
-            2. Returns dict with step data to @control decorator
-            3. Decorator evaluates controls in POST-EXECUTION flow
-            4. If unsafe, decorator raises ControlViolationError
+        Why Wrapper IS Needed:
+            Similar to check_before_tool, this runs after a tool executes but the tool_call
+            message is already in the conversation history. If we block here (raise
+            ControlViolationError), there's no tool response message, causing OpenAI to
+            reject the conversation as invalid.
+
+            The wrapper catches ControlViolationError and returns None to gracefully
+            handle the violation without breaking the conversation state.
+
+        Pattern:
+            Wrapper (this function) → Calls decorated implementation → Catches errors
+
+        Returns:
+            None if control violation detected, otherwise delegates to implementation
+        """
+        try:
+            return await self._check_after_tool_impl(event)
+        except Exception as e:
+            # Catch ControlViolationError (avoid importing to prevent circular dependency)
+            if "ControlViolationError" in type(e).__name__:
+                print(f"\n🚫 CONTROL VIOLATION - Tool result blocked")
+                print(f"   Error: {e}")
+
+                # Track violation if callback provided
+                if self.on_violation_callback:
+                    # Extract control name from error message
+                    control_name = str(e).split("[")[1].split("]")[0] if "[" in str(e) else "unknown"
+                    violation_info = {
+                        "agent": self.agent_name,
+                        "control_name": control_name,
+                        "stage": "post",
+                    }
+                    self.on_violation_callback(violation_info, None)
+
+                # Return None to skip tool result gracefully
+                return None
+            else:
+                # Re-raise non-control-violation exceptions
+                raise
+
+    @agent_control.control(stage_override="post")
+    async def _check_after_tool_impl(self, event: AfterToolCallEvent):
+        """
+        Internal implementation for checking controls after tool call.
+
+        This is the decorated implementation that's called by the wrapper.
+        DO NOT call this directly - use check_after_tool() instead.
 
         Returns:
             Dict with agent_uuid, server_url, event, step, and stage for control evaluation
@@ -339,24 +443,31 @@ class AgentControlHook(HookProvider):
             **self._base_request(event),
             "step": {
                 "type": "tool",
+                "name": "check_after_tool",  # Explicit name (overrides func.__name__)
                 "output": tool_output,
-            },
-            "stage": "post",
+            }
         }
 
-    @agent_control.control()
+    @agent_control.control(stage_override="post")
     async def check_before_node(self, event: BeforeNodeCallEvent):
         """
         Check controls before node call (multi-agent graphs).
 
         This callback intercepts node calls in multi-agent graph execution.
-        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+        Uses @control decorator directly - NO wrapper needed.
+
+        Why No Wrapper Needed:
+            Node calls are higher-level operations in multi-agent graphs. Blocking a
+            node is similar to blocking an entire agent invocation - it prevents the
+            node from executing but doesn't create invalid conversation state. The
+            graph execution can handle node failures gracefully without OpenAI API
+            errors.
 
         Hook Mode Flow:
             1. Callback executes and extracts node input from event
             2. Returns dict with step data to @control decorator
             3. Decorator evaluates controls in POST-EXECUTION flow
-            4. If unsafe, decorator raises ControlViolationError
+            4. If unsafe, decorator raises ControlViolationError (safe to propagate)
 
         Returns:
             Dict with agent_uuid, server_url, event, step, and stage for control evaluation
@@ -366,26 +477,32 @@ class AgentControlHook(HookProvider):
 
         return {
             **self._base_request(event),
+            "input": input_text,
             "step": {
-                "type": "llm",
                 "input": input_text,
-            },
-            "stage": "post",
+            }
         }
 
-    @agent_control.control()
+    @agent_control.control(stage_override="post")
     async def check_after_node(self, event: AfterNodeCallEvent):
         """
         Check controls after node call (multi-agent graphs).
 
         This callback intercepts node results in multi-agent graph execution.
-        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+        Uses @control decorator directly - NO wrapper needed.
+
+        Why No Wrapper Needed:
+            Similar to check_before_node, this runs after a node completes in a
+            multi-agent graph. Blocking the node result is a higher-level operation
+            that the graph execution can handle gracefully. No OpenAI conversation
+            state issue occurs because node operations are abstracted above the
+            LLM message/tool_call level.
 
         Hook Mode Flow:
             1. Callback executes and extracts node output from event
             2. Returns dict with step data to @control decorator
             3. Decorator evaluates controls in POST-EXECUTION flow
-            4. If unsafe, decorator raises ControlViolationError
+            4. If unsafe, decorator raises ControlViolationError (safe to propagate)
 
         Returns:
             Dict with agent_uuid, server_url, event, step, and stage for control evaluation
@@ -396,10 +513,8 @@ class AgentControlHook(HookProvider):
         return {
             **self._base_request(event),
             "step": {
-                "type": "llm",
                 "output": output_text,
-            },
-            "stage": "post",
+            }
         }
 
     # ============================================================================
