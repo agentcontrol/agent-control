@@ -23,17 +23,22 @@ from strands.hooks import (
 )
 
 import agent_control
-from agent_control import ControlViolationError
-from agent_control.client import AgentControlClient
-from agent_control_models import Step
 
 
 class AgentControlHook(HookProvider):
     """
     A hook that integrates AgentControl safety checks with Strands agents.
 
-    Follows Strands HookProvider pattern for clean integration. Evaluates controls
-    at each lifecycle event and applies actions based on control definitions.
+    This hook uses a "hook mode" design where callbacks decorated with @control
+    return evaluation data instead of performing evaluation directly. The decorator
+    handles the actual control evaluation and event cancellation.
+
+    Hook Mode Design:
+        1. Callbacks intercept Strands lifecycle events
+        2. Extract step data (tool name, input, output, etc.) from events
+        3. Return dict with step data to @control decorator
+        4. Decorator evaluates controls in POST-EXECUTION flow
+        5. If unsafe, decorator raises ControlViolationError
 
     Multi-agent support: Each hook instance is tied to a specific agent via agent_uuid.
     The AgentControl server filters controls by agent_uuid during evaluation.
@@ -84,11 +89,36 @@ class AgentControlHook(HookProvider):
         self.on_violation_callback = on_violation_callback
         self.enable_logging = enable_logging
 
-        # Violation tracking for observability
-        self.violation_history = []
+    def _base_request(self, event: Any) -> dict:
+        """
+        Build base request dict with common fields for hook mode.
+
+        This dict is merged with step-specific data in each callback and returned
+        to the @control decorator for evaluation.
+
+        Args:
+            event: Strands event object (BeforeToolCallEvent, AfterModelCallEvent, etc.)
+
+        Returns:
+            Dict with agent_uuid, server_url, and event that @control decorator uses
+        """
+        return {
+            "agent_uuid": str(self.agent_uuid),
+            "server_url": self.server_url,
+            "event": event,
+        }
 
     def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
-        """Register callbacks for Strands events."""
+        """
+        Register callback methods with Strands HookRegistry.
+
+        Maps Strands event types to hook callback methods. If event_control_list
+        is specified, only registers callbacks for those event types.
+
+        Args:
+            registry: Strands HookRegistry for registering callbacks
+            **kwargs: Additional arguments passed by Strands framework
+        """
         print(f"\n{'='*60}")
         print(f"🔧 AgentControlHook.register_hooks() CALLED")
         print(f"   Agent: {self.agent_name}")
@@ -122,8 +152,23 @@ class AgentControlHook(HookProvider):
     # Event Callbacks (following Strands naming conventions)
     # ============================================================================
 
-    async def check_before_invocation(self, event: BeforeInvocationEvent) -> None:
-        """Check controls before agent invocation (user input stage)."""
+    @agent_control.control()
+    async def check_before_invocation(self, event: BeforeInvocationEvent):
+        """
+        Check controls before agent invocation (user input stage).
+
+        This callback intercepts the initial user input before the agent processes it.
+        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+
+        Hook Mode Flow:
+            1. Callback executes and extracts user input from event
+            2. Returns dict with step data to @control decorator
+            3. Decorator evaluates controls in POST-EXECUTION flow
+            4. If unsafe, decorator raises ControlViolationError
+
+        Returns:
+            Dict with agent_uuid, server_url, event, step, and stage for control evaluation
+        """
         if self.enable_logging:
             print(f"\n{'='*60}")
             print(f"🟢 AgentControlHook.check_before_invocation() CALLED")
@@ -135,55 +180,109 @@ class AgentControlHook(HookProvider):
             print(f"📝 Extracted input text: {input_text[:200] if input_text else '(empty)'}")
             print(f"📊 Input length: {len(input_text)} characters")
 
-        step = Step(type="llm", name="user-input", input=input_text, output="")
+        return {
+            **self._base_request(event),
+            "step": {
+                "input": input_text,
+            },
+            "stage": "post",
+        }
 
+    @agent_control.control()
+    async def check_before_model(self, event: BeforeModelCallEvent):
+        """
+        Check controls before LLM call.
+
+        This callback intercepts messages before they're sent to the LLM.
+        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+
+        Hook Mode Flow:
+            1. Callback executes and extracts messages from event
+            2. Returns dict with step data to @control decorator
+            3. Decorator evaluates controls in POST-EXECUTION flow
+            4. If unsafe, decorator raises ControlViolationError
+
+        Returns:
+            Dict with agent_uuid, server_url, event, step, and stage for control evaluation
+        """
         if self.enable_logging:
-            print(f"📦 Created Step: type=llm, name=user-input")
-
-        await self._evaluate_and_apply(step, stage="pre", event=event)
-
-        if self.enable_logging:
-            print(f"✅ check_before_invocation() COMPLETED")
-            print(f"{'='*60}\n")
-
-    async def check_before_model(self, event: BeforeModelCallEvent) -> None:
-        """Check controls before LLM call."""
-        print(f"\n{'='*60}")
-        print(f"🔵 AgentControlHook.check_before_model() CALLED")
-        print(f"{'='*60}")
+            print(f"\n{'='*60}")
+            print(f"🔵 AgentControlHook.check_before_model() CALLED")
+            print(f"{'='*60}")
 
         input_text, _ = self._extract_messages(event)
 
-        print(f"📝 Extracted input text: {input_text[:200]}")
-        print(f"📊 Input length: {len(input_text)} characters")
+        if self.enable_logging:
+            print(f"📝 Extracted input text: {input_text[:200]}")
+            print(f"📊 Input length: {len(input_text)} characters")
 
-        step = Step(type="llm", name="model-input", input=input_text, output="")
-        print(f"📦 Created Step: type=llm, name=model-input")
+        return {
+            **self._base_request(event),
+            "step": {
+                "type": "llm",
+                "input": {"messages": input_text},
+            },
+            "stage": "post",
+        }
 
-        await self._evaluate_and_apply(step, stage="pre", event=event)
+    @agent_control.control()
+    async def check_after_model(self, event: AfterModelCallEvent):
+        """
+        Check controls after LLM call.
 
-        print(f"✅ check_before_model() COMPLETED")
-        print(f"{'='*60}\n")
+        This callback intercepts the LLM's response before it's returned to the agent.
+        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
 
-    async def check_after_model(self, event: AfterModelCallEvent) -> None:
-        """Check controls after LLM call."""
+        Hook Mode Flow:
+            1. Callback executes and extracts model output from event
+            2. Returns dict with step data to @control decorator
+            3. Decorator evaluates controls in POST-EXECUTION flow
+            4. If unsafe, decorator raises ControlViolationError
+
+        Returns:
+            Dict with agent_uuid, server_url, event, step, and stage for control evaluation
+        """
         _, output_text = self._extract_messages(event)
 
         if self.enable_logging:
             print(f"🔍 [POST] Output: {output_text[:100]}...")
 
-        step = Step(type="llm", name="model-output", input="", output=output_text)
-        await self._evaluate_and_apply(step, stage="post", event=event)
+        return {
+            **self._base_request(event),
+            "step": {
+                "type": "llm",
+                "output": output_text,
+            },
+            "stage": "post",
+        }
 
-    async def check_before_tool(self, event: BeforeToolCallEvent) -> None:
-        """Check controls before tool call."""
+    @agent_control.control()
+    async def check_before_tool(self, event: BeforeToolCallEvent):
+        """
+        Check controls before tool call.
+
+        This callback intercepts tool calls before they execute.
+        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+
+        Hook Mode Flow:
+            1. Callback executes and extracts tool name and input from event
+            2. Returns dict with step data to @control decorator
+            3. Decorator evaluates controls in POST-EXECUTION flow
+            4. If unsafe, decorator raises ControlViolationError
+
+        Important: The step name is set to the actual tool name (e.g., "process_refund"),
+        enabling server-side controls to target specific tools using step_names.
+
+        Returns:
+            Dict with agent_uuid, server_url, event, step, and stage for control evaluation
+        """
         # ALWAYS log tool calls (even when enable_logging=False) for visibility
         print(f"\n{'='*70}")
         print(f"🔧 TOOL CALL INTERCEPTED - AgentControlHook.check_before_tool()")
         print(f"{'='*70}")
 
         # Extract tool name and input from event
-        tool_name, tool_input = self._extract_tool_data(event, stage="pre")
+        tool_name, tool_input = self._extract_tool_data(event, event_phase="pre")
 
         print(f"🔧 Tool name: {tool_name}")
         # Format tool_input for display (might be dict or string)
@@ -194,274 +293,114 @@ class AgentControlHook(HookProvider):
             tool_input_str = str(tool_input) if tool_input else ''
         print(f"📝 Tool input: {tool_input_str[:200] if tool_input_str else '(empty)'}")
 
-        # Create Step with tool name as step_name (enables step_names targeting!)
-        step = Step(type="tool", name=tool_name, input=tool_input, output="")
-
         print(f"📦 Created Step: type=tool, name={tool_name}")
         print(f"   → Controls with step_names=['{tool_name}'] will now be checked!")
         print(f"{'='*70}")
 
-        await self._evaluate_and_apply(step, stage="pre", event=event)
+        return {
+            **self._base_request(event),
+            "step": {
+                "type": "tool",
+                "input": tool_input,
+            },
+            "stage": "post",
+        }
 
-        print(f"✅ check_before_tool() COMPLETED")
-        print(f"{'='*70}\n")
+    @agent_control.control()
+    async def check_after_tool(self, event: AfterToolCallEvent):
+        """
+        Check controls after tool call.
 
-    async def check_after_tool(self, event: AfterToolCallEvent) -> None:
-        """Check controls after tool call."""
+        This callback intercepts tool results after they execute.
+        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+
+        Hook Mode Flow:
+            1. Callback executes and extracts tool name and output from event
+            2. Returns dict with step data to @control decorator
+            3. Decorator evaluates controls in POST-EXECUTION flow
+            4. If unsafe, decorator raises ControlViolationError
+
+        Returns:
+            Dict with agent_uuid, server_url, event, step, and stage for control evaluation
+        """
         if self.enable_logging:
             print(f"\n{'='*60}")
             print(f"🔧 AgentControlHook.check_after_tool() CALLED")
             print(f"{'='*60}")
 
         # Extract tool name and output from event
-        tool_name, tool_output = self._extract_tool_data(event, stage="post")
+        tool_name, tool_output = self._extract_tool_data(event, event_phase="post")
 
         if self.enable_logging:
             print(f"🔧 Tool name: {tool_name}")
             print(f"📝 Tool output: {tool_output[:200] if tool_output else '(empty)'}")
 
-        # Create Step with tool name as step_name
-        # For tool steps, input must be a dict even in post-stage (use empty dict)
-        step = Step(type="tool", name=tool_name, input={}, output=tool_output)
+        return {
+            **self._base_request(event),
+            "step": {
+                "type": "tool",
+                "output": tool_output,
+            },
+            "stage": "post",
+        }
 
-        if self.enable_logging:
-            print(f"📦 Created Step: type=tool, name={tool_name}")
+    @agent_control.control()
+    async def check_before_node(self, event: BeforeNodeCallEvent):
+        """
+        Check controls before node call (multi-agent graphs).
 
-        await self._evaluate_and_apply(step, stage="post", event=event)
+        This callback intercepts node calls in multi-agent graph execution.
+        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
 
-        if self.enable_logging:
-            print(f"✅ check_after_tool() COMPLETED")
-            print(f"{'='*60}\n")
+        Hook Mode Flow:
+            1. Callback executes and extracts node input from event
+            2. Returns dict with step data to @control decorator
+            3. Decorator evaluates controls in POST-EXECUTION flow
+            4. If unsafe, decorator raises ControlViolationError
 
-    async def check_before_node(self, event: BeforeNodeCallEvent) -> None:
-        """Check controls before node call (multi-agent graphs)."""
+        Returns:
+            Dict with agent_uuid, server_url, event, step, and stage for control evaluation
+        """
         input_text, _ = self._extract_messages(event)
         node_id = event.node_id if hasattr(event, "node_id") else "unknown"
 
-        step = Step(type="llm", name=f"node-{node_id}", input=input_text, output="")
-        await self._evaluate_and_apply(step, stage="pre", event=event)
+        return {
+            **self._base_request(event),
+            "step": {
+                "type": "llm",
+                "input": input_text,
+            },
+            "stage": "post",
+        }
 
-    async def check_after_node(self, event: AfterNodeCallEvent) -> None:
-        """Check controls after node call (multi-agent graphs)."""
+    @agent_control.control()
+    async def check_after_node(self, event: AfterNodeCallEvent):
+        """
+        Check controls after node call (multi-agent graphs).
+
+        This callback intercepts node results in multi-agent graph execution.
+        Returns a dict that the @control decorator uses to evaluate controls in hook mode.
+
+        Hook Mode Flow:
+            1. Callback executes and extracts node output from event
+            2. Returns dict with step data to @control decorator
+            3. Decorator evaluates controls in POST-EXECUTION flow
+            4. If unsafe, decorator raises ControlViolationError
+
+        Returns:
+            Dict with agent_uuid, server_url, event, step, and stage for control evaluation
+        """
         _, output_text = self._extract_messages(event)
         node_id = event.node_id if hasattr(event, "node_id") else "unknown"
 
-        step = Step(type="llm", name=f"node-{node_id}", input="", output=output_text)
-        await self._evaluate_and_apply(step, stage="post", event=event)
-
-    # ============================================================================
-    # Core Evaluation Logic
-    # ============================================================================
-
-    async def _check_controls(
-        self,
-        step: Step,
-        stage: str,
-        event: Any,
-    ):
-        """
-        Evaluate step against controls and return the result.
-
-        This method performs the actual control evaluation against the AgentControl server.
-        Returns the full EvaluationResult for use by subclasses that need detailed information.
-
-        Args:
-            step: The Step object to evaluate
-            stage: The evaluation stage ("pre" or "post")
-            event: The Strands event that triggered this check
-
-        Returns:
-            EvaluationResult with is_safe, matches, non_matches, confidence, etc.
-            Returns None if AgentControl is not initialized (fail-open)
-
-        Raises:
-            Exception: If there's an error communicating with AgentControl server
-        """
-        print(f"\n🔄 _check_controls() START")
-        print(f"   Stage: {stage}")
-        print(f"   Step type: {step.type}, Step name: {step.name}")
-
-        # Get current agent context
-        current_agent = agent_control.current_agent()
-        if not current_agent:
-            print("⚠️  AgentControl not initialized, skipping check")
-            return None
-
-        print(f"✓  AgentControl initialized: agent_id={current_agent.agent_id}")
-
-        # Evaluate step against controls
-        print(f"🌐 Calling AgentControl server at {self.server_url}...")
-        async with AgentControlClient(base_url=self.server_url) as client:
-            result = await agent_control.evaluation.check_evaluation(
-                client=client,
-                agent_uuid=self.agent_uuid,
-                step=step,
-                stage=stage,
-            )
-
-            print(f"\n📊 EVALUATION RESULT:")
-            print(f"   is_safe: {result.is_safe}")
-            print(f"   confidence: {result.confidence}")
-            print(f"   matches: {len(result.matches or [])}")
-            if result.matches:
-                for i, match in enumerate(result.matches, 1):
-                    print(f"   Match {i}: {match.control_name}")
-
-            print(f"🔄 _check_controls() END\n")
-            return result
-
-    async def _evaluate_and_apply(
-        self,
-        step: Step,
-        stage: str,
-        event: Any,
-    ) -> None:
-        """
-        Evaluate step against controls and apply action to event.
-
-        This is where the actual control execution happens. Uses _check_controls()
-        to get the evaluation result, then applies actions based on control definitions.
-        """
-        print(f"\n🔄 _evaluate_and_apply() START")
-        print(f"   Stage: {stage}")
-        print(f"   Step type: {step.type}, Step name: {step.name}")
-        print(f"   Agent UUID: {self.agent_uuid}")
-        print(f"   Server URL: {self.server_url}")
-
-        try:
-            # Evaluate step against controls
-            result = await self._check_controls(step, stage, event)
-
-            if result is None:
-                # AgentControl not initialized, fail open
-                return
-
-            # Apply control action if not safe
-            if not result.is_safe:
-                print(f"🚫 NOT SAFE - Applying violation handling...")
-                self._handle_violation(result, stage, event)
-            else:
-                print(f"✅ SAFE - No violations detected")
-
-        except ControlViolationError:
-            # Re-raise ControlViolationError to block the request
-            print(f"🚨 ControlViolationError raised - blocking request")
-            raise
-        except Exception as e:
-            print(f"❌ Error in AgentControl check: {e}")
-            import traceback
-            traceback.print_exc()
-            # Fail open for availability
-
-        print(f"🔄 _evaluate_and_apply() END\n")
-
-    def _handle_violation(self, result: Any, stage: str, event: Any) -> None:
-        """
-        Handle safety violation by applying control action to event.
-
-        Control definitions determine the action (deny/allow/warn).
-        This method applies the action to the Strands event.
-        """
-        print(f"\n🚨 _handle_violation() START")
-
-        # Get first matching control, or use generic info if matches is empty/None
-        if result.matches and len(result.matches) > 0:
-            match = result.matches[0]
-            control_name = match.control_name
-            control_id = match.control_id if hasattr(match, "control_id") else None
-            message = getattr(match, "message", "Safety violation detected")
-        else:
-            # No match details, but is_safe=False - use generic info
-            control_name = "unknown-control"
-            control_id = None
-            # Check if there's error information
-            if result.errors and len(result.errors) > 0:
-                message = f"Safety violation: {result.errors[0]}"
-            else:
-                message = "Safety violation detected by AgentControl"
-
-        # Build violation info
-        violation = {
-            "agent": self.agent_name,
-            "stage": stage,
-            "control_name": control_name,
-            "control_id": control_id,
-            "message": message,
+        return {
+            **self._base_request(event),
+            "step": {
+                "type": "llm",
+                "output": output_text,
+            },
+            "stage": "post",
         }
-        self.violation_history.append(violation)
-
-        print(f"🚫 Safety violation detected!")
-        print(f"   Agent: {violation['agent']}")
-        print(f"   Stage: {violation['stage']}")
-        print(f"   Control: {violation['control_name']}")
-        print(f"   Message: {violation['message']}")
-
-        # Call custom callback
-        if self.on_violation_callback:
-            print(f"📞 Calling custom violation callback...")
-            self.on_violation_callback(violation, result)
-
-        # Apply action to event based on event type
-        # Control definitions determine the action - we just apply it
-        print(f"⚡ Applying action to event...")
-        self._apply_action_to_event(event, violation["message"])
-
-        print(f"🚨 _handle_violation() END\n")
-
-    def _apply_action_to_event(self, event: Any, message: str) -> None:
-        """
-        Apply control action to Strands event.
-
-        Different event types support different action mechanisms:
-        - BeforeInvocationEvent: Raise exception to block unsafe input
-        - AfterModelCallEvent: Set retry=True to regenerate response
-        - BeforeToolCallEvent: Set cancel_tool with message
-        """
-        if self.enable_logging:
-            print(f"\n⚡ _apply_action_to_event() START")
-            print(f"   Event type: {type(event).__name__}")
-            print(f"   Message: {message}")
-            print(f"   Has 'retry' attr: {hasattr(event, 'retry')}")
-            print(f"   Has 'cancel_tool' attr: {hasattr(event, 'cancel_tool')}")
-
-        # BeforeInvocationEvent - block by raising exception
-        event_type_name = type(event).__name__
-
-        if event_type_name == "BeforeInvocationEvent":
-            print(f"\n{'='*70}")
-            print(f"✅ SAFETY BLOCK SUCCESSFUL - REQUEST BLOCKED")
-            print(f"{'='*70}")
-            print(f"🛡️  AgentControl detected sensitive information in user input")
-            print(f"🚫 Blocking request before it reaches the LLM")
-            print(f"📝 Reason: {message}")
-            print(f"{'='*70}")
-            print(f"⚠️  NOTE: The 'node failed' / 'graph execution failed' messages below")
-            print(f"    are from Strands framework - they indicate the safety block worked!")
-            print(f"    This is a SUCCESS, not a failure.")
-            print(f"{'='*70}\n")
-            raise ControlViolationError(
-                f"I cannot process your request at the moment because it contains sensitive information. {message}"
-            )
-
-        # AfterModelCallEvent - retry with guidance
-        elif hasattr(event, "retry"):
-            if self.enable_logging:
-                print(f"✓  Setting event.retry = True")
-            event.retry = True
-            if hasattr(event, "retry_guidance"):
-                if self.enable_logging:
-                    print(f"✓  Setting event.retry_guidance = '{message}'")
-                event.retry_guidance = message
-
-        # BeforeToolCallEvent - cancel tool execution
-        elif hasattr(event, "cancel_tool"):
-            if self.enable_logging:
-                print(f"✓  Setting event.cancel_tool = '{message}'")
-            event.cancel_tool = message
-        else:
-            print(f"⚠️  WARNING: Event type '{event_type_name}' not handled - no action taken!")
-
-        print(f"⚡ _apply_action_to_event() END\n")
 
     # ============================================================================
     # Message Extraction Utilities
@@ -507,7 +446,7 @@ class AgentControlHook(HookProvider):
 
         return input_text, output_text
 
-    def _extract_tool_data(self, event: Any, stage: str) -> tuple[str, str]:
+    def _extract_tool_data(self, event: Any, event_phase: str) -> tuple[str, str]:
         """
         Extract tool name and input/output from tool call events.
 
@@ -515,7 +454,7 @@ class AgentControlHook(HookProvider):
 
         Args:
             event: BeforeToolCallEvent or AfterToolCallEvent
-            stage: "pre" or "post" to determine what to extract
+            event_phase: "pre" tool execution or "post" tool execution to determine what to extract
 
         Returns:
             Tuple of (tool_name, tool_data)
@@ -545,7 +484,7 @@ class AgentControlHook(HookProvider):
             print(f"🔍 Extracted tool name: {tool_name}")
 
         # Extract input (pre-stage) or output (post-stage)
-        if stage == "pre":
+        if event_phase == "pre":
             # BeforeToolCallEvent - extract tool parameters from tool_use
             if hasattr(event, "tool_use") and event.tool_use:
                 if isinstance(event.tool_use, dict):
@@ -557,7 +496,7 @@ class AgentControlHook(HookProvider):
                     tool_input = event.tool_use.get("input", {})
                     tool_data = tool_input  # Keep as dict for tool steps
 
-        else:  # stage == "post"
+        else:  # event_phase == "post"
             # AfterToolCallEvent - extract result
             if hasattr(event, "result") and event.result:
                 # result is a ToolResult object or dict
@@ -578,7 +517,7 @@ class AgentControlHook(HookProvider):
         if self.enable_logging:
             # Convert tool_data to string for safe slicing
             tool_data_str = str(tool_data) if isinstance(tool_data, dict) else tool_data
-            print(f"🔍 Extracted tool data ({stage}): {tool_data_str[:100]}...")
+            print(f"🔍 Extracted tool data ({event_phase}): {tool_data_str[:100]}...")
 
         return tool_name, tool_data
 
@@ -616,19 +555,3 @@ class AgentControlHook(HookProvider):
             return " ".join(text_parts)
 
         return str(content)
-
-    # ============================================================================
-    # Observability Methods
-    # ============================================================================
-
-    def get_violation_count(self) -> int:
-        """Get total number of safety violations detected."""
-        return len(self.violation_history)
-
-    def get_violations_by_stage(self, stage: str) -> list[dict]:
-        """Get all violations for a specific stage (pre/post)."""
-        return [v for v in self.violation_history if v["stage"] == stage]
-
-    def reset_violations(self) -> None:
-        """Clear violation history."""
-        self.violation_history.clear()
