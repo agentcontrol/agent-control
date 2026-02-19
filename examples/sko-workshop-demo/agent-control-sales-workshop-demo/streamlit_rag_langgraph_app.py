@@ -3,6 +3,7 @@
 
 import os
 import sys
+import logging
 from typing import Any, Dict, List, TypedDict
 
 import streamlit as st
@@ -14,6 +15,11 @@ if SDK_FALLBACK not in sys.path:
 
 import agent_control
 from agent_control import ControlViolationError, control
+
+try:
+    from agent_control import ControlViolationException
+except ImportError:
+    ControlViolationException = ControlViolationError
 
 from chromadb import Client
 from chromadb.config import Settings
@@ -28,6 +34,9 @@ AGENT_ID = "9e9a1c8e-8c3f-4c6d-9d2a-0d3d5e8a1b77"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 # --- Initialize AgentControl ---
+logger = logging.getLogger("rag_demo")
+logging.basicConfig(level=logging.INFO)
+
 agent_control.init(
     agent_name=AGENT_NAME,
     agent_id=AGENT_ID,
@@ -196,9 +205,11 @@ if prompt:
                 answer = result.get("answer", "")
                 st.markdown(answer)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
-            except ControlViolationError as e:
-                msg = f"Blocked by control: {e.control_name} ({e.message})"
+            except (ControlViolationError, ControlViolationException) as e:
+                logger.warning("Control violation", exc_info=e)
+                msg = f"Blocked by control: {getattr(e, 'control_name', 'unknown')} ({getattr(e, 'message', str(e))})"
                 st.warning(msg)
                 st.session_state.messages.append({"role": "assistant", "content": msg})
             except Exception as e:
+                logger.exception("Unhandled error in Streamlit app")
                 st.error(f"Error: {type(e).__name__}: {e}")
