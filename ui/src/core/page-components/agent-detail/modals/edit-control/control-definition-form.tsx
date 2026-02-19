@@ -1,4 +1,11 @@
-import { Autocomplete, MultiSelect, Select, Stack, Switch, TagsInput } from '@mantine/core';
+import {
+  Autocomplete,
+  MultiSelect,
+  Select,
+  Stack,
+  Switch,
+  TagsInput,
+} from '@mantine/core';
 
 import type {
   ControlActionDecision,
