@@ -22,38 +22,7 @@ Requirements:
 
 ## Quick Start
 
-Use the default singleton client:
-
-```ts
-import agentControl, { control } from "agent-control";
-
-agentControl.init({
-  agentName: "customer-support-agent",
-  agentId: "support-agent-v1",
-  serverUrl: "http://localhost:8000",
-  apiKey: process.env.AGENT_CONTROL_API_KEY,
-  steps: [
-    {
-      name: "respond",
-      schema: {
-        type: "object",
-        properties: {
-          message: { type: "string" },
-        },
-      },
-    },
-  ],
-});
-
-const guardedRespond = control(async (message: string) => {
-  return `echo:${message}`;
-});
-
-const result = await guardedRespond("hello");
-console.log(result);
-```
-
-Use an explicit client instance:
+Create a client instance and initialize it with server + auth config:
 
 ```ts
 import { AgentControlClient } from "agent-control";
@@ -61,30 +30,56 @@ import { AgentControlClient } from "agent-control";
 const client = new AgentControlClient();
 
 client.init({
-  agentName: "my-agent",
+  agentName: "customer-support-agent",
   serverUrl: "http://localhost:8000",
+  apiKey: process.env.AGENT_CONTROL_API_KEY,
 });
 
-console.log(client.initialized); // true
-console.log(client.config?.agentName); // "my-agent"
+const health = await client.system.healthCheckHealthGet();
+console.log(health.status, health.version);
+
+const agents = await client.agents.listAgentsApiV1AgentsGet({
+  limit: 20,
+  name: "support",
+});
+console.log(agents.agents.length);
+
+const created = await client.controls.createControlApiV1ControlsPut({
+  name: "deny-pii",
+});
+console.log(created.controlId);
 ```
 
-## Error Handling
+Use the default singleton if you prefer:
 
 ```ts
-import { ControlViolationError } from "agent-control";
+import agentControl from "agent-control";
 
-try {
-  // your guarded call
-} catch (error) {
-  if (error instanceof ControlViolationError) {
-    console.error("Blocked by control:", error.controlName);
-    console.error("Reason:", error.evaluationResult.reason);
-  } else {
-    throw error;
-  }
-}
+agentControl.init({
+  agentName: "singleton-client",
+  serverUrl: "http://localhost:8000",
+  apiKey: process.env.AGENT_CONTROL_API_KEY,
+});
+
+const health = await agentControl.system.healthCheckHealthGet();
+console.log(health.status);
 ```
+
+## API Namespaces
+
+`AgentControlClient` exposes generated endpoint groups directly:
+
+- `client.agents`
+- `client.controls`
+- `client.evaluation`
+- `client.evaluatorConfigs`
+- `client.evaluators`
+- `client.observability`
+- `client.policies`
+- `client.system`
+
+Generated method names currently mirror OpenAPI operation IDs.
+Example: `client.agents.listAgentsApiV1AgentsGet(...)`.
 
 ## Exported API
 
@@ -94,15 +89,17 @@ Current public exports:
 - `AgentControlClient`
 - `control`
 - `ControlViolationError`
-- types: `AgentControlInitOptions`, `StepSchema`, `ControlAction`, `EvaluationResult`, `JsonPrimitive`, `JsonValue`, `JsonObject`
+- endpoint API types: `AgentsApi`, `ControlsApi`, `EvaluationApi`, `EvaluatorConfigsApi`, `EvaluatorsApi`, `ObservabilityApi`, `PoliciesApi`, `SystemApi`
+- generated request/response types via package root type exports (models + operations)
+- utility types: `AgentControlInitOptions`, `StepSchema`, `ControlAction`, `EvaluationResult`, `JsonPrimitive`, `JsonValue`, `JsonObject`
 
 ## Current Status
 
-This package is in scaffold phase:
+Current implementation status:
 
-- `AgentControlClient.init(...)` stores configuration.
-- `control(...)` currently wraps and forwards calls (no-op enforcement path).
-- The generated low-level API client is included in source but is not yet exported as public API.
+- `AgentControlClient` makes real API calls through the generated Speakeasy client.
+- Auth is sent using `X-API-Key` when `apiKey` is configured.
+- `control(...)` remains a pass-through wrapper (no enforcement behavior yet).
 
 ## Development
 
