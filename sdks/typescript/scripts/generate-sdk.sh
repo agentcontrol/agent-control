@@ -38,4 +38,12 @@ mkdir -p "${GENERATED_DIR}"
 rsync -a --delete "${TMP_OUTPUT_DIR}/src/" "${GENERATED_DIR}/"
 rm -rf "${TMP_OUTPUT_DIR}"
 
+# Speakeasy seeds hooks/registration.ts with @ts-expect-error, which fails
+# strict typecheck when no hook is registered. Normalize to @ts-ignore so
+# committed and regenerated output stay deterministic.
+REGISTRATION_FILE="${GENERATED_DIR}/hooks/registration.ts"
+if [[ -f "${REGISTRATION_FILE}" ]]; then
+  perl -0pi -e 's/@ts-expect-error/@ts-ignore/g' "${REGISTRATION_FILE}"
+fi
+
 echo "Generated TypeScript client copied to ${GENERATED_DIR}"
