@@ -52,7 +52,7 @@ SAFETY_CONTROLS = [
                 "step_names": ["check_before_tool"],  # Hook callback name
                 "stages": ["post"]  # Hook callbacks use post-execution
             },
-            "selector": {"path": "input.amount"},
+            "selector": {"path": "output.input.amount"},
             "evaluator": {
                 "name": "regex",
                 "config": {

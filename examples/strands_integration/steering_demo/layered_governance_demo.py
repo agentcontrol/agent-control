@@ -40,7 +40,6 @@ load_dotenv(Path(__file__).parent.parent / ".env", override=False)
 # ============================================================================
 
 @tool
-@agent_control.control()
 async def check_order_status(order_id: str) -> dict:
     """
     Check the status of a customer's order.
@@ -64,7 +63,6 @@ async def check_order_status(order_id: str) -> dict:
 
 
 @tool
-@agent_control.control()
 async def process_refund(order_id: str, amount: float, reason: str) -> dict:
     """
     Process a refund for a customer order.
