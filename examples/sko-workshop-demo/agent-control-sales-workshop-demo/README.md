@@ -227,12 +227,44 @@ Template location:
 /Users/namrataghadi/code/agentcontrol/agent-control/evaluators/extra/template
 ```
 
+### How Custom Evaluators Are Shipped/Installed
+
+You have three common options:
+
+1. **Local editable install (best for development)**
+   - Build your evaluator as a package and install it into the **same Python env as the server**.
+   - Example:
+   ```bash
+   cd /Users/namrataghadi/code/agentcontrol/agent-control
+   uv run python -m ensurepip
+   uv run python -m pip install --upgrade pip
+   uv run python -m pip install -e /Users/namrataghadi/code/agent-control-sales-workshop-demo/custom_evaluator_acme
+   ```
+
+2. **Publish to PyPI and install in production**
+   - Build and publish your evaluator package, then install it like any dependency:
+   ```bash
+   pip install agent-control-evaluator-yourorg
+   ```
+
+3. **Bundle with AgentControl server image**
+   - Add your evaluator package to the server Docker image so it’s always present.
+   - This is common for locked‑down production deployments.
+
+In all cases, the evaluator must expose an **entry point** under:
+```
+[project.entry-points."agent_control.evaluators"]
+```
+
 ### 1) Create a New Evaluator Package
 
 ```bash
 cd /Users/namrataghadi/code/agentcontrol/agent-control/evaluators/extra
 cp -r template/ acme
 ```
+
+**Note:** This only creates the package. It is **not** shipped with AgentControl until you
+install or bundle it into the server environment (see shipping options above).
 
 Edit `acme/pyproject.toml` (copy from `pyproject.toml.template`) and replace:
 `{{ORG}}`, `{{EVALUATOR}}`, `{{CLASS}}`, `{{AUTHOR}}`.
@@ -297,9 +329,10 @@ Or via API, use:
 }
 ```
 
-## Custom Evaluator Demo (Tiered Discount)
 
-This evaluator is kept as an example of custom business logic but is **not used** in the RAG flow.
+## LLM-as-Judge Evaluator (Answer Relevance)
+
+This evaluator uses an **OpenAI-compatible API** to score answer relevance on a 0–1 scale.
 
 ### Step 1: Install the custom evaluator into the same env as the server
 
@@ -312,50 +345,9 @@ uv run python -m pip install -e /Users/namrataghadi/code/agent-control-sales-wor
 ```
 
 Restart the server after installing.
-
-### Step 2: Create a control in the UI using the new evaluator
-
-In the **RAG Q&A Agent** → **Controls** tab (optional demo):
-
-- Control name: `tiered-discount-policy`
-- Step Types: `tool`
-- Stages: `pre`
-- Selector Path: `input`
-- Evaluator: `acme.tiered-discount`
-- Config:
 ```
-{
-  "limits": {
-    "standard": 20,
-    "premium": 35
-  },
-  "default_limit": 15
-}
+make server-run
 ```
-- Action: `deny`
-
-### Step 3: Run the demo
-
-```bash
-uv run python rag_qa_demo.py
-```
-
-Expected:
-- `standard` tier with 45% discount → **blocked**
-- `premium` tier with 15% discount → **allowed**
-
-## LLM-as-Judge Evaluator (Answer Relevance)
-
-This evaluator uses an **OpenAI-compatible API** to score answer relevance on a 0–1 scale.
-
-### Step 1: Install the evaluator (same as before)
-
-```bash
-cd /Users/namrataghadi/code/agentcontrol/agent-control
-uv run pip install -e /Users/namrataghadi/code/agent-control-sales-workshop-demo/custom_evaluator_acme
-```
-
-Restart the server after installing.
 
 ### Step 2: Set API key in the server environment
 
@@ -402,3 +394,7 @@ Ask a question that encourages an off-topic answer and show it getting blocked.
 - `toggle_controls.py` – Toggles RAG PII output control
 - `rag_qa_demo.py` – Interactive RAG Q&A demo (ChromaDB + OpenAI)
 - `streamlit_rag_langgraph_app.py` – Streamlit RAG Q&A app (LangGraph)
+
+## Questions to test in the demo
+What ROI do customers typically see? (SAFE)
+Search for user 123-45-6789 in the knowledge base. (UN-SAFE)

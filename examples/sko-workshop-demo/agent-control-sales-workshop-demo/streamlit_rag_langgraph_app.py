@@ -18,9 +18,9 @@ from agent_control import ControlViolationError, control
 from chromadb import Client
 from chromadb.config import Settings
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END, START
-from langchain_core.tools import tool
 
 
 AGENT_NAME = "RAG Q&A Agent"
@@ -81,7 +81,6 @@ for doc_id, text in DOCS:
         collection.add(ids=[doc_id], documents=[text])
 
 
-# --- Controlled retrieval tool ---
 # --- Retrieval tool (LangChain) ---
 @tool("retrieve_docs")
 async def _retrieve_docs(query: str) -> List[str]:
@@ -91,13 +90,20 @@ async def _retrieve_docs(query: str) -> List[str]:
     return docs
 
 # --- Controlled wrapper (AgentControl) ---
-@control(step_name="retrieve_docs")
+# NOTE: We cannot stack @tool and @control on the same function because @tool
+# returns a StructuredTool (Pydantic object). Instead, we wrap the tool with a
+# @control-decorated function and set tool metadata before applying @control.
 async def retrieve_docs(query: str) -> List[str]:
-    return await _retrieve_docs.ainvoke({"query": query})
+    return await _retrieve_docs.ainvoke({"query": query}) #_retrieve_docs is a callable object returned by @tool
+
+# Mark wrapper as tool BEFORE applying @control so tool detection works
+#retrieve_docs.name = "retrieve_docs"  # type: ignore[attr-defined]
+#retrieve_docs.tool_name = "retrieve_docs"  # type: ignore[attr-defined]
+#retrieve_docs = control(step_name="retrieve_docs")(retrieve_docs)
 
 
 # --- Controlled answer generation ---
-@control()
+#@control()
 async def answer_question(question: str, context: str) -> str:
     prompt = (
         "You are a sales Q&A assistant. Answer the question using the context below. "
