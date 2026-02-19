@@ -98,14 +98,15 @@ class AgentControlHook(HookProvider):
 
         Args:
             event: Strands event object (BeforeToolCallEvent, AfterModelCallEvent, etc.)
+                   NOTE: Event is NOT included in return dict - only extracted data
 
         Returns:
-            Dict with agent_uuid, server_url, and event that @control decorator uses
+            Dict with agent_uuid and server_url that @control decorator uses
         """
         return {
             "agent_uuid": str(self.agent_uuid),
             "server_url": self.server_url,
-            "event": event,
+            # NOTE: Don't include 'event' - it's not JSON serializable
         }
 
     def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
@@ -188,9 +189,7 @@ class AgentControlHook(HookProvider):
 
         return {
             **self._base_request(event),
-            "step": {
-                "input": input_text,
-            }
+            "input": input_text
         }
 
     @agent_control.control(stage_override="post")
@@ -229,10 +228,7 @@ class AgentControlHook(HookProvider):
 
         return {
             **self._base_request(event),
-            "step": {
-                "type": "llm",  
-                "input": input_text,
-            }
+            "input": input_text
         }
 
     @agent_control.control(stage_override="post")
@@ -266,10 +262,7 @@ class AgentControlHook(HookProvider):
 
         return {
             **self._base_request(event),
-            "step": {
-                "type": "llm",  
-                "output": output_text
-            }
+            "output": output_text
         }
 
     async def check_before_tool(self, event: BeforeToolCallEvent):
@@ -287,14 +280,14 @@ class AgentControlHook(HookProvider):
             message, and OpenAI rejects the conversation as invalid with error:
             "An assistant message with 'tool_calls' must be followed by tool messages"
 
-            The wrapper catches ControlViolationError and returns None to gracefully
-            skip the tool execution without breaking the conversation state.
+            The wrapper catches ControlViolationError and raises RuntimeError to block
+            the tool execution while allowing Strands to handle it gracefully.
 
         Pattern:
             Wrapper (this function) → Calls decorated implementation → Catches errors
 
-        Returns:
-            None if control violation detected, otherwise delegates to implementation
+        Raises:
+            RuntimeError: If control violation detected (blocks tool execution)
         """
         try:
             return await self._check_before_tool_impl(event)
@@ -315,13 +308,20 @@ class AgentControlHook(HookProvider):
                     }
                     self.on_violation_callback(violation_info, None)
 
-                # Return None to skip tool execution gracefully
-                return None
+                # Raise RuntimeError to prevent tool execution
+                # Extract just the policy violation message without the full error details
+                error_msg = str(e).split("Control violation")[1] if "Control violation" in str(e) else str(e)
+                raise RuntimeError(f"Policy violation{error_msg}") from None
             else:
                 # Re-raise non-control-violation exceptions
                 raise
 
-    @agent_control.control(stage_override="post")
+    # NOTE: step_name parameter is REQUIRED here because:
+    # 1. After @control decoration, _check_before_tool_impl refers to the wrapper
+    # 2. Setting __name__ later only changes the wrapper's name, not the original func
+    # 3. The decorator uses the original func's __name__ (still "_check_before_tool_impl")
+    # 4. step_name explicitly tells the decorator to use "check_before_tool" as the step name
+    @agent_control.control(stage_override="post", step_name="check_before_tool")
     async def _check_before_tool_impl(self, event: BeforeToolCallEvent):
         """
         Internal implementation for checking controls before tool call.
@@ -355,11 +355,8 @@ class AgentControlHook(HookProvider):
 
         result = {
             **self._base_request(event),
-            "step": {
-                "type": "tool",
-                "name": "check_before_tool",  # Explicit name (overrides func.__name__)
-                "input": tool_input,  # Keep input as dict for tool steps
-            }
+            "input": tool_input,  # Keep input as dict for tool steps
+            
         }
 
         # DEBUG: Print what we're returning
@@ -369,6 +366,12 @@ class AgentControlHook(HookProvider):
         print(f"   Step name: {result.get('step', {}).get('name')}")
 
         return result
+
+    # NOTE: This __name__ assignment is REQUIRED for the decorator to detect this as a tool step:
+    # - The decorator checks for tool attributes (name, tool_name) to determine step_type
+    # - Setting __name__ to match tool naming helps the decorator identify it as a tool
+    # - This works in conjunction with step_name parameter above
+    _check_before_tool_impl.__name__ = "check_before_tool"
 
     async def check_after_tool(self, event: AfterToolCallEvent):
         """
@@ -382,14 +385,14 @@ class AgentControlHook(HookProvider):
             ControlViolationError), there's no tool response message, causing OpenAI to
             reject the conversation as invalid.
 
-            The wrapper catches ControlViolationError and returns None to gracefully
-            handle the violation without breaking the conversation state.
+            The wrapper catches ControlViolationError and raises RuntimeError to block
+            the tool result while allowing Strands to handle it gracefully.
 
         Pattern:
             Wrapper (this function) → Calls decorated implementation → Catches errors
 
-        Returns:
-            None if control violation detected, otherwise delegates to implementation
+        Raises:
+            RuntimeError: If control violation detected (blocks tool result)
         """
         try:
             return await self._check_after_tool_impl(event)
@@ -410,13 +413,17 @@ class AgentControlHook(HookProvider):
                     }
                     self.on_violation_callback(violation_info, None)
 
-                # Return None to skip tool result gracefully
-                return None
+                # Raise RuntimeError to prevent tool result from being used
+                # Extract just the policy violation message without the full error details
+                error_msg = str(e).split("Control violation")[1] if "Control violation" in str(e) else str(e)
+                raise RuntimeError(f"Policy violation{error_msg}") from None
             else:
                 # Re-raise non-control-violation exceptions
                 raise
 
-    @agent_control.control(stage_override="post")
+    # NOTE: step_name parameter is REQUIRED here (same reason as check_before_tool above)
+    # The decorator needs explicit step_name because __name__ set later only affects the wrapper
+    @agent_control.control(stage_override="post", step_name="check_after_tool")
     async def _check_after_tool_impl(self, event: AfterToolCallEvent):
         """
         Internal implementation for checking controls after tool call.
@@ -441,12 +448,10 @@ class AgentControlHook(HookProvider):
 
         return {
             **self._base_request(event),
-            "step": {
-                "type": "tool",
-                "name": "check_after_tool",  # Explicit name (overrides func.__name__)
-                "output": tool_output,
-            }
+            "output": tool_output,
         }
+    # NOTE: __name__ assignment helps decorator detect this as a tool step (same as check_before_tool)
+    _check_after_tool_impl.__name__ = "check_after_tool"
 
     @agent_control.control(stage_override="post")
     async def check_before_node(self, event: BeforeNodeCallEvent):
@@ -478,9 +483,6 @@ class AgentControlHook(HookProvider):
         return {
             **self._base_request(event),
             "input": input_text,
-            "step": {
-                "input": input_text,
-            }
         }
 
     @agent_control.control(stage_override="post")
@@ -512,9 +514,7 @@ class AgentControlHook(HookProvider):
 
         return {
             **self._base_request(event),
-            "step": {
-                "output": output_text,
-            }
+            "output": output_text
         }
 
     # ============================================================================

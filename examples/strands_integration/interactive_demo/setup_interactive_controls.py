@@ -44,7 +44,7 @@ INTERACTIVE_CONTROLS = [
                 "step_names": ["check_before_invocation", "check_before_model"],
                 "stages": ["post"]  # Hook callbacks use post-execution
             },
-            "selector": {"path": "input"},
+            "selector": {"path": "output.input"},  # Access input from callback's returned dict
             "evaluator": {
                 "name": "regex",
                 "config": {
@@ -66,7 +66,7 @@ INTERACTIVE_CONTROLS = [
                 "step_names": ["check_after_model"],
                 "stages": ["post"]  # Hook callbacks use post-execution
             },
-            "selector": {"path": "output"},
+            "selector": {"path": "output.output"},  # Access output from callback's returned dict
             "evaluator": {
                 "name": "regex",
                 "config": {
@@ -90,7 +90,7 @@ INTERACTIVE_CONTROLS = [
                 "step_names": ["check_before_tool"],
                 "stages": ["post"]  # Hook callbacks use post-execution
             },
-            "selector": {"path": "input.order_id"},
+            "selector": {"path": "output.input.order_id"},  # Access order_id from callback's input
             "evaluator": {
                 "name": "regex",
                 "config": {"pattern": r"ORD-.*[A-Za-z]"}  # Detects letters after hyphen (invalid)
@@ -113,7 +113,7 @@ INTERACTIVE_CONTROLS = [
                 "step_names": ["check_before_tool"],
                 "stages": ["post"]  # Hook callbacks use post-execution
             },
-            "selector": {"path": "input.query"},
+            "selector": {"path": "output.input.query"},  # Access query from callback's input
             "evaluator": {
                 "name": "regex",
                 "config": {
