@@ -59,9 +59,10 @@ See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's archi
 
 Protect your AI agent in 4 simple steps.
 
-**Prerequisites:** Python 3.12+, Docker, uv (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-
-**Key Concepts:** Controls (rules) → Policies (groups of controls) → Agents (your apps)
+**Prerequisites:** 
+- Python 3.12+, 
+- Docker, 
+- uv (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
 ---
 
@@ -97,7 +98,9 @@ make server-run
 
 The dashboard provides a UI for managing agents, controls, and viewing analytics. Everything can be done via API/SDK, but the UI is more convenient.
 
+In a separate terminal:
 ```bash
+cd ~/path_to_agent-control/
 cd ui
 pnpm install
 pnpm dev
@@ -107,9 +110,9 @@ pnpm dev
 
 ---
 
-### Step 3: One-Time Setup
+### Step 3: Setup Controls for Your Agent
 
-Run this script **once** to create a control, policy, and assign it to your agent:
+Create controls to protect your agent's operations:
 
 ```python
 # setup.py - Run once to configure everything
@@ -140,15 +143,14 @@ async def setup():
                 "scope": {"stages": ["post"]},
                 "selector": {"path": "output"},
                 "evaluator": {
-                    "name": "regex",
+                    "name": "regex", # Inbuilt regex evaluator. See agent-control/evaluators to see all available OOTB evaluators
                     "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
                 },
                 "action": {"decision": "deny"}
             }
         )
-
         # 3. Create policy
-        policy = await policies.create_policy(client, name="production-policy")
+        policy = await policies.create_policy(client,   name="production-policy")
 
         # 4. Add control to policy
         await policies.add_control_to_policy(
@@ -171,14 +173,17 @@ async def setup():
 asyncio.run(setup())
 ```
 
+**In your Agent application directory** (not inside the agent-control repo):
 ```bash
-pip install agent-control-sdk
+uv venv
+uv .venv/bin/activate
+uv pip install agent-control-sdk
 python setup.py
 ```
 
 ---
 
-### Step 4: Use in Your Agent
+### Step 4: Now, Use in Your Agent
 
 Now protect your functions with `@control()`:
 
@@ -221,20 +226,6 @@ python my_agent.py
 
 ---
 
-### What's Happening?
-
-1. `@control()` intercepts function output
-2. SDK sends output to server
-3. Server checks against agent's policy
-4. `block-ssn` control finds SSN → raises `ControlViolationError`
-
-**Benefits:**
-- Update controls without redeploying your agent code
-- One policy protects multiple agents
-- Real-time analytics in dashboard
-
----
-
 ### What's Happening Under the Hood?
 
 1. Your app calls `chat("test")`
@@ -256,8 +247,7 @@ python my_agent.py
 ### Next Steps
 
 - **Add more controls:** See [Defining Controls](#defining-controls) section below
-- **Create policies:** Group controls together for reuse
-- **Explore evaluators:** Try AI-powered evaluators like Luna-2
+- **Explore evaluators:** Try AI-powered evaluators like [Luna-2](#example-block-toxic-input-luna-2-ai) or create custom evaluators relevant to your project. See [examples/deepeval](examples/deepeval) for custom evaluator examples
 - **Production setup:** Enable authentication - see [docs/REFERENCE.md](docs/REFERENCE.md#authentication)
 - **Check examples:** See [examples/](examples/) for real-world patterns
 
