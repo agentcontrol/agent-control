@@ -60,9 +60,10 @@ See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's archi
 Protect your AI agent in 4 simple steps.
 
 **Prerequisites:** 
-- Python 3.12+, 
-- Docker, 
-- uv (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **Python 3.12+**
+- **uv** — Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **Docker** — For running PostgreSQL
+- **Node.js 18+** — For the web dashboard (optional)
 
 ---
 
