@@ -520,7 +520,6 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
             <EditControlContent
               control={selectedControl}
               agentId={agentId}
-              steps={agent?.steps}
               onClose={handleCloseEditModal}
               onSuccess={handleEditControlSuccess}
             />

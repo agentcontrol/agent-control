@@ -28,6 +28,7 @@ export const ControlDefinitionForm = ({
       <Switch
         size="sm"
         color="green.5"
+        style={{ width: 'fit-content' }}
         label={
           <LabelWithTooltip
             label="Enabled"
