@@ -65,6 +65,12 @@ const health = await agentControl.system.healthCheckHealthGet();
 console.log(health.status);
 ```
 
+## Monorepo Example
+
+For a runnable example app inside this repository that installs `agent-control` from npm, see:
+
+- [`examples/typescript_sdk/`](../../examples/typescript_sdk/)
+
 ## API Namespaces
 
 `AgentControlClient` exposes generated endpoint groups directly:

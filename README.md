@@ -47,6 +47,7 @@ See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's archi
 ### Examples
 
 - **[Examples Overview](examples/README.md)** — Working code examples and integration patterns
+- **[TypeScript SDK (npm consumer)](examples/typescript_sdk/)** — Monorepo example that installs `agent-control` from npm
 - **[Customer Support Agent](examples/customer_support_agent/)** — Full example with multiple tools
 - **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection with LangChain
 - **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
