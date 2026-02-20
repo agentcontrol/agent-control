@@ -7,7 +7,7 @@ from pathlib import Path
 from agent_control_server.main import app
 
 
-def generate_openapi_spec(output_path: str = "server/openapi.json") -> None:
+def generate_openapi_spec(output_path: str = "server/.generated/openapi.json") -> None:
     """
     Generate OpenAPI specification file.
 
@@ -28,6 +28,7 @@ def generate_openapi_spec(output_path: str = "server/openapi.json") -> None:
     }
 
     output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(
         json.dumps(openapi_schema, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate OpenAPI specification.")
     parser.add_argument(
         "--output",
-        default="server/openapi.json",
+        default="server/.generated/openapi.json",
         help="Path where the OpenAPI spec should be saved.",
     )
     args = parser.parse_args()

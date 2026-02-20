@@ -6,6 +6,7 @@ PACK_SERVER := agent-control-server
 PACK_SDK    := agent-control
 PACK_ENGINE := agent-control-engine
 PACK_EVALUATORS := agent-control-evaluators
+OPENAPI_SPEC_PATH := server/.generated/openapi.json
 
 # Directories
 MODELS_DIR := models
@@ -24,8 +25,8 @@ help:
 	@echo ""
 	@echo "Run:"
 	@echo "  make server-<target> - forward to server targets (e.g., server-help, server-alembic-upgrade)"
-	@echo "  make openapi-spec    - generate committed OpenAPI spec at server/openapi.json"
-	@echo "  make openapi-spec-check - regenerate OpenAPI spec and fail on drift"
+	@echo "  make openapi-spec    - generate runtime OpenAPI spec at $(OPENAPI_SPEC_PATH)"
+	@echo "  make openapi-spec-check - verify OpenAPI generation succeeds"
 	@echo ""
 	@echo "Test:"
 	@echo "  make test            - run tests for core packages (server, engine, sdk, evaluators)"
@@ -65,10 +66,10 @@ sync:
 # ---------------------------
 
 openapi-spec:
-	uv run --package $(PACK_SERVER) python server/openapi.py --output server/openapi.json
+	uv run --package $(PACK_SERVER) python server/openapi.py --output $(OPENAPI_SPEC_PATH)
 
 openapi-spec-check: openapi-spec
-	git diff --exit-code -- server/openapi.json
+	test -s $(OPENAPI_SPEC_PATH)
 
 # ---------------------------
 # Run
