@@ -160,19 +160,30 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
                       )}
                     </Stack>
                   ) : (
-                    <Text size="xs">Invalid regex: {regexMatchInfo.errorMessage}</Text>
+                    <Text size="xs">
+                      Invalid regex: {regexMatchInfo.errorMessage}
+                    </Text>
                   )
                 }
               >
                 <Group gap={4} wrap="nowrap">
                   {regexMatchInfo.isValid ? (
                     regexMatchInfo.matchCount > 0 ? (
-                      <IconCircleCheck size={14} color="var(--mantine-color-green-6)" />
+                      <IconCircleCheck
+                        size={14}
+                        color="var(--mantine-color-green-6)"
+                      />
                     ) : (
-                      <IconCircleX size={14} color="var(--mantine-color-gray-6)" />
+                      <IconCircleX
+                        size={14}
+                        color="var(--mantine-color-gray-6)"
+                      />
                     )
                   ) : (
-                    <IconAlertCircle size={14} color="var(--mantine-color-red-6)" />
+                    <IconAlertCircle
+                      size={14}
+                      color="var(--mantine-color-red-6)"
+                    />
                   )}
                   <Text size="xs" c={regexMatchInfo.isValid ? 'dimmed' : 'red'}>
                     {regexMatchInfo.isValid ? regexMatchInfo.matchCount : '!'}
