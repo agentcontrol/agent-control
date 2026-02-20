@@ -40,8 +40,7 @@ Use workflow `.github/workflows/release-sdk-ts.yml`:
 3. Trigger again with `dry_run=false` to publish.
 
 The publish run performs:
-- `make openapi-spec`
-- `make sdk-ts-generate-check`
+- `make sdk-ts-generate-check` (this generates OpenAPI from server code, then checks SDK/overlay drift)
 - `make sdk-ts-lint`
 - `make sdk-ts-typecheck`
 - `make sdk-ts-test`

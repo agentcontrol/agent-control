@@ -51,10 +51,7 @@ jobs:
       - name: Install pinned Speakeasy CLI
         run: make -C sdks/typescript speakeasy-install
 
-      - name: Generate OpenAPI spec from server code
-        run: make openapi-spec
-
-      - name: Verify generated TypeScript client is current
+      - name: Generate OpenAPI from server code and verify TypeScript client drift
         run: make sdk-ts-generate-check
 
       - name: Lint TypeScript SDK
