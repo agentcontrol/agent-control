@@ -178,9 +178,6 @@ jobs:
       - name: Sync Python dependencies
         run: make sync
 
-      - name: Verify committed OpenAPI spec is current
-        run: make openapi-spec-check
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

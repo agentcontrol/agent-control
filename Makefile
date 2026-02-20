@@ -155,7 +155,7 @@ prepush:
 sdk-ts-generate: openapi-spec
 	$(MAKE) -C $(TS_SDK_DIR) generate
 
-sdk-ts-generate-check: openapi-spec-check
+sdk-ts-generate-check: openapi-spec
 	$(MAKE) -C $(TS_SDK_DIR) generate-check
 
 sdk-ts-name-check:

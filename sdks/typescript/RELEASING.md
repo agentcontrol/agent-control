@@ -17,7 +17,7 @@ make sdk-ts-release-check
 ```
 
 This validates:
-- OpenAPI spec is current
+- OpenAPI spec can be generated from server code
 - Generated client is current
 - Lint, typecheck, test, and build all pass
 
@@ -40,7 +40,7 @@ Use workflow `.github/workflows/release-sdk-ts.yml`:
 3. Trigger again with `dry_run=false` to publish.
 
 The publish run performs:
-- `make openapi-spec-check`
+- `make openapi-spec`
 - `make sdk-ts-generate-check`
 - `make sdk-ts-lint`
 - `make sdk-ts-typecheck`

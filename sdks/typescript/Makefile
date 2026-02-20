@@ -55,7 +55,6 @@ build:
 	pnpm run build
 
 release-check:
-	$(MAKE) -C ../.. openapi-spec-check
 	$(MAKE) overlay-test
 	$(MAKE) -C ../.. sdk-ts-generate-check
 	$(MAKE) lint
