@@ -198,6 +198,9 @@ jobs:
       - name: Install pinned Speakeasy CLI
         run: make -C sdks/typescript speakeasy-install
 
+      - name: Test TypeScript SDK naming generator
+        run: make sdk-ts-overlay-test
+
       - name: Lint TypeScript SDK
         run: make sdk-ts-lint
 

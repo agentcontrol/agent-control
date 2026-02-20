@@ -78,7 +78,7 @@ actions:
   - target: $["paths"]["/api/v1/controls/{control_id}"]["patch"]
     update:
       x-speakeasy-group: controls
-      x-speakeasy-name-override: update
+      x-speakeasy-name-override: updateMetadata
 
   - target: $["paths"]["/api/v1/controls/{control_id}"]["delete"]
     update:

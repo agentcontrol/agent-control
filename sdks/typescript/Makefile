@@ -1,12 +1,13 @@
 SHELL := /bin/bash
 
-.PHONY: help install install-no-frozen speakeasy-install generate name-check generate-check lint typecheck test build release-check publish-dry-run publish clean
+.PHONY: help install install-no-frozen speakeasy-install generate overlay-test name-check generate-check lint typecheck test build release-check publish-dry-run publish clean
 
 help:
 	@echo "TypeScript SDK Makefile targets"
 	@echo "  make install            - install dependencies (frozen lockfile)"
 	@echo "  make speakeasy-install  - download pinned Speakeasy CLI"
 	@echo "  make generate           - generate client into src/generated"
+	@echo "  make overlay-test       - run Python tests for method-name overlay generator"
 	@echo "  make name-check         - verify generated method names are ergonomic"
 	@echo "  make generate-check     - regenerate and verify src/generated has no diffs"
 	@echo "  make lint               - run ESLint"
@@ -29,14 +30,17 @@ speakeasy-install:
 generate: speakeasy-install
 	./scripts/generate-sdk.sh
 
+overlay-test:
+	cd ../.. && uv run --package agent-control-server pytest sdks/typescript/tests/test_generate_method_names_overlay.py
+
 name-check:
 	@if rg -n --no-heading 'async\\s+[A-Za-z0-9]+(ApiV[0-9]+|Get|Post|Put|Patch|Delete)\\b' src/generated/sdk; then \
-		echo "Found verbose generated method names. Update method-names.overlay.yaml."; \
+		echo "Found verbose generated method names. Update generate-method-names-overlay.py rules."; \
 		exit 1; \
 	fi
 
 generate-check: generate name-check
-	git diff --exit-code -- src/generated
+	git diff --exit-code -- src/generated overlays/method-names.overlay.yaml
 
 lint:
 	pnpm run lint
@@ -52,6 +56,7 @@ build:
 
 release-check:
 	$(MAKE) -C ../.. openapi-spec-check
+	$(MAKE) overlay-test
 	$(MAKE) -C ../.. sdk-ts-generate-check
 	$(MAKE) lint
 	$(MAKE) typecheck

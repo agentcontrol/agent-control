@@ -51,7 +51,7 @@ import { Result } from "../types/fp.js";
  *     HTTPException 422: Cannot update enabled status (control has no data configured)
  *     HTTPException 500: Database error during update
  */
-export function controlsUpdate(
+export function controlsUpdateMetadata(
   client: AgentControlSDKCore,
   request: operations.PatchControlApiV1ControlsControlIdPatchRequest,
   options?: RequestOptions,
