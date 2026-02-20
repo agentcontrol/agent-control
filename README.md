@@ -50,40 +50,52 @@ See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's archi
 - **[Customer Support Agent](examples/customer_support_agent/)** — Full example with multiple tools
 - **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection with LangChain
 - **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
-- **[CrewAI SDK Integration](examples/crewai/)** - Working example on integrating with third party Agent SDKs and using Agent Control along side their guardrails.
+- **[CrewAI SDK Integration](examples/crewai/)** — Working example on integrating with third party Agent SDKs and using Agent Control along side their guardrails
+- **[DeepEval Integration](examples/deepeval/)** — Working Example on How to create custom evaluators to use with your controls
 
 ---
 
 ## Quick Start
 
-### Prerequisites
+Protect your AI agent in 4 simple steps.
 
-- **Python 3.12+**
-- **uv** — Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- **Docker** — For running PostgreSQL
-- **Node.js 18+** — For the web dashboard (optional)
+**Prerequisites:** Python 3.12+, Docker, uv (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
-### 1. Clone and Install
+**Key Concepts:** Controls (rules) → Policies (groups of controls) → Agents (your apps)
+
+---
+
+### Step 1: Start the Agent Control Server
+
+The server stores controls and evaluates agent operations for safety.
 
 ```bash
+# Clone the repository (contains the server)
 git clone https://github.com/agentcontrol/agent-control.git
 cd agent-control
+
+# Install dependencies
 make sync
-```
 
-### 2. Start the Server
+# Start PostgreSQL database
+cd server && docker-compose up -d && cd ..
 
-```bash
-# Start database and run migrations
-cd server && docker-compose up -d && make alembic-upgrade && cd ..
+# Run database migrations
+make server-alembic-upgrade
 
-# Start the server
+# Start the Agent Control server
 make server-run
 ```
 
-Server is now running at `http://localhost:8000`.
+**Server is now running at `http://localhost:8000`** ✅
 
-### 3. Start the Dashboard (Optional)
+> 💡 **Verify it's working:** Open http://localhost:8000/health in your browser - you should see `{"status": "ok"}`
+
+---
+
+### Step 2: (Optional) Start the Web Dashboard
+
+The dashboard provides a UI for managing agents, controls, and viewing analytics. Everything can be done via API/SDK, but the UI is more convenient.
 
 ```bash
 cd ui
@@ -91,45 +103,165 @@ pnpm install
 pnpm dev
 ```
 
-Dashboard is now running at `http://localhost:4000`.
+**Dashboard is now running at `http://localhost:4000`** ✅
 
-### 4. Use the SDK
+---
 
-Install the SDK:
+### Step 3: One-Time Setup
+
+Run this script **once** to create a control, policy, and assign it to your agent:
+
+```python
+# setup.py - Run once to configure everything
+import asyncio
+from datetime import datetime, UTC
+from agent_control import AgentControlClient, controls, policies, agents
+from agent_control_models import Agent
+
+AGENT_ID = "550e8400-e29b-41d4-a716-446655440000"  # Your agent's UUID
+
+async def setup():
+    async with AgentControlClient() as client:  # Defaults to localhost:8000
+        # 1. Register agent first (required before assigning policy)
+        agent = Agent(
+            agent_id=AGENT_ID,
+            agent_name="My Chatbot",
+            agent_created_at=datetime.now(UTC).isoformat()
+        )
+        await agents.register_agent(client, agent, steps=[])
+
+        # 2. Create control (blocks SSN patterns)
+        control = await controls.create_control(
+            client,
+            name="block-ssn",
+            data={
+                "enabled": True,
+                "execution": "server",
+                "scope": {"stages": ["post"]},
+                "selector": {"path": "output"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
+                },
+                "action": {"decision": "deny"}
+            }
+        )
+
+        # 3. Create policy
+        policy = await policies.create_policy(client, name="production-policy")
+
+        # 4. Add control to policy
+        await policies.add_control_to_policy(
+            client,
+            policy_id=policy["policy_id"],
+            control_id=control["control_id"]
+        )
+
+        # 5. Assign policy to agent
+        await policies.assign_policy_to_agent(
+            client,
+            agent_id=AGENT_ID,
+            policy_id=policy["policy_id"]
+        )
+
+        print("✅ Setup complete!")
+        print(f"   Control ID: {control['control_id']}")
+        print(f"   Policy ID: {policy['policy_id']}")
+
+asyncio.run(setup())
+```
 
 ```bash
 pip install agent-control-sdk
+python setup.py
 ```
 
-Use in your code:
+---
+
+### Step 4: Use in Your Agent
+
+Now protect your functions with `@control()`:
 
 ```python
+# my_agent.py
+import asyncio
 import agent_control
 from agent_control import control, ControlViolationError
 
-# Initialize — connects to server and registers agent
+# Initialize your agent
 agent_control.init(
-    agent_name="Customer Support Agent",
-    agent_id="support-agent-v1",
-    server_url="http://localhost:8000"
+    agent_name="My Chatbot",
+    agent_id=AGENT_ID
 )
 
-# Apply controls to any function
+# Protect any function (like LLM calls)
 @control()
 async def chat(message: str) -> str:
-    """This function is protected by server-defined controls"""
-    return await llm.generate(message)
+    # In production: response = await llm.ainvoke(message)
+    # For demo: simulate LLM that might leak sensitive data
+    if "test" in message.lower():
+        return "Your SSN is 123-45-6789"  # Will be blocked!
+    return f"Echo: {message}"
 
-# Handle violations gracefully
+# Test it
 async def main():
     try:
-        response = await chat("Hello!")
-        print(response)
+        print(await chat("test"))  # ❌ Blocked
     except ControlViolationError as e:
-        print(f"Blocked by control '{e.control_name}': {e.message}")
+        print(f"❌ Blocked: {e.control_name}")
+
+asyncio.run(main())
 ```
 
-> **Note**: Authentication is disabled by default for local development. See [docs/REFERENCE.md](docs/REFERENCE.md#authentication) for production setup.
+```bash
+python my_agent.py
+```
+
+**🎉 Done!** Your agent now blocks SSN patterns automatically.
+
+---
+
+### What's Happening?
+
+1. `@control()` intercepts function output
+2. SDK sends output to server
+3. Server checks against agent's policy
+4. `block-ssn` control finds SSN → raises `ControlViolationError`
+
+**Benefits:**
+- Update controls without redeploying your agent code
+- One policy protects multiple agents
+- Real-time analytics in dashboard
+
+---
+
+### What's Happening Under the Hood?
+
+1. Your app calls `chat("test")`
+2. Function executes and returns `"Your SSN is 123-45-6789"`
+3. `@control()` decorator sends output to Agent Control server
+4. Server checks the output against all controls
+5. `block-ssn` control finds SSN pattern → matches!
+6. Server returns `is_safe=False` with the matched control
+7. SDK raises `ControlViolationError` and blocks the response
+
+**Key Benefits:**
+- ✅ Controls are managed **separately** from your code
+- ✅ Update controls **without redeploying** your agent
+- ✅ Same controls can protect **multiple agents**
+- ✅ View analytics and control execution in the dashboard
+
+---
+
+### Next Steps
+
+- **Add more controls:** See [Defining Controls](#defining-controls) section below
+- **Create policies:** Group controls together for reuse
+- **Explore evaluators:** Try AI-powered evaluators like Luna-2
+- **Production setup:** Enable authentication - see [docs/REFERENCE.md](docs/REFERENCE.md#authentication)
+- **Check examples:** See [examples/](examples/) for real-world patterns
+
+> **💡 Pro Tip:** Start with simple regex controls, then graduate to AI-powered evaluators for complex safety checks!
 
 ---
 
@@ -141,7 +273,7 @@ async def main():
 |----------|---------|-------------|
 | `AGENT_CONTROL_URL` | `http://localhost:8000` | Server URL for SDK |
 | `AGENT_CONTROL_API_KEY` | — | API key for authentication (if enabled) |
-| `DB_URL` | `sqlite+aiosqlite:///./agent_control.db` | Database connection string |
+| `DB_URL` | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
 | `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator |
 
 ### Server Configuration
@@ -157,49 +289,123 @@ See [server/README.md](server/README.md) for complete server configuration.
 
 ## Defining Controls
 
-Controls are defined via the API or dashboard. Each control specifies what to check and what action to take.
+Controls are defined via the API or dashboard. Each control is composed of four key components:
+
+**Control = Scope + Selector + Evaluator + Action**
+
+See [CONCEPTS.md](CONCEPTS.md) for detailed explanations of each component.
 
 ### Example: Block PII in Output (Regex)
 
-```json
-{
-  "name": "block-ssn-output",
-  "description": "Block Social Security Numbers in responses",
-  "enabled": true,
-  "execution": "server",
-  "scope": { "step_names": ["generate_response"], "stages": ["post"] },
-  "selector": { "path": "output" },
-  "evaluator": {
-    "name": "regex",
-    "config": { "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b" }
-  },
-  "action": { "decision": "deny" }
-}
+**Via Python SDK:**
+
+```python
+from agent_control import AgentControlClient, controls
+
+async with AgentControlClient() as client:
+    await controls.create_control(
+        client,
+        name="block-ssn-output",
+        data={
+            "description": "Block Social Security Numbers in responses",
+            "enabled": True,
+            "execution": "server",
+            "scope": {"step_names": ["generate_response"], "stages": ["post"]},
+            "selector": {"path": "output"},
+            "evaluator": {
+                "name": "regex",
+                "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
+            },
+            "action": {"decision": "deny"}
+        }
+    )
+```
+
+**Via curl:**
+
+```bash
+# Step 1: Create control
+CONTROL_ID=$(curl -X PUT http://localhost:8000/api/v1/controls \
+  -H "Content-Type: application/json" \
+  -d '{"name": "block-ssn-output"}' | jq -r '.control_id')
+
+# Step 2: Set control configuration
+curl -X PUT "http://localhost:8000/api/v1/controls/$CONTROL_ID/data" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "description": "Block Social Security Numbers in responses",
+      "enabled": true,
+      "execution": "server",
+      "scope": {"step_names": ["generate_response"], "stages": ["post"]},
+      "selector": {"path": "output"},
+      "evaluator": {
+        "name": "regex",
+        "config": {"pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"}
+      },
+      "action": {"decision": "deny"}
+    }
+  }'
 ```
 
 ### Example: Block Toxic Input (Luna-2 AI)
 
-```json
-{
-  "name": "block-toxic-input",
-  "description": "Block toxic or harmful user messages",
-  "enabled": true,
-  "execution": "server",
-  "scope": { "step_names": ["process_user_message"], "stages": ["pre"] },
-  "selector": { "path": "input" },
-  "evaluator": {
-    "name": "galileo.luna2",
-    "config": {
-      "metric": "input_toxicity",
-      "operator": "gt",
-      "target_value": 0.5
+**Via Python SDK:**
+
+```python
+await controls.create_control(
+    client,
+    name="block-toxic-input",
+    data={
+        "description": "Block toxic or harmful user messages",
+        "enabled": True,
+        "execution": "server",
+        "scope": {"step_names": ["process_user_message"], "stages": ["pre"]},
+        "selector": {"path": "input"},
+        "evaluator": {
+            "name": "galileo.luna2",
+            "config": {
+                "metric": "input_toxicity",
+                "operator": "gt",
+                "target_value": 0.5
+            }
+        },
+        "action": {"decision": "deny"}
     }
-  },
-  "action": { "decision": "deny" }
-}
+)
 ```
 
-See [docs/REFERENCE.md](docs/REFERENCE.md#evaluators) for full evaluator documentation.
+**Via curl:**
+
+```bash
+# Create control with Luna-2 evaluator
+CONTROL_ID=$(curl -X PUT http://localhost:8000/api/v1/controls \
+  -H "Content-Type: application/json" \
+  -d '{"name": "block-toxic-input"}' | jq -r '.control_id')
+
+curl -X PUT "http://localhost:8000/api/v1/controls/$CONTROL_ID/data" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "description": "Block toxic or harmful user messages",
+      "enabled": true,
+      "execution": "server",
+      "scope": {"step_names": ["process_user_message"], "stages": ["pre"]},
+      "selector": {"path": "input"},
+      "evaluator": {
+        "name": "galileo.luna2",
+        "config": {
+          "metric": "input_toxicity",
+          "operator": "gt",
+          "target_value": 0.5
+        }
+      },
+      "action": {"decision": "deny"}
+    }
+  }'
+```
+
+> **Note**: For Luna-2 evaluator, set `GALILEO_API_KEY` environment variable. See [docs/REFERENCE.md](docs/REFERENCE.md#evaluators) for all available evaluators.
 
 ---
 
