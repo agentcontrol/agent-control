@@ -124,13 +124,12 @@ from datetime import datetime, UTC
 from agent_control import AgentControlClient, controls, policies, agents
 from agent_control_models import Agent
 
-AGENT_ID = "550e8400-e29b-41d4-a716-446655440000"  # Your agent's UUID
-
 async def setup():
     async with AgentControlClient() as client:  # Defaults to localhost:8000
         # 1. Register agent first (required before assigning policy)
         agent = Agent(
-            agent_id=AGENT_ID,
+            # Your agent's UUID
+            agent_id="550e8400-e29b-41d4-a716-446655440000",
             agent_name="My Chatbot",
             agent_created_at=datetime.now(UTC).isoformat()
         )
@@ -199,7 +198,7 @@ from agent_control import control, ControlViolationError
 # Initialize your agent
 agent_control.init(
     agent_name="My Chatbot",
-    agent_id=AGENT_ID
+    agent_id="550e8400-e29b-41d4-a716-446655440000"
 )
 
 # Protect any function (like LLM calls)
