@@ -181,7 +181,7 @@ asyncio.run(setup())
 uv venv
 uv .venv/bin/activate
 uv pip install agent-control-sdk
-python setup.py
+uv run setup.py
 ```
 
 ---
@@ -222,7 +222,7 @@ asyncio.run(main())
 ```
 
 ```bash
-python my_agent.py
+uv run my_agent.py
 ```
 
 **🎉 Done!** Your agent now blocks SSN patterns automatically.
