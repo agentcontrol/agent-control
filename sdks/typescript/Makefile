@@ -1,12 +1,13 @@
 SHELL := /bin/bash
 
-.PHONY: help install install-no-frozen speakeasy-install generate generate-check lint typecheck test build release-check publish-dry-run publish clean
+.PHONY: help install install-no-frozen speakeasy-install generate name-check generate-check lint typecheck test build release-check publish-dry-run publish clean
 
 help:
 	@echo "TypeScript SDK Makefile targets"
 	@echo "  make install            - install dependencies (frozen lockfile)"
 	@echo "  make speakeasy-install  - download pinned Speakeasy CLI"
 	@echo "  make generate           - generate client into src/generated"
+	@echo "  make name-check         - verify generated method names are ergonomic"
 	@echo "  make generate-check     - regenerate and verify src/generated has no diffs"
 	@echo "  make lint               - run ESLint"
 	@echo "  make typecheck          - run tsc --noEmit"
@@ -28,7 +29,13 @@ speakeasy-install:
 generate: speakeasy-install
 	./scripts/generate-sdk.sh
 
-generate-check: generate
+name-check:
+	@if rg -n --no-heading 'async\\s+[A-Za-z0-9]+(ApiV[0-9]+|Get|Post|Put|Patch|Delete)\\b' src/generated/sdk; then \
+		echo "Found verbose generated method names. Update method-names.overlay.yaml."; \
+		exit 1; \
+	fi
+
+generate-check: generate name-check
 	git diff --exit-code -- src/generated
 
 lint:

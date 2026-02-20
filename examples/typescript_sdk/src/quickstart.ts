@@ -14,10 +14,10 @@ client.init({
 async function main(): Promise<void> {
   console.log(`Using server: ${serverUrl}`);
 
-  const health = await client.system.healthCheckHealthGet();
+  const health = await client.system.healthCheck();
   console.log(`Health check: ${health.status} (${health.version})`);
 
-  const existing = await client.controls.listControlsApiV1ControlsGet({
+  const existing = await client.controls.list({
     limit: 10,
     name: "ts-sdk-example-",
   });
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
 
   let createdControlId: number | null = null;
   try {
-    const created = await client.controls.createControlApiV1ControlsPut({
+    const created = await client.controls.create({
       name: controlName,
     });
     createdControlId = created.controlId;
@@ -52,13 +52,13 @@ async function main(): Promise<void> {
       tags: ["example", "typescript", "npm"],
     };
 
-    await client.controls.setControlDataApiV1ControlsControlIdDataPut({
+    await client.controls.updateData({
       controlId: createdControlId,
       body: { data: controlData },
     });
     console.log("Configured control data.");
 
-    const fetched = await client.controls.getControlDataApiV1ControlsControlIdDataGet({
+    const fetched = await client.controls.getData({
       controlId: createdControlId,
     });
     console.log(
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
     );
   } finally {
     if (createdControlId !== null) {
-      const deleted = await client.controls.deleteControlApiV1ControlsControlIdDelete({
+      const deleted = await client.controls.delete({
         controlId: createdControlId,
       });
       console.log(`Cleanup delete success: ${deleted.success}`);

@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "agent-control": "0.1.1"
+    "agent-control": "0.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.1",

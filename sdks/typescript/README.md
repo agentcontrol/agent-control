@@ -35,16 +35,16 @@ client.init({
   apiKey: process.env.AGENT_CONTROL_API_KEY,
 });
 
-const health = await client.system.healthCheckHealthGet();
+const health = await client.system.healthCheck();
 console.log(health.status, health.version);
 
-const agents = await client.agents.listAgentsApiV1AgentsGet({
+const agents = await client.agents.list({
   limit: 20,
   name: "support",
 });
 console.log(agents.agents.length);
 
-const created = await client.controls.createControlApiV1ControlsPut({
+const created = await client.controls.create({
   name: "deny-pii",
 });
 console.log(created.controlId);
@@ -61,7 +61,7 @@ agentControl.init({
   apiKey: process.env.AGENT_CONTROL_API_KEY,
 });
 
-const health = await agentControl.system.healthCheckHealthGet();
+const health = await agentControl.system.healthCheck();
 console.log(health.status);
 ```
 
@@ -70,6 +70,18 @@ console.log(health.status);
 For a runnable example app inside this repository that installs `agent-control` from npm, see:
 
 - [`examples/typescript_sdk/`](../../examples/typescript_sdk/)
+
+## Method Naming Migration
+
+From `0.2.0` onward, generated method names are normalized for readability (for example `client.controls.list(...)`).
+
+Common rename examples:
+
+- `client.system.healthCheckHealthGet(...)` -> `client.system.healthCheck(...)`
+- `client.agents.listAgentsApiV1AgentsGet(...)` -> `client.agents.list(...)`
+- `client.controls.createControlApiV1ControlsPut(...)` -> `client.controls.create(...)`
+- `client.controls.getControlDataApiV1ControlsControlIdDataGet(...)` -> `client.controls.getData(...)`
+- `client.controls.setControlDataApiV1ControlsControlIdDataPut(...)` -> `client.controls.updateData(...)`
 
 ## API Namespaces
 
@@ -84,8 +96,8 @@ For a runnable example app inside this repository that installs `agent-control` 
 - `client.policies`
 - `client.system`
 
-Generated method names currently mirror OpenAPI operation IDs.
-Example: `client.agents.listAgentsApiV1AgentsGet(...)`.
+Generated method names are normalized via a committed Speakeasy overlay for ergonomic, stable naming.
+Example: `client.agents.list(...)`.
 
 ## Exported API
 
@@ -122,6 +134,7 @@ make build
 Notes:
 
 - OpenAPI source: `../../server/openapi.json`
+- Method-name overrides: `overlays/method-names.overlay.yaml` (applied during generation)
 - Generated code location: `src/generated/`
 - Speakeasy CLI version is sourced from `.speakeasy/workflow.yaml` and downloaded into `.speakeasy/bin/`
 

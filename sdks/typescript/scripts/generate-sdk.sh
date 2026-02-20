@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SDK_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 SPEAKEASY_BIN="${SDK_ROOT}/.speakeasy/bin/speakeasy"
 SPEC_PATH="${SDK_ROOT}/../../server/openapi.json"
+OVERLAY_PATH="${SDK_ROOT}/overlays/method-names.overlay.yaml"
 TMP_OUTPUT_DIR="${SDK_ROOT}/.speakeasy/tmp-generated"
+TMP_SPEC_PATH="${TMP_OUTPUT_DIR}/openapi.with-overrides.json"
 GENERATED_DIR="${SDK_ROOT}/src/generated"
 
 if [[ ! -x "${SPEAKEASY_BIN}" ]]; then
@@ -18,14 +20,25 @@ if [[ ! -f "${SPEC_PATH}" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${OVERLAY_PATH}" ]]; then
+  echo "Speakeasy overlay not found at ${OVERLAY_PATH}" >&2
+  exit 1
+fi
+
 rm -rf "${TMP_OUTPUT_DIR}"
 mkdir -p "${TMP_OUTPUT_DIR}"
 cp "${SDK_ROOT}/gen.yaml" "${TMP_OUTPUT_DIR}/gen.yaml"
 
+"${SPEAKEASY_BIN}" --logLevel error overlay apply \
+  --schema "${SPEC_PATH}" \
+  --overlay "${OVERLAY_PATH}" \
+  --strict \
+  --out "${TMP_SPEC_PATH}"
+
 "${SPEAKEASY_BIN}" --logLevel error generate sdk \
   --auto-yes \
   --lang typescript \
-  --schema "${SPEC_PATH}" \
+  --schema "${TMP_SPEC_PATH}" \
   --out "${TMP_OUTPUT_DIR}"
 
 if [[ ! -d "${TMP_OUTPUT_DIR}/src" ]]; then

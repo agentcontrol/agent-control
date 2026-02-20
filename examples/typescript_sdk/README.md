@@ -8,7 +8,7 @@ npm install agent-control
 
 It demonstrates how an external TypeScript app can consume Agent Control without using local workspace linking.
 
-Use an `agent-control` npm version compatible with your server version (this example currently pins `0.1.1`).
+Use an `agent-control` npm version compatible with your server version (this example currently pins `0.2.0`).
 
 ## Prerequisites
 

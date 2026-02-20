@@ -48,7 +48,7 @@ describe("AgentControlClient API wiring", () => {
       apiKey: "test-api-key",
     });
 
-    await client.agents.listAgentsApiV1AgentsGet({
+    await client.agents.list({
       limit: 5,
       name: "support",
     });
@@ -75,7 +75,7 @@ describe("AgentControlClient API wiring", () => {
       serverUrl: "https://api.example.com",
     });
 
-    await client.controls.createControlApiV1ControlsPut({
+    await client.controls.create({
       name: "deny-pii",
     });
 

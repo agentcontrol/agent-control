@@ -212,3 +212,6 @@ jobs:
 
       - name: Verify generated TypeScript client is current
         run: make sdk-ts-generate-check
+
+      - name: Verify generated method naming conventions
+        run: make sdk-ts-name-check
