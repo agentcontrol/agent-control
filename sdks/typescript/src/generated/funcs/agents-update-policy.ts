@@ -47,7 +47,7 @@ import { Result } from "../types/fp.js";
  *     HTTPException 404: Agent or policy not found
  *     HTTPException 500: Database error during assignment
  */
-export function agentsAssignPolicy(
+export function agentsUpdatePolicy(
   client: AgentControlSDKCore,
   request: operations.SetAgentPolicyApiV1AgentsAgentIdPolicyPolicyIdPostRequest,
   options?: RequestOptions,

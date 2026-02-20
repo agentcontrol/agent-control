@@ -48,7 +48,7 @@ import { Result } from "../types/fp.js";
  *     HTTPException 404: Agent not found
  *     HTTPException 500: Database error during update
  */
-export function agentsModify(
+export function agentsUpdate(
   client: AgentControlSDKCore,
   request: operations.PatchAgentApiV1AgentsAgentIdPatchRequest,
   options?: RequestOptions,

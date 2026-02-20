@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SDK_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 SPEAKEASY_BIN="${SDK_ROOT}/.speakeasy/bin/speakeasy"
 SPEC_PATH="${SDK_ROOT}/../../server/openapi.json"
+OVERLAY_GENERATOR="${SCRIPT_DIR}/generate-method-names-overlay.py"
 OVERLAY_PATH="${SDK_ROOT}/overlays/method-names.overlay.yaml"
 TMP_OUTPUT_DIR="${SDK_ROOT}/.speakeasy/tmp-generated"
 TMP_SPEC_PATH="${TMP_OUTPUT_DIR}/openapi.with-overrides.json"
@@ -20,10 +21,19 @@ if [[ ! -f "${SPEC_PATH}" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${OVERLAY_PATH}" ]]; then
-  echo "Speakeasy overlay not found at ${OVERLAY_PATH}" >&2
+if [[ ! -f "${OVERLAY_GENERATOR}" ]]; then
+  echo "Overlay generator not found at ${OVERLAY_GENERATOR}" >&2
   exit 1
 fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required to generate overlay at ${OVERLAY_PATH}" >&2
+  exit 1
+fi
+
+python3 "${OVERLAY_GENERATOR}" \
+  --schema "${SPEC_PATH}" \
+  --out "${OVERLAY_PATH}"
 
 rm -rf "${TMP_OUTPUT_DIR}"
 mkdir -p "${TMP_OUTPUT_DIR}"

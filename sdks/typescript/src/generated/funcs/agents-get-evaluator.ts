@@ -44,7 +44,7 @@ import { Result } from "../types/fp.js";
  * Raises:
  *     HTTPException 404: Agent or evaluator not found
  */
-export function agentsGetEvaluatorSchema(
+export function agentsGetEvaluator(
   client: AgentControlSDKCore,
   request:
     operations.GetAgentEvaluatorApiV1AgentsAgentIdEvaluatorsEvaluatorNameGetRequest,

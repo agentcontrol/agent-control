@@ -8,7 +8,7 @@ import { controlsGetData } from "../funcs/controls-get-data.js";
 import { controlsGet } from "../funcs/controls-get.js";
 import { controlsList } from "../funcs/controls-list.js";
 import { controlsUpdateData } from "../funcs/controls-update-data.js";
-import { controlsUpdateMetadata } from "../funcs/controls-update-metadata.js";
+import { controlsUpdate } from "../funcs/controls-update.js";
 import { controlsValidateData } from "../funcs/controls-validate-data.js";
 import { ClientSDK, RequestOptions } from "../lib/sdks.js";
 import * as models from "../models/index.js";
@@ -191,11 +191,11 @@ export class Controls extends ClientSDK {
    *     HTTPException 422: Cannot update enabled status (control has no data configured)
    *     HTTPException 500: Database error during update
    */
-  async updateMetadata(
+  async update(
     request: operations.PatchControlApiV1ControlsControlIdPatchRequest,
     options?: RequestOptions,
   ): Promise<models.PatchControlResponse> {
-    return unwrapAsync(controlsUpdateMetadata(
+    return unwrapAsync(controlsUpdate(
       this,
       request,
       options,

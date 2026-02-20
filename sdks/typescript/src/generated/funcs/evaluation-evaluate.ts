@@ -43,7 +43,7 @@ import { Result } from "../types/fp.js";
  * Optionally accepts X-Trace-Id and X-Span-Id headers for
  * OpenTelemetry-compatible distributed tracing.
  */
-export function evaluationAnalyze(
+export function evaluationEvaluate(
   client: AgentControlSDKCore,
   request: operations.EvaluateApiV1EvaluationPostRequest,
   options?: RequestOptions,
