@@ -351,8 +351,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
       );
     }
     // We have a controlId in the URL and the controls list has loaded, but no control in that list matched → invalid or deleted
-    const controlNotFound =
-      controlId && controlsResponse && !selectedControl;
+    const controlNotFound = controlId && controlsResponse && !selectedControl;
     if (controlNotFound) {
       return (
         <Stack gap="md" py="md">
@@ -564,9 +563,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           content: { maxWidth: '1500px', width: '95vw' },
         }}
       >
-        <ErrorBoundary variant="modal">
-          {renderEditModalBody()}
-        </ErrorBoundary>
+        <ErrorBoundary variant="modal">{renderEditModalBody()}</ErrorBoundary>
       </Modal>
     </Box>
   );
