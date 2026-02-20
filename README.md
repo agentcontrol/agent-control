@@ -16,35 +16,37 @@ AI agents interact with users, tools, and external systems in unpredictable ways
 ## Why Do You Need It?
 Traditional guardrails embedded inside your agent code have critical limitations:
 
-- **Scattered Logic:** Control code is buried across your agent codebase, making it hard to audit or update. 
+- **Scattered Logic:** Control code is buried across your agent codebase, making it hard to audit or update
 - **Deployment Overhead:** Changing protection rules requires code changes and redeployment
 - **Limited Adaptability:** Hardcoded checks can't adapt to new attack patterns or production data variations
 
-
-**Agent Control gives you RUNTIME control over what your agents CAN & CANNOT do.**
-1. You can enable and change controls of your agent in  runtime without deploying code through APIs. This enables instant risk mitigation for emerging threats. 
-2. For non-technical members, agent control provides an intuitive UI to manage the control configuration.
-3. The package also comes with several common out of box templates for controls that can be adapted and with a lot of flexibility to define custom controls or integrate with external evaluators.
-4. Easily reuse controls across agents in your organization. 
-
-## Core Concepts
-See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's architecture and design principles.
+**Agent Control gives you runtime control over what your agents can and cannot do:**
+- **For developers:** Centralize safety logic and adapt to emerging threats instantly without redeployment
+- **For non-technical teams:** Intuitive UI to configure and monitor agent safety without touching code
+- **For organizations:** Reusable policies across agents with comprehensive audit trails
 
 ---
 
 ## Key Features
 
 - **Safety Without Code Changes** — Add guardrails with a `@control()` decorator
-- **Runtime Configuration** — Update controls without redeploying your application
+- **Runtime Configuration** — Update controls instantly via API or UI without having to re-deploy your agentic applications
 - **Centralized Policies** — Define controls once, apply to multiple agents
-- **Web Dashboard** — Manage agents and controls through the UI
+- **Web Dashboard** — Visual interface for managing agents, controls, and viewing analytics
+- **Pluggable Evaluators** — Built-in (regex, list matching, Luna-2 AI) or custom evaluators
+- **Fail-Safe Defaults** — Deny controls fail closed on error with configurable error handling
 - **API Key Authentication** — Secure your control server in production
-- **Pluggable Evaluators** — Regex, list matching, AI-powered detection (Luna-2), or custom evaluators
-- **Fail-Safe Defaults** — Deny controls fail closed on error; evaluators like Luna-2 support configurable error handling
+
+---
+
+## Core Concepts
+See the [Concepts guide](CONCEPTS.md) to familiarize yourself with Agent Control's core concepts and terminology—essential for designing effective controls and evaluators for your application.
 
 ---
 
 ### Examples
+
+Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start) for hands-on setup. 
 
 - **[Examples Overview](examples/README.md)** — Working code examples and integration patterns
 - **[Customer Support Agent](examples/customer_support_agent/)** — Full example with multiple tools
@@ -247,8 +249,8 @@ python my_agent.py
 
 ### Next Steps
 
-- **Add more controls:** See [Defining Controls](#defining-controls) section below
-- **Explore evaluators:** Try AI-powered evaluators like [Luna-2](#example-block-toxic-input-luna-2-ai) or create custom evaluators relevant to your project. See [examples/deepeval](examples/deepeval) for custom evaluator examples
+- **Add more controls:** See [CONCEPTS.md](CONCEPTS.md#defining-controls) for examples and guidance
+- **Explore evaluators:** Try AI-powered evaluators like [Luna-2](CONCEPTS.md#example-block-toxic-input-luna-2-ai) or create custom evaluators. See [examples/deepeval](examples/deepeval) for custom evaluator examples
 - **Production setup:** Enable authentication - see [docs/REFERENCE.md](docs/REFERENCE.md#authentication)
 - **Check examples:** See [examples/](examples/) for real-world patterns
 
@@ -275,128 +277,6 @@ The server supports additional environment variables:
 - `LOG_LEVEL` - Logging level (default: `INFO`)
 
 See [server/README.md](server/README.md) for complete server configuration.
-
----
-
-## Defining Controls
-
-Controls are defined via the API or dashboard. Each control is composed of four key components:
-
-**Control = Scope + Selector + Evaluator + Action**
-
-See [CONCEPTS.md](CONCEPTS.md) for detailed explanations of each component.
-
-### Example: Block PII in Output (Regex)
-
-**Via Python SDK:**
-
-```python
-from agent_control import AgentControlClient, controls
-
-async with AgentControlClient() as client:
-    await controls.create_control(
-        client,
-        name="block-ssn-output",
-        data={
-            "description": "Block Social Security Numbers in responses",
-            "enabled": True,
-            "execution": "server",
-            "scope": {"step_names": ["generate_response"], "stages": ["post"]},
-            "selector": {"path": "output"},
-            "evaluator": {
-                "name": "regex",
-                "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
-            },
-            "action": {"decision": "deny"}
-        }
-    )
-```
-
-**Via curl:**
-
-```bash
-# Step 1: Create control
-CONTROL_ID=$(curl -X PUT http://localhost:8000/api/v1/controls \
-  -H "Content-Type: application/json" \
-  -d '{"name": "block-ssn-output"}' | jq -r '.control_id')
-
-# Step 2: Set control configuration
-curl -X PUT "http://localhost:8000/api/v1/controls/$CONTROL_ID/data" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "data": {
-      "description": "Block Social Security Numbers in responses",
-      "enabled": true,
-      "execution": "server",
-      "scope": {"step_names": ["generate_response"], "stages": ["post"]},
-      "selector": {"path": "output"},
-      "evaluator": {
-        "name": "regex",
-        "config": {"pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"}
-      },
-      "action": {"decision": "deny"}
-    }
-  }'
-```
-
-### Example: Block Toxic Input (Luna-2 AI)
-
-**Via Python SDK:**
-
-```python
-await controls.create_control(
-    client,
-    name="block-toxic-input",
-    data={
-        "description": "Block toxic or harmful user messages",
-        "enabled": True,
-        "execution": "server",
-        "scope": {"step_names": ["process_user_message"], "stages": ["pre"]},
-        "selector": {"path": "input"},
-        "evaluator": {
-            "name": "galileo.luna2",
-            "config": {
-                "metric": "input_toxicity",
-                "operator": "gt",
-                "target_value": 0.5
-            }
-        },
-        "action": {"decision": "deny"}
-    }
-)
-```
-
-**Via curl:**
-
-```bash
-# Create control with Luna-2 evaluator
-CONTROL_ID=$(curl -X PUT http://localhost:8000/api/v1/controls \
-  -H "Content-Type: application/json" \
-  -d '{"name": "block-toxic-input"}' | jq -r '.control_id')
-
-curl -X PUT "http://localhost:8000/api/v1/controls/$CONTROL_ID/data" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "data": {
-      "description": "Block toxic or harmful user messages",
-      "enabled": true,
-      "execution": "server",
-      "scope": {"step_names": ["process_user_message"], "stages": ["pre"]},
-      "selector": {"path": "input"},
-      "evaluator": {
-        "name": "galileo.luna2",
-        "config": {
-          "metric": "input_toxicity",
-          "operator": "gt",
-          "target_value": 0.5
-        }
-      },
-      "action": {"decision": "deny"}
-    }
-  }'
-```
-
-> **Note**: For Luna-2 evaluator, set `GALILEO_API_KEY` environment variable. See [docs/REFERENCE.md](docs/REFERENCE.md#evaluators) for all available evaluators.
 
 ---
 
