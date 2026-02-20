@@ -1,6 +1,7 @@
 import {
   Box,
   Group,
+  MultiSelect,
   Stack,
   Switch,
   Text,
@@ -8,14 +9,44 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
+import { useMemo } from 'react';
+
+import type { StepSchema } from '@/core/api/types';
 
 import type { ControlDefinitionFormProps } from './types';
 
-export function StepNameInput({ form }: ControlDefinitionFormProps) {
+export type StepNameInputProps = ControlDefinitionFormProps & {
+  /** Available steps from the agent */
+  steps?: StepSchema[];
+};
+
+export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
   const isRegexMode = form.values.step_name_mode === 'regex';
 
   const handleRegexToggle = (enabled: boolean) => {
     form.setFieldValue('step_name_mode', enabled ? 'regex' : 'names');
+  };
+
+  // Convert comma-separated string to array for MultiSelect
+  const selectedStepNames = useMemo(() => {
+    if (isRegexMode || !form.values.step_names) return [];
+    return form.values.step_names
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }, [form.values.step_names, isRegexMode]);
+
+  // Step options for dropdown
+  const stepOptions = useMemo(() => {
+    return steps.map((step) => ({
+      value: step.name,
+      label: step.name,
+    }));
+  }, [steps]);
+
+  const handleStepNamesChange = (values: string[]) => {
+    // Convert array back to comma-separated string
+    form.setFieldValue('step_names', values.join(', '));
   };
 
   return (
@@ -31,11 +62,11 @@ export function StepNameInput({ form }: ControlDefinitionFormProps) {
                 <Text size="xs">
                   {isRegexMode
                     ? 'Optional RE2 pattern to match step names.'
-                    : 'Comma-separated step names to scope this control.'}
+                    : 'Select step names to scope this control.'}
                 </Text>
                 <Text size="xs">
                   {isRegexMode
-                    ? 'Toggle off to use comma-separated step names.'
+                    ? 'Toggle off to select step names from dropdown.'
                     : 'Toggle on to use a regex pattern instead.'}
                 </Text>
               </Stack>
@@ -58,10 +89,18 @@ export function StepNameInput({ form }: ControlDefinitionFormProps) {
           {...form.getInputProps('step_name_regex')}
         />
       ) : (
-        <TextInput
+        <MultiSelect
           size="sm"
-          placeholder="search_db, fetch_user"
-          {...form.getInputProps('step_names')}
+          placeholder={
+            steps.length > 0
+              ? 'Select step names (leave empty for all steps)'
+              : 'No steps available'
+          }
+          data={stepOptions}
+          value={selectedStepNames}
+          onChange={handleStepNamesChange}
+          clearable
+          searchable
         />
       )}
     </Box>

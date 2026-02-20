@@ -5,7 +5,7 @@ import { Button } from '@rungalileo/jupiter-ds';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { isApiError } from '@/core/api/errors';
-import type { Control, ProblemDetail } from '@/core/api/types';
+import type { Control, ProblemDetail, StepSchema } from '@/core/api/types';
 import { getEvaluator } from '@/core/evaluators';
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
@@ -27,6 +27,8 @@ export type EditControlContentProps = {
   agentId: string;
   /** Mode: 'create' for new control, 'edit' for existing */
   mode?: EditControlMode;
+  /** Available steps from the agent */
+  steps?: StepSchema[];
   /** Callback when modal is closed */
   onClose: () => void;
   /** Callback when save succeeds */
@@ -37,6 +39,7 @@ export const EditControlContent = ({
   control,
   agentId,
   mode = 'edit',
+  steps,
   onClose,
   onSuccess,
 }: EditControlContentProps) => {
@@ -352,7 +355,7 @@ export const EditControlContent = ({
 
         <Grid gutter="xl">
           <Grid.Col span={4}>
-            <ControlDefinitionForm form={definitionForm} />
+            <ControlDefinitionForm form={definitionForm} steps={steps} />
           </Grid.Col>
 
           <Grid.Col span={8}>
