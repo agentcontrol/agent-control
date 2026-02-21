@@ -57,22 +57,17 @@ Programmatic control setup using SDK models:
 uv run python examples/demo_setup_controls.py
 ```
 
-### 🤖 LangGraph Integration (`langgraph/my_agent/`)
+### 🤖 LangGraph Integration (`langchain/`)
 
-LangGraph agent with built-in safety checks:
+LangGraph examples are available in `examples/langchain`:
 
 ```bash
-cd examples/langgraph/my_agent
-pip install -e .
-cp env.example .env
-python cli.py
+cd examples/langchain
+uv run langgraph_auto_schema_agent.py
 ```
 
-**Files:**
-- `agent.py` - LangGraph agent with safety check node
-- `simple_example.py` - Simplified protection engine usage
-- `decorator_example.py` - Visual demonstration of data extraction
-- `protect_engine.py` - Local YAML-based protection engine
+This specific example demonstrates auto-derived step schemas from `@control()`
+decorators, so no explicit `steps=...` list is required in `agent_control.init(...)`.
 
 ### 🛡️ Luna-2 Demo (`luna2_demo.py`)
 

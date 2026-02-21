@@ -34,6 +34,7 @@ agent_control.init(
     agent_description="AI-powered customer support assistant that helps with inquiries, "
                       "searches knowledge bases, and creates support tickets.",
     agent_version="1.0.0",
+    observability_enabled=True,
 )
 
 

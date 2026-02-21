@@ -71,13 +71,21 @@ if TYPE_CHECKING:
     )
 
 from . import agents, controls, evaluation, evaluators, policies
+from ._control_registry import (
+    StepSchemaDict,
+    get_registered_steps,
+    merge_explicit_and_auto_steps,
+)
+from ._control_registry import (
+    clear as clear_step_registry,
+)
 
 # Import client and operations modules
 from .client import AgentControlClient
 
 # Import control decorator
 from .control_decorators import ControlViolationError, control
-from .evaluation import check_evaluation_with_local
+from .evaluation import check_evaluation_with_local, evaluate_controls
 from .observability import (
     LogConfig,
     add_event,
@@ -345,7 +353,7 @@ def init(
     server_url: str | None = None,
     api_key: str | None = None,
     controls_file: str | None = None,
-    steps: list[dict[str, Any]] | None = None,
+    steps: list[StepSchemaDict] | None = None,
     observability_enabled: bool | None = None,
     log_config: dict[str, Any] | None = None,
     **kwargs: object
@@ -440,6 +448,29 @@ def init(
     _server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
     _api_key = api_key
 
+    # Merge auto-discovered steps from @control() decorators with explicit steps.
+    # Explicit steps take precedence when (type, name) collides.
+    auto_steps = get_registered_steps()
+    merge_result = merge_explicit_and_auto_steps(steps, auto_steps)
+    registration_steps: list[dict[str, Any]] = [dict(step) for step in merge_result.steps]
+
+    if auto_steps:
+        if merge_result.overridden_keys:
+            formatted = ", ".join(
+                f"{step_type}:{step_name}" for step_type, step_name in merge_result.overridden_keys
+            )
+            logger.warning(
+                "Skipping %d auto-discovered step(s) overridden by explicit steps: %s",
+                len(merge_result.overridden_keys),
+                formatted,
+            )
+
+        logger.debug(
+            "Auto-discovered %d step(s) from @control() decorators (%d after merge)",
+            len(auto_steps),
+            len(registration_steps),
+        )
+
     # Register with server and fetch controls
     server_controls = None
     try:
@@ -461,7 +492,7 @@ def init(
                     response = await agents.register_agent(
                         client,
                         _current_agent,
-                        steps=steps or []
+                        steps=registration_steps
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])
@@ -471,8 +502,8 @@ def init(
                     else:
                         logger.info("Agent updated: %s (ID: %s)", agent_name, _agent_uuid)
 
-                    if steps:
-                        logger.debug("Registered %d step(s)", len(steps))
+                    if registration_steps:
+                        logger.debug("Registered %d step(s)", len(registration_steps))
 
                     return controls
                 except httpx.HTTPStatusError:
@@ -1059,6 +1090,9 @@ __all__ = [
     "get_server_controls",
     "refresh_controls",
     "refresh_controls_async",
+    # Step registry (auto-discovered from @control decorators)
+    "get_registered_steps",
+    "clear_step_registry",
 
     # SDK Logging
     "get_logger",
@@ -1088,6 +1122,7 @@ __all__ = [
     "list_policy_controls",
     # Local evaluation
     "check_evaluation_with_local",
+    "evaluate_controls",
     # Tracing
     "get_trace_and_span_ids",
     "get_current_trace_id",

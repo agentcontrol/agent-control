@@ -99,6 +99,16 @@ class SQLEvaluatorConfig(EvaluatorConfig):
             "'all': Check all clauses including subqueries."
         ),
     )
+    required_column_values: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Map of column references to context keys for value-based tenant filtering. "
+            "Each required column must appear in a top-level WHERE equality predicate "
+            "with a literal value that matches the corresponding context value. "
+            "Column references may be unqualified ('user_id') or table-qualified "
+            "('users.user_id')."
+        ),
+    )
 
     # Limits
     require_limit: bool = Field(
@@ -176,6 +186,31 @@ class SQLEvaluatorConfig(EvaluatorConfig):
                 "column_context is set but required_columns is empty - "
                 "column_context will be ignored"
             )
+        if self.required_column_values:
+            for column_ref, context_key in self.required_column_values.items():
+                if not column_ref.strip():
+                    raise ValueError(
+                        "required_column_values contains an empty column reference"
+                    )
+
+                if "." in column_ref:
+                    table_name, column_name = column_ref.split(".", 1)
+                    if not table_name.strip() or not column_name.strip():
+                        raise ValueError(
+                            "required_column_values column references must use "
+                            "'table.column' format when qualified"
+                        )
+
+                if not context_key.strip():
+                    raise ValueError(
+                        "required_column_values contains an empty context key"
+                    )
+
+            if self.column_context == "select":
+                warnings.warn(
+                    "required_column_values is configured with column_context='select' "
+                    "- value checks only apply to WHERE predicates"
+                )
 
         # Validate LIMIT controls
         if self.max_limit and not self.require_limit:

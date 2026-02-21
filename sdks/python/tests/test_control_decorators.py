@@ -191,6 +191,7 @@ class TestPrePostExecution:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             call_stages.append(stage)
             return mock_safe_response
@@ -220,6 +221,7 @@ class TestPrePostExecution:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "pre":
                 return mock_unsafe_response
@@ -252,6 +254,7 @@ class TestPrePostExecution:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "post":
                 captured_step.update(step)
@@ -290,6 +293,7 @@ class TestInputExtraction:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "pre":
                 captured_step.update(step)
@@ -319,6 +323,7 @@ class TestInputExtraction:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "pre":
                 captured_step.update(step)
@@ -348,6 +353,7 @@ class TestInputExtraction:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             if stage == "pre":
                 captured_step.update(step)
@@ -484,6 +490,7 @@ class TestStepName:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             captured_steps.append(step)
             return mock_safe_response
@@ -521,6 +528,7 @@ class TestStepName:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             captured_steps.append(step)
             return mock_safe_response
@@ -558,6 +566,7 @@ class TestStepName:
             trace_id=None,
             span_id=None,
             controls=None,
+            agent_name=None,
         ):
             captured_steps.append(step)
             return mock_safe_response
@@ -589,288 +598,3 @@ class TestStepName:
             assert captured_steps[0]["type"] == "tool"
 
 
-# =============================================================================
-# STAGE OVERRIDE TESTS
-# =============================================================================
-
-class TestStageOverride:
-    """Tests for stage_override parameter to control pre/post execution."""
-
-    @pytest.mark.asyncio
-    async def test_default_runs_both_stages(self, mock_agent, mock_safe_response):
-        """Test that default (None) runs both pre and post checks."""
-        call_stages = []
-
-        async def mock_evaluate(
-            agent_uuid,
-            step,
-            stage,
-            server_url,
-            trace_id=None,
-            span_id=None,
-            controls=None,
-        ):
-            call_stages.append(stage)
-            return mock_safe_response
-
-        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
-
-            @control()
-            async def chat(message: str) -> str:
-                return f"Response to: {message}"
-
-            result = await chat("Hello!")
-
-            assert result == "Response to: Hello!"
-            assert "pre" in call_stages
-            assert "post" in call_stages
-            assert len(call_stages) == 2
-
-    @pytest.mark.asyncio
-    async def test_pre_only_skips_post_check(self, mock_agent, mock_safe_response):
-        """Test that stage_override='pre' runs only pre-execution check."""
-        call_stages = []
-
-        async def mock_evaluate(
-            agent_uuid,
-            step,
-            stage,
-            server_url,
-            trace_id=None,
-            span_id=None,
-            controls=None,
-        ):
-            call_stages.append(stage)
-            return mock_safe_response
-
-        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
-
-            @control(stage_override="pre")
-            async def validate_input(message: str) -> str:
-                return f"Processed: {message}"
-
-            result = await validate_input("Test input")
-
-            assert result == "Processed: Test input"
-            assert "pre" in call_stages
-            assert "post" not in call_stages
-            assert len(call_stages) == 1
-
-    @pytest.mark.asyncio
-    async def test_post_only_skips_pre_check(self, mock_agent, mock_safe_response):
-        """Test that stage_override='post' runs only post-execution check."""
-        call_stages = []
-
-        async def mock_evaluate(
-            agent_uuid,
-            step,
-            stage,
-            server_url,
-            trace_id=None,
-            span_id=None,
-            controls=None,
-        ):
-            call_stages.append(stage)
-            return mock_safe_response
-
-        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
-
-            @control(stage_override="post")
-            async def generate_output(context: str) -> str:
-                return f"Generated from: {context}"
-
-            result = await generate_output("context")
-
-            assert result == "Generated from: context"
-            assert "pre" not in call_stages
-            assert "post" in call_stages
-            assert len(call_stages) == 1
-
-    @pytest.mark.asyncio
-    async def test_pre_only_can_block_execution(self, mock_agent, mock_unsafe_response):
-        """Test that stage_override='pre' can still block execution."""
-        function_executed = False
-
-        async def mock_evaluate(
-            agent_uuid,
-            step,
-            stage,
-            server_url,
-            trace_id=None,
-            span_id=None,
-            controls=None,
-        ):
-            return mock_unsafe_response
-
-        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
-
-            @control(stage_override="pre")
-            async def process(message: str) -> str:
-                nonlocal function_executed
-                function_executed = True
-                return f"Processed: {message}"
-
-            with pytest.raises(ControlViolationError):
-                await process("Blocked message")
-
-            assert not function_executed
-
-    @pytest.mark.asyncio
-    async def test_post_only_can_block_after_execution(self, mock_agent, mock_safe_response, mock_unsafe_response):
-        """Test that stage_override='post' can block based on output."""
-        function_executed = False
-
-        async def mock_evaluate(
-            agent_uuid,
-            step,
-            stage,
-            server_url,
-            trace_id=None,
-            span_id=None,
-            controls=None,
-        ):
-            # Post check fails
-            if stage == "post":
-                return mock_unsafe_response
-            return mock_safe_response
-
-        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
-
-            @control(stage_override="post")
-            async def generate(context: str) -> str:
-                nonlocal function_executed
-                function_executed = True
-                return "Toxic output"
-
-            with pytest.raises(ControlViolationError):
-                await generate("context")
-
-            # Function should have executed before post-check blocked it
-            assert function_executed
-
-    @pytest.mark.asyncio
-    async def test_post_only_receives_output(self, mock_agent, mock_safe_response):
-        """Test that stage_override='post' receives function output in payload."""
-        captured_step = {}
-
-        async def mock_evaluate(
-            agent_uuid,
-            step,
-            stage,
-            server_url,
-            trace_id=None,
-            span_id=None,
-            controls=None,
-        ):
-            if stage == "post":
-                captured_step.update(step)
-            return mock_safe_response
-
-        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
-
-            @control(stage_override="post")
-            async def generate(prompt: str) -> str:
-                return f"Generated response for {prompt}"
-
-            await generate("test prompt")
-
-            assert "output" in captured_step
-            assert "Generated response for test prompt" in captured_step["output"]
-
-    @pytest.mark.asyncio
-    async def test_pre_only_has_no_output(self, mock_agent, mock_safe_response):
-        """Test that stage_override='pre' has no output in payload."""
-        captured_step = {}
-
-        async def mock_evaluate(
-            agent_uuid,
-            step,
-            stage,
-            server_url,
-            trace_id=None,
-            span_id=None,
-            controls=None,
-        ):
-            if stage == "pre":
-                captured_step.update(step)
-            return mock_safe_response
-
-        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
-
-            @control(stage_override="pre")
-            async def validate(message: str) -> str:
-                return f"Processed: {message}"
-
-            await validate("test")
-
-            # Pre-execution should have None for output
-            assert captured_step.get("output") is None
-
-    def test_stage_override_with_sync_function(self, mock_agent, mock_safe_response):
-        """Test that stage_override works with sync functions."""
-        call_stages = []
-
-        async def mock_evaluate(
-            agent_uuid,
-            step,
-            stage,
-            server_url,
-            trace_id=None,
-            span_id=None,
-            controls=None,
-        ):
-            call_stages.append(stage)
-            return mock_safe_response
-
-        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
-
-            @control(stage_override="post")
-            def process(input: str) -> str:
-                return input.upper()
-
-            result = process("hello")
-
-            assert result == "HELLO"
-            assert "pre" not in call_stages
-            assert "post" in call_stages
-
-    @pytest.mark.asyncio
-    async def test_stage_override_with_custom_step_name(self, mock_agent, mock_safe_response):
-        """Test that stage_override works together with step_name parameter."""
-        call_stages = []
-        captured_names = []
-
-        async def mock_evaluate(
-            agent_uuid,
-            step,
-            stage,
-            server_url,
-            trace_id=None,
-            span_id=None,
-            controls=None,
-        ):
-            call_stages.append(stage)
-            captured_names.append(step.get("name"))
-            return mock_safe_response
-
-        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
-
-            @control(stage_override="post", step_name="custom_handler")
-            async def my_function(message: str) -> str:
-                return f"Response: {message}"
-
-            await my_function("test")
-
-            # Should only call post with custom name
-            assert len(call_stages) == 1
-            assert "post" in call_stages
-            assert "custom_handler" in captured_names

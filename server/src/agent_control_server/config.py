@@ -143,17 +143,8 @@ class ObservabilitySettings(BaseSettings):
     # Enable/disable observability features
     enabled: bool = True
 
-    # Raw event storage (7-day retention)
-    store_raw: bool = True
-
     # Stdout logging of events
     stdout: bool = False
-
-    # SSE resync interval in seconds
-    resync_interval: int = 15
-
-    # Event queue settings
-    queue_maxsize: int = 10000
 
 
 auth_settings = AuthSettings()

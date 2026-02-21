@@ -146,7 +146,6 @@ export const api = {
         | '30d'
         | '180d'
         | '365d';
-      control_id?: number | null;
       include_timeseries?: boolean;
     }) =>
       apiClient.GET('/api/v1/observability/stats', {

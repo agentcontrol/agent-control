@@ -40,8 +40,6 @@ class ControlExecutionEvent(BaseModel):
         agent_name: Name of the agent (denormalized for queries)
         control_id: Database ID of the control
         control_name: Name of the control (denormalized for queries)
-        control_set_id: Optional ID of the control set
-        control_set_name: Optional name of the control set
         check_stage: "pre" (before execution) or "post" (after execution)
         applies_to: "llm_call" or "tool_call"
         action: The action taken (allow, deny, warn, log)

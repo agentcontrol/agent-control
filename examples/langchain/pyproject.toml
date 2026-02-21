@@ -42,5 +42,4 @@ include = [
 agent-control-sdk = { path = "../../sdks/python", editable = true }
 agent-control-models = { path = "../../models", editable = true }
 agent-control-engine = { path = "../../engine", editable = true }
-agent-control-evaluators = { path = "../../evaluators", editable = true }
-
+agent-control-evaluators = { path = "../../evaluators/builtin", editable = true }

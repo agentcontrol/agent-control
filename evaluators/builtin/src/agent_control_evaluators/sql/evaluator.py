@@ -51,6 +51,16 @@ class QueryAnalysis:
     defined_ctes: set[str] = field(default_factory=set)
 
 
+@dataclass(frozen=True)
+class RequiredColumnValueRule:
+    """Preprocessed required column/value mapping rule."""
+
+    raw_column: str
+    table: str | None
+    column: str
+    context_key: str
+
+
 @register_evaluator
 class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
     """Comprehensive SQL validation evaluator.
@@ -168,6 +178,9 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
         self._required_columns = self._build_set(
             config.required_columns, config.case_sensitive
         )
+        self._required_column_values = self._build_required_column_value_rules(
+            config.required_column_values
+        )
 
     def _build_set(self, items: list[str] | None, case_sensitive: bool) -> set[str] | None:
         """Build a set with proper casing."""
@@ -178,6 +191,34 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
     def _normalize_name(self, name: str) -> str:
         """Normalize table/schema/column name for comparison."""
         return name if self.config.case_sensitive else name.lower()
+
+    def _build_required_column_value_rules(
+        self, rules: dict[str, str] | None
+    ) -> list[RequiredColumnValueRule]:
+        """Preprocess required column/value rules for fast matching."""
+        if not rules:
+            return []
+
+        processed: list[RequiredColumnValueRule] = []
+        for raw_column, context_key in rules.items():
+            table_name: str | None = None
+            column_name = raw_column
+
+            if "." in raw_column:
+                table_part, column_part = raw_column.split(".", 1)
+                table_name = self._normalize_name(table_part.strip())
+                column_name = column_part
+
+            processed.append(
+                RequiredColumnValueRule(
+                    raw_column=raw_column,
+                    table=table_name,
+                    column=self._normalize_name(column_name.strip()),
+                    context_key=context_key,
+                )
+            )
+
+        return processed
 
     def _analyze_query_structure(self, stmt: exp.Expression) -> QueryAnalysis:
         """Analyze query structure in a single tree walk (performance optimization).
@@ -258,15 +299,15 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
         return analysis
 
     def _is_in_node_but_not_in_subqueries(
-        self, column: exp.Column, target_node: exp.Expression
+        self, node: exp.Expression, target_node: exp.Expression
     ) -> bool:
-        """Check if column is in target node but not in any subqueries within it."""
-        # Walk up from column to see if we hit target_node before hitting a SELECT
-        current = column.parent
+        """Check if node is in target node but not in any nested SELECT subqueries."""
+        # Walk up from node to see if we hit target_node before hitting a nested SELECT
+        current = node.parent
         while current:
             if current is target_node:
                 return True
-            # If we hit a SELECT node before the target, column is in a subquery
+            # If we hit a SELECT node before the target, node is in a subquery
             if isinstance(current, exp.Select) and current is not target_node:
                 return False
             current = current.parent
@@ -684,6 +725,271 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
 
         return metadata
 
+    def _extract_query_and_context(self, data: Any) -> tuple[str, dict[str, Any]]:
+        """Extract SQL query and optional runtime context from evaluation payload."""
+        if isinstance(data, str):
+            return data, {}
+
+        if not isinstance(data, dict):
+            return str(data), {}
+
+        context_data = data.get("context")
+        context = context_data if isinstance(context_data, dict) else {}
+
+        if "input" in data and "type" in data:
+            # Full step payload selected by selector="*"
+            input_data = data.get("input")
+            if isinstance(input_data, str):
+                return input_data, context
+
+            if isinstance(input_data, dict):
+                query_data = input_data.get("query", "")
+                if query_data is None:
+                    return "", context
+                return (
+                    query_data if isinstance(query_data, str) else str(query_data),
+                    context,
+                )
+
+            if input_data is None:
+                return "", context
+
+            return str(input_data), context
+
+        query_data = data.get("query", "")
+        if query_data is None:
+            return "", context
+        return query_data if isinstance(query_data, str) else str(query_data), context
+
+    def _is_scalar_context_value(self, value: Any) -> bool:
+        """Return True when context value is scalar and comparable to SQL literals."""
+        return isinstance(value, (str, int, float, bool))
+
+    def _statement_accesses_physical_tables(self, analysis: QueryAnalysis) -> bool:
+        """Return True when statement references at least one non-CTE table."""
+        for _schema, table_name in analysis.tables:
+            if self._normalize_name(table_name) not in analysis.defined_ctes:
+                return True
+        return False
+
+    def _get_top_level_where_clause(self, stmt: exp.Expression) -> exp.Where | None:
+        """Get top-level WHERE node for statement when present."""
+        where_node = stmt.args.get("where")
+        return where_node if isinstance(where_node, exp.Where) else None
+
+    def _has_ancestor_of_type(
+        self,
+        node: exp.Expression,
+        stop_node: exp.Expression,
+        ancestor_type: type[exp.Expression],
+    ) -> bool:
+        """Check whether node has a specific ancestor before reaching stop_node."""
+        current = node.parent
+        while current and current is not stop_node:
+            if isinstance(current, ancestor_type):
+                return True
+            current = current.parent
+        return False
+
+    def _build_alias_to_base_table_map(
+        self, stmt: exp.Expression, analysis: QueryAnalysis
+    ) -> tuple[dict[str, str], set[str]]:
+        """Build alias/base-table map for top-level table references."""
+        alias_to_base: dict[str, str] = {}
+        base_tables: set[str] = set()
+
+        for table_node in stmt.find_all(exp.Table):
+            if not table_node.name:
+                continue
+            if not self._is_in_node_but_not_in_subqueries(table_node, stmt):
+                continue
+
+            base_table = self._normalize_name(table_node.name)
+            if base_table in analysis.defined_ctes:
+                continue
+
+            base_tables.add(base_table)
+            alias_to_base[base_table] = base_table
+
+            alias_name = table_node.alias_or_name
+            if alias_name:
+                alias_to_base[self._normalize_name(alias_name)] = base_table
+
+        return alias_to_base, base_tables
+
+    def _extract_column_literal_from_eq(
+        self, eq_node: exp.EQ
+    ) -> tuple[exp.Column, exp.Literal] | None:
+        """Extract (column, literal) from EQ regardless of operand side order."""
+        if isinstance(eq_node.this, exp.Column) and isinstance(eq_node.expression, exp.Literal):
+            return eq_node.this, eq_node.expression
+        if isinstance(eq_node.expression, exp.Column) and isinstance(eq_node.this, exp.Literal):
+            return eq_node.expression, eq_node.this
+        return None
+
+    def _column_matches_rule(
+        self,
+        column_expr: exp.Column,
+        rule: RequiredColumnValueRule,
+        alias_to_base: dict[str, str],
+    ) -> bool:
+        """Check whether column expression matches configured rule reference."""
+        if self._normalize_name(column_expr.name) != rule.column:
+            return False
+
+        if rule.table is None:
+            return True
+
+        column_qualifier = column_expr.table
+        if not column_qualifier:
+            return False
+
+        qualifier_norm = self._normalize_name(column_qualifier)
+        resolved_base = alias_to_base.get(qualifier_norm, qualifier_norm)
+        return resolved_base == rule.table
+
+    def _check_column_values(
+        self,
+        parsed_statements: list[exp.Expression],
+        analyses: list[QueryAnalysis],
+        query: str,
+        context: dict[str, Any],
+    ) -> EvaluatorResult | None:
+        """Check required column equality/value rules for multi-tenant filtering."""
+        if not self._required_column_values:
+            return None
+
+        for statement_index, (stmt, analysis) in enumerate(
+            zip(parsed_statements, analyses, strict=False)
+        ):
+            if not self._statement_accesses_physical_tables(analysis):
+                continue
+
+            top_level_where = self._get_top_level_where_clause(stmt)
+            if top_level_where is None:
+                return EvaluatorResult(
+                    matched=True,
+                    confidence=1.0,
+                    message=(
+                        "Table-accessing statement is missing top-level WHERE clause required "
+                        "for required_column_values"
+                    ),
+                    metadata=self._create_query_metadata(
+                        query,
+                        {
+                            "violation": "missing_top_level_where",
+                            "statement_index": statement_index,
+                        },
+                    ),
+                )
+
+            alias_to_base, base_tables = self._build_alias_to_base_table_map(stmt, analysis)
+
+            for rule in self._required_column_values:
+                if rule.context_key not in context:
+                    return EvaluatorResult(
+                        matched=True,
+                        confidence=1.0,
+                        message=(
+                            "Missing context value for required_column_values rule "
+                            f"'{rule.raw_column}'. Use selector '*' so step context is available."
+                        ),
+                        metadata=self._create_query_metadata(
+                            query,
+                            {
+                                "violation": "missing_context_value",
+                                "required_column": rule.raw_column,
+                                "context_key": rule.context_key,
+                                "statement_index": statement_index,
+                            },
+                        ),
+                    )
+
+                expected_value = context[rule.context_key]
+                if not self._is_scalar_context_value(expected_value):
+                    return EvaluatorResult(
+                        matched=True,
+                        confidence=1.0,
+                        message=(
+                            "required_column_values context value must be scalar "
+                            f"(str/int/float/bool) for key '{rule.context_key}'"
+                        ),
+                        metadata=self._create_query_metadata(
+                            query,
+                            {
+                                "violation": "invalid_context_value_type",
+                                "required_column": rule.raw_column,
+                                "context_key": rule.context_key,
+                                "context_value_type": type(expected_value).__name__,
+                                "statement_index": statement_index,
+                            },
+                        ),
+                    )
+
+                if rule.table is None and len(base_tables) > 1:
+                    return EvaluatorResult(
+                        matched=True,
+                        confidence=1.0,
+                        message=(
+                            "Table qualification is required for required_column_values "
+                            "when query references multiple tables"
+                        ),
+                        metadata=self._create_query_metadata(
+                            query,
+                            {
+                                "violation": "ambiguous_unqualified_column",
+                                "required_column": rule.raw_column,
+                                "base_tables": sorted(base_tables),
+                                "statement_index": statement_index,
+                            },
+                        ),
+                    )
+
+                found_valid_predicate = False
+                expected_literal = str(expected_value)
+                for eq_node in top_level_where.find_all(exp.EQ):
+                    if not self._is_in_node_but_not_in_subqueries(eq_node, top_level_where):
+                        continue
+                    if self._has_ancestor_of_type(eq_node, top_level_where, exp.Not):
+                        continue
+                    if self._has_ancestor_of_type(eq_node, top_level_where, exp.Or):
+                        continue
+
+                    column_and_literal = self._extract_column_literal_from_eq(eq_node)
+                    if not column_and_literal:
+                        continue
+
+                    column_expr, literal_expr = column_and_literal
+                    if not self._column_matches_rule(column_expr, rule, alias_to_base):
+                        continue
+
+                    if str(literal_expr.this) != expected_literal:
+                        continue
+
+                    found_valid_predicate = True
+                    break
+
+                if not found_valid_predicate:
+                    return EvaluatorResult(
+                        matched=True,
+                        confidence=1.0,
+                        message=(
+                            "Required equality predicate not found in top-level WHERE: "
+                            f"'{rule.raw_column}' must equal context['{rule.context_key}']"
+                        ),
+                        metadata=self._create_query_metadata(
+                            query,
+                            {
+                                "violation": "missing_or_invalid_value_predicate",
+                                "required_column": rule.raw_column,
+                                "context_key": rule.context_key,
+                                "statement_index": statement_index,
+                            },
+                        ),
+                    )
+
+        return None
+
     async def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate SQL query against all configured controls.
 
@@ -728,11 +1034,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
                 message="No SQL query provided",
             )
 
-        query = (
-            data
-            if isinstance(data, str)
-            else data.get("query", "") if isinstance(data, dict) else str(data)
-        )
+        query, context = self._extract_query_and_context(data)
 
         if not query.strip():
             return EvaluatorResult(
@@ -751,6 +1053,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
             self._allowed_schemas,
             self._blocked_schemas,
             self._required_columns,
+            self._required_column_values,
             self.config.require_limit,
             self.config.max_limit is not None,
             self.config.max_result_window is not None,
@@ -803,6 +1106,8 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
                 metadata=self._create_query_metadata(query),
             )
 
+        parsed_statements = [stmt for stmt in parsed if stmt is not None]
+
         # 2. Check multi-statements
         if not self.config.allow_multi_statements or self.config.max_statements:
             multi_stmt_result = self._check_multi_statements(parsed, query)
@@ -811,7 +1116,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
 
         # 3. Analyze query structure once (single tree walk for performance)
         # This avoids multiple expensive tree traversals
-        analyses = [self._analyze_query_structure(stmt) for stmt in parsed if stmt]
+        analyses = [self._analyze_query_structure(stmt) for stmt in parsed_statements]
 
         # 4. Check operations
         if self._blocked_ops or self._allowed_ops:
@@ -835,6 +1140,17 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
             column_result = self._check_columns(analyses, query)
             if column_result:
                 return column_result
+
+        # 6.5. Check column value constraints
+        if self._required_column_values:
+            column_value_result = self._check_column_values(
+                parsed_statements=parsed_statements,
+                analyses=analyses,
+                query=query,
+                context=context,
+            )
+            if column_value_result:
+                return column_value_result
 
         # 7. Check LIMIT constraints
         if (
