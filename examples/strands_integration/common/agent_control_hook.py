@@ -121,15 +121,31 @@ class AgentControlHook(HookProvider):
 
         # Handle violation if unsafe
         if not result.is_safe:
+            # Extract detailed reason from control matches
+            control_name = "unknown"
+            reason = result.reason
+
+            if result.matches and len(result.matches) > 0:
+                first_match = result.matches[0]
+                control_name = first_match.control_name
+
+                # Build reason from available information
+                if not reason:
+                    # Try to get message from evaluator result
+                    if hasattr(first_match, 'result') and hasattr(first_match.result, 'message') and first_match.result.message:
+                        reason = first_match.result.message
+                    # Fallback to control name
+                    elif control_name:
+                        reason = f"Control '{control_name}' triggered"
+                    else:
+                        reason = "Control check failed"
+
             print(f"\n🚫 CONTROL VIOLATION - {violation_type} blocked")
-            print(f"   Reason: {result.reason}")
+            print(f"   Control: {control_name}")
+            print(f"   Reason: {reason}")
 
             # Track violation if callback provided
             if self.on_violation_callback:
-                control_name = "unknown"
-                if result.matches and len(result.matches) > 0:
-                    control_name = result.matches[0].control_name
-
                 violation_info = {
                     "agent": self.agent_name,
                     "control_name": control_name,
@@ -137,8 +153,8 @@ class AgentControlHook(HookProvider):
                 }
                 self.on_violation_callback(violation_info, result)
 
-            # Raise appropriate error
-            error_msg = f"Policy violation: {result.reason or 'Control check failed'}"
+            # Raise appropriate error with detailed message
+            error_msg = f"Policy violation [{control_name}]: {reason}"
             if use_runtime_error:
                 raise RuntimeError(error_msg)
             else:

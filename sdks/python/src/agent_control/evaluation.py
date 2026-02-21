@@ -526,7 +526,8 @@ async def evaluate_controls(
         stage: When to evaluate - "pre" or "post" (default: "pre")
         agent_uuid: Agent UUID (optional, uses init() agent if not provided)
         agent_name: Agent name for observability (optional, uses init() agent if not provided)
-        controls: List of controls to evaluate (optional, uses cached controls from init() if not provided)
+        controls: List of controls to evaluate (optional, uses cached controls
+            from init() if not provided)
         trace_id: Optional OpenTelemetry trace ID for observability
         span_id: Optional OpenTelemetry span ID for observability
 
@@ -569,7 +570,7 @@ async def evaluate_controls(
                 "Either call agent_control.init() or pass agent_uuid parameter."
             )
         resolved_agent_uuid = _current_agent.agent_id
-        resolved_agent_name = agent_name or _current_agent.name
+        resolved_agent_name = agent_name or _current_agent.agent_name
     else:
         # Convert agent_uuid to UUID if it's a string
         resolved_agent_uuid = UUID(agent_uuid) if isinstance(agent_uuid, str) else agent_uuid
@@ -579,15 +580,15 @@ async def evaluate_controls(
     if _server_url is None:
         raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
 
-    # Build Step dict
+    # Build Step dict (input and output are required by Step model)
+    # Tool steps require dict input/output, LLM steps use strings
+    default_value = {} if step_type == "tool" else ""
     step_dict: dict[str, Any] = {
         "type": step_type,
         "name": step_name,
+        "input": input if input is not None else default_value,
+        "output": output if output is not None else default_value,
     }
-    if input is not None:
-        step_dict["input"] = input
-    if output is not None:
-        step_dict["output"] = output
     if context is not None:
         step_dict["context"] = context
 

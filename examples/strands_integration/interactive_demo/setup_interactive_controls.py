@@ -3,8 +3,13 @@
 Setup script for Interactive Support Demo controls.
 
 Creates 4 controls demonstrating AgentControl safety checks:
-- LLM Controls: Block PII in input/output
-- Tool Controls: Validate order IDs and prevent SQL injection
+- User Input: Block PII and SQL injection patterns
+- Agent Output: Block PII in responses
+- Universal Tool Protection: Block PII in ALL tool inputs (step_types=["tool"])
+
+Demonstrates different scoping patterns:
+  • step_names=[...] - Target specific callbacks
+  • step_types=["tool"] - Target ALL tool calls
 
 Usage:
     python examples/strands_integration/interactive_demo/setup_interactive_controls.py
@@ -32,7 +37,7 @@ AGENT_ID = "550e8400-e29b-41d4-a716-446655440099"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 INTERACTIVE_CONTROLS = [
-    # LLM Controls - Target hook callback events
+    # User Input Controls - Block unsafe patterns in user messages
     {
         "name": "block-pii-input",
         "description": "Block PII in user input (SSN, credit cards, emails)",
@@ -42,9 +47,9 @@ INTERACTIVE_CONTROLS = [
             "execution": "server",
             "scope": {
                 "step_names": ["check_before_invocation", "check_before_model"],
-                "stages": ["post"]  # Hook callbacks use post-execution
+                "stages": ["pre"]
             },
-            "selector": {"path": "output.input"},  # Access input from callback's returned dict
+            "selector": {"path": "input"},
             "evaluator": {
                 "name": "regex",
                 "config": {
@@ -52,9 +57,33 @@ INTERACTIVE_CONTROLS = [
                 }
             },
             "action": {"decision": "deny", "message": "PII detected in user input"},
-            "tags": ["pii", "demo"]
+            "tags": ["pii", "security"]
         }
     },
+    {
+        "name": "prevent-sql-injection-user-input",
+        "description": "Prevent SQL injection patterns in user messages",
+        "definition": {
+            "description": "Block SQL injection patterns before LLM processes",
+            "enabled": True,
+            "execution": "server",
+            "scope": {
+                "step_names": ["check_before_invocation", "check_before_model"],
+                "stages": ["pre"]
+            },
+            "selector": {"path": "input"},
+            "evaluator": {
+                "name": "regex",
+                "config": {
+                    "pattern": r"(\bDROP\s+TABLE\b|\bDROP\s+DATABASE\b|--;)"
+                }
+            },
+            "action": {"decision": "deny", "message": "Potentially malicious SQL patterns detected"},
+            "tags": ["security"]
+        }
+    },
+
+    # Agent Output Controls - Block unsafe patterns in agent responses
     {
         "name": "block-pii-output",
         "description": "Block PII in agent responses (SSN, credit cards, emails)",
@@ -64,9 +93,9 @@ INTERACTIVE_CONTROLS = [
             "execution": "server",
             "scope": {
                 "step_names": ["check_after_model"],
-                "stages": ["post"]  # Hook callbacks use post-execution
+                "stages": ["post"]
             },
-            "selector": {"path": "output.output"},  # Access output from callback's returned dict
+            "selector": {"path": "output"},
             "evaluator": {
                 "name": "regex",
                 "config": {
@@ -74,54 +103,31 @@ INTERACTIVE_CONTROLS = [
                 }
             },
             "action": {"decision": "deny", "message": "PII detected in agent response"},
-            "tags": ["pii", "demo"]
+            "tags": ["pii", "security"]
         }
     },
 
-    # Tool Controls - Target hook callback events (applies to ALL tools)
+    # Universal Tool Control - Applies to ALL tool calls
     {
-        "name": "validate-order-id-format",
-        "description": "Validate order ID format for all tool calls",
+        "name": "block-pii-all-tool-inputs",
+        "description": "Block PII in any tool input (universal tool protection)",
         "definition": {
-            "description": "Ensure order IDs follow ORD-XXXXX format",
+            "description": "Prevent PII from being passed to any tool (lookup_order, search_knowledge_base, check_return_policy)",
             "enabled": True,
             "execution": "server",
             "scope": {
-                "step_names": ["check_before_tool"],
-                "stages": ["post"]  # Hook callbacks use post-execution
+                "step_types": ["tool"],  # Applies to ALL tools
+                "stages": ["pre"]
             },
-            "selector": {"path": "output.input.order_id"},  # Access order_id from callback's input
-            "evaluator": {
-                "name": "regex",
-                "config": {"pattern": r"ORD-.*[A-Za-z]"}  # Detects letters after hyphen (invalid)
-            },
-            "action": {
-                "decision": "deny",
-                "message": "Invalid order ID format. Expected: ORD-XXXXX"
-            },
-            "tags": ["validation", "demo"]
-        }
-    },
-    {
-        "name": "prevent-sql-injection-tool-input",
-        "description": "Prevent SQL injection in all tool inputs",
-        "definition": {
-            "description": "Block SQL injection patterns in tool inputs",
-            "enabled": True,
-            "execution": "server",
-            "scope": {
-                "step_names": ["check_before_tool"],
-                "stages": ["post"]  # Hook callbacks use post-execution
-            },
-            "selector": {"path": "output.input.query"},  # Access query from callback's input
+            "selector": {"path": "input"},  # Check entire tool input
             "evaluator": {
                 "name": "regex",
                 "config": {
-                    "pattern": r"(\bSELECT\b|\bDROP\b|\bUNION\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b|--|;|'|\"|\/\*|\*\/)"
+                    "pattern": r"\b\d{3}-\d{2}-\d{4}\b|\b\d{9}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b"
                 }
             },
-            "action": {"decision": "deny", "message": "Invalid characters in query"},
-            "tags": ["security", "demo"]
+            "action": {"decision": "deny", "message": "PII not allowed in tool inputs"},
+            "tags": ["pii", "security", "tools"]
         }
     }
 ]
@@ -258,10 +264,15 @@ async def main():
 ✅ Ready to run demo
 
 Controls created:
-  • block-pii-input (Hook: check_before_invocation, check_before_model)
-  • block-pii-output (Hook: check_after_model)
-  • validate-order-id-format (Hook: check_before_tool - applies to all tools)
-  • prevent-sql-injection-tool-input (Hook: check_before_tool - applies to all tools)
+  • block-pii-input (Scope: user input - check_before_invocation, check_before_model)
+  • prevent-sql-injection-user-input (Scope: user input - check_before_invocation, check_before_model)
+  • block-pii-output (Scope: agent output - check_after_model)
+  • block-pii-all-tool-inputs (Scope: ALL tools - step_types=["tool"])
+
+Test cases:
+  ✓ "My SSN is 123-45-6789" → Blocked by block-pii-input
+  ✓ "DROP TABLE orders--" → Blocked by prevent-sql-injection-user-input
+  ✓ Tool call with PII → Blocked by block-pii-all-tool-inputs (universal)
 
 Run the demo:
   streamlit run examples/strands_integration/interactive_demo/interactive_support_demo.py

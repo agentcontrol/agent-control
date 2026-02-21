@@ -1,182 +1,146 @@
-# AgentControl + Strands Integration Examples
+# AgentControl + Strands Integration
 
-Interactive demonstrations of AgentControl integrated with AWS Strands agents.
+Automatic safety controls for AWS Strands agents using hooks - no decorators needed.
 
-## Overview
+## Quick Start
 
-These examples show how to integrate AgentControl's safety controls with Strands-based agents using hooks. The hook-based architecture provides automatic safety enforcement without modifying your agent code.
+**Prerequisites:** Python 3.11+, OpenAI API key, AgentControl server
+
+```bash
+# 1. Install
+cd examples/strands_integration
+uv pip install -e .
+
+# 2. Configure
+cp .env.example .env
+# Edit .env: Add OPENAI_API_KEY and AGENT_CONTROL_URL
+
+# 3. Start server (Terminal 1)
+cd ../../server && make run
+
+# 4. Setup controls (Terminal 2)
+cd examples/strands_integration/interactive_demo
+uv run setup_interactive_controls.py
+
+# 5. Run demo (Terminal 3)
+streamlit run interactive_support_demo.py
+```
+
+Open http://localhost:8501 and click test buttons to see safety controls in action.
 
 ## Available Demos
 
 ### [Interactive Demo](interactive_demo/)
-Real-time safety demonstration with Streamlit UI showing PII blocking and tool validation.
+Customer support agent with PII blocking and SQL injection prevention. Shows real-time safety checks in Streamlit UI.
 
 ### [Steering Demo](steering_demo/)
-Layered governance combining AgentControl (safety) with Strands Steering (quality).
+Banking email agent with PII redaction. Combines AgentControl (detection) + Strands Steering (smart redaction) for layered governance.
 
-## Quick Start
+## How It Works
 
-### Prerequisites
+**AgentControlHook** = Automatic safety without code changes
 
-- Python 3.11+
-- OpenAI API key
-- AgentControl server running
+```python
+from common import AgentControlHook
+from strands import Agent
 
-### Installation
+# Initialize
+import agent_control
+agent_control.init(agent_name="my-agent", agent_id="...")
 
-```bash
-cd examples/strands_integration
+# Create hook
+hook = AgentControlHook(agent_name="my-agent")
 
-# Install dependencies
-uv sync  # or: pip install -e .
-
-# Configure environment
-cp .env.example .env
-# Edit .env and add your API keys:
-#   OPENAI_API_KEY=your_key_here
-#   AGENT_CONTROL_URL=http://localhost:8000
+# Attach to agent - done!
+agent = Agent(
+    model=model,
+    system_prompt="...",
+    tools=[...],
+    hooks=[hook]  # All safety checks automated
+)
 ```
 
-### Running the Interactive Demo
+**Hook intercepts events** → **Server evaluates controls** → **Blocks unsafe actions**
 
-**Terminal 1 - Start the AgentControl server:**
-```bash
-cd server
-make run
+## Controls
+
+**LLM Controls** - Apply to all model interactions:
+```python
+{
+    "scope": {"step_types": ["llm"], "stages": ["pre"]},
+    "evaluator": {"name": "regex", "config": {"pattern": r"\d{3}-\d{2}-\d{4}"}},
+    "action": {"decision": "deny"}
+}
 ```
 
-**Terminal 2 - Setup controls:**
-```bash
-cd examples/strands_integration/interactive_demo
-python setup_interactive_controls.py
+**Tool Controls** - Target specific tools:
+```python
+{
+    "scope": {
+        "step_types": ["tool"],
+        "step_names": ["lookup_order"],  # Only this tool
+        "stages": ["pre"]
+    },
+    "evaluator": {"name": "regex", "config": {"pattern": r"ORD-\d+"}},
+    "action": {"decision": "deny"}
+}
 ```
 
-You should see output confirming controls were created:
-```
-✓ Created 4 interactive demo control(s)
-✅ Interactive Support Demo Ready
-```
-
-**Terminal 3 - Launch the demo:**
-```bash
-cd examples/strands_integration/interactive_demo
-streamlit run interactive_support_demo.py
-```
-
-The app will open in your browser at `http://localhost:8501`
-
-## Using the Demo
-
-### Test Normal Conversation
-
-Try safe prompts:
-- "What's your return policy?"
-- "I need help with my order ORD-12345"
-
-Watch the safety checks pass in the sidebar.
-
-### Test Safety Controls
-
-Click the example buttons:
-
-**✅ Valid Order** - Normal tool usage, should succeed
-**❌ PII Detected** - Contains SSN, will be blocked by LLM control
-**❌ SQL Injection** - SQL injection attempt, will be blocked by tool control
-
-Watch the console (Terminal 3) for detailed logs showing:
-- Tool interception
-- Control evaluation
-- Block/allow decisions
-
-### Understanding the Output
-
-**In the UI:**
-- Green checkmarks (✅) = Safety checks passed
-- Red violations (🚫) = Blocked content with details
-
-**In the console:**
-- `🔧 TOOL CALL INTERCEPTED` = Hook captured tool call
-- `✅ All checks passed` = Controls allowed the action
-- `🚫 VIOLATION DETECTED` = Controls blocked the action
+Hook automatically extracts tool names from events - no decorators needed!
 
 ## Architecture
 
 ```
 User Input
-    ↓
-AgentControlHook (intercepts events)
-    ├─ BeforeInvocationEvent → Check user input
-    ├─ BeforeToolCallEvent → Validate tool parameters
-    ├─ AfterModelCallEvent → Check agent output
-    └─ AfterToolCallEvent → Filter tool results
-    ↓
-AgentControl Server (evaluates controls)
-    ├─ LLM Controls (step_types=["llm"])
-    └─ Tool Controls (step_types=["tool"], step_names=["tool_name"])
-    ↓
-Safe Output to User
+  ↓
+Strands fires event (BeforeToolCallEvent, AfterModelCallEvent, etc.)
+  ↓
+AgentControlHook intercepts → Creates Step → Calls AgentControl server
+  ↓
+Server evaluates controls → Returns safe/unsafe
+  ↓
+Hook enforces decision: Continue ✅ or Block ❌
 ```
 
-## How It Works
+## Integration Patterns
 
-### Hooks
-A **hook** is an event interceptor that watches agent lifecycle events (model calls, tool calls, etc.) and triggers safety checks at the right moments.
+**Basic setup** (common/agent_control_hook.py):
+```python
+hook = AgentControlHook(
+    agent_name="my-agent",
+    agent_uuid=UUID("..."),
+    server_url="http://localhost:8000",
+    enable_logging=True
+)
+```
 
-### Controls
-A **control** is a safety rule (like "block PII") that evaluates data and decides whether to allow or block an action.
+**SDK evaluation** (no server needed):
+```python
+result = await agent_control.evaluate_controls(
+    step_name="send_email",
+    input={"body": "..."},
+    step_type="tool",
+    stage="pre"
+)
 
-### Integration
-The `AgentControlHook` connects Strands events to AgentControl:
-1. Strands fires events (BeforeModelCallEvent, BeforeToolCallEvent, etc.)
-2. Hook extracts relevant data and creates a `Step` object
-3. Hook calls AgentControl to evaluate controls for that step
-4. If unsafe, hook triggers a retry or blocks the action
-5. If safe, execution continues normally
-
-For detailed integration patterns, see [INTEGRATION_GUIDE.md](common/INTEGRATION_GUIDE.md)
+if not result.is_safe:
+    raise ControlViolationError(message=result.reason)
+```
 
 ## Troubleshooting
 
-### "AgentControl not initialized"
-Server not running or not accessible.
+**"AgentControl not initialized"**
+- Run `agent_control.init()` before creating hook
 
-**Solution:**
-```bash
-# Check server health
-curl http://localhost:8000/health
+**Controls not triggering**
+- Server running? `curl http://localhost:8000/health`
+- Controls exist? Re-run `setup_*_controls.py`
 
-# Restart if needed
-cd server && make run
-```
+**Import errors**
+- Install deps: `uv sync` or `pip install -e .`
 
-### No controls triggering
-Controls not set up.
+## Files
 
-**Solution:**
-```bash
-# Re-run setup
-python examples/strands_integration/interactive_demo/setup_interactive_controls.py
-
-# Verify controls exist
-curl http://localhost:8000/api/v1/controls | jq '.controls[].name'
-```
-
-### Import errors
-Dependencies not installed.
-
-**Solution:**
-```bash
-cd examples/strands_integration
-uv sync  # or: pip install -e .
-```
-
-## Next Steps
-
-1. **Understand the integration** - Read [INTEGRATION_GUIDE.md](common/INTEGRATION_GUIDE.md) for architectural details
-2. **Modify controls** - Edit `setup_interactive_controls.py` to add your own safety rules
-3. **Extend the demo** - Add new tools and controls to test different scenarios
-4. **Build your own** - Use the hook pattern in your production agents
-
-## Support
-
-For questions or issues, see the [common/README.md](common/README.md) documentation or open an issue on GitHub.
+- `common/agent_control_hook.py` - Reusable hook for any Strands agent
+- `interactive_demo/` - Customer support demo with PII/SQL injection blocking
+- `steering_demo/` - Banking email demo with PII redaction
