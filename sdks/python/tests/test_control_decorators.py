@@ -596,5 +596,3 @@ class TestStepName:
             assert captured_steps[1]["name"] == "custom_tool_name"
             # THEN: Step should still be detected as tool type
             assert captured_steps[0]["type"] == "tool"
-
-
