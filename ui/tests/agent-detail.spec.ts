@@ -428,7 +428,9 @@ test.describe('Agent Detail Page', () => {
       modal.getByText('Pre (before execution)', { exact: true })
     ).toBeVisible();
     // Step name: mock has both step_names and step_name_regex; form shows names mode by default.
-    await expect(modal.locator('p', { hasText: 'database_query' })).toBeVisible();
+    await expect(
+      modal.locator('p', { hasText: 'database_query' })
+    ).toBeVisible();
     // Execution environment is a Select; assert label is visible (selected value may be in closed dropdown)
     const executionLabel = modal.getByText('Execution environment', {
       exact: true,

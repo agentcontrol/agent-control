@@ -15,9 +15,7 @@ test.describe('Step Name Input', () => {
     await expect(modal.getByText('Regex')).toBeVisible();
   });
 
-  test('defaults to names mode with step selector', async ({
-    mockedPage,
-  }) => {
+  test('defaults to names mode with step selector', async ({ mockedPage }) => {
     await openEvaluatorForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
@@ -38,7 +36,9 @@ test.describe('Step Name Input', () => {
     await modal.getByText('Regex', { exact: true }).click();
 
     await expect(modal.getByPlaceholder('^db_.*')).toBeVisible();
-    await expect(modal.getByPlaceholder('No steps available')).not.toBeVisible();
+    await expect(
+      modal.getByPlaceholder('No steps available')
+    ).not.toBeVisible();
   });
 
   test('can type in regex field and value persists when toggling', async ({
@@ -68,7 +68,9 @@ test.describe('Step Name Input', () => {
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
     await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
-    await expect(modal.getByPlaceholder('search_db, fetch_user')).toHaveCount(0);
+    await expect(modal.getByPlaceholder('search_db, fetch_user')).toHaveCount(
+      0
+    );
   });
 
   test('toggling Regex off shows names input and hides regex input', async ({
