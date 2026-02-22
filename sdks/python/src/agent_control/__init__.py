@@ -84,7 +84,7 @@ from ._control_registry import (
 from .client import AgentControlClient
 
 # Import control decorator
-from .control_decorators import ControlViolationError, control
+from .control_decorators import ControlSteerError, ControlViolationError, control
 from .evaluation import check_evaluation_with_local
 from .observability import (
     LogConfig,
@@ -1108,6 +1108,7 @@ __all__ = [
     # Decorator
     "control",
     "ControlViolationError",
+    "ControlSteerError",
     # Client
     "AgentControlClient",
     # Operation modules

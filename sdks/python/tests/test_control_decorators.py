@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_control.control_decorators import ControlViolationError, control
+from agent_control.control_decorators import ControlViolationError, ControlSteerError, control
 
 
 # =============================================================================
@@ -65,6 +65,33 @@ def mock_warn_response():
                 "result": {
                     "matched": True,
                     "message": "Potential issue detected"
+                }
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def mock_steer_response():
+    """Response when evaluation triggers steer action with guidance."""
+    return {
+        "is_safe": False,
+        "confidence": 0.85,
+        "matches": [
+            {
+                "control_id": 2,
+                "control_name": "steer-control",
+                "action": "steer",
+                "control": {
+                    "action": {
+                        "decision": "steer",
+                        "guidance": "Please rephrase your question using respectful language"
+                    }
+                },
+                "result": {
+                    "matched": True,
+                    "message": "Inappropriate language detected",
+                    "metadata": {"pattern": "offensive_word"}
                 }
             }
         ]
@@ -154,6 +181,26 @@ class TestPolicyHandling:
                 await chat("Test")
 
             assert exc_info.value.control_name == "test-control"
+
+    @pytest.mark.asyncio
+    async def test_steer_action_raises_exception(self, mock_agent, mock_steer_response):
+        """Test that steer action raises ControlSteerError with guidance."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_steer_response):
+
+            @control()
+            async def chat(message: str) -> str:
+                return f"Response to: {message}"
+
+            with pytest.raises(ControlSteerError) as exc_info:
+                await chat("Test offensive message")
+
+            # Verify exception has all expected fields
+            assert exc_info.value.control_name == "steer-control"
+            assert exc_info.value.message == "Inappropriate language detected"
+            assert exc_info.value.guidance == "Please rephrase your question using respectful language"
+            assert "steer-control" in str(exc_info.value)
+            assert "Please rephrase" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_policy_evaluates_all_controls(self, mock_agent, mock_safe_response):
@@ -467,6 +514,76 @@ class TestControlViolationError:
 
         with pytest.raises(ControlViolationError):
             raise violation
+
+
+class TestControlSteerError:
+    """Tests for ControlSteerError exception."""
+
+    def test_exception_creation(self):
+        """Test ControlSteerError can be created with all fields."""
+        steer_error = ControlSteerError(
+            control_name="steer-control",
+            message="Need to adjust approach",
+            metadata={"pattern": "offensive"},
+            guidance="Please rephrase using respectful language"
+        )
+
+        assert steer_error.control_name == "steer-control"
+        assert steer_error.message == "Need to adjust approach"
+        assert steer_error.metadata == {"pattern": "offensive"}
+        assert steer_error.guidance == "Please rephrase using respectful language"
+
+    def test_exception_guidance_fallback(self):
+        """Test guidance falls back to metadata if not provided."""
+        steer_error = ControlSteerError(
+            control_name="steer-control",
+            message="Test message",
+            metadata={"guidance": "Fallback guidance from metadata"}
+        )
+
+        assert steer_error.guidance == "Fallback guidance from metadata"
+
+    def test_exception_guidance_default(self):
+        """Test guidance defaults to 'No guidance provided' if not in metadata."""
+        steer_error = ControlSteerError(
+            control_name="steer-control",
+            message="Test message",
+            metadata={}
+        )
+
+        assert steer_error.guidance == "No guidance provided"
+
+    def test_exception_string(self):
+        """Test ControlSteerError string representation."""
+        steer_error = ControlSteerError(
+            control_name="my-steer-control",
+            message="Needs correction",
+            guidance="Use this approach instead"
+        )
+
+        assert "my-steer-control" in str(steer_error)
+        assert "Needs correction" in str(steer_error)
+        assert "Use this approach instead" in str(steer_error)
+
+    def test_is_exception(self):
+        """Test ControlSteerError is an Exception."""
+        steer_error = ControlSteerError(control_name="test", message="message")
+        assert isinstance(steer_error, Exception)
+
+        with pytest.raises(ControlSteerError):
+            raise steer_error
+
+    def test_input_output_data(self):
+        """Test ControlSteerError stores input/output data."""
+        steer_error = ControlSteerError(
+            control_name="test-control",
+            message="Test",
+            input_data={"query": "bad input"},
+            output_data={"response": "bad output"}
+        )
+
+        assert steer_error.input_data == {"query": "bad input"}
+        assert steer_error.output_data == {"response": "bad output"}
 
 
 # =============================================================================

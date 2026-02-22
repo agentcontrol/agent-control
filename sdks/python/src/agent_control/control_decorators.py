@@ -119,6 +119,7 @@ class ControlContext:
 
         Raises:
             ControlViolationError: If any control triggers with "deny" action
+            ControlSteerError: If any control triggers with "steer" action
         """
         # Log each control evaluation
         _log_control_evaluations(result, self.trace_id, self.span_id, check_stage)
@@ -171,6 +172,39 @@ class ControlViolationError(Exception):
         self.message = message
         self.metadata = metadata or {}
         super().__init__(f"Control violation [{self.control_name}]: {message}")
+
+
+class ControlSteerError(Exception):
+    """Raised when a control is triggered with 'steer' action.
+
+    This error indicates the agent should modify its approach based on
+    the provided guidance and potentially retry the operation.
+
+    Unlike ControlViolationError (deny), this is not a hard block but
+    a corrective signal that allows the application to adjust and retry.
+    """
+
+    def __init__(
+        self,
+        control_id: int | str | None = None,
+        control_name: str | None = None,
+        message: str = "Control steering required",
+        metadata: dict[str, Any] | None = None,
+        guidance: str | None = None,
+        input_data: Any | None = None,
+        output_data: Any | None = None
+    ):
+        self.control_id = control_id
+        self.control_name = control_name or (str(control_id) if control_id else "unknown")
+        self.message = message
+        self.metadata = metadata or {}
+        self.guidance = guidance or self.metadata.get("guidance", "No guidance provided")
+        self.input_data = input_data
+        self.output_data = output_data
+        super().__init__(
+            f"Control steering [{self.control_name}]: {message}\n"
+            f"Guidance: {self.guidance}"
+        )
 
 
 def _get_current_agent() -> Any | None:
@@ -239,6 +273,12 @@ async def _evaluate(
                 )
 
                 # Convert result to dict format expected by process_result
+                # Build a lookup map for control definitions by ID
+                control_defs_by_id = {
+                    c.get("id"): c.get("control", {})
+                    for c in controls if isinstance(c, dict)
+                }
+
                 return {
                     "is_safe": result.is_safe,
                     "confidence": result.confidence,
@@ -248,6 +288,7 @@ async def _evaluate(
                             "control_id": m.control_id,
                             "control_name": m.control_name,
                             "action": m.action,
+                            "control": control_defs_by_id.get(m.control_id, {}),
                             "result": {
                                 "matched": m.result.matched,
                                 "confidence": m.result.confidence,
@@ -264,6 +305,7 @@ async def _evaluate(
                             "control_id": e.control_id,
                             "control_name": e.control_name,
                             "action": e.action,
+                            "control": control_defs_by_id.get(e.control_id, {}),
                             "result": {
                                 "matched": e.result.matched,
                                 "confidence": e.result.confidence,
@@ -280,6 +322,7 @@ async def _evaluate(
                             "control_id": nm.control_id,
                             "control_name": nm.control_name,
                             "action": nm.action,
+                            "control": control_defs_by_id.get(nm.control_id, {}),
                             "result": {
                                 "matched": nm.result.matched,
                                 "confidence": nm.result.confidence,
@@ -414,7 +457,7 @@ def _create_evaluation_payload(
 
 
 def _handle_evaluation_result(result: dict[str, Any]) -> None:
-    """Handle evaluation result from server - raise on deny."""
+    """Handle evaluation result from server - raise on deny or steer."""
     if not result:
         logger.warning("Received empty evaluation result from server")
         return
@@ -462,6 +505,26 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
                     control_name=matched_control,
                     message=message,
                     metadata=metadata
+                )
+            elif action == "steer":
+                # Extract guidance from control action definition or metadata
+                control_data = match.get("control", {})
+                action_data = (
+                    control_data.get("action", {})
+                    if isinstance(control_data, dict)
+                    else {}
+                )
+                guidance = (
+                    action_data.get("guidance") if isinstance(action_data, dict)
+                    else metadata.get("guidance")
+                ) or message
+
+                raise ControlSteerError(
+                    control_id=control_id,
+                    control_name=matched_control,
+                    message=message,
+                    metadata=metadata,
+                    guidance=guidance
                 )
             elif action == "warn":
                 logger.warning(f"⚠️ Control [{matched_control}]: {message}")
@@ -600,7 +663,7 @@ async def _execute_with_control(
                 agent_name=ctx.agent_name,
             )
             ctx.process_result(result, "pre")
-        except ControlViolationError:
+        except (ControlViolationError, ControlSteerError):
             raise
         except Exception as e:
             # FAIL-SAFE: If control check fails, DO NOT execute the function
@@ -624,7 +687,7 @@ async def _execute_with_control(
                 agent_name=ctx.agent_name,
             )
             ctx.process_result(result, "post")
-        except ControlViolationError:
+        except (ControlViolationError, ControlSteerError):
             raise
         except Exception as e:
             logger.error(f"Post-execution control check failed: {e}")
@@ -741,4 +804,5 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
 __all__ = [
     "control",
     "ControlViolationError",
+    "ControlSteerError",
 ]

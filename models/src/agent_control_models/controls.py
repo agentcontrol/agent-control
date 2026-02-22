@@ -211,8 +211,16 @@ class EvaluatorSpec(BaseModel):
 class ControlAction(BaseModel):
     """What to do when control matches."""
 
-    decision: Literal["allow", "deny", "warn", "log"] = Field(
+    decision: Literal["allow", "deny", "steer", "warn", "log"] = Field(
         ..., description="Action to take when control is triggered"
+    )
+    guidance: str | None = Field(
+        None,
+        description=(
+            "Guidance message for steer actions. Strongly recommended when decision='steer' "
+            "to provide correction suggestions. If not provided, the evaluator result message "
+            "will be used as fallback."
+        )
     )
 
 
@@ -318,7 +326,7 @@ class ControlMatch(BaseModel):
     )
     control_id: int = Field(..., description="Database ID of the control")
     control_name: str = Field(..., description="Name of the control")
-    action: Literal["allow", "deny", "warn", "log"] = Field(
+    action: Literal["allow", "deny", "steer", "warn", "log"] = Field(
         ..., description="Action configured for this control"
     )
     result: EvaluatorResult = Field(

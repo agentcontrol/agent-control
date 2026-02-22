@@ -196,10 +196,10 @@ class ControlEngine:
                         timeout=timeout,
                     )
 
-                    # Signal if this is a deny match
+                    # Signal if this is a deny or steer match
                     if (
                         eval_task.result.matched
-                        and eval_task.item.control.action.decision == "deny"
+                        and eval_task.item.control.action.decision in ("deny", "steer")
                     ):
                         deny_found.set()
                 except asyncio.CancelledError:
@@ -287,8 +287,8 @@ class ControlEngine:
                         result=eval_task.result,
                     )
                 )
-                # Track if a deny control errored (fail closed)
-                if eval_task.item.control.action.decision == "deny":
+                # Track if a deny or steer control errored (fail closed)
+                if eval_task.item.control.action.decision in ("deny", "steer"):
                     deny_errored = True
                 continue
 
@@ -306,9 +306,10 @@ class ControlEngine:
                     )
                 )
 
-                if eval_task.item.control.action.decision == "deny":
+                if eval_task.item.control.action.decision in ("deny", "steer"):
                     is_safe = False
-                    deny_matched = True
+                    if eval_task.item.control.action.decision == "deny":
+                        deny_matched = True
             else:
                 # Collect non-matches (evaluated but did not match)
                 non_matches.append(

@@ -86,7 +86,7 @@ class ControlExecutionEvent(BaseModel):
     )
 
     # Result
-    action: Literal["allow", "deny", "warn", "log"] = Field(
+    action: Literal["allow", "deny", "steer", "warn", "log"] = Field(
         ..., description="Action taken by the control"
     )
     matched: bool = Field(
@@ -281,7 +281,7 @@ class EventQueryRequest(BaseModel):
     control_ids: list[int] | None = Field(
         default=None, description="Filter by control IDs"
     )
-    actions: list[Literal["allow", "deny", "warn", "log"]] | None = Field(
+    actions: list[Literal["allow", "deny", "steer", "warn", "log"]] | None = Field(
         default=None, description="Filter by actions"
     )
     matched: bool | None = Field(default=None, description="Filter by matched status")
