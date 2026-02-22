@@ -205,6 +205,12 @@ async def sensitive_func(data: str):
     return data
 ```
 
+### Exceptions
+
+**`ControlViolationError`** - Raised for `deny` actions (hard block, cannot proceed)
+
+**`ControlSteerError`** - Raised for `steer` actions with `guidance` field for correction and retry
+
 ### Client
 
 #### `AgentControlClient`

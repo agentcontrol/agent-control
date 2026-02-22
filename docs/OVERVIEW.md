@@ -104,6 +104,7 @@ An **Action** defines *what to do* when a control matches:
 | Action | Behavior |
 |--------|----------|
 | `deny` | Block the request/response |
+| `steer` | Raise error with guidance for correction and retry |
 | `allow` | Explicitly permit (override other controls) |
 | `warn` | Log a warning but allow |
 | `log` | Silent logging for monitoring |

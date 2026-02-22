@@ -1,4 +1,4 @@
-import { MultiSelect, Select, Stack, Switch, TagsInput } from '@mantine/core';
+import { MultiSelect, Select, Stack, Switch, TagsInput, TextInput } from '@mantine/core';
 
 import type {
   ControlActionDecision,
@@ -86,6 +86,7 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
         data={[
           { value: 'allow', label: 'Allow' },
           { value: 'deny', label: 'Deny' },
+          { value: 'steer', label: 'Steer' },
           { value: 'warn', label: 'Warn' },
           { value: 'log', label: 'Log' },
         ]}
@@ -98,6 +99,21 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
           )
         }
       />
+
+      {form.values.action_decision === 'steer' && (
+        <TextInput
+          label={
+            <LabelWithTooltip
+              label="Guidance"
+              tooltip="Optional correction message. If not provided, the evaluator message will be used."
+            />
+          }
+          labelProps={labelPropsInline}
+          placeholder="e.g., Please rephrase using respectful language"
+          size="sm"
+          {...form.getInputProps('action_guidance')}
+        />
+      )}
 
       <Select
         label={
