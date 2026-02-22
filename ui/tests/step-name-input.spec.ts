@@ -15,13 +15,13 @@ test.describe('Step Name Input', () => {
     await expect(modal.getByText('Regex')).toBeVisible();
   });
 
-  test('defaults to names mode with step names placeholder', async ({
+  test('defaults to names mode with step selector', async ({
     mockedPage,
   }) => {
     await openEvaluatorForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
-    const namesInput = modal.getByPlaceholder('search_db, fetch_user');
+    const namesInput = modal.getByPlaceholder('No steps available');
     await expect(namesInput).toBeVisible();
     await expect(modal.getByPlaceholder('^db_.*')).not.toBeVisible();
   });
@@ -32,15 +32,13 @@ test.describe('Step Name Input', () => {
     await openEvaluatorForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
-    await expect(modal.getByPlaceholder('search_db, fetch_user')).toBeVisible();
+    await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
 
     // Click the visible "Regex" label (switch is in ScrollArea and can be out of viewport)
     await modal.getByText('Regex', { exact: true }).click();
 
     await expect(modal.getByPlaceholder('^db_.*')).toBeVisible();
-    await expect(
-      modal.getByPlaceholder('search_db, fetch_user')
-    ).not.toBeVisible();
+    await expect(modal.getByPlaceholder('No steps available')).not.toBeVisible();
   });
 
   test('can type in regex field and value persists when toggling', async ({
@@ -58,21 +56,19 @@ test.describe('Step Name Input', () => {
 
     // Toggle off to names mode
     await modal.getByText('Regex', { exact: true }).click();
-    await expect(modal.getByPlaceholder('search_db, fetch_user')).toBeVisible();
+    await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
 
     // Toggle back to regex mode – value should still be there
     await modal.getByText('Regex', { exact: true }).click();
     await expect(modal.getByPlaceholder('^db_.*')).toHaveValue('^db_.*');
   });
 
-  test('can type in names field when in names mode', async ({ mockedPage }) => {
+  test('does not render free-text step name input', async ({ mockedPage }) => {
     await openEvaluatorForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
-    const namesInput = modal.getByPlaceholder('search_db, fetch_user');
-    await namesInput.fill('search_db, fetch_user');
-
-    await expect(namesInput).toHaveValue('search_db, fetch_user');
+    await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
+    await expect(modal.getByPlaceholder('search_db, fetch_user')).toHaveCount(0);
   });
 
   test('toggling Regex off shows names input and hides regex input', async ({
@@ -86,7 +82,7 @@ test.describe('Step Name Input', () => {
 
     await modal.getByText('Regex', { exact: true }).click();
 
-    await expect(modal.getByPlaceholder('search_db, fetch_user')).toBeVisible();
+    await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
     await expect(modal.getByPlaceholder('^db_.*')).not.toBeVisible();
   });
 });
