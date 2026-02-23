@@ -1,11 +1,4 @@
-import {
-  ActionIcon,
-  Badge,
-  Box,
-  Group,
-  Switch,
-  Text,
-} from '@mantine/core';
+import { ActionIcon, Badge, Box, Group, Switch, Text } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { IconPencil, IconTrash } from '@tabler/icons-react';

@@ -1,12 +1,4 @@
-import {
-  Alert,
-  Box,
-  Center,
-  Loader,
-  Paper,
-  Stack,
-  Text,
-} from '@mantine/core';
+import { Alert, Box, Center, Loader, Paper, Stack, Text } from '@mantine/core';
 import { Button, Table } from '@rungalileo/jupiter-ds';
 import { IconAlertCircle, IconInbox } from '@tabler/icons-react';
 import { type ColumnDef } from '@tanstack/react-table';
