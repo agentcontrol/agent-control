@@ -1629,6 +1629,12 @@ export interface components {
             tags?: string[];
             /** @description Agent using this control */
             used_by_agent?: components["schemas"]["AgentRef"] | null;
+            /**
+             * Used By Agents Count
+             * @description Number of unique agents using this control
+             * @default 0
+             */
+            used_by_agents_count: number;
         };
         /** CreateControlRequest */
         CreateControlRequest: {

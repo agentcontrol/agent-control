@@ -593,11 +593,13 @@ async def list_controls(
     if has_more:
         controls = controls[:-1]
 
-    # Build mapping of control_id -> agent that uses it
+    # Build mapping of control_id -> usage attribution
     # Traversal includes both:
     # - Control -> policy_controls -> agent_policies -> Agent
     # - Control -> agent_controls -> Agent
     control_agent_map: dict[int, AgentRef | None] = {ctrl.id: None for ctrl in controls}
+    control_agent_ids_map: dict[int, set[str]] = {ctrl.id: set() for ctrl in controls}
+    control_agent_repr_map: dict[int, tuple[str, str] | None] = {ctrl.id: None for ctrl in controls}
     if controls:
         control_ids = [ctrl.id for ctrl in controls]
         policy_agents_query = (
@@ -625,10 +627,16 @@ async def list_controls(
         agents_result = await db.execute(agents_query)
         for row in agents_result.all():
             control_id, agent_uuid, agent_name = row
-            # Take the first agent found (1 control = 1 agent)
-            if control_agent_map[control_id] is None:
+            agent_uuid_str = str(agent_uuid)
+            control_agent_ids_map[control_id].add(agent_uuid_str)
+
+            # Keep a deterministic representative agent for backward compatibility.
+            current_repr = control_agent_repr_map[control_id]
+            candidate_repr = (agent_name, agent_uuid_str)
+            if current_repr is None or candidate_repr < current_repr:
+                control_agent_repr_map[control_id] = candidate_repr
                 control_agent_map[control_id] = AgentRef(
-                    agent_id=str(agent_uuid), agent_name=agent_name
+                    agent_id=agent_uuid_str, agent_name=agent_name
                 )
 
     # Build summaries (filtering already done at DB level)
@@ -648,6 +656,7 @@ async def list_controls(
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
                 used_by_agent=control_agent_map.get(ctrl.id),
+                used_by_agents_count=len(control_agent_ids_map.get(ctrl.id, set())),
             )
         )
 

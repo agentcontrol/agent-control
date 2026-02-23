@@ -1,5 +1,4 @@
 import {
-  Anchor,
   Box,
   Divider,
   Group,
@@ -16,16 +15,11 @@ import { notifications } from '@mantine/notifications';
 import { Button, Table } from '@rungalileo/jupiter-ds';
 import { IconAlertCircle, IconX } from '@tabler/icons-react';
 import { type ColumnDef } from '@tanstack/react-table';
-import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
 import { api } from '@/core/api/client';
-import type {
-  AgentRef,
-  ControlDefinition,
-  ControlSummary,
-} from '@/core/api/types';
+import type { ControlDefinition, ControlSummary } from '@/core/api/types';
 import { SearchInput } from '@/core/components/search-input';
 import { MODAL_NAMES, SUBMODAL_NAMES } from '@/core/constants/modal-routes';
 import { useControlsInfinite } from '@/core/hooks/query-hooks/use-controls-infinite';
@@ -36,11 +30,6 @@ import { useQueryParam } from '@/core/hooks/use-query-param';
 import { AddNewControlModal } from '../add-new-control';
 import { EditControlContent } from '../edit-control/edit-control-content';
 import { sanitizeControlNamePart } from '../edit-control/utils';
-
-// Extended ControlSummary with used_by_agent (until API types are regenerated)
-type ControlSummaryWithAgent = ControlSummary & {
-  used_by_agent?: AgentRef | null;
-};
 
 type ControlStoreModalProps = {
   opened: boolean;
@@ -276,33 +265,21 @@ export function ControlStoreModal({
     },
     {
       id: 'agent',
-      header: 'Agent',
+      header: 'Used by',
       size: 150,
       cell: ({ row }) => {
-        const agent = (row.original as ControlSummaryWithAgent).used_by_agent;
-        const control = row.original;
-        if (!agent) {
+        const count = row.original.used_by_agents_count ?? 0;
+        if (count === 0) {
           return (
             <Text size="sm" c="dimmed">
               —
             </Text>
           );
         }
-        // Link to agent controls tab with control name filter
-        const href = `/agents/${agent.agent_id}/controls?q=${encodeURIComponent(control.name)}`;
         return (
-          <Anchor
-            component={Link}
-            href={href}
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              // Close modal when navigating to agent page
-              onClose();
-            }}
-          >
-            {agent.agent_name}
-          </Anchor>
+          <Text size="sm" c="dimmed">
+            {count} {count === 1 ? 'agent' : 'agents'}
+          </Text>
         );
       },
     },

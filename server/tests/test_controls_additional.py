@@ -6,15 +6,12 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-
-from agent_control_server.models import Control
-
 from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_server.endpoints import controls as controls_module
 from agent_control_server.models import Control
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -30,6 +27,24 @@ def _create_control(client: TestClient, name: str | None = None) -> tuple[int, s
 def _set_control_data(client: TestClient, control_id: int, data: dict) -> None:
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": data})
     assert resp.status_code == 200, resp.text
+
+
+def _init_agent(client: TestClient, name: str | None = None) -> str:
+    agent_id = str(uuid.uuid4())
+    payload = {
+        "agent": {
+            "agent_id": agent_id,
+            "agent_name": name or f"agent-{uuid.uuid4()}",
+            "agent_description": "test",
+            "agent_version": "1.0",
+            "agent_metadata": {},
+        },
+        "steps": [],
+        "evaluators": [],
+    }
+    resp = client.post("/api/v1/agents/initAgent", json=payload)
+    assert resp.status_code == 200
+    return agent_id
 
 
 def test_list_controls_filters_and_pagination(client: TestClient) -> None:
@@ -124,6 +139,40 @@ def test_list_controls_filters_and_pagination(client: TestClient) -> None:
     page2 = resp2.json()
     # Then: the next page has a different item
     assert page2["controls"][0]["id"] != first_id
+
+
+def test_list_controls_includes_unique_used_by_agents_count(client: TestClient) -> None:
+    # Given: one control linked to two agents via policy and one duplicated direct link
+    control_id, control_name = _create_control(client, name=f"CountedControl-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    policy_resp = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
+    assert policy_resp.status_code == 200
+    policy_id = policy_resp.json()["policy_id"]
+
+    assoc_control = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert assoc_control.status_code == 200
+
+    agent_a_id = _init_agent(client, name=f"agent-a-{uuid.uuid4()}")
+    agent_b_id = _init_agent(client, name=f"agent-b-{uuid.uuid4()}")
+
+    assoc_policy_a = client.post(f"/api/v1/agents/{agent_a_id}/policies/{policy_id}")
+    assoc_policy_b = client.post(f"/api/v1/agents/{agent_b_id}/policies/{policy_id}")
+    assert assoc_policy_a.status_code == 200
+    assert assoc_policy_b.status_code == 200
+
+    # Duplicate path for agent A: direct + policy should still count as one unique agent
+    assoc_direct_a = client.post(f"/api/v1/agents/{agent_a_id}/controls/{control_id}")
+    assert assoc_direct_a.status_code == 200
+
+    # When: listing controls
+    list_resp = client.get("/api/v1/controls", params={"name": control_name})
+    assert list_resp.status_code == 200
+    controls = list_resp.json()["controls"]
+    assert len(controls) == 1
+
+    # Then: used-by count is de-duplicated at agent level
+    assert controls[0]["used_by_agents_count"] == 2
 
 
 def test_patch_control_enabled_requires_data(client: TestClient) -> None:
@@ -239,7 +288,9 @@ def test_list_controls_enabled_true_includes_missing_enabled(client: TestClient)
     # Given: controls with enabled true, enabled false, and missing enabled
     control_true_id, control_true_name = _create_control(client, name=f"Enabled-{uuid.uuid4()}")
     control_false_id, control_false_name = _create_control(client, name=f"Disabled-{uuid.uuid4()}")
-    control_missing_id, control_missing_name = _create_control(client, name=f"Missing-{uuid.uuid4()}")
+    control_missing_id, control_missing_name = _create_control(
+        client, name=f"Missing-{uuid.uuid4()}"
+    )
 
     data_true = deepcopy(VALID_CONTROL_PAYLOAD)
     data_true["enabled"] = True

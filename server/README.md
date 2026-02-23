@@ -155,32 +155,45 @@ GET /api/v1/evaluators
 
 ```bash
 # Register or update agent
-POST /api/v1/agents/init
-Body: { "agent": {...}, "tools": [...], "force_replace": false }
+POST /api/v1/agents/initAgent
+Body: { "agent": {...}, "steps": [...], "evaluators": [...], "force_replace": false }
 
 # Get agent
 GET /api/v1/agents/{agent_id}
 
-# List controls for agent (based on assigned policy)
+# List active controls for agent (union of policy-derived + direct agent controls)
 GET /api/v1/agents/{agent_id}/controls
+
+# Add/remove policy associations on agent (many-to-many)
+POST /api/v1/agents/{agent_id}/policies/{policy_id}
+GET /api/v1/agents/{agent_id}/policies
+DELETE /api/v1/agents/{agent_id}/policies/{policy_id}
+DELETE /api/v1/agents/{agent_id}/policies
+
+# Add/remove direct control associations on agent (many-to-many)
+POST /api/v1/agents/{agent_id}/controls/{control_id}
+DELETE /api/v1/agents/{agent_id}/controls/{control_id}
 ```
 
 ### Control Management
 
 ```bash
 # Create control
-POST /api/v1/controls
-Body: { "control": {...} }
+PUT /api/v1/controls
+Body: { "name": "my-control" }
 
 # List controls
-GET /api/v1/controls?skip=0&limit=100
+GET /api/v1/controls?limit=100
 
 # Get control
 GET /api/v1/controls/{control_id}
 
-# Update control
-PUT /api/v1/controls/{control_id}
-Body: { "control": {...} }
+# Update control metadata
+PATCH /api/v1/controls/{control_id}
+
+# Set control data
+PUT /api/v1/controls/{control_id}/data
+Body: { "data": {...} }
 
 # Delete control
 DELETE /api/v1/controls/{control_id}
@@ -190,17 +203,17 @@ DELETE /api/v1/controls/{control_id}
 
 ```bash
 # Create policy
-POST /api/v1/policies
-Body: { "name": "my-policy", "description": "..." }
-
-# List policies
-GET /api/v1/policies
-
-# Assign policy to agent
-POST /api/v1/policies/{policy_id}/agents/{agent_id}
+PUT /api/v1/policies
+Body: { "name": "my-policy" }
 
 # Add control to policy
 POST /api/v1/policies/{policy_id}/controls/{control_id}
+
+# Remove control from policy
+DELETE /api/v1/policies/{policy_id}/controls/{control_id}
+
+# List policy controls
+GET /api/v1/policies/{policy_id}/controls
 ```
 
 ### Evaluation

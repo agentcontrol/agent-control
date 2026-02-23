@@ -352,7 +352,7 @@ async def init_agent(
         db: Database session (injected)
 
     Returns:
-        InitAgentResponse with created flag and active controls (if policy assigned)
+        InitAgentResponse with created flag and active controls
 
     Raises:
         HTTPException 409: Agent name exists with different UUID

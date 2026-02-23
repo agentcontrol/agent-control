@@ -273,6 +273,10 @@ class ControlSummary(BaseModel):
     stages: list[str] | None = Field(None, description="Evaluation stages in scope")
     tags: list[str] = Field(default_factory=list, description="Control tags")
     used_by_agent: AgentRef | None = Field(None, description="Agent using this control")
+    # TODO: Follow-up with full `used_by_agents` list for richer attribution.
+    used_by_agents_count: int = Field(
+        0, description="Number of unique agents using this control"
+    )
 
 
 class ListControlsResponse(BaseModel):

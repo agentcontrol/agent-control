@@ -147,9 +147,7 @@ const controlsResponse: AgentControlsResponse = {
 };
 
 // Control summaries for GET /api/v1/controls (list all controls)
-const controlSummariesList: (ControlSummary & {
-  used_by_agent?: { agent_id: string; agent_name: string } | null;
-})[] = [
+const controlSummariesList: ControlSummary[] = [
   {
     id: 1,
     name: 'PII Detection',
@@ -160,6 +158,7 @@ const controlSummariesList: (ControlSummary & {
     stages: ['post'],
     tags: ['pii', 'compliance'],
     used_by_agent: { agent_id: 'agent-1', agent_name: 'Customer Support Bot' },
+    used_by_agents_count: 1,
   },
   {
     id: 2,
@@ -171,6 +170,7 @@ const controlSummariesList: (ControlSummary & {
     stages: ['pre'],
     tags: ['security'],
     used_by_agent: { agent_id: 'agent-2', agent_name: 'Data Analysis Agent' },
+    used_by_agents_count: 1,
   },
   {
     id: 3,
@@ -182,6 +182,7 @@ const controlSummariesList: (ControlSummary & {
     stages: ['pre'],
     tags: [],
     used_by_agent: null,
+    used_by_agents_count: 0,
   },
 ];
 
