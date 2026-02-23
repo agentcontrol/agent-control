@@ -70,7 +70,7 @@ export class Agents extends ClientSDK {
    *     db: Database session (injected)
    *
    * Returns:
-   *     InitAgentResponse with created flag and active controls (if policy assigned)
+   *     InitAgentResponse with created flag and active controls
    *
    * Raises:
    *     HTTPException 409: Agent name exists with different UUID
@@ -188,7 +188,7 @@ export class Agents extends ClientSDK {
     request:
       operations.RemoveAgentControlApiV1AgentsAgentIdControlsControlIdDeleteRequest,
     options?: RequestOptions,
-  ): Promise<models.AssocResponse> {
+  ): Promise<models.RemoveAgentControlResponse> {
     return unwrapAsync(agentsRemoveControl(
       this,
       request,

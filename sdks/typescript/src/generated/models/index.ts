@@ -53,6 +53,7 @@ export * from "./patch-agent-request.js";
 export * from "./patch-agent-response.js";
 export * from "./patch-control-request.js";
 export * from "./patch-control-response.js";
+export * from "./remove-agent-control-response.js";
 export * from "./security.js";
 export * from "./set-control-data-request.js";
 export * from "./set-control-data-response.js";

@@ -40,7 +40,7 @@ export function agentsRemoveControl(
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.AssocResponse,
+    models.RemoveAgentControlResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -67,7 +67,7 @@ async function $do(
 ): Promise<
   [
     Result<
-      models.AssocResponse,
+      models.RemoveAgentControlResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -167,7 +167,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.AssocResponse,
+    models.RemoveAgentControlResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -178,7 +178,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.AssocResponse$inboundSchema),
+    M.json(200, models.RemoveAgentControlResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

@@ -63,7 +63,7 @@ export interface paths {
          *         db: Database session (injected)
          *
          *     Returns:
-         *         InitAgentResponse with created flag and active controls (if policy assigned)
+         *         InitAgentResponse with created flag and active controls
          *
          *     Raises:
          *         HTTPException 409: Agent name exists with different UUID
@@ -2501,6 +2501,27 @@ export interface components {
             success: boolean;
         };
         /**
+         * RemoveAgentControlResponse
+         * @description Response for removing a direct agent-control association.
+         */
+        RemoveAgentControlResponse: {
+            /**
+             * Control Still Active
+             * @description True if the control remains active via policy association(s)
+             */
+            control_still_active: boolean;
+            /**
+             * Removed Direct Association
+             * @description True if a direct agent-control link was removed
+             */
+            removed_direct_association: boolean;
+            /**
+             * Success
+             * @description Whether the request succeeded
+             */
+            success: boolean;
+        };
+        /**
          * SetControlDataRequest
          * @description Request to update control configuration data.
          */
@@ -3059,7 +3080,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssocResponse"];
+                    "application/json": components["schemas"]["RemoveAgentControlResponse"];
                 };
             };
             /** @description Validation Error */
