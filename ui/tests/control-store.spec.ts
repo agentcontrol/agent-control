@@ -48,7 +48,7 @@ test.describe('Control Store Modal', () => {
     ).toBeVisible();
     // Status dot column has no header text, so we skip checking for it
     await expect(
-      modal.getByRole('columnheader', { name: 'Agent' })
+      modal.getByRole('columnheader', { name: 'Used by' })
     ).toBeVisible();
 
     for (const control of mockData.listControls.controls) {
@@ -58,19 +58,17 @@ test.describe('Control Store Modal', () => {
     }
   });
 
-  test('displays agent links in Agent column', async ({ mockedPage }) => {
+  test('displays usage counts in Used by column', async ({ mockedPage }) => {
     const modal = await openControlStoreModal(mockedPage);
 
-    // PII Detection is used by Customer Support Bot
-    const agentLink = modal
-      .getByRole('link', { name: 'Customer Support Bot' })
-      .first();
-    await expect(agentLink).toBeVisible();
-    // Link includes query param to filter by control name
-    await expect(agentLink).toHaveAttribute(
-      'href',
-      '/agents/agent-1/controls?q=PII%20Detection'
-    );
+    // Two controls are used by one agent each in fixture data
+    await expect(modal.getByText('1 agent')).toHaveCount(2);
+    // One control has no usage and renders as an em dash
+    await expect(modal.getByText('—')).toBeVisible();
+    // Agent links are no longer rendered in this column
+    await expect(
+      modal.getByRole('link', { name: 'Customer Support Bot' })
+    ).toHaveCount(0);
   });
 
   test('can search for controls', async ({ mockedPage }) => {
