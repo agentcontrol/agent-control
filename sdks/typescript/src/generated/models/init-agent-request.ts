@@ -5,6 +5,7 @@
 import * as z from "zod/v4-mini";
 import { remap as remap$ } from "../lib/primitives.js";
 import { Agent, Agent$Outbound, Agent$outboundSchema } from "./agent.js";
+import { ConflictMode, ConflictMode$outboundSchema } from "./conflict-mode.js";
 import {
   EvaluatorSchema,
   EvaluatorSchema$Outbound,
@@ -30,6 +31,10 @@ export type InitAgentRequest = {
    */
   agent: Agent;
   /**
+   * Conflict handling mode for agent registration updates.
+   */
+  conflictMode?: ConflictMode | undefined;
+  /**
    * Custom evaluator schemas for config validation
    */
   evaluators?: Array<EvaluatorSchema> | undefined;
@@ -46,6 +51,7 @@ export type InitAgentRequest = {
 /** @internal */
 export type InitAgentRequest$Outbound = {
   agent: Agent$Outbound;
+  conflict_mode?: string | undefined;
   evaluators?: Array<EvaluatorSchema$Outbound> | undefined;
   force_replace: boolean;
   steps?: Array<StepSchema$Outbound> | undefined;
@@ -58,12 +64,14 @@ export const InitAgentRequest$outboundSchema: z.ZodMiniType<
 > = z.pipe(
   z.object({
     agent: Agent$outboundSchema,
+    conflictMode: z._default(z.optional(ConflictMode$outboundSchema), "overwrite"),
     evaluators: z.optional(z.array(EvaluatorSchema$outboundSchema)),
     forceReplace: z._default(z.boolean(), false),
     steps: z.optional(z.array(StepSchema$outboundSchema)),
   }),
   z.transform((v) => {
     return remap$(v, {
+      conflictMode: "conflict_mode",
       forceReplace: "force_replace",
     });
   }),

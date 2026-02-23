@@ -69,4 +69,11 @@ if [[ -f "${REGISTRATION_FILE}" ]]; then
   perl -0pi -e 's/@ts-expect-error/@ts-ignore/g' "${REGISTRATION_FILE}"
 fi
 
+# Default initAgent conflict mode to overwrite for SDK ergonomics while
+# keeping server-side API default as strict.
+INIT_REQUEST_MODEL="${GENERATED_DIR}/models/init-agent-request.ts"
+if [[ -f "${INIT_REQUEST_MODEL}" ]]; then
+  perl -0pi -e 's/conflictMode: z\.optional\(ConflictMode\$outboundSchema\),/conflictMode: z._default(z.optional(ConflictMode\$outboundSchema), "overwrite"),/g' "${INIT_REQUEST_MODEL}"
+fi
+
 echo "Generated TypeScript client copied to ${GENERATED_DIR}"

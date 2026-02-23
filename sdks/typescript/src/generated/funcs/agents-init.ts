@@ -34,12 +34,13 @@ import { Result } from "../types/fp.js";
  *
  * This endpoint is idempotent:
  * - If the agent name doesn't exist, creates a new agent
- * - If the agent name exists with the same UUID, updates step schemas
+ * - If the agent name exists with the same UUID, updates registration data
  * - If the agent name exists with a different UUID, returns 409 Conflict
  * - If the UUID exists with a different name, returns 409 Conflict (no renames)
  *
- * Step versioning: When step schemas change (input_schema or output_schema),
- * a new version is created automatically.
+ * conflict_mode controls registration conflict handling:
+ * - strict (default): preserve compatibility checks and conflict errors
+ * - overwrite: latest init payload replaces steps/evaluators and returns change summary
  *
  * Args:
  *     request: Agent metadata and step schemas
