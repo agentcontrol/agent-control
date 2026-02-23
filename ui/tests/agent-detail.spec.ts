@@ -381,6 +381,92 @@ test.describe('Agent Detail Page', () => {
     await expect(mockedPage).toHaveURL(/.*\?modal=edit&controlId=\d+/);
   });
 
+  test('deletes control when delete is confirmed', async ({ mockedPage }) => {
+    // Agent controls: first GET returns full list, refetch after delete returns list without Rate Limiter
+    let agentControlsCallCount = 0;
+    await mockedPage.route(
+      '**/api/v1/agents/*/controls',
+      async (route, request) => {
+        if (request.method() !== 'GET') {
+          await route.continue();
+          return;
+        }
+        agentControlsCallCount += 1;
+        const controls =
+          agentControlsCallCount <= 1
+            ? mockData.controls.controls
+            : mockData.controls.controls.filter((c) => c.id !== 3);
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ controls }),
+        });
+      }
+    );
+
+    await mockedPage.route(
+      '**/api/v1/controls/*',
+      async (route, request) => {
+        if (request.method() === 'DELETE') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true }),
+          });
+        } else {
+          await route.continue();
+        }
+      }
+    );
+
+    await mockedPage.goto(agentUrl);
+
+    await mockedPage.getByRole('tab', { name: 'Controls' }).click();
+
+    const controlsPanel = mockedPage.getByRole('tabpanel', {
+      name: /Controls/i,
+    });
+    await expect(controlsPanel.getByRole('table')).toBeVisible();
+
+    const targetRow = controlsPanel.locator('tr', {
+      hasText: 'Rate Limiter',
+    });
+    await targetRow.scrollIntoViewIfNeeded();
+
+    const deleteButton = targetRow.getByRole('button', {
+      name: 'Delete control',
+    });
+    await deleteButton.click();
+
+    const confirmModal = mockedPage.getByRole('dialog', {
+      name: /Delete control\?/i,
+    });
+    await expect(confirmModal).toBeVisible();
+    await expect(
+      confirmModal.getByText(/This action cannot be undone/)
+    ).toBeVisible();
+
+    const deleteRequest = mockedPage.waitForRequest(
+      (request) =>
+        request.method() === 'DELETE' &&
+        /\/api\/v1\/controls\/\d+/.test(request.url()),
+      { timeout: 5000 }
+    );
+
+    await confirmModal.getByRole('button', { name: 'Delete' }).click();
+
+    const request = await deleteRequest;
+    expect(request.url()).toMatch(/\/api\/v1\/controls\/\d+/);
+    expect(request.method()).toBe('DELETE');
+
+    await expect(confirmModal).not.toBeVisible({ timeout: 5000 });
+
+    // Refetched list should not contain the deleted control
+    await expect(controlsPanel.getByText('Rate Limiter')).not.toBeVisible();
+    await expect(controlsPanel.getByText('PII Detection')).toBeVisible();
+    await expect(controlsPanel.getByText('SQL Injection Guard')).toBeVisible();
+  });
+
   test('edit control modal pre-fills scope and execution fields', async ({
     mockedPage,
   }) => {
