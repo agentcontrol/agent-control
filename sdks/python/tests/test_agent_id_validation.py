@@ -1,10 +1,10 @@
 """SDK agent_id validation behavior tests."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import agent_control
 import pytest
-
 from agent_control import agents, policies
 
 
@@ -88,3 +88,19 @@ async def test_get_agent_accepts_uuid_object() -> None:
     await agents.get_agent(client, agent_id)
 
     client.http_client.get.assert_awaited_once_with(f"/api/v1/agents/{agent_id}")
+
+
+@pytest.mark.asyncio
+async def test_clear_agent_policies_calls_agents_module() -> None:
+    agent_id = uuid4()
+
+    with patch(
+        "agent_control.__init__.agents.remove_agent_policies", new_callable=AsyncMock
+    ) as mock_remove:
+        mock_remove.return_value = {"success": True}
+
+        result = await agent_control.clear_agent_policies(agent_id)
+
+    assert result == {"success": True}
+    assert mock_remove.await_count == 1
+    assert mock_remove.await_args.args[1] == agent_id

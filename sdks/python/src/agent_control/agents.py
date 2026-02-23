@@ -201,7 +201,9 @@ async def remove_agent_policy_association(
     """
     Remove a specific policy association from an agent.
 
-    This operation is idempotent.
+    This operation is idempotent for existing agent/policy resources:
+    removing a non-associated link is a no-op. Missing agent/policy
+    resources still return 404.
     """
     agent_id_str = ensure_uuid_str(agent_id)
     response = await client.http_client.delete(

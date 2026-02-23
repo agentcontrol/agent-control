@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete, func, or_, select, union_all
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
@@ -797,8 +798,6 @@ async def add_agent_policy(
         )
 
     try:
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-
         stmt = (
             pg_insert(agent_policies)
             .values(agent_uuid=agent_id, policy_id=policy_id)
@@ -852,7 +851,11 @@ async def get_agent_policies(
 async def remove_agent_policy(
     agent_id: UUID, policy_id: int, db: AsyncSession = Depends(get_async_db)
 ) -> AssocResponse:
-    """Remove a policy association from an agent (idempotent)."""
+    """Remove a policy association from an agent.
+
+    Idempotent for existing resources: removing a non-associated link is a no-op.
+    Missing agent/policy resources still return 404.
+    """
     await _get_agent_or_404(agent_id, db)
 
     policy_result = await db.execute(select(Policy.id).where(Policy.id == policy_id))
@@ -962,8 +965,6 @@ async def add_agent_control(
         )
 
     try:
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-
         stmt = (
             pg_insert(agent_controls)
             .values(agent_uuid=agent_id, control_id=control_id)
@@ -1012,23 +1013,16 @@ async def remove_agent_control(
         )
 
     try:
-        direct_assoc_result = await db.execute(
-            select(agent_controls.c.control_id)
+        remove_direct_stmt = (
+            delete(agent_controls)
             .where(
                 (agent_controls.c.agent_uuid == agent_id)
                 & (agent_controls.c.control_id == control_id)
             )
-            .limit(1)
+            .returning(agent_controls.c.control_id)
         )
-        removed_direct_association = direct_assoc_result.first() is not None
-
-        if removed_direct_association:
-            await db.execute(
-                delete(agent_controls).where(
-                    (agent_controls.c.agent_uuid == agent_id)
-                    & (agent_controls.c.control_id == control_id)
-                )
-            )
+        remove_direct_result = await db.execute(remove_direct_stmt)
+        removed_direct_association = remove_direct_result.first() is not None
 
         # The control may still be active for this agent if inherited from policy association(s).
         policy_inheritance_result = await db.execute(

@@ -277,6 +277,39 @@ def test_set_agent_policy_incompatible_controls(client: TestClient) -> None:
     assert resp.json()["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
 
 
+def test_add_agent_control_incompatible_with_agent_returns_400(client: TestClient) -> None:
+    # Given: Agent A exposes a custom evaluator
+    evaluators = [
+        {
+            "name": "custom",
+            "description": "custom",
+            "config_schema": {"type": "object", "properties": {}, "additionalProperties": True},
+        }
+    ]
+    _, agent_a_name = _init_agent(client, evaluators=evaluators)
+
+    # And: control references Agent A's evaluator
+    control_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    control_payload["evaluator"] = {
+        "name": f"{agent_a_name}:custom",
+        "config": {},
+    }
+    control_id = _create_control_with_data(client, control_payload)
+
+    # And: Agent B does not expose that evaluator
+    agent_b_id, _ = _init_agent(client)
+
+    # When: associating the control directly with Agent B
+    resp = client.post(f"/api/v1/agents/{agent_b_id}/controls/{control_id}")
+
+    # Then: validation fails with compatibility error
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert body["errors"]
+    assert all(err.get("field") == "evaluator" for err in body["errors"])
+
+
 def test_init_agent_rejects_builtin_evaluator_name(client: TestClient) -> None:
     # Given: a payload that registers an evaluator matching a built-in name
     payload = {
@@ -543,6 +576,61 @@ def test_delete_agent_policy_no_policy_assigned_is_idempotent(client: TestClient
     # Then: deletion is idempotent
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+
+
+def test_remove_agent_policy_removes_only_target_association(client: TestClient) -> None:
+    # Given: an agent associated with two policies
+    agent_id, _ = _init_agent(client)
+    policy_a_id = _create_policy(client)
+    policy_b_id = _create_policy(client)
+
+    assoc_a = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_a_id}")
+    assert assoc_a.status_code == 200
+    assoc_b = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_b_id}")
+    assert assoc_b.status_code == 200
+
+    # When: removing one specific policy association
+    remove_resp = client.delete(f"/api/v1/agents/{agent_id}/policies/{policy_a_id}")
+
+    # Then: only that policy association is removed
+    assert remove_resp.status_code == 200
+    assert remove_resp.json()["success"] is True
+    get_resp = client.get(f"/api/v1/agents/{agent_id}/policies")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["policy_ids"] == [policy_b_id]
+
+
+def test_remove_agent_policy_non_associated_existing_policy_is_noop(client: TestClient) -> None:
+    # Given: an agent associated with policy A, but policy B exists and is not associated
+    agent_id, _ = _init_agent(client)
+    policy_a_id = _create_policy(client)
+    policy_b_id = _create_policy(client)
+
+    assoc_a = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_a_id}")
+    assert assoc_a.status_code == 200
+
+    # When: removing non-associated policy B
+    remove_resp = client.delete(f"/api/v1/agents/{agent_id}/policies/{policy_b_id}")
+
+    # Then: operation succeeds and existing association remains
+    assert remove_resp.status_code == 200
+    assert remove_resp.json()["success"] is True
+    get_resp = client.get(f"/api/v1/agents/{agent_id}/policies")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["policy_ids"] == [policy_a_id]
+
+
+def test_remove_agent_policy_missing_policy_returns_404(client: TestClient) -> None:
+    # Given: an existing agent and a non-existent policy id
+    agent_id, _ = _init_agent(client)
+    missing_policy_id = 999999999
+
+    # When: removing a missing policy association
+    resp = client.delete(f"/api/v1/agents/{agent_id}/policies/{missing_policy_id}")
+
+    # Then: policy not found error is returned
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "POLICY_NOT_FOUND"
 
 
 def test_list_agents_corrupted_data_sets_zero_counts(client: TestClient) -> None:
