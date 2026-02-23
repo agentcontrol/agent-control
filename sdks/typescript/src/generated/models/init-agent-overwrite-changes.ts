@@ -8,12 +8,20 @@ import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
+import {
+  InitAgentEvaluatorRemoval,
+  InitAgentEvaluatorRemoval$inboundSchema,
+} from "./init-agent-evaluator-removal.js";
 import { StepKey, StepKey$inboundSchema } from "./step-key.js";
 
 /**
  * Detailed change summary for initAgent overwrite mode.
  */
 export type InitAgentOverwriteChanges = {
+  /**
+   * Per-evaluator removal details, including active control references
+   */
+  evaluatorRemovals?: Array<InitAgentEvaluatorRemoval> | undefined;
   /**
    * Evaluator names added by overwrite
    */
@@ -50,6 +58,9 @@ export const InitAgentOverwriteChanges$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
+    evaluator_removals: types.optional(
+      z.array(InitAgentEvaluatorRemoval$inboundSchema),
+    ),
     evaluators_added: types.optional(z.array(types.string())),
     evaluators_removed: types.optional(z.array(types.string())),
     evaluators_updated: types.optional(z.array(types.string())),
@@ -60,6 +71,7 @@ export const InitAgentOverwriteChanges$inboundSchema: z.ZodMiniType<
   }),
   z.transform((v) => {
     return remap$(v, {
+      "evaluator_removals": "evaluatorRemovals",
       "evaluators_added": "evaluatorsAdded",
       "evaluators_removed": "evaluatorsRemoved",
       "evaluators_updated": "evaluatorsUpdated",

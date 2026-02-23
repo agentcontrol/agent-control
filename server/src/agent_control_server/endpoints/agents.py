@@ -13,11 +13,10 @@ from agent_control_models.server import (
     EvaluatorSchema,
     GetAgentResponse,
     GetPolicyResponse,
+    InitAgentEvaluatorRemoval,
     InitAgentOverwriteChanges,
-    InitAgentOverwriteWarningCode,
     InitAgentRequest,
     InitAgentResponse,
-    InitAgentWarning,
     ListAgentsResponse,
     PaginationInfo,
     PatchAgentRequest,
@@ -172,14 +171,14 @@ def _step_key_model(step_key: StepKeyTuple) -> StepKey:
     return StepKey(type=step_type, name=step_name)
 
 
-async def _build_overwrite_evaluator_reference_warnings(
+async def _build_overwrite_evaluator_removals(
     agent: Agent,
     removed_evaluators: set[str],
     db: AsyncSession,
-) -> list[InitAgentWarning]:
-    """Build non-fatal warnings for removed evaluators still referenced by controls."""
+) -> list[InitAgentEvaluatorRemoval]:
+    """Build evaluator removal details, including active-control references."""
     if not removed_evaluators or agent.policy_id is None:
-        return []
+        return [InitAgentEvaluatorRemoval(name=name) for name in sorted(removed_evaluators)]
 
     try:
         controls = await list_controls_for_agent(
@@ -189,11 +188,12 @@ async def _build_overwrite_evaluator_reference_warnings(
         )
     except APIValidationError:
         _logger.warning(
-            "Skipping overwrite warning generation for agent '%s' due to invalid control data",
+            "Skipping evaluator removal reference checks for agent '%s' "
+            "due to invalid control data",
             agent.name,
             exc_info=True,
         )
-        return []
+        return [InitAgentEvaluatorRemoval(name=name) for name in sorted(removed_evaluators)]
 
     references_by_evaluator: dict[str, list[tuple[int, str]]] = {}
     for control in controls:
@@ -207,26 +207,20 @@ async def _build_overwrite_evaluator_reference_warnings(
             continue
         references_by_evaluator.setdefault(parsed.local_name, []).append((control.id, control.name))
 
-    warnings: list[InitAgentWarning] = []
+    removal_by_name: dict[str, InitAgentEvaluatorRemoval] = {}
     for evaluator_name in sorted(references_by_evaluator):
         references = references_by_evaluator[evaluator_name]
-        warnings.append(
-            InitAgentWarning(
-                code=InitAgentOverwriteWarningCode.EVALUATOR_REMOVED_BUT_REFERENCED,
-                message=(
-                    f"Evaluator '{evaluator_name}' was removed by overwrite mode "
-                    f"but is referenced by {len(references)} active control(s)."
-                ),
-                details={
-                    "evaluator": evaluator_name,
-                    "policy_id": agent.policy_id,
-                    "control_ids": [control_id for control_id, _ in references],
-                    "control_names": [control_name for _, control_name in references],
-                },
-            )
+        removal_by_name[evaluator_name] = InitAgentEvaluatorRemoval(
+            name=evaluator_name,
+            referenced_by_active_controls=True,
+            control_ids=[control_id for control_id, _ in references],
+            control_names=[control_name for _, control_name in references],
         )
 
-    return warnings
+    return [
+        removal_by_name.get(evaluator_name, InitAgentEvaluatorRemoval(name=evaluator_name))
+        for evaluator_name in sorted(removed_evaluators)
+    ]
 
 
 @router.get(
@@ -593,7 +587,6 @@ async def init_agent(
     force_write = request.force_replace  # Always persist when force_replace=true
     overwrite_applied = False
     overwrite_changes = InitAgentOverwriteChanges()
-    warnings: list[InitAgentWarning] = []
 
     # --- Update agent metadata ---
     new_metadata = request.agent.model_dump(mode="json")
@@ -642,8 +635,9 @@ async def init_agent(
             )
         )
 
+        evaluator_removals: list[InitAgentEvaluatorRemoval] = []
         if evaluators_removed_names:
-            warnings = await _build_overwrite_evaluator_reference_warnings(
+            evaluator_removals = await _build_overwrite_evaluator_removals(
                 existing,
                 set(evaluators_removed_names),
                 db,
@@ -657,6 +651,7 @@ async def init_agent(
             evaluators_added=evaluators_added_names,
             evaluators_updated=evaluators_updated_names,
             evaluators_removed=evaluators_removed_names,
+            evaluator_removals=evaluator_removals,
         )
 
         steps_changed = bool(steps_added_keys or steps_updated_keys or steps_removed_keys)
@@ -811,7 +806,6 @@ async def init_agent(
         controls=controls,
         overwrite_applied=overwrite_applied,
         overwrite_changes=overwrite_changes,
-        warnings=warnings,
     )
 
 

@@ -13,10 +13,6 @@ import {
   InitAgentOverwriteChanges,
   InitAgentOverwriteChanges$inboundSchema,
 } from "./init-agent-overwrite-changes.js";
-import {
-  InitAgentWarning,
-  InitAgentWarning$inboundSchema,
-} from "./init-agent-warning.js";
 
 /**
  * Response from agent initialization.
@@ -38,10 +34,6 @@ export type InitAgentResponse = {
    * Detailed change summary for initAgent overwrite mode.
    */
   overwriteChanges?: InitAgentOverwriteChanges | undefined;
-  /**
-   * Non-fatal warnings generated during initialization
-   */
-  warnings?: Array<InitAgentWarning> | undefined;
 };
 
 /** @internal */
@@ -54,7 +46,6 @@ export const InitAgentResponse$inboundSchema: z.ZodMiniType<
     created: types.boolean(),
     overwrite_applied: z._default(types.boolean(), false),
     overwrite_changes: types.optional(InitAgentOverwriteChanges$inboundSchema),
-    warnings: types.optional(z.array(InitAgentWarning$inboundSchema)),
   }),
   z.transform((v) => {
     return remap$(v, {

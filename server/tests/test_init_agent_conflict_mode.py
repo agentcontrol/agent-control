@@ -132,7 +132,6 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
 
     assert body["created"] is False
     assert body["overwrite_applied"] is True
-    assert body["warnings"] == []
 
     changes = body["overwrite_changes"]
     assert changes["metadata_changed"] is True
@@ -142,6 +141,14 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
     assert changes["evaluators_added"] == ["eval-c"]
     assert changes["evaluators_updated"] == ["eval-a"]
     assert changes["evaluators_removed"] == ["eval-b"]
+    assert changes["evaluator_removals"] == [
+        {
+            "name": "eval-b",
+            "referenced_by_active_controls": False,
+            "control_ids": [],
+            "control_names": [],
+        }
+    ]
 
     get_resp = client.get(f"/api/v1/agents/{agent_id}")
     assert get_resp.status_code == 200
@@ -186,16 +193,14 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
 
     assert body["overwrite_applied"] is True
     assert body["overwrite_changes"]["evaluators_removed"] == [evaluator_name]
-
-    warnings = body["warnings"]
-    assert len(warnings) == 1
-    warning = warnings[0]
-    assert warning["code"] == "EVALUATOR_REMOVED_BUT_REFERENCED"
-    assert evaluator_name in warning["message"]
-    assert warning["details"]["evaluator"] == evaluator_name
-    assert warning["details"]["policy_id"] == policy_id
-    assert warning["details"]["control_ids"] == [control_id]
-    assert warning["details"]["control_names"] == [control_name]
+    assert body["overwrite_changes"]["evaluator_removals"] == [
+        {
+            "name": evaluator_name,
+            "referenced_by_active_controls": True,
+            "control_ids": [control_id],
+            "control_names": [control_name],
+        }
+    ]
 
     get_resp = client.get(f"/api/v1/agents/{agent_id}/evaluators")
     assert get_resp.status_code == 200
@@ -221,7 +226,6 @@ def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> No
 
     body = second_resp.json()
     assert body["overwrite_applied"] is False
-    assert body["warnings"] == []
     assert body["overwrite_changes"] == {
         "metadata_changed": False,
         "steps_added": [],
@@ -230,4 +234,5 @@ def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> No
         "evaluators_added": [],
         "evaluators_updated": [],
         "evaluators_removed": [],
+        "evaluator_removals": [],
     }

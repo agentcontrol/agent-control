@@ -31,20 +31,21 @@ class ConflictMode(StrEnum):
     OVERWRITE = "overwrite"
 
 
-class InitAgentOverwriteWarningCode(StrEnum):
-    """Warning codes returned by initAgent in overwrite mode."""
+class InitAgentEvaluatorRemoval(BaseModel):
+    """Details for an evaluator removed during overwrite mode."""
 
-    EVALUATOR_REMOVED_BUT_REFERENCED = "EVALUATOR_REMOVED_BUT_REFERENCED"
-
-
-class InitAgentWarning(BaseModel):
-    """Non-fatal warning emitted during initAgent processing."""
-
-    code: InitAgentOverwriteWarningCode = Field(..., description="Warning code")
-    message: str = Field(..., description="Human-readable warning message")
-    details: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Machine-readable warning details",
+    name: str = Field(..., description="Evaluator name removed by overwrite")
+    referenced_by_active_controls: bool = Field(
+        default=False,
+        description="Whether this evaluator is still referenced by active controls",
+    )
+    control_ids: list[int] = Field(
+        default_factory=list,
+        description="IDs of active controls referencing this evaluator",
+    )
+    control_names: list[str] = Field(
+        default_factory=list,
+        description="Names of active controls referencing this evaluator",
     )
 
 
@@ -77,6 +78,10 @@ class InitAgentOverwriteChanges(BaseModel):
     evaluators_removed: list[str] = Field(
         default_factory=list,
         description="Evaluator names removed by overwrite",
+    )
+    evaluator_removals: list[InitAgentEvaluatorRemoval] = Field(
+        default_factory=list,
+        description="Per-evaluator removal details, including active control references",
     )
 
 
@@ -176,10 +181,6 @@ class InitAgentResponse(BaseModel):
     overwrite_changes: InitAgentOverwriteChanges = Field(
         default_factory=InitAgentOverwriteChanges,
         description="Detailed list of changes applied in overwrite mode",
-    )
-    warnings: list[InitAgentWarning] = Field(
-        default_factory=list,
-        description="Non-fatal warnings generated during initialization",
     )
 
 
