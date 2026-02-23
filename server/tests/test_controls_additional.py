@@ -460,6 +460,73 @@ def test_delete_control_force_dissociates(client: TestClient) -> None:
     assert control_id not in list_resp.json()["control_ids"]
 
 
+def test_delete_control_force_dissociates_from_policy_and_direct(client: TestClient) -> None:
+    # Given: one control associated both to a policy and directly to an agent
+    control_id, _ = _create_control(client)
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    policy_resp = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
+    assert policy_resp.status_code == 200
+    policy_id = policy_resp.json()["policy_id"]
+    assoc_policy = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert assoc_policy.status_code == 200
+
+    agent_id = _init_agent(client, name=f"agent-{uuid.uuid4()}")
+    assoc_direct = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    assert assoc_direct.status_code == 200
+
+    # When: deleting with force
+    delete_resp = client.delete(f"/api/v1/controls/{control_id}?force=true")
+
+    # Then: response reports dissociation from both paths
+    assert delete_resp.status_code == 200
+    body = delete_resp.json()
+    assert body["success"] is True
+    assert body["dissociated_from_policies"] == [policy_id]
+    assert body["dissociated_from_agents"] == [agent_id]
+
+    # Then: policy and agent no longer expose the control
+    list_policy_controls = client.get(f"/api/v1/policies/{policy_id}/controls")
+    assert list_policy_controls.status_code == 200
+    assert control_id not in list_policy_controls.json()["control_ids"]
+
+    list_agent_controls = client.get(f"/api/v1/agents/{agent_id}/controls")
+    assert list_agent_controls.status_code == 200
+    assert control_id not in {control["id"] for control in list_agent_controls.json()["controls"]}
+
+    # Then: the control resource is deleted globally
+    get_control = client.get(f"/api/v1/controls/{control_id}")
+    assert get_control.status_code == 404
+
+
+def test_delete_control_without_force_blocked_by_direct_association(
+    client: TestClient,
+) -> None:
+    # Given: a control directly associated to an agent
+    control_id, _ = _create_control(client)
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    agent_id = _init_agent(client, name=f"agent-{uuid.uuid4()}")
+    assoc_direct = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    assert assoc_direct.status_code == 200
+
+    # When: deleting without force
+    delete_resp = client.delete(f"/api/v1/controls/{control_id}")
+
+    # Then: delete is rejected as control-in-use by agent association
+    assert delete_resp.status_code == 409
+    body = delete_resp.json()
+    assert body["error_code"] == "CONTROL_IN_USE"
+    assert any(
+        err.get("resource") == "Agent"
+        and (
+            err.get("value") == agent_id
+            or agent_id in err.get("message", "")
+        )
+        for err in body.get("errors", [])
+    )
+
+
 def test_get_control_corrupted_data_returns_none(client: TestClient) -> None:
     # Given: a control with corrupted data in DB
     control_id, control_name = _create_control(client)

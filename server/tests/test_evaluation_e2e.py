@@ -1,7 +1,9 @@
 """End-to-end tests for evaluation flow."""
 import uuid
-from fastapi.testclient import TestClient
+
 from agent_control_models import EvaluationRequest, Step
+from fastapi.testclient import TestClient
+
 from .utils import create_and_assign_policy
 
 
@@ -59,6 +61,54 @@ def test_evaluation_no_policy(client: TestClient):
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
     assert not resp.json()["matches"]
+
+
+def test_evaluation_uses_direct_controls_without_policy(client: TestClient):
+    # Given: an agent with no policy and a direct deny control attached
+    agent_uuid = uuid.uuid4()
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {"agent_id": str(agent_uuid), "agent_name": "DirectControlAgent"},
+            "steps": [],
+        },
+    )
+    assert init_resp.status_code == 200
+
+    control_name = f"control-{uuid.uuid4()}"
+    create_control = client.put("/api/v1/controls", json={"name": control_name})
+    assert create_control.status_code == 200
+    control_id = create_control.json()["control_id"]
+
+    control_data = {
+        "description": "Direct deny control",
+        "enabled": True,
+        "execution": "server",
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
+        "selector": {"path": "input"},
+        "evaluator": {"name": "regex", "config": {"pattern": "secret"}},
+        "action": {"decision": "deny"},
+    }
+    set_data = client.put(f"/api/v1/controls/{control_id}/data", json={"data": control_data})
+    assert set_data.status_code == 200
+
+    add_direct = client.post(f"/api/v1/agents/{str(agent_uuid)}/controls/{control_id}")
+    assert add_direct.status_code == 200
+
+    # When: evaluating input that matches the direct control
+    req = EvaluationRequest(
+        agent_uuid=agent_uuid,
+        step=Step(type="llm", name="test-step", input="contains a secret", output=None),
+        stage="pre",
+    )
+    eval_resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+
+    # Then: evaluation is denied by the direct control even without any policy
+    assert eval_resp.status_code == 200
+    body = eval_resp.json()
+    assert body["is_safe"] is False
+    assert body["matches"] is not None
+    assert any(match["control_name"] == control_name for match in body["matches"])
 
 
 def test_evaluation_empty_policy(client: TestClient):

@@ -7,8 +7,8 @@ from copy import deepcopy
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from .utils import VALID_CONTROL_PAYLOAD
 from .conftest import engine
+from .utils import VALID_CONTROL_PAYLOAD
 
 
 def _init_agent(
@@ -767,6 +767,30 @@ def test_list_agents_includes_active_controls_count(client: TestClient) -> None:
     assert agent["active_controls_count"] == 2
 
 
+def test_list_agents_active_controls_count_deduplicates_policy_and_direct(
+    client: TestClient,
+) -> None:
+    # Given: an agent with the same control linked through both policy and direct association
+    agent_id, _ = _init_agent(client)
+    policy_id = _create_policy(client)
+    shared_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    assoc_policy_control = client.post(f"/api/v1/policies/{policy_id}/controls/{shared_control_id}")
+    assert assoc_policy_control.status_code == 200
+    assign_policy = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    assert assign_policy.status_code == 200
+    assoc_direct_control = client.post(f"/api/v1/agents/{agent_id}/controls/{shared_control_id}")
+    assert assoc_direct_control.status_code == 200
+
+    # When: listing agents
+    resp = client.get("/api/v1/agents")
+
+    # Then: active_controls_count counts the shared control once
+    assert resp.status_code == 200
+    agent = next(a for a in resp.json()["agents"] if a["agent_id"] == agent_id)
+    assert agent["active_controls_count"] == 1
+
+
 def test_list_agents_valid_cursor_not_found_returns_first_page(client: TestClient) -> None:
     # Given: two agents
     _init_agent(client, agent_name=f"Agent-{uuid.uuid4().hex[:6]}")
@@ -872,6 +896,84 @@ def test_init_agent_returns_controls_when_policy_assigned(client: TestClient) ->
     controls = resp.json()["controls"]
     assert len(controls) == 1
     assert controls[0]["id"] == control_id
+
+
+def test_init_agent_returns_union_and_deduplicates_policy_and_direct_controls(
+    client: TestClient,
+) -> None:
+    # Given: an agent with policy-only, direct-only, and shared control associations
+    agent_id, agent_name = _init_agent(client)
+    policy_id = _create_policy(client)
+
+    policy_only_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
+    direct_only_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
+    shared_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    assoc_policy_only = client.post(
+        f"/api/v1/policies/{policy_id}/controls/{policy_only_control_id}"
+    )
+    assert assoc_policy_only.status_code == 200
+    assoc_shared_policy = client.post(f"/api/v1/policies/{policy_id}/controls/{shared_control_id}")
+    assert assoc_shared_policy.status_code == 200
+    assign_policy = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    assert assign_policy.status_code == 200
+
+    assoc_direct_only = client.post(f"/api/v1/agents/{agent_id}/controls/{direct_only_control_id}")
+    assert assoc_direct_only.status_code == 200
+    assoc_shared_direct = client.post(f"/api/v1/agents/{agent_id}/controls/{shared_control_id}")
+    assert assoc_shared_direct.status_code == 200
+
+    # When: re-initializing the same agent
+    reinit_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {
+                "agent_id": agent_id,
+                "agent_name": agent_name,
+                "agent_description": "desc",
+                "agent_version": "1.0",
+            },
+            "steps": [],
+            "evaluators": [],
+        },
+    )
+
+    # Then: initAgent returns the union of controls with shared control de-duplicated
+    assert reinit_resp.status_code == 200
+    body = reinit_resp.json()
+    assert body["created"] is False
+    returned_control_ids = [control["id"] for control in body["controls"]]
+    assert set(returned_control_ids) == {
+        policy_only_control_id,
+        direct_only_control_id,
+        shared_control_id,
+    }
+    assert len(returned_control_ids) == 3
+
+
+def test_policy_removal_does_not_remove_direct_association_for_same_control(
+    client: TestClient,
+) -> None:
+    # Given: an agent where the same control is linked both via policy and directly
+    agent_id, _ = _init_agent(client)
+    policy_id = _create_policy(client)
+    shared_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    assoc_control = client.post(f"/api/v1/policies/{policy_id}/controls/{shared_control_id}")
+    assert assoc_control.status_code == 200
+    assign_policy = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    assert assign_policy.status_code == 200
+    assoc_direct = client.post(f"/api/v1/agents/{agent_id}/controls/{shared_control_id}")
+    assert assoc_direct.status_code == 200
+
+    # When: removing the policy association from the agent
+    remove_policy = client.delete(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+
+    # Then: the control is still active through the direct association
+    assert remove_policy.status_code == 200
+    list_controls = client.get(f"/api/v1/agents/{agent_id}/controls")
+    assert list_controls.status_code == 200
+    assert {control["id"] for control in list_controls.json()["controls"]} == {shared_control_id}
 
 
 def test_patch_agent_corrupted_data_returns_422(client: TestClient) -> None:
