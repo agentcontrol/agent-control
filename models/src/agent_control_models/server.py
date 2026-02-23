@@ -1,3 +1,4 @@
+from enum import StrEnum
 from typing import Any
 
 from pydantic import Field
@@ -21,6 +22,62 @@ class EvaluatorSchema(BaseModel):
         description="JSON Schema for evaluator config validation",
     )
     description: str | None = Field(None, max_length=1000, description="Optional description")
+
+
+class ConflictMode(StrEnum):
+    """Conflict handling mode for agent registration updates."""
+
+    STRICT = "strict"
+    OVERWRITE = "overwrite"
+
+
+class InitAgentOverwriteWarningCode(StrEnum):
+    """Warning codes returned by initAgent in overwrite mode."""
+
+    EVALUATOR_REMOVED_BUT_REFERENCED = "EVALUATOR_REMOVED_BUT_REFERENCED"
+
+
+class InitAgentWarning(BaseModel):
+    """Non-fatal warning emitted during initAgent processing."""
+
+    code: InitAgentOverwriteWarningCode = Field(..., description="Warning code")
+    message: str = Field(..., description="Human-readable warning message")
+    details: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Machine-readable warning details",
+    )
+
+
+class InitAgentOverwriteChanges(BaseModel):
+    """Detailed change summary for initAgent overwrite mode."""
+
+    metadata_changed: bool = Field(
+        default=False, description="Whether agent metadata changed"
+    )
+    steps_added: list["StepKey"] = Field(
+        default_factory=list,
+        description="Steps added by overwrite",
+    )
+    steps_updated: list["StepKey"] = Field(
+        default_factory=list,
+        description="Existing steps updated by overwrite",
+    )
+    steps_removed: list["StepKey"] = Field(
+        default_factory=list,
+        description="Steps removed by overwrite",
+    )
+    evaluators_added: list[str] = Field(
+        default_factory=list,
+        description="Evaluator names added by overwrite",
+    )
+    evaluators_updated: list[str] = Field(
+        default_factory=list,
+        description="Existing evaluator names updated by overwrite",
+    )
+    evaluators_removed: list[str] = Field(
+        default_factory=list,
+        description="Evaluator names removed by overwrite",
+    )
 
 
 class CreatePolicyRequest(BaseModel):
@@ -59,6 +116,14 @@ class InitAgentRequest(BaseModel):
         description=(
             "If true, replace corrupted agent data instead of failing. "
             "Use only when agent data is corrupted and cannot be parsed."
+        ),
+    )
+    conflict_mode: ConflictMode = Field(
+        default=ConflictMode.STRICT,
+        description=(
+            "Conflict handling mode for init registration updates. "
+            "'strict' preserves existing compatibility checks. "
+            "'overwrite' applies latest-init-wins replacement for steps and evaluators."
         ),
     )
 
@@ -103,6 +168,18 @@ class InitAgentResponse(BaseModel):
     controls: list[Control] = Field(
         default_factory=list,
         description="Active protection controls for the agent (if policy assigned)",
+    )
+    overwrite_applied: bool = Field(
+        default=False,
+        description="True if overwrite mode changed registration data on an existing agent",
+    )
+    overwrite_changes: InitAgentOverwriteChanges = Field(
+        default_factory=InitAgentOverwriteChanges,
+        description="Detailed list of changes applied in overwrite mode",
+    )
+    warnings: list[InitAgentWarning] = Field(
+        default_factory=list,
+        description="Non-fatal warnings generated during initialization",
     )
 
 
