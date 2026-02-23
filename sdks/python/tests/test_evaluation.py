@@ -1,11 +1,12 @@
 """Tests for check_evaluation behavior."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
 
 from agent_control import evaluation
+from agent_control.evaluation import EvaluationResult
 
 
 @pytest.mark.asyncio
@@ -26,3 +27,43 @@ async def test_check_evaluation_requires_step_name_without_models(monkeypatch):
         )
 
     client.http_client.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_with_explicit_agent_uuid(monkeypatch):
+    """Test evaluate_controls with explicit agent_uuid provided."""
+    # Mock check_evaluation_with_local to return a safe result
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_check = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    # Mock module globals (_server_url is required)
+    with patch("agent_control._server_url", "http://localhost:8000"):
+        with patch("agent_control._api_key", None):
+            result = await evaluation.evaluate_controls(
+                step_name="chat",
+                input="hello",
+                stage="pre",
+                agent_uuid="550e8400-e29b-41d4-a716-446655440000",
+                agent_name="test-bot",
+            )
+
+    assert result.is_safe is True
+    assert result.confidence == 1.0
+    mock_check.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_requires_agent_uuid_or_init(monkeypatch):
+    """Test evaluate_controls raises error when agent_uuid not provided and no agent initialized."""
+    # Mock module globals with no agent initialized
+    with patch("agent_control._current_agent", None):
+        with pytest.raises(
+            RuntimeError,
+            match="agent_uuid not provided and no agent initialized",
+        ):
+            await evaluation.evaluate_controls(
+                step_name="chat",
+                input="hello",
+                stage="pre",
+            )
