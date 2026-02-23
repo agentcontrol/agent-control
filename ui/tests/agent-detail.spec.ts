@@ -404,20 +404,17 @@ test.describe('Agent Detail Page', () => {
       }
     );
 
-    await mockedPage.route(
-      '**/api/v1/controls/*',
-      async (route, request) => {
-        if (request.method() === 'DELETE') {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({ success: true }),
-          });
-        } else {
-          await route.continue();
-        }
+    await mockedPage.route('**/api/v1/controls/*', async (route, request) => {
+      if (request.method() === 'DELETE') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
+      } else {
+        await route.continue();
       }
-    );
+    });
 
     await mockedPage.goto(agentUrl);
 

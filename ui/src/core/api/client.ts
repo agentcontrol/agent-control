@@ -128,7 +128,8 @@ export const api = {
       apiClient.DELETE('/api/v1/controls/{control_id}', {
         params: {
           path: { control_id: controlId },
-          query: options?.force !== undefined ? { force: options.force } : undefined,
+          query:
+            options?.force !== undefined ? { force: options.force } : undefined,
         },
       }),
   },
