@@ -8,6 +8,12 @@ type RemoveControlFromAgentParams = {
   controlId: number;
 };
 
+export type RemoveControlFromAgentResult = {
+  success: boolean;
+  removed_direct_association?: boolean;
+  control_still_active?: boolean;
+};
+
 /**
  * Mutation hook to remove a control from a specific agent.
  */
@@ -32,11 +38,14 @@ export function useRemoveControlFromAgent() {
         );
       }
 
-      return data;
+      return (data ?? { success: true }) as RemoveControlFromAgentResult;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: ['agent', variables.agentId, 'controls'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['controls', 'infinite'],
       });
       queryClient.invalidateQueries({
         queryKey: ['agents', 'infinite'],

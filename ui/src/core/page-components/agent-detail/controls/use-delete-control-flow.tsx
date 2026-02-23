@@ -3,7 +3,10 @@ import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 
 import type { Control } from '@/core/api/types';
-import { useRemoveControlFromAgent } from '@/core/hooks/query-hooks/use-delete-control';
+import {
+  type RemoveControlFromAgentResult,
+  useRemoveControlFromAgent,
+} from '@/core/hooks/query-hooks/use-delete-control';
 
 type UseDeleteControlFlowParams = {
   agentId: string;
@@ -41,10 +44,27 @@ export function useDeleteControlFlow({
             controlId: control.id,
           },
           {
-            onSuccess: () => {
+            onSuccess: (result: RemoveControlFromAgentResult) => {
+              const removedDirect =
+                result.removed_direct_association ?? true;
+              const stillActive = result.control_still_active ?? false;
+
+              if (!removedDirect) {
+                notifications.show({
+                  title: 'Control inherited from policy',
+                  message: `"${control.name}" has no direct link on this agent. Remove it from policy to disable it.`,
+                  color: 'yellow',
+                });
+                return;
+              }
+
               notifications.show({
-                title: 'Control removed',
-                message: `"${control.name}" has been removed from this agent.`,
+                title: stillActive
+                  ? 'Direct association removed'
+                  : 'Control removed',
+                message: stillActive
+                  ? `"${control.name}" is still active through policy inheritance.`
+                  : `"${control.name}" has been removed from this agent.`,
                 color: 'green',
               });
               if (selectedControl?.id === control.id) {

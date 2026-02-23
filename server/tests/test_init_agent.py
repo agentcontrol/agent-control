@@ -456,6 +456,8 @@ def test_add_and_remove_direct_agent_control_does_not_delete_global_control(
     remove_resp = client.delete(f"/api/v1/agents/{agent_id}/controls/{control_id}")
     assert remove_resp.status_code == 200
     assert remove_resp.json()["success"] is True
+    assert remove_resp.json()["removed_direct_association"] is True
+    assert remove_resp.json()["control_still_active"] is False
 
     # Then: agent no longer has the control
     post_remove_list = client.get(f"/api/v1/agents/{agent_id}/controls")
@@ -466,6 +468,53 @@ def test_add_and_remove_direct_agent_control_does_not_delete_global_control(
     control_resp = client.get(f"/api/v1/controls/{control_id}")
     assert control_resp.status_code == 200
     assert control_resp.json()["id"] == control_id
+
+
+def test_remove_policy_derived_control_reports_no_direct_association_removed(
+    client: TestClient,
+) -> None:
+    # Given: an agent inheriting a control from a policy (no direct association)
+    payload = make_agent_payload()
+    init_resp = client.post("/api/v1/agents/initAgent", json=payload)
+    assert init_resp.status_code == 200
+    agent_id = payload["agent"]["agent_id"]
+
+    policy_name = f"policy-{uuid.uuid4()}"
+    policy_resp = client.put("/api/v1/policies", json={"name": policy_name})
+    assert policy_resp.status_code == 200
+    policy_id = policy_resp.json()["policy_id"]
+
+    control_name = f"control-{uuid.uuid4()}"
+    control_resp = client.put("/api/v1/controls", json={"name": control_name})
+    assert control_resp.status_code == 200
+    control_id = control_resp.json()["control_id"]
+
+    from .utils import VALID_CONTROL_PAYLOAD
+
+    set_data_resp = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": VALID_CONTROL_PAYLOAD},
+    )
+    assert set_data_resp.status_code == 200
+
+    assoc_control_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert assoc_control_resp.status_code == 200
+    assoc_policy_resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    assert assoc_policy_resp.status_code == 200
+
+    # When: removing via direct-control endpoint
+    remove_resp = client.delete(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+
+    # Then: request succeeds but reports that nothing direct was removed
+    assert remove_resp.status_code == 200
+    assert remove_resp.json()["success"] is True
+    assert remove_resp.json()["removed_direct_association"] is False
+    assert remove_resp.json()["control_still_active"] is True
+
+    # And: control remains active due to policy inheritance
+    list_resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    assert list_resp.status_code == 200
+    assert {item["id"] for item in list_resp.json()["controls"]} == {control_id}
 
 
 def test_list_agent_controls_agent_not_found_404(client: TestClient) -> None:

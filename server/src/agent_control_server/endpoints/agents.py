@@ -18,6 +18,7 @@ from agent_control_models.server import (
     PaginationInfo,
     PatchAgentRequest,
     PatchAgentResponse,
+    RemoveAgentControlResponse,
     StepKey,
 )
 from fastapi import APIRouter, Depends
@@ -990,13 +991,13 @@ async def add_agent_control(
 
 @router.delete(
     "/{agent_id}/controls/{control_id}",
-    response_model=AssocResponse,
+    response_model=RemoveAgentControlResponse,
     summary="Remove direct control association from agent",
     response_description="Success confirmation",
 )
 async def remove_agent_control(
     agent_id: UUID, control_id: int, db: AsyncSession = Depends(get_async_db)
-) -> AssocResponse:
+) -> RemoveAgentControlResponse:
     """Remove a direct control association from an agent (idempotent)."""
     await _get_agent_or_404(agent_id, db)
 
@@ -1011,12 +1012,41 @@ async def remove_agent_control(
         )
 
     try:
-        await db.execute(
-            delete(agent_controls).where(
+        direct_assoc_result = await db.execute(
+            select(agent_controls.c.control_id)
+            .where(
                 (agent_controls.c.agent_uuid == agent_id)
                 & (agent_controls.c.control_id == control_id)
             )
+            .limit(1)
         )
+        removed_direct_association = direct_assoc_result.first() is not None
+
+        if removed_direct_association:
+            await db.execute(
+                delete(agent_controls).where(
+                    (agent_controls.c.agent_uuid == agent_id)
+                    & (agent_controls.c.control_id == control_id)
+                )
+            )
+
+        # The control may still be active for this agent if inherited from policy association(s).
+        policy_inheritance_result = await db.execute(
+            select(policy_controls.c.control_id)
+            .select_from(
+                agent_policies.join(
+                    policy_controls,
+                    agent_policies.c.policy_id == policy_controls.c.policy_id,
+                )
+            )
+            .where(
+                (agent_policies.c.agent_uuid == agent_id)
+                & (policy_controls.c.control_id == control_id)
+            )
+            .limit(1)
+        )
+        control_still_active = policy_inheritance_result.first() is not None
+
         await db.commit()
     except Exception:
         await db.rollback()
@@ -1032,7 +1062,11 @@ async def remove_agent_control(
             operation="remove control association",
         )
 
-    return AssocResponse(success=True)
+    return RemoveAgentControlResponse(
+        success=True,
+        removed_direct_association=removed_direct_association,
+        control_still_active=control_still_active,
+    )
 
 
 @router.get(

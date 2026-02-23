@@ -659,6 +659,119 @@ test.describe('Modal Routing', () => {
     // URL should not contain any modal parameters
     await expect(mockedPage).not.toHaveURL(/.*\?modal=/);
   });
+
+  test('cleans up created control when agent association fails', async ({
+    mockedPage,
+  }) => {
+    await mockedPage.goto(
+      `${agentUrl}?modal=control-store&submodal=create&evaluator=list`
+    );
+
+    const createModal = mockedPage.getByRole('dialog', {
+      name: 'Create Control',
+    });
+    await expect(createModal).toBeVisible();
+
+    let cleanupDeleteCalls = 0;
+
+    await mockedPage.route(
+      '**/api/v1/agents/*/controls/*',
+      async (route, request) => {
+        if (request.method() === 'POST') {
+          await route.fulfill({
+            status: 400,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              detail: 'Control is incompatible with this agent',
+              error_code: 'POLICY_CONTROL_INCOMPATIBLE',
+            }),
+          });
+        } else {
+          await route.continue();
+        }
+      }
+    );
+
+    await mockedPage.route('**/api/v1/controls', async (route, request) => {
+      if (request.method() === 'PUT') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ control_id: 100 }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await mockedPage.route(
+      '**/api/v1/controls/*/data',
+      async (route, request) => {
+        if (request.method() === 'PUT') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true }),
+          });
+        } else {
+          await route.continue();
+        }
+      }
+    );
+
+    await mockedPage.route('**/api/v1/controls/*', async (route, request) => {
+      if (request.method() === 'DELETE') {
+        cleanupDeleteCalls += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            dissociated_from_policies: [],
+            dissociated_from_agents: [],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    const controlNameInput = createModal.getByPlaceholder('Enter control name');
+    await controlNameInput.fill('Cleanup Test Control');
+    const valuesTextarea = createModal.getByPlaceholder(
+      'Enter values (one per line)'
+    );
+    await valuesTextarea.fill('value-1');
+
+    const saveButton = createModal.getByRole('button', {
+      name: /Save|Create/i,
+    });
+    await saveButton.click();
+
+    const confirmButton = mockedPage.locator("button:has-text('Confirm')");
+    await expect(confirmButton).toBeVisible({ timeout: 5000 });
+
+    const failedAssociationPromise = mockedPage.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        /\/api\/v1\/agents\/[^/]+\/controls\/\d+/.test(response.url()) &&
+        response.status() === 400,
+      { timeout: 10000 }
+    );
+    const cleanupDeletePromise = mockedPage.waitForResponse(
+      (response) =>
+        response.request().method() === 'DELETE' &&
+        /\/api\/v1\/controls\/\d+\?force=true/.test(response.url()) &&
+        response.status() === 200,
+      { timeout: 10000 }
+    );
+
+    await confirmButton.click();
+    await failedAssociationPromise;
+    await cleanupDeletePromise;
+
+    expect(cleanupDeleteCalls).toBe(1);
+  });
 });
 
 test.describe('Control Store - Loading States', () => {

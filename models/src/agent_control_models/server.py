@@ -157,6 +157,18 @@ class AssocResponse(BaseModel):
     success: bool = Field(description="Whether the association change succeeded")
 
 
+class RemoveAgentControlResponse(BaseModel):
+    """Response for removing a direct agent-control association."""
+
+    success: bool = Field(description="Whether the request succeeded")
+    removed_direct_association: bool = Field(
+        description="True if a direct agent-control link was removed"
+    )
+    control_still_active: bool = Field(
+        description="True if the control remains active via policy association(s)"
+    )
+
+
 class GetControlDataResponse(BaseModel):
     data: ControlDefinition = Field(description="Control data payload")
 

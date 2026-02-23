@@ -26,50 +26,60 @@ export function useAddControlToAgent() {
       controlName,
       definition,
     }: AddControlToAgentParams) => {
-      // Step 1: Create the control
-      const {
-        data: createControlResult,
-        error: createControlError,
-        response: createControlResponse,
-      } = await api.controls.create({ name: controlName });
+      let createdControlId: number | null = null;
 
-      if (createControlError || !createControlResult) {
-        throw parseApiError(
-          createControlError,
-          'Failed to create control',
-          createControlResponse?.status
-        );
+      try {
+        // Step 1: Create the control
+        const {
+          data: createControlResult,
+          error: createControlError,
+          response: createControlResponse,
+        } = await api.controls.create({ name: controlName });
+
+        if (createControlError || !createControlResult) {
+          throw parseApiError(
+            createControlError,
+            'Failed to create control',
+            createControlResponse?.status
+          );
+        }
+
+        createdControlId = createControlResult.control_id;
+
+        // Step 2: Set control data (definition)
+        const { error: setDataError, response: setDataResponse } =
+          await api.controls.setData(createdControlId, {
+            data: definition,
+          });
+
+        if (setDataError) {
+          throw parseApiError(
+            setDataError,
+            'Failed to set control data',
+            setDataResponse?.status
+          );
+        }
+
+        // Step 3: Associate control directly with the agent
+        const { error: associateError, response: associateResponse } =
+          await api.agents.addControl(agentId, createdControlId);
+
+        if (associateError) {
+          throw parseApiError(
+            associateError,
+            'Failed to associate control with agent',
+            associateResponse?.status
+          );
+        }
+
+        return { controlId: createdControlId };
+      } catch (error) {
+        // Best effort cleanup: avoid orphan controls if a later step fails.
+        if (createdControlId !== null) {
+          await api.controls.delete(createdControlId, { force: true });
+        }
+        throw error;
       }
-
-      const controlId = createControlResult.control_id;
-
-      // Step 2: Set control data (definition)
-      const { error: setDataError, response: setDataResponse } =
-        await api.controls.setData(controlId, {
-          data: definition,
-        });
-
-      if (setDataError) {
-        throw parseApiError(
-          setDataError,
-          'Failed to set control data',
-          setDataResponse?.status
-        );
-      }
-
-      // Step 3: Associate control directly with the agent
-      const { error: associateError, response: associateResponse } =
-        await api.agents.addControl(agentId, controlId);
-
-      if (associateError) {
-        throw parseApiError(
-          associateError,
-          'Failed to associate control with agent',
-          associateResponse?.status
-        );
-      }
-
-      return { controlId };
     },
     onSuccess: (_data, variables) => {
       // Invalidate relevant queries to refetch data
