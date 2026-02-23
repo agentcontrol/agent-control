@@ -382,7 +382,13 @@ test.describe('Agent Detail Page', () => {
   });
 
   test('deletes control when delete is confirmed', async ({ mockedPage }) => {
-    // Agent controls: first GET returns full list, refetch after delete returns list without Rate Limiter
+    const controlToDelete = mockData.controls.controls.find(
+      (c) => c.name === 'Rate Limiter'
+    );
+    if (!controlToDelete) throw new Error('Rate Limiter not in mock data');
+    const deletedControlId = controlToDelete.id;
+
+    // Agent controls: first GET returns full list, refetch after delete returns list without deleted control
     let agentControlsCallCount = 0;
     await mockedPage.route(
       '**/api/v1/agents/*/controls',
@@ -395,7 +401,9 @@ test.describe('Agent Detail Page', () => {
         const controls =
           agentControlsCallCount <= 1
             ? mockData.controls.controls
-            : mockData.controls.controls.filter((c) => c.id !== 3);
+            : mockData.controls.controls.filter(
+                (c) => c.id !== deletedControlId
+              );
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -446,14 +454,17 @@ test.describe('Agent Detail Page', () => {
     const deleteRequest = mockedPage.waitForRequest(
       (request) =>
         request.method() === 'DELETE' &&
-        /\/api\/v1\/controls\/\d+/.test(request.url()),
+        new RegExp(`/api/v1/controls/${deletedControlId}(\\?|$)`).test(
+          request.url()
+        ),
       { timeout: 5000 }
     );
 
     await confirmModal.getByRole('button', { name: 'Delete' }).click();
 
     const request = await deleteRequest;
-    expect(request.url()).toMatch(/\/api\/v1\/controls\/\d+/);
+    expect(request.url()).toContain(`/api/v1/controls/${deletedControlId}`);
+    expect(new URL(request.url()).searchParams.get('force')).toBe('true');
     expect(request.method()).toBe('DELETE');
 
     await expect(confirmModal).not.toBeVisible({ timeout: 5000 });

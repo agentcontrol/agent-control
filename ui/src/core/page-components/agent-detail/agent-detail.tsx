@@ -14,6 +14,7 @@ import {
   Title,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
 import { Button, Switch, Table, TimeRangeSwitch } from '@rungalileo/jupiter-ds';
 import {
   IconAlertCircle,
@@ -232,14 +233,37 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                 },
                 cancelProps: { variant: 'default', size: 'sm' },
                 onConfirm: () =>
-                  updateControl.mutate({
-                    agentId,
-                    controlId: control.id,
-                    definition: {
-                      ...control.control,
-                      enabled: newEnabled,
+                  updateControl.mutate(
+                    {
+                      agentId,
+                      controlId: control.id,
+                      definition: {
+                        ...control.control,
+                        enabled: newEnabled,
+                      },
                     },
-                  }),
+                    {
+                      onSuccess: () => {
+                        notifications.show({
+                          title: newEnabled
+                            ? 'Control enabled'
+                            : 'Control disabled',
+                          message: `"${control.name}" has been ${newEnabled ? 'enabled' : 'disabled'}.`,
+                          color: 'green',
+                        });
+                      },
+                      onError: (error) => {
+                        notifications.show({
+                          title: 'Failed to update control',
+                          message:
+                            error instanceof Error
+                              ? error.message
+                              : 'An unexpected error occurred',
+                          color: 'red',
+                        });
+                      },
+                    }
+                  ),
               });
             }}
           />
@@ -340,19 +364,26 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
       id: 'delete',
       header: '',
       size: 44,
-      cell: ({ row }: { row: any }) => (
-        <Box style={{ display: 'flex', justifyContent: 'center' }}>
-          <ActionIcon
-            variant="subtle"
-            color="red"
-            size="sm"
-            onClick={() => handleDeleteControl(row.original as Control)}
-            aria-label="Delete control"
-          >
-            <IconTrash size={16} />
-          </ActionIcon>
-        </Box>
-      ),
+      cell: ({ row }: { row: any }) => {
+        const control = row.original as Control;
+        const isDeleting =
+          deleteControl.isPending &&
+          deleteControl.variables?.controlId === control.id;
+        return (
+          <Box style={{ display: 'flex', justifyContent: 'center' }}>
+            <ActionIcon
+              variant="subtle"
+              color="red"
+              size="sm"
+              onClick={() => handleDeleteControl(control)}
+              aria-label="Delete control"
+              disabled={isDeleting}
+            >
+              <IconTrash size={16} />
+            </ActionIcon>
+          </Box>
+        );
+      },
     },
   ];
 
@@ -385,9 +416,24 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           },
           {
             onSuccess: () => {
+              notifications.show({
+                title: 'Control deleted',
+                message: `"${control.name}" has been removed.`,
+                color: 'green',
+              });
               if (selectedControl?.id === control.id) {
                 handleCloseEditModal();
               }
+            },
+            onError: (error) => {
+              notifications.show({
+                title: 'Failed to delete control',
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : 'An unexpected error occurred',
+                color: 'red',
+              });
             },
           }
         ),

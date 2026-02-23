@@ -1,6 +1,7 @@
 import { Box, Divider, Grid, Group, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -237,11 +238,21 @@ export const EditControlContent = ({
             controlName: values.name,
             definition,
           });
+          notifications.show({
+            title: 'Control created',
+            message: `"${values.name}" has been added to this agent.`,
+            color: 'green',
+          });
         } else {
           await updateControl.mutateAsync({
             agentId,
             controlId: control.id,
             definition,
+          });
+          notifications.show({
+            title: 'Control updated',
+            message: `"${values.name}" has been saved.`,
+            color: 'green',
           });
         }
         // Call onSuccess first (which should close all modals)
