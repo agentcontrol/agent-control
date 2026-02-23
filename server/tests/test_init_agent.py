@@ -422,6 +422,52 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
     )
 
 
+def test_add_and_remove_direct_agent_control_does_not_delete_global_control(
+    client: TestClient,
+) -> None:
+    # Given: an agent and a configured control
+    payload = make_agent_payload()
+    init_resp = client.post("/api/v1/agents/initAgent", json=payload)
+    assert init_resp.status_code == 200
+    agent_id = payload["agent"]["agent_id"]
+
+    ctl_name = f"control-{uuid.uuid4()}"
+    ctl = client.put("/api/v1/controls", json={"name": ctl_name})
+    assert ctl.status_code == 200
+    control_id = ctl.json()["control_id"]
+
+    from .utils import VALID_CONTROL_PAYLOAD
+
+    set_data_resp = client.put(
+        f"/api/v1/controls/{control_id}/data", json={"data": VALID_CONTROL_PAYLOAD}
+    )
+    assert set_data_resp.status_code == 200
+
+    # When: associating control directly with the agent
+    add_resp = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    assert add_resp.status_code == 200
+    assert add_resp.json()["success"] is True
+
+    list_resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    assert list_resp.status_code == 200
+    assert {item["id"] for item in list_resp.json()["controls"]} == {control_id}
+
+    # When: removing direct control association from this agent
+    remove_resp = client.delete(f"/api/v1/agents/{agent_id}/controls/{control_id}")
+    assert remove_resp.status_code == 200
+    assert remove_resp.json()["success"] is True
+
+    # Then: agent no longer has the control
+    post_remove_list = client.get(f"/api/v1/agents/{agent_id}/controls")
+    assert post_remove_list.status_code == 200
+    assert post_remove_list.json()["controls"] == []
+
+    # And: the control still exists globally
+    control_resp = client.get(f"/api/v1/controls/{control_id}")
+    assert control_resp.status_code == 200
+    assert control_resp.json()["id"] == control_id
+
+
 def test_list_agent_controls_agent_not_found_404(client: TestClient) -> None:
     # Given: random agent id
     missing = str(uuid.uuid4())

@@ -29,25 +29,39 @@ async def test_get_agent_rejects_invalid_uuid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_agent_policy_rejects_invalid_uuid() -> None:
+async def test_get_agent_policies_rejects_invalid_uuid() -> None:
     client = MagicMock()
     client.http_client = MagicMock()
     client.http_client.get = AsyncMock()
 
     with pytest.raises(ValueError, match="agent_id must be a valid UUID"):
-        await agents.get_agent_policy(client, "not-a-uuid")
+        await agents.get_agent_policies(client, "not-a-uuid")
 
     client.http_client.get.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_remove_agent_policy_rejects_invalid_uuid() -> None:
+async def test_remove_agent_policies_rejects_invalid_uuid() -> None:
     client = MagicMock()
     client.http_client = MagicMock()
     client.http_client.delete = AsyncMock()
 
     with pytest.raises(ValueError, match="agent_id must be a valid UUID"):
-        await agents.remove_agent_policy(client, "not-a-uuid")
+        await agents.remove_agent_policies(client, "not-a-uuid")
+
+    client.http_client.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_remove_agent_policy_association_rejects_invalid_uuid() -> None:
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.delete = AsyncMock()
+
+    with pytest.raises(ValueError, match="agent_id must be a valid UUID"):
+        await agents.remove_agent_policy_association(
+            client, "not-a-uuid", policy_id=1
+        )
 
     client.http_client.delete.assert_not_called()
 

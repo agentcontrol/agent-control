@@ -73,7 +73,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     setSelectedControl(null);
   };
 
-  const { handleDeleteControl, deleteControl } = useDeleteControlFlow({
+  const { handleDeleteControl, removeControlFromAgent } = useDeleteControlFlow({
     agentId,
     selectedControl,
     onCloseEditModal: handleCloseEditModal,
@@ -137,7 +137,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   const columns = useControlsTableColumns({
     agentId,
     updateControl,
-    deleteControl,
+    removeControlFromAgent,
     onEditControl: handleEditControl,
     onDeleteControl: handleDeleteControl,
   });

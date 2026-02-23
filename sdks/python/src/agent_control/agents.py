@@ -175,20 +175,6 @@ async def get_agent_policies(
     return cast(dict[str, Any], response.json())
 
 
-async def get_agent_policy(
-    client: AgentControlClient,
-    agent_id: str | UUID,
-) -> dict[str, Any]:
-    """
-    Backward-compatible alias for get_agent_policies().
-
-    Returns:
-        Dictionary containing:
-            - policy_ids: IDs of policies associated with the agent
-    """
-    return await get_agent_policies(client, agent_id)
-
-
 async def add_agent_policy(
     client: AgentControlClient,
     agent_id: str | UUID,
@@ -246,16 +232,6 @@ async def remove_agent_policies(
     response = await client.http_client.delete(f"/api/v1/agents/{agent_id_str}/policies")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
-
-
-async def remove_agent_policy(
-    client: AgentControlClient,
-    agent_id: str | UUID,
-) -> dict[str, Any]:
-    """
-    Backward-compatible alias for remove_agent_policies().
-    """
-    return await remove_agent_policies(client, agent_id)
 
 
 async def add_agent_control(

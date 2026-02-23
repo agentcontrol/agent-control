@@ -3,30 +3,31 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/core/api/client';
 import { parseApiError } from '@/core/api/errors';
 
-type DeleteControlParams = {
+type RemoveControlFromAgentParams = {
   agentId: string;
   controlId: number;
-  /** If true, dissociate from all policy and agent links before deleting. */
-  force?: boolean;
 };
 
 /**
- * Mutation hook to delete a control.
- * Use force: true when deleting from agent detail so linked associations are removed first.
+ * Mutation hook to remove a control from a specific agent.
  */
-export function useDeleteControl() {
+export function useRemoveControlFromAgent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ controlId, force = true }: DeleteControlParams) => {
-      const { data, error, response } = await api.controls.delete(controlId, {
-        force,
-      });
+    mutationFn: async ({
+      agentId,
+      controlId,
+    }: RemoveControlFromAgentParams) => {
+      const { data, error, response } = await api.agents.removeControl(
+        agentId,
+        controlId
+      );
 
       if (error) {
         throw parseApiError(
           error,
-          'Failed to delete control',
+          'Failed to remove control from agent',
           response?.status
         );
       }
