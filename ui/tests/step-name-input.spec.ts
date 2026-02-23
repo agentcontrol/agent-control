@@ -4,7 +4,7 @@
  */
 
 import { openEvaluatorForm } from './evaluators/helpers';
-import { expect, test } from './fixtures';
+import { expect, mockData, mockRoutes, test } from './fixtures';
 
 test.describe('Step Name Input', () => {
   test('displays Step name label and Regex toggle', async ({ mockedPage }) => {
@@ -86,5 +86,47 @@ test.describe('Step Name Input', () => {
 
     await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
     await expect(modal.getByPlaceholder('^db_.*')).not.toBeVisible();
+  });
+
+  test('with populated steps: select, deselect, and summary rendering', async ({
+    mockedPage,
+  }) => {
+    await mockedPage.unroute('**/api/v1/agents/*');
+    await mockedPage.unroute('**/api/v1/agents/*/controls');
+    await mockRoutes.agent(mockedPage, {
+      agent: { data: mockData.agentWithSteps },
+    });
+
+    await openEvaluatorForm(mockedPage, 'Regex');
+
+    const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
+    const stepSelect = modal.getByTestId('step-name-select');
+
+    // No placeholder when steps exist; overlay shows "All steps" when none selected
+    await expect(modal.getByText('All steps')).toBeVisible();
+
+    // Open dropdown and select one step
+    await stepSelect.click();
+    await mockedPage.getByText('search_db', { exact: true }).click();
+    await expect(modal.getByRole('paragraph').filter({ hasText: 'search_db' })).toBeVisible();
+
+    // Select another step – summary shows "first +N"
+    await stepSelect.click();
+    await mockedPage.getByText('fetch_user', { exact: true }).click();
+    await expect(modal.getByText('search_db +1')).toBeVisible();
+
+    // Add third step
+    await stepSelect.click();
+    await mockedPage.getByText('database_query', { exact: true }).click();
+    await expect(modal.getByText('search_db +2')).toBeVisible();
+
+    // Deselect by opening dropdown and unchecking each selected option
+    await stepSelect.click();
+    await mockedPage.getByRole('option', { name: 'search_db', selected: true }).click();
+    await stepSelect.click();
+    await mockedPage.getByRole('option', { name: 'fetch_user', selected: true }).click();
+    await stepSelect.click();
+    await mockedPage.getByRole('option', { name: 'database_query', selected: true }).click();
+    await expect(modal.getByText('All steps')).toBeVisible();
   });
 });

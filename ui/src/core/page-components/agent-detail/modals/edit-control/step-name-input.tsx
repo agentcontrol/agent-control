@@ -62,10 +62,13 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
   };
 
   const selectedSummary = useMemo(() => {
-    if (selectedStepNames.length === 0) return 'All steps';
+    if (selectedStepNames.length === 0) {
+      // When no steps exist, avoid showing "All steps" alongside "No steps available"
+      return steps.length > 0 ? 'All steps' : '';
+    }
     if (selectedStepNames.length === 1) return selectedStepNames[0];
     return `${selectedStepNames[0]} +${selectedStepNames.length - 1}`;
-  }, [selectedStepNames]);
+  }, [selectedStepNames, steps.length]);
 
   const regexMatchInfo = useMemo(() => {
     const pattern = form.values.step_name_regex.trim();
@@ -198,6 +201,7 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
       ) : (
         <Box pos="relative">
           <MultiSelect
+            data-testid="step-name-select"
             size="sm"
             placeholder={steps.length > 0 ? '' : 'No steps available'}
             data={stepOptions}
