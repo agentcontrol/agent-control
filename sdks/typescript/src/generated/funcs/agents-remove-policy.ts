@@ -31,7 +31,10 @@ import { Result } from "../types/fp.js";
  * Remove policy association from agent
  *
  * @remarks
- * Remove a policy association from an agent (idempotent).
+ * Remove a policy association from an agent.
+ *
+ * Idempotent for existing resources: removing a non-associated link is a no-op.
+ * Missing agent/policy resources still return 404.
  */
 export function agentsRemovePolicy(
   client: AgentControlSDKCore,
