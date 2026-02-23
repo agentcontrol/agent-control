@@ -57,13 +57,88 @@ async def test_evaluate_controls_with_explicit_agent_uuid(monkeypatch):
 async def test_evaluate_controls_requires_agent_uuid_or_init(monkeypatch):
     """Test evaluate_controls raises error when agent_uuid not provided and no agent initialized."""
     # Mock module globals with no agent initialized
-    with patch("agent_control._current_agent", None):
-        with pytest.raises(
-            RuntimeError,
-            match="agent_uuid not provided and no agent initialized",
-        ):
-            await evaluation.evaluate_controls(
+    with patch("agent_control._server_url", "http://localhost:8000"):
+        with patch("agent_control._current_agent", None):
+            with pytest.raises(
+                RuntimeError,
+                match="agent_uuid not provided and no agent initialized",
+            ):
+                await evaluation.evaluate_controls(
+                    step_name="chat",
+                    input="hello",
+                    stage="pre",
+                )
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_uses_initialized_agent(monkeypatch):
+    """Test evaluate_controls uses agent from init() when agent_uuid not provided."""
+    # Mock check_evaluation_with_local
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_check = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    # Mock an initialized agent
+    mock_agent = MagicMock()
+    mock_agent.agent_id = UUID("550e8400-e29b-41d4-a716-446655440000")
+    mock_agent.agent_name = "initialized-bot"
+
+    with patch("agent_control._current_agent", mock_agent):
+        with patch("agent_control._server_url", "http://localhost:8000"):
+            with patch("agent_control._api_key", None):
+                result = await evaluation.evaluate_controls(
+                    step_name="chat",
+                    input="hello",
+                    stage="pre",
+                    # Note: agent_uuid NOT provided, should use _current_agent
+                )
+
+    assert result.is_safe is True
+    mock_check.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_with_context(monkeypatch):
+    """Test evaluate_controls includes context when provided."""
+    # Mock check_evaluation_with_local
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_check = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    with patch("agent_control._server_url", "http://localhost:8000"):
+        with patch("agent_control._api_key", None):
+            result = await evaluation.evaluate_controls(
+                step_name="chat",
+                input="hello",
+                context={"user_id": "123", "session_id": "abc"},
+                stage="pre",
+                agent_uuid="550e8400-e29b-41d4-a716-446655440000",
+            )
+
+    assert result.is_safe is True
+    # Verify context was passed through
+    call_args = mock_check.call_args
+    assert call_args is not None
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_without_models(monkeypatch):
+    """Test evaluate_controls when MODELS_AVAILABLE is False."""
+    # Mock check_evaluation_with_local
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_check = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    # Mock MODELS_AVAILABLE as False
+    monkeypatch.setattr(evaluation, "MODELS_AVAILABLE", False)
+
+    with patch("agent_control._server_url", "http://localhost:8000"):
+        with patch("agent_control._api_key", None):
+            result = await evaluation.evaluate_controls(
                 step_name="chat",
                 input="hello",
                 stage="pre",
+                agent_uuid="550e8400-e29b-41d4-a716-446655440000",
             )
+
+    assert result.is_safe is True

@@ -562,6 +562,12 @@ async def evaluate_controls(
     # Import here to avoid circular dependency
     from . import _api_key, _current_agent, _server_controls, _server_url
 
+    # Ensure _server_url is set (for mypy type narrowing)
+    if _server_url is None:
+        raise RuntimeError(
+            "Server URL not configured. Call agent_control.init() first."
+        )
+
     # Determine agent_uuid to use
     if agent_uuid is None:
         if _current_agent is None:
@@ -576,10 +582,6 @@ async def evaluate_controls(
         resolved_agent_uuid = UUID(agent_uuid) if isinstance(agent_uuid, str) else agent_uuid
         resolved_agent_name = agent_name or "unknown"
 
-    # Determine server URL
-    if _server_url is None:
-        raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
-
     # Build Step dict (input and output are required by Step model)
     # Tool steps require dict input/output, LLM steps use strings
     default_value = {} if step_type == "tool" else ""
@@ -593,10 +595,9 @@ async def evaluate_controls(
         step_dict["context"] = context
 
     # Convert to Step object if models available
-    try:
-        from agent_control_models import Step
+    if MODELS_AVAILABLE:
         step_obj = Step(**step_dict)
-    except ImportError:
+    else:
         step_obj = step_dict  # type: ignore
 
     # Get controls (use provided or fall back to cached)
