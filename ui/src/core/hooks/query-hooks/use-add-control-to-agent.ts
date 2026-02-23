@@ -76,7 +76,11 @@ export function useAddControlToAgent() {
       } catch (error) {
         // Best effort cleanup: avoid orphan controls if a later step fails.
         if (createdControlId !== null) {
-          await api.controls.delete(createdControlId, { force: true });
+          try {
+            await api.controls.delete(createdControlId, { force: true });
+          } catch {
+            // Preserve the original error from the primary flow.
+          }
         }
         throw error;
       }
@@ -86,7 +90,7 @@ export function useAddControlToAgent() {
       queryClient.invalidateQueries({ queryKey: ['controls'] });
       queryClient.invalidateQueries({ queryKey: ['agent', variables.agentId] });
       queryClient.invalidateQueries({
-        queryKey: ['agentControls', variables.agentId],
+        queryKey: ['agent', variables.agentId, 'controls'],
       });
       // Invalidate agents list query to refresh active controls count
       queryClient.invalidateQueries({

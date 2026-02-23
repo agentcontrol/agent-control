@@ -51,6 +51,7 @@ from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
 )
+from ..services.query_utils import escape_like_pattern
 from ..services.schema_compat import (
     check_schema_compatibility,
     format_compatibility_error,
@@ -181,7 +182,9 @@ async def list_agents(
     limit = min(max(1, limit), _MAX_PAGINATION_LIMIT)
 
     # Build base filter for name search
-    name_filter = Agent.name.ilike(f"%{name}%") if name else None
+    name_filter = (
+        Agent.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\") if name else None
+    )
 
     # Get total count (with name filter if provided)
     count_query = select(func.count()).select_from(Agent)

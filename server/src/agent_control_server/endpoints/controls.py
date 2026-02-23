@@ -37,6 +37,7 @@ from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
 )
+from ..services.query_utils import escape_like_pattern
 
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
@@ -496,19 +497,15 @@ async def list_controls(
     Example:
         GET /controls?limit=10&enabled=true&step_type=tool
     """
-    # Get total count (with filters applied)
-    count_query = select(func.count()).select_from(Control)
     query = select(Control).order_by(Control.id.desc())
 
     # Apply cursor
     if cursor is not None:
         query = query.where(Control.id < cursor)
-        count_query = count_query.where(Control.id < cursor)
 
     # Apply name filter (case-insensitive partial match)
     if name is not None:
-        query = query.where(Control.name.ilike(f"%{name}%"))
-        # Don't apply to count_query - total should be pre-filter
+        query = query.where(Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\"))
 
     # Apply JSONB filters at database level
     if enabled is not None:
@@ -554,7 +551,9 @@ async def list_controls(
     # Get total count (with same filters, but without cursor/limit)
     total_query = select(func.count()).select_from(Control)
     if name is not None:
-        total_query = total_query.where(Control.name.ilike(f"%{name}%"))
+        total_query = total_query.where(
+            Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
+        )
     if enabled is not None:
         if enabled:
             total_query = total_query.where(

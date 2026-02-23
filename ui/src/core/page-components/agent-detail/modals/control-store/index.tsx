@@ -165,8 +165,7 @@ export function ControlStoreModal({
       };
       loadControl();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editModalOpened, controlId, selectedControl]);
+  }, [editModalOpened, controlId, selectedControl, controls]);
 
   // Clear selectedControl when edit modal closes
   useEffect(() => {

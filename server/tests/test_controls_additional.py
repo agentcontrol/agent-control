@@ -284,6 +284,24 @@ def test_list_controls_combined_filters(client: TestClient) -> None:
     assert names == [control1_name]
 
 
+def test_list_controls_name_filter_treats_wildcards_as_literals(client: TestClient) -> None:
+    # Given: two controls where one only matches if '_' is interpreted as wildcard
+    literal_name = f"Control_{uuid.uuid4().hex[:6]}"
+    wildcard_match_name = literal_name.replace("_", "X", 1)
+
+    _, created_literal_name = _create_control(client, name=literal_name)
+    _create_control(client, name=wildcard_match_name)
+
+    # When: filtering by the literal name containing '_'
+    resp = client.get("/api/v1/controls", params={"name": literal_name})
+    assert resp.status_code == 200
+    names = [control["name"] for control in resp.json()["controls"]]
+
+    # Then: only exact literal '_' matches are returned
+    assert names == [created_literal_name]
+    assert resp.json()["pagination"]["total"] == 1
+
+
 def test_list_controls_enabled_true_includes_missing_enabled(client: TestClient) -> None:
     # Given: controls with enabled true, enabled false, and missing enabled
     control_true_id, control_true_name = _create_control(client, name=f"Enabled-{uuid.uuid4()}")

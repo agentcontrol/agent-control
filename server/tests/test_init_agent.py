@@ -1,16 +1,13 @@
-import json
 import logging
 import uuid
 from typing import Any
 
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select, text
-from sqlalchemy.orm import Session
-
 from agent_control_server.config import db_config
 from agent_control_server.models import Agent
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 
 # Create sync engine for raw database queries in tests
 engine = create_engine(db_config.get_url(), echo=False)
@@ -265,8 +262,6 @@ def test_init_agent_logs_warning_on_bad_existing_data(client: TestClient, caplog
         assert any("Failed to parse existing agent data" in m for m in messages)
 
 
-import uuid
-
 def _create_policy(client: TestClient) -> int:
     # Helper: create a policy via API and return id
     name = f"pol-{uuid.uuid4()}"
@@ -417,7 +412,7 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
     assert isinstance(body.get("controls"), list)
     # Verify control data is present and matches description
     assert any(
-        item.get("control", {}).get("description") == data_payload["description"] 
+        item.get("control", {}).get("description") == data_payload["description"]
         for item in body["controls"]
     )
 
@@ -626,6 +621,25 @@ def test_list_agents_with_policy(client: TestClient) -> None:
     body = resp.json()
     assert len(body["agents"]) == 1
     assert body["agents"][0]["policy_ids"] == [policy_id]
+
+
+def test_list_agents_name_filter_treats_wildcards_as_literals(client: TestClient) -> None:
+    """Test name filter escapes SQL wildcard characters in user input."""
+    literal_name = f"Agent_{uuid.uuid4().hex[:6]}"
+    wildcard_match_name = literal_name.replace("_", "X", 1)
+
+    literal_payload = make_agent_payload(agent_id=str(uuid.uuid4()), name=literal_name)
+    wildcard_payload = make_agent_payload(agent_id=str(uuid.uuid4()), name=wildcard_match_name)
+
+    assert client.post("/api/v1/agents/initAgent", json=literal_payload).status_code == 200
+    assert client.post("/api/v1/agents/initAgent", json=wildcard_payload).status_code == 200
+
+    resp = client.get("/api/v1/agents", params={"name": literal_name})
+    assert resp.status_code == 200
+    names = [agent["agent_name"] for agent in resp.json()["agents"]]
+
+    assert names == [literal_name]
+    assert resp.json()["pagination"]["total"] == 1
 
 
 def test_list_agents_pagination(client: TestClient) -> None:
