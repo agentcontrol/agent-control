@@ -102,7 +102,7 @@ class InitAgentResponse(BaseModel):
     )
     controls: list[Control] = Field(
         default_factory=list,
-        description="Active protection controls for the agent (if policy assigned)",
+        description="Active protection controls for the agent",
     )
 
 
@@ -119,24 +119,15 @@ class CreatePolicyResponse(BaseModel):
     policy_id: int = Field(description="Identifier of the created policy")
 
 
-class SetPolicyResponse(BaseModel):
-    success: bool = Field(description="Whether the policy was successfully assigned")
-    old_policy_id: int | None = Field(
-        default=None, description="Previous policy id if one was replaced"
+class GetAgentPoliciesResponse(BaseModel):
+    policy_ids: list[int] = Field(
+        default_factory=list, description="IDs of policies associated with the agent"
     )
-
-
-class GetPolicyResponse(BaseModel):
-    policy_id: int = Field(description="Identifier of the policy assigned to the agent")
-
-
-class DeletePolicyResponse(BaseModel):
-    success: bool = Field(description="Whether the policy was successfully removed")
 
 
 class AgentControlsResponse(BaseModel):
     controls: list[Control] = Field(
-        description="List of controls associated with the agent via its policy"
+        description="List of active controls associated with the agent"
     )
 
 
@@ -229,12 +220,14 @@ class AgentSummary(BaseModel):
 
     agent_id: str = Field(..., description="UUID of the agent")
     agent_name: str = Field(..., description="Human-readable name of the agent")
-    policy_id: int | None = Field(None, description="ID of assigned policy, if any")
+    policy_ids: list[int] = Field(
+        default_factory=list, description="IDs of policies associated with the agent"
+    )
     created_at: str | None = Field(None, description="ISO 8601 timestamp when agent was created")
     step_count: int = Field(0, description="Number of steps registered with the agent")
     evaluator_count: int = Field(0, description="Number of evaluators registered with the agent")
     active_controls_count: int = Field(
-        0, description="Number of active controls from agent's policy"
+        0, description="Number of active controls for this agent"
     )
 
 
@@ -293,9 +286,13 @@ class DeleteControlResponse(BaseModel):
     """Response for deleting a control."""
 
     success: bool = Field(..., description="Whether the control was deleted")
-    dissociated_from: list[int] = Field(
+    dissociated_from_policies: list[int] = Field(
         default_factory=list,
         description="Policy IDs the control was removed from before deletion",
+    )
+    dissociated_from_agents: list[str] = Field(
+        default_factory=list,
+        description="Agent IDs the control was removed from before deletion",
     )
 
 

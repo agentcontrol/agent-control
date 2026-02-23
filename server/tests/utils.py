@@ -65,7 +65,7 @@ def create_and_assign_policy(
     assert resp.status_code == 200
 
     # 6. Assign Policy to Agent
-    resp = client.post(f"/api/v1/agents/{str(agent_uuid)}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{str(agent_uuid)}/policies/{policy_id}")
     assert resp.status_code == 200
 
     return agent_uuid, control_name

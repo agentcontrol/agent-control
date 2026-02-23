@@ -69,7 +69,7 @@ def test_agent_gets_controls_from_policy(client: TestClient) -> None:
         assert resp.status_code == 200
 
     # Assign policy to agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
     assert resp.status_code == 200
 
     # When: Get agent's controls
@@ -96,7 +96,7 @@ def test_agent_controls_update_when_control_added_to_policy(client: TestClient) 
 
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_1_id}")
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_2_id}")
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Verify initial state: 2 controls
     resp = client.get(f"/api/v1/agents/{agent_id}/controls")
@@ -123,8 +123,8 @@ def test_agent_controls_update_when_control_added_to_policy(client: TestClient) 
     assert control_ids == {control_1_id, control_2_id, control_3_id, control_4_id, control_5_id}
 
 
-def test_switching_agent_policy_changes_controls(client: TestClient) -> None:
-    """Switching agent's policy should completely change its controls."""
+def test_adding_second_agent_policy_unions_controls(client: TestClient) -> None:
+    """Adding another policy should union controls from both policies."""
     # Given: Two policies with different controls
     agent_id, _ = _create_agent(client)
 
@@ -143,21 +143,26 @@ def test_switching_agent_policy_changes_controls(client: TestClient) -> None:
     client.post(f"/api/v1/policies/{policy_b_id}/controls/{control_4_id}")
 
     # Assign policy A to agent
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_a_id}")
+    client.post(f"/api/v1/agents/{agent_id}/policies/{policy_a_id}")
     resp = client.get(f"/api/v1/agents/{agent_id}/controls")
     controls_a = resp.json()["controls"]
     assert len(controls_a) == 2
     assert {r["id"] for r in controls_a} == {control_1_id, control_2_id}
 
-    # When: Switch to policy B
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_b_id}")
+    # When: Add policy B
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_b_id}")
     assert resp.status_code == 200
 
-    # Then: Agent's controls change completely
+    # Then: Agent sees controls from both policies
     resp = client.get(f"/api/v1/agents/{agent_id}/controls")
     controls_b = resp.json()["controls"]
-    assert len(controls_b) == 2
-    assert {r["id"] for r in controls_b} == {control_3_id, control_4_id}
+    assert len(controls_b) == 4
+    assert {r["id"] for r in controls_b} == {
+        control_1_id,
+        control_2_id,
+        control_3_id,
+        control_4_id,
+    }
 
 
 def test_removing_agent_policy_clears_controls(client: TestClient) -> None:
@@ -168,14 +173,14 @@ def test_removing_agent_policy_clears_controls(client: TestClient) -> None:
     control_id = _create_control(client, "control-1", {"id": 1})
 
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Verify agent has controls
     resp = client.get(f"/api/v1/agents/{agent_id}/controls")
     assert len(resp.json()["controls"]) > 0
 
     # When: Remove policy from agent
-    resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
+    resp = client.delete(f"/api/v1/agents/{agent_id}/policies")
     assert resp.status_code == 200
 
     # Then: Agent returns empty controls list
@@ -199,7 +204,7 @@ def test_removing_control_from_policy_removes_from_agent(client: TestClient) -> 
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_2_id}")
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_3_id}")
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_4_id}")
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Verify initial state: 4 controls
     resp = client.get(f"/api/v1/agents/{agent_id}/controls")
@@ -233,8 +238,8 @@ def test_multiple_agents_same_policy(client: TestClient) -> None:
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_2_id}")
 
     # Assign same policy to both agents
-    client.post(f"/api/v1/agents/{agent_1_id}/policy/{policy_id}")
-    client.post(f"/api/v1/agents/{agent_2_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_1_id}/policies/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_2_id}/policies/{policy_id}")
 
     # Verify both see same controls initially
     resp_1 = client.get(f"/api/v1/agents/{agent_1_id}/controls")
@@ -284,8 +289,8 @@ def test_control_shared_between_policies(client: TestClient) -> None:
     agent_a_id, _ = _create_agent(client, "agent-a")
     agent_b_id, _ = _create_agent(client, "agent-b")
 
-    client.post(f"/api/v1/agents/{agent_a_id}/policy/{policy_a_id}")
-    client.post(f"/api/v1/agents/{agent_b_id}/policy/{policy_b_id}")
+    client.post(f"/api/v1/agents/{agent_a_id}/policies/{policy_a_id}")
+    client.post(f"/api/v1/agents/{agent_b_id}/policies/{policy_b_id}")
 
     resp_a = client.get(f"/api/v1/agents/{agent_a_id}/controls")
     resp_b = client.get(f"/api/v1/agents/{agent_b_id}/controls")

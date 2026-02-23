@@ -14,7 +14,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type InitAgentResponse = {
   /**
-   * Active protection controls for the agent (if policy assigned)
+   * Active protection controls for the agent
    */
   controls?: Array<Control> | undefined;
   /**

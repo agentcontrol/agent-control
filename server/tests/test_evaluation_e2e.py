@@ -75,7 +75,7 @@ def test_evaluation_empty_policy(client: TestClient):
         "steps": []
     })
 
-    client.post(f"/api/v1/agents/{str(agent_uuid)}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{str(agent_uuid)}/policies/{policy_id}")
 
     # When: evaluating content for that agent
     req = EvaluationRequest(
@@ -221,8 +221,10 @@ def test_evaluation_deny_precedence(client: TestClient):
 
     # Create and add second (Deny) control to the same policy
     # Actually, easiest is to fetch the agent's policy ID
-    resp = client.get(f"/api/v1/agents/{agent_uuid}/policy")
-    policy_id = resp.json()["policy_id"]
+    resp = client.get(f"/api/v1/agents/{agent_uuid}/policies")
+    policy_ids = resp.json()["policy_ids"]
+    assert len(policy_ids) == 1
+    policy_id = policy_ids[0]
 
     # Create Deny Control
     control_deny = {

@@ -695,7 +695,7 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
            POST /api/v1/policies/{policy_id}/controls/{control_id}
 
         3. Assign policy to agent:
-           POST /api/v1/agents/{agent_id}/policy/{policy_id}
+           POST /api/v1/agents/{agent_id}/policies/{policy_id}
     """
     # The policy parameter is for documentation only - the server uses
     # the agent's assigned policy automatically

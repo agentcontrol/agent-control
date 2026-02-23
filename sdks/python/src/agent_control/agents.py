@@ -120,7 +120,7 @@ async def list_agents(
     Returns:
         Dictionary containing:
             - agents: List of agent summaries with agent_id, agent_name,
-                      policy_id, created_at, step_count, evaluator_count
+                      policy_ids, created_at, step_count, evaluator_count
             - pagination: Object with limit, total, next_cursor, has_more
 
     Raises:
@@ -146,12 +146,12 @@ async def list_agents(
     return cast(dict[str, Any], response.json())
 
 
-async def get_agent_policy(
+async def get_agent_policies(
     client: AgentControlClient,
     agent_id: str | UUID,
 ) -> dict[str, Any]:
     """
-    Get the policy assigned to an agent.
+    Get policy IDs associated with an agent.
 
     Args:
         client: AgentControlClient instance
@@ -159,28 +159,78 @@ async def get_agent_policy(
 
     Returns:
         Dictionary containing:
-            - policy_id: ID of the policy assigned to the agent
+            - policy_ids: IDs of policies associated with the agent
 
     Raises:
-        httpx.HTTPError: If request fails or agent has no policy
+        httpx.HTTPError: If request fails
 
     Example:
         async with AgentControlClient() as client:
-            policy = await get_agent_policy(client, agent_id)
-            print(f"Policy ID: {policy['policy_id']}")
+            policies = await get_agent_policies(client, agent_id)
+            print(f"Policy IDs: {policies['policy_ids']}")
     """
     agent_id_str = ensure_uuid_str(agent_id)
-    response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/policy")
+    response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/policies")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 
 
-async def remove_agent_policy(
+async def get_agent_policy(
     client: AgentControlClient,
     agent_id: str | UUID,
 ) -> dict[str, Any]:
     """
-    Remove the policy assignment from an agent.
+    Backward-compatible alias for get_agent_policies().
+
+    Returns:
+        Dictionary containing:
+            - policy_ids: IDs of policies associated with the agent
+    """
+    return await get_agent_policies(client, agent_id)
+
+
+async def add_agent_policy(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+    policy_id: int,
+) -> dict[str, Any]:
+    """
+    Associate a policy with an agent.
+
+    This operation is idempotent.
+    """
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.post(
+        f"/api/v1/agents/{agent_id_str}/policies/{policy_id}"
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
+async def remove_agent_policy_association(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+    policy_id: int,
+) -> dict[str, Any]:
+    """
+    Remove a specific policy association from an agent.
+
+    This operation is idempotent.
+    """
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.delete(
+        f"/api/v1/agents/{agent_id_str}/policies/{policy_id}"
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
+async def remove_agent_policies(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+) -> dict[str, Any]:
+    """
+    Remove all policy associations from an agent.
 
     Args:
         client: AgentControlClient instance
@@ -190,9 +240,55 @@ async def remove_agent_policy(
         Dictionary containing success flag/details
 
     Raises:
-        httpx.HTTPError: If request fails or agent has no policy
+        httpx.HTTPError: If request fails
     """
     agent_id_str = ensure_uuid_str(agent_id)
-    response = await client.http_client.delete(f"/api/v1/agents/{agent_id_str}/policy")
+    response = await client.http_client.delete(f"/api/v1/agents/{agent_id_str}/policies")
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
+async def remove_agent_policy(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+) -> dict[str, Any]:
+    """
+    Backward-compatible alias for remove_agent_policies().
+    """
+    return await remove_agent_policies(client, agent_id)
+
+
+async def add_agent_control(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+    control_id: int,
+) -> dict[str, Any]:
+    """
+    Associate a control directly with an agent.
+
+    This operation is idempotent.
+    """
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.post(
+        f"/api/v1/agents/{agent_id_str}/controls/{control_id}"
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
+async def remove_agent_control(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+    control_id: int,
+) -> dict[str, Any]:
+    """
+    Remove a direct control association from an agent.
+
+    This operation is idempotent.
+    """
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.delete(
+        f"/api/v1/agents/{agent_id_str}/controls/{control_id}"
+    )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())

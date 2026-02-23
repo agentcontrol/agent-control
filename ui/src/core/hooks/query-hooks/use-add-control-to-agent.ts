@@ -13,11 +13,9 @@ type AddControlToAgentParams = {
 /**
  * Mutation hook to add a control to an agent
  * Flow:
- * 1. Check if agent has a policy
- * 2. If no policy, create one and assign it to the agent
- * 3. Create the control
- * 4. Set control data (definition)
- * 5. Add control to policy
+ * 1. Create the control
+ * 2. Set control data (definition)
+ * 3. Associate the control directly with the agent
  */
 export function useAddControlToAgent() {
   const queryClient = useQueryClient();
@@ -28,46 +26,7 @@ export function useAddControlToAgent() {
       controlName,
       definition,
     }: AddControlToAgentParams) => {
-      // Step 1: Check if agent has a policy
-      let policyId: number;
-      const { data: policyData, error: policyError } =
-        await api.agents.getPolicy(agentId);
-
-      if (policyError || !policyData?.policy_id) {
-        // Step 2: Create a new policy and assign it to the agent
-        const policyName = `policy-${agentId}`;
-        const {
-          data: createPolicyResult,
-          error: createPolicyError,
-          response: createPolicyResponse,
-        } = await api.policies.create(policyName);
-
-        if (createPolicyError || !createPolicyResult) {
-          throw parseApiError(
-            createPolicyError,
-            'Failed to create policy',
-            createPolicyResponse?.status
-          );
-        }
-
-        policyId = createPolicyResult.policy_id;
-
-        // Assign policy to agent
-        const { error: assignError, response: assignResponse } =
-          await api.agents.setPolicy(agentId, policyId);
-
-        if (assignError) {
-          throw parseApiError(
-            assignError,
-            'Failed to assign policy to agent',
-            assignResponse?.status
-          );
-        }
-      } else {
-        policyId = policyData.policy_id;
-      }
-
-      // Step 3: Create the control
+      // Step 1: Create the control
       const {
         data: createControlResult,
         error: createControlError,
@@ -84,7 +43,7 @@ export function useAddControlToAgent() {
 
       const controlId = createControlResult.control_id;
 
-      // Step 4: Set control data (definition)
+      // Step 2: Set control data (definition)
       const { error: setDataError, response: setDataResponse } =
         await api.controls.setData(controlId, {
           data: definition,
@@ -98,19 +57,19 @@ export function useAddControlToAgent() {
         );
       }
 
-      // Step 5: Add control to policy
-      const { error: addControlError, response: addControlResponse } =
-        await api.policies.addControl(policyId, controlId);
+      // Step 3: Associate control directly with the agent
+      const { error: associateError, response: associateResponse } =
+        await api.agents.addControl(agentId, controlId);
 
-      if (addControlError) {
+      if (associateError) {
         throw parseApiError(
-          addControlError,
-          'Failed to add control to policy',
-          addControlResponse?.status
+          associateError,
+          'Failed to associate control with agent',
+          associateResponse?.status
         );
       }
 
-      return { controlId, policyId };
+      return { controlId };
     },
     onSuccess: (_data, variables) => {
       // Invalidate relevant queries to refetch data

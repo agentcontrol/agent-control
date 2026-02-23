@@ -79,7 +79,7 @@ def test_delete_agent_policy_rollback_on_failure(
     assert r2.status_code == 200
     policy_id = r2.json()["policy_id"]
 
-    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
     assert assign_resp.status_code == 200
 
     # And: a database session that fails on commit
@@ -105,7 +105,7 @@ def test_delete_agent_policy_rollback_on_failure(
         # When: deleting policy and commit fails
         app.dependency_overrides[get_async_db] = mock_db_for_delete_policy
         try:
-            resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
+            resp = client.delete(f"/api/v1/agents/{agent_id}/policies")
         finally:
             app.dependency_overrides.clear()
 
@@ -320,10 +320,12 @@ def test_delete_control_rollback_on_failure(
 
             control_result = MagicMock()
             control_result.scalars.return_value.first.return_value = existing_control
-            assoc_result = MagicMock()
-            assoc_result.all.return_value = []
+            policy_assoc_result = MagicMock()
+            policy_assoc_result.all.return_value = []
+            agent_assoc_result = MagicMock()
+            agent_assoc_result.all.return_value = []
             mock_session.execute = AsyncMock(
-                side_effect=[control_result, assoc_result]
+                side_effect=[control_result, policy_assoc_result, agent_assoc_result]
             )
             mock_session.delete = AsyncMock()
             mock_session.rollback = AsyncMock()
@@ -415,7 +417,7 @@ def test_set_agent_policy_rollback_on_failure(
 
         app.dependency_overrides[get_async_db] = mock_db_for_policy_assignment
         try:
-            resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+            resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
             # Then: rollback is called and 500 error is returned
             assert resp.status_code == 500

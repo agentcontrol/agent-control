@@ -6,13 +6,13 @@ import { parseApiError } from '@/core/api/errors';
 type DeleteControlParams = {
   agentId: string;
   controlId: number;
-  /** If true, dissociate from all policies before deleting. Default true so control can be removed from agent. */
+  /** If true, dissociate from all policy and agent links before deleting. */
   force?: boolean;
 };
 
 /**
  * Mutation hook to delete a control.
- * Use force: true when deleting from agent detail so the control is removed from the policy and then deleted.
+ * Use force: true when deleting from agent detail so linked associations are removed first.
  */
 export function useDeleteControl() {
   const queryClient = useQueryClient();

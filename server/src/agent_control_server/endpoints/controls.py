@@ -21,7 +21,7 @@ from agent_control_models.server import (
 from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import ValidationError
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
@@ -32,7 +32,7 @@ from ..errors import (
     NotFoundError,
 )
 from ..logging_utils import get_logger
-from ..models import Agent, AgentData, Control, Policy, policy_controls
+from ..models import Agent, AgentData, Control, agent_controls, agent_policies, policy_controls
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
@@ -594,21 +594,34 @@ async def list_controls(
         controls = controls[:-1]
 
     # Build mapping of control_id -> agent that uses it
-    # Traversal: Control -> policy_controls -> Policy -> Agent
+    # Traversal includes both:
+    # - Control -> policy_controls -> agent_policies -> Agent
+    # - Control -> agent_controls -> Agent
     control_agent_map: dict[int, AgentRef | None] = {ctrl.id: None for ctrl in controls}
     if controls:
         control_ids = [ctrl.id for ctrl in controls]
-        agents_query = (
+        policy_agents_query = (
             select(
                 policy_controls.c.control_id,
-                Agent.agent_uuid,
+                agent_policies.c.agent_uuid,
                 Agent.name,
             )
             .select_from(policy_controls)
-            .join(Policy, policy_controls.c.policy_id == Policy.id)
-            .join(Agent, Agent.policy_id == Policy.id)
+            .join(agent_policies, policy_controls.c.policy_id == agent_policies.c.policy_id)
+            .join(Agent, Agent.agent_uuid == agent_policies.c.agent_uuid)
             .where(policy_controls.c.control_id.in_(control_ids))
         )
+        direct_agents_query = (
+            select(
+                agent_controls.c.control_id,
+                agent_controls.c.agent_uuid,
+                Agent.name,
+            )
+            .select_from(agent_controls)
+            .join(Agent, Agent.agent_uuid == agent_controls.c.agent_uuid)
+            .where(agent_controls.c.control_id.in_(control_ids))
+        )
+        agents_query = union_all(policy_agents_query, direct_agents_query)
         agents_result = await db.execute(agents_query)
         for row in agents_result.all():
             control_id, agent_uuid, agent_name = row
@@ -664,15 +677,15 @@ async def delete_control(
     control_id: int,
     force: bool = Query(
         False,
-        description="If true, dissociate from all policies before deleting. "
-        "If false, fail if control is associated with any policy.",
+        description="If true, dissociate from all policy/agent links before deleting. "
+        "If false, fail if control is associated with any policy or agent.",
     ),
     db: AsyncSession = Depends(get_async_db),
 ) -> DeleteControlResponse:
     """
     Delete a control by ID.
 
-    By default, deletion fails if the control is associated with any policy.
+    By default, deletion fails if the control is associated with any policy or agent.
     Use force=true to automatically dissociate and delete.
 
     Args:
@@ -681,7 +694,7 @@ async def delete_control(
         db: Database session (injected)
 
     Returns:
-        DeleteControlResponse with success flag and list of dissociated policies
+        DeleteControlResponse with success flag and dissociation details
 
     Raises:
         HTTPException 404: Control not found
@@ -700,48 +713,66 @@ async def delete_control(
             hint="Verify the control ID is correct and the control has been created.",
         )
 
-    # Check for associations with policies
-    assoc_result = await db.execute(
-        select(policy_controls.c.policy_id).where(
-            policy_controls.c.control_id == control_id
-        )
+    # Check for associations with policies and direct agent links
+    policy_assoc_result = await db.execute(
+        select(policy_controls.c.policy_id).where(policy_controls.c.control_id == control_id)
     )
-    associated_policy_ids = [row[0] for row in assoc_result.all()]
+    associated_policy_ids = [row[0] for row in policy_assoc_result.all()]
 
-    if associated_policy_ids and not force:
+    agent_assoc_result = await db.execute(
+        select(agent_controls.c.agent_uuid).where(agent_controls.c.control_id == control_id)
+    )
+    associated_agent_ids = [str(row[0]) for row in agent_assoc_result.all()]
+
+    if (associated_policy_ids or associated_agent_ids) and not force:
+        errors = [
+            ValidationErrorItem(
+                resource="Policy",
+                field="controls",
+                code="control_in_use",
+                message=f"Control is associated with policy ID {pid}",
+                value=pid,
+            )
+            for pid in associated_policy_ids
+        ] + [
+            ValidationErrorItem(
+                resource="Agent",
+                field="controls",
+                code="control_in_use",
+                message=f"Control is directly associated with agent ID {agent_id}",
+                value=agent_id,
+            )
+            for agent_id in associated_agent_ids
+        ]
         raise ConflictError(
             error_code=ErrorCode.CONTROL_IN_USE,
             detail=(
                 f"Control '{control.name}' is associated with "
-                f"{len(associated_policy_ids)} policy/policies"
+                f"{len(associated_policy_ids)} policy/policies and "
+                f"{len(associated_agent_ids)} agent(s)"
             ),
             resource="Control",
             resource_id=control.name,
             hint="Use force=true to dissociate and delete, or remove associations manually first.",
-            errors=[
-                ValidationErrorItem(
-                    resource="Policy",
-                    field="controls",
-                    code="control_in_use",
-                    message=f"Control is associated with policy ID {pid}",
-                    value=pid,
-                )
-                for pid in associated_policy_ids
-            ],
+            errors=errors,
         )
 
     # Remove associations if force=true
-    dissociated_from: list[int] = []
+    dissociated_from_policies: list[int] = []
+    dissociated_from_agents: list[str] = []
     if associated_policy_ids:
-        await db.execute(
-            delete(policy_controls).where(
-                policy_controls.c.control_id == control_id
-            )
-        )
-        dissociated_from = associated_policy_ids
+        await db.execute(delete(policy_controls).where(policy_controls.c.control_id == control_id))
+        dissociated_from_policies = associated_policy_ids
+    if associated_agent_ids:
+        await db.execute(delete(agent_controls).where(agent_controls.c.control_id == control_id))
+        dissociated_from_agents = associated_agent_ids
+    if dissociated_from_policies or dissociated_from_agents:
         _logger.info(
-            f"Dissociated control '{control.name}' ({control_id}) "
-            f"from {len(dissociated_from)} policy/policies"
+            "Dissociated control '%s' (%s) from %s policy/policies and %s agent(s)",
+            control.name,
+            control_id,
+            len(dissociated_from_policies),
+            len(dissociated_from_agents),
         )
 
     # Delete the control
@@ -761,7 +792,11 @@ async def delete_control(
             operation="delete",
         )
 
-    return DeleteControlResponse(success=True, dissociated_from=dissociated_from)
+    return DeleteControlResponse(
+        success=True,
+        dissociated_from_policies=dissociated_from_policies,
+        dissociated_from_agents=dissociated_from_agents,
+    )
 
 
 @router.patch(

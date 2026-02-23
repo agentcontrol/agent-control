@@ -8,23 +8,22 @@ from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentControlsResponse,
     AgentSummary,
-    DeletePolicyResponse,
+    AssocResponse,
     EvaluatorSchema,
+    GetAgentPoliciesResponse,
     GetAgentResponse,
-    GetPolicyResponse,
     InitAgentRequest,
     InitAgentResponse,
     ListAgentsResponse,
     PaginationInfo,
     PatchAgentRequest,
     PatchAgentResponse,
-    SetPolicyResponse,
     StepKey,
 )
 from fastapi import APIRouter, Depends
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
@@ -41,6 +40,8 @@ from ..models import (
     AgentData,
     Control,
     Policy,
+    agent_controls,
+    agent_policies,
     policy_controls,
 )
 from ..services.controls import list_controls_for_agent, list_controls_for_policy
@@ -82,18 +83,8 @@ def _get_builtin_evaluator_names() -> set[str]:
     return _BUILTIN_EVALUATOR_NAMES
 
 
-async def _validate_policy_controls_for_agent(
-    agent: Agent, policy_id: int, db: AsyncSession
-) -> list[str]:
-    """Validate all controls in a policy can run on this agent.
-
-    Checks that agent-scoped evaluators referenced by controls:
-    1. Exist on the agent (registered via initAgent)
-    2. Have config that validates against the evaluator's schema
-
-    Returns:
-        List of error messages (empty if all valid)
-    """
+def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[str]:
+    """Validate controls can run on this agent."""
     errors: list[str] = []
 
     # Parse agent's registered evaluators
@@ -103,9 +94,6 @@ async def _validate_policy_controls_for_agent(
         return [f"Agent '{agent.name}' has corrupted data"]
 
     agent_evaluators = {e.name: e for e in (agent_data.evaluators or [])}
-
-    # Get all controls for this policy
-    controls = await list_controls_for_policy(policy_id, db)
 
     for control in controls:
         if not control.data:
@@ -152,6 +140,14 @@ async def _validate_policy_controls_for_agent(
     return errors
 
 
+async def _validate_policy_controls_for_agent(
+    agent: Agent, policy_id: int, db: AsyncSession
+) -> list[str]:
+    """Validate all controls in a policy can run on this agent."""
+    controls = await list_controls_for_policy(policy_id, db)
+    return _validate_controls_for_agent(agent, controls)
+
+
 @router.get(
     "",
     response_model=ListAgentsResponse,
@@ -167,7 +163,7 @@ async def list_agents(
     """
     List all registered agents with cursor-based pagination.
 
-    Returns a summary of each agent including ID, name, policy assignment,
+    Returns a summary of each agent including ID, name, policy associations,
     and counts of registered steps and evaluators.
 
     Args:
@@ -237,32 +233,54 @@ async def list_agents(
     if has_more and agents:
         next_cursor = str(agents[-1].agent_uuid)
 
-    # Batch query: Get control counts for all agents at once
-    # Join: Agent -> Policy -> policy_controls (junction table) -> Control
-    # Count distinct enabled control IDs per agent
-    # Performance: Filter NULL controls explicitly to avoid JSONB parsing on NULL rows
-    # This allows the query planner to optimize better
+    # Batch query: Get policy IDs and active control counts for all agents at once
     control_counts_map: dict[UUID, int] = {}
+    policy_ids_map: dict[UUID, list[int]] = {}
     if agents:
+        agent_uuids = [agent.agent_uuid for agent in agents]
+
+        # Policy associations per agent
+        policy_ids_query = (
+            select(agent_policies.c.agent_uuid, agent_policies.c.policy_id)
+            .where(agent_policies.c.agent_uuid.in_(agent_uuids))
+            .order_by(agent_policies.c.agent_uuid, agent_policies.c.policy_id)
+        )
+        policy_ids_result = await db.execute(policy_ids_query)
+        for agent_uuid, policy_id in policy_ids_result.all():
+            policy_ids_map.setdefault(agent_uuid, []).append(policy_id)
+
+        # Active controls per agent (policy-derived + direct controls, de-duplicated)
+        policy_associations = (
+            select(
+                agent_policies.c.agent_uuid.label("agent_uuid"),
+                policy_controls.c.control_id.label("control_id"),
+            )
+            .select_from(
+                agent_policies.join(
+                    policy_controls, agent_policies.c.policy_id == policy_controls.c.policy_id
+                )
+            )
+            .where(agent_policies.c.agent_uuid.in_(agent_uuids))
+        )
+        direct_associations = select(
+            agent_controls.c.agent_uuid.label("agent_uuid"),
+            agent_controls.c.control_id.label("control_id"),
+        ).where(agent_controls.c.agent_uuid.in_(agent_uuids))
+        all_associations = union_all(policy_associations, direct_associations).subquery()
+
         control_counts_query = (
             select(
-                Agent.agent_uuid,
-                func.count(func.distinct(policy_controls.c.control_id)).label("count"),
+                all_associations.c.agent_uuid,
+                func.count(func.distinct(all_associations.c.control_id)).label("count"),
             )
-            .outerjoin(Policy, Agent.policy_id == Policy.id)
-            .outerjoin(policy_controls, Policy.id == policy_controls.c.policy_id)
-            .outerjoin(Control, policy_controls.c.control_id == Control.id)
+            .join(Control, all_associations.c.control_id == Control.id)
             .where(
-                Agent.agent_uuid.in_([agent.agent_uuid for agent in agents]),
-                # Only count enabled controls: Control must exist AND be enabled
-                # (enabled=true OR enabled key missing, default is True)
-                Control.id.is_not(None),  # Exclude NULL controls (agents without policies)
                 or_(
                     Control.data["enabled"].astext == "true",
                     ~Control.data.has_key("enabled"),
                 ),
             )
-            .group_by(Agent.agent_uuid)
+            .group_by(all_associations.c.agent_uuid)
         )
         control_counts_result = await db.execute(control_counts_query)
         control_counts_map = {row[0]: row[1] for row in control_counts_result.all()}
@@ -289,7 +307,7 @@ async def list_agents(
             AgentSummary(
                 agent_id=str(agent.agent_uuid),
                 agent_name=agent.name,
-                policy_id=agent.policy_id,
+                policy_ids=policy_ids_map.get(agent.agent_uuid, []),
                 created_at=agent.created_at.isoformat() if agent.created_at else None,
                 step_count=step_count,
                 evaluator_count=evaluator_count,
@@ -644,10 +662,8 @@ async def init_agent(
                 operation="update",
             )
 
-    # If the existing agent has a policy, include its controls; otherwise empty list
-    controls = []
-    if existing.policy_id is not None:
-        controls = await list_controls_for_agent(existing.agent_uuid, db)
+    # Include all active controls (policy-derived and direct).
+    controls = await list_controls_for_agent(existing.agent_uuid, db)
 
     return InitAgentResponse(created=created, controls=controls)
 
@@ -724,33 +740,8 @@ async def get_agent(agent_id: UUID, db: AsyncSession = Depends(get_async_db)) ->
     )
 
 
-@router.post(
-    "/{agent_id}/policy/{policy_id}",
-    response_model=SetPolicyResponse,
-    summary="Assign policy to agent",
-    response_description="Success status with previous policy ID",
-)
-async def set_agent_policy(
-    agent_id: UUID, policy_id: int, db: AsyncSession = Depends(get_async_db)
-) -> SetPolicyResponse:
-    """
-    Assign a policy to an agent, replacing any existing policy assignment.
-
-    The agent will immediately inherit all controls from the assigned policy.
-
-    Args:
-        agent_id: UUID of the agent
-        policy_id: ID of the policy to assign
-        db: Database session (injected)
-
-    Returns:
-        SetPolicyResponse with success flag and previous policy ID (if any)
-
-    Raises:
-        HTTPException 404: Agent or policy not found
-        HTTPException 500: Database error during assignment
-    """
-    # Find agent
+async def _get_agent_or_404(agent_id: UUID, db: AsyncSession) -> Agent:
+    """Get an agent or raise AGENT_NOT_FOUND."""
     result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
     agent: Agent | None = result.scalars().first()
     if agent is None:
@@ -761,8 +752,21 @@ async def set_agent_policy(
             resource_id=str(agent_id),
             hint="Verify the agent ID is correct and the agent has been registered.",
         )
+    return agent
 
-    # Find policy by id
+
+@router.post(
+    "/{agent_id}/policies/{policy_id}",
+    response_model=AssocResponse,
+    summary="Associate policy with agent",
+    response_description="Success confirmation",
+)
+async def add_agent_policy(
+    agent_id: UUID, policy_id: int, db: AsyncSession = Depends(get_async_db)
+) -> AssocResponse:
+    """Associate a policy with an agent (idempotent)."""
+    agent = await _get_agent_or_404(agent_id, db)
+
     policy_result = await db.execute(select(Policy).where(Policy.id == policy_id))
     policy: Policy | None = policy_result.scalars().first()
     if policy is None:
@@ -774,7 +778,6 @@ async def set_agent_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    # Validate controls can run on this agent
     validation_errors = await _validate_policy_controls_for_agent(agent, policy_id, db)
     if validation_errors:
         raise BadRequestError(
@@ -792,161 +795,251 @@ async def set_agent_policy(
             ],
         )
 
-    # Store old policy ID if exists
-    old_policy_id: int | None = None
-    if agent.policy_id is not None:
-        old_policy_id = agent.policy_id
-
-    # Assign new policy
-    agent.policy_id = policy.id
     try:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = (
+            pg_insert(agent_policies)
+            .values(agent_uuid=agent_id, policy_id=policy_id)
+            .on_conflict_do_nothing()
+        )
+        await db.execute(stmt)
         await db.commit()
     except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to assign policy '{policy_id}' to agent '{agent.name}' ({agent_id})",
+            "Failed to associate policy '%s' with agent '%s' (%s)",
+            policy_id,
+            agent.name,
+            agent_id,
             exc_info=True,
         )
         raise DatabaseError(
-            detail=f"Failed to assign policy to agent '{agent.name}': database error",
+            detail=f"Failed to associate policy with agent '{agent.name}': database error",
             resource="Agent",
-            operation="assign policy",
+            operation="add policy association",
         )
 
-    return SetPolicyResponse(success=True, old_policy_id=old_policy_id)
+    return AssocResponse(success=True)
 
 
 @router.get(
-    "/{agent_id}/policy",
-    response_model=GetPolicyResponse,
-    summary="Get agent's assigned policy",
-    response_description="Policy ID",
+    "/{agent_id}/policies",
+    response_model=GetAgentPoliciesResponse,
+    summary="List policies associated with agent",
+    response_description="List of policy IDs",
 )
-async def get_agent_policy(
+async def get_agent_policies(
     agent_id: UUID, db: AsyncSession = Depends(get_async_db)
-) -> GetPolicyResponse:
-    """
-    Retrieve the policy currently assigned to an agent.
-
-    Args:
-        agent_id: UUID of the agent
-        db: Database session (injected)
-
-    Returns:
-        GetPolicyResponse with policy ID
-
-    Raises:
-        HTTPException 404: Agent not found or agent has no policy assigned
-    """
-    # Find agent
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
-    agent: Agent | None = result.scalars().first()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
-            resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
-        )
-
-    # Check if agent has a policy
-    if agent.policy_id is None:
-        raise NotFoundError(
-            error_code=ErrorCode.POLICY_NOT_FOUND,
-            detail=f"Agent '{agent.name}' has no policy assigned",
-            resource="Policy",
-            hint="Assign a policy to the agent using POST /{agent_id}/policy/{policy_id}.",
-        )
-
-    # Find policy
-    policy_result = await db.execute(select(Policy).where(Policy.id == agent.policy_id))
-    policy: Policy | None = policy_result.scalars().first()
-    if policy is None:
-        raise NotFoundError(
-            error_code=ErrorCode.POLICY_NOT_FOUND,
-            detail=(
-                f"Policy with ID '{agent.policy_id}' not found "
-                f"(referenced by agent '{agent.name}')"
-            ),
-            resource="Policy",
-            resource_id=str(agent.policy_id),
-            hint="The referenced policy may have been deleted. Assign a new policy to the agent.",
-        )
-
-    return GetPolicyResponse(policy_id=policy.id)
+) -> GetAgentPoliciesResponse:
+    """List policy IDs associated with an agent."""
+    await _get_agent_or_404(agent_id, db)
+    result = await db.execute(
+        select(agent_policies.c.policy_id)
+        .where(agent_policies.c.agent_uuid == agent_id)
+        .order_by(agent_policies.c.policy_id)
+    )
+    return GetAgentPoliciesResponse(policy_ids=[row[0] for row in result.all()])
 
 
 @router.delete(
-    "/{agent_id}/policy",
-    response_model=DeletePolicyResponse,
-    summary="Remove agent's policy assignment",
+    "/{agent_id}/policies/{policy_id}",
+    response_model=AssocResponse,
+    summary="Remove policy association from agent",
     response_description="Success confirmation",
 )
-async def delete_agent_policy(
-    agent_id: UUID, db: AsyncSession = Depends(get_async_db)
-) -> DeletePolicyResponse:
-    """
-    Remove the policy assignment from an agent.
+async def remove_agent_policy(
+    agent_id: UUID, policy_id: int, db: AsyncSession = Depends(get_async_db)
+) -> AssocResponse:
+    """Remove a policy association from an agent (idempotent)."""
+    await _get_agent_or_404(agent_id, db)
 
-    The agent will no longer have any protection controls active.
-
-    Args:
-        agent_id: UUID of the agent
-        db: Database session (injected)
-
-    Returns:
-        DeletePolicyResponse with success flag
-
-    Raises:
-        HTTPException 404: Agent not found or agent has no policy assigned
-        HTTPException 500: Database error during removal
-    """
-    # Find agent
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
-    agent: Agent | None = result.scalars().first()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
-            resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
-        )
-
-    # Check if agent has a policy
-    if agent.policy_id is None:
+    policy_result = await db.execute(select(Policy.id).where(Policy.id == policy_id))
+    if policy_result.first() is None:
         raise NotFoundError(
             error_code=ErrorCode.POLICY_NOT_FOUND,
-            detail=f"Agent '{agent.name}' has no policy assigned",
+            detail=f"Policy with ID '{policy_id}' not found",
             resource="Policy",
-            hint="The agent does not have a policy to remove.",
+            resource_id=str(policy_id),
+            hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    # Remove policy assignment
-    agent.policy_id = None
     try:
+        await db.execute(
+            delete(agent_policies).where(
+                (agent_policies.c.agent_uuid == agent_id)
+                & (agent_policies.c.policy_id == policy_id)
+            )
+        )
         await db.commit()
     except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to remove policy from agent '{agent.name}' ({agent_id})",
+            "Failed to remove policy '%s' from agent '%s'",
+            policy_id,
+            agent_id,
             exc_info=True,
         )
         raise DatabaseError(
-            detail=f"Failed to remove policy from agent '{agent.name}': database error",
+            detail=f"Failed to remove policy association from agent '{agent_id}': database error",
             resource="Agent",
-            operation="remove policy",
+            operation="remove policy association",
         )
 
-    return DeletePolicyResponse(success=True)
+    return AssocResponse(success=True)
+
+
+@router.delete(
+    "/{agent_id}/policies",
+    response_model=AssocResponse,
+    summary="Remove all policy associations from agent",
+    response_description="Success confirmation",
+)
+async def remove_all_agent_policies(
+    agent_id: UUID, db: AsyncSession = Depends(get_async_db)
+) -> AssocResponse:
+    """Remove all policy associations from an agent."""
+    await _get_agent_or_404(agent_id, db)
+
+    try:
+        await db.execute(delete(agent_policies).where(agent_policies.c.agent_uuid == agent_id))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        _logger.error(
+            "Failed to remove all policies from agent '%s'",
+            agent_id,
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail=f"Failed to remove policy associations from agent '{agent_id}': database error",
+            resource="Agent",
+            operation="remove all policy associations",
+        )
+
+    return AssocResponse(success=True)
+
+
+@router.post(
+    "/{agent_id}/controls/{control_id}",
+    response_model=AssocResponse,
+    summary="Associate control directly with agent",
+    response_description="Success confirmation",
+)
+async def add_agent_control(
+    agent_id: UUID, control_id: int, db: AsyncSession = Depends(get_async_db)
+) -> AssocResponse:
+    """Associate a control directly with an agent (idempotent)."""
+    agent = await _get_agent_or_404(agent_id, db)
+
+    control_result = await db.execute(select(Control).where(Control.id == control_id))
+    control: Control | None = control_result.scalars().first()
+    if control is None:
+        raise NotFoundError(
+            error_code=ErrorCode.CONTROL_NOT_FOUND,
+            detail=f"Control with ID '{control_id}' not found",
+            resource="Control",
+            resource_id=str(control_id),
+            hint="Verify the control ID is correct and the control has been created.",
+        )
+
+    validation_errors = _validate_controls_for_agent(agent, [control])
+    if validation_errors:
+        raise BadRequestError(
+            error_code=ErrorCode.POLICY_CONTROL_INCOMPATIBLE,
+            detail="Control is incompatible with this agent",
+            hint="Ensure the control is compatible with this agent's evaluators.",
+            errors=[
+                ValidationErrorItem(
+                    resource="Control",
+                    field="evaluator",
+                    code="incompatible",
+                    message=err,
+                )
+                for err in validation_errors
+            ],
+        )
+
+    try:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = (
+            pg_insert(agent_controls)
+            .values(agent_uuid=agent_id, control_id=control_id)
+            .on_conflict_do_nothing()
+        )
+        await db.execute(stmt)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        _logger.error(
+            "Failed to associate control '%s' with agent '%s' (%s)",
+            control_id,
+            agent.name,
+            agent_id,
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail=f"Failed to associate control with agent '{agent.name}': database error",
+            resource="Agent",
+            operation="add control association",
+        )
+
+    return AssocResponse(success=True)
+
+
+@router.delete(
+    "/{agent_id}/controls/{control_id}",
+    response_model=AssocResponse,
+    summary="Remove direct control association from agent",
+    response_description="Success confirmation",
+)
+async def remove_agent_control(
+    agent_id: UUID, control_id: int, db: AsyncSession = Depends(get_async_db)
+) -> AssocResponse:
+    """Remove a direct control association from an agent (idempotent)."""
+    await _get_agent_or_404(agent_id, db)
+
+    control_result = await db.execute(select(Control.id).where(Control.id == control_id))
+    if control_result.first() is None:
+        raise NotFoundError(
+            error_code=ErrorCode.CONTROL_NOT_FOUND,
+            detail=f"Control with ID '{control_id}' not found",
+            resource="Control",
+            resource_id=str(control_id),
+            hint="Verify the control ID is correct and the control has been created.",
+        )
+
+    try:
+        await db.execute(
+            delete(agent_controls).where(
+                (agent_controls.c.agent_uuid == agent_id)
+                & (agent_controls.c.control_id == control_id)
+            )
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        _logger.error(
+            "Failed to remove control '%s' from agent '%s'",
+            control_id,
+            agent_id,
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail=f"Failed to remove control association from agent '{agent_id}': database error",
+            resource="Agent",
+            operation="remove control association",
+        )
+
+    return AssocResponse(success=True)
 
 
 @router.get(
     "/{agent_id}/controls",
     response_model=AgentControlsResponse,
     summary="List agent's active controls",
-    response_description="List of controls from agent's policy",
+    response_description="List of controls from agent policy and direct associations",
 )
 async def list_agent_controls(
     agent_id: UUID, db: AsyncSession = Depends(get_async_db)
@@ -954,32 +1047,19 @@ async def list_agent_controls(
     """
     List all protection controls active for an agent.
 
-    Controls are inherited from the agent's assigned policy.
-    Returns an empty list if the agent has no policy.
+    Controls include the union of policy-derived and directly associated controls.
 
     Args:
         agent_id: UUID of the agent
         db: Database session (injected)
 
     Returns:
-        AgentControlsResponse with list of controls (empty if no policy)
+        AgentControlsResponse with list of active controls
 
     Raises:
         HTTPException 404: Agent not found
     """
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
-    agent: Agent | None = result.scalars().first()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
-            resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
-        )
-
-    if agent.policy_id is None:
-        return AgentControlsResponse(controls=[])
+    await _get_agent_or_404(agent_id, db)
 
     controls = await list_controls_for_agent(agent_id, db)
     return AgentControlsResponse(controls=controls)
@@ -1237,37 +1317,35 @@ async def patch_agent(
     if request.remove_evaluators:
         remove_evaluator_set = set(request.remove_evaluators)
 
-        # Check if any controls reference evaluators being removed
-        if agent.policy_id is not None:
-            # Get all controls for this agent's policy
-            controls = await list_controls_for_agent(agent.agent_uuid, db)
-            referencing_controls: list[tuple[str, str]] = []  # (control_name, evaluator)
+        # Check if any active controls reference evaluators being removed
+        controls = await list_controls_for_agent(agent.agent_uuid, db)
+        referencing_controls: list[tuple[str, str]] = []  # (control_name, evaluator)
 
-            for ctrl in controls:
-                evaluator_ref = ctrl.control.evaluator.name
-                if ":" in evaluator_ref:
-                    ref_agent, ref_eval = evaluator_ref.split(":", 1)
-                    # Check if this control references an evaluator we're removing
-                    # AND it's scoped to this agent (by name match)
-                    if ref_agent == agent.name and ref_eval in remove_evaluator_set:
-                        referencing_controls.append((ctrl.name, ref_eval))
+        for ctrl in controls:
+            evaluator_ref = ctrl.control.evaluator.name
+            if ":" in evaluator_ref:
+                ref_agent, ref_eval = evaluator_ref.split(":", 1)
+                # Check if this control references an evaluator we're removing
+                # AND it's scoped to this agent (by name match)
+                if ref_agent == agent.name and ref_eval in remove_evaluator_set:
+                    referencing_controls.append((ctrl.name, ref_eval))
 
-            if referencing_controls:
-                raise ConflictError(
-                    error_code=ErrorCode.EVALUATOR_IN_USE,
-                    detail="Cannot remove evaluators: active controls reference them",
-                    resource="Evaluator",
-                    hint="Remove or update the controls that reference these evaluators first.",
-                    errors=[
-                        ValidationErrorItem(
-                            resource="Control",
-                            field="evaluator.name",
-                            code="in_use",
-                            message=f"Control '{ctrl}' uses evaluator '{ev}'",
-                        )
-                        for ctrl, ev in referencing_controls
-                    ],
-                )
+        if referencing_controls:
+            raise ConflictError(
+                error_code=ErrorCode.EVALUATOR_IN_USE,
+                detail="Cannot remove evaluators: active controls reference them",
+                resource="Evaluator",
+                hint="Remove or update the controls that reference these evaluators first.",
+                errors=[
+                    ValidationErrorItem(
+                        resource="Control",
+                        field="evaluator.name",
+                        code="in_use",
+                        message=f"Control '{ctrl}' uses evaluator '{ev}'",
+                    )
+                    for ctrl, ev in referencing_controls
+                ],
+            )
 
         new_evaluators = []
         for ev in data_model.evaluators or []:

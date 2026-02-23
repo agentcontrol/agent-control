@@ -230,7 +230,7 @@ def test_patch_agent_remove_evaluator_in_use_conflict(client: TestClient) -> Non
     policy_id = _create_policy(client)
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assign = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
     assert assign.status_code == 200
 
     # When: attempting to remove evaluator in use
@@ -270,7 +270,7 @@ def test_set_agent_policy_incompatible_controls(client: TestClient) -> None:
     agent_b_id, _ = _init_agent(client)
 
     # When: assigning policy to agent B
-    resp = client.post(f"/api/v1/agents/{agent_b_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_b_id}/policies/{policy_id}")
 
     # Then: incompatible controls error
     assert resp.status_code == 400
@@ -357,7 +357,7 @@ def test_list_agent_controls_corrupted_control_data_returns_422(
     policy_id = _create_policy(client)
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assign = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
     assert assign.status_code == 200
 
     # And: the control data is corrupted in the DB
@@ -429,7 +429,7 @@ def test_set_agent_policy_rejects_corrupted_agent_data(client: TestClient) -> No
         )
 
     # When: assigning policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Then: incompatible controls error is returned
     assert resp.status_code == 400
@@ -458,7 +458,7 @@ def test_set_agent_policy_rejects_missing_agent_evaluator(client: TestClient) ->
         )
 
     # When: assigning policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Then: incompatible controls error is returned
     assert resp.status_code == 400
@@ -500,7 +500,7 @@ def test_set_agent_policy_rejects_invalid_agent_evaluator_config(client: TestCli
         )
 
     # When: assigning policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Then: incompatible controls error is returned
     assert resp.status_code == 400
@@ -514,7 +514,7 @@ def test_get_agent_policy_agent_not_found(client: TestClient) -> None:
     missing_agent = str(uuid.uuid4())
 
     # When: retrieving policy for a non-existent agent
-    resp = client.get(f"/api/v1/agents/{missing_agent}/policy")
+    resp = client.get(f"/api/v1/agents/{missing_agent}/policies")
 
     # Then: not found error is returned
     assert resp.status_code == 404
@@ -526,23 +526,23 @@ def test_delete_agent_policy_agent_not_found(client: TestClient) -> None:
     missing_agent = str(uuid.uuid4())
 
     # When: deleting policy for a non-existent agent
-    resp = client.delete(f"/api/v1/agents/{missing_agent}/policy")
+    resp = client.delete(f"/api/v1/agents/{missing_agent}/policies")
 
     # Then: not found error is returned
     assert resp.status_code == 404
     assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
 
 
-def test_delete_agent_policy_no_policy_assigned_returns_404(client: TestClient) -> None:
+def test_delete_agent_policy_no_policy_assigned_is_idempotent(client: TestClient) -> None:
     # Given: an agent with no policy assigned
     agent_id, _ = _init_agent(client)
 
     # When: deleting policy
-    resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
+    resp = client.delete(f"/api/v1/agents/{agent_id}/policies")
 
-    # Then: policy not found error is returned
-    assert resp.status_code == 404
-    assert resp.json()["error_code"] == "POLICY_NOT_FOUND"
+    # Then: deletion is idempotent
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
 
 
 def test_list_agents_corrupted_data_sets_zero_counts(client: TestClient) -> None:
@@ -604,53 +604,16 @@ def test_get_agent_corrupted_metadata_returns_422(client: TestClient) -> None:
     assert resp.json()["error_code"] == "CORRUPTED_DATA"
 
 
-def test_get_agent_policy_missing_policy_returns_404(client: TestClient) -> None:
-    # Given: an agent assigned to a policy that cannot be found
+def test_get_agent_policies_returns_empty_when_none_assigned(client: TestClient) -> None:
+    # Given: an agent with no policy assignments
     agent_id, _ = _init_agent(client)
-    policy_id = _create_policy(client)
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-    assert assign.status_code == 200
 
-    from agent_control_server.db import get_async_db
-    from agent_control_server.main import app
-    from agent_control_server.models import Agent as AgentModel
-    from sqlalchemy.orm import Session
-    from unittest.mock import AsyncMock, MagicMock
-    from collections.abc import AsyncGenerator
-    from sqlalchemy.ext.asyncio import AsyncSession
-    from sqlalchemy import select
+    # When: retrieving associated policies
+    resp = client.get(f"/api/v1/agents/{agent_id}/policies")
 
-    with Session(engine) as session:
-        agent_row = (
-            session.execute(
-                select(AgentModel).where(AgentModel.agent_uuid == agent_id)
-            )
-            .scalars()
-            .first()
-        )
-        assert agent_row is not None
-
-    async def mock_db_missing_policy() -> AsyncGenerator[AsyncSession, None]:
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_agent_result = MagicMock()
-        mock_agent_result.scalars.return_value.first.return_value = agent_row
-        mock_policy_result = MagicMock()
-        mock_policy_result.scalars.return_value.first.return_value = None
-        mock_session.execute = AsyncMock(
-            side_effect=[mock_agent_result, mock_policy_result]
-        )
-        yield mock_session
-
-    # When: retrieving the agent policy and policy lookup returns None
-    app.dependency_overrides[get_async_db] = mock_db_missing_policy
-    try:
-        resp = client.get(f"/api/v1/agents/{agent_id}/policy")
-    finally:
-        app.dependency_overrides.clear()
-
-    # Then: policy not found error is returned
-    assert resp.status_code == 404
-    assert resp.json()["error_code"] == "POLICY_NOT_FOUND"
+    # Then: an empty policy list is returned
+    assert resp.status_code == 200
+    assert resp.json()["policy_ids"] == []
 
 
 def test_set_agent_policy_skips_controls_without_data(client: TestClient) -> None:
@@ -664,7 +627,7 @@ def test_set_agent_policy_skips_controls_without_data(client: TestClient) -> Non
     assert assoc.status_code == 200
 
     # When: assigning the policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Then: assignment succeeds because empty data is ignored during validation
     assert resp.status_code == 200
@@ -686,7 +649,7 @@ def test_set_agent_policy_skips_controls_without_evaluator_name(client: TestClie
         )
 
     # When: assigning the policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Then: assignment succeeds because evaluator name is missing
     assert resp.status_code == 200
@@ -704,7 +667,7 @@ def test_list_agents_includes_active_controls_count(client: TestClient) -> None:
     for control_id in control_ids:
         assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
         assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assign = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
     assert assign.status_code == 200
 
     # When: listing agents
@@ -798,7 +761,7 @@ def test_init_agent_returns_controls_when_policy_assigned(client: TestClient) ->
     control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assign = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
     assert assign.status_code == 200
 
     # When: re-initializing the agent with the same UUID

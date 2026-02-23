@@ -9,34 +9,34 @@ import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
-export type GetPolicyResponse = {
+export type GetAgentPoliciesResponse = {
   /**
-   * Identifier of the policy assigned to the agent
+   * IDs of policies associated with the agent
    */
-  policyId: number;
+  policyIds?: Array<number> | undefined;
 };
 
 /** @internal */
-export const GetPolicyResponse$inboundSchema: z.ZodMiniType<
-  GetPolicyResponse,
+export const GetAgentPoliciesResponse$inboundSchema: z.ZodMiniType<
+  GetAgentPoliciesResponse,
   unknown
 > = z.pipe(
   z.object({
-    policy_id: types.number(),
+    policy_ids: types.optional(z.array(types.number())),
   }),
   z.transform((v) => {
     return remap$(v, {
-      "policy_id": "policyId",
+      "policy_ids": "policyIds",
     });
   }),
 );
 
-export function getPolicyResponseFromJSON(
+export function getAgentPoliciesResponseFromJSON(
   jsonString: string,
-): SafeParseResult<GetPolicyResponse, SDKValidationError> {
+): SafeParseResult<GetAgentPoliciesResponse, SDKValidationError> {
   return safeParse(
     jsonString,
-    (x) => GetPolicyResponse$inboundSchema.parse(JSON.parse(x)),
-    `Failed to parse 'GetPolicyResponse' from JSON`,
+    (x) => GetAgentPoliciesResponse$inboundSchema.parse(JSON.parse(x)),
+    `Failed to parse 'GetAgentPoliciesResponse' from JSON`,
   );
 }

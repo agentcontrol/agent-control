@@ -107,6 +107,8 @@ def clean_db():
     with engine.begin() as conn:
         # Delete in dependency order (children before parents)
         conn.execute(text("DELETE FROM evaluator_configs"))
+        conn.execute(text("DELETE FROM agent_controls"))
+        conn.execute(text("DELETE FROM agent_policies"))
         conn.execute(text("DELETE FROM agents"))
         conn.execute(text("DELETE FROM policy_controls"))
         conn.execute(text("DELETE FROM policies"))

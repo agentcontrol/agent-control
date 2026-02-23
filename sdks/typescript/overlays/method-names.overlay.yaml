@@ -30,6 +30,16 @@ actions:
       x-speakeasy-group: agents
       x-speakeasy-name-override: listControls
 
+  - target: $["paths"]["/api/v1/agents/{agent_id}/controls/{control_id}"]["post"]
+    update:
+      x-speakeasy-group: agents
+      x-speakeasy-name-override: addControl
+
+  - target: $["paths"]["/api/v1/agents/{agent_id}/controls/{control_id}"]["delete"]
+    update:
+      x-speakeasy-group: agents
+      x-speakeasy-name-override: removeControl
+
   - target: $["paths"]["/api/v1/agents/{agent_id}/evaluators"]["get"]
     update:
       x-speakeasy-group: agents
@@ -40,20 +50,25 @@ actions:
       x-speakeasy-group: agents
       x-speakeasy-name-override: getEvaluator
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}/policy"]["get"]
+  - target: $["paths"]["/api/v1/agents/{agent_id}/policies"]["get"]
     update:
       x-speakeasy-group: agents
-      x-speakeasy-name-override: getPolicy
+      x-speakeasy-name-override: getPolicies
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}/policy"]["delete"]
+  - target: $["paths"]["/api/v1/agents/{agent_id}/policies"]["delete"]
     update:
       x-speakeasy-group: agents
-      x-speakeasy-name-override: deletePolicy
+      x-speakeasy-name-override: removeAllAgentPolicies
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}/policy/{policy_id}"]["post"]
+  - target: $["paths"]["/api/v1/agents/{agent_id}/policies/{policy_id}"]["post"]
     update:
       x-speakeasy-group: agents
-      x-speakeasy-name-override: updatePolicy
+      x-speakeasy-name-override: addPolicy
+
+  - target: $["paths"]["/api/v1/agents/{agent_id}/policies/{policy_id}"]["delete"]
+    update:
+      x-speakeasy-group: agents
+      x-speakeasy-name-override: removePolicy
 
   - target: $["paths"]["/api/v1/controls"]["get"]
     update:

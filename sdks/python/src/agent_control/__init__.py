@@ -660,7 +660,7 @@ async def list_agents(
     Returns:
         Dictionary containing:
             - agents: List of agent summaries with agent_id, agent_name,
-                      policy_id, created_at, step_count, evaluator_count
+                      policy_ids, created_at, step_count, evaluator_count
             - pagination: Object with limit, total, next_cursor, has_more
 
     Raises:
@@ -687,6 +687,93 @@ async def list_agents(
 
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
         return await agents.list_agents(client, cursor=cursor, limit=limit)
+
+
+# ============================================================================
+# Agent Association Convenience Functions
+# ============================================================================
+
+
+async def get_agent_policies(
+    agent_id: str | UUID,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    List policy IDs associated with an agent.
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.get_agent_policies(client, agent_id)
+
+
+async def add_policy_to_agent(
+    agent_id: str | UUID,
+    policy_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Associate a policy with an agent.
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.add_agent_policy(client, agent_id, policy_id)
+
+
+async def remove_policy_from_agent(
+    agent_id: str | UUID,
+    policy_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Remove a specific policy association from an agent.
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.remove_agent_policy_association(client, agent_id, policy_id)
+
+
+async def clear_agent_policies(
+    agent_id: str | UUID,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Remove all policy associations from an agent.
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.remove_agent_policies(client, agent_id)
+
+
+async def add_control_to_agent(
+    agent_id: str | UUID,
+    control_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Associate a control directly with an agent.
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.add_agent_control(client, agent_id, control_id)
+
+
+async def remove_control_from_agent(
+    agent_id: str | UUID,
+    control_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Remove a direct control association from an agent.
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.remove_agent_control(client, agent_id, control_id)
 
 
 # ============================================================================
@@ -869,7 +956,7 @@ async def delete_control(
     """
     Delete a control from the server.
 
-    By default, deletion fails if the control is associated with any policy.
+    By default, deletion fails if the control is associated with any policy or agent.
     Use force=True to automatically dissociate and delete.
 
     Args:
@@ -881,7 +968,8 @@ async def delete_control(
     Returns:
         Dictionary containing:
             - success: True if control was deleted
-            - dissociated_from: List of policy IDs the control was removed from
+            - dissociated_from_policies: List of policy IDs the control was removed from
+            - dissociated_from_agents: List of agent UUIDs the control was removed from
 
     Raises:
         httpx.HTTPError: If request fails
@@ -895,7 +983,11 @@ async def delete_control(
         async def main():
             # Force delete
             result = await agent_control.delete_control(5, force=True)
-            print(f"Deleted, removed from {len(result['dissociated_from'])} policies")
+            print(
+                "Deleted, removed from "
+                f"{len(result['dissociated_from_policies'])} policies and "
+                f"{len(result['dissociated_from_agents'])} agents"
+            )
 
         asyncio.run(main())
     """
@@ -1099,6 +1191,12 @@ __all__ = [
     # Agent management
     "get_agent",
     "list_agents",
+    "get_agent_policies",
+    "add_policy_to_agent",
+    "remove_policy_from_agent",
+    "clear_agent_policies",
+    "add_control_to_agent",
+    "remove_control_from_agent",
     # Control management
     "create_control",
     "list_controls",

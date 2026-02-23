@@ -298,7 +298,7 @@ def test_policy_assignment_with_builtin_evaluator(client: TestClient) -> None:
     )
 
     # When:
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Then:
     assert resp.status_code == 200
@@ -330,7 +330,7 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
     )
 
     # When:
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # Then:
     assert resp.status_code == 200
@@ -399,13 +399,13 @@ def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> No
     )
 
     # When: Assign to Agent A (should succeed)
-    resp_a = client.post(f"/api/v1/agents/{agent_a_id}/policy/{policy_id}")
+    resp_a = client.post(f"/api/v1/agents/{agent_a_id}/policies/{policy_id}")
 
     # Then:
     assert resp_a.status_code == 200
 
     # When: Assign same policy to Agent B (should fail)
-    resp_b = client.post(f"/api/v1/agents/{agent_b_id}/policy/{policy_id}")
+    resp_b = client.post(f"/api/v1/agents/{agent_b_id}/policies/{policy_id}")
 
     # Then: (RFC 7807 format)
     assert resp_b.status_code == 400
@@ -561,7 +561,7 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
     )
 
     # And: Policy assigned to agent
-    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
     assert assign_resp.status_code == 200
 
     # When: Trying to remove the evaluator

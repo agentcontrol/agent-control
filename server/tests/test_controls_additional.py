@@ -382,7 +382,8 @@ def test_delete_control_force_dissociates(client: TestClient) -> None:
     assert resp2.status_code == 200
     body = resp2.json()
     assert body["success"] is True
-    assert policy_id in body.get("dissociated_from", [])
+    assert policy_id in body.get("dissociated_from_policies", [])
+    assert body.get("dissociated_from_agents") == []
 
     # Then: policy no longer lists the control
     list_resp = client.get(f"/api/v1/policies/{policy_id}/controls")

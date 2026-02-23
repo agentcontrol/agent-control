@@ -286,12 +286,11 @@ def test_set_agent_policy_first_time(client: TestClient) -> None:
     agent_id = payload["agent"]["agent_id"]
 
     # When: assigning policy the first time
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
-    # Then: success and no old policy
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    # Then: success
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert body["old_policy_id"] is None
 
 
 def test_get_agent_policy_after_assignment(client: TestClient) -> None:
@@ -300,30 +299,32 @@ def test_get_agent_policy_after_assignment(client: TestClient) -> None:
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # When: retrieving policy
-    resp = client.get(f"/api/v1/agents/{agent_id}/policy")
-    # Then: we see the assigned policy id
+    resp = client.get(f"/api/v1/agents/{agent_id}/policies")
+    # Then: we see the assigned policy id in the policy_ids list
     assert resp.status_code == 200
-    assert resp.json()["policy_id"] == policy_id
+    assert resp.json()["policy_ids"] == [policy_id]
 
 
-def test_reassign_agent_policy_returns_old_id(client: TestClient) -> None:
+def test_adding_second_policy_retains_existing_policy(client: TestClient) -> None:
     # Given: an agent with an existing policy
     first = _create_policy(client)
     second = _create_policy(client)
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
-    client.post(f"/api/v1/agents/{agent_id}/policy/{first}")
+    client.post(f"/api/v1/agents/{agent_id}/policies/{first}")
 
-    # When: reassigning to another policy
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{second}")
-    # Then: success and old_policy_id equals the first policy id
+    # When: adding another policy
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{second}")
+    # Then: success and both policy associations are retained
     assert resp.status_code == 200
     assert resp.json()["success"] is True
-    assert resp.json()["old_policy_id"] == first
+    get_resp = client.get(f"/api/v1/agents/{agent_id}/policies")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["policy_ids"] == [first, second]
 
 
 def test_delete_agent_policy_then_get_404(client: TestClient) -> None:
@@ -332,18 +333,19 @@ def test_delete_agent_policy_then_get_404(client: TestClient) -> None:
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # When: removing the policy association
-    del_resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
+    del_resp = client.delete(f"/api/v1/agents/{agent_id}/policies")
     # Then: deletion success
     assert del_resp.status_code == 200
     assert del_resp.json()["success"] is True
 
-    # When: fetching policy after deletion
-    get_resp = client.get(f"/api/v1/agents/{agent_id}/policy")
-    # Then: not found
-    assert get_resp.status_code == 404
+    # When: fetching policies after deletion
+    get_resp = client.get(f"/api/v1/agents/{agent_id}/policies")
+    # Then: empty policy list
+    assert get_resp.status_code == 200
+    assert get_resp.json()["policy_ids"] == []
 
 
 def test_set_policy_agent_not_found_returns_404(client: TestClient) -> None:
@@ -352,7 +354,7 @@ def test_set_policy_agent_not_found_returns_404(client: TestClient) -> None:
     missing_agent = str(uuid.uuid4())
 
     # When: assigning to missing agent
-    resp = client.post(f"/api/v1/agents/{missing_agent}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{missing_agent}/policies/{policy_id}")
     # Then: 404
     assert resp.status_code == 404
 
@@ -365,7 +367,7 @@ def test_set_policy_not_found_returns_404(client: TestClient) -> None:
     bogus_policy = "999999999"
 
     # When: assigning a non-existent policy
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{bogus_policy}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{bogus_policy}")
     # Then: 404
     assert resp.status_code == 404
 
@@ -405,7 +407,7 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
 
     # Associate control -> policy; assign policy to agent
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # When: listing controls
     r = client.get(f"/api/v1/agents/{agent_id}/controls")
@@ -502,33 +504,33 @@ def test_list_agents_returns_created_agents(client: TestClient) -> None:
     assert agent1["agent_name"] == "Agent One"
     assert agent1["step_count"] == 1  # from make_agent_payload
     assert agent1["evaluator_count"] == 1
-    assert agent1["policy_id"] is None
+    assert agent1["policy_ids"] == []
 
     assert agent2_id in agent_map
     agent2 = agent_map[agent2_id]
     assert agent2["agent_name"] == "Agent Two"
     assert agent2["step_count"] == 2
     assert agent2["evaluator_count"] == 0
-    assert agent2["policy_id"] is None
+    assert agent2["policy_ids"] == []
 
 
 def test_list_agents_with_policy(client: TestClient) -> None:
-    """Test that list agents shows policy_id when assigned."""
+    """Test that list agents shows policy_ids when assigned."""
     # Given: an agent with a policy assigned
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
     agent_id = payload["agent"]["agent_id"]
 
     policy_id = _create_policy(client)
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
 
     # When: listing agents
     resp = client.get("/api/v1/agents")
-    # Then: the agent shows the policy_id
+    # Then: the agent shows the policy_ids
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["agents"]) == 1
-    assert body["agents"][0]["policy_id"] == policy_id
+    assert body["agents"][0]["policy_ids"] == [policy_id]
 
 
 def test_list_agents_pagination(client: TestClient) -> None:

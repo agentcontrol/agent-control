@@ -7,7 +7,14 @@ from sqlalchemy import insert
 
 from agent_control_models.errors import ErrorCode
 from agent_control_server.errors import APIValidationError
-from agent_control_server.models import Agent, Control, Policy, policy_controls
+from agent_control_server.models import (
+    Agent,
+    Control,
+    Policy,
+    agent_controls,
+    agent_policies,
+    policy_controls,
+)
 from agent_control_server.services.controls import list_controls_for_agent, list_controls_for_policy
 
 from .utils import VALID_CONTROL_PAYLOAD
@@ -42,20 +49,28 @@ async def test_list_controls_for_policy_returns_controls(async_db) -> None:
 
 @pytest.mark.asyncio
 async def test_list_controls_for_agent_returns_controls(async_db) -> None:
-    # Given: an agent assigned to a policy with one control
+    # Given: an agent associated with one policy control and one direct control
     policy = Policy(name=f"policy-{uuid.uuid4()}")
-    control = Control(name=f"control-{uuid.uuid4()}", data=VALID_CONTROL_PAYLOAD)
+    policy_control = Control(name=f"policy-control-{uuid.uuid4()}", data=VALID_CONTROL_PAYLOAD)
+    direct_control = Control(name=f"direct-control-{uuid.uuid4()}", data=VALID_CONTROL_PAYLOAD)
     agent = Agent(
         agent_uuid=uuid.uuid4(),
         name=f"agent-{uuid.uuid4()}",
         data={},
-        policy=policy,
     )
-    async_db.add_all([policy, control, agent])
+    async_db.add_all([policy, policy_control, direct_control, agent])
     await async_db.flush()
 
     await async_db.execute(
-        insert(policy_controls).values({"policy_id": policy.id, "control_id": control.id})
+        insert(agent_policies).values({"agent_uuid": agent.agent_uuid, "policy_id": policy.id})
+    )
+    await async_db.execute(
+        insert(policy_controls).values({"policy_id": policy.id, "control_id": policy_control.id})
+    )
+    await async_db.execute(
+        insert(agent_controls).values(
+            {"agent_uuid": agent.agent_uuid, "control_id": direct_control.id}
+        )
     )
     await async_db.commit()
 
@@ -63,25 +78,27 @@ async def test_list_controls_for_agent_returns_controls(async_db) -> None:
     controls = await list_controls_for_agent(agent.agent_uuid, async_db)
 
     # Then: the API control is returned with expected fields
-    assert len(controls) == 1
-    assert controls[0].name == control.name
-    assert controls[0].control.evaluator.name == VALID_CONTROL_PAYLOAD["evaluator"]["name"]
+    assert len(controls) == 2
+    names = {control.name for control in controls}
+    assert names == {policy_control.name, direct_control.name}
 
 
 @pytest.mark.asyncio
 async def test_list_controls_for_agent_corrupted_data_raises(async_db) -> None:
-    # Given: an agent assigned to a policy with corrupted control data
+    # Given: an agent associated with a policy containing corrupted control data
     policy = Policy(name=f"policy-{uuid.uuid4()}")
     control = Control(name=f"control-{uuid.uuid4()}", data={"bad": "data"})
     agent = Agent(
         agent_uuid=uuid.uuid4(),
         name=f"agent-{uuid.uuid4()}",
         data={},
-        policy=policy,
     )
     async_db.add_all([policy, control, agent])
     await async_db.flush()
 
+    await async_db.execute(
+        insert(agent_policies).values({"agent_uuid": agent.agent_uuid, "policy_id": policy.id})
+    )
     await async_db.execute(
         insert(policy_controls).values({"policy_id": policy.id, "control_id": control.id})
     )
