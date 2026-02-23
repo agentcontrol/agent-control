@@ -21,6 +21,7 @@ import {
   IconInbox,
   IconPencil,
   IconShield,
+  IconTrash,
 } from '@tabler/icons-react';
 import { type ColumnDef } from '@tanstack/react-table';
 import { useRouter } from 'next/router';
@@ -32,6 +33,7 @@ import { SearchInput } from '@/core/components/search-input';
 import { MODAL_NAMES } from '@/core/constants/modal-routes';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useAgentControls } from '@/core/hooks/query-hooks/use-agent-controls';
+import { useDeleteControl } from '@/core/hooks/query-hooks/use-delete-control';
 import { useHasMonitorData } from '@/core/hooks/query-hooks/use-has-monitor-data';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useModalRoute } from '@/core/hooks/use-modal-route';
@@ -93,6 +95,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     });
 
   const updateControl = useUpdateControl();
+  const deleteControl = useDeleteControl();
 
   // Determine initial tab based on:
   // 1. defaultTab prop (from route)
@@ -316,24 +319,79 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
       },
     },
     {
-      id: 'actions',
+      id: 'edit',
       header: '',
-      size: 60,
+      size: 44,
       cell: ({ row }: { row: any }) => (
-        <ActionIcon
-          variant="subtle"
-          color="gray"
-          size="sm"
-          onClick={() => handleEditControl(row.original)}
-        >
-          <IconPencil size={16} />
-        </ActionIcon>
+        <Box style={{ display: 'flex', justifyContent: 'center' }}>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            onClick={() => handleEditControl(row.original as Control)}
+            aria-label="Edit control"
+          >
+            <IconPencil size={16} />
+          </ActionIcon>
+        </Box>
+      ),
+    },
+    {
+      id: 'delete',
+      header: '',
+      size: 44,
+      cell: ({ row }: { row: any }) => (
+        <Box style={{ display: 'flex', justifyContent: 'center' }}>
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            size="sm"
+            onClick={() => handleDeleteControl(row.original as Control)}
+            aria-label="Delete control"
+          >
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Box>
       ),
     },
   ];
 
   const handleEditControl = (control: Control) => {
     openModal(MODAL_NAMES.EDIT, { controlId: control.id.toString() });
+  };
+
+  const handleDeleteControl = (control: Control) => {
+    modals.openConfirmModal({
+      title: 'Delete control?',
+      children: (
+        <Text size="sm" c="dimmed">
+          Delete &quot;{control.name}&quot;? This will remove the control from
+          this agent and delete it. This action cannot be undone.
+        </Text>
+      ),
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: {
+        variant: 'filled',
+        color: 'red.7',
+        size: 'sm',
+      },
+      cancelProps: { variant: 'default', size: 'sm' },
+      onConfirm: () =>
+        deleteControl.mutate(
+          {
+            agentId,
+            controlId: control.id,
+            force: true,
+          },
+          {
+            onSuccess: () => {
+              if (selectedControl?.id === control.id) {
+                handleCloseEditModal();
+              }
+            },
+          }
+        ),
+    });
   };
 
   const handleCloseEditModal = () => {
@@ -429,58 +487,53 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           <Tabs.Panel value="controls" pt="lg">
             {/* Loading state for controls */}
             {controlsLoading ? (
-              <Center py="xl">
-                <Stack align="center" gap="md">
-                  <Loader size="md" />
-                  <Text c="dimmed">Loading controls...</Text>
-                </Stack>
-              </Center>
-            ) : controlsError ? (
-              <Alert
-                icon={<IconAlertCircle size={16} />}
-                title="Error loading controls"
-                color="red"
-              >
-                Failed to fetch controls. Please try again later.
-              </Alert>
-            ) : controls.length === 0 ? (
-              <Paper p="xl" withBorder radius="sm" ta="center">
-                <Stack align="center" gap="md" py="xl">
-                  <IconInbox size={48} color="var(--mantine-color-gray-4)" />
-                  <Stack gap="xs" align="center">
-                    <Text fw={500} c="dimmed">
-                      No controls configured
-                    </Text>
-                    <Text size="sm" c="dimmed">
-                      This agent doesn&apos;t have any controls set up yet.
-                    </Text>
+                <Center py="xl">
+                  <Stack align="center" gap="md">
+                    <Loader size="md" />
+                    <Text c="dimmed">Loading controls...</Text>
                   </Stack>
-                  <Button
-                    variant="filled"
-                    mt="md"
-                    data-testid="add-control-button"
-                    onClick={() => openModal(MODAL_NAMES.CONTROL_STORE)}
-                  >
-                    Add Control
-                  </Button>
-                </Stack>
-              </Paper>
-            ) : (
-              <Box>
-                <Table
-                  columns={columns}
-                  data={controls}
-                  maxHeight="calc(100dvh - 270px)"
-                  highlightOnHover
-                  withColumnBorders
-                  // scrollContainerProps={{
-                  //   style: {
-                  //     maxHeight: "calc(100dvh - 200px)",
-                  //   },
-                  // }}
-                />
-              </Box>
-            )}
+                </Center>
+              ) : controlsError ? (
+                <Alert
+                  icon={<IconAlertCircle size={16} />}
+                  title="Error loading controls"
+                  color="red"
+                >
+                  Failed to fetch controls. Please try again later.
+                </Alert>
+              ) : controls.length === 0 ? (
+                <Paper p="xl" withBorder radius="sm" ta="center">
+                  <Stack align="center" gap="md" py="xl">
+                    <IconInbox size={48} color="var(--mantine-color-gray-4)" />
+                    <Stack gap="xs" align="center">
+                      <Text fw={500} c="dimmed">
+                        No controls configured
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        This agent doesn&apos;t have any controls set up yet.
+                      </Text>
+                    </Stack>
+                    <Button
+                      variant="filled"
+                      mt="md"
+                      data-testid="add-control-button"
+                      onClick={() => openModal(MODAL_NAMES.CONTROL_STORE)}
+                    >
+                      Add Control
+                    </Button>
+                  </Stack>
+                </Paper>
+              ) : (
+                <Box>
+                  <Table
+                    columns={columns}
+                    data={controls}
+                    maxHeight="calc(100dvh - 270px)"
+                    highlightOnHover
+                    withColumnBorders
+                  />
+                </Box>
+              )}
           </Tabs.Panel>
 
           <Tabs.Panel value="monitor" pt="lg">
