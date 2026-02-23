@@ -108,7 +108,9 @@ test.describe('Step Name Input', () => {
     // Open dropdown and select one step
     await stepSelect.click();
     await mockedPage.getByText('search_db', { exact: true }).click();
-    await expect(modal.getByRole('paragraph').filter({ hasText: 'search_db' })).toBeVisible();
+    await expect(
+      modal.getByRole('paragraph').filter({ hasText: 'search_db' })
+    ).toBeVisible();
 
     // Select another step – summary shows "first +N"
     await stepSelect.click();
@@ -122,11 +124,17 @@ test.describe('Step Name Input', () => {
 
     // Deselect by opening dropdown and unchecking each selected option
     await stepSelect.click();
-    await mockedPage.getByRole('option', { name: 'search_db', selected: true }).click();
+    await mockedPage
+      .getByRole('option', { name: 'search_db', selected: true })
+      .click();
     await stepSelect.click();
-    await mockedPage.getByRole('option', { name: 'fetch_user', selected: true }).click();
+    await mockedPage
+      .getByRole('option', { name: 'fetch_user', selected: true })
+      .click();
     await stepSelect.click();
-    await mockedPage.getByRole('option', { name: 'database_query', selected: true }).click();
+    await mockedPage
+      .getByRole('option', { name: 'database_query', selected: true })
+      .click();
     await expect(modal.getByText('All steps')).toBeVisible();
   });
 });
