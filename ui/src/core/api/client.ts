@@ -85,7 +85,10 @@ export const api = {
       apiClient.POST('/api/v1/agents/{agent_id}/controls/{control_id}', {
         params: { path: { agent_id: agentId, control_id: controlId } },
       }),
-    removeControl: (agentId: GetAgentPathParams['agent_id'], controlId: number) =>
+    removeControl: (
+      agentId: GetAgentPathParams['agent_id'],
+      controlId: number
+    ) =>
       apiClient.DELETE('/api/v1/agents/{agent_id}/controls/{control_id}', {
         params: { path: { agent_id: agentId, control_id: controlId } },
       }),

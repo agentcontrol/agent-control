@@ -27,7 +27,8 @@ export function useDeleteControlFlow({
       children: (
         <Text size="sm" c="dimmed">
           Remove &quot;{control.name}&quot; from this agent? This only removes
-          the association for this agent and does not delete the control globally.
+          the association for this agent and does not delete the control
+          globally.
         </Text>
       ),
       labels: { confirm: 'Remove', cancel: 'Cancel' },
@@ -45,8 +46,7 @@ export function useDeleteControlFlow({
           },
           {
             onSuccess: (result: RemoveControlFromAgentResult) => {
-              const removedDirect =
-                result.removed_direct_association ?? true;
+              const removedDirect = result.removed_direct_association ?? true;
               const stillActive = result.control_still_active ?? false;
 
               if (!removedDirect) {
