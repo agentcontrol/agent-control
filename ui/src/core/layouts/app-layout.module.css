@@ -16,6 +16,11 @@
   color: var(--mantine-color-gray-9);
 }
 
+.logoText {
+  position: relative;
+  top: 2px;
+}
+
 [data-mantine-color-scheme='dark'] .logoIcon {
   color: var(--mantine-color-gray-4);
 }

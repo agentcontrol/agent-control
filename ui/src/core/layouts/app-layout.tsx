@@ -179,7 +179,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     <Box className={classes.logoIcon} component="span">
                       <AcIcon size={32} />
                     </Box>
-                    <Text size="md" fw={600}>
+                    <Text size="md" fw={600} className={classes.logoText}>
                       Agent Control
                     </Text>
                   </Group>

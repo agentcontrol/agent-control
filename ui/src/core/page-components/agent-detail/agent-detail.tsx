@@ -70,7 +70,8 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
 
   const handleCloseEditModal = () => {
     closeModal();
-    setSelectedControl(null);
+    // Do not clear selectedControl here so modal content stays mounted during
+    // the close animation; the effect syncs selectedControl when the modal opens.
   };
 
   const { handleDeleteControl, deleteControl } = useDeleteControlFlow({
@@ -114,21 +115,16 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     );
   }, [controlsResponse, searchQuery]);
 
+  // Sync selectedControl to URL controlId when edit modal is open.
+  // We do not clear selectedControl on close so modal content stays mounted
+  // during the close animation (avoids content disappearing before title/backdrop).
   React.useEffect(() => {
-    if (
-      editModalOpened &&
-      controlId &&
-      controlsResponse?.controls &&
-      !selectedControl
-    ) {
-      const control = controlsResponse.controls.find(
-        (c) => c.id.toString() === controlId
-      );
-      if (control) {
-        setSelectedControl(control);
-      }
-    }
-  }, [editModalOpened, controlId, controlsResponse, selectedControl]);
+    if (!editModalOpened || !controlId || !controlsResponse?.controls) return;
+    const control = controlsResponse.controls.find(
+      (c) => c.id.toString() === controlId
+    );
+    setSelectedControl(control ?? null);
+  }, [editModalOpened, controlId, controlsResponse]);
 
   const handleEditControl = (control: Control) => {
     openModal(MODAL_NAMES.EDIT, { controlId: control.id.toString() });
@@ -180,6 +176,67 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         </Alert>
       </Box>
     );
+  }
+
+  const handleEditControlSuccess = () => {
+    closeModal();
+    // Do not clear selectedControl so modal content stays visible during close animation.
+  };
+
+  function renderEditModalBody() {
+    if (selectedControl) {
+      return (
+        <EditControlContent
+          control={selectedControl}
+          agentId={agentId}
+          onClose={handleCloseEditModal}
+          onSuccess={handleEditControlSuccess}
+        />
+      );
+    }
+    // We have a controlId in the URL and the controls list has loaded, but no control in that list matched → invalid or deleted
+    const controlNotFound = controlId && controlsResponse && !selectedControl;
+    if (controlNotFound) {
+      return (
+        <Stack gap="md" py="md">
+          <Alert
+            icon={<IconAlertCircle size={16} />}
+            title="Control not found"
+            color="orange"
+            variant="light"
+          >
+            <Text size="sm">
+              No control matches ID &quot;{controlId}&quot;. It may have been
+              deleted or the link is invalid.
+            </Text>
+          </Alert>
+          <Group justify="flex-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCloseEditModal}
+              data-testid="edit-modal-close-invalid-control"
+            >
+              Close
+            </Button>
+          </Group>
+        </Stack>
+      );
+    }
+
+    if (controlId) {
+      return (
+        <Center py="xl">
+          <Stack align="center" gap="md">
+            <Loader size="sm" />
+            <Text size="sm" c="dimmed">
+              Loading control…
+            </Text>
+          </Stack>
+        </Center>
+      );
+    }
+    return null;
   }
 
   return (
@@ -288,6 +345,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         agentId={agentId}
       />
 
+      {/* Edit Control Modal */}
       <Modal
         opened={editModalOpened}
         onClose={handleCloseEditModal}
@@ -298,16 +356,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           content: { maxWidth: '1500px', width: '95vw' },
         }}
       >
-        <ErrorBoundary variant="modal">
-          {selectedControl ? (
-            <EditControlContent
-              control={selectedControl}
-              agentId={agentId}
-              onClose={handleCloseEditModal}
-              onSuccess={handleCloseEditModal}
-            />
-          ) : null}
-        </ErrorBoundary>
+        <ErrorBoundary variant="modal">{renderEditModalBody()}</ErrorBoundary>
       </Modal>
     </Box>
   );
