@@ -10,6 +10,16 @@
   border-right-color: var(--mantine-color-dark-4);
 }
 
+.logoIcon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--mantine-color-gray-9);
+}
+
+[data-mantine-color-scheme='dark'] .logoIcon {
+  color: var(--mantine-color-gray-4);
+}
+
 .navbar[data-collapsed] .navLabel {
   display: none;
 }

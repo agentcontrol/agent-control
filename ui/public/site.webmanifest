@@ -4,14 +4,9 @@
   "description": "Policy-based control layer for AI agents. Block harmful content, prompt injections, and PII leakage in production.",
   "icons": [
     {
-      "src": "/favicon-32x32.png",
-      "sizes": "32x32",
-      "type": "image/png"
-    },
-    {
-      "src": "/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png"
+      "src": "/ac-icon.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
     }
   ],
   "theme_color": "#644DF9",
