@@ -45,7 +45,7 @@ Understanding these core concepts will help you get the most out of Agent Contro
 A **Control** is a single rule that defines what to check and what to do when a condition is met.
 
 ```
-Control = Selector + Evaluator + Action
+Control = Scope + Selector + Evaluator + Action
 ```
 
 Example: *"If the output contains an SSN pattern, block the response."*

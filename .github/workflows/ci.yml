@@ -34,10 +34,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup uv and Python
-        uses: astral-sh/setup-uv@v3
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
 
       - name: Show versions
         run: |
@@ -155,3 +158,60 @@ jobs:
           name: test-results
           path: ui/test-results/
           retention-days: 3
+
+  sdk-ts-ci:
+    runs-on: ubuntu-latest
+    env:
+      SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Sync Python dependencies
+        run: make sync
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install TypeScript SDK dependencies
+        working-directory: ./sdks/typescript
+        run: pnpm install --frozen-lockfile
+
+      - name: Install pinned Speakeasy CLI
+        run: make -C sdks/typescript speakeasy-install
+
+      - name: Test TypeScript SDK naming generator
+        run: make sdk-ts-overlay-test
+
+      - name: Lint TypeScript SDK
+        run: make sdk-ts-lint
+
+      - name: Typecheck TypeScript SDK
+        run: make sdk-ts-typecheck
+
+      - name: Test TypeScript SDK
+        run: make sdk-ts-test
+
+      - name: Build TypeScript SDK
+        run: make sdk-ts-build
+
+      - name: Verify generated TypeScript client is current
+        run: make sdk-ts-generate-check
+
+      - name: Verify generated method naming conventions
+        run: make sdk-ts-name-check

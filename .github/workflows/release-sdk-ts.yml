@@ -1,0 +1,89 @@
+name: Release TypeScript SDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run npm publish in dry-run mode
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  release-sdk-ts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Sync Python dependencies
+        run: make sync
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install TypeScript SDK dependencies
+        working-directory: ./sdks/typescript
+        run: pnpm install --frozen-lockfile
+
+      - name: Install pinned Speakeasy CLI
+        run: make -C sdks/typescript speakeasy-install
+
+      - name: Generate OpenAPI from server code and verify TypeScript client drift
+        run: make sdk-ts-generate-check
+
+      - name: Lint TypeScript SDK
+        run: make sdk-ts-lint
+
+      - name: Typecheck TypeScript SDK
+        run: make sdk-ts-typecheck
+
+      - name: Test TypeScript SDK
+        run: make sdk-ts-test
+
+      - name: Build TypeScript SDK
+        run: make sdk-ts-build
+
+      - name: Publish TypeScript SDK (dry run)
+        if: ${{ inputs.dry_run }}
+        working-directory: ./sdks/typescript
+        run: npm publish --dry-run
+
+      - name: Ensure npm token exists
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ -z "${NODE_AUTH_TOKEN}" ]]; then
+            echo "NPM_TOKEN secret is required for publish runs."
+            exit 1
+          fi
+
+      - name: Publish TypeScript SDK
+        if: ${{ !inputs.dry_run }}
+        working-directory: ./sdks/typescript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance

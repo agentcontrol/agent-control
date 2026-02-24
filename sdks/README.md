@@ -5,6 +5,7 @@ This workspace contains all SDK implementations for Agent Control.
 ## Available SDKs
 
 - **Python SDK** (`python/`) - Python client for interacting with Agent Control services
+- **TypeScript SDK** (`typescript/`) - Speakeasy-generated client plus TypeScript wrapper scaffold
 
 ## Development
 
@@ -33,4 +34,3 @@ To add a new SDK (e.g., TypeScript, Go):
 1. Create a new directory for the SDK
 2. Add it to the `members` list in `sdks/pyproject.toml`
 3. Ensure it references the models package if needed
-
