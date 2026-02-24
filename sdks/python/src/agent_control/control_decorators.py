@@ -195,6 +195,7 @@ async def _evaluate(
     trace_id: str | None = None,
     span_id: str | None = None,
     controls: list[dict[str, Any]] | None = None,
+    agent_name: str | None = None,
 ) -> dict[str, Any]:
     """Call evaluation with support for local (SDK) and server execution.
 
@@ -232,6 +233,9 @@ async def _evaluate(
                     step=step_obj,
                     stage=stage,  # type: ignore
                     controls=controls,
+                    trace_id=trace_id,
+                    span_id=span_id,
+                    agent_name=agent_name,
                 )
 
                 # Convert result to dict format expected by process_result
@@ -271,7 +275,22 @@ async def _evaluate(
                         }
                         for e in (result.errors or [])
                     ] if result.errors else None,
-                    "non_matches": None,  # check_evaluation_with_local doesn't return non_matches
+                    "non_matches": [
+                        {
+                            "control_id": nm.control_id,
+                            "control_name": nm.control_name,
+                            "action": nm.action,
+                            "result": {
+                                "matched": nm.result.matched,
+                                "confidence": nm.result.confidence,
+                                "message": nm.result.message,
+                                "error": nm.result.error,
+                                "metadata": nm.result.metadata,
+                            },
+                            "control_execution_id": nm.control_execution_id,
+                        }
+                        for nm in (result.non_matches or [])
+                    ] if result.non_matches else None,
                 }
             except ImportError:
                 logger.warning(
@@ -578,6 +597,7 @@ async def _execute_with_control(
                 ctx.agent_uuid, ctx.pre_payload(), "pre",
                 ctx.server_url, ctx.trace_id, ctx.span_id,
                 controls=controls,
+                agent_name=ctx.agent_name,
             )
             ctx.process_result(result, "pre")
         except ControlViolationError:
@@ -601,6 +621,7 @@ async def _execute_with_control(
                 ctx.agent_uuid, ctx.post_payload(output), "post",
                 ctx.server_url, ctx.trace_id, ctx.span_id,
                 controls=controls,
+                agent_name=ctx.agent_name,
             )
             ctx.process_result(result, "post")
         except ControlViolationError:

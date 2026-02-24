@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.speakeasy/bin/
+.speakeasy/tmp-generated/
+
+# Root .gitignore ignores any lib/ directory; keep generated SDK runtime helpers tracked.
+!src/generated/lib/
+!src/generated/lib/**

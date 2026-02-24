@@ -207,17 +207,18 @@ POST /api/v1/policies/{policy_id}/controls/{control_id}
 
 ```bash
 # Evaluate step against controls
-POST /api/v1/evaluation/check
+POST /api/v1/evaluation
 Body: {
   "agent_uuid": "uuid",
-  "step": { "type": "llm_inference", "input": "..." },
+  "step": { "type": "llm", "name": "chat", "input": "..." },
   "stage": "pre"
 }
 
 Response: {
-  "allowed": true,
-  "violated_controls": [],
-  "evaluation_results": [...]
+  "is_safe": true,
+  "confidence": 1.0,
+  "matches": [],
+  "errors": []
 }
 ```
 
@@ -229,11 +230,14 @@ POST /api/v1/observability/events
 Body: { "events": [...] }
 
 # Query events
-POST /api/v1/observability/query
-Body: { "agent_id": "...", "start_time": "...", ... }
+POST /api/v1/observability/events/query
+Body: { "agent_uuid": "...", "start_time": "...", ... }
+
+# Get agent stats
+GET /api/v1/observability/stats?agent_uuid=...&time_range=5m
 
 # Get control stats
-GET /api/v1/observability/controls/{control_id}/stats
+GET /api/v1/observability/stats/controls/{control_id}?agent_uuid=...&time_range=5m
 ```
 
 See [docs/REFERENCE.md](../docs/REFERENCE.md) for complete API documentation.

@@ -381,6 +381,100 @@ test.describe('Agent Detail Page', () => {
     await expect(mockedPage).toHaveURL(/.*\?modal=edit&controlId=\d+/);
   });
 
+  test('deletes control when delete is confirmed', async ({ mockedPage }) => {
+    const controlToDelete = mockData.controls.controls.find(
+      (c) => c.name === 'Rate Limiter'
+    );
+    if (!controlToDelete) throw new Error('Rate Limiter not in mock data');
+    const deletedControlId = controlToDelete.id;
+
+    // Agent controls: first GET returns full list, refetch after delete returns list without deleted control
+    let agentControlsCallCount = 0;
+    await mockedPage.route(
+      '**/api/v1/agents/*/controls',
+      async (route, request) => {
+        if (request.method() !== 'GET') {
+          await route.continue();
+          return;
+        }
+        agentControlsCallCount += 1;
+        const controls =
+          agentControlsCallCount <= 1
+            ? mockData.controls.controls
+            : mockData.controls.controls.filter(
+                (c) => c.id !== deletedControlId
+              );
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ controls }),
+        });
+      }
+    );
+
+    await mockedPage.route('**/api/v1/controls/*', async (route, request) => {
+      if (request.method() === 'DELETE') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await mockedPage.goto(agentUrl);
+
+    await mockedPage.getByRole('tab', { name: 'Controls' }).click();
+
+    const controlsPanel = mockedPage.getByRole('tabpanel', {
+      name: /Controls/i,
+    });
+    await expect(controlsPanel.getByRole('table')).toBeVisible();
+
+    const targetRow = controlsPanel.locator('tr', {
+      hasText: 'Rate Limiter',
+    });
+    await targetRow.scrollIntoViewIfNeeded();
+
+    const deleteButton = targetRow.getByRole('button', {
+      name: 'Delete control',
+    });
+    await deleteButton.click();
+
+    const confirmModal = mockedPage.getByRole('dialog', {
+      name: /Delete control\?/i,
+    });
+    await expect(confirmModal).toBeVisible();
+    await expect(
+      confirmModal.getByText(/This action cannot be undone/)
+    ).toBeVisible();
+
+    const deleteRequest = mockedPage.waitForRequest(
+      (request) =>
+        request.method() === 'DELETE' &&
+        new RegExp(`/api/v1/controls/${deletedControlId}(\\?|$)`).test(
+          request.url()
+        ),
+      { timeout: 5000 }
+    );
+
+    await confirmModal.getByRole('button', { name: 'Delete' }).click();
+
+    const request = await deleteRequest;
+    expect(request.url()).toContain(`/api/v1/controls/${deletedControlId}`);
+    expect(new URL(request.url()).searchParams.get('force')).toBe('true');
+    expect(request.method()).toBe('DELETE');
+
+    await expect(confirmModal).not.toBeVisible({ timeout: 5000 });
+
+    // Refetched list should not contain the deleted control
+    await expect(controlsPanel.getByText('Rate Limiter')).not.toBeVisible();
+    await expect(controlsPanel.getByText('PII Detection')).toBeVisible();
+    await expect(controlsPanel.getByText('SQL Injection Guard')).toBeVisible();
+  });
+
   test('edit control modal pre-fills scope and execution fields', async ({
     mockedPage,
   }) => {
@@ -427,10 +521,10 @@ test.describe('Agent Detail Page', () => {
     await expect(
       modal.getByText('Pre (before execution)', { exact: true })
     ).toBeVisible();
-    // Step name: mock has both step_names and step_name_regex; form shows one (names mode when both set)
-    await expect(modal.getByPlaceholder('search_db, fetch_user')).toHaveValue(
-      'database_query'
-    );
+    // Step name: mock has both step_names and step_name_regex; form shows names mode by default.
+    await expect(
+      modal.locator('p', { hasText: 'database_query' })
+    ).toBeVisible();
     // Execution environment is a Select; assert label is visible (selected value may be in closed dropdown)
     const executionLabel = modal.getByText('Execution environment', {
       exact: true,

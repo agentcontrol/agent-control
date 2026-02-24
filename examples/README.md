@@ -19,6 +19,16 @@ This directory contains examples demonstrating how to use Agent Control in vario
 
 ## Example Categories
 
+### 🧩 TypeScript SDK (`typescript_sdk/`)
+
+Consumer-style TypeScript example that installs `agent-control` from npm and calls the Agent Control API:
+
+```bash
+cd examples/typescript_sdk
+npm install
+AGENT_CONTROL_URL=http://localhost:8000 npm run start
+```
+
 ### 🚀 Agent Control Demo (`agent_control_demo/`)
 
 Complete examples showing the agent control workflow:
@@ -182,5 +192,6 @@ pip install -e sdks/python
 
 - [Main Documentation](../README.md)
 - [SDK Documentation](../sdks/python/README.md)
+- [TypeScript SDK Documentation](../sdks/typescript/README.md)
 - [Server Documentation](../server/README.md)
 - [Models Documentation](../models/README.md)

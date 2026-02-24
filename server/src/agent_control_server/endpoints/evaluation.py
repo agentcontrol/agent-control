@@ -255,6 +255,7 @@ async def _emit_observability_events(
                     confidence=match.result.confidence,
                     timestamp=now,
                     evaluator_name=ctrl.control.evaluator.name if ctrl else None,
+                    selector_path=ctrl.control.selector.path if ctrl else None,
                     error_message=match.result.error,
                     metadata=match.result.metadata or {},
                 )
@@ -280,6 +281,7 @@ async def _emit_observability_events(
                     confidence=error.result.confidence,
                     timestamp=now,
                     evaluator_name=ctrl.control.evaluator.name if ctrl else None,
+                    selector_path=ctrl.control.selector.path if ctrl else None,
                     error_message=error.result.error,
                     metadata=error.result.metadata or {},
                 )
@@ -305,6 +307,7 @@ async def _emit_observability_events(
                     confidence=non_match.result.confidence,
                     timestamp=now,
                     evaluator_name=ctrl.control.evaluator.name if ctrl else None,
+                    selector_path=ctrl.control.selector.path if ctrl else None,
                     error_message=None,
                     metadata=non_match.result.metadata or {},
                 )

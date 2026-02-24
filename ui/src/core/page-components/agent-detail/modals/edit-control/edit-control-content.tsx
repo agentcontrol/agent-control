@@ -1,6 +1,7 @@
 import { Box, Divider, Grid, Group, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
+import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -8,6 +9,7 @@ import { isApiError } from '@/core/api/errors';
 import type { Control, ProblemDetail } from '@/core/api/types';
 import { getEvaluator } from '@/core/evaluators';
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
+import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
 
@@ -40,6 +42,9 @@ export const EditControlContent = ({
   onClose,
   onSuccess,
 }: EditControlContentProps) => {
+  // Fetch agent data to get steps - React Query will dedupe requests
+  const { data: agentResponse } = useAgent(agentId);
+  const steps = agentResponse?.steps ?? [];
   // API error state
   const [apiError, setApiError] = useState<ProblemDetail | null>(null);
   // Errors that couldn't be mapped to form fields (shown in Alert)
@@ -247,11 +252,21 @@ export const EditControlContent = ({
             controlName: values.name,
             definition,
           });
+          notifications.show({
+            title: 'Control created',
+            message: `"${values.name}" has been added to this agent.`,
+            color: 'green',
+          });
         } else {
           await updateControl.mutateAsync({
             agentId,
             controlId: control.id,
             definition,
+          });
+          notifications.show({
+            title: 'Control updated',
+            message: `"${values.name}" has been saved.`,
+            color: 'green',
           });
         }
         // Call onSuccess first (which should close all modals)
@@ -362,7 +377,7 @@ export const EditControlContent = ({
 
         <Grid gutter="xl">
           <Grid.Col span={4}>
-            <ControlDefinitionForm form={definitionForm} />
+            <ControlDefinitionForm form={definitionForm} steps={steps} />
           </Grid.Col>
 
           <Grid.Col span={8}>

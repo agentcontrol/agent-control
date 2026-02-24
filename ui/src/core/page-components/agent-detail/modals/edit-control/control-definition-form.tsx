@@ -11,6 +11,7 @@ import type {
   ControlActionDecision,
   ControlExecution,
   ControlStage,
+  StepSchema,
 } from '@/core/api/types';
 import {
   labelPropsInline,
@@ -20,12 +21,21 @@ import {
 import { StepNameInput } from './step-name-input';
 import type { ControlDefinitionFormProps } from './types';
 
-export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
+export type ControlDefinitionFormWithStepsProps = ControlDefinitionFormProps & {
+  /** Available steps from the agent */
+  steps?: StepSchema[];
+};
+
+export const ControlDefinitionForm = ({
+  form,
+  steps,
+}: ControlDefinitionFormWithStepsProps) => {
   return (
     <Stack gap="md">
       <Switch
         size="sm"
         color="green.5"
+        style={{ width: 'fit-content' }}
         label={
           <LabelWithTooltip
             label="Enabled"
@@ -35,7 +45,7 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
         {...form.getInputProps('enabled', { type: 'checkbox' })}
       />
 
-      <StepNameInput form={form} />
+      <StepNameInput form={form} steps={steps} />
 
       <MultiSelect
         label={

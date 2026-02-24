@@ -124,6 +124,14 @@ export const api = {
           response?: Response;
         }>
       )('/api/v1/controls/validate', { body: { data }, signal }),
+    delete: (controlId: number, options?: { force?: boolean }) =>
+      apiClient.DELETE('/api/v1/controls/{control_id}', {
+        params: {
+          path: { control_id: controlId },
+          query:
+            options?.force !== undefined ? { force: options.force } : undefined,
+        },
+      }),
   },
   policies: {
     create: (name: string) =>
@@ -146,7 +154,6 @@ export const api = {
         | '30d'
         | '180d'
         | '365d';
-      control_id?: number | null;
       include_timeseries?: boolean;
     }) =>
       apiClient.GET('/api/v1/observability/stats', {

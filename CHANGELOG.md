@@ -2,6 +2,53 @@
 
 <!-- version list -->
 
+## v5.2.0 (2026-02-20)
+
+### Bug Fixes
+
+- **sdk**: Add step_name as parameter to control
+  ([#25](https://github.com/agentcontrol/agent-control/pull/25),
+  [`19ade9d`](https://github.com/agentcontrol/agent-control/commit/19ade9dcd69e264a62ccedf711722ef891d1b407))
+
+- **sdk**: Emit observability events for SDK-evaluated controls and fix non_matches propagation
+  ([#24](https://github.com/agentcontrol/agent-control/pull/24),
+  [`6a9da69`](https://github.com/agentcontrol/agent-control/commit/6a9da69aeb89a0a0a207f05fcbb03f1260faa40e))
+
+- **server**: Enforce public-safe API error responses
+  ([#20](https://github.com/agentcontrol/agent-control/pull/20),
+  [`e50d817`](https://github.com/agentcontrol/agent-control/commit/e50d817e2b81347c9143dcae8d461e7e3e581fd9))
+
+- **ui**: Json validation ([#10](https://github.com/agentcontrol/agent-control/pull/10),
+  [`a0cd5af`](https://github.com/agentcontrol/agent-control/commit/a0cd5af4a05a01fa7e5f8824001659ebc6bee7bc))
+
+- **ui**: UI feedback fixes ([#27](https://github.com/agentcontrol/agent-control/pull/27),
+  [`6004761`](https://github.com/agentcontrol/agent-control/commit/60047619ccbd1876100a38e02537d6987d8a02f7))
+
+### Chores
+
+- **ui**: Docs updates ([#21](https://github.com/agentcontrol/agent-control/pull/21),
+  [`081a578`](https://github.com/agentcontrol/agent-control/commit/081a5784b360760983818dce2fbd55b91477bcd8))
+
+- **ui**: Md cleanup ([#22](https://github.com/agentcontrol/agent-control/pull/22),
+  [`744ea11`](https://github.com/agentcontrol/agent-control/commit/744ea1167497ccc43ee55194b800dce7f8d3a9ff))
+
+- **ui**: UI feedback ([#17](https://github.com/agentcontrol/agent-control/pull/17),
+  [`fbd6419`](https://github.com/agentcontrol/agent-control/commit/fbd6419468d5c1c6acee61c061f0ad6eee6e588e))
+
+- **ui**: Update jds to latest ([#31](https://github.com/agentcontrol/agent-control/pull/31),
+  [`bb3c5d0`](https://github.com/agentcontrol/agent-control/commit/bb3c5d0181cac81a697660b8d08bb84be88340c6))
+
+### Features
+
+- **evaluators**: Add required_column_values for multi-tenant SQL validation
+  ([#30](https://github.com/agentcontrol/agent-control/pull/30),
+  [`532386c`](https://github.com/agentcontrol/agent-control/commit/532386cb933e5d3f07c0939f41701500ef4f4007))
+
+- **sdk**: Auto-populate init() steps from @control() decorators
+  ([#23](https://github.com/agentcontrol/agent-control/pull/23),
+  [`dc0f2a4`](https://github.com/agentcontrol/agent-control/commit/dc0f2a4061143a8e6de6a4a35677d229f14d03f9))
+
+
 ## v5.1.0 (2026-02-05)
 
 ### Documentation
