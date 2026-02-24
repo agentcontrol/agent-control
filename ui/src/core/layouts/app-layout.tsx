@@ -20,8 +20,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { type ReactNode, useState } from 'react';
 
-import { AcIcon } from '@/components/icons/ac-icon';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { AcIcon } from '@/components/icons/ac-icon';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 
 // import { useAgentsInfinite } from "@/core/hooks/query-hooks/use-agents-infinite";
