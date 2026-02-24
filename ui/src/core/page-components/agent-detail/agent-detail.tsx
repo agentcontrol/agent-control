@@ -177,14 +177,6 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     );
   }
 
-  const handleEditControl = (control: Control) => {
-    openModal(MODAL_NAMES.EDIT, { controlId: control.id.toString() });
-  };
-
-  const handleCloseEditModal = () => {
-    closeModal();
-  };
-
   const handleEditControlSuccess = () => {
     closeModal();
     setSelectedControl(null);

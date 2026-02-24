@@ -72,27 +72,14 @@ export const ControlDefinitionForm = ({
         label={
           <LabelWithTooltip
             label="Selector path"
-            tooltip="Path to data using dot notation (e.g., 'input', 'output', 'input.args.command', 'context.user_id', 'name', '*'). Supports subpaths like 'input.args.command'."
+            tooltip="Path to data. Use * for full step or a root (input, output, name, type, context); subpaths allowed (e.g. input.args.command)."
           />
         }
         labelProps={labelPropsInline}
         required
-        data={[
-          '*',
-          'input',
-          'output',
-          'context',
-          'name',
-          'type',
-          'input.args',
-          'input.args.command',
-          'input.query',
-          'input.user_message',
-          'output.text',
-          'context.user_id',
-        ]}
+        data={['*', 'input', 'output', 'name', 'type', 'context']}
         size="sm"
-        placeholder="e.g., input.args.command"
+        placeholder="e.g., input or input.args.command"
         {...form.getInputProps('selector_path')}
       />
 
