@@ -50,19 +50,12 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
 
         {/* Favicons */}
         <link
-          href="/favicon-32x32.png"
+          href="/ac-icon.jpg"
           rel="icon"
-          sizes="32x32"
-          type="image/png"
+          type="image/jpeg"
         />
         <link
-          href="/favicon-16x16.png"
-          rel="icon"
-          sizes="16x16"
-          type="image/png"
-        />
-        <link
-          href="/apple-touch-icon.png"
+          href="/ac-icon.jpg"
           rel="apple-touch-icon"
           sizes="180x180"
         />
