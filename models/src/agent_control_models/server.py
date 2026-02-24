@@ -25,7 +25,11 @@ class EvaluatorSchema(BaseModel):
 
 
 class ConflictMode(StrEnum):
-    """Conflict handling mode for agent registration updates."""
+    """Conflict handling mode for initAgent registration updates.
+
+    STRICT preserves compatibility checks and raises conflicts on incompatible changes.
+    OVERWRITE applies latest-init-wins replacement for steps and evaluators.
+    """
 
     STRICT = "strict"
     OVERWRITE = "overwrite"
@@ -164,6 +168,7 @@ class InitAgentRequest(BaseModel):
             ]
         }
     }
+
 
 class InitAgentResponse(BaseModel):
     """Response from agent initialization."""

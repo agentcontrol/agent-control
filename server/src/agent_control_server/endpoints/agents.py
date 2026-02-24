@@ -207,20 +207,21 @@ async def _build_overwrite_evaluator_removals(
             continue
         references_by_evaluator.setdefault(parsed.local_name, []).append((control.id, control.name))
 
-    removal_by_name: dict[str, InitAgentEvaluatorRemoval] = {}
-    for evaluator_name in sorted(references_by_evaluator):
-        references = references_by_evaluator[evaluator_name]
-        removal_by_name[evaluator_name] = InitAgentEvaluatorRemoval(
-            name=evaluator_name,
-            referenced_by_active_controls=True,
-            control_ids=[control_id for control_id, _ in references],
-            control_names=[control_name for _, control_name in references],
+    removals: list[InitAgentEvaluatorRemoval] = []
+    for evaluator_name in sorted(removed_evaluators):
+        references = references_by_evaluator.get(evaluator_name)
+        if references is None:
+            removals.append(InitAgentEvaluatorRemoval(name=evaluator_name))
+            continue
+        removals.append(
+            InitAgentEvaluatorRemoval(
+                name=evaluator_name,
+                referenced_by_active_controls=True,
+                control_ids=[control_id for control_id, _ in references],
+                control_names=[control_name for _, control_name in references],
+            )
         )
-
-    return [
-        removal_by_name.get(evaluator_name, InitAgentEvaluatorRemoval(name=evaluator_name))
-        for evaluator_name in sorted(removed_evaluators)
-    ]
+    return removals
 
 
 @router.get(

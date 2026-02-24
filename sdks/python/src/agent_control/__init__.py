@@ -282,6 +282,8 @@ async def refresh_controls_async() -> list[dict[str, Any]] | None:
             client,
             _current_agent,
             steps=[],
+            # Refresh only needs current controls.
+            # Strict avoids destructive overwrite with empty steps.
             conflict_mode="strict",
         )
         _server_controls = response.get('controls', [])
