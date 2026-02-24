@@ -152,7 +152,8 @@ export const EditControlContent = ({
         selector: { ...control.control.selector, path: values.selector_path },
         action: {
           decision: values.action_decision,
-          ...(values.action_decision === 'steer' && values.action_guidance?.trim()
+          ...(values.action_decision === 'steer' &&
+          values.action_guidance?.trim()
             ? { guidance: values.action_guidance.trim() }
             : {}),
         },
@@ -196,6 +197,7 @@ export const EditControlContent = ({
     if (definitionForm.values.action_decision !== 'steer') {
       definitionForm.setFieldValue('action_guidance', '');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definitionForm.values.action_decision]);
 
   // Reset view mode and errors when evaluator changes
@@ -225,7 +227,7 @@ export const EditControlContent = ({
         action_decision: control.control.action.decision,
         action_guidance:
           control.control.action.decision === 'steer'
-            ? control.control.action.guidance ?? ''
+            ? (control.control.action.guidance ?? '')
             : '',
         execution: control.control.execution ?? 'server',
       });
