@@ -80,6 +80,7 @@ export const EditControlContent = ({
       step_name_mode: 'names',
       selector_path: '*',
       action_decision: 'deny',
+      action_guidance: '',
       execution: 'server',
     },
     validate: {
@@ -139,7 +140,12 @@ export const EditControlContent = ({
           stages: values.stages.length > 0 ? values.stages : undefined,
         },
         selector: { ...control.control.selector, path: values.selector_path },
-        action: { decision: values.action_decision },
+        action: {
+          decision: values.action_decision,
+          ...(values.action_decision === 'steer' && values.action_guidance?.trim()
+            ? { guidance: values.action_guidance.trim() }
+            : {}),
+        },
         evaluator: { ...control.control.evaluator, config: finalConfig },
       };
     },
@@ -175,6 +181,13 @@ export const EditControlContent = ({
 
   const { isJsonInvalid, reset } = evaluatorConfig;
 
+  // Clear guidance when switching away from steer action
+  useEffect(() => {
+    if (definitionForm.values.action_decision !== 'steer') {
+      definitionForm.setFieldValue('action_guidance', '');
+    }
+  }, [definitionForm.values.action_decision]);
+
   // Reset view mode and errors when evaluator changes
   useEffect(() => {
     reset();
@@ -200,6 +213,10 @@ export const EditControlContent = ({
         step_name_mode: stepNameMode,
         selector_path: control.control.selector.path ?? '*',
         action_decision: control.control.action.decision,
+        action_guidance:
+          control.control.action.decision === 'steer'
+            ? control.control.action.guidance ?? ''
+            : '',
         execution: control.control.execution ?? 'server',
       });
       evaluatorForm.setValues(

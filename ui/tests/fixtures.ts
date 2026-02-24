@@ -279,6 +279,7 @@ const statsResponse: StatsResponse = {
     action_counts: {
       allow: 10,
       deny: 25,
+      steer: 0,
       warn: 3,
       log: 2,
     },
