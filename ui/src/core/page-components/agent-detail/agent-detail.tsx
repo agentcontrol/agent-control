@@ -230,7 +230,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         </Stack>
       );
     }
-    
+
     if (controlId) {
       return (
         <Center py="xl">
