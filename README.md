@@ -132,6 +132,44 @@ async def main():
 
 > **Note**: Authentication is disabled by default for local development. See [docs/REFERENCE.md](docs/REFERENCE.md#authentication) for production setup.
 
+### 5. Assign Controls and Policies
+
+Controls can be associated with agents in two ways — directly, via policies, or both. An agent's **active controls** are the union of all direct controls and all controls inherited from associated policies.
+
+**Direct controls** — attach individual controls to an agent:
+
+```bash
+# Add a control directly to an agent
+curl -X POST http://localhost:8000/api/v1/agents/support-agent-v1/controls/3
+
+# Remove a direct control
+curl -X DELETE http://localhost:8000/api/v1/agents/support-agent-v1/controls/3
+```
+
+**Policies** — group controls and assign them to one or more agents:
+
+```bash
+# Associate a policy with an agent (agents can have multiple policies)
+curl -X POST http://localhost:8000/api/v1/agents/support-agent-v1/policies/1
+
+# Add another policy
+curl -X POST http://localhost:8000/api/v1/agents/support-agent-v1/policies/2
+
+# List all policies for an agent
+curl http://localhost:8000/api/v1/agents/support-agent-v1/policies
+
+# Remove a specific policy
+curl -X DELETE http://localhost:8000/api/v1/agents/support-agent-v1/policies/1
+```
+
+**List all active controls** (union of direct + policy-inherited):
+
+```bash
+curl http://localhost:8000/api/v1/agents/support-agent-v1/controls
+```
+
+> Both policies and direct controls are optional. An agent can operate with no controls, only direct controls, only policies, or any combination.
+
 ---
 
 ## Configuration
@@ -225,6 +263,7 @@ Agent Control is built as a monorepo with these components:
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                      Agent Control Server                        │
+│                                                                  │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
 │  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
 │  │    API     │  │    API     │  │  Registry  │  │    API     │  │
@@ -244,6 +283,7 @@ Agent Control is built as a monorepo with these components:
 | Package | Description |
 |:--------|:------------|
 | `agent-control-sdk` | Python SDK with `@control()` decorator |
+| `agent-control` (npm) | TypeScript SDK (generated from OpenAPI) |
 | `agent-control-server` | FastAPI server with Control Management API |
 | `agent-control-engine` | Core evaluation logic and evaluator system |
 | `agent-control-models` | Shared Pydantic v2 models |
@@ -259,10 +299,12 @@ Agent Control is built as a monorepo with these components:
 ```
 agent-control/
 ├── sdks/python/     # Python SDK (agent-control)
+├── sdks/typescript/ # TypeScript SDK (generated)
 ├── server/          # FastAPI server (agent-control-server)
 ├── engine/          # Evaluation engine (agent-control-engine)
 ├── models/          # Shared models (agent-control-models)
 ├── evaluators/      # Evaluator implementations (agent-control-evaluators)
+├── ui/              # Next.js web dashboard
 └── examples/        # Usage examples
 ```
 
