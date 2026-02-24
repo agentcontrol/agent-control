@@ -167,6 +167,7 @@ def test_init_logs_fallback_warning_for_unresolved_type_hints(
 
 @pytest.mark.asyncio
 async def test_refresh_controls_uses_strict_conflict_mode() -> None:
+    # Given: an initialized SDK agent session with network-facing calls mocked.
     register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
     health_check_mock = AsyncMock(return_value={"status": "healthy"})
 
@@ -182,9 +183,11 @@ async def test_refresh_controls_uses_strict_conflict_mode() -> None:
             agent_id=str(uuid4()),
         )
 
+        # When: controls are refreshed through refresh_controls_async().
         register_agent_mock.reset_mock()
         await agent_control.refresh_controls_async()
 
+    # Then: refresh registration is non-destructive and forces strict conflict handling.
     assert register_agent_mock.await_count == 1
     assert register_agent_mock.await_args is not None
     assert register_agent_mock.await_args.kwargs["steps"] == []

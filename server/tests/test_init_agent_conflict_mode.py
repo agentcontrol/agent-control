@@ -70,6 +70,7 @@ def _create_policy_with_agent_evaluator_control(
 
 
 def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) -> None:
+    # Given: an existing agent registration with baseline steps and evaluators.
     agent_id = str(uuid.uuid4())
     agent_name = f"Agent-{uuid.uuid4().hex[:8]}"
 
@@ -100,6 +101,7 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
     assert create_resp.status_code == 200
     assert create_resp.json()["created"] is True
 
+    # When: initAgent is called in overwrite mode with an updated registration payload.
     overwrite_payload = _init_payload(
         agent_id=agent_id,
         agent_name=agent_name,
@@ -130,6 +132,7 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
     assert overwrite_resp.status_code == 200
     body = overwrite_resp.json()
 
+    # Then: overwrite changes are reported and persisted state matches the new payload.
     assert body["created"] is False
     assert body["overwrite_applied"] is True
 
@@ -159,6 +162,7 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
 
 
 def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: TestClient) -> None:
+    # Given: an agent whose assigned policy contains a control referencing an agent evaluator.
     agent_id = str(uuid.uuid4())
     agent_name = f"Agent-{uuid.uuid4().hex[:8]}"
     evaluator_name = "custom-eval"
@@ -179,6 +183,7 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
     assign_resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
     assert assign_resp.status_code == 200
 
+    # When: overwrite mode removes the evaluator from the incoming registration payload.
     overwrite_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(
@@ -191,6 +196,7 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
     assert overwrite_resp.status_code == 200
     body = overwrite_resp.json()
 
+    # Then: the response includes active-control reference warnings and evaluator removal.
     assert body["overwrite_applied"] is True
     assert body["overwrite_changes"]["evaluators_removed"] == [evaluator_name]
     assert body["overwrite_changes"]["evaluator_removals"] == [
@@ -208,6 +214,7 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
 
 
 def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> None:
+    # Given: an existing agent registration and an equivalent overwrite payload.
     agent_id = str(uuid.uuid4())
     agent_name = f"Agent-{uuid.uuid4().hex[:8]}"
     payload = _init_payload(
@@ -219,11 +226,13 @@ def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> No
     first_resp = client.post("/api/v1/agents/initAgent", json=payload)
     assert first_resp.status_code == 200
 
+    # When: initAgent is called in overwrite mode with no effective registration changes.
     second_payload = dict(payload)
     second_payload["conflict_mode"] = "overwrite"
     second_resp = client.post("/api/v1/agents/initAgent", json=second_payload)
     assert second_resp.status_code == 200
 
+    # Then: overwrite is reported as a no-op and all change collections stay empty.
     body = second_resp.json()
     assert body["overwrite_applied"] is False
     assert body["overwrite_changes"] == {
