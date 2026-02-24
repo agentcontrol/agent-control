@@ -21,6 +21,7 @@ import {
 export const Action = {
   Allow: "allow",
   Deny: "deny",
+  Steer: "steer",
   Warn: "warn",
   Log: "log",
 } as const;

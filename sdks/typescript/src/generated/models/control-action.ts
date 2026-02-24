@@ -7,6 +7,7 @@ import { safeParse } from "../lib/schemas.js";
 import * as openEnums from "../types/enums.js";
 import { OpenEnum } from "../types/enums.js";
 import { Result as SafeParseResult } from "../types/fp.js";
+import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 /**
@@ -15,6 +16,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
 export const Decision = {
   Allow: "allow",
   Deny: "deny",
+  Steer: "steer",
   Warn: "warn",
   Log: "log",
 } as const;
@@ -31,6 +33,10 @@ export type ControlAction = {
    * Action to take when control is triggered
    */
   decision: Decision;
+  /**
+   * Guidance message for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
+   */
+  guidance?: string | null | undefined;
 };
 
 /** @internal */
@@ -46,10 +52,12 @@ export const ControlAction$inboundSchema: z.ZodMiniType<
   unknown
 > = z.object({
   decision: Decision$inboundSchema,
+  guidance: z.optional(z.nullable(types.string())),
 });
 /** @internal */
 export type ControlAction$Outbound = {
   decision: string;
+  guidance?: string | null | undefined;
 };
 
 /** @internal */
@@ -58,6 +66,7 @@ export const ControlAction$outboundSchema: z.ZodMiniType<
   ControlAction
 > = z.object({
   decision: Decision$outboundSchema,
+  guidance: z.optional(z.nullable(z.string())),
 });
 
 export function controlActionToJSON(controlAction: ControlAction): string {

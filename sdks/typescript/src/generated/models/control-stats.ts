@@ -22,6 +22,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  *     non_match_count: Number of times the control did not match
  *     allow_count: Number of allow actions
  *     deny_count: Number of deny actions
+ *     steer_count: Number of steer actions
  *     warn_count: Number of warn actions
  *     log_count: Number of log actions
  *     error_count: Number of errors during evaluation
@@ -74,6 +75,10 @@ export type ControlStats = {
    */
   nonMatchCount: number;
   /**
+   * Steer actions
+   */
+  steerCount: number;
+  /**
    * Warn actions
    */
   warnCount: number;
@@ -94,6 +99,7 @@ export const ControlStats$inboundSchema: z.ZodMiniType<ControlStats, unknown> =
       log_count: types.number(),
       match_count: types.number(),
       non_match_count: types.number(),
+      steer_count: types.number(),
       warn_count: types.number(),
     }),
     z.transform((v) => {
@@ -109,6 +115,7 @@ export const ControlStats$inboundSchema: z.ZodMiniType<ControlStats, unknown> =
         "log_count": "logCount",
         "match_count": "matchCount",
         "non_match_count": "nonMatchCount",
+        "steer_count": "steerCount",
         "warn_count": "warnCount",
       });
     }),

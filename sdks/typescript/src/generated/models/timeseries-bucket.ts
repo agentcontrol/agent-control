@@ -28,7 +28,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type TimeseriesBucket = {
   /**
-   * Action breakdown: {allow, deny, warn, log}
+   * Action breakdown: {allow, deny, steer, warn, log}
    */
   actionCounts?: { [k: string]: number } | undefined;
   /**

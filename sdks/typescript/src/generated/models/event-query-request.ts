@@ -9,6 +9,7 @@ import { ClosedEnum } from "../types/enums.js";
 export const Actions = {
   Allow: "allow",
   Deny: "deny",
+  Steer: "steer",
   Warn: "warn",
   Log: "log",
 } as const;
@@ -39,7 +40,7 @@ export type CheckStages = ClosedEnum<typeof CheckStages>;
  *     control_execution_id: Filter by specific event ID
  *     agent_uuid: Filter by agent UUID
  *     control_ids: Filter by control IDs
- *     actions: Filter by actions (allow, deny, warn, log)
+ *     actions: Filter by actions (allow, deny, steer, warn, log)
  *     matched: Filter by matched status
  *     check_stages: Filter by check stages (pre, post)
  *     applies_to: Filter by call type (llm_call, tool_call)

@@ -17,6 +17,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
 export const ControlExecutionEventAction = {
   Allow: "allow",
   Deny: "deny",
+  Steer: "steer",
   Warn: "warn",
   Log: "log",
 } as const;
