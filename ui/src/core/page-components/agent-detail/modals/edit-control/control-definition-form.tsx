@@ -78,6 +78,11 @@ export const ControlDefinitionForm = ({
         labelProps={labelPropsInline}
         required
         data={['*', 'input', 'output', 'name', 'type', 'context']}
+        renderOption={({ option, ...others }) => (
+          <div {...others}>
+            {option.value === '*' ? '* (entire payload)' : option.value}
+          </div>
+        )}
         size="sm"
         placeholder="e.g., input or input.args.command"
         {...form.getInputProps('selector_path')}
