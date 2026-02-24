@@ -70,7 +70,8 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
 
   const handleCloseEditModal = () => {
     closeModal();
-    setSelectedControl(null);
+    // Do not clear selectedControl here so modal content stays mounted during
+    // the close animation; the effect syncs selectedControl when the modal opens.
   };
 
   const { handleDeleteControl, deleteControl } = useDeleteControlFlow({
@@ -179,7 +180,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
 
   const handleEditControlSuccess = () => {
     closeModal();
-    setSelectedControl(null);
+    // Do not clear selectedControl so modal content stays visible during close animation.
   };
 
   function renderEditModalBody() {
