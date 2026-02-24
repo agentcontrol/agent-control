@@ -31,7 +31,12 @@ export type InitAgentRequest = {
    */
   agent: Agent;
   /**
-   * Conflict handling mode for agent registration updates.
+   * Conflict handling mode for initAgent registration updates.
+   *
+   * @remarks
+   *
+   * STRICT preserves compatibility checks and raises conflicts on incompatible changes.
+   * OVERWRITE applies latest-init-wins replacement for steps and evaluators.
    */
   conflictMode?: ConflictMode | undefined;
   /**

@@ -6,14 +6,24 @@ import * as z from "zod/v4-mini";
 import { ClosedEnum } from "../types/enums.js";
 
 /**
- * Conflict handling mode for agent registration updates.
+ * Conflict handling mode for initAgent registration updates.
+ *
+ * @remarks
+ *
+ * STRICT preserves compatibility checks and raises conflicts on incompatible changes.
+ * OVERWRITE applies latest-init-wins replacement for steps and evaluators.
  */
 export const ConflictMode = {
   Strict: "strict",
   Overwrite: "overwrite",
 } as const;
 /**
- * Conflict handling mode for agent registration updates.
+ * Conflict handling mode for initAgent registration updates.
+ *
+ * @remarks
+ *
+ * STRICT preserves compatibility checks and raises conflicts on incompatible changes.
+ * OVERWRITE applies latest-init-wins replacement for steps and evaluators.
  */
 export type ConflictMode = ClosedEnum<typeof ConflictMode>;
 
