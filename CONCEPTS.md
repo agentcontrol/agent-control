@@ -201,6 +201,9 @@ The **Evaluator** receives the data extracted by the selector and evaluates it a
 }
 ```
 
+**Custom Evaluators:**
+Agent Control supports custom evaluators for domain-specific requirements. See [examples/deepeval](../examples/deepeval) for a complete example of creating and integrating custom evaluators.
+
 ---
 
 ### 4. Action (What to Do)
@@ -284,4 +287,122 @@ Putting it all together - a control that blocks Social Security Numbers in tool 
   }
 }
 ```
+
+---
+
+## Defining Controls
+
+Controls are defined via the API or SDK. Each control follows the **Control = Scope + Selector + Evaluator + Action** structure explained above.
+
+### Example: Block PII in Output (Regex)
+
+**Via Python SDK:**
+
+```python
+from agent_control import AgentControlClient, controls
+
+async with AgentControlClient() as client:
+    await controls.create_control(
+        client,
+        name="block-ssn-output",
+        data={
+            "description": "Block Social Security Numbers in responses",
+            "enabled": True,
+            "execution": "server",
+            "scope": {"step_names": ["generate_response"], "stages": ["post"]},
+            "selector": {"path": "output"},
+            "evaluator": {
+                "name": "regex",
+                "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
+            },
+            "action": {"decision": "deny"}
+        }
+    )
+```
+
+**Via curl:**
+
+```bash
+# Step 1: Create control
+CONTROL_ID=$(curl -X PUT http://localhost:8000/api/v1/controls \
+  -H "Content-Type: application/json" \
+  -d '{"name": "block-ssn-output"}' | jq -r '.control_id')
+
+# Step 2: Set control configuration
+curl -X PUT "http://localhost:8000/api/v1/controls/$CONTROL_ID/data" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "description": "Block Social Security Numbers in responses",
+      "enabled": true,
+      "execution": "server",
+      "scope": {"step_names": ["generate_response"], "stages": ["post"]},
+      "selector": {"path": "output"},
+      "evaluator": {
+        "name": "regex",
+        "config": {"pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"}
+      },
+      "action": {"decision": "deny"}
+    }
+  }'
+```
+
+### Example: Block Toxic Input (Luna-2 AI)
+
+**Via Python SDK:**
+
+```python
+await controls.create_control(
+    client,
+    name="block-toxic-input",
+    data={
+        "description": "Block toxic or harmful user messages",
+        "enabled": True,
+        "execution": "server",
+        "scope": {"step_names": ["process_user_message"], "stages": ["pre"]},
+        "selector": {"path": "input"},
+        "evaluator": {
+            "name": "galileo.luna2",
+            "config": {
+                "metric": "input_toxicity",
+                "operator": "gt",
+                "target_value": 0.5
+            }
+        },
+        "action": {"decision": "deny"}
+    }
+)
+```
+
+**Via curl:**
+
+```bash
+# Create control with Luna-2 evaluator
+CONTROL_ID=$(curl -X PUT http://localhost:8000/api/v1/controls \
+  -H "Content-Type: application/json" \
+  -d '{"name": "block-toxic-input"}' | jq -r '.control_id')
+
+curl -X PUT "http://localhost:8000/api/v1/controls/$CONTROL_ID/data" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "description": "Block toxic or harmful user messages",
+      "enabled": true,
+      "execution": "server",
+      "scope": {"step_names": ["process_user_message"], "stages": ["pre"]},
+      "selector": {"path": "input"},
+      "evaluator": {
+        "name": "galileo.luna2",
+        "config": {
+          "metric": "input_toxicity",
+          "operator": "gt",
+          "target_value": 0.5
+        }
+      },
+      "action": {"decision": "deny"}
+    }
+  }'
+```
+
+> **Note**: For Luna-2 evaluator, set `GALILEO_API_KEY` environment variable. See [docs/REFERENCE.md](docs/REFERENCE.md#evaluators) for all available evaluators.
 

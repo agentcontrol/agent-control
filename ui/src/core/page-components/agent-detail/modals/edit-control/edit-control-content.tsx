@@ -84,8 +84,18 @@ export const EditControlContent = ({
     },
     validate: {
       name: (value) => (!value?.trim() ? 'Control name is required' : null),
-      selector_path: (value) =>
-        !value?.trim() ? 'Selector path is required' : null,
+      selector_path: (value) => {
+        if (!value?.trim()) {
+          return 'Selector path is required';
+        }
+        // Validate root field matches backend validation
+        const validRoots = ['input', 'output', 'name', 'type', 'context', '*'];
+        const root = value.split('.')[0];
+        if (!validRoots.includes(root)) {
+          return `Invalid path root '${root}'. Must be one of: ${validRoots.join(', ')}`;
+        }
+        return null;
+      },
     },
   });
 

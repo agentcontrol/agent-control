@@ -1,4 +1,11 @@
-import { MultiSelect, Select, Stack, Switch, TagsInput } from '@mantine/core';
+import {
+  Autocomplete,
+  MultiSelect,
+  Select,
+  Stack,
+  Switch,
+  TagsInput,
+} from '@mantine/core';
 
 import type {
   ControlActionDecision,
@@ -61,28 +68,24 @@ export const ControlDefinitionForm = ({
         }
       />
 
-      <Select
+      <Autocomplete
         label={
           <LabelWithTooltip
             label="Selector path"
-            tooltip="Path to data using dot notation (e.g., 'input', 'output', 'context.user_id', 'name', '*')"
+            tooltip="Path to data. Use * for full step or a root (input, output, name, type, context); subpaths allowed (e.g. input.args.command)."
           />
         }
         labelProps={labelPropsInline}
         required
-        data={[
-          { value: '*', label: '* (entire payload)' },
-          { value: 'input', label: 'input' },
-          { value: 'output', label: 'output' },
-          { value: 'context', label: 'context' },
-          { value: 'name', label: 'name' },
-          { value: 'type', label: 'type' },
-        ]}
+        data={['*', 'input', 'output', 'name', 'type', 'context']}
+        renderOption={({ option, ...others }) => (
+          <div {...others}>
+            {option.value === '*' ? '* (entire payload)' : option.value}
+          </div>
+        )}
         size="sm"
-        searchable
-        allowDeselect={false}
+        placeholder="e.g., input or input.args.command"
         {...form.getInputProps('selector_path')}
-        onChange={(value) => form.setFieldValue('selector_path', value || '*')}
       />
 
       <Select

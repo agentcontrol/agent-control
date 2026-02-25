@@ -89,4 +89,32 @@ describe("AgentControlClient API wiring", () => {
       name: "deny-pii",
     });
   });
+
+  it("defaults initAgent conflict_mode to overwrite", async () => {
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        created: true,
+      }),
+    );
+
+    const client = new AgentControlClient();
+    client.init({
+      agentName: "test-agent",
+      serverUrl: "https://api.example.com",
+    });
+
+    await client.agents.init({
+      agent: {
+        agentId: "550e8400-e29b-41d4-a716-446655440000",
+        agentName: "test-agent",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = fetchMock.mock.calls[0]?.[0] as Request;
+    await expect(request.clone().json()).resolves.toMatchObject({
+      conflict_mode: "overwrite",
+    });
+  });
 });

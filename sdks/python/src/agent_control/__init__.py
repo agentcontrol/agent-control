@@ -281,7 +281,10 @@ async def refresh_controls_async() -> list[dict[str, Any]] | None:
         response = await agents.register_agent(
             client,
             _current_agent,
-            steps=[]
+            steps=[],
+            # Refresh only needs current controls.
+            # Strict avoids destructive overwrite with empty steps.
+            conflict_mode="strict",
         )
         _server_controls = response.get('controls', [])
         logger.info("Refreshed %d control(s) from server", len(_server_controls or []))
@@ -354,6 +357,7 @@ def init(
     api_key: str | None = None,
     controls_file: str | None = None,
     steps: list[StepSchemaDict] | None = None,
+    conflict_mode: Literal["strict", "overwrite"] = "overwrite",
     observability_enabled: bool | None = None,
     log_config: dict[str, Any] | None = None,
     **kwargs: object
@@ -380,6 +384,8 @@ def init(
         controls_file: Optional explicit path to controls.yaml (auto-discovered if not provided)
         steps: Optional list of step schemas for registration:
                [{"type": "tool", "name": "search", "input_schema": {...}, "output_schema": {...}}]
+        conflict_mode: Conflict handling mode for initAgent registration.
+            Defaults to "overwrite" in SDK flows.
         observability_enabled: Optional bool to enable/disable observability (defaults to env var)
         log_config: Optional logging configuration dict:
                {"enabled": True, "span_start": True, "span_end": True, "control_eval": True}
@@ -492,7 +498,8 @@ def init(
                     response = await agents.register_agent(
                         client,
                         _current_agent,
-                        steps=registration_steps
+                        steps=registration_steps,
+                        conflict_mode=conflict_mode,
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])
