@@ -77,6 +77,49 @@ def test_init_agent_creates_and_gets_agent(client: TestClient) -> None:
     assert {s["name"] for s in data["steps"]} == {payload["steps"][0]["name"]}
 
 
+def test_agent_endpoints_normalize_mixed_case_agent_name(client: TestClient) -> None:
+    # Given: an agent registered with mixed-case identifier
+    mixed_case_name = "Agent-PathNorm01"
+    payload = {
+        "agent": {
+            "agent_name": mixed_case_name,
+            "agent_description": "desc",
+            "agent_version": "1.0",
+        },
+        "steps": [],
+    }
+    init_resp = client.post("/api/v1/agents/initAgent", json=payload)
+    assert init_resp.status_code == 200
+
+    # When: hitting path-based agent endpoints using mixed-case path params
+    get_resp = client.get(f"/api/v1/agents/{mixed_case_name}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["agent"]["agent_name"] == mixed_case_name.lower()
+
+    policy_id = _create_policy(client)
+    set_policy_resp = client.post(f"/api/v1/agents/{mixed_case_name}/policy/{policy_id}")
+    assert set_policy_resp.status_code == 200
+
+    get_policy_resp = client.get(f"/api/v1/agents/{mixed_case_name}/policy")
+    assert get_policy_resp.status_code == 200
+    assert get_policy_resp.json()["policy_id"] == policy_id
+
+    controls_resp = client.get(f"/api/v1/agents/{mixed_case_name}/controls")
+    assert controls_resp.status_code == 200
+
+    evaluators_resp = client.get(f"/api/v1/agents/{mixed_case_name}/evaluators")
+    assert evaluators_resp.status_code == 200
+
+    patch_resp = client.patch(
+        f"/api/v1/agents/{mixed_case_name}",
+        json={"remove_steps": [], "remove_evaluators": []},
+    )
+    assert patch_resp.status_code == 200
+
+    delete_policy_resp = client.delete(f"/api/v1/agents/{mixed_case_name}/policy")
+    assert delete_policy_resp.status_code == 200
+
+
 def test_init_agent_idempotent_same_steps(client: TestClient) -> None:
     # Given: an init payload
     payload = make_agent_payload()
@@ -569,6 +612,31 @@ def test_list_agents_pagination(client: TestClient) -> None:
     assert len(body3["agents"]) == 1
     assert body3["pagination"]["has_more"] is False
     assert body3["pagination"]["next_cursor"] is None
+
+
+def test_list_agents_accepts_mixed_case_cursor(client: TestClient) -> None:
+    # Given: three agents to paginate
+    for i in range(3):
+        payload = make_agent_payload(name=f"agent-cursor-{i:02d}")
+        resp = client.post("/api/v1/agents/initAgent", json=payload)
+        assert resp.status_code == 200
+
+    first_page = client.get("/api/v1/agents?limit=1")
+    assert first_page.status_code == 200
+    first_body = first_page.json()
+    assert first_body["pagination"]["has_more"] is True
+    assert first_body["pagination"]["next_cursor"] is not None
+
+    mixed_case_cursor = str(first_body["pagination"]["next_cursor"]).upper()
+
+    # When: requesting second page with mixed-case cursor
+    second_page = client.get(f"/api/v1/agents?limit=1&cursor={mixed_case_cursor}")
+    assert second_page.status_code == 200
+    second_body = second_page.json()
+
+    # Then: cursor is normalized and pagination advances
+    assert len(second_body["agents"]) == 1
+    assert second_body["agents"][0]["agent_name"] != first_body["agents"][0]["agent_name"]
 
 
 def test_list_agents_limit_clamping(client: TestClient) -> None:

@@ -221,6 +221,27 @@ class TestStatsTimeseries:
     """Tests for time-series stats functionality."""
 
     @pytest.mark.asyncio
+    async def test_stats_normalize_mixed_case_agent_name_query(
+        self, client: TestClient, setup_observability
+    ):
+        """Mixed-case agent_name query params are normalized."""
+        store = setup_observability
+        normalized_name = "agent-statsnorm01"
+
+        event = create_test_event(agent_name=normalized_name, matched=True)
+        await store.store([event])
+
+        response = client.get(
+            "/api/v1/observability/stats",
+            params={"agent_name": "Agent-StatsNorm01", "time_range": "1h"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["agent_name"] == normalized_name
+        assert body["totals"]["execution_count"] == 1
+
+    @pytest.mark.asyncio
     async def test_stats_without_timeseries(self, client: TestClient, setup_observability):
         """Default response has no timeseries."""
         store = setup_observability

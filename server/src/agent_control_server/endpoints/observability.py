@@ -35,6 +35,7 @@ from ..observability.store.base import (
     get_bucket_size,
     parse_time_range,
 )
+from ..services.agent_names import normalize_agent_name_or_422
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +180,7 @@ async def get_stats(
     Returns:
         StatsResponse with agent-level totals and per-control breakdown
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     interval = parse_time_range(time_range)
     bucket_size = get_bucket_size(time_range) if include_timeseries else None
 
@@ -228,6 +230,7 @@ async def get_control_stats(
     Returns:
         ControlStatsResponse with control stats and optional timeseries
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     interval = parse_time_range(time_range)
     bucket_size = get_bucket_size(time_range) if include_timeseries else None
 

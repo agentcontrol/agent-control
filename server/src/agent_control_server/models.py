@@ -1,11 +1,12 @@
 import datetime as dt
 from typing import Any, Optional
 
-from agent_control_models.agent import StepSchema
+from agent_control_models.agent import StepSchema, normalize_agent_name
 from agent_control_models.base import BaseModel
 from agent_control_models.server import EvaluatorSchema
 from pydantic import Field
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -16,7 +17,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from .db import Base
 
@@ -87,6 +88,10 @@ class EvaluatorConfigDB(Base):
 
 class Agent(Base):
     __tablename__ = "agents"
+    __table_args__ = (
+        CheckConstraint("char_length(name) >= 10", name="ck_agents_name_min_length"),
+        CheckConstraint("name ~ '^[a-z0-9:_-]+$'", name="ck_agents_name_format"),
+    )
 
     name: Mapped[str] = mapped_column(String(255), primary_key=True)
     data: Mapped[dict[str, Any]] = mapped_column(
@@ -99,6 +104,10 @@ class Agent(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(), server_default=text("CURRENT_TIMESTAMP"), nullable=False, index=True
     )
+
+    @validates("name")
+    def _normalize_name(self, _key: str, value: str) -> str:
+        return normalize_agent_name(value)
 
 
 # =============================================================================
@@ -143,4 +152,5 @@ class ControlExecutionEventDB(Base):
     # Composite index for agent + time queries (primary access pattern)
     __table_args__ = (
         Index("ix_events_agent_time", "agent_name", timestamp.desc()),
+        Index("ix_events_data_control_id", text("(data ->> 'control_id'::text)")),
     )

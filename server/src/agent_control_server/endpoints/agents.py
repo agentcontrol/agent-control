@@ -45,6 +45,7 @@ from ..models import (
     Policy,
     policy_controls,
 )
+from ..services.agent_names import normalize_agent_name_or_422
 from ..services.controls import list_controls_for_agent, list_controls_for_policy
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
@@ -273,7 +274,7 @@ async def list_agents(
 
     # If cursor provided, filter to get items after the cursor
     if cursor:
-        cursor_name = cursor.strip().lower()
+        cursor_name = normalize_agent_name_or_422(cursor, field_name="cursor")
         cursor_agent_result = await db.execute(
             select(Agent).where(Agent.name == cursor_name)
         )
@@ -764,6 +765,7 @@ async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -
         HTTPException 404: Agent not found
         HTTPException 422: Agent data is corrupted
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     result = await db.execute(select(Agent).where(Agent.name == agent_name))
     existing: Agent | None = result.scalars().first()
     if existing is None:
@@ -842,6 +844,7 @@ async def set_agent_policy(
         HTTPException 404: Agent or policy not found
         HTTPException 500: Database error during assignment
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     # Find agent
     result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
@@ -930,6 +933,7 @@ async def get_agent_policy(
     Raises:
         HTTPException 404: Agent not found or agent has no policy assigned
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     # Find agent
     result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
@@ -994,6 +998,7 @@ async def delete_agent_policy(
         HTTPException 404: Agent not found or agent has no policy assigned
         HTTPException 500: Database error during removal
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     # Find agent
     result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
@@ -1059,6 +1064,7 @@ async def list_agent_controls(
     Raises:
         HTTPException 404: Agent not found
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
@@ -1130,6 +1136,7 @@ async def list_agent_evaluators(
     Raises:
         HTTPException 404: Agent not found
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     # Clamp limit
     limit = min(max(1, limit), _MAX_PAGINATION_LIMIT)
 
@@ -1219,6 +1226,7 @@ async def get_agent_evaluator(
     Raises:
         HTTPException 404: Agent or evaluator not found
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
@@ -1287,6 +1295,7 @@ async def patch_agent(
         HTTPException 404: Agent not found
         HTTPException 500: Database error during update
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
