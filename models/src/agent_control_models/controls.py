@@ -214,12 +214,12 @@ class ControlAction(BaseModel):
     decision: Literal["allow", "deny", "steer", "warn", "log"] = Field(
         ..., description="Action to take when control is triggered"
     )
-    guidance: str | None = Field(
+    steering_context: str | None = Field(
         None,
         description=(
-            "Guidance message for steer actions. Strongly recommended when decision='steer' "
-            "to provide correction suggestions. If not provided, the evaluator result message "
-            "will be used as fallback."
+            "Steering context message for steer actions. Strongly recommended when "
+            "decision='steer' to provide correction suggestions. If not provided, the "
+            "evaluator result message will be used as fallback."
         )
     )
 

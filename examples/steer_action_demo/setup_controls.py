@@ -130,7 +130,7 @@ async def setup_banking_controls():
             },
             "action": {
                 "decision": "steer",
-                "guidance": "This large transfer requires user verification. Request 2FA code from user, verify it, then retry the transaction with verified_2fa=True."
+                "steering_context": "This large transfer requires user verification. Request 2FA code from user, verify it, then retry the transaction with verified_2fa=True."
             }
         }
 
@@ -161,7 +161,7 @@ async def setup_banking_controls():
             },
             "action": {
                 "decision": "steer",
-                "guidance": "Transfer exceeds daily limit. Steps: 1) Ask user for business justification, 2) Request manager approval with amount and justification, 3) If approved, retry with manager_approved=True and justification filled in."
+                "steering_context": "Transfer exceeds daily limit. Steps: 1) Ask user for business justification, 2) Request manager approval with amount and justification, 3) If approved, retry with manager_approved=True and justification filled in."
             }
         }
 

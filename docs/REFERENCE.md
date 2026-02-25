@@ -118,14 +118,14 @@ An **Action** defines what to do when a control matches:
 | Action | Behavior |
 |--------|----------|
 | `deny` | Block the request/response, raise `ControlViolationError` |
-| `steer` | Raise `ControlSteerError` with guidance for correction and retry |
+| `steer` | Raise `ControlSteerError` with steering context for correction and retry |
 | `allow` | Permit execution (no effect if a `deny` control also matches) |
 | `warn` | Log a warning but allow execution |
 | `log` | Silent logging for monitoring only |
 
 > **Note**: Agent Control uses priority-based semantics:
 > 1. **deny wins** - If any `deny` control matches, execution is blocked
-> 2. **steer second** - If any `steer` control matches (and no deny), a `ControlSteerError` is raised with correction guidance
+> 2. **steer second** - If any `steer` control matches (and no deny), a `ControlSteerError` is raised with correction steering context
 > 3. **allow/warn/log** - Observability actions that don't block execution
 
 ### Step Types
@@ -676,7 +676,7 @@ except ControlViolationError as e:
 
 #### ControlSteerError
 
-Raised when a control with `action="steer"` matches. Provides guidance for correction and allows retry:
+Raised when a control with `action="steer"` matches. Provides steering context for correction and allows retry:
 
 ```python
 from agent_control import control, ControlSteerError
@@ -688,8 +688,8 @@ async def process_transfer(amount: float, verified_2fa: bool = False) -> dict:
 try:
     result = await process_transfer(amount=15000, verified_2fa=False)
 except ControlSteerError as e:
-    print(f"Guidance: {e.guidance}")
-    # Follow guidance: request 2FA from user
+    print(f"Steering context: {e.steering_context}")
+    # Follow steering context: request 2FA from user
     code = get_2fa_code_from_user()
     # Retry with corrected parameters
     result = await process_transfer(amount=15000, verified_2fa=True)
@@ -701,7 +701,7 @@ except ControlSteerError as e:
 |-----------|------|-------------|
 | `control_name` | str | Which control triggered |
 | `message` | str | Why steering is required |
-| `guidance` | str | Corrective action instructions |
+| `steering_context` | str | Corrective action instructions |
 | `metadata` | dict | Additional context |
 
 ### Direct Client Usage

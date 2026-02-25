@@ -106,13 +106,13 @@ uv run interactive_demo.py
 ```
 
 **What it demonstrates:**
-- ✅ **Steer actions** - Corrective guidance instead of hard blocks
+- ✅ **Steer actions** - Corrective steering context instead of hard blocks
 - ✅ **Autonomous retry** - Agent automatically revises based on feedback
 - ✅ **LangGraph workflow** - State-managed revision loop
 - ✅ **Multiple controls** - Language, PII, length, completeness checks
 
 **Key Features:**
-- Agent generates content → Gets steer guidance → Autonomously revises → Succeeds or fails after max retries
+- Agent generates content → Gets steer steering context → Autonomously revises → Succeeds or fails after max retries
 - Shows difference between `ControlSteerError` (can retry) vs `ControlViolationError` (hard block)
 - Real-world use cases: inappropriate language, PII exposure, length limits, missing information
 
@@ -156,17 +156,17 @@ agent_control.init(agent_name="my-bot", agent_id="...")
 async def generate_content(prompt: str) -> str:
     return await llm.generate(prompt)
 
-# Autonomous retry with guidance
+# Autonomous retry with steering context
 async def generate_with_retry(prompt: str, max_retries: int = 3):
     for attempt in range(max_retries):
         try:
             return await generate_content(prompt)
         except ControlSteerError as e:
             # Steer: can retry with corrections
-            print(f"Guidance: {e.guidance}")
+            print(f"Steering context: {e.steering_context}")
             if attempt < max_retries - 1:
-                # Revise prompt based on guidance
-                prompt = f"{prompt}\n\nRevise to: {e.guidance}"
+                # Revise prompt based on steering context
+                prompt = f"{prompt}\n\nRevise to: {e.steering_context}"
             else:
                 raise
         except ControlViolationError as e:

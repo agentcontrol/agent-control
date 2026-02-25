@@ -30,7 +30,7 @@ You have a natural conversation with a banking agent:
 
 - Natural language parsing with GPT-4
 - Real-time control evaluation via AgentControl server
-- LLM-based guidance interpretation (agent reads control guidance and determines action)
+- LLM-based steering context interpretation (agent reads control steering context and determines action)
 - Human-in-the-loop for 2FA codes and manager approvals
 - Autonomous retry logic with corrected parameters
 - LangGraph state management for complex workflows
@@ -311,16 +311,16 @@ async def process_transfer_node(state: AgentState) -> AgentState:
         agent_say(f"⚠️  This transfer requires additional verification.")
         print(f"\n   📋 Control: {e.control_name}")
         print(f"   📌 Issue: {e.message}")
-        print(f"   💡 Guidance: {e.guidance}")
+        print(f"   💡 Steering context: {e.steering_context}")
 
-        # Interpret guidance with LLM
+        # Interpret steering context with LLM
         agent_think("Determining required action...")
 
         llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-        interpret_prompt = f"""Based on this control guidance, what action is needed?
+        interpret_prompt = f"""Based on this control steering context, what action is needed?
 
-Guidance: {e.guidance}
+Steering context: {e.steering_context}
 
 Current state:
 - Amount: ${request['amount']:,.2f}
@@ -416,7 +416,7 @@ Only output the justification, nothing else."""
                 }
 
         else:
-            agent_say("I'm not sure how to proceed with this guidance.")
+            agent_say("I'm not sure how to proceed with this steering context.")
             return {**state, "fraud_score": fraud_score, "status": "failed"}
 
 

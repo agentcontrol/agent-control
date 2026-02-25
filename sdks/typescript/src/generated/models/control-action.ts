@@ -34,9 +34,9 @@ export type ControlAction = {
    */
   decision: Decision;
   /**
-   * Guidance message for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
+   * Steering context message for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
    */
-  guidance?: string | null | undefined;
+  steering_context?: string | null | undefined;
 };
 
 /** @internal */
@@ -52,12 +52,12 @@ export const ControlAction$inboundSchema: z.ZodMiniType<
   unknown
 > = z.object({
   decision: Decision$inboundSchema,
-  guidance: z.optional(z.nullable(types.string())),
+  steering_context: z.optional(z.nullable(types.string())),
 });
 /** @internal */
 export type ControlAction$Outbound = {
   decision: string;
-  guidance?: string | null | undefined;
+  steering_context?: string | null | undefined;
 };
 
 /** @internal */
@@ -66,7 +66,7 @@ export const ControlAction$outboundSchema: z.ZodMiniType<
   ControlAction
 > = z.object({
   decision: Decision$outboundSchema,
-  guidance: z.optional(z.nullable(z.string())),
+  steering_context: z.optional(z.nullable(z.string())),
 });
 
 export function controlActionToJSON(controlAction: ControlAction): string {

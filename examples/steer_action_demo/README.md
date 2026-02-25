@@ -73,10 +73,10 @@ The agent uses AgentControl to gate wire transfers through 4 controls:
 | 2FA Required | STEER | Amount ≥ $10,000 |
 | Manager Approval | STEER | Amount ≥ $10,000 |
 
-When a STEER control triggers, it provides guidance like:
+When a STEER control triggers, it provides steering context like:
 > "This large transfer requires user verification. Request 2FA code from user, verify it, then retry the transaction with verified_2fa=True."
 
-The agent interprets this guidance and takes the corrective action automatically.
+The agent interprets this steering context and takes the corrective action automatically.
 
 ## Files
 
@@ -86,4 +86,4 @@ The agent interprets this guidance and takes the corrective action automatically
 
 ---
 
-**The key insight**: Steer actions transform rigid rules into intelligent guidance, letting agents handle complex workflows while maintaining compliance.
+**The key insight**: Steer actions transform rigid rules into intelligent steering context, letting agents handle complex workflows while maintaining compliance.

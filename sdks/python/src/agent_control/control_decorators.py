@@ -178,7 +178,7 @@ class ControlSteerError(Exception):
     """Raised when a control is triggered with 'steer' action.
 
     This error indicates the agent should modify its approach based on
-    the provided guidance and potentially retry the operation.
+    the provided steering context and potentially retry the operation.
 
     Unlike ControlViolationError (deny), this is not a hard block but
     a corrective signal that allows the application to adjust and retry.
@@ -190,7 +190,7 @@ class ControlSteerError(Exception):
         control_name: str | None = None,
         message: str = "Control steering required",
         metadata: dict[str, Any] | None = None,
-        guidance: str | None = None,
+        steering_context: str | None = None,
         input_data: Any | None = None,
         output_data: Any | None = None
     ):
@@ -198,12 +198,14 @@ class ControlSteerError(Exception):
         self.control_name = control_name or (str(control_id) if control_id else "unknown")
         self.message = message
         self.metadata = metadata or {}
-        self.guidance = guidance or self.metadata.get("guidance", "No guidance provided")
+        self.steering_context = steering_context or self.metadata.get(
+            "steering_context", "No steering context provided"
+        )
         self.input_data = input_data
         self.output_data = output_data
         super().__init__(
             f"Control steering [{self.control_name}]: {message}\n"
-            f"Guidance: {self.guidance}"
+            f"Steering context: {self.steering_context}"
         )
 
 
@@ -507,16 +509,16 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
                     metadata=metadata
                 )
             elif action == "steer":
-                # Extract guidance from control action definition or metadata
+                # Extract steering_context from control action definition or metadata
                 control_data = match.get("control", {})
                 action_data = (
                     control_data.get("action", {})
                     if isinstance(control_data, dict)
                     else {}
                 )
-                guidance = (
-                    action_data.get("guidance") if isinstance(action_data, dict)
-                    else metadata.get("guidance")
+                steering_context = (
+                    action_data.get("steering_context") if isinstance(action_data, dict)
+                    else metadata.get("steering_context")
                 ) or message
 
                 raise ControlSteerError(
@@ -524,7 +526,7 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
                     control_name=matched_control,
                     message=message,
                     metadata=metadata,
-                    guidance=guidance
+                    steering_context=steering_context
                 )
             elif action == "warn":
                 logger.warning(f"⚠️ Control [{matched_control}]: {message}")

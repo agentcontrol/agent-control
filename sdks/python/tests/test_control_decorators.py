@@ -73,7 +73,7 @@ def mock_warn_response():
 
 @pytest.fixture
 def mock_steer_response():
-    """Response when evaluation triggers steer action with guidance."""
+    """Response when evaluation triggers steer action with steering context."""
     return {
         "is_safe": False,
         "confidence": 0.85,
@@ -85,7 +85,7 @@ def mock_steer_response():
                 "control": {
                     "action": {
                         "decision": "steer",
-                        "guidance": "Please rephrase your question using respectful language"
+                        "steering_context": "Please rephrase your question using respectful language"
                     }
                 },
                 "result": {
@@ -184,7 +184,7 @@ class TestPolicyHandling:
 
     @pytest.mark.asyncio
     async def test_steer_action_raises_exception(self, mock_agent, mock_steer_response):
-        """Test that steer action raises ControlSteerError with guidance."""
+        """Test that steer action raises ControlSteerError with steering context."""
         with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
              patch("agent_control.control_decorators._evaluate", return_value=mock_steer_response):
 
@@ -198,7 +198,7 @@ class TestPolicyHandling:
             # Verify exception has all expected fields
             assert exc_info.value.control_name == "steer-control"
             assert exc_info.value.message == "Inappropriate language detected"
-            assert exc_info.value.guidance == "Please rephrase your question using respectful language"
+            assert exc_info.value.steering_context == "Please rephrase your question using respectful language"
             assert "steer-control" in str(exc_info.value)
             assert "Please rephrase" in str(exc_info.value)
 
@@ -525,40 +525,40 @@ class TestControlSteerError:
             control_name="steer-control",
             message="Need to adjust approach",
             metadata={"pattern": "offensive"},
-            guidance="Please rephrase using respectful language"
+            steering_context="Please rephrase using respectful language"
         )
 
         assert steer_error.control_name == "steer-control"
         assert steer_error.message == "Need to adjust approach"
         assert steer_error.metadata == {"pattern": "offensive"}
-        assert steer_error.guidance == "Please rephrase using respectful language"
+        assert steer_error.steering_context == "Please rephrase using respectful language"
 
-    def test_exception_guidance_fallback(self):
-        """Test guidance falls back to metadata if not provided."""
+    def test_exception_steering_context_fallback(self):
+        """Test steering_context falls back to metadata if not provided."""
         steer_error = ControlSteerError(
             control_name="steer-control",
             message="Test message",
-            metadata={"guidance": "Fallback guidance from metadata"}
+            metadata={"steering_context": "Fallback steering context from metadata"}
         )
 
-        assert steer_error.guidance == "Fallback guidance from metadata"
+        assert steer_error.steering_context == "Fallback steering context from metadata"
 
-    def test_exception_guidance_default(self):
-        """Test guidance defaults to 'No guidance provided' if not in metadata."""
+    def test_exception_steering_context_default(self):
+        """Test steering_context defaults to 'No steering context provided' if not in metadata."""
         steer_error = ControlSteerError(
             control_name="steer-control",
             message="Test message",
             metadata={}
         )
 
-        assert steer_error.guidance == "No guidance provided"
+        assert steer_error.steering_context == "No steering context provided"
 
     def test_exception_string(self):
         """Test ControlSteerError string representation."""
         steer_error = ControlSteerError(
             control_name="my-steer-control",
             message="Needs correction",
-            guidance="Use this approach instead"
+            steering_context="Use this approach instead"
         )
 
         assert "my-steer-control" in str(steer_error)

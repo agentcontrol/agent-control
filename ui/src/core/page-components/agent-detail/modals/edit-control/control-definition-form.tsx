@@ -118,14 +118,14 @@ export const ControlDefinitionForm = ({
         <TextInput
           label={
             <LabelWithTooltip
-              label="Guidance"
+              label="Steering context"
               tooltip="Optional correction message. If not provided, the evaluator message will be used."
             />
           }
           labelProps={labelPropsInline}
           placeholder="e.g., Please rephrase using respectful language"
           size="sm"
-          {...form.getInputProps('action_guidance')}
+          {...form.getInputProps('action_steering_context')}
         />
       )}
 

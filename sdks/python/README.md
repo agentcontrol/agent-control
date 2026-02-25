@@ -209,7 +209,7 @@ async def sensitive_func(data: str):
 
 **`ControlViolationError`** - Raised for `deny` actions (hard block, cannot proceed)
 
-**`ControlSteerError`** - Raised for `steer` actions with `guidance` field for correction and retry
+**`ControlSteerError`** - Raised for `steer` actions with `steering_context` field for correction and retry
 
 ### Client
 

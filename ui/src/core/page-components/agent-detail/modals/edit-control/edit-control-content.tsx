@@ -80,7 +80,7 @@ export const EditControlContent = ({
       step_name_mode: 'names',
       selector_path: '*',
       action_decision: 'deny',
-      action_guidance: '',
+      action_steering_context: '',
       execution: 'server',
     },
     validate: {
@@ -153,8 +153,8 @@ export const EditControlContent = ({
         action: {
           decision: values.action_decision,
           ...(values.action_decision === 'steer' &&
-          values.action_guidance?.trim()
-            ? { guidance: values.action_guidance.trim() }
+          values.action_steering_context?.trim()
+            ? { steering_context: values.action_steering_context.trim() }
             : {}),
         },
         evaluator: { ...control.control.evaluator, config: finalConfig },
@@ -192,10 +192,10 @@ export const EditControlContent = ({
 
   const { isJsonInvalid, reset } = evaluatorConfig;
 
-  // Clear guidance when switching away from steer action
+  // Clear steering_context when switching away from steer action
   useEffect(() => {
     if (definitionForm.values.action_decision !== 'steer') {
-      definitionForm.setFieldValue('action_guidance', '');
+      definitionForm.setFieldValue('action_steering_context', '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definitionForm.values.action_decision]);
@@ -225,9 +225,9 @@ export const EditControlContent = ({
         step_name_mode: stepNameMode,
         selector_path: control.control.selector.path ?? '*',
         action_decision: control.control.action.decision,
-        action_guidance:
+        action_steering_context:
           control.control.action.decision === 'steer'
-            ? (control.control.action.guidance ?? '')
+            ? (control.control.action.steering_context ?? '')
             : '',
         execution: control.control.execution ?? 'server',
       });

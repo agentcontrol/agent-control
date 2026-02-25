@@ -79,8 +79,8 @@ export function mapApiFieldToFormField(
   if (fieldPath === 'action.decision') {
     return { form: 'definition', field: 'action_decision' };
   }
-  if (fieldPath === 'action.guidance') {
-    return { form: 'definition', field: 'action_guidance' };
+  if (fieldPath === 'action.steering_context') {
+    return { form: 'definition', field: 'action_steering_context' };
   }
   if (fieldPath.startsWith('scope.')) {
     const scopeField = fieldPath.slice('scope.'.length);

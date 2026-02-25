@@ -1144,10 +1144,10 @@ export interface components {
        */
       decision: 'allow' | 'deny' | 'steer' | 'warn' | 'log';
       /**
-       * Guidance
-       * @description Guidance message for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
+       * Steering context
+       * @description Steering context message for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
        */
-      guidance?: string | null;
+      steering_context?: string | null;
     };
     /**
      * ControlDefinition

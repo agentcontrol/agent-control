@@ -222,7 +222,7 @@ The **Action** defines what happens when the evaluator matches/detects an issue.
 
 Agent Control uses priority-based logic:
 1. **deny wins** - If any `deny` control matches, execution is blocked
-2. **steer second** - If any `steer` control matches (and no deny), guidance is provided for correction
+2. **steer second** - If any `steer` control matches (and no deny), steering context is provided for correction
 3. **allow/warn/log** - Observability actions that don't block
 
 This ensures fail-safe behavior while allowing corrective workflows.
