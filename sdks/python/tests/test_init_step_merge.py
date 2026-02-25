@@ -66,6 +66,7 @@ def test_init_passes_merged_steps_to_register_agent(
                 agent_name="Init Merge Agent",
                 agent_id=str(uuid4()),
                 steps=explicit_steps,
+                policy_refresh_interval_seconds=0,
             )
 
     # Then register_agent() receives merged steps with explicit precedence on conflicts.
@@ -104,6 +105,7 @@ def test_init_uses_auto_discovered_steps_from_control_decorator() -> None:
         agent_control.init(
             agent_name="Auto Discovery Agent",
             agent_id=str(uuid4()),
+            policy_refresh_interval_seconds=0,
         )
 
     # Then register_agent() receives the auto-derived step schema payload.
@@ -147,6 +149,7 @@ def test_init_logs_fallback_warning_for_unresolved_type_hints(
             agent_control.init(
                 agent_name="Fallback Warning Agent",
                 agent_id=str(uuid4()),
+                policy_refresh_interval_seconds=0,
             )
 
     # Then initialization continues, using fallback schemas and emitting a warning.
@@ -166,9 +169,10 @@ def test_init_logs_fallback_warning_for_unresolved_type_hints(
 
 
 @pytest.mark.asyncio
-async def test_refresh_controls_uses_strict_conflict_mode() -> None:
+async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
     # Given: an initialized SDK agent session with network-facing calls mocked.
     register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    list_agent_controls_mock = AsyncMock(return_value={"controls": [{"id": 1, "name": "c1"}]})
     health_check_mock = AsyncMock(return_value={"status": "healthy"})
 
     with patch(
@@ -177,18 +181,21 @@ async def test_refresh_controls_uses_strict_conflict_mode() -> None:
     ), patch(
         "agent_control.__init__.agents.register_agent",
         new=register_agent_mock,
+    ), patch(
+        "agent_control.__init__.agents.list_agent_controls",
+        new=list_agent_controls_mock,
     ):
         agent_control.init(
             agent_name="Refresh Strict Agent",
             agent_id=str(uuid4()),
+            policy_refresh_interval_seconds=0,
         )
 
         # When: controls are refreshed through refresh_controls_async().
         register_agent_mock.reset_mock()
+        list_agent_controls_mock.reset_mock()
         await agent_control.refresh_controls_async()
 
-    # Then: refresh registration is non-destructive and forces strict conflict handling.
-    assert register_agent_mock.await_count == 1
-    assert register_agent_mock.await_args is not None
-    assert register_agent_mock.await_args.kwargs["steps"] == []
-    assert register_agent_mock.await_args.kwargs["conflict_mode"] == "strict"
+    # Then: refresh calls list_agent_controls and does not re-register the agent.
+    assert list_agent_controls_mock.await_count == 1
+    assert register_agent_mock.await_count == 0

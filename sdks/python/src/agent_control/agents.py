@@ -201,3 +201,27 @@ async def remove_agent_policy(
     response = await client.http_client.delete(f"/api/v1/agents/{agent_id_str}/policy")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
+
+
+async def list_agent_controls(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+) -> dict[str, Any]:
+    """
+    List active controls associated with an agent.
+
+    Args:
+        client: AgentControlClient instance
+        agent_id: UUID string or UUID instance
+
+    Returns:
+        Dictionary containing:
+            - controls: List of active controls
+
+    Raises:
+        httpx.HTTPError: If request fails or agent is not found
+    """
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/controls")
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())

@@ -162,7 +162,8 @@ def init(
     agent_description: Optional[str] = None,
     agent_version: Optional[str] = None,
     server_url: Optional[str] = None,
-    rules_file: Optional[str] = None,
+    controls_file: Optional[str] = None,
+    policy_refresh_interval_seconds: int = 60,
     **kwargs
 ) -> Agent:
 ```
@@ -175,10 +176,16 @@ Initialize Agent Control with your agent's information.
 - `agent_description`: Optional description
 - `agent_version`: Optional version string
 - `server_url`: Optional server URL (defaults to `AGENT_CONTROL_URL` env var)
-- `rules_file`: Optional rules file path (auto-discovered if not provided)
+- `controls_file`: Optional controls file path (auto-discovered if not provided)
+- `policy_refresh_interval_seconds`: Background cache refresh interval in seconds.
+  Default `60`; set to `0` to disable background refresh.
 - `**kwargs`: Additional metadata
 
 **Returns:** `Agent` instance
+
+When background refresh is enabled, the SDK refreshes cache snapshots via
+`GET /agents/{agent_id}/controls`. On refresh failures, it keeps the previous
+snapshot (fail-open behavior).
 
 ### Decorator
 

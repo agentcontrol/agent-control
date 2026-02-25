@@ -184,6 +184,7 @@ async def test_init_function_workflow(
         server_url=server_url,
         api_key=api_key,
         steps=sample_steps,
+        policy_refresh_interval_seconds=0,
         environment="test"
     )
 
