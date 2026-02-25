@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Generator
 from unittest.mock import AsyncMock, call, patch
 from uuid import uuid4
@@ -130,6 +131,181 @@ def test_policy_refresh_worker_runs_multiple_iterations() -> None:
 
     # Then: periodic refresh behavior is observed (more than one iteration).
     assert call_count >= 2
+
+
+def test_publish_server_controls_clears_cache_on_none() -> None:
+    # GIVEN: an existing cached controls snapshot.
+    agent_control._server_controls = [{"id": 1, "name": "cached"}]
+
+    # WHEN: the publisher receives None.
+    published = agent_control._publish_server_controls(None)
+
+    # THEN: the cache is cleared and None is returned.
+    assert published is None
+    assert agent_control.get_server_controls() is None
+
+
+def test_start_policy_refresh_loop_ignores_non_positive_interval() -> None:
+    # GIVEN: no background refresh loop is running.
+    assert agent_control._refresh_thread is None
+    assert agent_control._refresh_stop_event is None
+
+    # WHEN: loop start is requested with interval=0.
+    agent_control._start_policy_refresh_loop(0)
+
+    # THEN: no thread or stop event is created.
+    assert agent_control._refresh_thread is None
+    assert agent_control._refresh_stop_event is None
+    assert agent_control._policy_refresh_interval_seconds is None
+
+
+def test_start_and_stop_policy_refresh_loop_manage_lifecycle_state() -> None:
+    # GIVEN: no background refresh loop is running.
+    assert agent_control._refresh_thread is None
+    assert agent_control._refresh_stop_event is None
+
+    # WHEN: the refresh loop is started.
+    agent_control._start_policy_refresh_loop(interval_seconds=60)
+    refresh_thread = agent_control._refresh_thread
+    stop_event = agent_control._refresh_stop_event
+
+    for _ in range(20):
+        if refresh_thread is not None and refresh_thread.is_alive():
+            break
+        time.sleep(0.01)
+
+    # THEN: lifecycle globals reflect a running loop.
+    assert agent_control._policy_refresh_interval_seconds == 60
+    assert refresh_thread is not None
+    assert stop_event is not None
+    assert refresh_thread.is_alive()
+    assert not stop_event.is_set()
+
+    # WHEN: the loop is stopped.
+    agent_control._stop_policy_refresh_loop()
+
+    # THEN: thread/event are torn down and previous stop event is signaled.
+    assert stop_event.is_set()
+    assert agent_control._refresh_thread is None
+    assert agent_control._refresh_stop_event is None
+    assert agent_control._policy_refresh_interval_seconds is None
+    assert not refresh_thread.is_alive()
+
+
+def test_stop_policy_refresh_loop_logs_warning_if_thread_does_not_stop() -> None:
+    # GIVEN: a loop state with a non-stopping thread.
+    class NonStoppingThread:
+        def __init__(self) -> None:
+            self.join_calls = 0
+
+        def is_alive(self) -> bool:
+            return True
+
+        def join(self, timeout: float | None = None) -> None:
+            self.join_calls += 1
+
+    stop_event = threading.Event()
+    stuck_thread = NonStoppingThread()
+    agent_control._policy_refresh_interval_seconds = 60
+    agent_control._refresh_stop_event = stop_event
+    agent_control._refresh_thread = stuck_thread  # type: ignore[assignment]
+
+    # WHEN: stop is requested.
+    with patch("agent_control.logger.warning") as warning_mock:
+        agent_control._stop_policy_refresh_loop()
+
+    # THEN: stop is signaled and a timeout warning is emitted.
+    assert stop_event.is_set()
+    assert stuck_thread.join_calls == 1
+    warning_mock.assert_called_once()
+
+
+def test_policy_refresh_worker_logs_and_continues_after_refresh_error() -> None:
+    # GIVEN: refresh fails once, then succeeds and signals stop.
+    stop_event = threading.Event()
+    call_count = 0
+
+    async def flaky_refresh_controls_async() -> list[dict[str, int]]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("transient refresh failure")
+        stop_event.set()
+        return [{"id": call_count}]
+
+    # WHEN: the worker loop runs.
+    with patch(
+        "agent_control.refresh_controls_async",
+        new=AsyncMock(side_effect=flaky_refresh_controls_async),
+    ), patch("agent_control.logger.error") as error_log_mock:
+        agent_control._policy_refresh_worker(stop_event, interval_seconds=0)
+
+    # THEN: the error is logged and a subsequent iteration still executes.
+    assert call_count >= 2
+    error_log_mock.assert_called_once()
+
+
+def test_refresh_controls_sync_without_running_loop_uses_refresh_endpoint() -> None:
+    # GIVEN: initialized SDK state and a successful controls refresh response.
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+    refreshed_controls = [{"id": 9, "name": "sync", "control": {"execution": "server"}}]
+    list_agent_controls_mock = AsyncMock(return_value={"controls": refreshed_controls})
+
+    with patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=health_check_mock,
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=register_agent_mock,
+    ), patch(
+        "agent_control.__init__.agents.list_agent_controls",
+        new=list_agent_controls_mock,
+    ):
+        agent_control.init(
+            agent_name="Sync Refresh Agent",
+            agent_id=str(uuid4()),
+            policy_refresh_interval_seconds=0,
+        )
+
+        # WHEN: refresh_controls() is called from a synchronous context.
+        refreshed_snapshot = agent_control.refresh_controls()
+
+    # THEN: the endpoint is called and refreshed snapshot is returned.
+    assert refreshed_snapshot == refreshed_controls
+    assert list_agent_controls_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_controls_sync_with_running_loop_uses_worker_thread() -> None:
+    # GIVEN: initialized SDK state and a successful controls refresh response.
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+    refreshed_controls = [{"id": 11, "name": "async", "control": {"execution": "server"}}]
+    list_agent_controls_mock = AsyncMock(return_value={"controls": refreshed_controls})
+
+    with patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=health_check_mock,
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=register_agent_mock,
+    ), patch(
+        "agent_control.__init__.agents.list_agent_controls",
+        new=list_agent_controls_mock,
+    ):
+        agent_control.init(
+            agent_name="Async Refresh Agent",
+            agent_id=str(uuid4()),
+            policy_refresh_interval_seconds=0,
+        )
+
+        # WHEN: refresh_controls() is called while an event loop is already running.
+        refreshed_snapshot = agent_control.refresh_controls()
+
+    # THEN: refresh still succeeds and returns the server snapshot.
+    assert refreshed_snapshot == refreshed_controls
+    assert list_agent_controls_mock.await_count == 1
 
 
 @pytest.mark.asyncio
