@@ -46,7 +46,6 @@ async def test_list_controls_for_agent_returns_controls(async_db) -> None:
     policy = Policy(name=f"policy-{uuid.uuid4()}")
     control = Control(name=f"control-{uuid.uuid4()}", data=VALID_CONTROL_PAYLOAD)
     agent = Agent(
-        agent_uuid=uuid.uuid4(),
         name=f"agent-{uuid.uuid4()}",
         data={},
         policy=policy,
@@ -60,7 +59,7 @@ async def test_list_controls_for_agent_returns_controls(async_db) -> None:
     await async_db.commit()
 
     # When: listing controls for the agent
-    controls = await list_controls_for_agent(agent.agent_uuid, async_db)
+    controls = await list_controls_for_agent(agent.name, async_db)
 
     # Then: the API control is returned with expected fields
     assert len(controls) == 1
@@ -74,7 +73,6 @@ async def test_list_controls_for_agent_corrupted_data_raises(async_db) -> None:
     policy = Policy(name=f"policy-{uuid.uuid4()}")
     control = Control(name=f"control-{uuid.uuid4()}", data={"bad": "data"})
     agent = Agent(
-        agent_uuid=uuid.uuid4(),
         name=f"agent-{uuid.uuid4()}",
         data={},
         policy=policy,
@@ -89,7 +87,7 @@ async def test_list_controls_for_agent_corrupted_data_raises(async_db) -> None:
 
     # When: listing controls for the agent
     with pytest.raises(APIValidationError) as exc_info:
-        await list_controls_for_agent(agent.agent_uuid, async_db)
+        await list_controls_for_agent(agent.name, async_db)
 
     # Then: corrupted data error is raised
     assert exc_info.value.error_code == ErrorCode.CORRUPTED_DATA

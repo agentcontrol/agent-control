@@ -8,9 +8,9 @@ from agent_control_models import EvaluatorResult as ModelEvaluatorResult
 import agent_control
 
 
-def test_init_rejects_invalid_uuid() -> None:
-    with pytest.raises(ValueError, match="agent_id must be a valid UUID"):
-        agent_control.init(agent_name="Invalid UUID Agent", agent_id="not-a-uuid")
+def test_init_rejects_invalid_agent_name() -> None:
+    with pytest.raises(ValueError, match="at least 10 characters"):
+        agent_control.init(agent_name="short")
 
 
 def test_init_exports_control_scope() -> None:

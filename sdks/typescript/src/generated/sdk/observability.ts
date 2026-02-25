@@ -49,7 +49,7 @@ export class Observability extends ClientSDK {
    * - trace_id: Get all events for a request
    * - span_id: Get all events for a function call
    * - control_execution_id: Get a specific event
-   * - agent_uuid: Filter by agent
+   * - agent_name: Filter by agent
    * - control_ids: Filter by controls
    * - actions: Filter by actions (allow, deny, warn, log)
    * - matched: Filter by matched status
@@ -87,7 +87,7 @@ export class Observability extends ClientSDK {
    * Use /stats/controls/{control_id} for single control stats.
    *
    * Args:
-   *     agent_uuid: Agent to get stats for
+   *     agent_name: Agent to get stats for
    *     time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
    *     include_timeseries: Include time-series data points for trend visualization
    *     store: Event store (injected)
@@ -116,7 +116,7 @@ export class Observability extends ClientSDK {
    *
    * Args:
    *     control_id: Control ID to get stats for
-   *     agent_uuid: Agent to get stats for
+   *     agent_name: Agent to get stats for
    *     time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
    *     include_timeseries: Include time-series data points for trend visualization
    *     store: Event store (injected)

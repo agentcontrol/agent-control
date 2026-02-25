@@ -1,5 +1,4 @@
 import datetime as dt
-import uuid as _uuid
 from typing import Any, Optional
 
 from agent_control_models.agent import StepSchema
@@ -17,7 +16,6 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -90,10 +88,7 @@ class EvaluatorConfigDB(Base):
 class Agent(Base):
     __tablename__ = "agents"
 
-    agent_uuid: Mapped[_uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), primary_key=True)
     data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
@@ -116,12 +111,12 @@ class ControlExecutionEventDB(Base):
     Raw control execution events with minimal indexed columns + JSONB.
 
     Schema designed for simplicity and flexibility:
-    - Only 4 columns: control_execution_id, timestamp, agent_uuid, data
+    - Only 4 columns: control_execution_id, timestamp, agent_name, data
     - Full event stored in JSONB 'data' column
     - Query-time aggregation from JSONB fields
     - No migrations needed for new event fields
 
-    Primary access pattern: (agent_uuid, timestamp DESC) for stats queries.
+    Primary access pattern: (agent_name, timestamp DESC) for stats queries.
     Expression index on (data->>'control_id') for grouping.
     """
 
@@ -138,9 +133,7 @@ class ControlExecutionEventDB(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
-    agent_uuid: Mapped[_uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), nullable=False,
-    )
+    agent_name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Full event data as JSONB
     data: Mapped[dict[str, Any]] = mapped_column(
@@ -149,5 +142,5 @@ class ControlExecutionEventDB(Base):
 
     # Composite index for agent + time queries (primary access pattern)
     __table_args__ = (
-        Index("ix_events_agent_time", "agent_uuid", timestamp.desc()),
+        Index("ix_events_agent_time", "agent_name", timestamp.desc()),
     )

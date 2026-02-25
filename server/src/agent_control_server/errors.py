@@ -10,9 +10,9 @@ Usage:
     # Raise a not found error
     raise NotFoundError(
         error_code=ErrorCode.AGENT_NOT_FOUND,
-        detail=f"Agent with ID '{agent_id}' not found",
+        detail=f"Agent with name '{agent_name}' not found",
         resource="Agent",
-        resource_id=str(agent_id),
+        resource_id=agent_name,
     )
 
     # Raise a validation error with field-level details

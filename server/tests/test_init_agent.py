@@ -18,11 +18,13 @@ engine = create_engine(db_config.get_url(), echo=False)
 
 def make_agent_payload(
     agent_id: str | None = None,
-    name: str = "Test Agent",
+    name: str = "testagent0001",
     steps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    if agent_id is None:
-        agent_id = str(uuid.uuid4())
+    resolved_name = name if name != "testagent0001" else (agent_id or f"agent-{uuid.uuid4().hex[:12]}")
+    canonical_name = resolved_name.lower().replace(" ", "-")
+    if len(canonical_name) < 10:
+        canonical_name = f"{canonical_name}-agent".replace("--", "-")
     if steps is None:
         steps = [
             {
@@ -34,8 +36,8 @@ def make_agent_payload(
         ]
     return {
         "agent": {
-            "agent_id": agent_id,
-            "agent_name": name,
+            "agent_id": canonical_name,
+            "agent_name": canonical_name,
             "agent_description": "desc",
             "agent_version": "1.0",
             "agent_metadata": {"env": "test"},
@@ -51,7 +53,7 @@ def test_init_agent_route_exists(app: FastAPI) -> None:
     # (computation done above to gather all paths)
     # Then: initAgent and agent retrieval endpoints are present
     assert "/api/v1/agents/initAgent" in paths
-    assert "/api/v1/agents/{agent_id}" in paths
+    assert "/api/v1/agents/{agent_name}" in paths
 
 
 def test_init_agent_creates_and_gets_agent(client: TestClient) -> None:
@@ -65,13 +67,12 @@ def test_init_agent_creates_and_gets_agent(client: TestClient) -> None:
     assert body["created"] is True
     assert body["controls"] == []
 
-    agent_id = payload["agent"]["agent_id"]
+    agent_name = payload["agent"]["agent_name"]
     # When: retrieving the agent by id
-    resp2 = client.get(f"/api/v1/agents/{agent_id}")
+    resp2 = client.get(f"/api/v1/agents/{agent_name}")
     assert resp2.status_code == 200
     data = resp2.json()
     # Then: stored agent fields match the request
-    assert data["agent"]["agent_id"] == agent_id
     assert data["agent"]["agent_name"] == payload["agent"]["agent_name"]
     assert {s["name"] for s in data["steps"]} == {payload["steps"][0]["name"]}
 
@@ -100,11 +101,10 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
     Then: The new metadata is persisted
     """
     # Given: create initial agent
-    agent_id = str(uuid.uuid4())
+    agent_name = "metadatatestagent"
     initial_payload = {
         "agent": {
-            "agent_id": agent_id,
-            "agent_name": "MetadataTestAgent",
+            "agent_name": agent_name,
             "agent_description": "Original description",
             "agent_version": "1.0.0",
             "agent_metadata": {"env": "dev"},
@@ -118,8 +118,7 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
     # When: re-init with updated metadata
     updated_payload = {
         "agent": {
-            "agent_id": agent_id,
-            "agent_name": "MetadataTestAgent",
+            "agent_name": agent_name,
             "agent_description": "Updated description",
             "agent_version": "2.0.0",
             "agent_metadata": {"env": "prod", "new_field": "value"},
@@ -131,7 +130,7 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
     assert r2.json()["created"] is False
 
     # Then: verify metadata is updated
-    get_resp = client.get(f"/api/v1/agents/{agent_id}")
+    get_resp = client.get(f"/api/v1/agents/{agent_name}")
     assert get_resp.status_code == 200
     agent_data = get_resp.json()["agent"]
     assert agent_data["agent_description"] == "Updated description"
@@ -429,12 +428,11 @@ def test_list_agent_controls_agent_not_found_404(client: TestClient) -> None:
     assert r.status_code == 404
 
 
-def test_init_agent_rejects_non_uuid_agent_id(client: TestClient) -> None:
-    # Given: a payload with an invalid (non-UUID) agent_id
+def test_init_agent_rejects_invalid_agent_name(client: TestClient) -> None:
+    # Given: a payload with an invalid agent_name
     payload = {
         "agent": {
-            "agent_id": "not-a-valid-uuid",
-            "agent_name": "Test Agent",
+            "agent_name": "short",
             "agent_description": "desc",
             "agent_version": "1.0",
         },
@@ -469,16 +467,14 @@ def test_list_agents_empty(client: TestClient) -> None:
 def test_list_agents_returns_created_agents(client: TestClient) -> None:
     """Test listing agents returns created agents with correct summaries."""
     # Given: two agents with different steps/evaluators
-    agent1_id = str(uuid.uuid4())
-    payload1 = make_agent_payload(agent_id=agent1_id, name="Agent One")
+    payload1 = make_agent_payload(name="agent-one-01")
     payload1["evaluators"] = [
         {"name": "eval-1", "description": "Test", "config_schema": {}},
     ]
     r1 = client.post("/api/v1/agents/initAgent", json=payload1)
     assert r1.status_code == 200
 
-    agent2_id = str(uuid.uuid4())
-    payload2 = make_agent_payload(agent_id=agent2_id, name="Agent Two")
+    payload2 = make_agent_payload(name="agent-two-02")
     payload2["steps"] = [
         {"type": "tool", "name": "tool_x", "input_schema": {}, "output_schema": {}},
         {"type": "tool", "name": "tool_y", "input_schema": {}, "output_schema": {}},
@@ -495,18 +491,18 @@ def test_list_agents_returns_created_agents(client: TestClient) -> None:
     assert len(body["agents"]) == 2
 
     # Verify agent summaries contain correct data
-    agent_map = {a["agent_id"]: a for a in body["agents"]}
+    agent_map = {a["agent_name"]: a for a in body["agents"]}
 
-    assert agent1_id in agent_map
-    agent1 = agent_map[agent1_id]
-    assert agent1["agent_name"] == "Agent One"
+    assert "agent-one-01" in agent_map
+    agent1 = agent_map["agent-one-01"]
+    assert agent1["agent_name"] == "agent-one-01"
     assert agent1["step_count"] == 1  # from make_agent_payload
     assert agent1["evaluator_count"] == 1
     assert agent1["policy_id"] is None
 
-    assert agent2_id in agent_map
-    agent2 = agent_map[agent2_id]
-    assert agent2["agent_name"] == "Agent Two"
+    assert "agent-two-02" in agent_map
+    agent2 = agent_map["agent-two-02"]
+    assert agent2["agent_name"] == "agent-two-02"
     assert agent2["step_count"] == 2
     assert agent2["evaluator_count"] == 0
     assert agent2["policy_id"] is None

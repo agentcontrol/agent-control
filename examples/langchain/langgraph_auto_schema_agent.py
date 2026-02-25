@@ -241,8 +241,7 @@ async def main() -> None:
     """Run the demo end-to-end."""
     print("Initializing Agent Control (no explicit steps passed)...")
     agent_control.init(
-        agent_name=AGENT_NAME,
-        agent_id=AGENT_ID,
+        agent_name=AGENT_ID,
         agent_description=AGENT_DESCRIPTION,
         server_url=os.getenv("AGENT_CONTROL_URL"),
     )

@@ -12,8 +12,7 @@ Usage:
     import agent_control
 
     agent_control.init(
-        agent_name="my-agent",
-        agent_id="550e8400-e29b-41d4-a716-446655440000",
+        agent_name="my-agent-identity",
     )
 
     # Apply the agent's assigned policy
@@ -60,7 +59,6 @@ class ControlContext:
     control wrappers, including stats tracking, result processing, and logging.
     """
 
-    agent_uuid: str
     agent_name: str
     server_url: str
     func: Callable
@@ -188,14 +186,14 @@ def _get_server_url() -> str:
 
 
 async def _evaluate(
-    agent_uuid: str,
+    agent_name: str,
     step: dict[str, Any],
     stage: str,
     server_url: str,
     trace_id: str | None = None,
     span_id: str | None = None,
     controls: list[dict[str, Any]] | None = None,
-    agent_name: str | None = None,
+    event_agent_name: str | None = None,
 ) -> dict[str, Any]:
     """Call evaluation with support for local (SDK) and server execution.
 
@@ -216,8 +214,6 @@ async def _evaluate(
         # If we have controls, use local evaluation which handles both SDK and server controls
         if controls is not None:
             try:
-                from uuid import UUID
-
                 from agent_control.evaluation import check_evaluation_with_local
 
                 # Build Step object for evaluation
@@ -229,13 +225,13 @@ async def _evaluate(
 
                 result = await check_evaluation_with_local(
                     client=client,
-                    agent_uuid=UUID(agent_uuid),
+                    agent_name=agent_name,
                     step=step_obj,
                     stage=stage,  # type: ignore
                     controls=controls,
                     trace_id=trace_id,
                     span_id=span_id,
-                    agent_name=agent_name,
+                    event_agent_name=event_agent_name,
                 )
 
                 # Convert result to dict format expected by process_result
@@ -308,7 +304,7 @@ async def _evaluate(
         response = await client.http_client.post(
             "/api/v1/evaluation",
             json={
-                "agent_uuid": str(agent_uuid),
+                "agent_name": str(agent_name),
                 "step": step,
                 "stage": stage
             },
@@ -577,7 +573,6 @@ async def _execute_with_control(
         trace_id, span_id = get_trace_and_span_ids()  # New trace and span
 
     ctx = ControlContext(
-        agent_uuid=str(agent.agent_id),
         agent_name=agent.agent_name,
         server_url=_get_server_url(),
         func=func,
@@ -594,10 +589,10 @@ async def _execute_with_control(
         # PRE-EXECUTION: Check controls with check_stage="pre"
         try:
             result = await _evaluate(
-                ctx.agent_uuid, ctx.pre_payload(), "pre",
+                ctx.agent_name, ctx.pre_payload(), "pre",
                 ctx.server_url, ctx.trace_id, ctx.span_id,
                 controls=controls,
-                agent_name=ctx.agent_name,
+                event_agent_name=ctx.agent_name,
             )
             ctx.process_result(result, "pre")
         except ControlViolationError:
@@ -618,10 +613,10 @@ async def _execute_with_control(
         # POST-EXECUTION: Check controls with check_stage="post"
         try:
             result = await _evaluate(
-                ctx.agent_uuid, ctx.post_payload(output), "post",
+                ctx.agent_name, ctx.post_payload(output), "post",
                 ctx.server_url, ctx.trace_id, ctx.span_id,
                 controls=controls,
-                agent_name=ctx.agent_name,
+                event_agent_name=ctx.agent_name,
             )
             ctx.process_result(result, "post")
         except ControlViolationError:
@@ -666,8 +661,7 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
 
         # Initialize agent (connects to server, loads policy)
         agent_control.init(
-            agent_name="my-bot",
-            agent_id="550e8400-e29b-41d4-a716-446655440000",
+            agent_name="my-bot-identity",
         )
 
         # Apply the agent's policy (all controls)
@@ -695,7 +689,7 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
            POST /api/v1/policies/{policy_id}/controls/{control_id}
 
         3. Assign policy to agent:
-           POST /api/v1/agents/{agent_id}/policy/{policy_id}
+           POST /api/v1/agents/{agent_name}/policy/{policy_id}
     """
     # The policy parameter is for documentation only - the server uses
     # the agent's assigned policy automatically

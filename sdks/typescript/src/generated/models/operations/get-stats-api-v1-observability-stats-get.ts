@@ -20,7 +20,7 @@ export const TimeRange = {
 export type TimeRange = ClosedEnum<typeof TimeRange>;
 
 export type GetStatsApiV1ObservabilityStatsGetRequest = {
-  agentUuid: string;
+  agentName: string;
   timeRange?: TimeRange | undefined;
   includeTimeseries?: boolean | undefined;
 };
@@ -32,7 +32,7 @@ export const TimeRange$outboundSchema: z.ZodMiniEnum<typeof TimeRange> = z.enum(
 
 /** @internal */
 export type GetStatsApiV1ObservabilityStatsGetRequest$Outbound = {
-  agent_uuid: string;
+  agent_name: string;
   time_range: string;
   include_timeseries: boolean;
 };
@@ -44,13 +44,13 @@ export const GetStatsApiV1ObservabilityStatsGetRequest$outboundSchema:
     GetStatsApiV1ObservabilityStatsGetRequest
   > = z.pipe(
     z.object({
-      agentUuid: z.string(),
+      agentName: z.string(),
       timeRange: z._default(TimeRange$outboundSchema, "5m"),
       includeTimeseries: z._default(z.boolean(), false),
     }),
     z.transform((v) => {
       return remap$(v, {
-        agentUuid: "agent_uuid",
+        agentName: "agent_name",
         timeRange: "time_range",
         includeTimeseries: "include_timeseries",
       });

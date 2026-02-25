@@ -159,7 +159,7 @@ sdks/python/src/agent_control/
 import agent_control
 
 # Initialization
-agent_control.init(agent_name="...", agent_id="...")
+agent_control.init(agent_name="...", agent_name="...")
 
 # Decorator
 @agent_control.control()

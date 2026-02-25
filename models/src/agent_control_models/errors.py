@@ -12,8 +12,8 @@ Example error response:
     "type": "https://agent-control.dev/errors/not-found",
     "title": "Resource Not Found",
     "status": 404,
-    "detail": "Agent with ID '550e8400-e29b-41d4-a716-446655440000' not found",
-    "instance": "/api/v1/agents/550e8400-e29b-41d4-a716-446655440000",
+    "detail": "Agent with name 'customer-service-bot' not found",
+    "instance": "/api/v1/agents/customer-service-bot",
     "error_code": "AGENT_NOT_FOUND",
     "kind": "Status",
     "api_version": "v1",
@@ -25,9 +25,9 @@ Example error response:
     "errors": [
         {
             "resource": "Agent",
-            "field": "agent_id",
+            "field": "agent_name",
             "code": "not_found",
-            "message": "Agent with ID '550e8400-e29b-41d4-a716-446655440000' does not exist"
+            "message": "Agent with name 'customer-service-bot' does not exist"
         }
     ]
 }
@@ -65,7 +65,6 @@ class ErrorCode(StrEnum):
 
     # Conflict Errors (3xx pattern)
     AGENT_NAME_CONFLICT = "AGENT_NAME_CONFLICT"
-    AGENT_UUID_CONFLICT = "AGENT_UUID_CONFLICT"
     POLICY_NAME_CONFLICT = "POLICY_NAME_CONFLICT"
     CONTROL_NAME_CONFLICT = "CONTROL_NAME_CONFLICT"
     EVALUATOR_NAME_CONFLICT = "EVALUATOR_NAME_CONFLICT"
@@ -281,8 +280,8 @@ class ProblemDetail(BaseModel):
                     "type": "https://agent-control.dev/errors/not-found",
                     "title": "Resource Not Found",
                     "status": 404,
-                    "detail": "Agent with ID '550e8400-e29b-41d4-a716-446655440000' not found",
-                    "instance": "/api/v1/agents/550e8400-e29b-41d4-a716-446655440000",
+                    "detail": "Agent with name 'customer-service-bot' not found",
+                    "instance": "/api/v1/agents/customer-service-bot",
                     "error_code": "AGENT_NOT_FOUND",
                     "kind": "Status",
                     "api_version": "v1",
@@ -356,7 +355,6 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.EVALUATOR_CONFIG_NOT_FOUND: "Evaluator Config Not Found",
     # Conflict errors
     ErrorCode.AGENT_NAME_CONFLICT: "Agent Name Already Exists",
-    ErrorCode.AGENT_UUID_CONFLICT: "Agent UUID Conflict",
     ErrorCode.POLICY_NAME_CONFLICT: "Policy Name Already Exists",
     ErrorCode.CONTROL_NAME_CONFLICT: "Control Name Already Exists",
     ErrorCode.EVALUATOR_NAME_CONFLICT: "Evaluator Name Conflict",

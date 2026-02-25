@@ -37,8 +37,7 @@ from agent_control import ControlViolationError, control
 # =============================================================================
 
 agent_control.init(
-    agent_name="Q&A Agent with DeepEval",
-    agent_id="qa-agent-deepeval",
+    agent_name="qa-agent-deepeval",
     agent_description="Question answering agent with DeepEval quality controls",
     agent_version="1.0.0",
 )

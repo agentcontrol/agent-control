@@ -10,7 +10,6 @@ These tests verify the check_evaluation_with_local function:
 
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID
 
 import pytest
 
@@ -35,9 +34,9 @@ from agent_control.evaluation import (
 
 
 @pytest.fixture
-def agent_uuid() -> UUID:
-    """Test agent UUID."""
-    return UUID("00000000-0000-0000-0000-000000000001")
+def agent_name() -> str:
+    """Test agent name."""
+    return "agent-000000000001"
 
 
 @pytest.fixture
@@ -201,7 +200,7 @@ class TestCheckEvaluationWithLocal:
     """Tests for check_evaluation_with_local function."""
 
     @pytest.mark.asyncio
-    async def test_local_only_controls_no_server_call(self, agent_uuid, llm_payload):
+    async def test_local_only_controls_no_server_call(self, agent_name, llm_payload):
         """When only local controls exist, server should not be called."""
         controls = [
             make_control_dict(1, "local_ctrl", execution="sdk", pattern=r"never_match"),
@@ -214,7 +213,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,
@@ -227,7 +226,7 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
 
     @pytest.mark.asyncio
-    async def test_server_only_controls_calls_server(self, agent_uuid, llm_payload):
+    async def test_server_only_controls_calls_server(self, agent_name, llm_payload):
         """When only server controls exist, server should be called."""
         controls = [
             make_control_dict(1, "server_ctrl", execution="server"),
@@ -243,7 +242,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,
@@ -256,7 +255,7 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
 
     @pytest.mark.asyncio
-    async def test_local_deny_short_circuits(self, agent_uuid, llm_payload):
+    async def test_local_deny_short_circuits(self, agent_name, llm_payload):
         """Local deny should return immediately without calling server."""
         controls = [
             # Local control that will match (deny)
@@ -272,7 +271,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,
@@ -288,7 +287,7 @@ class TestCheckEvaluationWithLocal:
         assert result.matches[0].control_name == "local_deny"
 
     @pytest.mark.asyncio
-    async def test_mixed_controls_local_passes_then_server(self, agent_uuid, llm_payload):
+    async def test_mixed_controls_local_passes_then_server(self, agent_name, llm_payload):
         """When local controls pass, server controls should still be called."""
         controls = [
             # Local control that won't match
@@ -307,7 +306,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,
@@ -320,7 +319,7 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
 
     @pytest.mark.asyncio
-    async def test_no_controls_returns_safe(self, agent_uuid, llm_payload):
+    async def test_no_controls_returns_safe(self, agent_name, llm_payload):
         """When no controls exist, result should be safe."""
         controls: list[dict[str, Any]] = []
 
@@ -330,7 +329,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,
@@ -344,7 +343,7 @@ class TestCheckEvaluationWithLocal:
         assert result.confidence == 1.0
 
     @pytest.mark.asyncio
-    async def test_invalid_local_control_skipped(self, agent_uuid, llm_payload):
+    async def test_invalid_local_control_skipped(self, agent_name, llm_payload):
         """Invalid local controls should be skipped."""
         controls = [
             # Invalid control (missing required fields)
@@ -364,7 +363,7 @@ class TestCheckEvaluationWithLocal:
         # Should not raise, just skip invalid control
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,
@@ -375,7 +374,7 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
 
     @pytest.mark.asyncio
-    async def test_tool_step_local_evaluation(self, agent_uuid, tool_payload):
+    async def test_tool_step_local_evaluation(self, agent_name, tool_payload):
         """Local evaluation should work with Step payloads."""
         controls = [
             make_control_dict(
@@ -393,7 +392,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=tool_payload,
             stage="pre",
             controls=controls,
@@ -406,7 +405,7 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is False
 
     @pytest.mark.asyncio
-    async def test_mixed_controls_merged_results(self, agent_uuid, llm_payload):
+    async def test_mixed_controls_merged_results(self, agent_name, llm_payload):
         """Results from local and server should be merged."""
         controls = [
             # Local control (action=log, will match but not deny)
@@ -435,7 +434,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,
@@ -450,7 +449,7 @@ class TestCheckEvaluationWithLocal:
         assert len(result.matches) == 2
 
     @pytest.mark.asyncio
-    async def test_tool_step_mixed_local_and_server_controls(self, agent_uuid, tool_payload):
+    async def test_tool_step_mixed_local_and_server_controls(self, agent_name, tool_payload):
         """Test mixed local/server controls for same tool step.
 
         Given: A tool step with both local and server controls
@@ -498,7 +497,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=tool_payload,
             stage="pre",
             controls=controls,
@@ -514,7 +513,7 @@ class TestCheckEvaluationWithLocal:
         assert result.matches[0].control_name == "server_tool_ctrl"
 
     @pytest.mark.asyncio
-    async def test_tool_step_local_deny_skips_server(self, agent_uuid, tool_payload):
+    async def test_tool_step_local_deny_skips_server(self, agent_name, tool_payload):
         """Test that local deny on tool step short-circuits server call.
 
         Given: A tool step with local deny control that matches
@@ -548,7 +547,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=tool_payload,
             stage="pre",
             controls=controls,
@@ -564,7 +563,7 @@ class TestCheckEvaluationWithLocal:
         assert result.matches[0].control_name == "local_deny_ctrl"
 
     @pytest.mark.asyncio
-    async def test_local_control_with_missing_evaluator_raises(self, agent_uuid, llm_payload):
+    async def test_local_control_with_missing_evaluator_raises(self, agent_name, llm_payload):
         """Test that local control with unavailable evaluator raises RuntimeError.
 
         Given: A local control referencing an evaluator that doesn't exist
@@ -587,7 +586,7 @@ class TestCheckEvaluationWithLocal:
         with pytest.raises(RuntimeError) as exc_info:
             await check_evaluation_with_local(
                 client=client,
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 step=llm_payload,
                 stage="pre",
                 controls=controls,
@@ -598,7 +597,7 @@ class TestCheckEvaluationWithLocal:
         assert "not available" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_local_control_with_agent_scoped_evaluator_raises(self, agent_uuid, llm_payload):
+    async def test_local_control_with_agent_scoped_evaluator_raises(self, agent_name, llm_payload):
         """Test that local control with agent-scoped evaluator raises RuntimeError.
 
         Given: A local control referencing an agent-scoped evaluator (agent:evaluator)
@@ -621,7 +620,7 @@ class TestCheckEvaluationWithLocal:
         with pytest.raises(RuntimeError) as exc_info:
             await check_evaluation_with_local(
                 client=client,
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 step=llm_payload,
                 stage="pre",
                 controls=controls,
@@ -632,7 +631,7 @@ class TestCheckEvaluationWithLocal:
         assert "server-only" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_server_control_with_missing_evaluator_allowed(self, agent_uuid, llm_payload):
+    async def test_server_control_with_missing_evaluator_allowed(self, agent_name, llm_payload):
         """Test that server control with unavailable evaluator is allowed (server handles it).
 
         Given: A server control (execution="server") referencing an evaluator that doesn't exist locally
@@ -660,7 +659,7 @@ class TestCheckEvaluationWithLocal:
         # Should not raise - server handles unavailable evaluators
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,
@@ -671,7 +670,7 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
 
     @pytest.mark.asyncio
-    async def test_invalid_local_control_populates_errors(self, agent_uuid, llm_payload):
+    async def test_invalid_local_control_populates_errors(self, agent_name, llm_payload):
         """Test that invalid local controls appear in result.errors.
 
         Given: A local control that fails validation
@@ -689,7 +688,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,
@@ -708,7 +707,7 @@ class TestCheckEvaluationWithLocal:
         assert "Failed to parse local control" in (result.errors[0].result.error or "")
 
     @pytest.mark.asyncio
-    async def test_malformed_server_control_still_calls_server(self, agent_uuid, llm_payload):
+    async def test_malformed_server_control_still_calls_server(self, agent_name, llm_payload):
         """Test that malformed server control data still triggers server call.
 
         Given: A server control (execution="server") with missing/malformed 'control' data
@@ -736,7 +735,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             step=llm_payload,
             stage="pre",
             controls=controls,

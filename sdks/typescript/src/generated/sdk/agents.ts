@@ -24,11 +24,11 @@ export class Agents extends ClientSDK {
    * @remarks
    * List all registered agents with cursor-based pagination.
    *
-   * Returns a summary of each agent including ID, name, policy assignment,
+   * Returns a summary of each agent including identifier, policy assignment,
    * and counts of registered steps and evaluators.
    *
    * Args:
-   *     cursor: Optional cursor for pagination (UUID of last agent from previous page)
+   *     cursor: Optional cursor for pagination (last agent name from previous page)
    *     limit: Pagination limit (default 20, max 100)
    *     name: Optional name filter (case-insensitive partial match)
    *     db: Database session (injected)
@@ -55,9 +55,7 @@ export class Agents extends ClientSDK {
    *
    * This endpoint is idempotent:
    * - If the agent name doesn't exist, creates a new agent
-   * - If the agent name exists with the same UUID, updates registration data
-   * - If the agent name exists with a different UUID, returns 409 Conflict
-   * - If the UUID exists with a different name, returns 409 Conflict (no renames)
+   * - If the agent name exists, updates registration data in place
    *
    * conflict_mode controls registration conflict handling:
    * - strict (default): preserve compatibility checks and conflict errors
@@ -69,10 +67,6 @@ export class Agents extends ClientSDK {
    *
    * Returns:
    *     InitAgentResponse with created flag and active controls (if policy assigned)
-   *
-   * Raises:
-   *     HTTPException 409: Agent name exists with different UUID
-   *     HTTPException 500: Database error during creation/update
    */
   async init(
     request: models.InitAgentRequest,
@@ -94,7 +88,7 @@ export class Agents extends ClientSDK {
    * Returns the latest version of each step (deduplicated by type+name).
    *
    * Args:
-   *     agent_id: UUID of the agent
+   *     agent_name: Agent identifier
    *     db: Database session (injected)
    *
    * Returns:
@@ -105,7 +99,7 @@ export class Agents extends ClientSDK {
    *     HTTPException 422: Agent data is corrupted
    */
   async get(
-    request: operations.GetAgentApiV1AgentsAgentIdGetRequest,
+    request: operations.GetAgentApiV1AgentsAgentNameGetRequest,
     options?: RequestOptions,
   ): Promise<models.GetAgentResponse> {
     return unwrapAsync(agentsGet(
@@ -125,7 +119,7 @@ export class Agents extends ClientSDK {
    * Removals are idempotent - attempting to remove non-existent items is not an error.
    *
    * Args:
-   *     agent_id: UUID of the agent
+   *     agent_name: Agent identifier
    *     request: Lists of step/evaluator identifiers to remove
    *     db: Database session (injected)
    *
@@ -137,7 +131,7 @@ export class Agents extends ClientSDK {
    *     HTTPException 500: Database error during update
    */
   async update(
-    request: operations.PatchAgentApiV1AgentsAgentIdPatchRequest,
+    request: operations.PatchAgentApiV1AgentsAgentNamePatchRequest,
     options?: RequestOptions,
   ): Promise<models.PatchAgentResponse> {
     return unwrapAsync(agentsUpdate(
@@ -157,7 +151,7 @@ export class Agents extends ClientSDK {
    * Returns an empty list if the agent has no policy.
    *
    * Args:
-   *     agent_id: UUID of the agent
+   *     agent_name: Agent identifier
    *     db: Database session (injected)
    *
    * Returns:
@@ -167,7 +161,7 @@ export class Agents extends ClientSDK {
    *     HTTPException 404: Agent not found
    */
   async listControls(
-    request: operations.ListAgentControlsApiV1AgentsAgentIdControlsGetRequest,
+    request: operations.ListAgentControlsApiV1AgentsAgentNameControlsGetRequest,
     options?: RequestOptions,
   ): Promise<models.AgentControlsResponse> {
     return unwrapAsync(agentsListControls(
@@ -188,7 +182,7 @@ export class Agents extends ClientSDK {
    * - UI to display available config options
    *
    * Args:
-   *     agent_id: UUID of the agent
+   *     agent_name: Agent identifier
    *     cursor: Optional cursor for pagination (name of last evaluator from previous page)
    *     limit: Pagination limit (default 20, max 100)
    *     db: Database session (injected)
@@ -201,7 +195,7 @@ export class Agents extends ClientSDK {
    */
   async listEvaluators(
     request:
-      operations.ListAgentEvaluatorsApiV1AgentsAgentIdEvaluatorsGetRequest,
+      operations.ListAgentEvaluatorsApiV1AgentsAgentNameEvaluatorsGetRequest,
     options?: RequestOptions,
   ): Promise<models.ListEvaluatorsResponse> {
     return unwrapAsync(agentsListEvaluators(
@@ -218,7 +212,7 @@ export class Agents extends ClientSDK {
    * Get a specific evaluator schema registered with an agent.
    *
    * Args:
-   *     agent_id: UUID of the agent
+   *     agent_name: Agent identifier
    *     evaluator_name: Name of the evaluator
    *     db: Database session (injected)
    *
@@ -230,7 +224,7 @@ export class Agents extends ClientSDK {
    */
   async getEvaluator(
     request:
-      operations.GetAgentEvaluatorApiV1AgentsAgentIdEvaluatorsEvaluatorNameGetRequest,
+      operations.GetAgentEvaluatorApiV1AgentsAgentNameEvaluatorsEvaluatorNameGetRequest,
     options?: RequestOptions,
   ): Promise<models.EvaluatorSchemaItem> {
     return unwrapAsync(agentsGetEvaluator(
@@ -249,7 +243,7 @@ export class Agents extends ClientSDK {
    * The agent will no longer have any protection controls active.
    *
    * Args:
-   *     agent_id: UUID of the agent
+   *     agent_name: Agent identifier
    *     db: Database session (injected)
    *
    * Returns:
@@ -260,7 +254,8 @@ export class Agents extends ClientSDK {
    *     HTTPException 500: Database error during removal
    */
   async deletePolicy(
-    request: operations.DeleteAgentPolicyApiV1AgentsAgentIdPolicyDeleteRequest,
+    request:
+      operations.DeleteAgentPolicyApiV1AgentsAgentNamePolicyDeleteRequest,
     options?: RequestOptions,
   ): Promise<models.DeletePolicyResponse> {
     return unwrapAsync(agentsDeletePolicy(
@@ -277,7 +272,7 @@ export class Agents extends ClientSDK {
    * Retrieve the policy currently assigned to an agent.
    *
    * Args:
-   *     agent_id: UUID of the agent
+   *     agent_name: Agent identifier
    *     db: Database session (injected)
    *
    * Returns:
@@ -287,7 +282,7 @@ export class Agents extends ClientSDK {
    *     HTTPException 404: Agent not found or agent has no policy assigned
    */
   async getPolicy(
-    request: operations.GetAgentPolicyApiV1AgentsAgentIdPolicyGetRequest,
+    request: operations.GetAgentPolicyApiV1AgentsAgentNamePolicyGetRequest,
     options?: RequestOptions,
   ): Promise<models.GetPolicyResponse> {
     return unwrapAsync(agentsGetPolicy(
@@ -306,7 +301,7 @@ export class Agents extends ClientSDK {
    * The agent will immediately inherit all controls from the assigned policy.
    *
    * Args:
-   *     agent_id: UUID of the agent
+   *     agent_name: Agent identifier
    *     policy_id: ID of the policy to assign
    *     db: Database session (injected)
    *
@@ -319,7 +314,7 @@ export class Agents extends ClientSDK {
    */
   async updatePolicy(
     request:
-      operations.SetAgentPolicyApiV1AgentsAgentIdPolicyPolicyIdPostRequest,
+      operations.SetAgentPolicyApiV1AgentsAgentNamePolicyPolicyIdPostRequest,
     options?: RequestOptions,
   ): Promise<models.SetPolicyResponse> {
     return unwrapAsync(agentsUpdatePolicy(

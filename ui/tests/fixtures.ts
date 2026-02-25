@@ -20,8 +20,7 @@ import type { StatsResponse } from '@/core/hooks/query-hooks/use-agent-monitor';
 // Satisfies ensures type checking while allowing inference of literal types
 const agentsList: AgentSummary[] = [
   {
-    agent_id: 'agent-1',
-    agent_name: 'Customer Support Bot',
+    agent_name: 'customer-support-bot',
     policy_id: 1,
     created_at: '2024-01-01T00:00:00Z',
     step_count: 5,
@@ -29,8 +28,7 @@ const agentsList: AgentSummary[] = [
     active_controls_count: 3,
   },
   {
-    agent_id: 'agent-2',
-    agent_name: 'Data Analysis Agent',
+    agent_name: 'data-analysis-agent',
     policy_id: 2,
     created_at: '2024-01-02T00:00:00Z',
     step_count: 3,
@@ -38,8 +36,7 @@ const agentsList: AgentSummary[] = [
     active_controls_count: 2,
   },
   {
-    agent_id: 'agent-3',
-    agent_name: 'Code Review Assistant',
+    agent_name: 'code-review-assistant',
     policy_id: 3,
     created_at: '2024-01-03T00:00:00Z',
     step_count: 8,
@@ -60,8 +57,7 @@ const agentsResponse: ListAgentsResponse = {
 
 const agentResponse: GetAgentResponse = {
   agent: {
-    agent_id: 'agent-1',
-    agent_name: 'Customer Support Bot',
+    agent_name: 'customer-support-bot',
     agent_description: 'Handles customer inquiries and support tickets',
     agent_created_at: '2024-01-01T00:00:00Z',
     agent_updated_at: '2024-01-15T00:00:00Z',
@@ -148,7 +144,7 @@ const controlsResponse: AgentControlsResponse = {
 
 // Control summaries for GET /api/v1/controls (list all controls)
 const controlSummariesList: (ControlSummary & {
-  used_by_agent?: { agent_id: string; agent_name: string } | null;
+  used_by_agent?: { agent_name: string } | null;
 })[] = [
   {
     id: 1,
@@ -159,7 +155,7 @@ const controlSummariesList: (ControlSummary & {
     step_types: ['llm'],
     stages: ['post'],
     tags: ['pii', 'compliance'],
-    used_by_agent: { agent_id: 'agent-1', agent_name: 'Customer Support Bot' },
+    used_by_agent: { agent_name: 'customer-support-bot' },
   },
   {
     id: 2,
@@ -170,7 +166,7 @@ const controlSummariesList: (ControlSummary & {
     step_types: ['tool'],
     stages: ['pre'],
     tags: ['security'],
-    used_by_agent: { agent_id: 'agent-2', agent_name: 'Data Analysis Agent' },
+    used_by_agent: { agent_name: 'data-analysis-agent' },
   },
   {
     id: 3,
@@ -269,7 +265,7 @@ const evaluatorsResponse: EvaluatorsResponse = {
 };
 
 const statsResponse: StatsResponse = {
-  agent_uuid: 'agent-1',
+  agent_name: 'customer-support-bot',
   time_range: '1h',
   totals: {
     execution_count: 430,
@@ -330,7 +326,7 @@ const statsResponse: StatsResponse = {
 };
 
 const emptyStatsResponse: StatsResponse = {
-  agent_uuid: 'agent-1',
+  agent_name: 'customer-support-bot',
   time_range: '1h',
   totals: {
     execution_count: 0,

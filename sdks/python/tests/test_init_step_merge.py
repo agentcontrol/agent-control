@@ -63,8 +63,7 @@ def test_init_passes_merged_steps_to_register_agent(
     ):
         with caplog.at_level(logging.WARNING):
             agent_control.init(
-                agent_name="Init Merge Agent",
-                agent_id=str(uuid4()),
+                agent_name=f"agent-{uuid4().hex[:12]}",
                 steps=explicit_steps,
             )
 
@@ -102,8 +101,7 @@ def test_init_uses_auto_discovered_steps_from_control_decorator() -> None:
         new=register_agent_mock,
     ):
         agent_control.init(
-            agent_name="Auto Discovery Agent",
-            agent_id=str(uuid4()),
+            agent_name=f"agent-{uuid4().hex[:12]}",
         )
 
     # Then register_agent() receives the auto-derived step schema payload.
@@ -145,8 +143,7 @@ def test_init_logs_fallback_warning_for_unresolved_type_hints(
     ):
         with caplog.at_level(logging.WARNING):
             agent_control.init(
-                agent_name="Fallback Warning Agent",
-                agent_id=str(uuid4()),
+                agent_name=f"agent-{uuid4().hex[:12]}",
             )
 
     # Then initialization continues, using fallback schemas and emitting a warning.
@@ -179,8 +176,7 @@ async def test_refresh_controls_uses_strict_conflict_mode() -> None:
         new=register_agent_mock,
     ):
         agent_control.init(
-            agent_name="Refresh Strict Agent",
-            agent_id=str(uuid4()),
+            agent_name=f"agent-{uuid4().hex[:12]}",
         )
 
         # When: controls are refreshed through refresh_controls_async().

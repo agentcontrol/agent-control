@@ -99,7 +99,7 @@ from agent_control import control, ControlViolationError
 # Initialize agent (connects to server, loads policy)
 agent_control.init(
     agent_name="my-bot",
-    agent_id="550e8400-e29b-41d4-a716-446655440000",
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
 )
 
 # Apply the agent's assigned policy

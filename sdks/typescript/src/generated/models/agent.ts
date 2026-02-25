@@ -15,7 +15,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  * @remarks
  *
  * An agent represents an AI system that can be protected and monitored.
- * Each agent has a unique ID and can have multiple steps registered with it.
+ * Each agent has a unique immutable name and can have multiple steps registered with it.
  */
 export type Agent = {
   /**
@@ -27,15 +27,11 @@ export type Agent = {
    */
   agentDescription?: string | null | undefined;
   /**
-   * Unique identifier for the agent (UUID format)
-   */
-  agentId: string;
-  /**
    * Free-form metadata dictionary for custom properties
    */
   agentMetadata?: { [k: string]: any } | null | undefined;
   /**
-   * Human-readable name for the agent
+   * Unique immutable identifier for the agent
    */
   agentName: string;
   /**
@@ -53,7 +49,6 @@ export const Agent$inboundSchema: z.ZodMiniType<Agent, unknown> = z.pipe(
   z.object({
     agent_created_at: z.optional(z.nullable(types.string())),
     agent_description: z.optional(z.nullable(types.string())),
-    agent_id: types.string(),
     agent_metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
     agent_name: types.string(),
     agent_updated_at: z.optional(z.nullable(types.string())),
@@ -63,7 +58,6 @@ export const Agent$inboundSchema: z.ZodMiniType<Agent, unknown> = z.pipe(
     return remap$(v, {
       "agent_created_at": "agentCreatedAt",
       "agent_description": "agentDescription",
-      "agent_id": "agentId",
       "agent_metadata": "agentMetadata",
       "agent_name": "agentName",
       "agent_updated_at": "agentUpdatedAt",
@@ -75,7 +69,6 @@ export const Agent$inboundSchema: z.ZodMiniType<Agent, unknown> = z.pipe(
 export type Agent$Outbound = {
   agent_created_at?: string | null | undefined;
   agent_description?: string | null | undefined;
-  agent_id: string;
   agent_metadata?: { [k: string]: any } | null | undefined;
   agent_name: string;
   agent_updated_at?: string | null | undefined;
@@ -88,7 +81,6 @@ export const Agent$outboundSchema: z.ZodMiniType<Agent$Outbound, Agent> = z
     z.object({
       agentCreatedAt: z.optional(z.nullable(z.string())),
       agentDescription: z.optional(z.nullable(z.string())),
-      agentId: z.string(),
       agentMetadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
       agentName: z.string(),
       agentUpdatedAt: z.optional(z.nullable(z.string())),
@@ -98,7 +90,6 @@ export const Agent$outboundSchema: z.ZodMiniType<Agent$Outbound, Agent> = z
       return remap$(v, {
         agentCreatedAt: "agent_created_at",
         agentDescription: "agent_description",
-        agentId: "agent_id",
         agentMetadata: "agent_metadata",
         agentName: "agent_name",
         agentUpdatedAt: "agent_updated_at",

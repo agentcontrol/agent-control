@@ -18,7 +18,7 @@ import { StatsTotals, StatsTotals$inboundSchema } from "./stats-totals.js";
  * Contains stats for a single control (with optional timeseries).
  *
  * Attributes:
- *     agent_uuid: Agent UUID
+ *     agent_name: Agent identifier
  *     time_range: Time range used
  *     control_id: Control ID
  *     control_name: Control name
@@ -26,9 +26,9 @@ import { StatsTotals, StatsTotals$inboundSchema } from "./stats-totals.js";
  */
 export type ControlStatsResponse = {
   /**
-   * Agent UUID
+   * Agent identifier
    */
-  agentUuid: string;
+  agentName: string;
   /**
    * Control ID
    */
@@ -68,7 +68,7 @@ export const ControlStatsResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    agent_uuid: types.string(),
+    agent_name: types.string(),
     control_id: types.number(),
     control_name: types.string(),
     stats: StatsTotals$inboundSchema,
@@ -76,7 +76,7 @@ export const ControlStatsResponse$inboundSchema: z.ZodMiniType<
   }),
   z.transform((v) => {
     return remap$(v, {
-      "agent_uuid": "agentUuid",
+      "agent_name": "agentName",
       "control_id": "controlId",
       "control_name": "controlName",
       "time_range": "timeRange",

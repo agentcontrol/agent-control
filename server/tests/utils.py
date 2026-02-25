@@ -18,8 +18,8 @@ VALID_CONTROL_PAYLOAD = {
 def create_and_assign_policy(
     client: TestClient,
     control_config: dict[str, Any] | None = None,
-    agent_name: str = "MyTestAgent",
-) -> tuple[uuid.UUID, str]:
+    agent_name: str = "mytestagent01",
+) -> tuple[str, str]:
     """Helper to setup Agent -> Policy -> Control hierarchy.
 
     Args:
@@ -28,7 +28,7 @@ def create_and_assign_policy(
         agent_name: Name for the test agent
 
     Returns:
-        tuple: (agent_uuid, control_name)
+        tuple: (agent_name, control_name)
     """
     if control_config is None:
         control_config = VALID_CONTROL_PAYLOAD.copy()
@@ -54,18 +54,19 @@ def create_and_assign_policy(
     assert resp.status_code == 200
 
     # 5. Register Agent
-    agent_uuid = uuid.uuid4()
+    normalized_agent_name = agent_name.lower()
+    if len(normalized_agent_name) < 10:
+        normalized_agent_name = f"{normalized_agent_name}-agent".replace("--", "-")
     resp = client.post("/api/v1/agents/initAgent", json={
         "agent": {
-            "agent_id": str(agent_uuid),
-            "agent_name": agent_name
+            "agent_name": normalized_agent_name
         },
         "steps": []
     })
     assert resp.status_code == 200
 
     # 6. Assign Policy to Agent
-    resp = client.post(f"/api/v1/agents/{str(agent_uuid)}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{normalized_agent_name}/policy/{policy_id}")
     assert resp.status_code == 200
 
-    return agent_uuid, control_name
+    return normalized_agent_name, control_name

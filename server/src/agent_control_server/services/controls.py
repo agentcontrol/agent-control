@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from uuid import UUID
 
 from agent_control_models import ControlDefinition
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
@@ -29,7 +28,7 @@ async def list_controls_for_policy(policy_id: int, db: AsyncSession) -> list[Con
 
 
 async def list_controls_for_agent(
-    agent_id: UUID,
+    agent_name: str,
     db: AsyncSession,
     *,
     allow_invalid_step_name_regex: bool = False,
@@ -46,7 +45,7 @@ async def list_controls_for_agent(
         .join(policy_controls, Control.id == policy_controls.c.control_id)
         .join(Policy, policy_controls.c.policy_id == Policy.id)
         .join(Agent, Policy.id == Agent.policy_id)
-        .where(Agent.agent_uuid == agent_id)
+        .where(Agent.name == agent_name)
     )
 
     result = await db.execute(stmt)

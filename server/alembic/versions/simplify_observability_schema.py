@@ -9,7 +9,7 @@ This migration:
 2. Recreates control_execution_events with minimal schema:
    - control_execution_id (PK)
    - timestamp (indexed)
-   - agent_uuid (indexed)
+   - agent_name (indexed)
    - data (JSONB containing full event)
 3. Creates optimized indexes for query-time aggregation
 
@@ -53,7 +53,7 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),
-        sa.Column("agent_uuid", sa.UUID(), nullable=False),
+        sa.Column("agent_name", sa.String(length=255), nullable=False),
         sa.Column("data", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     )
 
@@ -61,7 +61,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_events_agent_time",
         "control_execution_events",
-        ["agent_uuid", sa.text("timestamp DESC")],
+        ["agent_name", sa.text("timestamp DESC")],
     )
 
     # 5. Create expression index on control_id from JSONB for grouping

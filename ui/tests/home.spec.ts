@@ -46,12 +46,12 @@ test.describe('Home Page - Agents Overview', () => {
     );
 
     // Only the matching agent should be visible
-    await expect(mockedPage.getByText('Customer Support Bot')).toBeVisible();
+    await expect(mockedPage.getByText('customer-support-bot')).toBeVisible();
 
     // Non-matching agents should be hidden
-    await expect(mockedPage.getByText('Data Analysis Agent')).not.toBeVisible();
+    await expect(mockedPage.getByText('data-analysis-agent')).not.toBeVisible();
     await expect(
-      mockedPage.getByText('Code Review Assistant')
+      mockedPage.getByText('code-review-assistant')
     ).not.toBeVisible();
 
     // Clear search to show all agents again
@@ -62,7 +62,7 @@ test.describe('Home Page - Agents Overview', () => {
 
     // Wait for a previously hidden agent to become visible (confirms filter was cleared)
     // This is more reliable than waiting for an API response that might not happen
-    await expect(mockedPage.getByText('Data Analysis Agent')).toBeVisible({
+    await expect(mockedPage.getByText('data-analysis-agent')).toBeVisible({
       timeout: 5000,
     });
 
@@ -129,7 +129,7 @@ test.describe('Home Page - Agents Overview', () => {
     // Verify navigation to agent detail page
     // Since stats mock returns data, it will redirect to monitor tab
     await expect(mockedPage).toHaveURL(
-      `/agents/${firstAgent.agent_id}/monitor`
+      `/agents/${firstAgent.agent_name}/monitor`
     );
   });
 

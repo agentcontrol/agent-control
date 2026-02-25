@@ -34,7 +34,7 @@ import { Result } from "../types/fp.js";
  * Get a specific evaluator schema registered with an agent.
  *
  * Args:
- *     agent_id: UUID of the agent
+ *     agent_name: Agent identifier
  *     evaluator_name: Name of the evaluator
  *     db: Database session (injected)
  *
@@ -47,7 +47,7 @@ import { Result } from "../types/fp.js";
 export function agentsGetEvaluator(
   client: AgentControlSDKCore,
   request:
-    operations.GetAgentEvaluatorApiV1AgentsAgentIdEvaluatorsEvaluatorNameGetRequest,
+    operations.GetAgentEvaluatorApiV1AgentsAgentNameEvaluatorsEvaluatorNameGetRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -73,7 +73,7 @@ export function agentsGetEvaluator(
 async function $do(
   client: AgentControlSDKCore,
   request:
-    operations.GetAgentEvaluatorApiV1AgentsAgentIdEvaluatorsEvaluatorNameGetRequest,
+    operations.GetAgentEvaluatorApiV1AgentsAgentNameEvaluatorsEvaluatorNameGetRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -97,7 +97,7 @@ async function $do(
     (value) =>
       z.parse(
         operations
-          .GetAgentEvaluatorApiV1AgentsAgentIdEvaluatorsEvaluatorNameGetRequest$outboundSchema,
+          .GetAgentEvaluatorApiV1AgentsAgentNameEvaluatorsEvaluatorNameGetRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -109,7 +109,7 @@ async function $do(
   const body = null;
 
   const pathParams = {
-    agent_id: encodeSimple("agent_id", payload.agent_id, {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
       explode: false,
       charEncoding: "percent",
     }),
@@ -120,7 +120,7 @@ async function $do(
   };
 
   const path = pathToFunc(
-    "/api/v1/agents/{agent_id}/evaluators/{evaluator_name}",
+    "/api/v1/agents/{agent_name}/evaluators/{evaluator_name}",
   )(pathParams);
 
   const headers = new Headers(compactMap({
@@ -135,7 +135,7 @@ async function $do(
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
     operationID:
-      "get_agent_evaluator_api_v1_agents__agent_id__evaluators__evaluator_name__get",
+      "get_agent_evaluator_api_v1_agents__agent_name__evaluators__evaluator_name__get",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,

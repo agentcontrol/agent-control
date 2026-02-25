@@ -26,8 +26,7 @@ class TestControlExecutionEvent:
         event = ControlExecutionEvent(
             trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
             span_id="00f067aa0ba902b7",
-            agent_uuid=uuid4(),
-            agent_name="test-agent",
+                agent_name="test-agent",
             control_id=123,
             control_name="sql-injection-check",
             check_stage="pre",
@@ -49,7 +48,6 @@ class TestControlExecutionEvent:
             ControlExecutionEvent(
                 trace_id="",
                 span_id="00f067aa0ba902b7",
-                agent_uuid=uuid4(),
                 agent_name="test-agent",
                 control_id=123,
                 control_name="test",
@@ -67,8 +65,7 @@ class TestControlExecutionEvent:
         event = ControlExecutionEvent(
             trace_id="my-custom-trace-id",  # non-hex, non-32-char
             span_id="my-span",
-            agent_uuid=uuid4(),
-            agent_name="test-agent",
+                agent_name="test-agent",
             control_id=123,
             control_name="test",
             check_stage="pre",
@@ -86,7 +83,6 @@ class TestControlExecutionEvent:
             ControlExecutionEvent(
                 trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
                 span_id="",
-                agent_uuid=uuid4(),
                 agent_name="test-agent",
                 control_id=123,
                 control_name="test",
@@ -104,7 +100,6 @@ class TestControlExecutionEvent:
             ControlExecutionEvent(
                 trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
                 span_id="00f067aa0ba902b7",
-                agent_uuid=uuid4(),
                 agent_name="test-agent",
                 control_id=123,
                 control_name="test",
@@ -121,7 +116,6 @@ class TestControlExecutionEvent:
             ControlExecutionEvent(
                 trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
                 span_id="00f067aa0ba902b7",
-                agent_uuid=uuid4(),
                 agent_name="test-agent",
                 control_id=123,
                 control_name="test",
@@ -138,7 +132,6 @@ class TestControlExecutionEvent:
             event = ControlExecutionEvent(
                 trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
                 span_id="00f067aa0ba902b7",
-                agent_uuid=uuid4(),
                 agent_name="test-agent",
                 control_id=123,
                 control_name="test",
@@ -155,8 +148,7 @@ class TestControlExecutionEvent:
         event = ControlExecutionEvent(
             trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
             span_id="00f067aa0ba902b7",
-            agent_uuid=uuid4(),
-            agent_name="test-agent",
+                agent_name="test-agent",
             control_id=123,
             control_name="test",
             check_stage="pre",
@@ -174,8 +166,7 @@ class TestControlExecutionEvent:
         event = ControlExecutionEvent(
             trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
             span_id="00f067aa0ba902b7",
-            agent_uuid=uuid4(),
-            agent_name="test-agent",
+                agent_name="test-agent",
             control_id=123,
             control_name="test",
             check_stage="pre",
@@ -196,12 +187,11 @@ class TestControlExecutionEvent:
 
     def test_to_dict(self):
         """Test serialization to dict."""
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
         event = ControlExecutionEvent(
             trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
             span_id="00f067aa0ba902b7",
-            agent_uuid=agent_uuid,
-            agent_name="test-agent",
+            agent_name=agent_name,
             control_id=123,
             control_name="test",
             check_stage="pre",
@@ -212,7 +202,7 @@ class TestControlExecutionEvent:
         )
         data = event.to_dict()
         assert data["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
-        assert data["agent_uuid"] == agent_uuid
+        assert data["agent_name"] == agent_name
         assert data["matched"] is False
 
 
@@ -225,7 +215,6 @@ class TestBatchEventsRequest:
             ControlExecutionEvent(
                 trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
                 span_id="00f067aa0ba902b7",
-                agent_uuid=uuid4(),
                 agent_name="test-agent",
                 control_id=i,
                 control_name=f"control-{i}",
@@ -251,7 +240,6 @@ class TestBatchEventsRequest:
             ControlExecutionEvent(
                 trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
                 span_id="00f067aa0ba902b7",
-                agent_uuid=uuid4(),
                 agent_name="test-agent",
                 control_id=i,
                 control_name=f"control-{i}",
@@ -353,7 +341,7 @@ class TestStatsRequest:
     def test_valid_request(self):
         """Test creating valid stats request."""
         request = StatsRequest(
-            agent_uuid=uuid4(),
+            agent_name=f"agent-{uuid4().hex[:12]}",
             time_range="5m",
         )
         assert request.time_range == "5m"
@@ -362,11 +350,10 @@ class TestStatsRequest:
         """Test valid time range values."""
         for time_range in ["1m", "5m", "15m", "1h", "24h", "7d", "30d", "180d", "365d"]:
             request = StatsRequest(
-                agent_uuid=uuid4(),
+                agent_name=f"agent-{uuid4().hex[:12]}",
                 time_range=time_range,
             )
             assert request.time_range == time_range
-
 
 
 

@@ -19,7 +19,7 @@ export type TimeseriesBucket = components['schemas']['TimeseriesBucket'];
 export type StatsTotals = components['schemas']['StatsTotals'];
 
 export function useAgentMonitor(
-  agentUuid: string,
+  agentName: string,
   timeRange: TimeRange = '1h',
   options?: {
     enabled?: boolean;
@@ -30,13 +30,13 @@ export function useAgentMonitor(
   return useQuery({
     queryKey: [
       'agent-monitor',
-      agentUuid,
+      agentName,
       timeRange,
       options?.includeTimeseries ?? false,
     ],
     queryFn: async (): Promise<StatsResponse> => {
       const { data, error } = await api.observability.getStats({
-        agent_uuid: agentUuid,
+        agent_name: agentName,
         time_range: timeRange,
         include_timeseries: options?.includeTimeseries ?? false,
       });
@@ -47,7 +47,7 @@ export function useAgentMonitor(
 
       return data;
     },
-    enabled: options?.enabled !== false && !!agentUuid,
+    enabled: options?.enabled !== false && !!agentName,
     refetchInterval: options?.refetchInterval ?? 5000, // Default 5 seconds
     refetchIntervalInBackground: false, // Pause polling when tab is not visible
     placeholderData: keepPreviousData, // Keep showing previous data while loading new time range

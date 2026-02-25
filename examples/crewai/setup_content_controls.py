@@ -10,7 +10,6 @@ Usage:
 
 import asyncio
 import os
-from uuid import UUID
 
 from agent_control import Agent, AgentControlClient, agents, controls, policies
 
@@ -22,11 +21,10 @@ async def setup_content_controls():
     """Create PII protection and unauthorized access controls, policy, and assign to agent."""
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # 1. Register Agent
-        agent_uuid = UUID(AGENT_ID)
+        agent_name = AGENT_ID
 
         agent = Agent(
-            agent_id=agent_uuid,
-            agent_name="Customer Support Crew",
+            agent_name=agent_name,
             agent_description="Customer support crew with PII protection and access controls"
         )
 
@@ -226,7 +224,7 @@ async def setup_content_controls():
 
         # 8. Assign Policy to Agent
         try:
-            await policies.assign_policy_to_agent(client, agent_uuid, policy_id)
+            await policies.assign_policy_to_agent(client, agent_name, policy_id)
             print(f"✓ Assigned policy to agent")
         except Exception as e:
             if "409" in str(e) or "already" in str(e).lower():

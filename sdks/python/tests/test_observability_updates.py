@@ -146,7 +146,7 @@ class TestEmitLocalEvents:
         # Tool steps require object input, LLM steps accept string
         step_input = {"query": "hello"} if step_type == "tool" else "hello"
         return EvaluationRequest(
-            agent_uuid=UUID("00000000-0000-0000-0000-000000000001"),
+            agent_name="agent-000000000001",
             step={"type": step_type, "name": "test-step", "input": step_input},
             stage="pre",
         )
@@ -262,8 +262,8 @@ class TestEmitLocalEvents:
         with patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
              patch("agent_control.evaluation.add_event"), \
              patch("agent_control.evaluation._logger") as mock_logger:
-            _emit_local_events(response, request, [ctrl], None, None, "a")
-            _emit_local_events(response, request, [ctrl], None, None, "a")
+            _emit_local_events(response, request, [ctrl], None, None, "agent-test-a1")
+            _emit_local_events(response, request, [ctrl], None, None, "agent-test-a1")
             assert mock_logger.warning.call_count == 1
 
 
@@ -323,13 +323,13 @@ class TestCheckEvaluationWithLocal:
              patch("agent_control.evaluation._emit_local_events") as mock_emit:
             result = await evaluation.check_evaluation_with_local(
                 client=client,
-                agent_uuid=UUID("00000000-0000-0000-0000-000000000001"),
+                agent_name="agent-000000000001",
                 step=step,
                 stage="pre",
                 controls=controls,
                 trace_id="abc123",
                 span_id="def456",
-                agent_name="test-agent",
+                event_agent_name="test-agent",
             )
 
             mock_emit.assert_called_once()
@@ -337,7 +337,7 @@ class TestCheckEvaluationWithLocal:
             assert call_args[0][2] is not None  # local_controls
             assert call_args[0][3] == "abc123"  # trace_id
             assert call_args[0][4] == "def456"  # span_id
-            assert call_args[0][5] == "test-agent"  # agent_name
+            assert call_args.kwargs["agent_name"] == "test-agent"
 
         # Also verify non_matches propagated
         assert result.non_matches is not None
@@ -375,7 +375,7 @@ class TestCheckEvaluationWithLocal:
              patch("agent_control.evaluation._emit_local_events") as mock_emit:
             await evaluation.check_evaluation_with_local(
                 client=client,
-                agent_uuid=UUID("00000000-0000-0000-0000-000000000001"),
+                agent_name="agent-000000000001",
                 step=step,
                 stage="pre",
                 controls=controls,
@@ -421,7 +421,7 @@ class TestCheckEvaluationWithLocal:
         with patch("agent_control.evaluation.list_evaluators", return_value=["regex"]):
             await evaluation.check_evaluation_with_local(
                 client=client,
-                agent_uuid=UUID("00000000-0000-0000-0000-000000000001"),
+                agent_name="agent-000000000001",
                 step=step,
                 stage="pre",
                 controls=controls,
@@ -472,7 +472,6 @@ class TestControlDecoratorsNonMatches:
         }
 
         ctx = ControlContext(
-            agent_uuid="test-uuid",
             agent_name="test-agent",
             server_url="http://localhost:8000",
             func=lambda: None,
