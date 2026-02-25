@@ -8,10 +8,13 @@ from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentControlsResponse,
     AgentSummary,
+    ConflictMode,
     DeletePolicyResponse,
     EvaluatorSchema,
     GetAgentResponse,
     GetPolicyResponse,
+    InitAgentEvaluatorRemoval,
+    InitAgentOverwriteChanges,
     InitAgentRequest,
     InitAgentResponse,
     ListAgentsResponse,
@@ -150,6 +153,75 @@ async def _validate_policy_controls_for_agent(
                 )
 
     return errors
+
+
+def _step_registration_changed(existing_step: StepSchema, incoming_step: StepSchema) -> bool:
+    """Return True when non-key step registration fields differ."""
+    return (
+        existing_step.description != incoming_step.description
+        or existing_step.input_schema != incoming_step.input_schema
+        or existing_step.output_schema != incoming_step.output_schema
+        or existing_step.metadata != incoming_step.metadata
+    )
+
+
+def _step_key_model(step_key: StepKeyTuple) -> StepKey:
+    """Convert an internal step tuple key to API model."""
+    step_type, step_name = step_key
+    return StepKey(type=step_type, name=step_name)
+
+
+async def _build_overwrite_evaluator_removals(
+    agent: Agent,
+    removed_evaluators: set[str],
+    db: AsyncSession,
+) -> list[InitAgentEvaluatorRemoval]:
+    """Build evaluator removal details, including active-control references."""
+    if not removed_evaluators or agent.policy_id is None:
+        return [InitAgentEvaluatorRemoval(name=name) for name in sorted(removed_evaluators)]
+
+    try:
+        controls = await list_controls_for_agent(
+            agent.agent_uuid,
+            db,
+            allow_invalid_step_name_regex=True,
+        )
+    except APIValidationError:
+        _logger.warning(
+            "Skipping evaluator removal reference checks for agent '%s' "
+            "due to invalid control data",
+            agent.name,
+            exc_info=True,
+        )
+        return [InitAgentEvaluatorRemoval(name=name) for name in sorted(removed_evaluators)]
+
+    references_by_evaluator: dict[str, list[tuple[int, str]]] = {}
+    for control in controls:
+        evaluator_ref = control.control.evaluator.name
+        parsed = parse_evaluator_ref_full(evaluator_ref)
+        if parsed.type != "agent":
+            continue
+        if parsed.namespace != agent.name:
+            continue
+        if parsed.local_name not in removed_evaluators:
+            continue
+        references_by_evaluator.setdefault(parsed.local_name, []).append((control.id, control.name))
+
+    removals: list[InitAgentEvaluatorRemoval] = []
+    for evaluator_name in sorted(removed_evaluators):
+        references = references_by_evaluator.get(evaluator_name)
+        if references is None:
+            removals.append(InitAgentEvaluatorRemoval(name=evaluator_name))
+            continue
+        removals.append(
+            InitAgentEvaluatorRemoval(
+                name=evaluator_name,
+                referenced_by_active_controls=True,
+                control_ids=[control_id for control_id, _ in references],
+                control_names=[control_name for _, control_name in references],
+            )
+        )
+    return removals
 
 
 @router.get(
@@ -322,12 +394,13 @@ async def init_agent(
 
     This endpoint is idempotent:
     - If the agent name doesn't exist, creates a new agent
-    - If the agent name exists with the same UUID, updates step schemas
+    - If the agent name exists with the same UUID, updates registration data
     - If the agent name exists with a different UUID, returns 409 Conflict
     - If the UUID exists with a different name, returns 409 Conflict (no renames)
 
-    Step versioning: When step schemas change (input_schema or output_schema),
-    a new version is created automatically.
+    conflict_mode controls registration conflict handling:
+    - strict (default): preserve compatibility checks and conflict errors
+    - overwrite: latest init payload replaces steps/evaluators and returns change summary
 
     Args:
         request: Agent metadata and step schemas
@@ -513,6 +586,8 @@ async def init_agent(
     steps_changed = False
     evaluators_changed = False
     force_write = request.force_replace  # Always persist when force_replace=true
+    overwrite_applied = False
+    overwrite_changes = InitAgentOverwriteChanges()
 
     # --- Update agent metadata ---
     new_metadata = request.agent.model_dump(mode="json")
@@ -520,108 +595,186 @@ async def init_agent(
     if metadata_changed:
         data_model.agent_metadata = new_metadata
 
-    # --- Process steps ---
-    # Note: incoming_steps_by_key already built during validation above
-    new_steps: list[StepSchema] = []
-    seen_steps: set[StepKeyTuple] = set()
+    new_steps: list[StepSchema]
+    new_evaluators: list[EvaluatorSchema]
 
-    for step in data_model.steps or []:
-        key: StepKeyTuple = (step.type, step.name)
-        if key in incoming_steps_by_key:
+    if request.conflict_mode == ConflictMode.OVERWRITE:
+        # Latest-init-wins: overwrite steps/evaluators exactly with incoming payload.
+        existing_steps = list(data_model.steps or [])
+        existing_steps_by_key = {(step.type, step.name): step for step in existing_steps}
+        existing_step_keys = set(existing_steps_by_key)
+        incoming_step_keys = set(incoming_steps_by_key)
+
+        steps_added_keys = sorted(incoming_step_keys - existing_step_keys)
+        steps_removed_keys = sorted(existing_step_keys - incoming_step_keys)
+        steps_updated_keys = sorted(
+            key
+            for key in (existing_step_keys & incoming_step_keys)
+            if _step_registration_changed(existing_steps_by_key[key], incoming_steps_by_key[key])
+        )
+
+        existing_evaluators = list(data_model.evaluators or [])
+        existing_evals_by_name: dict[str, EvaluatorSchema] = {
+            evaluator.name: evaluator for evaluator in existing_evaluators
+        }
+        incoming_evals_by_name: dict[str, EvaluatorSchema] = {
+            evaluator.name: evaluator for evaluator in request.evaluators
+        }
+        existing_eval_names = set(existing_evals_by_name)
+        incoming_eval_names = set(incoming_evals_by_name)
+
+        evaluators_added_names = sorted(incoming_eval_names - existing_eval_names)
+        evaluators_removed_names = sorted(existing_eval_names - incoming_eval_names)
+        evaluators_updated_names = sorted(
+            name
+            for name in (existing_eval_names & incoming_eval_names)
+            if (
+                existing_evals_by_name[name].config_schema
+                != incoming_evals_by_name[name].config_schema
+                or existing_evals_by_name[name].description
+                != incoming_evals_by_name[name].description
+            )
+        )
+
+        evaluator_removals: list[InitAgentEvaluatorRemoval] = []
+        if evaluators_removed_names:
+            evaluator_removals = await _build_overwrite_evaluator_removals(
+                existing,
+                set(evaluators_removed_names),
+                db,
+            )
+
+        overwrite_changes = InitAgentOverwriteChanges(
+            metadata_changed=metadata_changed,
+            steps_added=[_step_key_model(step_key) for step_key in steps_added_keys],
+            steps_updated=[_step_key_model(step_key) for step_key in steps_updated_keys],
+            steps_removed=[_step_key_model(step_key) for step_key in steps_removed_keys],
+            evaluators_added=evaluators_added_names,
+            evaluators_updated=evaluators_updated_names,
+            evaluators_removed=evaluators_removed_names,
+            evaluator_removals=evaluator_removals,
+        )
+
+        steps_changed = bool(steps_added_keys or steps_updated_keys or steps_removed_keys)
+        evaluators_changed = bool(
+            evaluators_added_names or evaluators_updated_names or evaluators_removed_names
+        )
+        overwrite_applied = bool(metadata_changed or steps_changed or evaluators_changed)
+
+        new_steps = list(request.steps)
+        new_evaluators = list(request.evaluators)
+        data_model.steps = new_steps
+        data_model.evaluators = new_evaluators
+    else:
+        # --- Process steps ---
+        # Note: incoming_steps_by_key already built during validation above
+        new_steps = []
+        seen_steps: set[StepKeyTuple] = set()
+
+        for step in data_model.steps or []:
+            key: StepKeyTuple = (step.type, step.name)
+            if key in incoming_steps_by_key:
+                if key not in seen_steps:
+                    incoming_step = incoming_steps_by_key[key]
+
+                    # Compare only schema fields (type/name already matched by key)
+                    # Avoid model_dump() allocations by direct field comparison
+                    if (
+                        step.input_schema != incoming_step.input_schema
+                        or step.output_schema != incoming_step.output_schema
+                    ):
+                        raise ConflictError(
+                            error_code=ErrorCode.SCHEMA_INCOMPATIBLE,
+                            detail=(
+                                "Step schema conflict for "
+                                f"(type='{step.type}', name='{step.name}'). "
+                                f"A step with this name already exists with a different schema."
+                            ),
+                            resource="Step",
+                            resource_id=step.name,
+                            hint=(
+                                "Please use a different step name or ensure schemas match exactly."
+                            ),
+                            errors=[
+                                ValidationErrorItem(
+                                    resource="Step",
+                                    field="schema",
+                                    code="schema_mismatch",
+                                    message=(
+                                        f"Existing schema differs from incoming schema "
+                                        f"for step '{step.name}'"
+                                    ),
+                                )
+                            ],
+                        )
+
+                    new_steps.append(incoming_step)
+                    seen_steps.add(key)
+            else:
+                new_steps.append(step)
+
+        for key, step in incoming_steps_by_key.items():
             if key not in seen_steps:
-                incoming_step = incoming_steps_by_key[key]
+                new_steps.append(step)
+                steps_changed = True
 
-                # Compare only schema fields (type/name already matched by key)
-                # Avoid model_dump() allocations by direct field comparison
-                if (step.input_schema != incoming_step.input_schema or
-                    step.output_schema != incoming_step.output_schema):
-                    raise ConflictError(
-                        error_code=ErrorCode.SCHEMA_INCOMPATIBLE,
-                        detail=(
-                            f"Step schema conflict for (type='{step.type}', name='{step.name}'). "
-                            f"A step with this name already exists with a different schema."
-                        ),
-                        resource="Step",
-                        resource_id=step.name,
-                        hint="Please use a different step name or ensure schemas match exactly.",
-                        errors=[
-                            ValidationErrorItem(
-                                resource="Step",
-                                field="schema",
-                                code="schema_mismatch",
-                                message=(
-                                    f"Existing schema differs from incoming schema "
-                                    f"for step '{step.name}'"
-                                ),
-                            )
-                        ],
+        data_model.steps = new_steps
+
+        # --- Process evaluators with schema compatibility check ---
+        incoming_evals_by_name = {evaluator.name: evaluator for evaluator in request.evaluators}
+        existing_evals_by_name = {
+            evaluator.name: evaluator for evaluator in (data_model.evaluators or [])
+        }
+        new_evaluators = []
+
+        # Check existing evaluators for compatibility
+        for name, existing_ev in existing_evals_by_name.items():
+            if name in incoming_evals_by_name:
+                incoming_ev = incoming_evals_by_name[name]
+                old_schema = existing_ev.config_schema
+                new_schema = incoming_ev.config_schema
+
+                # Short-circuit: only check compatibility if schemas differ
+                if old_schema != new_schema:
+                    is_compatible, compat_errors = check_schema_compatibility(
+                        old_schema, new_schema
                     )
+                    if not is_compatible:
+                        raise ConflictError(
+                            error_code=ErrorCode.SCHEMA_INCOMPATIBLE,
+                            detail=format_compatibility_error(name, compat_errors),
+                            resource="Evaluator",
+                            resource_id=name,
+                            hint="Ensure backward compatibility or use a new evaluator name.",
+                            errors=[
+                                ValidationErrorItem(
+                                    resource="Evaluator",
+                                    field="config_schema",
+                                    code="schema_incompatible",
+                                    message=err,
+                                )
+                                for err in compat_errors
+                            ],
+                        )
 
-                new_steps.append(incoming_step)
-                seen_steps.add(key)
-        else:
-            new_steps.append(step)
+                # Check if evaluator changed (compare fields directly, avoid model_dump())
+                if (
+                    existing_ev.config_schema != incoming_ev.config_schema
+                    or existing_ev.description != incoming_ev.description
+                ):
+                    evaluators_changed = True
+                new_evaluators.append(incoming_ev)
+            else:
+                # Keep existing evaluator not in incoming request
+                new_evaluators.append(existing_ev)
 
-    for key, step in incoming_steps_by_key.items():
-        if key not in seen_steps:
-            new_steps.append(step)
-            steps_changed = True
-
-    data_model.steps = new_steps
-
-    # --- Process evaluators with schema compatibility check ---
-    incoming_evals_by_name: dict[str, EvaluatorSchema] = {
-        e.name: e for e in request.evaluators
-    }
-    existing_evals_by_name: dict[str, EvaluatorSchema] = {
-        ev.name: ev for ev in (data_model.evaluators or [])
-    }
-    new_evaluators: list[EvaluatorSchema] = []
-
-    # Check existing evaluators for compatibility
-    for name, existing_ev in existing_evals_by_name.items():
-        if name in incoming_evals_by_name:
-            incoming_ev = incoming_evals_by_name[name]
-            old_schema = existing_ev.config_schema
-            new_schema = incoming_ev.config_schema
-
-            # Short-circuit: only check compatibility if schemas differ
-            if old_schema != new_schema:
-                is_compatible, compat_errors = check_schema_compatibility(old_schema, new_schema)
-                if not is_compatible:
-                    raise ConflictError(
-                        error_code=ErrorCode.SCHEMA_INCOMPATIBLE,
-                        detail=format_compatibility_error(name, compat_errors),
-                        resource="Evaluator",
-                        resource_id=name,
-                        hint="Ensure backward compatibility or use a new evaluator name.",
-                        errors=[
-                            ValidationErrorItem(
-                                resource="Evaluator",
-                                field="config_schema",
-                                code="schema_incompatible",
-                                message=err,
-                            )
-                            for err in compat_errors
-                        ],
-                    )
-
-            # Check if evaluator changed (compare fields directly, avoid model_dump())
-            if (existing_ev.config_schema != incoming_ev.config_schema or
-                existing_ev.description != incoming_ev.description):
+        # Add new evaluators
+        for name, evaluator in incoming_evals_by_name.items():
+            if name not in existing_evals_by_name:
+                new_evaluators.append(evaluator)
                 evaluators_changed = True
-            new_evaluators.append(incoming_ev)
-        else:
-            # Keep existing evaluator not in incoming request
-            new_evaluators.append(existing_ev)
 
-    # Add new evaluators
-    for name, ev in incoming_evals_by_name.items():
-        if name not in existing_evals_by_name:
-            new_evaluators.append(ev)
-            evaluators_changed = True
-
-    data_model.evaluators = new_evaluators
+        data_model.evaluators = new_evaluators
 
     if steps_changed or evaluators_changed or metadata_changed or force_write:
         existing.data = data_model.model_dump(mode="json")
@@ -649,7 +802,12 @@ async def init_agent(
     if existing.policy_id is not None:
         controls = await list_controls_for_agent(existing.agent_uuid, db)
 
-    return InitAgentResponse(created=created, controls=controls)
+    return InitAgentResponse(
+        created=created,
+        controls=controls,
+        overwrite_applied=overwrite_applied,
+        overwrite_changes=overwrite_changes,
+    )
 
 
 @router.get(

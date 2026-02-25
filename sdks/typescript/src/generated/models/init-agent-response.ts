@@ -3,11 +3,16 @@
  */
 
 import * as z from "zod/v4-mini";
+import { remap as remap$ } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { Control, Control$inboundSchema } from "./control.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
+import {
+  InitAgentOverwriteChanges,
+  InitAgentOverwriteChanges$inboundSchema,
+} from "./init-agent-overwrite-changes.js";
 
 /**
  * Response from agent initialization.
@@ -21,16 +26,34 @@ export type InitAgentResponse = {
    * True if agent was newly created, False if updated
    */
   created: boolean;
+  /**
+   * True if overwrite mode changed registration data on an existing agent
+   */
+  overwriteApplied: boolean;
+  /**
+   * Detailed change summary for initAgent overwrite mode.
+   */
+  overwriteChanges?: InitAgentOverwriteChanges | undefined;
 };
 
 /** @internal */
 export const InitAgentResponse$inboundSchema: z.ZodMiniType<
   InitAgentResponse,
   unknown
-> = z.object({
-  controls: types.optional(z.array(Control$inboundSchema)),
-  created: types.boolean(),
-});
+> = z.pipe(
+  z.object({
+    controls: types.optional(z.array(Control$inboundSchema)),
+    created: types.boolean(),
+    overwrite_applied: z._default(types.boolean(), false),
+    overwrite_changes: types.optional(InitAgentOverwriteChanges$inboundSchema),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "overwrite_applied": "overwriteApplied",
+      "overwrite_changes": "overwriteChanges",
+    });
+  }),
+);
 
 export function initAgentResponseFromJSON(
   jsonString: string,
