@@ -90,7 +90,6 @@ class AgentControlHook(HookProvider):
         self.event_control_list = event_control_list
         self.on_violation_callback = on_violation_callback
         self.enable_logging = enable_logging
-        self.controls = agent_control.get_server_controls()
 
     # ============================================================================
     # Helper Methods
@@ -116,7 +115,6 @@ class AgentControlHook(HookProvider):
             stage=stage,
             agent_uuid=self.agent_uuid,
             agent_name=self.agent_name,
-            controls=self.controls,
         )
 
         # Handle violation if unsafe

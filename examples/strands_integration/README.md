@@ -120,7 +120,9 @@ result = await agent_control.evaluate_controls(
     step_name="send_email",
     input={"body": "..."},
     step_type="tool",
-    stage="pre"
+    stage="pre",
+    agent_uuid="your-agent-uuid",
+    agent_name="your-agent-name"
 )
 
 if not result.is_safe:

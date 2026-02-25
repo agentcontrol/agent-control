@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, cast
 from uuid import UUID
 
+from ._state import state
 from .client import AgentControlClient
 from .observability import add_event, get_logger, is_observability_enabled
 
@@ -504,9 +505,8 @@ async def evaluate_controls(
     context: dict[str, Any] | None = None,
     step_type: Literal["tool", "llm"] = "llm",
     stage: Literal["pre", "post"] = "pre",
-    agent_uuid: str | UUID | None = None,
-    agent_name: str | None = None,
-    controls: list[dict[str, Any]] | None = None,
+    agent_uuid: str | UUID,
+    agent_name: str,
     trace_id: str | None = None,
     span_id: str | None = None,
 ) -> EvaluationResult:
@@ -514,8 +514,7 @@ async def evaluate_controls(
     Evaluate controls for a step.
 
     This convenience function evaluates controls (both local SDK-executed and
-    server-executed) for a given step. Supports both single-agent and multi-agent
-    scenarios.
+    server-executed) for a given step.
 
     Args:
         step_name: Name of the step (e.g., "chat", "search_db")
@@ -524,10 +523,8 @@ async def evaluate_controls(
         context: Additional context metadata
         step_type: Type of step - "llm" or "tool" (default: "llm")
         stage: When to evaluate - "pre" or "post" (default: "pre")
-        agent_uuid: Agent UUID (optional, uses init() agent if not provided)
-        agent_name: Agent name for observability (optional, uses init() agent if not provided)
-        controls: List of controls to evaluate (optional, uses cached controls
-            from init() if not provided)
+        agent_uuid: Agent UUID (required)
+        agent_name: Agent name (required)
         trace_id: Optional OpenTelemetry trace ID for observability
         span_id: Optional OpenTelemetry span ID for observability
 
@@ -535,52 +532,40 @@ async def evaluate_controls(
         EvaluationResult with is_safe, confidence, reason, matches, errors
 
     Raises:
-        RuntimeError: If agent_uuid not provided and agent not initialized via init()
         httpx.HTTPError: If server request fails
 
     Example:
         import agent_control
 
-        # Single-agent usage (uses init() agent)
-        agent_control.init(agent_name="my-bot", agent_id="...")
+        # Evaluate controls for an agent
         result = await agent_control.evaluate_controls(
             "chat",
             input="User message here",
-            stage="pre"
+            stage="pre",
+            agent_uuid="550e8400-e29b-41d4-a716-446655440000",
+            agent_name="customer-service-bot"
         )
 
-        # Multi-agent usage (explicit agent_uuid)
+        # With trace/span IDs for observability
         result = await agent_control.evaluate_controls(
             "chat",
             input="User message",
             stage="pre",
             agent_uuid="550e8400-e29b-41d4-a716-446655440000",
             agent_name="customer-service-bot",
-            controls=my_controls
+            trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+            span_id="00f067aa0ba902b7"
         )
     """
-    # Import here to avoid circular dependency
-    from . import _api_key, _current_agent, _server_controls, _server_url
-
-    # Ensure _server_url is set (for mypy type narrowing)
-    if _server_url is None:
+    # Ensure server_url is set (for mypy type narrowing)
+    if state.server_url is None:
         raise RuntimeError(
             "Server URL not configured. Call agent_control.init() first."
         )
 
-    # Determine agent_uuid to use
-    if agent_uuid is None:
-        if _current_agent is None:
-            raise RuntimeError(
-                "agent_uuid not provided and no agent initialized. "
-                "Either call agent_control.init() or pass agent_uuid parameter."
-            )
-        resolved_agent_uuid = _current_agent.agent_id
-        resolved_agent_name = agent_name or _current_agent.agent_name
-    else:
-        # Convert agent_uuid to UUID if it's a string
-        resolved_agent_uuid = UUID(agent_uuid) if isinstance(agent_uuid, str) else agent_uuid
-        resolved_agent_name = agent_name or "unknown"
+    # Convert agent_uuid to UUID if it's a string
+    resolved_agent_uuid = UUID(agent_uuid) if isinstance(agent_uuid, str) else agent_uuid
+    resolved_agent_name = agent_name
 
     # Build Step dict (input and output are required by Step model)
     # Tool steps require dict input/output, LLM steps use strings
@@ -600,11 +585,11 @@ async def evaluate_controls(
     else:
         step_obj = step_dict  # type: ignore
 
-    # Get controls (use provided or fall back to cached)
-    resolved_controls = controls if controls is not None else (_server_controls or [])
+    # Get controls from server cache
+    resolved_controls = state.server_controls or []
 
     # Evaluate using local + server controls
-    async with AgentControlClient(base_url=_server_url, api_key=_api_key) as client:
+    async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
         result = await check_evaluation_with_local(
             client=client,
             agent_uuid=resolved_agent_uuid,

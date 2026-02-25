@@ -224,13 +224,8 @@ except ImportError:
 # Global State
 # ============================================================================
 
-# Global agent instance
-_current_agent: Agent | None = None
-_control_engine = None
-_client: AgentControlClient | None = None
-_server_controls: list[dict[str, Any]] | None = None
-_server_url: str | None = None
-_api_key: str | None = None
+# Import state container to avoid circular imports
+from ._state import state  # noqa: E402
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -251,7 +246,7 @@ def get_server_controls() -> list[dict[str, Any]] | None:
             for c in controls:
                 print(f"  - {c['name']} (execution: {c['control'].get('execution', 'server')})")
     """
-    return _server_controls
+    return state.server_controls
 
 
 async def refresh_controls_async() -> list[dict[str, Any]] | None:
@@ -269,26 +264,24 @@ async def refresh_controls_async() -> list[dict[str, Any]] | None:
         controls = await agent_control.refresh_controls_async()
         print(f"Refreshed {len(controls)} controls")
     """
-    global _server_controls
-
-    if _current_agent is None:
+    if state.current_agent is None:
         raise RuntimeError("Agent not initialized. Call agent_control.init() first.")
 
-    if _server_url is None:
+    if state.server_url is None:
         raise RuntimeError("Server URL not set. Call agent_control.init() first.")
 
-    async with AgentControlClient(base_url=_server_url, api_key=_api_key) as client:
+    async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
         response = await agents.register_agent(
             client,
-            _current_agent,
+            state.current_agent,
             steps=[],
             # Refresh only needs current controls.
             # Strict avoids destructive overwrite with empty steps.
             conflict_mode="strict",
         )
-        _server_controls = response.get('controls', [])
-        logger.info("Refreshed %d control(s) from server", len(_server_controls or []))
-        return _server_controls
+        state.server_controls = response.get('controls', [])
+        logger.info("Refreshed %d control(s) from server", len(state.server_controls or []))
+        return state.server_controls
 
 
 def refresh_controls() -> list[dict[str, Any]] | None:
@@ -422,8 +415,6 @@ def init(
     Environment Variables:
         AGENT_CONTROL_URL: Server URL (default: http://localhost:8000)
     """
-    global _current_agent, _control_engine, _client, _server_controls, _server_url, _api_key
-
     if not agent_id:
         raise ValueError(
             "The 'agent_id' argument is required for initialization.\n"
@@ -440,7 +431,7 @@ def init(
         configure_logging(log_config)
 
     # Create agent instance with metadata
-    _current_agent = Agent(
+    state.current_agent = Agent(
         agent_id=_agent_uuid,
         agent_name=agent_name,
         agent_description=agent_description,
@@ -451,8 +442,8 @@ def init(
     )
 
     # Get server URL (ensure it's always a string)
-    _server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    _api_key = api_key
+    state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    state.api_key = api_key
 
     # Merge auto-discovered steps from @control() decorators with explicit steps.
     # Explicit steps take precedence when (type, name) collides.
@@ -483,11 +474,15 @@ def init(
         import asyncio
 
         async def register() -> list[dict[str, Any]] | None:
-            async with AgentControlClient(base_url=_server_url, api_key=api_key) as client:
+            # Type assertions for mypy - these values are guaranteed to be set above
+            assert state.server_url is not None
+            assert state.current_agent is not None
+
+            async with AgentControlClient(base_url=state.server_url, api_key=api_key) as client:
                 # Check server health first
                 try:
                     health = await client.health_check()
-                    logger.info("Connected to Agent Control server: %s", _server_url)
+                    logger.info("Connected to Agent Control server: %s", state.server_url)
                     logger.debug("Server status: %s", health.get('status', 'unknown'))
                 except Exception as e:
                     logger.error("Server not available: %s", e, exc_info=True)
@@ -497,7 +492,7 @@ def init(
                 try:
                     response = await agents.register_agent(
                         client,
-                        _current_agent,
+                        state.current_agent,
                         steps=registration_steps,
                         conflict_mode=conflict_mode,
                     )
@@ -563,7 +558,7 @@ def init(
         logger.info("Will use local controls if available")
 
     # Store server controls globally for later use by @control decorator
-    _server_controls = server_controls
+    state.server_controls = server_controls
     if server_controls:
         logger.info("Loaded %d control(s) from server", len(server_controls))
     else:
@@ -574,14 +569,14 @@ def init(
 
     # Initialize observability if enabled
     batcher = init_observability(
-        server_url=_server_url,
+        server_url=state.server_url,
         api_key=api_key,
         enabled=observability_enabled,
     )
     if batcher:
         logger.info("Observability enabled")
 
-    return _current_agent
+    return state.current_agent
 
 
 async def get_agent(
@@ -646,7 +641,7 @@ def current_agent() -> Agent | None:
         agent = agent_control.current_agent()
         print(agent.agent_name)  # "My Bot"
     """
-    return _current_agent
+    return state.current_agent
 
 
 async def list_agents(
