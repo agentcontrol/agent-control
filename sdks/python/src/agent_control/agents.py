@@ -1,6 +1,6 @@
 """Agent management operations for Agent Control SDK."""
 
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
 
 from agent_control_engine import ensure_evaluators_discovered
@@ -8,13 +8,18 @@ from agent_control_engine import ensure_evaluators_discovered
 from .client import AgentControlClient
 from .validation import ensure_uuid_str
 
+if TYPE_CHECKING:
+    from agent_control_models.server import AgentControlsResponse
+
 # Import models if available
 try:
     from agent_control_models import Agent
+    from agent_control_models.server import AgentControlsResponse as _AgentControlsResponse
     MODELS_AVAILABLE = True
 except ImportError:
     MODELS_AVAILABLE = False
     Agent = Any  # type: ignore
+    _AgentControlsResponse = None
 
 
 async def register_agent(
@@ -225,3 +230,32 @@ async def list_agent_controls(
     response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/controls")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
+
+
+async def list_agent_controls_typed(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+) -> "AgentControlsResponse":
+    """
+    List active controls associated with an agent (typed response).
+
+    Args:
+        client: AgentControlClient instance
+        agent_id: UUID string or UUID instance
+
+    Returns:
+        AgentControlsResponse model containing active controls.
+
+    Raises:
+        RuntimeError: If SDK models are unavailable
+        httpx.HTTPError: If request fails or agent is not found
+    """
+    if not MODELS_AVAILABLE or _AgentControlsResponse is None:
+        raise RuntimeError(
+            "Typed agent controls response requires agent_control_models to be installed"
+        )
+
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/controls")
+    response.raise_for_status()
+    return cast("AgentControlsResponse", _AgentControlsResponse.model_validate(response.json()))

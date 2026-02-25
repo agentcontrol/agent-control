@@ -12,6 +12,7 @@ import uuid
 import pytest
 
 import agent_control
+from agent_control_models.server import AgentControlsResponse
 
 
 @pytest.mark.asyncio
@@ -133,6 +134,21 @@ async def test_agent_update_workflow(
 
     print("✓ Agent updated successfully")
     print(f"✓ Updated with {len(updated_steps)} step(s)")
+
+
+@pytest.mark.asyncio
+async def test_list_agent_controls_typed_returns_model(
+    client: agent_control.AgentControlClient,
+    test_agent: dict,
+) -> None:
+    """Typed controls endpoint returns AgentControlsResponse."""
+    response = await agent_control.agents.list_agent_controls_typed(
+        client,
+        test_agent["agent_id"],
+    )
+
+    assert isinstance(response, AgentControlsResponse)
+    assert isinstance(response.controls, list)
 
 
 @pytest.mark.asyncio
