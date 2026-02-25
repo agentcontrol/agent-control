@@ -37,12 +37,14 @@ def upgrade() -> None:
     sa.UniqueConstraint('name')
     )
     op.create_table('agents',
+    sa.Column('agent_uuid', sa.UUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('data', postgresql.JSONB(astext_type=sa.Text()), server_default=sa.text("'{}'::jsonb"), nullable=False),
     sa.Column('policy_id', sa.Integer(), nullable=True),
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['policy_id'], ['policies.id'], ),
-    sa.PrimaryKeyConstraint('name')
+    sa.PrimaryKeyConstraint('agent_uuid'),
+    sa.UniqueConstraint('name')
     )
     op.create_index(op.f('ix_agents_created_at'), 'agents', ['created_at'], unique=False)
     op.create_index(op.f('ix_agents_policy_id'), 'agents', ['policy_id'], unique=False)
