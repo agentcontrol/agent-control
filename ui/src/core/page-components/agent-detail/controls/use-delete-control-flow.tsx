@@ -51,8 +51,8 @@ export function useDeleteControlFlow({
 
               if (!removedDirect) {
                 notifications.show({
-                  title: 'Control inherited from policy',
-                  message: `"${control.name}" has no direct link on this agent. Remove it from policy to disable it.`,
+                  title: 'Control is linked indirectly',
+                  message: `"${control.name}" has no direct link on this agent. Remove its inherited link to disable it.`,
                   color: 'yellow',
                 });
                 return;
@@ -63,7 +63,7 @@ export function useDeleteControlFlow({
                   ? 'Direct association removed'
                   : 'Control removed',
                 message: stillActive
-                  ? `"${control.name}" is still active through policy inheritance.`
+                  ? `"${control.name}" is still active through another inherited link.`
                   : `"${control.name}" has been removed from this agent.`,
                 color: 'green',
               });

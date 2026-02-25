@@ -8,7 +8,7 @@
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
-AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
+AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, control-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
 
 ![Agent Control Architecture](docs/images/Architecture.png)
 
@@ -36,7 +36,7 @@ See the [Concepts guide](CONCEPTS.md) for a deep dive into Agent Control's archi
 
 - **Safety Without Code Changes** — Add guardrails with a `@control()` decorator
 - **Runtime Configuration** — Update controls without redeploying your application
-- **Centralized Policies** — Define controls once, apply to multiple agents
+- **Centralized Controls** — Define controls once, apply to multiple agents
 - **Web Dashboard** — Manage agents and controls through the UI
 - **API Key Authentication** — Secure your control server in production
 - **Pluggable Evaluators** — Regex, list matching, AI-powered detection (Luna-2), or custom evaluators
@@ -132,9 +132,9 @@ async def main():
 
 > **Note**: Authentication is disabled by default for local development. See [docs/REFERENCE.md](docs/REFERENCE.md#authentication) for production setup.
 
-### 5. Assign Controls and Policies
+### 5. Assign Controls
 
-Controls can be associated with agents in two ways — directly, via policies, or both. An agent's **active controls** are the union of all direct controls and all controls inherited from associated policies.
+Controls can be associated directly with agents. An agent's **active controls** are the controls currently linked to that agent.
 
 **Direct controls** — attach individual controls to an agent:
 
@@ -146,29 +146,13 @@ curl -X POST http://localhost:8000/api/v1/agents/support-agent-v1/controls/3
 curl -X DELETE http://localhost:8000/api/v1/agents/support-agent-v1/controls/3
 ```
 
-**Policies** — group controls and assign them to one or more agents:
-
-```bash
-# Associate a policy with an agent (agents can have multiple policies)
-curl -X POST http://localhost:8000/api/v1/agents/support-agent-v1/policies/1
-
-# Add another policy
-curl -X POST http://localhost:8000/api/v1/agents/support-agent-v1/policies/2
-
-# List all policies for an agent
-curl http://localhost:8000/api/v1/agents/support-agent-v1/policies
-
-# Remove a specific policy
-curl -X DELETE http://localhost:8000/api/v1/agents/support-agent-v1/policies/1
-```
-
-**List all active controls** (union of direct + policy-inherited):
+**List all active controls**:
 
 ```bash
 curl http://localhost:8000/api/v1/agents/support-agent-v1/controls
 ```
 
-> Both policies and direct controls are optional. An agent can operate with no controls, only direct controls, only policies, or any combination.
+> Controls are optional. An agent can operate with no controls configured.
 
 ---
 
@@ -265,7 +249,7 @@ Agent Control is built as a monorepo with these components:
 │                      Agent Control Server                        │
 │                                                                  │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
+│  │  Controls  │  │Control Link│  │ Evaluators │  │   Agents   │  │
 │  │    API     │  │    API     │  │  Registry  │  │    API     │  │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
