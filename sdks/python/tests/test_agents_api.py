@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -13,19 +13,21 @@ import agent_control
 
 
 @pytest.mark.asyncio
-async def test_list_agent_controls_typed_raises_when_models_unavailable() -> None:
-    # GIVEN: model imports are unavailable in the agents module.
-    client = SimpleNamespace(http_client=SimpleNamespace(get=AsyncMock()))
+async def test_list_agent_controls_typed_calls_controls_endpoint() -> None:
+    # GIVEN: a successful HTTP response payload for controls.
+    response_payload = {"controls": []}
+    response = Mock()
+    response.raise_for_status = Mock()
+    response.json = Mock(return_value=response_payload)
+    client = SimpleNamespace(http_client=SimpleNamespace(get=AsyncMock(return_value=response)))
+    agent_id = str(uuid4())
 
-    # WHEN/THEN: calling the typed wrapper fails fast with RuntimeError.
-    with patch("agent_control.agents.MODELS_AVAILABLE", False), patch(
-        "agent_control.agents._AgentControlsResponse",
-        None,
-    ), pytest.raises(RuntimeError, match="requires agent_control_models"):
-        await agent_control.agents.list_agent_controls_typed(client, str(uuid4()))
+    # WHEN: typed controls are requested.
+    result = await agent_control.agents.list_agent_controls_typed(client, agent_id)
 
-    # THEN: no HTTP request is attempted.
-    client.http_client.get.assert_not_awaited()
+    # THEN: wrapper calls the expected endpoint and returns a typed result.
+    client.http_client.get.assert_awaited_once_with(f"/api/v1/agents/{agent_id}/controls")
+    assert isinstance(result.controls, list)
 
 
 @pytest.mark.asyncio

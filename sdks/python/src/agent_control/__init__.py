@@ -51,26 +51,24 @@ import os
 import threading
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar
 from uuid import UUID
 
 import httpx
-
-if TYPE_CHECKING:
-    from agent_control_models import (
-        Agent,
-        ControlAction,
-        ControlDefinition,
-        ControlMatch,
-        ControlScope,
-        ControlSelector,
-        EvaluationRequest,
-        EvaluationResult,
-        EvaluatorResult,
-        EvaluatorSpec,
-        Step,
-        StepSchema,
-    )
+from agent_control_models import (
+    Agent,
+    ControlAction,
+    ControlDefinition,
+    ControlMatch,
+    ControlScope,
+    ControlSelector,
+    EvaluationRequest,
+    EvaluationResult,
+    EvaluatorResult,
+    EvaluatorSpec,
+    Step,
+    StepSchema,
+)
 
 from . import agents, controls, evaluation, evaluators, policies
 from ._control_registry import (
@@ -113,113 +111,6 @@ from .validation import ensure_uuid
 
 # Module logger
 logger = get_logger(__name__)
-
-# Import models if available
-try:
-    from agent_control_models import (
-        Agent,
-        ControlAction,
-        ControlDefinition,
-        ControlMatch,
-        ControlScope,
-        ControlSelector,
-        EvaluationRequest,
-        EvaluationResult,
-        EvaluatorResult,
-        EvaluatorSpec,
-        Step,
-        StepSchema,
-    )
-    MODELS_AVAILABLE = True
-except ImportError:
-    MODELS_AVAILABLE = False
-    if not TYPE_CHECKING:
-        class ControlDefinition:
-            pass
-
-        class ControlSelector:
-            pass
-
-        class ControlScope:
-            pass
-
-        class ControlMatch:
-            pass
-
-        class EvaluatorResult:
-            pass
-
-        class ControlAction:
-            pass
-
-        class EvaluatorSpec:
-            pass
-
-        class Agent:  # runtime fallback
-            def __init__(
-                self,
-                agent_id: str | UUID,
-                agent_name: str,
-                **kwargs: object
-            ):
-                self.agent_id = agent_id
-                self.agent_name = agent_name
-                for k, v in kwargs.items():
-                    setattr(self, k, v)
-
-        class Step:  # runtime fallback
-            def __init__(
-                self,
-                type: str,
-                name: str,
-                input: Any,
-                output: Any = None,
-                context: dict[str, Any] | None = None,
-            ):
-                self.type = type
-                self.name = name
-                self.input = input
-                self.output = output
-                self.context = context
-
-        class StepSchema:  # runtime fallback
-            def __init__(
-                self,
-                type: str,
-                name: str,
-                description: str | None = None,
-                input_schema: dict[str, Any] | None = None,
-                output_schema: dict[str, Any] | None = None,
-                metadata: dict[str, Any] | None = None,
-            ):
-                self.type = type
-                self.name = name
-                self.description = description
-                self.input_schema = input_schema
-                self.output_schema = output_schema
-                self.metadata = metadata
-
-        class EvaluationRequest:  # runtime fallback
-            def __init__(
-                self,
-                agent_uuid: UUID,
-                step: Step,
-                stage: str,
-            ):
-                self.agent_uuid = agent_uuid
-                self.step = step
-                self.stage = stage
-
-        class EvaluationResult:  # runtime fallback
-            def __init__(
-                self,
-                is_safe: bool,
-                confidence: float,
-                reason: str | None = None
-            ):
-                self.is_safe = is_safe
-                self.confidence = confidence
-                self.reason = reason
 
 
 # ============================================================================

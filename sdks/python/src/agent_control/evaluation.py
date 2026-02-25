@@ -5,6 +5,19 @@ from datetime import UTC, datetime
 from typing import Any, Literal, cast
 from uuid import UUID
 
+from agent_control_engine import list_evaluators
+from agent_control_engine.core import ControlEngine
+from agent_control_models import (
+    ControlDefinition,
+    ControlExecutionEvent,
+    ControlMatch,
+    EvaluationRequest,
+    EvaluationResponse,
+    EvaluationResult,
+    EvaluatorResult,
+    Step,
+)
+
 from .client import AgentControlClient
 from .observability import add_event, get_logger, is_observability_enabled
 
@@ -16,37 +29,6 @@ _logger = get_logger(__name__)
 _FALLBACK_TRACE_ID = "0" * 32
 _FALLBACK_SPAN_ID = "0" * 16
 _trace_warning_logged = False
-
-# Import models if available
-try:
-    from agent_control_engine import list_evaluators
-    from agent_control_engine.core import ControlEngine
-    from agent_control_models import (
-        ControlDefinition,
-        ControlExecutionEvent,
-        ControlMatch,
-        EvaluationRequest,
-        EvaluationResponse,
-        EvaluationResult,
-        EvaluatorResult,
-        Step,
-    )
-
-    MODELS_AVAILABLE = True
-    ENGINE_AVAILABLE = True
-except ImportError:
-    MODELS_AVAILABLE = False
-    ENGINE_AVAILABLE = False
-    # Runtime fallbacks
-    Step = Any  # type: ignore
-    EvaluationRequest = Any  # type: ignore
-    EvaluationResponse = Any  # type: ignore
-    EvaluationResult = Any  # type: ignore
-    EvaluatorResult = Any  # type: ignore
-    ControlDefinition = Any  # type: ignore
-    ControlMatch = Any  # type: ignore
-    ControlEngine = Any  # type: ignore
-    ControlExecutionEvent = Any  # type: ignore
 
 
 def _map_applies_to(step_type: str) -> Literal["llm_call", "tool_call"]:
@@ -76,8 +58,6 @@ def _emit_local_events(
     Only runs when observability is enabled.
     """
     if not is_observability_enabled():
-        return
-    if not ENGINE_AVAILABLE:
         return
 
     global _trace_warning_logged  # noqa: PLW0603
@@ -173,50 +153,17 @@ async def check_evaluation(
                 stage="post"
             )
     """
-    if MODELS_AVAILABLE:
-        request = EvaluationRequest(
-            agent_uuid=agent_uuid,
-            step=step,
-            stage=stage,
-        )
-        request_payload = request.model_dump(mode="json")
-    else:
-        # Fallback for when models aren't available
-        if isinstance(step, dict):
-            step_dict = step
-        else:
-            step_dict = {
-                "type": getattr(step, "type", None),
-                "name": getattr(step, "name", None),
-                "input": getattr(step, "input", None),
-                "output": getattr(step, "output", None),
-                "context": getattr(step, "context", None),
-            }
-            step_dict = {k: v for k, v in step_dict.items() if v is not None}
-
-        if not step_dict.get("name"):
-            raise ValueError("step.name is required for evaluation requests")
-
-        request_payload = {
-            "agent_uuid": str(agent_uuid),
-            "step": step_dict,
-            "stage": stage,
-        }
+    request = EvaluationRequest(
+        agent_uuid=agent_uuid,
+        step=step,
+        stage=stage,
+    )
+    request_payload = request.model_dump(mode="json")
 
     response = await client.http_client.post("/api/v1/evaluation", json=request_payload)
     response.raise_for_status()
 
-    if MODELS_AVAILABLE:
-        return cast(EvaluationResult, EvaluationResult.from_dict(response.json()))
-    else:
-        data = response.json()
-        # Create a simple result object
-        class _EvaluationResult:
-            def __init__(self, is_safe: bool, confidence: float, reason: str | None = None):
-                self.is_safe = is_safe
-                self.confidence = confidence
-                self.reason = reason
-        return cast(EvaluationResult, _EvaluationResult(**data))
+    return cast(EvaluationResult, EvaluationResult.from_dict(response.json()))
 
 
 @dataclass
@@ -314,8 +261,6 @@ async def check_evaluation_with_local(
 
     Raises:
         httpx.HTTPError: If server request fails
-        RuntimeError: If engine is not available
-
     Example:
         # Get controls from initAgent
         init_response = await register_agent(client, agent, steps)
@@ -330,12 +275,6 @@ async def check_evaluation_with_local(
             controls=controls,
         )
     """
-    if not ENGINE_AVAILABLE:
-        raise RuntimeError(
-            "Local evaluation requires agent_control_engine. "
-            "Install with: pip install agent-control-engine"
-        )
-
     # Partition controls by local flag
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []

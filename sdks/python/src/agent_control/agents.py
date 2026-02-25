@@ -1,25 +1,14 @@
 """Agent management operations for Agent Control SDK."""
 
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from agent_control_engine import ensure_evaluators_discovered
+from agent_control_models import Agent
+from agent_control_models.server import AgentControlsResponse
 
 from .client import AgentControlClient
 from .validation import ensure_uuid_str
-
-if TYPE_CHECKING:
-    from agent_control_models.server import AgentControlsResponse
-
-# Import models if available
-try:
-    from agent_control_models import Agent
-    from agent_control_models.server import AgentControlsResponse as _AgentControlsResponse
-    MODELS_AVAILABLE = True
-except ImportError:
-    MODELS_AVAILABLE = False
-    Agent = Any  # type: ignore
-    _AgentControlsResponse = None
 
 
 async def register_agent(
@@ -52,31 +41,15 @@ async def register_agent(
     # Ensure evaluators are discovered for local evaluation support
     ensure_evaluators_discovered()
 
-    if steps is None:
-        steps = []
-
-    if MODELS_AVAILABLE:
-        agent_dict = agent.to_dict()
-        # Ensure UUID is converted to string for JSON serialization
-        if isinstance(agent_dict.get('agent_id'), UUID):
-            agent_dict['agent_id'] = str(agent_dict['agent_id'])
-        payload = {
-            "agent": agent_dict,
-            "steps": steps,
-            "conflict_mode": conflict_mode,
-        }
-    else:
-        payload = {
-            "agent": {
-                "agent_id": str(agent.agent_id),
-                "agent_name": agent.agent_name,
-                "agent_description": getattr(agent, 'agent_description', None),
-                "agent_version": getattr(agent, 'agent_version', None),
-                "agent_metadata": getattr(agent, 'agent_metadata', None),
-            },
-            "steps": steps,
-            "conflict_mode": conflict_mode,
-        }
+    agent_dict = agent.to_dict()
+    # Ensure UUID is converted to string for JSON serialization
+    if isinstance(agent_dict.get('agent_id'), UUID):
+        agent_dict['agent_id'] = str(agent_dict['agent_id'])
+    payload = {
+        "agent": agent_dict,
+        "steps": steps or [],
+        "conflict_mode": conflict_mode,
+    }
 
     response = await client.http_client.post("/api/v1/agents/initAgent", json=payload)
     response.raise_for_status()
@@ -235,7 +208,7 @@ async def list_agent_controls(
 async def list_agent_controls_typed(
     client: AgentControlClient,
     agent_id: str | UUID,
-) -> "AgentControlsResponse":
+) -> AgentControlsResponse:
     """
     List active controls associated with an agent (typed response).
 
@@ -247,15 +220,9 @@ async def list_agent_controls_typed(
         AgentControlsResponse model containing active controls.
 
     Raises:
-        RuntimeError: If SDK models are unavailable
         httpx.HTTPError: If request fails or agent is not found
     """
-    if not MODELS_AVAILABLE or _AgentControlsResponse is None:
-        raise RuntimeError(
-            "Typed agent controls response requires agent_control_models to be installed"
-        )
-
     agent_id_str = ensure_uuid_str(agent_id)
     response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/controls")
     response.raise_for_status()
-    return cast("AgentControlsResponse", _AgentControlsResponse.model_validate(response.json()))
+    return AgentControlsResponse.model_validate(response.json())
