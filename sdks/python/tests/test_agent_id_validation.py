@@ -51,6 +51,20 @@ async def test_remove_agent_policy_rejects_invalid_agent_name() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_agents_normalizes_cursor() -> None:
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.get = AsyncMock(return_value=DummyResponse())
+
+    await agents.list_agents(client, cursor="Agent-Example_01", limit=5)
+
+    client.http_client.get.assert_awaited_once_with(
+        "/api/v1/agents",
+        params={"limit": 5, "cursor": "agent-example_01"},
+    )
+
+
+@pytest.mark.asyncio
 async def test_assign_policy_rejects_invalid_agent_name() -> None:
     client = MagicMock()
     client.http_client = MagicMock()
@@ -72,3 +86,25 @@ async def test_get_agent_normalizes_agent_name() -> None:
     await agents.get_agent(client, agent_name)
 
     client.http_client.get.assert_awaited_once_with("/api/v1/agents/agent-example_01")
+
+
+@pytest.mark.asyncio
+async def test_get_agent_policy_normalizes_agent_name() -> None:
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.get = AsyncMock(return_value=DummyResponse())
+
+    await agents.get_agent_policy(client, "Agent-Example_01")
+
+    client.http_client.get.assert_awaited_once_with("/api/v1/agents/agent-example_01/policy")
+
+
+@pytest.mark.asyncio
+async def test_remove_agent_policy_normalizes_agent_name() -> None:
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.delete = AsyncMock(return_value=DummyResponse())
+
+    await agents.remove_agent_policy(client, "Agent-Example_01")
+
+    client.http_client.delete.assert_awaited_once_with("/api/v1/agents/agent-example_01/policy")
