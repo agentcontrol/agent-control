@@ -7,6 +7,7 @@ import { safeParse } from "../lib/schemas.js";
 import * as openEnums from "../types/enums.js";
 import { OpenEnum } from "../types/enums.js";
 import { Result as SafeParseResult } from "../types/fp.js";
+import { remap as remap$ } from "../lib/primitives.js";
 import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
@@ -36,7 +37,7 @@ export type ControlAction = {
   /**
    * Steering context message for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
    */
-  steering_context?: string | null | undefined;
+  steeringContext?: string | null | undefined;
 };
 
 /** @internal */
@@ -50,10 +51,17 @@ export const Decision$outboundSchema: z.ZodMiniType<string, Decision> =
 export const ControlAction$inboundSchema: z.ZodMiniType<
   ControlAction,
   unknown
-> = z.object({
-  decision: Decision$inboundSchema,
-  steering_context: z.optional(z.nullable(types.string())),
-});
+> = z.pipe(
+  z.object({
+    decision: Decision$inboundSchema,
+    steering_context: z.optional(z.nullable(types.string())),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "steering_context": "steeringContext",
+    });
+  }),
+);
 /** @internal */
 export type ControlAction$Outbound = {
   decision: string;
@@ -64,10 +72,17 @@ export type ControlAction$Outbound = {
 export const ControlAction$outboundSchema: z.ZodMiniType<
   ControlAction$Outbound,
   ControlAction
-> = z.object({
-  decision: Decision$outboundSchema,
-  steering_context: z.optional(z.nullable(z.string())),
-});
+> = z.pipe(
+  z.object({
+    decision: Decision$outboundSchema,
+    steeringContext: z.optional(z.nullable(z.string())),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      steeringContext: "steering_context",
+    });
+  }),
+);
 
 export function controlActionToJSON(controlAction: ControlAction): string {
   return JSON.stringify(ControlAction$outboundSchema.parse(controlAction));
