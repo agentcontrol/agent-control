@@ -60,6 +60,7 @@ from .policy import Policy
 from .server import (
     AgentRef,
     AgentSummary,
+    ConflictMode,
     ControlSummary,
     CreateEvaluatorConfigRequest,
     DeleteControlResponse,
@@ -67,6 +68,8 @@ from .server import (
     EvaluatorConfigItem,
     EvaluatorSchema,
     GetPolicyControlsResponse,
+    InitAgentEvaluatorRemoval,
+    InitAgentOverwriteChanges,
     ListAgentsResponse,
     ListControlsResponse,
     ListEvaluatorConfigsResponse,
@@ -118,6 +121,7 @@ __all__ = [
     # Server models
     "AgentRef",
     "AgentSummary",
+    "ConflictMode",
     "ControlSummary",
     "CreateEvaluatorConfigRequest",
     "DeleteEvaluatorConfigResponse",
@@ -125,6 +129,8 @@ __all__ = [
     "EvaluatorConfigItem",
     "EvaluatorSchema",
     "GetPolicyControlsResponse",
+    "InitAgentEvaluatorRemoval",
+    "InitAgentOverwriteChanges",
     "ListAgentsResponse",
     "ListControlsResponse",
     "ListEvaluatorConfigsResponse",

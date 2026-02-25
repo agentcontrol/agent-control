@@ -1,6 +1,6 @@
 """Agent management operations for Agent Control SDK."""
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from agent_control_engine import ensure_evaluators_discovered
@@ -20,7 +20,8 @@ except ImportError:
 async def register_agent(
     client: AgentControlClient,
     agent: Agent,
-    steps: list[dict[str, Any]] | None = None
+    steps: list[dict[str, Any]] | None = None,
+    conflict_mode: Literal["strict", "overwrite"] = "overwrite",
 ) -> dict[str, Any]:
     """
     Register an agent with the server via /initAgent endpoint.
@@ -29,6 +30,8 @@ async def register_agent(
         client: AgentControlClient instance
         agent: Agent instance to register
         steps: Optional list of step schemas
+        conflict_mode: How to handle step/evaluator conflicts during initAgent.
+            Defaults to "overwrite" for SDK registration flows.
 
     Returns:
         InitAgentResponse with created flag and controls
@@ -54,7 +57,8 @@ async def register_agent(
             agent_dict['agent_id'] = str(agent_dict['agent_id'])
         payload = {
             "agent": agent_dict,
-            "steps": steps
+            "steps": steps,
+            "conflict_mode": conflict_mode,
         }
     else:
         payload = {
@@ -65,7 +69,8 @@ async def register_agent(
                 "agent_version": getattr(agent, 'agent_version', None),
                 "agent_metadata": getattr(agent, 'agent_metadata', None),
             },
-            "steps": steps
+            "steps": steps,
+            "conflict_mode": conflict_mode,
         }
 
     response = await client.http_client.post("/api/v1/agents/initAgent", json=payload)

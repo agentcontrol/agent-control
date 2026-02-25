@@ -1,9 +1,17 @@
-import { MultiSelect, Select, Stack, Switch, TagsInput } from '@mantine/core';
+import {
+  Autocomplete,
+  MultiSelect,
+  Select,
+  Stack,
+  Switch,
+  TagsInput,
+} from '@mantine/core';
 
 import type {
   ControlActionDecision,
   ControlExecution,
   ControlStage,
+  StepSchema,
 } from '@/core/api/types';
 import {
   labelPropsInline,
@@ -13,12 +21,21 @@ import {
 import { StepNameInput } from './step-name-input';
 import type { ControlDefinitionFormProps } from './types';
 
-export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
+export type ControlDefinitionFormWithStepsProps = ControlDefinitionFormProps & {
+  /** Available steps from the agent */
+  steps?: StepSchema[];
+};
+
+export const ControlDefinitionForm = ({
+  form,
+  steps,
+}: ControlDefinitionFormWithStepsProps) => {
   return (
     <Stack gap="md">
       <Switch
         size="sm"
         color="green.5"
+        style={{ width: 'fit-content' }}
         label={
           <LabelWithTooltip
             label="Enabled"
@@ -28,7 +45,7 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
         {...form.getInputProps('enabled', { type: 'checkbox' })}
       />
 
-      <StepNameInput form={form} />
+      <StepNameInput form={form} steps={steps} />
 
       <MultiSelect
         label={
@@ -51,28 +68,24 @@ export const ControlDefinitionForm = ({ form }: ControlDefinitionFormProps) => {
         }
       />
 
-      <Select
+      <Autocomplete
         label={
           <LabelWithTooltip
             label="Selector path"
-            tooltip="Path to data using dot notation (e.g., 'input', 'output', 'context.user_id', 'name', '*')"
+            tooltip="Path to data. Use * for full step or a root (input, output, name, type, context); subpaths allowed (e.g. input.args.command)."
           />
         }
         labelProps={labelPropsInline}
         required
-        data={[
-          { value: '*', label: '* (entire payload)' },
-          { value: 'input', label: 'input' },
-          { value: 'output', label: 'output' },
-          { value: 'context', label: 'context' },
-          { value: 'name', label: 'name' },
-          { value: 'type', label: 'type' },
-        ]}
+        data={['*', 'input', 'output', 'name', 'type', 'context']}
+        renderOption={({ option, ...others }) => (
+          <div {...others}>
+            {option.value === '*' ? '* (entire payload)' : option.value}
+          </div>
+        )}
         size="sm"
-        searchable
-        allowDeselect={false}
+        placeholder="e.g., input or input.args.command"
         {...form.getInputProps('selector_path')}
-        onChange={(value) => form.setFieldValue('selector_path', value || '*')}
       />
 
       <Select

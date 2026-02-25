@@ -66,6 +66,8 @@ logs/
 # Database
 *.db
 *.sqlite3
+server/openapi.json
+server/.generated/
 
 # Temporary files
 tmp/

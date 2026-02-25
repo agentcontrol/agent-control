@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-evaluators"
-version = "5.1.0"
+version = "5.2.0"
 description = "Builtin evaluators for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -21,7 +21,7 @@ import { useRouter } from 'next/router';
 import { type ReactNode, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
-import { Logo } from '@/components/icons/galileo-logos.constants';
+import { AcIcon } from '@/components/icons/ac-icon';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 
 // import { useAgentsInfinite } from "@/core/hooks/query-hooks/use-agents-infinite";
@@ -176,8 +176,10 @@ export function AppLayout({ children }: AppLayoutProps) {
               <Group h="50px" justify="space-between" align="center">
                 <UnstyledButton component={Link} href="/">
                   <Group gap="xs">
-                    <Logo />
-                    <Text size="md" fw={600}>
+                    <Box className={classes.logoIcon} component="span">
+                      <AcIcon size={32} />
+                    </Box>
+                    <Text size="md" fw={600} className={classes.logoText}>
                       Agent Control
                     </Text>
                   </Group>

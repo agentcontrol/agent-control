@@ -124,6 +124,14 @@ export const api = {
           response?: Response;
         }>
       )('/api/v1/controls/validate', { body: { data }, signal }),
+    delete: (controlId: number, options?: { force?: boolean }) =>
+      apiClient.DELETE('/api/v1/controls/{control_id}', {
+        params: {
+          path: { control_id: controlId },
+          query:
+            options?.force !== undefined ? { force: options.force } : undefined,
+        },
+      }),
   },
   policies: {
     create: (name: string) =>

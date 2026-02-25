@@ -1,0 +1,22 @@
+configVersion: 2.0.0
+generation:
+  sdkClassName: AgentControlSDK
+  maintainOpenAPIOrder: true
+  usageSnippets:
+    optionalPropertyRendering: withExample
+    sdkInitStyle: constructor
+  fixes:
+    nameResolutionDec2023: true
+    parameterOrderingFeb2024: true
+    requestResponseComponentNamesFeb2024: true
+typescript:
+  version: 0.1.0
+  packageName: agent-control
+  author: Agent Control
+  moduleFormat: esm
+  enumFormat: union
+  flattenGlobalSecurity: true
+  templateVersion: v2
+  useIndexModules: true
+  responseFormat: flat
+  maxMethodParams: 0

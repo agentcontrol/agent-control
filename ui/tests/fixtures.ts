@@ -72,6 +72,17 @@ const agentResponse: GetAgentResponse = {
   evaluators: [],
 };
 
+/** Agent with populated steps for step dropdown tests */
+const agentWithStepsResponse: GetAgentResponse = {
+  ...agentResponse,
+  steps: [
+    { type: 'tool', name: 'search_db' },
+    { type: 'tool', name: 'fetch_user' },
+    { type: 'tool', name: 'database_query' },
+    { type: 'llm', name: 'support-answer' },
+  ],
+};
+
 const controlsList: Control[] = [
   {
     id: 1,
@@ -337,6 +348,7 @@ const emptyStatsResponse: StatsResponse = {
 export const mockData = {
   agents: agentsResponse,
   agent: agentResponse,
+  agentWithSteps: agentWithStepsResponse,
   controls: controlsResponse,
   listControls: listControlsResponse,
   evaluators: evaluatorsResponse,
