@@ -310,7 +310,7 @@ docker build -f server/Dockerfile -t agent-control-server .
 
 # Run container
 docker run -p 8000:8000 \
-  -e DATABASE_URL=postgresql+asyncpg://user:password@host:5432/agent_control \
+  -e DATABASE_URL=postgresql+psycopg://user:password@host:5432/agent_control \
   -e AGENT_CONTROL_API_KEY_ENABLED=true \
   -e AGENT_CONTROL_API_KEYS=your-key-here \
   agent-control-server
