@@ -12,8 +12,6 @@
 #
 # For local development, use docker-compose.dev.yml instead
 
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine

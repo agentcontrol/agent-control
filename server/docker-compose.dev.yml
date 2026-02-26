@@ -1,0 +1,33 @@
+# Agent Control Server - Local Development Docker Compose
+#
+# This file is used for local development with `make server-run`.
+# It only starts PostgreSQL, allowing you to run the server locally with uvicorn.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#   OR
+#   make server-run  (uses this file automatically)
+#
+# For production deployment with both postgres + server, use docker-compose.yml instead.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent_control_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: agent_control
+      POSTGRES_USER: agent_control
+      POSTGRES_PASSWORD: agent_control
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent_control -d agent_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
