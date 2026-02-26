@@ -176,7 +176,7 @@ async def _build_overwrite_evaluator_removals(
     db: AsyncSession,
 ) -> list[InitAgentEvaluatorRemoval]:
     """Build evaluator removal details, including active-control references."""
-    if not removed_evaluators or agent.policy_id is None:
+    if not removed_evaluators:
         return [InitAgentEvaluatorRemoval(name=name) for name in sorted(removed_evaluators)]
 
     try:
