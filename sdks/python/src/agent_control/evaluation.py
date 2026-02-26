@@ -500,8 +500,8 @@ async def check_evaluation_with_local(
 async def evaluate_controls(
     step_name: str,
     *,
-    input: Any = None,
-    output: Any = None,
+    input: Any | None = None,
+    output: Any | None = None,
     context: dict[str, Any] | None = None,
     step_type: Literal["tool", "llm"] = "llm",
     stage: Literal["pre", "post"] = "pre",
