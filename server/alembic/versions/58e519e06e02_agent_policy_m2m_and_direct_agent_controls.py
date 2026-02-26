@@ -1,6 +1,6 @@
 """
 Revision ID: 58e519e06e02
-Revises: d2f4a6b8c9d0
+Revises: 53d8427083e2
 Create Date: 2026-02-23 13:39:21.295377
 
 """
@@ -9,8 +9,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '58e519e06e02'
-down_revision = 'd2f4a6b8c9d0'
+revision = "58e519e06e02"
+down_revision = "53d8427083e2"
 branch_labels = None
 depends_on = None
 
