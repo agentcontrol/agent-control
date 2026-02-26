@@ -37,7 +37,7 @@ import { Result } from "../types/fp.js";
  * Removals are idempotent - attempting to remove non-existent items is not an error.
  *
  * Args:
- *     agent_id: UUID of the agent
+ *     agent_name: Agent identifier
  *     request: Lists of step/evaluator identifiers to remove
  *     db: Database session (injected)
  *
@@ -50,7 +50,7 @@ import { Result } from "../types/fp.js";
  */
 export function agentsUpdate(
   client: AgentControlSDKCore,
-  request: operations.PatchAgentApiV1AgentsAgentIdPatchRequest,
+  request: operations.PatchAgentApiV1AgentsAgentNamePatchRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -75,7 +75,7 @@ export function agentsUpdate(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.PatchAgentApiV1AgentsAgentIdPatchRequest,
+  request: operations.PatchAgentApiV1AgentsAgentNamePatchRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -98,7 +98,7 @@ async function $do(
     request,
     (value) =>
       z.parse(
-        operations.PatchAgentApiV1AgentsAgentIdPatchRequest$outboundSchema,
+        operations.PatchAgentApiV1AgentsAgentNamePatchRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -110,13 +110,13 @@ async function $do(
   const body = encodeJSON("body", payload.body, { explode: true });
 
   const pathParams = {
-    agent_id: encodeSimple("agent_id", payload.agent_id, {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
       explode: false,
       charEncoding: "percent",
     }),
   };
 
-  const path = pathToFunc("/api/v1/agents/{agent_id}")(pathParams);
+  const path = pathToFunc("/api/v1/agents/{agent_name}")(pathParams);
 
   const headers = new Headers(compactMap({
     "Content-Type": "application/json",
@@ -130,7 +130,7 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "patch_agent_api_v1_agents__agent_id__patch",
+    operationID: "patch_agent_api_v1_agents__agent_name__patch",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,

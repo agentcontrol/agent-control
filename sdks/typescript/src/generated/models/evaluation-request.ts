@@ -28,15 +28,15 @@ export type Stage = ClosedEnum<typeof Stage>;
  * policy compliance, and control rules.
  *
  * Attributes:
- *     agent_uuid: UUID of the agent making the request
+ *     agent_name: Unique identifier of the agent making the request
  *     step: Step payload for evaluation
  *     stage: 'pre' (before execution) or 'post' (after execution)
  */
 export type EvaluationRequest = {
   /**
-   * UUID of the agent making the evaluation request
+   * Identifier of the agent making the evaluation request
    */
-  agentUuid: string;
+  agentName: string;
   /**
    * Evaluation stage: 'pre' or 'post'
    */
@@ -52,7 +52,7 @@ export const Stage$outboundSchema: z.ZodMiniEnum<typeof Stage> = z.enum(Stage);
 
 /** @internal */
 export type EvaluationRequest$Outbound = {
-  agent_uuid: string;
+  agent_name: string;
   stage: string;
   step: Step$Outbound;
 };
@@ -63,13 +63,13 @@ export const EvaluationRequest$outboundSchema: z.ZodMiniType<
   EvaluationRequest
 > = z.pipe(
   z.object({
-    agentUuid: z.string(),
+    agentName: z.string(),
     stage: Stage$outboundSchema,
     step: Step$outboundSchema,
   }),
   z.transform((v) => {
     return remap$(v, {
-      agentUuid: "agent_uuid",
+      agentName: "agent_name",
     });
   }),
 );

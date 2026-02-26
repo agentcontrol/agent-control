@@ -10,10 +10,11 @@ This module provides models for:
 
 from datetime import UTC, datetime
 from typing import Any, Literal
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from pydantic import Field, field_validator
 
+from .agent import AGENT_NAME_MIN_LENGTH, AGENT_NAME_PATTERN, normalize_agent_name
 from .base import BaseModel
 
 # =============================================================================
@@ -36,8 +37,7 @@ class ControlExecutionEvent(BaseModel):
         control_execution_id: Unique ID for this specific control execution
         trace_id: OpenTelemetry-compatible trace ID (128-bit hex, 32 chars)
         span_id: OpenTelemetry-compatible span ID (64-bit hex, 16 chars)
-        agent_uuid: UUID of the agent that executed the control
-        agent_name: Name of the agent (denormalized for queries)
+        agent_name: Identifier of the agent that executed the control
         control_id: Database ID of the control
         control_name: Name of the control (denormalized for queries)
         check_stage: "pre" (before execution) or "post" (after execution)
@@ -70,8 +70,12 @@ class ControlExecutionEvent(BaseModel):
     )
 
     # Agent identity
-    agent_uuid: UUID = Field(..., description="UUID of the agent")
-    agent_name: str = Field(..., description="Name of the agent (denormalized)")
+    agent_name: str = Field(
+        ...,
+        min_length=AGENT_NAME_MIN_LENGTH,
+        pattern=AGENT_NAME_PATTERN,
+        description="Identifier of the agent",
+    )
 
     # Control info
     control_id: int = Field(..., description="Database ID of the control")
@@ -151,6 +155,11 @@ class ControlExecutionEvent(BaseModel):
             raise ValueError("span_id cannot be empty")
         return v
 
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def validate_and_normalize_agent_name(cls, value: str) -> str:
+        return normalize_agent_name(str(value))
+
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -158,7 +167,6 @@ class ControlExecutionEvent(BaseModel):
                     "control_execution_id": "550e8400-e29b-41d4-a716-446655440000",
                     "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
                     "span_id": "00f067aa0ba902b7",
-                    "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
                     "agent_name": "my-agent",
                     "control_id": 123,
                     "control_name": "sql-injection-check",
@@ -205,7 +213,6 @@ class BatchEventsRequest(BaseModel):
                         {
                             "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
                             "span_id": "00f067aa0ba902b7",
-                            "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
                             "agent_name": "my-agent",
                             "control_id": 123,
                             "control_name": "sql-injection-check",
@@ -256,7 +263,7 @@ class EventQueryRequest(BaseModel):
         trace_id: Filter by trace ID (get all events for a request)
         span_id: Filter by span ID (get all events for a function call)
         control_execution_id: Filter by specific event ID
-        agent_uuid: Filter by agent UUID
+        agent_name: Filter by agent identifier
         control_ids: Filter by control IDs
         actions: Filter by actions (allow, deny, warn, log)
         matched: Filter by matched status
@@ -277,7 +284,12 @@ class EventQueryRequest(BaseModel):
     control_execution_id: str | None = Field(
         default=None, description="Filter by specific event ID"
     )
-    agent_uuid: UUID | None = Field(default=None, description="Filter by agent UUID")
+    agent_name: str | None = Field(
+        default=None,
+        min_length=AGENT_NAME_MIN_LENGTH,
+        pattern=AGENT_NAME_PATTERN,
+        description="Filter by agent identifier",
+    )
     control_ids: list[int] | None = Field(
         default=None, description="Filter by control IDs"
     )
@@ -305,7 +317,7 @@ class EventQueryRequest(BaseModel):
             "examples": [
                 {"trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"},
                 {
-                    "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
+                    "agent_name": "my-agent",
                     "actions": ["deny", "warn"],
                     "start_time": "2025-01-09T00:00:00Z",
                     "limit": 50,
@@ -313,6 +325,15 @@ class EventQueryRequest(BaseModel):
             ]
         }
     }
+
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def validate_and_normalize_agent_name(
+        cls, value: str | None
+    ) -> str | None:
+        if value is None:
+            return None
+        return normalize_agent_name(str(value))
 
 
 class EventQueryResponse(BaseModel):
@@ -377,18 +398,28 @@ class StatsRequest(BaseModel):
     Request model for aggregated statistics.
 
     Attributes:
-        agent_uuid: Agent to get stats for
+        agent_name: Agent to get stats for
         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
         include_timeseries: Whether to include time-series data points
     """
 
-    agent_uuid: UUID = Field(..., description="Agent UUID")
+    agent_name: str = Field(
+        ...,
+        min_length=AGENT_NAME_MIN_LENGTH,
+        pattern=AGENT_NAME_PATTERN,
+        description="Agent identifier",
+    )
     time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d", "30d", "180d", "365d"] = Field(
         default="5m", description="Time range"
     )
     include_timeseries: bool = Field(
         default=False, description="Include time-series data points for trend visualization"
     )
+
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def validate_and_normalize_agent_name(cls, value: str) -> str:
+        return normalize_agent_name(str(value))
 
 
 class TimeseriesBucket(BaseModel):
@@ -476,18 +507,28 @@ class StatsResponse(BaseModel):
     Contains agent-level totals (with optional timeseries) and per-control breakdown.
 
     Attributes:
-        agent_uuid: Agent UUID
+        agent_name: Agent identifier
         time_range: Time range used
         totals: Agent-level aggregate statistics (includes timeseries)
         controls: Per-control breakdown for discovery and detail
     """
 
-    agent_uuid: UUID = Field(..., description="Agent UUID")
+    agent_name: str = Field(
+        ...,
+        min_length=AGENT_NAME_MIN_LENGTH,
+        pattern=AGENT_NAME_PATTERN,
+        description="Agent identifier",
+    )
     time_range: str = Field(..., description="Time range used")
     totals: StatsTotals = Field(..., description="Agent-level aggregate statistics")
     controls: list[ControlStats] = Field(
         ..., description="Per-control breakdown"
     )
+
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def validate_and_normalize_agent_name(cls, value: str) -> str:
+        return normalize_agent_name(str(value))
 
 
 class ControlStatsResponse(BaseModel):
@@ -497,15 +538,25 @@ class ControlStatsResponse(BaseModel):
     Contains stats for a single control (with optional timeseries).
 
     Attributes:
-        agent_uuid: Agent UUID
+        agent_name: Agent identifier
         time_range: Time range used
         control_id: Control ID
         control_name: Control name
         stats: Control statistics (includes timeseries when requested)
     """
 
-    agent_uuid: UUID = Field(..., description="Agent UUID")
+    agent_name: str = Field(
+        ...,
+        min_length=AGENT_NAME_MIN_LENGTH,
+        pattern=AGENT_NAME_PATTERN,
+        description="Agent identifier",
+    )
     time_range: str = Field(..., description="Time range used")
     control_id: int = Field(..., description="Control ID")
     control_name: str = Field(..., description="Control name")
     stats: StatsTotals = Field(..., description="Control statistics")
+
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def validate_and_normalize_agent_name(cls, value: str) -> str:
+        return normalize_agent_name(str(value))

@@ -37,7 +37,7 @@ import { Result } from "../types/fp.js";
  * Returns an empty list if the agent has no policy.
  *
  * Args:
- *     agent_id: UUID of the agent
+ *     agent_name: Agent identifier
  *     db: Database session (injected)
  *
  * Returns:
@@ -48,7 +48,7 @@ import { Result } from "../types/fp.js";
  */
 export function agentsListControls(
   client: AgentControlSDKCore,
-  request: operations.ListAgentControlsApiV1AgentsAgentIdControlsGetRequest,
+  request: operations.ListAgentControlsApiV1AgentsAgentNameControlsGetRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -73,7 +73,7 @@ export function agentsListControls(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.ListAgentControlsApiV1AgentsAgentIdControlsGetRequest,
+  request: operations.ListAgentControlsApiV1AgentsAgentNameControlsGetRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -97,7 +97,7 @@ async function $do(
     (value) =>
       z.parse(
         operations
-          .ListAgentControlsApiV1AgentsAgentIdControlsGetRequest$outboundSchema,
+          .ListAgentControlsApiV1AgentsAgentNameControlsGetRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -109,13 +109,13 @@ async function $do(
   const body = null;
 
   const pathParams = {
-    agent_id: encodeSimple("agent_id", payload.agent_id, {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
       explode: false,
       charEncoding: "percent",
     }),
   };
 
-  const path = pathToFunc("/api/v1/agents/{agent_id}/controls")(pathParams);
+  const path = pathToFunc("/api/v1/agents/{agent_name}/controls")(pathParams);
 
   const headers = new Headers(compactMap({
     Accept: "application/json",
@@ -128,7 +128,7 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "list_agent_controls_api_v1_agents__agent_id__controls_get",
+    operationID: "list_agent_controls_api_v1_agents__agent_name__controls_get",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,

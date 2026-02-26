@@ -587,7 +587,7 @@ import agent_control
 
 agent_control.init(
     agent_name="my-agent",           # Required: human-readable name
-    agent_id="550e8400-e29b-41d4-a716-446655440000",  # Required: UUID
+    agent_name="550e8400-e29b-41d4-a716-446655440000",  # Required: UUID
     server_url="http://localhost:8000",  # Optional: defaults to env var
     steps=[                          # Optional: register available steps
         {
@@ -770,12 +770,12 @@ Default: `http://localhost:8000/api/v1`
 |--------|----------|-------------|
 | `GET` | `/agents` | List all agents |
 | `POST` | `/agents/initAgent` | Register a new agent |
-| `GET` | `/agents/{agent_id}` | Get agent details |
-| `PATCH` | `/agents/{agent_id}` | Update agent |
-| `GET` | `/agents/{agent_id}/controls` | List controls for agent |
-| `GET` | `/agents/{agent_id}/policy` | Get agent's policy |
-| `POST` | `/agents/{agent_id}/policy/{policy_id}` | Assign policy |
-| `DELETE` | `/agents/{agent_id}/policy` | Remove policy |
+| `GET` | `/agents/{agent_name}` | Get agent details |
+| `PATCH` | `/agents/{agent_name}` | Update agent |
+| `GET` | `/agents/{agent_name}/controls` | List controls for agent |
+| `GET` | `/agents/{agent_name}/policy` | Get agent's policy |
+| `POST` | `/agents/{agent_name}/policy/{policy_id}` | Assign policy |
+| `DELETE` | `/agents/{agent_name}/policy` | Remove policy |
 
 **Controls**:
 

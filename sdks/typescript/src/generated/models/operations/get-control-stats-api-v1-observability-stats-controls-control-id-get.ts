@@ -22,7 +22,7 @@ export type QueryParamTimeRange = ClosedEnum<typeof QueryParamTimeRange>;
 export type GetControlStatsApiV1ObservabilityStatsControlsControlIdGetRequest =
   {
     controlId: number;
-    agentUuid: string;
+    agentName: string;
     timeRange?: QueryParamTimeRange | undefined;
     includeTimeseries?: boolean | undefined;
   };
@@ -36,7 +36,7 @@ export const QueryParamTimeRange$outboundSchema: z.ZodMiniEnum<
 export type GetControlStatsApiV1ObservabilityStatsControlsControlIdGetRequest$Outbound =
   {
     control_id: number;
-    agent_uuid: string;
+    agent_name: string;
     time_range: string;
     include_timeseries: boolean;
   };
@@ -49,14 +49,14 @@ export const GetControlStatsApiV1ObservabilityStatsControlsControlIdGetRequest$o
   > = z.pipe(
     z.object({
       controlId: z.int(),
-      agentUuid: z.string(),
+      agentName: z.string(),
       timeRange: z._default(QueryParamTimeRange$outboundSchema, "5m"),
       includeTimeseries: z._default(z.boolean(), false),
     }),
     z.transform((v) => {
       return remap$(v, {
         controlId: "control_id",
-        agentUuid: "agent_uuid",
+        agentName: "agent_name",
         timeRange: "time_range",
         includeTimeseries: "include_timeseries",
       });

@@ -14,11 +14,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type AgentRef = {
   /**
-   * Agent UUID
-   */
-  agentId: string;
-  /**
-   * Agent name
+   * Agent identifier
    */
   agentName: string;
 };
@@ -26,12 +22,10 @@ export type AgentRef = {
 /** @internal */
 export const AgentRef$inboundSchema: z.ZodMiniType<AgentRef, unknown> = z.pipe(
   z.object({
-    agent_id: types.string(),
     agent_name: types.string(),
   }),
   z.transform((v) => {
     return remap$(v, {
-      "agent_id": "agentId",
       "agent_name": "agentName",
     });
   }),

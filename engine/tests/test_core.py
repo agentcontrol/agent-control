@@ -236,7 +236,7 @@ class TestParallelExecution:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -268,7 +268,7 @@ class TestParallelExecution:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -303,7 +303,7 @@ class TestCancelOnDeny:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -338,7 +338,7 @@ class TestCancelOnDeny:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -364,7 +364,7 @@ class TestCancelOnDeny:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -390,7 +390,7 @@ class TestCancelOnDeny:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -424,7 +424,7 @@ class TestResultCollection:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -447,7 +447,7 @@ class TestResultCollection:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -535,7 +535,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -571,7 +571,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -609,7 +609,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -641,7 +641,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -678,7 +678,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -724,7 +724,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -765,7 +765,7 @@ class TestConfidenceCalculation:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -799,7 +799,7 @@ class TestConfidenceCalculation:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -831,7 +831,7 @@ class TestConfidenceCalculation:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -860,7 +860,7 @@ class TestConfidenceCalculation:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -949,7 +949,7 @@ class TestSelectorStepScoping:
         ]
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="copy_file", input={}, output=None),
             stage="pre",
         )
@@ -986,7 +986,7 @@ class TestSelectorStepScoping:
         ]
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="db_query", input={}, output=None),
             stage="pre",
         )
@@ -1014,7 +1014,7 @@ class TestSelectorStepScoping:
         engine = ControlEngine(controls)
         # Matches by regex despite name mismatch
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="db_export", input={}, output=None),
             stage="pre",
         )
@@ -1039,7 +1039,7 @@ class TestSelectorStepScoping:
         ]
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="copy_file", input={}, output=None),
             stage="pre",
         )
@@ -1104,7 +1104,7 @@ class TestTimeoutEnforcement:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1162,7 +1162,7 @@ class TestTimeoutEnforcement:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1247,7 +1247,7 @@ class TestConcurrencyLimit:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1327,7 +1327,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="server")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1357,7 +1357,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1387,7 +1387,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls)  # No context param
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1417,7 +1417,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1449,7 +1449,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="server")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1478,7 +1478,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1522,7 +1522,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="copy_file", input={}, output=None),
             stage="pre",
         )

@@ -36,7 +36,7 @@ import { Result } from "../types/fp.js";
  * The agent will immediately inherit all controls from the assigned policy.
  *
  * Args:
- *     agent_id: UUID of the agent
+ *     agent_name: Agent identifier
  *     policy_id: ID of the policy to assign
  *     db: Database session (injected)
  *
@@ -49,7 +49,8 @@ import { Result } from "../types/fp.js";
  */
 export function agentsUpdatePolicy(
   client: AgentControlSDKCore,
-  request: operations.SetAgentPolicyApiV1AgentsAgentIdPolicyPolicyIdPostRequest,
+  request:
+    operations.SetAgentPolicyApiV1AgentsAgentNamePolicyPolicyIdPostRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -74,7 +75,8 @@ export function agentsUpdatePolicy(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.SetAgentPolicyApiV1AgentsAgentIdPolicyPolicyIdPostRequest,
+  request:
+    operations.SetAgentPolicyApiV1AgentsAgentNamePolicyPolicyIdPostRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -98,7 +100,7 @@ async function $do(
     (value) =>
       z.parse(
         operations
-          .SetAgentPolicyApiV1AgentsAgentIdPolicyPolicyIdPostRequest$outboundSchema,
+          .SetAgentPolicyApiV1AgentsAgentNamePolicyPolicyIdPostRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -110,7 +112,7 @@ async function $do(
   const body = null;
 
   const pathParams = {
-    agent_id: encodeSimple("agent_id", payload.agent_id, {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
       explode: false,
       charEncoding: "percent",
     }),
@@ -120,7 +122,7 @@ async function $do(
     }),
   };
 
-  const path = pathToFunc("/api/v1/agents/{agent_id}/policy/{policy_id}")(
+  const path = pathToFunc("/api/v1/agents/{agent_name}/policy/{policy_id}")(
     pathParams,
   );
 
@@ -136,7 +138,7 @@ async function $do(
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
     operationID:
-      "set_agent_policy_api_v1_agents__agent_id__policy__policy_id__post",
+      "set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,

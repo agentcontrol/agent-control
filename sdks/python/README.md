@@ -18,7 +18,7 @@ import agent_control
 # Initialize at the base of your agent
 agent_control.init(
     agent_name="My Customer Service Bot",
-    agent_id="550e8400-e29b-41d4-a716-446655440000"
+    agent_name="550e8400-e29b-41d4-a716-446655440000"
 )
 
 # Use the control decorator
@@ -36,7 +36,7 @@ import agent_control
 
 agent_control.init(
     agent_name="Customer Service Bot",
-    agent_id="550e8400-e29b-41d4-a716-446655440000",
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
     agent_description="Handles customer inquiries and support",
     agent_version="2.1.0",
     server_url="http://localhost:8000",
@@ -55,7 +55,7 @@ One line to set up your agent with full protection:
 ```python
 agent_control.init(
     agent_name="...",
-    agent_id="550e8400-e29b-41d4-a716-446655440000",
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
 )
 ```
 
@@ -90,7 +90,7 @@ async with AgentControlClient() as client:
     # Evaluate a step
     result = await agent_control.evaluation.check_evaluation(
         client,
-        agent_uuid="550e8400-e29b-41d4-a716-446655440000",
+        agent_name="550e8400-e29b-41d4-a716-446655440000",
         step={"type": "llm_inference", "input": "User input here"},
         stage="pre"
     )
@@ -103,7 +103,7 @@ Access your agent information:
 ```python
 agent = agent_control.current_agent()
 print(f"Agent: {agent.agent_name}")
-print(f"ID: {agent.agent_id}")
+print(f"ID: {agent.agent_name}")
 print(f"Version: {agent.agent_version}")
 ```
 
@@ -117,7 +117,7 @@ from agent_control import control, ControlViolationError
 # Initialize
 agent_control.init(
     agent_name="Customer Support Bot",
-    agent_id="550e8400-e29b-41d4-a716-446655440000",
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
     agent_version="1.0.0"
 )
 
@@ -158,7 +158,7 @@ asyncio.run(main())
 ```python
 def init(
     agent_name: str,
-    agent_id: str | UUID,
+    agent_name: str | UUID,
     agent_description: Optional[str] = None,
     agent_version: Optional[str] = None,
     server_url: Optional[str] = None,
@@ -171,7 +171,7 @@ Initialize Agent Control with your agent's information.
 
 **Parameters:**
 - `agent_name`: Human-readable name
-- `agent_id`: UUID string (or UUID instance)
+- `agent_name`: UUID string (or UUID instance)
 - `agent_description`: Optional description
 - `agent_version`: Optional version string
 - `server_url`: Optional server URL (defaults to `AGENT_CONTROL_URL` env var)
@@ -278,7 +278,7 @@ from agent_control import control, ControlViolationError
 
 agent_control.init(
     agent_name="...",
-    agent_id="550e8400-e29b-41d4-a716-446655440000",
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
 )
 
 @control()

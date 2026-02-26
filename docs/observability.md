@@ -125,7 +125,7 @@ class EventStore(ABC):
 
     @abstractmethod
     async def query_stats(
-        self, agent_uuid: UUID, time_range: timedelta, control_id: int | None = None
+        self, agent_name: UUID, time_range: timedelta, control_id: int | None = None
     ) -> StatsResult:
         """Query stats (aggregated at query time)."""
         pass
@@ -220,12 +220,12 @@ Events are stored with minimal indexed columns + JSONB for flexibility:
 CREATE TABLE control_execution_events (
     control_execution_id VARCHAR(36) PRIMARY KEY,
     timestamp TIMESTAMPTZ NOT NULL,
-    agent_uuid UUID NOT NULL,
+    agent_name UUID NOT NULL,
     data JSONB NOT NULL  -- Full event stored here
 );
 
 -- Primary index for time-range queries per agent
-CREATE INDEX ix_events_agent_time ON control_execution_events (agent_uuid, timestamp DESC);
+CREATE INDEX ix_events_agent_time ON control_execution_events (agent_name, timestamp DESC);
 
 -- Expression index for grouping by control
 CREATE INDEX ix_events_data_control_id ON control_execution_events ((data->>'control_id'));
@@ -245,7 +245,7 @@ Each control evaluation produces an event (stored in the `data` JSONB column):
   control_execution_id: string,  // Unique ID (for correlation)
   trace_id: string,              // OpenTelemetry trace ID (32 hex chars)
   span_id: string,               // OpenTelemetry span ID (16 hex chars)
-  agent_uuid: UUID,
+  agent_name: UUID,
   agent_name: string,
   control_id: number,
   control_name: string,
@@ -272,9 +272,9 @@ All observability endpoints are under `/api/v1/observability/`.
 |----------|----------|------------|---------|
 | **Health check** | `GET /status` | — | System status |
 | **Ingest events** | `POST /events` | `events[]` in body | Ingestion result |
-| **Agent overview** | `GET /stats` | `agent_uuid`, `time_range` | `totals` + `controls[]` |
+| **Agent overview** | `GET /stats` | `agent_name`, `time_range` | `totals` + `controls[]` |
 | **Agent trends** | `GET /stats` | + `include_timeseries=true` | `totals.timeseries[]` included |
-| **Control stats** | `GET /stats/controls/{id}` | `agent_uuid`, `time_range` | `control_id`, `control_name`, `stats` |
+| **Control stats** | `GET /stats/controls/{id}` | `agent_name`, `time_range` | `control_id`, `control_name`, `stats` |
 | **Control trends** | `GET /stats/controls/{id}` | + `include_timeseries=true` | `stats.timeseries[]` included |
 | **Query raw events** | `POST /events/query` | Filters in body | `events[]` with pagination |
 
@@ -323,7 +323,7 @@ Content-Type: application/json
       "control_execution_id": "...",
       "trace_id": "...",
       "span_id": "...",
-      "agent_uuid": "...",
+      "agent_name": "...",
       "control_id": 1,
       "control_name": "block-toxic",
       "matched": true,
@@ -350,14 +350,14 @@ Content-Type: application/json
 Get agent-level aggregated statistics with per-control breakdown.
 
 ```http
-GET /api/v1/observability/stats?agent_uuid=<uuid>&time_range=<range>&include_timeseries=<bool>
+GET /api/v1/observability/stats?agent_name=<uuid>&time_range=<range>&include_timeseries=<bool>
 ```
 
 **Query Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `agent_uuid` | UUID | Yes | Agent to get stats for |
+| `agent_name` | UUID | Yes | Agent to get stats for |
 | `time_range` | string | No | Time range: `1m`, `5m`, `15m`, `1h`, `24h`, `7d`, `30d`, `180d`, `365d` (default: `5m`) |
 | `include_timeseries` | boolean | No | Include time-series data for trend visualization (default: `false`) |
 
@@ -379,13 +379,13 @@ When `include_timeseries=true`, data is bucketed automatically based on the time
 
 **Example Request:**
 ```bash
-curl "http://localhost:8000/api/v1/observability/stats?agent_uuid=563de065-23aa-5d75-b594-cfa73abcc53c&time_range=1h"
+curl "http://localhost:8000/api/v1/observability/stats?agent_name=563de065-23aa-5d75-b594-cfa73abcc53c&time_range=1h"
 ```
 
 **Example Response:**
 ```json
 {
-    "agent_uuid": "563de065-23aa-5d75-b594-cfa73abcc53c",
+    "agent_name": "563de065-23aa-5d75-b594-cfa73abcc53c",
     "time_range": "1h",
     "totals": {
         "execution_count": 8,
@@ -442,13 +442,13 @@ curl "http://localhost:8000/api/v1/observability/stats?agent_uuid=563de065-23aa-
 
 **Example Request with Time-Series:**
 ```bash
-curl "http://localhost:8000/api/v1/observability/stats?agent_uuid=563de065-23aa-5d75-b594-cfa73abcc53c&time_range=1h&include_timeseries=true"
+curl "http://localhost:8000/api/v1/observability/stats?agent_name=563de065-23aa-5d75-b594-cfa73abcc53c&time_range=1h&include_timeseries=true"
 ```
 
 **Example Response with Time-Series:**
 ```json
 {
-    "agent_uuid": "563de065-23aa-5d75-b594-cfa73abcc53c",
+    "agent_name": "563de065-23aa-5d75-b594-cfa73abcc53c",
     "time_range": "1h",
     "totals": {
         "execution_count": 8,
@@ -512,7 +512,7 @@ Empty buckets are included with zero counts and `null` averages to ensure consis
 Get statistics for a single control.
 
 ```http
-GET /api/v1/observability/stats/controls/{control_id}?agent_uuid=<uuid>&time_range=<range>&include_timeseries=<bool>
+GET /api/v1/observability/stats/controls/{control_id}?agent_name=<uuid>&time_range=<range>&include_timeseries=<bool>
 ```
 
 **Path Parameters:**
@@ -525,19 +525,19 @@ GET /api/v1/observability/stats/controls/{control_id}?agent_uuid=<uuid>&time_ran
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `agent_uuid` | UUID | Yes | Agent to get stats for |
+| `agent_name` | UUID | Yes | Agent to get stats for |
 | `time_range` | string | No | Time range: `1m`, `5m`, `15m`, `1h`, `24h`, `7d`, `30d`, `180d`, `365d` (default: `5m`) |
 | `include_timeseries` | boolean | No | Include time-series data for trend visualization (default: `false`) |
 
 **Example Request:**
 ```bash
-curl "http://localhost:8000/api/v1/observability/stats/controls/1?agent_uuid=563de065-23aa-5d75-b594-cfa73abcc53c&time_range=1h&include_timeseries=true"
+curl "http://localhost:8000/api/v1/observability/stats/controls/1?agent_name=563de065-23aa-5d75-b594-cfa73abcc53c&time_range=1h&include_timeseries=true"
 ```
 
 **Example Response:**
 ```json
 {
-    "agent_uuid": "563de065-23aa-5d75-b594-cfa73abcc53c",
+    "agent_name": "563de065-23aa-5d75-b594-cfa73abcc53c",
     "time_range": "1h",
     "control_id": 1,
     "control_name": "block-prompt-injection",
@@ -595,7 +595,7 @@ Content-Type: application/json
 | `trace_id` | string | No | Filter by trace ID |
 | `span_id` | string | No | Filter by span ID |
 | `control_execution_id` | string | No | Get specific event |
-| `agent_uuid` | UUID | No | Filter by agent |
+| `agent_name` | UUID | No | Filter by agent |
 | `control_ids` | integer[] | No | Filter by control IDs |
 | `actions` | string[] | No | Filter by actions: `allow`, `deny`, `warn`, `log` |
 | `matched` | boolean | No | Filter by matched status |
@@ -611,7 +611,7 @@ Content-Type: application/json
 curl -X POST "http://localhost:8000/api/v1/observability/events/query" \
   -H "Content-Type: application/json" \
   -d '{
-    "agent_uuid": "563de065-23aa-5d75-b594-cfa73abcc53c",
+    "agent_name": "563de065-23aa-5d75-b594-cfa73abcc53c",
     "matched": true,
     "limit": 5
   }'
@@ -625,7 +625,7 @@ curl -X POST "http://localhost:8000/api/v1/observability/events/query" \
             "control_execution_id": "92df0332-170c-4bc6-aefd-ab50be311062",
             "trace_id": "5848335875e1d7269e148170ccb617ca",
             "span_id": "c25549deddcaecbe",
-            "agent_uuid": "563de065-23aa-5d75-b594-cfa73abcc53c",
+            "agent_name": "563de065-23aa-5d75-b594-cfa73abcc53c",
             "agent_name": "Customer Support Agent",
             "control_id": 3,
             "control_name": "block-credit-card",

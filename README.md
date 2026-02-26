@@ -126,7 +126,7 @@ async def setup():
         # 1. Register agent first (required before assigning policy)
         agent = Agent(
             # Your agent's UUID
-            agent_id="550e8400-e29b-41d4-a716-446655440000",
+            agent_name="550e8400-e29b-41d4-a716-446655440000",
             agent_name="My Chatbot",
             agent_created_at=datetime.now(UTC).isoformat()
         )
@@ -161,7 +161,7 @@ async def setup():
         # 5. Assign policy to agent
         await policies.assign_policy_to_agent(
             client,
-            agent_id=AGENT_ID,
+            agent_name=AGENT_ID,
             policy_id=policy["policy_id"]
         )
 
@@ -195,7 +195,7 @@ from agent_control import control, ControlViolationError
 # Initialize your agent
 agent_control.init(
     agent_name="My Chatbot",
-    agent_id="550e8400-e29b-41d4-a716-446655440000"
+    agent_name="550e8400-e29b-41d4-a716-446655440000"
 )
 
 # Protect any function (like LLM calls)

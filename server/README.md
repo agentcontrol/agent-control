@@ -161,10 +161,10 @@ POST /api/v1/agents/init
 Body: { "agent": {...}, "tools": [...], "force_replace": false }
 
 # Get agent
-GET /api/v1/agents/{agent_id}
+GET /api/v1/agents/{agent_name}
 
 # List controls for agent (based on assigned policy)
-GET /api/v1/agents/{agent_id}/controls
+GET /api/v1/agents/{agent_name}/controls
 ```
 
 ### Control Management
@@ -199,7 +199,7 @@ Body: { "name": "my-policy", "description": "..." }
 GET /api/v1/policies
 
 # Assign policy to agent
-POST /api/v1/policies/{policy_id}/agents/{agent_id}
+POST /api/v1/policies/{policy_id}/agents/{agent_name}
 
 # Add control to policy
 POST /api/v1/policies/{policy_id}/controls/{control_id}
@@ -211,7 +211,7 @@ POST /api/v1/policies/{policy_id}/controls/{control_id}
 # Evaluate step against controls
 POST /api/v1/evaluation
 Body: {
-  "agent_uuid": "uuid",
+  "agent_name": "uuid",
   "step": { "type": "llm", "name": "chat", "input": "..." },
   "stage": "pre"
 }
@@ -233,13 +233,13 @@ Body: { "events": [...] }
 
 # Query events
 POST /api/v1/observability/events/query
-Body: { "agent_uuid": "...", "start_time": "...", ... }
+Body: { "agent_name": "...", "start_time": "...", ... }
 
 # Get agent stats
-GET /api/v1/observability/stats?agent_uuid=...&time_range=5m
+GET /api/v1/observability/stats?agent_name=...&time_range=5m
 
 # Get control stats
-GET /api/v1/observability/stats/controls/{control_id}?agent_uuid=...&time_range=5m
+GET /api/v1/observability/stats/controls/{control_id}?agent_name=...&time_range=5m
 ```
 
 See [docs/REFERENCE.md](../docs/REFERENCE.md) for complete API documentation.

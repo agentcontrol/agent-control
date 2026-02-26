@@ -18,11 +18,13 @@ engine = create_engine(db_config.get_url(), echo=False)
 
 def make_agent_payload(
     agent_id: str | None = None,
-    name: str = "Test Agent",
+    name: str = "testagent0001",
     steps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    if agent_id is None:
-        agent_id = str(uuid.uuid4())
+    resolved_name = name if name != "testagent0001" else (agent_id or f"agent-{uuid.uuid4().hex[:12]}")
+    canonical_name = resolved_name.lower().replace(" ", "-")
+    if len(canonical_name) < 10:
+        canonical_name = f"{canonical_name}-agent".replace("--", "-")
     if steps is None:
         steps = [
             {
@@ -34,8 +36,8 @@ def make_agent_payload(
         ]
     return {
         "agent": {
-            "agent_id": agent_id,
-            "agent_name": name,
+            "agent_id": canonical_name,
+            "agent_name": canonical_name,
             "agent_description": "desc",
             "agent_version": "1.0",
             "agent_metadata": {"env": "test"},
@@ -51,7 +53,7 @@ def test_init_agent_route_exists(app: FastAPI) -> None:
     # (computation done above to gather all paths)
     # Then: initAgent and agent retrieval endpoints are present
     assert "/api/v1/agents/initAgent" in paths
-    assert "/api/v1/agents/{agent_id}" in paths
+    assert "/api/v1/agents/{agent_name}" in paths
 
 
 def test_init_agent_creates_and_gets_agent(client: TestClient) -> None:
@@ -65,15 +67,57 @@ def test_init_agent_creates_and_gets_agent(client: TestClient) -> None:
     assert body["created"] is True
     assert body["controls"] == []
 
-    agent_id = payload["agent"]["agent_id"]
+    agent_name = payload["agent"]["agent_name"]
     # When: retrieving the agent by id
-    resp2 = client.get(f"/api/v1/agents/{agent_id}")
+    resp2 = client.get(f"/api/v1/agents/{agent_name}")
     assert resp2.status_code == 200
     data = resp2.json()
     # Then: stored agent fields match the request
-    assert data["agent"]["agent_id"] == agent_id
     assert data["agent"]["agent_name"] == payload["agent"]["agent_name"]
     assert {s["name"] for s in data["steps"]} == {payload["steps"][0]["name"]}
+
+
+def test_agent_endpoints_normalize_mixed_case_agent_name(client: TestClient) -> None:
+    # Given: an agent registered with mixed-case identifier
+    mixed_case_name = "Agent-PathNorm01"
+    payload = {
+        "agent": {
+            "agent_name": mixed_case_name,
+            "agent_description": "desc",
+            "agent_version": "1.0",
+        },
+        "steps": [],
+    }
+    init_resp = client.post("/api/v1/agents/initAgent", json=payload)
+    assert init_resp.status_code == 200
+
+    # When: hitting path-based agent endpoints using mixed-case path params
+    get_resp = client.get(f"/api/v1/agents/{mixed_case_name}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["agent"]["agent_name"] == mixed_case_name.lower()
+
+    policy_id = _create_policy(client)
+    set_policy_resp = client.post(f"/api/v1/agents/{mixed_case_name}/policy/{policy_id}")
+    assert set_policy_resp.status_code == 200
+
+    get_policy_resp = client.get(f"/api/v1/agents/{mixed_case_name}/policy")
+    assert get_policy_resp.status_code == 200
+    assert get_policy_resp.json()["policy_id"] == policy_id
+
+    controls_resp = client.get(f"/api/v1/agents/{mixed_case_name}/controls")
+    assert controls_resp.status_code == 200
+
+    evaluators_resp = client.get(f"/api/v1/agents/{mixed_case_name}/evaluators")
+    assert evaluators_resp.status_code == 200
+
+    patch_resp = client.patch(
+        f"/api/v1/agents/{mixed_case_name}",
+        json={"remove_steps": [], "remove_evaluators": []},
+    )
+    assert patch_resp.status_code == 200
+
+    delete_policy_resp = client.delete(f"/api/v1/agents/{mixed_case_name}/policy")
+    assert delete_policy_resp.status_code == 200
 
 
 def test_init_agent_idempotent_same_steps(client: TestClient) -> None:
@@ -100,11 +144,10 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
     Then: The new metadata is persisted
     """
     # Given: create initial agent
-    agent_id = str(uuid.uuid4())
+    agent_name = "metadatatestagent"
     initial_payload = {
         "agent": {
-            "agent_id": agent_id,
-            "agent_name": "MetadataTestAgent",
+            "agent_name": agent_name,
             "agent_description": "Original description",
             "agent_version": "1.0.0",
             "agent_metadata": {"env": "dev"},
@@ -118,8 +161,7 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
     # When: re-init with updated metadata
     updated_payload = {
         "agent": {
-            "agent_id": agent_id,
-            "agent_name": "MetadataTestAgent",
+            "agent_name": agent_name,
             "agent_description": "Updated description",
             "agent_version": "2.0.0",
             "agent_metadata": {"env": "prod", "new_field": "value"},
@@ -131,7 +173,7 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
     assert r2.json()["created"] is False
 
     # Then: verify metadata is updated
-    get_resp = client.get(f"/api/v1/agents/{agent_id}")
+    get_resp = client.get(f"/api/v1/agents/{agent_name}")
     assert get_resp.status_code == 200
     agent_data = get_resp.json()["agent"]
     assert agent_data["agent_description"] == "Updated description"
@@ -429,12 +471,11 @@ def test_list_agent_controls_agent_not_found_404(client: TestClient) -> None:
     assert r.status_code == 404
 
 
-def test_init_agent_rejects_non_uuid_agent_id(client: TestClient) -> None:
-    # Given: a payload with an invalid (non-UUID) agent_id
+def test_init_agent_rejects_invalid_agent_name(client: TestClient) -> None:
+    # Given: a payload with an invalid agent_name
     payload = {
         "agent": {
-            "agent_id": "not-a-valid-uuid",
-            "agent_name": "Test Agent",
+            "agent_name": "short",
             "agent_description": "desc",
             "agent_version": "1.0",
         },
@@ -469,16 +510,14 @@ def test_list_agents_empty(client: TestClient) -> None:
 def test_list_agents_returns_created_agents(client: TestClient) -> None:
     """Test listing agents returns created agents with correct summaries."""
     # Given: two agents with different steps/evaluators
-    agent1_id = str(uuid.uuid4())
-    payload1 = make_agent_payload(agent_id=agent1_id, name="Agent One")
+    payload1 = make_agent_payload(name="agent-one-01")
     payload1["evaluators"] = [
         {"name": "eval-1", "description": "Test", "config_schema": {}},
     ]
     r1 = client.post("/api/v1/agents/initAgent", json=payload1)
     assert r1.status_code == 200
 
-    agent2_id = str(uuid.uuid4())
-    payload2 = make_agent_payload(agent_id=agent2_id, name="Agent Two")
+    payload2 = make_agent_payload(name="agent-two-02")
     payload2["steps"] = [
         {"type": "tool", "name": "tool_x", "input_schema": {}, "output_schema": {}},
         {"type": "tool", "name": "tool_y", "input_schema": {}, "output_schema": {}},
@@ -495,18 +534,18 @@ def test_list_agents_returns_created_agents(client: TestClient) -> None:
     assert len(body["agents"]) == 2
 
     # Verify agent summaries contain correct data
-    agent_map = {a["agent_id"]: a for a in body["agents"]}
+    agent_map = {a["agent_name"]: a for a in body["agents"]}
 
-    assert agent1_id in agent_map
-    agent1 = agent_map[agent1_id]
-    assert agent1["agent_name"] == "Agent One"
+    assert "agent-one-01" in agent_map
+    agent1 = agent_map["agent-one-01"]
+    assert agent1["agent_name"] == "agent-one-01"
     assert agent1["step_count"] == 1  # from make_agent_payload
     assert agent1["evaluator_count"] == 1
     assert agent1["policy_id"] is None
 
-    assert agent2_id in agent_map
-    agent2 = agent_map[agent2_id]
-    assert agent2["agent_name"] == "Agent Two"
+    assert "agent-two-02" in agent_map
+    agent2 = agent_map["agent-two-02"]
+    assert agent2["agent_name"] == "agent-two-02"
     assert agent2["step_count"] == 2
     assert agent2["evaluator_count"] == 0
     assert agent2["policy_id"] is None
@@ -573,6 +612,31 @@ def test_list_agents_pagination(client: TestClient) -> None:
     assert len(body3["agents"]) == 1
     assert body3["pagination"]["has_more"] is False
     assert body3["pagination"]["next_cursor"] is None
+
+
+def test_list_agents_accepts_mixed_case_cursor(client: TestClient) -> None:
+    # Given: three agents to paginate
+    for i in range(3):
+        payload = make_agent_payload(name=f"agent-cursor-{i:02d}")
+        resp = client.post("/api/v1/agents/initAgent", json=payload)
+        assert resp.status_code == 200
+
+    first_page = client.get("/api/v1/agents?limit=1")
+    assert first_page.status_code == 200
+    first_body = first_page.json()
+    assert first_body["pagination"]["has_more"] is True
+    assert first_body["pagination"]["next_cursor"] is not None
+
+    mixed_case_cursor = str(first_body["pagination"]["next_cursor"]).upper()
+
+    # When: requesting second page with mixed-case cursor
+    second_page = client.get(f"/api/v1/agents?limit=1&cursor={mixed_case_cursor}")
+    assert second_page.status_code == 200
+    second_body = second_page.json()
+
+    # Then: cursor is normalized and pagination advances
+    assert len(second_body["agents"]) == 1
+    assert second_body["agents"][0]["agent_name"] != first_body["agents"][0]["agent_name"]
 
 
 def test_list_agents_limit_clamping(client: TestClient) -> None:
