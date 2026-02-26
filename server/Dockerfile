@@ -17,8 +17,9 @@ ENV UV_LINK_MODE=copy
 # Copy workspace definition
 COPY pyproject.toml uv.lock* ./
 
-# Copy alembic configuration from server directory
+# Copy alembic configuration and migrations from server directory
 COPY server/alembic.ini ./
+COPY server/alembic/ alembic/
 
 # Copy shared dependencies (Workspaces)
 COPY models/ models/

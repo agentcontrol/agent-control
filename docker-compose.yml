@@ -39,7 +39,8 @@ services:
       - "8000:8000"
     environment:
       # Database connection (uses Docker service name 'postgres')
-      DATABASE_URL: postgresql://agent_control:agent_control@postgres:5432/agent_control
+      # Use postgresql+asyncpg:// to specify the async driver (psycopg2 is not installed)
+      DATABASE_URL: postgresql+asyncpg://agent_control:agent_control@postgres:5432/agent_control
       # Server configuration
       HOST: 0.0.0.0
       PORT: 8000
