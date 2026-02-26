@@ -78,6 +78,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log_level = "DEBUG" if settings.debug else "INFO"
     configure_logging(level=log_level)
 
+    # Run database migrations automatically
+    try:
+        from alembic import command
+        from alembic.config import Config
+        import os
+        from pathlib import Path
+
+        # Find alembic.ini (in server directory or parent)
+        current_dir = Path(__file__).parent
+        alembic_ini = current_dir.parent.parent / "alembic.ini"
+
+        if alembic_ini.exists():
+            logger.info("Running database migrations...")
+            alembic_cfg = Config(str(alembic_ini))
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Database migrations complete")
+        else:
+            logger.warning(f"alembic.ini not found at {alembic_ini}, skipping migrations")
+    except Exception as e:
+        logger.error(f"Failed to run migrations: {e}", exc_info=True)
+        logger.warning("Continuing without migrations - database may not be initialized")
+
     # Discover evaluators at startup
     discover_evaluators()
     available = list(list_evaluators().keys())
