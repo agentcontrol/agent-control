@@ -131,7 +131,7 @@ def create_safe_tools(db, llm, *, use_local_controls: bool, local_controls: list
                 async with AgentControlClient() as client:
                     result = await check_evaluation_with_local(
                         client=client,
-                        agent_uuid=agent.agent_id,
+                        agent_name=agent.agent_name,
                         step=step,
                         stage="pre",
                         controls=local_controls,
@@ -210,8 +210,7 @@ async def main():
     print("Initializing SQL Agent...")
 
     agent_control.init(
-        agent_name=AGENT_NAME,
-        agent_id=AGENT_ID,
+        agent_name=AGENT_ID,
         agent_description=AGENT_DESCRIPTION,
         server_url=os.getenv("AGENT_CONTROL_URL"),
     )

@@ -53,8 +53,10 @@ agent-control-server
 Create a `.env` file in the server directory:
 
 ```env
-# Database
-DB_URL=postgresql+psycopg://user:password@localhost/agent_control
+# Database (use DATABASE_URL for Docker, DB_URL for local dev)
+DATABASE_URL=postgresql+psycopg://user:password@localhost/agent_control
+# Or use DB_URL (legacy):
+# DB_URL=postgresql+psycopg://user:password@localhost/agent_control
 # Or for development:
 # DB_URL=sqlite+aiosqlite:///./agent_control.db
 
@@ -159,10 +161,10 @@ POST /api/v1/agents/init
 Body: { "agent": {...}, "tools": [...], "force_replace": false }
 
 # Get agent
-GET /api/v1/agents/{agent_id}
+GET /api/v1/agents/{agent_name}
 
 # List controls for agent (based on assigned policy)
-GET /api/v1/agents/{agent_id}/controls
+GET /api/v1/agents/{agent_name}/controls
 ```
 
 ### Control Management
@@ -197,7 +199,7 @@ Body: { "name": "my-policy", "description": "..." }
 GET /api/v1/policies
 
 # Assign policy to agent
-POST /api/v1/policies/{policy_id}/agents/{agent_id}
+POST /api/v1/policies/{policy_id}/agents/{agent_name}
 
 # Add control to policy
 POST /api/v1/policies/{policy_id}/controls/{control_id}
@@ -209,7 +211,7 @@ POST /api/v1/policies/{policy_id}/controls/{control_id}
 # Evaluate step against controls
 POST /api/v1/evaluation
 Body: {
-  "agent_uuid": "uuid",
+  "agent_name": "uuid",
   "step": { "type": "llm", "name": "chat", "input": "..." },
   "stage": "pre"
 }
@@ -231,13 +233,13 @@ Body: { "events": [...] }
 
 # Query events
 POST /api/v1/observability/events/query
-Body: { "agent_uuid": "...", "start_time": "...", ... }
+Body: { "agent_name": "...", "start_time": "...", ... }
 
 # Get agent stats
-GET /api/v1/observability/stats?agent_uuid=...&time_range=5m
+GET /api/v1/observability/stats?agent_name=...&time_range=5m
 
 # Get control stats
-GET /api/v1/observability/stats/controls/{control_id}?agent_uuid=...&time_range=5m
+GET /api/v1/observability/stats/controls/{control_id}?agent_name=...&time_range=5m
 ```
 
 See [docs/REFERENCE.md](../docs/REFERENCE.md) for complete API documentation.
@@ -308,7 +310,7 @@ docker build -f server/Dockerfile -t agent-control-server .
 
 # Run container
 docker run -p 8000:8000 \
-  -e DB_URL=postgresql://... \
+  -e DATABASE_URL=postgresql+asyncpg://user:password@host:5432/agent_control \
   -e AGENT_CONTROL_API_KEY_ENABLED=true \
   -e AGENT_CONTROL_API_KEYS=your-key-here \
   agent-control-server

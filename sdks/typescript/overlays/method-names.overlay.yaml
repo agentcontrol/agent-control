@@ -15,42 +15,42 @@ actions:
       x-speakeasy-group: agents
       x-speakeasy-name-override: init
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}"]["get"]
+  - target: $["paths"]["/api/v1/agents/{agent_name}"]["get"]
     update:
       x-speakeasy-group: agents
       x-speakeasy-name-override: get
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}"]["patch"]
+  - target: $["paths"]["/api/v1/agents/{agent_name}"]["patch"]
     update:
       x-speakeasy-group: agents
       x-speakeasy-name-override: update
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}/controls"]["get"]
+  - target: $["paths"]["/api/v1/agents/{agent_name}/controls"]["get"]
     update:
       x-speakeasy-group: agents
       x-speakeasy-name-override: listControls
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}/evaluators"]["get"]
+  - target: $["paths"]["/api/v1/agents/{agent_name}/evaluators"]["get"]
     update:
       x-speakeasy-group: agents
       x-speakeasy-name-override: listEvaluators
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}/evaluators/{evaluator_name}"]["get"]
+  - target: $["paths"]["/api/v1/agents/{agent_name}/evaluators/{evaluator_name}"]["get"]
     update:
       x-speakeasy-group: agents
       x-speakeasy-name-override: getEvaluator
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}/policy"]["get"]
+  - target: $["paths"]["/api/v1/agents/{agent_name}/policy"]["get"]
     update:
       x-speakeasy-group: agents
       x-speakeasy-name-override: getPolicy
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}/policy"]["delete"]
+  - target: $["paths"]["/api/v1/agents/{agent_name}/policy"]["delete"]
     update:
       x-speakeasy-group: agents
       x-speakeasy-name-override: deletePolicy
 
-  - target: $["paths"]["/api/v1/agents/{agent_id}/policy/{policy_id}"]["post"]
+  - target: $["paths"]["/api/v1/agents/{agent_name}/policy/{policy_id}"]["post"]
     update:
       x-speakeasy-group: agents
       x-speakeasy-name-override: updatePolicy

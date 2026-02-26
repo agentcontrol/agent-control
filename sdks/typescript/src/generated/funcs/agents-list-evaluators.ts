@@ -38,7 +38,7 @@ import { Result } from "../types/fp.js";
  * - UI to display available config options
  *
  * Args:
- *     agent_id: UUID of the agent
+ *     agent_name: Agent identifier
  *     cursor: Optional cursor for pagination (name of last evaluator from previous page)
  *     limit: Pagination limit (default 20, max 100)
  *     db: Database session (injected)
@@ -51,7 +51,8 @@ import { Result } from "../types/fp.js";
  */
 export function agentsListEvaluators(
   client: AgentControlSDKCore,
-  request: operations.ListAgentEvaluatorsApiV1AgentsAgentIdEvaluatorsGetRequest,
+  request:
+    operations.ListAgentEvaluatorsApiV1AgentsAgentNameEvaluatorsGetRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -76,7 +77,8 @@ export function agentsListEvaluators(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.ListAgentEvaluatorsApiV1AgentsAgentIdEvaluatorsGetRequest,
+  request:
+    operations.ListAgentEvaluatorsApiV1AgentsAgentNameEvaluatorsGetRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -100,7 +102,7 @@ async function $do(
     (value) =>
       z.parse(
         operations
-          .ListAgentEvaluatorsApiV1AgentsAgentIdEvaluatorsGetRequest$outboundSchema,
+          .ListAgentEvaluatorsApiV1AgentsAgentNameEvaluatorsGetRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -112,13 +114,13 @@ async function $do(
   const body = null;
 
   const pathParams = {
-    agent_id: encodeSimple("agent_id", payload.agent_id, {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
       explode: false,
       charEncoding: "percent",
     }),
   };
 
-  const path = pathToFunc("/api/v1/agents/{agent_id}/evaluators")(pathParams);
+  const path = pathToFunc("/api/v1/agents/{agent_name}/evaluators")(pathParams);
 
   const query = encodeFormQuery({
     "cursor": payload.cursor,
@@ -137,7 +139,7 @@ async function $do(
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
     operationID:
-      "list_agent_evaluators_api_v1_agents__agent_id__evaluators_get",
+      "list_agent_evaluators_api_v1_agents__agent_name__evaluators_get",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,

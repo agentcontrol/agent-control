@@ -7,9 +7,9 @@ from agent_control_models import ControlScope as ModelControlScope
 from agent_control_models import EvaluatorResult as ModelEvaluatorResult
 
 
-def test_init_rejects_invalid_uuid() -> None:
-    with pytest.raises(ValueError, match="agent_id must be a valid UUID"):
-        agent_control.init(agent_name="Invalid UUID Agent", agent_id="not-a-uuid")
+def test_init_rejects_invalid_agent_name() -> None:
+    with pytest.raises(ValueError, match="at least 10 characters"):
+        agent_control.init(agent_name="short")
 
 
 def test_init_rejects_negative_policy_refresh_interval() -> None:

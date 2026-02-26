@@ -141,22 +141,22 @@ async def evaluate(
 
     # Fetch agent to get the name
     agent_result = await db.execute(
-        select(Agent).where(Agent.agent_uuid == request.agent_uuid)
+        select(Agent).where(Agent.name == request.agent_name)
     )
     agent = agent_result.scalar_one_or_none()
     if agent is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent '{request.agent_uuid}' not found",
+            detail=f"Agent '{request.agent_name}' not found",
             resource="Agent",
-            resource_id=str(request.agent_uuid),
+            resource_id=request.agent_name,
             hint="Register the agent via initAgent before evaluating.",
         )
     agent_name = agent.name
 
     # Fetch controls for the agent (already validated as ControlDefinition)
     api_controls = await list_controls_for_agent(
-        request.agent_uuid,
+        request.agent_name,
         db,
         allow_invalid_step_name_regex=True,
     )
@@ -244,7 +244,6 @@ async def _emit_observability_events(
                     control_execution_id=match.control_execution_id,
                     trace_id=trace_id,
                     span_id=span_id,
-                    agent_uuid=request.agent_uuid,
                     agent_name=agent_name,
                     control_id=match.control_id,
                     control_name=match.control_name,
@@ -270,7 +269,6 @@ async def _emit_observability_events(
                     control_execution_id=error.control_execution_id,
                     trace_id=trace_id,
                     span_id=span_id,
-                    agent_uuid=request.agent_uuid,
                     agent_name=agent_name,
                     control_id=error.control_id,
                     control_name=error.control_name,
@@ -296,7 +294,6 @@ async def _emit_observability_events(
                     control_execution_id=non_match.control_execution_id,
                     trace_id=trace_id,
                     span_id=span_id,
-                    agent_uuid=request.agent_uuid,
                     agent_name=agent_name,
                     control_id=non_match.control_id,
                     control_name=non_match.control_name,

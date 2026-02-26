@@ -317,10 +317,10 @@ async def test_my_new_workflow(
     - Feature Y returns expected data
     """
     # Arrange
-    agent_id = test_agent["agent_id"]
+    agent_name = test_agent["agent_name"]
     
     # Act
-    result = await agent_control.my_module.my_operation(client, agent_id)
+    result = await agent_control.my_module.my_operation(client, agent_name)
     
     # Assert
     assert result["success"] is True

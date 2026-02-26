@@ -34,18 +34,18 @@ function getStoredTimeRange(): TimeRange {
  * Uses the stored time range preference from localStorage.
  */
 export function useHasMonitorData(
-  agentUuid: string,
+  agentName: string,
   options?: {
     enabled?: boolean;
   }
 ) {
   return useQuery({
-    queryKey: ['has-monitor-data', agentUuid],
+    queryKey: ['has-monitor-data', agentName],
     queryFn: async () => {
       const timeRange = getStoredTimeRange();
 
       const { data, error } = await api.observability.getStats({
-        agent_uuid: agentUuid,
+        agent_name: agentName,
         time_range: timeRange,
         include_timeseries: false, // Don't need timeseries, just totals
       });
@@ -61,7 +61,7 @@ export function useHasMonitorData(
 
       return hasData;
     },
-    enabled: options?.enabled !== false && !!agentUuid,
+    enabled: options?.enabled !== false && !!agentName,
     staleTime: 30000, // Consider data fresh for 30 seconds
     refetchOnWindowFocus: false, // Don't refetch on window focus
   });

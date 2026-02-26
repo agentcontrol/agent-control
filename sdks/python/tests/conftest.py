@@ -101,8 +101,8 @@ def unique_name() -> str:
 
 @pytest.fixture
 def test_agent_id() -> str:
-    """Generate a unique agent ID for testing."""
-    return str(uuid.uuid4())
+    """Generate a unique agent name for testing."""
+    return f"agent-{uuid.uuid4().hex[:12]}"
 
 
 @pytest_asyncio.fixture
@@ -121,12 +121,8 @@ async def test_agent(
 
     from agent_control_models import Agent
 
-    # Generate a proper UUID4 for the agent
-    agent_uuid = uuid.uuid4()
-
     agent = Agent(
-        agent_id=agent_uuid,
-        agent_name=f"Test Agent {test_agent_id}",
+        agent_name=test_agent_id,
         agent_description="Integration test agent",
         agent_created_at=datetime.now(UTC).isoformat(),
         agent_updated_at=None,
@@ -150,7 +146,8 @@ async def test_agent(
 
     yield {
         "agent": agent,
-        "agent_id": str(agent_uuid),
+        "agent_name": test_agent_id,
+        "agent_name": test_agent_id,
         "response": response
     }
 

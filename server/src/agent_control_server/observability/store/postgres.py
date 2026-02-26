@@ -12,7 +12,6 @@ Performance characteristics:
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
 
 from agent_control_models.observability import (
     ControlExecutionEvent,
@@ -84,7 +83,7 @@ class PostgresEventStore(EventStore):
     """PostgreSQL-based event store with JSONB storage and query-time aggregation.
 
     This implementation stores raw events with:
-    - Indexed columns (control_execution_id, timestamp, agent_uuid) for efficient filtering
+    - Indexed columns (control_execution_id, timestamp, agent_name) for efficient filtering
     - JSONB 'data' column containing the full event for flexible querying
 
     Stats are computed at query time from raw events, which is fast enough
@@ -109,7 +108,7 @@ class PostgresEventStore(EventStore):
         The simplified schema stores only 4 columns:
         - control_execution_id (PK)
         - timestamp (indexed)
-        - agent_uuid (indexed)
+        - agent_name (indexed)
         - data (JSONB containing full event)
 
         Args:
@@ -130,7 +129,7 @@ class PostgresEventStore(EventStore):
             values.append({
                 "control_execution_id": event.control_execution_id,
                 "timestamp": event.timestamp,
-                "agent_uuid": event.agent_uuid,
+                "agent_name": event.agent_name,
                 "data": json.dumps(event_data),
             })
 
@@ -139,9 +138,9 @@ class PostgresEventStore(EventStore):
             await session.execute(
                 text("""
                     INSERT INTO control_execution_events (
-                        control_execution_id, timestamp, agent_uuid, data
+                        control_execution_id, timestamp, agent_name, data
                     ) VALUES (
-                        :control_execution_id, :timestamp, :agent_uuid,
+                        :control_execution_id, :timestamp, :agent_name,
                         CAST(:data AS JSONB)
                     )
                     ON CONFLICT (control_execution_id) DO NOTHING
@@ -155,7 +154,7 @@ class PostgresEventStore(EventStore):
 
     async def query_stats(
         self,
-        agent_uuid: UUID,
+        agent_name: str,
         time_range: timedelta,
         control_id: int | None = None,
         include_timeseries: bool = False,
@@ -170,7 +169,7 @@ class PostgresEventStore(EventStore):
         and LEFT JOINs with aggregated data to include empty buckets.
 
         Args:
-            agent_uuid: UUID of the agent to query stats for
+            agent_name: identifier of the agent to query stats for
             time_range: Time range to aggregate over (from now)
             control_id: Optional control ID to filter by
             include_timeseries: Whether to include time-series data
@@ -183,7 +182,7 @@ class PostgresEventStore(EventStore):
         cutoff = now - time_range
 
         params: dict = {
-            "agent_uuid": agent_uuid,
+            "agent_name": agent_name,
             "cutoff": cutoff,
         }
 
@@ -204,7 +203,7 @@ class PostgresEventStore(EventStore):
                 WITH filtered_events AS (
                     SELECT timestamp, data
                     FROM control_execution_events
-                    WHERE agent_uuid = :agent_uuid
+                    WHERE agent_name = :agent_name
                       AND timestamp >= :cutoff
                       {control_filter}
                 ),
@@ -274,7 +273,7 @@ class PostgresEventStore(EventStore):
                     NULL::timestamptz as bucket,
                     {SQL_STATS_AGGREGATIONS}
                 FROM control_execution_events
-                WHERE agent_uuid = :agent_uuid
+                WHERE agent_name = :agent_name
                   AND timestamp >= :cutoff
                   {control_filter}
                 GROUP BY data->>'control_id', data->>'control_name'
@@ -384,11 +383,11 @@ class PostgresEventStore(EventStore):
     async def query_events(self, query: EventQueryRequest) -> EventQueryResponse:
         """Query raw events with filters and pagination.
 
-        Supports filtering by trace_id, span_id, agent_uuid, control_ids,
+        Supports filtering by trace_id, span_id, agent_name, control_ids,
         actions, matched status, time range, and pagination.
 
         Filters use JSONB operators for fields stored in the 'data' column,
-        except for indexed columns (control_execution_id, timestamp, agent_uuid).
+        except for indexed columns (control_execution_id, timestamp, agent_name).
 
         Args:
             query: Query parameters (filters, pagination)
@@ -405,9 +404,9 @@ class PostgresEventStore(EventStore):
             where_clauses.append("control_execution_id = :control_execution_id")
             params["control_execution_id"] = query.control_execution_id
 
-        if query.agent_uuid:
-            where_clauses.append("agent_uuid = :agent_uuid")
-            params["agent_uuid"] = query.agent_uuid
+        if query.agent_name:
+            where_clauses.append("agent_name = :agent_name")
+            params["agent_name"] = query.agent_name
 
         if query.start_time:
             where_clauses.append("timestamp >= :start_time")

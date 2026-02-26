@@ -23,12 +23,12 @@ def test_list_evaluator_denylist_behavior(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="DenyListAgent")
+    agent_name, control_name = create_and_assign_policy(client, control_data, agent_name="DenyListAgent")
 
     # Case 1: Safe Value
     # When: Sending a tool step with a safe command "ls"
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="shell", input={"cmd": "ls"}, output=None),
         stage="pre"
     )
@@ -40,7 +40,7 @@ def test_list_evaluator_denylist_behavior(client: TestClient):
     # Case 2: Unsafe Value
     # When: Sending a tool step with a forbidden command "rm"
     req_unsafe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="shell", input={"cmd": "rm"}, output=None),
         stage="pre"
     )
@@ -71,12 +71,12 @@ def test_list_evaluator_allowlist_behavior(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="AllowListAgent")
+    agent_name, control_name = create_and_assign_policy(client, control_data, agent_name="AllowListAgent")
 
     # Case 1: Allowed Value
     # When: Sending a tool step with the allowed tool "safe_tool"
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="safe_tool", input={}, output=None),
         stage="pre"
     )
@@ -88,7 +88,7 @@ def test_list_evaluator_allowlist_behavior(client: TestClient):
     # Case 2: Disallowed Value
     # When: Sending a tool step with a tool NOT in the list ("unknown_tool")
     req_unsafe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="unknown_tool", input={}, output=None),
         stage="pre"
     )
@@ -118,11 +118,11 @@ def test_list_evaluator_case_insensitive(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="CaseAgent")
+    agent_name, control_name = create_and_assign_policy(client, control_data, agent_name="CaseAgent")
 
     # When: Sending input "blockme" (lowercase)
     req = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="llm", name="test-step", input="blockme", output=None),
         stage="pre"
     )
@@ -151,12 +151,12 @@ def test_list_evaluator_list_input_any_match(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="TagAgent")
+    agent_name, _ = create_and_assign_policy(client, control_data, agent_name="TagAgent")
 
     # Case 1: List containing restricted item
     # When: Sending tags ["public", "restricted"]
     req_unsafe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="update", input={"tags": ["public", "restricted"]}, output=None),
         stage="pre"
     )
@@ -168,7 +168,7 @@ def test_list_evaluator_list_input_any_match(client: TestClient):
     # Case 2: List containing only safe items
     # When: Sending tags ["public", "internal"]
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="update", input={"tags": ["public", "internal"]}, output=None),
         stage="pre"
     )
@@ -198,12 +198,12 @@ def test_list_evaluator_list_input_all_match(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data, agent_name="SafeTagAgent")
+    agent_name, _ = create_and_assign_policy(client, control_data, agent_name="SafeTagAgent")
 
     # Case 1: All items match
     # When: Sending only safe tags
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="update", input={"tags": ["safe_tag", "audit_approved"]}, output=None),
         stage="pre"
     )
@@ -215,7 +215,7 @@ def test_list_evaluator_list_input_all_match(client: TestClient):
     # Case 2: Mixed items (one unsafe)
     # When: Sending tags with one risky item
     req_unsafe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="update", input={"tags": ["safe_tag", "risky"]}, output=None),
         stage="pre"
     )
@@ -244,12 +244,12 @@ def test_list_evaluator_disallow_name(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="NoDangerousTools")
+    agent_name, control_name = create_and_assign_policy(client, control_data, agent_name="NoDangerousTools")
 
     # Case 1: Allowed Tool
     # When: Calling a safe tool
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="get_user", input={"id": "123"}, output=None),
         stage="pre"
     )
@@ -260,7 +260,7 @@ def test_list_evaluator_disallow_name(client: TestClient):
     # Case 2: Disallowed Tool
     # When: Calling a dangerous tool
     req_unsafe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="delete_user", input={"id": "123"}, output=None),
         stage="pre"
     )
@@ -289,12 +289,12 @@ def test_list_evaluator_allow_only_argument_values(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data, agent_name="RegionPolicy")
+    agent_name, control_name = create_and_assign_policy(client, control_data, agent_name="RegionPolicy")
 
     # Case 1: Allowed Value
     # When: Using an allowed region
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="deploy", input={"region": "us-east-1"}, output=None),
         stage="pre"
     )
@@ -305,7 +305,7 @@ def test_list_evaluator_allow_only_argument_values(client: TestClient):
     # Case 2: Disallowed Value
     # When: Using a disallowed region
     req_unsafe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="deploy", input={"region": "eu-central-1"}, output=None),
         stage="pre"
     )
@@ -335,11 +335,11 @@ def test_list_evaluator_edge_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_empty, agent_name="EmptyControlAgent")
+    agent_name, _ = create_and_assign_policy(client, control_empty, agent_name="EmptyControlAgent")
 
     # When: Calling any tool
     req = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="something", input={}, output=None),
         stage="pre"
     )
@@ -365,11 +365,11 @@ def test_list_evaluator_edge_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_types, agent_name="TypeAgent")
+    agent_name, control_name = create_and_assign_policy(client, control_types, agent_name="TypeAgent")
 
     # When: Input is integer 10
     req_int = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="count", input={"count": 10}, output=None),
         stage="pre"
     )
@@ -379,7 +379,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
 
     # When: Input is string "20"
     req_str = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="count", input={"count": "20"}, output=None),
         stage="pre"
     )
@@ -405,11 +405,11 @@ def test_list_evaluator_edge_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_special, agent_name="SpecialCharAgent")
+    agent_name, control_name = create_and_assign_policy(client, control_special, agent_name="SpecialCharAgent")
 
     # When: Input exactly matches "(test)"
     req_special = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="search", input={"query": "(test)"}, output=None),
         stage="pre"
     )
@@ -419,7 +419,7 @@ def test_list_evaluator_edge_cases(client: TestClient):
 
     # When: Input is "test" (without parens)
     req_normal = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="search", input={"query": "test"}, output=None),
         stage="pre"
     )
@@ -446,11 +446,11 @@ def test_list_evaluator_edge_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_null, agent_name="NullAgent")
+    agent_name, _ = create_and_assign_policy(client, control_null, agent_name="NullAgent")
 
     # When: Selector returns None
     req_null = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="check", input={}, output=None),
         stage="pre"
     )
@@ -482,11 +482,11 @@ def test_list_evaluator_re2_corner_cases(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_large, agent_name="LargeListAgent")
+    agent_name, _ = create_and_assign_policy(client, control_large, agent_name="LargeListAgent")
 
     # When: Matching the last item
     req = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="check", input={"item": "target_value"}, output=None),
         stage="pre"
     )
@@ -514,11 +514,11 @@ def test_list_evaluator_newline_strictness(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_strict, agent_name="StrictAgent")
+    agent_name, _ = create_and_assign_policy(client, control_strict, agent_name="StrictAgent")
 
     # When: Sending "exact\n" (trailing newline)
     req_newline = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="check", input={"val": "exact\n"}, output=None),
         stage="pre"
     )

@@ -1,5 +1,4 @@
 from typing import Any
-from uuid import UUID
 
 from agent_control_engine import list_evaluators
 from agent_control_models.agent import Agent as APIAgent
@@ -46,6 +45,7 @@ from ..models import (
     Policy,
     policy_controls,
 )
+from ..services.agent_names import normalize_agent_name_or_422
 from ..services.controls import list_controls_for_agent, list_controls_for_policy
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
@@ -182,7 +182,7 @@ async def _build_overwrite_evaluator_removals(
 
     try:
         controls = await list_controls_for_agent(
-            agent.agent_uuid,
+            agent.name,
             db,
             allow_invalid_step_name_regex=True,
         )
@@ -239,11 +239,11 @@ async def list_agents(
     """
     List all registered agents with cursor-based pagination.
 
-    Returns a summary of each agent including ID, name, policy assignment,
+    Returns a summary of each agent including identifier, policy assignment,
     and counts of registered steps and evaluators.
 
     Args:
-        cursor: Optional cursor for pagination (UUID of last agent from previous page)
+        cursor: Optional cursor for pagination (last agent name from previous page)
         limit: Pagination limit (default 20, max 100)
         name: Optional name filter (case-insensitive partial match)
         db: Database session (injected)
@@ -265,8 +265,8 @@ async def list_agents(
     total = count_result.scalar() or 0
 
     # Build query with cursor-based pagination
-    # Order by created_at DESC, then by UUID DESC for stable ordering
-    query = select(Agent).order_by(Agent.created_at.desc(), Agent.agent_uuid.desc())
+    # Order by created_at DESC, then by name DESC for stable ordering
+    query = select(Agent).order_by(Agent.created_at.desc(), Agent.name.desc())
 
     # Apply name filter if provided
     if name_filter is not None:
@@ -274,25 +274,19 @@ async def list_agents(
 
     # If cursor provided, filter to get items after the cursor
     if cursor:
-        try:
-            cursor_uuid = UUID(cursor)
-            # Get the cursor agent to find its created_at timestamp
-            cursor_agent_result = await db.execute(
-                select(Agent).where(Agent.agent_uuid == cursor_uuid)
-            )
-            cursor_agent = cursor_agent_result.scalars().first()
-            if cursor_agent:
-                # Get agents created before this one (or same timestamp but smaller UUID)
-                query = query.where(
-                    (Agent.created_at < cursor_agent.created_at)
-                    | (
-                        (Agent.created_at == cursor_agent.created_at)
-                        & (Agent.agent_uuid < cursor_agent.agent_uuid)
-                    )
+        cursor_name = normalize_agent_name_or_422(cursor, field_name="cursor")
+        cursor_agent_result = await db.execute(
+            select(Agent).where(Agent.name == cursor_name)
+        )
+        cursor_agent = cursor_agent_result.scalars().first()
+        if cursor_agent:
+            query = query.where(
+                (Agent.created_at < cursor_agent.created_at)
+                | (
+                    (Agent.created_at == cursor_agent.created_at)
+                    & (Agent.name < cursor_agent.name)
                 )
-        except ValueError:
-            # Invalid cursor UUID, ignore it and return first page
-            pass
+            )
 
     # Fetch limit + 1 to check if there are more pages
     query = query.limit(limit + 1)
@@ -304,28 +298,28 @@ async def list_agents(
     if has_more:
         agents = agents[:-1]  # Remove the extra item
 
-    # Determine next cursor (UUID of last agent in this page)
+    # Determine next cursor (name of last agent in this page)
     next_cursor: str | None = None
     if has_more and agents:
-        next_cursor = str(agents[-1].agent_uuid)
+        next_cursor = agents[-1].name
 
     # Batch query: Get control counts for all agents at once
     # Join: Agent -> Policy -> policy_controls (junction table) -> Control
     # Count distinct enabled control IDs per agent
     # Performance: Filter NULL controls explicitly to avoid JSONB parsing on NULL rows
     # This allows the query planner to optimize better
-    control_counts_map: dict[UUID, int] = {}
+    control_counts_map: dict[str, int] = {}
     if agents:
         control_counts_query = (
             select(
-                Agent.agent_uuid,
+                Agent.name,
                 func.count(func.distinct(policy_controls.c.control_id)).label("count"),
             )
             .outerjoin(Policy, Agent.policy_id == Policy.id)
             .outerjoin(policy_controls, Policy.id == policy_controls.c.policy_id)
             .outerjoin(Control, policy_controls.c.control_id == Control.id)
             .where(
-                Agent.agent_uuid.in_([agent.agent_uuid for agent in agents]),
+                Agent.name.in_([agent.name for agent in agents]),
                 # Only count enabled controls: Control must exist AND be enabled
                 # (enabled=true OR enabled key missing, default is True)
                 Control.id.is_not(None),  # Exclude NULL controls (agents without policies)
@@ -334,7 +328,7 @@ async def list_agents(
                     ~Control.data.has_key("enabled"),
                 ),
             )
-            .group_by(Agent.agent_uuid)
+            .group_by(Agent.name)
         )
         control_counts_result = await db.execute(control_counts_query)
         control_counts_map = {row[0]: row[1] for row in control_counts_result.all()}
@@ -355,11 +349,10 @@ async def list_agents(
             _logger.warning("Agent '%s' has invalid data, using zero counts", agent.name)
 
         # Get active controls count from batched query result
-        active_controls = control_counts_map.get(agent.agent_uuid, 0)
+        active_controls = control_counts_map.get(agent.name, 0)
 
         summaries.append(
             AgentSummary(
-                agent_id=str(agent.agent_uuid),
                 agent_name=agent.name,
                 policy_id=agent.policy_id,
                 created_at=agent.created_at.isoformat() if agent.created_at else None,
@@ -394,9 +387,7 @@ async def init_agent(
 
     This endpoint is idempotent:
     - If the agent name doesn't exist, creates a new agent
-    - If the agent name exists with the same UUID, updates registration data
-    - If the agent name exists with a different UUID, returns 409 Conflict
-    - If the UUID exists with a different name, returns 409 Conflict (no renames)
+    - If the agent name exists, updates registration data in place
 
     conflict_mode controls registration conflict handling:
     - strict (default): preserve compatibility checks and conflict errors
@@ -408,10 +399,6 @@ async def init_agent(
 
     Returns:
         InitAgentResponse with created flag and active controls (if policy assigned)
-
-    Raises:
-        HTTPException 409: Agent name exists with different UUID
-        HTTPException 500: Database error during creation/update
     """
     # Check for evaluator name collisions with built-in evaluators
     builtin_names = _get_builtin_evaluator_names()
@@ -457,42 +444,8 @@ async def init_agent(
             )
         incoming_steps_by_key[step_key] = step
 
-    # Look up by UUID first (primary key)
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == request.agent.agent_id))
-    existing_by_uuid: Agent | None = result.scalars().first()
-
-    # Perf optimization: If UUID exists, skip name query on hot path
-    if existing_by_uuid is not None:
-        # Validate name hasn't changed (no rename via initAgent)
-        if existing_by_uuid.name != request.agent.agent_name:
-            raise ConflictError(
-                error_code=ErrorCode.AGENT_NAME_CONFLICT,
-                detail=(
-                    f"Agent ID '{request.agent.agent_id}' is already registered "
-                    f"with name '{existing_by_uuid.name}'"
-                ),
-                resource="Agent",
-                resource_id=str(request.agent.agent_id),
-                hint="Use the existing agent name for this UUID or register a new UUID.",
-                errors=[
-                    ValidationErrorItem(
-                        resource="Agent",
-                        field="agent_name",
-                        code="name_mismatch",
-                        message=(
-                            f"Agent ID '{request.agent.agent_id}' is already associated "
-                            f"with name '{existing_by_uuid.name}'"
-                        ),
-                        value=request.agent.agent_name,
-                    )
-                ],
-            )
-        existing: Agent | None = existing_by_uuid
-    else:
-        # UUID doesn't exist, check if name is taken by different agent
-        result = await db.execute(select(Agent).where(Agent.name == request.agent.agent_name))
-        existing_by_name: Agent | None = result.scalars().first()
-        existing = existing_by_name
+    result = await db.execute(select(Agent).where(Agent.name == request.agent.agent_name))
+    existing: Agent | None = result.scalars().first()
 
     created = False
 
@@ -507,7 +460,6 @@ async def init_agent(
 
         new_agent = Agent(
             name=request.agent.agent_name,
-            agent_uuid=request.agent.agent_id,
             data=data_model.model_dump(mode="json"),
         )
         db.add(new_agent)
@@ -520,7 +472,7 @@ async def init_agent(
         except Exception:
             await db.rollback()
             _logger.error(
-                f"Failed to create agent '{request.agent.agent_name}' ({request.agent.agent_id})",
+                f"Failed to create agent '{request.agent.agent_name}' ({request.agent.agent_name})",
                 exc_info=True,
             )
             raise DatabaseError(
@@ -529,26 +481,6 @@ async def init_agent(
                 operation="create",
             )
         return InitAgentResponse(created=created, controls=[])
-
-    requested_uuid = request.agent.agent_id
-    if existing.agent_uuid != requested_uuid:
-        # UUID mismatch for the same name: return error
-        raise ConflictError(
-            error_code=ErrorCode.AGENT_UUID_CONFLICT,
-            detail=f"Agent name '{request.agent.agent_name}' already exists with different UUID",
-            resource="Agent",
-            resource_id=request.agent.agent_name,
-            hint="Use the existing agent's UUID or choose a different agent name.",
-            errors=[
-                ValidationErrorItem(
-                    resource="Agent",
-                    field="agent_id",
-                    code="uuid_mismatch",
-                    message=f"Agent '{request.agent.agent_name}' exists with a different UUID",
-                    value=str(requested_uuid),
-                )
-            ],
-        )
 
     # Parse existing data via AgentData Pydantic model
     try:
@@ -788,7 +720,7 @@ async def init_agent(
         except Exception:
             await db.rollback()
             _logger.error(
-                f"Failed to update agent '{request.agent.agent_name}' ({request.agent.agent_id})",
+                f"Failed to update agent '{request.agent.agent_name}' ({request.agent.agent_name})",
                 exc_info=True,
             )
             raise DatabaseError(
@@ -800,7 +732,7 @@ async def init_agent(
     # If the existing agent has a policy, include its controls; otherwise empty list
     controls = []
     if existing.policy_id is not None:
-        controls = await list_controls_for_agent(existing.agent_uuid, db)
+        controls = await list_controls_for_agent(existing.name, db)
 
     return InitAgentResponse(
         created=created,
@@ -811,19 +743,19 @@ async def init_agent(
 
 
 @router.get(
-    "/{agent_id}",
+    "/{agent_name}",
     response_model=GetAgentResponse,
     summary="Get agent details",
     response_description="Agent metadata and registered steps",
 )
-async def get_agent(agent_id: UUID, db: AsyncSession = Depends(get_async_db)) -> GetAgentResponse:
+async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -> GetAgentResponse:
     """
     Retrieve agent metadata and all registered steps.
 
     Returns the latest version of each step (deduplicated by type+name).
 
     Args:
-        agent_id: UUID of the agent
+        agent_name: Agent identifier
         db: Database session (injected)
 
     Returns:
@@ -833,22 +765,26 @@ async def get_agent(agent_id: UUID, db: AsyncSession = Depends(get_async_db)) ->
         HTTPException 404: Agent not found
         HTTPException 422: Agent data is corrupted
     """
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
+    agent_name = normalize_agent_name_or_422(agent_name)
+    result = await db.execute(select(Agent).where(Agent.name == agent_name))
     existing: Agent | None = result.scalars().first()
     if existing is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
+            detail=f"Agent with name '{agent_name}' not found",
             resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered via initAgent.",
+            resource_id=str(agent_name),
+            hint=(
+                "Verify the agent name is correct and the agent has been "
+                "registered via initAgent."
+            ),
         )
 
     try:
         data_model = AgentData.model_validate(existing.data)
     except ValidationError:
         _logger.error(
-            f"Failed to parse agent data for agent '{existing.name}' ({agent_id})",
+            f"Failed to parse agent data for agent '{existing.name}' ({agent_name})",
             exc_info=True,
         )
         raise APIValidationError(
@@ -867,7 +803,7 @@ async def get_agent(agent_id: UUID, db: AsyncSession = Depends(get_async_db)) ->
         agent_meta = APIAgent.model_validate(data_model.agent_metadata)
     except ValidationError:
         _logger.error(
-            f"Failed to parse agent metadata for agent '{existing.name}' ({agent_id})",
+            f"Failed to parse agent metadata for agent '{existing.name}' ({agent_name})",
             exc_info=True,
         )
         raise APIValidationError(
@@ -883,13 +819,13 @@ async def get_agent(agent_id: UUID, db: AsyncSession = Depends(get_async_db)) ->
 
 
 @router.post(
-    "/{agent_id}/policy/{policy_id}",
+    "/{agent_name}/policy/{policy_id}",
     response_model=SetPolicyResponse,
     summary="Assign policy to agent",
     response_description="Success status with previous policy ID",
 )
 async def set_agent_policy(
-    agent_id: UUID, policy_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str, policy_id: int, db: AsyncSession = Depends(get_async_db)
 ) -> SetPolicyResponse:
     """
     Assign a policy to an agent, replacing any existing policy assignment.
@@ -897,7 +833,7 @@ async def set_agent_policy(
     The agent will immediately inherit all controls from the assigned policy.
 
     Args:
-        agent_id: UUID of the agent
+        agent_name: Agent identifier
         policy_id: ID of the policy to assign
         db: Database session (injected)
 
@@ -908,16 +844,17 @@ async def set_agent_policy(
         HTTPException 404: Agent or policy not found
         HTTPException 500: Database error during assignment
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     # Find agent
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
+    result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
+            detail=f"Agent with name '{agent_name}' not found",
             resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
+            resource_id=str(agent_name),
+            hint="Verify the agent name is correct and the agent has been registered.",
         )
 
     # Find policy by id
@@ -962,7 +899,7 @@ async def set_agent_policy(
     except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to assign policy '{policy_id}' to agent '{agent.name}' ({agent_id})",
+            f"Failed to assign policy '{policy_id}' to agent '{agent.name}' ({agent_name})",
             exc_info=True,
         )
         raise DatabaseError(
@@ -975,19 +912,19 @@ async def set_agent_policy(
 
 
 @router.get(
-    "/{agent_id}/policy",
+    "/{agent_name}/policy",
     response_model=GetPolicyResponse,
     summary="Get agent's assigned policy",
     response_description="Policy ID",
 )
 async def get_agent_policy(
-    agent_id: UUID, db: AsyncSession = Depends(get_async_db)
+    agent_name: str, db: AsyncSession = Depends(get_async_db)
 ) -> GetPolicyResponse:
     """
     Retrieve the policy currently assigned to an agent.
 
     Args:
-        agent_id: UUID of the agent
+        agent_name: Agent identifier
         db: Database session (injected)
 
     Returns:
@@ -996,16 +933,17 @@ async def get_agent_policy(
     Raises:
         HTTPException 404: Agent not found or agent has no policy assigned
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     # Find agent
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
+    result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
+            detail=f"Agent with name '{agent_name}' not found",
             resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
+            resource_id=str(agent_name),
+            hint="Verify the agent name is correct and the agent has been registered.",
         )
 
     # Check if agent has a policy
@@ -1014,7 +952,7 @@ async def get_agent_policy(
             error_code=ErrorCode.POLICY_NOT_FOUND,
             detail=f"Agent '{agent.name}' has no policy assigned",
             resource="Policy",
-            hint="Assign a policy to the agent using POST /{agent_id}/policy/{policy_id}.",
+            hint="Assign a policy to the agent using POST /{agent_name}/policy/{policy_id}.",
         )
 
     # Find policy
@@ -1036,13 +974,13 @@ async def get_agent_policy(
 
 
 @router.delete(
-    "/{agent_id}/policy",
+    "/{agent_name}/policy",
     response_model=DeletePolicyResponse,
     summary="Remove agent's policy assignment",
     response_description="Success confirmation",
 )
 async def delete_agent_policy(
-    agent_id: UUID, db: AsyncSession = Depends(get_async_db)
+    agent_name: str, db: AsyncSession = Depends(get_async_db)
 ) -> DeletePolicyResponse:
     """
     Remove the policy assignment from an agent.
@@ -1050,7 +988,7 @@ async def delete_agent_policy(
     The agent will no longer have any protection controls active.
 
     Args:
-        agent_id: UUID of the agent
+        agent_name: Agent identifier
         db: Database session (injected)
 
     Returns:
@@ -1060,16 +998,17 @@ async def delete_agent_policy(
         HTTPException 404: Agent not found or agent has no policy assigned
         HTTPException 500: Database error during removal
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     # Find agent
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
+    result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
+            detail=f"Agent with name '{agent_name}' not found",
             resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
+            resource_id=str(agent_name),
+            hint="Verify the agent name is correct and the agent has been registered.",
         )
 
     # Check if agent has a policy
@@ -1088,7 +1027,7 @@ async def delete_agent_policy(
     except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to remove policy from agent '{agent.name}' ({agent_id})",
+            f"Failed to remove policy from agent '{agent.name}' ({agent_name})",
             exc_info=True,
         )
         raise DatabaseError(
@@ -1101,13 +1040,13 @@ async def delete_agent_policy(
 
 
 @router.get(
-    "/{agent_id}/controls",
+    "/{agent_name}/controls",
     response_model=AgentControlsResponse,
     summary="List agent's active controls",
     response_description="List of controls from agent's policy",
 )
 async def list_agent_controls(
-    agent_id: UUID, db: AsyncSession = Depends(get_async_db)
+    agent_name: str, db: AsyncSession = Depends(get_async_db)
 ) -> AgentControlsResponse:
     """
     List all protection controls active for an agent.
@@ -1116,7 +1055,7 @@ async def list_agent_controls(
     Returns an empty list if the agent has no policy.
 
     Args:
-        agent_id: UUID of the agent
+        agent_name: Agent identifier
         db: Database session (injected)
 
     Returns:
@@ -1125,21 +1064,22 @@ async def list_agent_controls(
     Raises:
         HTTPException 404: Agent not found
     """
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
+    agent_name = normalize_agent_name_or_422(agent_name)
+    result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
+            detail=f"Agent with name '{agent_name}' not found",
             resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
+            resource_id=str(agent_name),
+            hint="Verify the agent name is correct and the agent has been registered.",
         )
 
     if agent.policy_id is None:
         return AgentControlsResponse(controls=[])
 
-    controls = await list_controls_for_agent(agent_id, db)
+    controls = await list_controls_for_agent(agent_name, db)
     return AgentControlsResponse(controls=controls)
 
 
@@ -1166,13 +1106,13 @@ class ListEvaluatorsResponse(BaseModel):
 
 
 @router.get(
-    "/{agent_id}/evaluators",
+    "/{agent_name}/evaluators",
     response_model=ListEvaluatorsResponse,
     summary="List agent's registered evaluator schemas",
     response_description="Evaluator schemas registered with this agent",
 )
 async def list_agent_evaluators(
-    agent_id: UUID,
+    agent_name: str,
     cursor: str | None = None,
     limit: int = _DEFAULT_PAGINATION_LIMIT,
     db: AsyncSession = Depends(get_async_db),
@@ -1185,7 +1125,7 @@ async def list_agent_evaluators(
     - UI to display available config options
 
     Args:
-        agent_id: UUID of the agent
+        agent_name: Agent identifier
         cursor: Optional cursor for pagination (name of last evaluator from previous page)
         limit: Pagination limit (default 20, max 100)
         db: Database session (injected)
@@ -1196,18 +1136,19 @@ async def list_agent_evaluators(
     Raises:
         HTTPException 404: Agent not found
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     # Clamp limit
     limit = min(max(1, limit), _MAX_PAGINATION_LIMIT)
 
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
+    result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
+            detail=f"Agent with name '{agent_name}' not found",
             resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
+            resource_id=str(agent_name),
+            hint="Verify the agent name is correct and the agent has been registered.",
         )
 
     try:
@@ -1261,13 +1202,13 @@ async def list_agent_evaluators(
 
 
 @router.get(
-    "/{agent_id}/evaluators/{evaluator_name}",
+    "/{agent_name}/evaluators/{evaluator_name}",
     response_model=EvaluatorSchemaItem,
     summary="Get specific evaluator schema",
     response_description="Evaluator schema details",
 )
 async def get_agent_evaluator(
-    agent_id: UUID,
+    agent_name: str,
     evaluator_name: str,
     db: AsyncSession = Depends(get_async_db),
 ) -> EvaluatorSchemaItem:
@@ -1275,7 +1216,7 @@ async def get_agent_evaluator(
     Get a specific evaluator schema registered with an agent.
 
     Args:
-        agent_id: UUID of the agent
+        agent_name: Agent identifier
         evaluator_name: Name of the evaluator
         db: Database session (injected)
 
@@ -1285,15 +1226,16 @@ async def get_agent_evaluator(
     Raises:
         HTTPException 404: Agent or evaluator not found
     """
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
+    agent_name = normalize_agent_name_or_422(agent_name)
+    result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
+            detail=f"Agent with name '{agent_name}' not found",
             resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
+            resource_id=str(agent_name),
+            hint="Verify the agent name is correct and the agent has been registered.",
         )
 
     try:
@@ -1325,13 +1267,13 @@ async def get_agent_evaluator(
 
 
 @router.patch(
-    "/{agent_id}",
+    "/{agent_name}",
     response_model=PatchAgentResponse,
     summary="Modify agent (remove steps/evaluators)",
     response_description="Lists of removed items",
 )
 async def patch_agent(
-    agent_id: UUID,
+    agent_name: str,
     request: PatchAgentRequest,
     db: AsyncSession = Depends(get_async_db),
 ) -> PatchAgentResponse:
@@ -1342,7 +1284,7 @@ async def patch_agent(
     Removals are idempotent - attempting to remove non-existent items is not an error.
 
     Args:
-        agent_id: UUID of the agent
+        agent_name: Agent identifier
         request: Lists of step/evaluator identifiers to remove
         db: Database session (injected)
 
@@ -1353,15 +1295,16 @@ async def patch_agent(
         HTTPException 404: Agent not found
         HTTPException 500: Database error during update
     """
-    result = await db.execute(select(Agent).where(Agent.agent_uuid == agent_id))
+    agent_name = normalize_agent_name_or_422(agent_name)
+    result = await db.execute(select(Agent).where(Agent.name == agent_name))
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with ID '{agent_id}' not found",
+            detail=f"Agent with name '{agent_name}' not found",
             resource="Agent",
-            resource_id=str(agent_id),
-            hint="Verify the agent ID is correct and the agent has been registered.",
+            resource_id=str(agent_name),
+            hint="Verify the agent name is correct and the agent has been registered.",
         )
 
     try:
@@ -1398,7 +1341,7 @@ async def patch_agent(
         # Check if any controls reference evaluators being removed
         if agent.policy_id is not None:
             # Get all controls for this agent's policy
-            controls = await list_controls_for_agent(agent.agent_uuid, db)
+            controls = await list_controls_for_agent(agent.name, db)
             referencing_controls: list[tuple[str, str]] = []  # (control_name, evaluator)
 
             for ctrl in controls:
@@ -1447,7 +1390,7 @@ async def patch_agent(
         except Exception:
             await db.rollback()
             _logger.error(
-                f"Failed to patch agent '{agent.name}' ({agent_id})",
+                f"Failed to patch agent '{agent.name}' ({agent_name})",
                 exc_info=True,
             )
             raise DatabaseError(

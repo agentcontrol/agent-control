@@ -31,11 +31,12 @@ def test_init_agent_rollback_on_create_failure(
 ) -> None:
     """Test that init_agent rolls back transaction when commit fails on create."""
     # Given: a valid agent init payload
-    agent_id = str(uuid.uuid4())
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     payload = {
         "agent": {
             "agent_id": agent_id,
-            "agent_name": f"test-agent-{uuid.uuid4()}",
+            "agent_name": agent_name,
             "agent_description": "test",
             "agent_version": "1.0",
             "agent_metadata": {},
@@ -72,7 +73,7 @@ def test_delete_agent_policy_rollback_on_failure(
     }
     r1 = client.post("/api/v1/agents/initAgent", json=agent_payload)
     assert r1.status_code == 200
-    agent_id = agent_payload["agent"]["agent_id"]
+    agent_id = agent_payload["agent"]["agent_name"]
 
     policy_name = f"test-policy-{uuid.uuid4()}"
     r2 = client.put("/api/v1/policies", json={"name": policy_name})
@@ -88,7 +89,7 @@ def test_delete_agent_policy_rollback_on_failure(
 
     with Session(db_engine) as session:
         existing_agent = (
-            session.query(Agent).filter(Agent.agent_uuid == agent_id).first()
+            session.query(Agent).filter(Agent.name == agent_id).first()
         )
         assert existing_agent is not None
 
@@ -119,8 +120,8 @@ def test_init_agent_rollback_on_update_failure(
 ) -> None:
     """Test that init_agent rolls back transaction when commit fails on update."""
     # Given: an existing agent
-    agent_id = str(uuid.uuid4())
-    agent_name = f"test-agent-{uuid.uuid4()}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     payload = {
         "agent": {
             "agent_id": agent_id,
@@ -219,8 +220,8 @@ def test_patch_agent_rollback_on_failure(
 ) -> None:
     """Test that patch_agent rolls back when commit fails."""
     # Given: an existing agent with a step to remove
-    agent_id = str(uuid.uuid4())
-    agent_name = f"test-agent-{uuid.uuid4()}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     payload = {
         "agent": {
             "agent_id": agent_id,
@@ -247,7 +248,7 @@ def test_patch_agent_rollback_on_failure(
 
     with Session(db_engine) as session:
         existing_agent = (
-            session.query(Agent).filter(Agent.agent_uuid == agent_id).first()
+            session.query(Agent).filter(Agent.name == agent_id).first()
         )
         assert existing_agent is not None
 
@@ -358,7 +359,7 @@ def test_set_agent_policy_rollback_on_failure(
     }
     r1 = client.post("/api/v1/agents/initAgent", json=agent_payload)
     assert r1.status_code == 200
-    agent_id = agent_payload["agent"]["agent_id"]
+    agent_id = agent_payload["agent"]["agent_name"]
 
     policy_name = f"test-policy-{uuid.uuid4()}"
     r2 = client.put("/api/v1/policies", json={"name": policy_name})
@@ -372,7 +373,7 @@ def test_set_agent_policy_rollback_on_failure(
     with Session(db_engine) as session:
         existing_agent = (
             session.query(Agent)
-            .filter(Agent.agent_uuid == agent_id)
+            .filter(Agent.name == agent_id)
             .first()
         )
         existing_policy = (

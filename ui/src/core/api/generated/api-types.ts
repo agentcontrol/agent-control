@@ -15,11 +15,11 @@ export interface paths {
      * List all agents
      * @description List all registered agents with cursor-based pagination.
      *
-     *     Returns a summary of each agent including ID, name, policy assignment,
+     *     Returns a summary of each agent including identifier, policy assignment,
      *     and counts of registered steps and evaluators.
      *
      *     Args:
-     *         cursor: Optional cursor for pagination (UUID of last agent from previous page)
+     *         cursor: Optional cursor for pagination (last agent name from previous page)
      *         limit: Pagination limit (default 20, max 100)
      *         name: Optional name filter (case-insensitive partial match)
      *         db: Database session (injected)
@@ -51,11 +51,11 @@ export interface paths {
      *
      *     This endpoint is idempotent:
      *     - If the agent name doesn't exist, creates a new agent
-     *     - If the agent name exists with the same UUID, updates step schemas
-     *     - If the agent name exists with a different UUID, returns 409 Conflict
+     *     - If the agent name exists, updates registration data in place
      *
-     *     Step versioning: When step schemas change (input_schema or output_schema),
-     *     a new version is created automatically.
+     *     conflict_mode controls registration conflict handling:
+     *     - strict (default): preserve compatibility checks and conflict errors
+     *     - overwrite: latest init payload replaces steps/evaluators and returns change summary
      *
      *     Args:
      *         request: Agent metadata and step schemas
@@ -63,10 +63,6 @@ export interface paths {
      *
      *     Returns:
      *         InitAgentResponse with created flag and active controls (if policy assigned)
-     *
-     *     Raises:
-     *         HTTPException 409: Agent name exists with different UUID
-     *         HTTPException 500: Database error during creation/update
      */
     post: operations['init_agent_api_v1_agents_initAgent_post'];
     delete?: never;
@@ -75,7 +71,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}': {
+  '/api/v1/agents/{agent_name}': {
     parameters: {
       query?: never;
       header?: never;
@@ -89,7 +85,7 @@ export interface paths {
      *     Returns the latest version of each step (deduplicated by type+name).
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         db: Database session (injected)
      *
      *     Returns:
@@ -99,7 +95,7 @@ export interface paths {
      *         HTTPException 404: Agent not found
      *         HTTPException 422: Agent data is corrupted
      */
-    get: operations['get_agent_api_v1_agents__agent_id__get'];
+    get: operations['get_agent_api_v1_agents__agent_name__get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -113,7 +109,7 @@ export interface paths {
      *     Removals are idempotent - attempting to remove non-existent items is not an error.
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         request: Lists of step/evaluator identifiers to remove
      *         db: Database session (injected)
      *
@@ -124,91 +120,10 @@ export interface paths {
      *         HTTPException 404: Agent not found
      *         HTTPException 500: Database error during update
      */
-    patch: operations['patch_agent_api_v1_agents__agent_id__patch'];
+    patch: operations['patch_agent_api_v1_agents__agent_name__patch'];
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}/policy/{policy_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Assign policy to agent
-     * @description Assign a policy to an agent, replacing any existing policy assignment.
-     *
-     *     The agent will immediately inherit all controls from the assigned policy.
-     *
-     *     Args:
-     *         agent_id: UUID of the agent
-     *         policy_id: ID of the policy to assign
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         SetPolicyResponse with success flag and previous policy ID (if any)
-     *
-     *     Raises:
-     *         HTTPException 404: Agent or policy not found
-     *         HTTPException 500: Database error during assignment
-     */
-    post: operations['set_agent_policy_api_v1_agents__agent_id__policy__policy_id__post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/agents/{agent_id}/policy': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get agent's assigned policy
-     * @description Retrieve the policy currently assigned to an agent.
-     *
-     *     Args:
-     *         agent_id: UUID of the agent
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         GetPolicyResponse with policy ID
-     *
-     *     Raises:
-     *         HTTPException 404: Agent not found or agent has no policy assigned
-     */
-    get: operations['get_agent_policy_api_v1_agents__agent_id__policy_get'];
-    put?: never;
-    post?: never;
-    /**
-     * Remove agent's policy assignment
-     * @description Remove the policy assignment from an agent.
-     *
-     *     The agent will no longer have any protection controls active.
-     *
-     *     Args:
-     *         agent_id: UUID of the agent
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         DeletePolicyResponse with success flag
-     *
-     *     Raises:
-     *         HTTPException 404: Agent not found or agent has no policy assigned
-     *         HTTPException 500: Database error during removal
-     */
-    delete: operations['delete_agent_policy_api_v1_agents__agent_id__policy_delete'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/agents/{agent_id}/controls': {
+  '/api/v1/agents/{agent_name}/controls': {
     parameters: {
       query?: never;
       header?: never;
@@ -223,7 +138,7 @@ export interface paths {
      *     Returns an empty list if the agent has no policy.
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         db: Database session (injected)
      *
      *     Returns:
@@ -232,7 +147,7 @@ export interface paths {
      *     Raises:
      *         HTTPException 404: Agent not found
      */
-    get: operations['list_agent_controls_api_v1_agents__agent_id__controls_get'];
+    get: operations['list_agent_controls_api_v1_agents__agent_name__controls_get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -241,7 +156,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}/evaluators': {
+  '/api/v1/agents/{agent_name}/evaluators': {
     parameters: {
       query?: never;
       header?: never;
@@ -257,7 +172,7 @@ export interface paths {
      *     - UI to display available config options
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         cursor: Optional cursor for pagination (name of last evaluator from previous page)
      *         limit: Pagination limit (default 20, max 100)
      *         db: Database session (injected)
@@ -268,7 +183,7 @@ export interface paths {
      *     Raises:
      *         HTTPException 404: Agent not found
      */
-    get: operations['list_agent_evaluators_api_v1_agents__agent_id__evaluators_get'];
+    get: operations['list_agent_evaluators_api_v1_agents__agent_name__evaluators_get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -277,7 +192,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}/evaluators/{evaluator_name}': {
+  '/api/v1/agents/{agent_name}/evaluators/{evaluator_name}': {
     parameters: {
       query?: never;
       header?: never;
@@ -289,7 +204,7 @@ export interface paths {
      * @description Get a specific evaluator schema registered with an agent.
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         evaluator_name: Name of the evaluator
      *         db: Database session (injected)
      *
@@ -299,7 +214,7 @@ export interface paths {
      *     Raises:
      *         HTTPException 404: Agent or evaluator not found
      */
-    get: operations['get_agent_evaluator_api_v1_agents__agent_id__evaluators__evaluator_name__get'];
+    get: operations['get_agent_evaluator_api_v1_agents__agent_name__evaluators__evaluator_name__get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -308,41 +223,54 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/policies': {
+  '/api/v1/agents/{agent_name}/policy': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    get?: never;
     /**
-     * Create a new policy
-     * @description Create a new empty policy with a unique name.
-     *
-     *     Policies contain controls and can be assigned to agents.
-     *     A newly created policy has no controls until they are explicitly added.
+     * Get agent's assigned policy
+     * @description Retrieve the policy currently assigned to an agent.
      *
      *     Args:
-     *         request: Policy creation request with unique name
+     *         agent_name: Agent identifier
      *         db: Database session (injected)
      *
      *     Returns:
-     *         CreatePolicyResponse with the new policy's ID
+     *         GetPolicyResponse with policy ID
      *
      *     Raises:
-     *         HTTPException 409: Policy with this name already exists
-     *         HTTPException 500: Database error during creation
+     *         HTTPException 404: Agent not found or agent has no policy assigned
      */
-    put: operations['create_policy_api_v1_policies_put'];
+    get: operations['get_agent_policy_api_v1_agents__agent_name__policy_get'];
+    put?: never;
     post?: never;
-    delete?: never;
+    /**
+     * Remove agent's policy assignment
+     * @description Remove the policy assignment from an agent.
+     *
+     *     The agent will no longer have any protection controls active.
+     *
+     *     Args:
+     *         agent_name: Agent identifier
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         DeletePolicyResponse with success flag
+     *
+     *     Raises:
+     *         HTTPException 404: Agent not found or agent has no policy assigned
+     *         HTTPException 500: Database error during removal
+     */
+    delete: operations['delete_agent_policy_api_v1_agents__agent_name__policy_delete'];
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  '/api/v1/policies/{policy_id}/controls/{control_id}': {
+  '/api/v1/agents/{agent_name}/policy/{policy_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -352,74 +280,24 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Add control to policy
-     * @description Associate a control with a policy.
+     * Assign policy to agent
+     * @description Assign a policy to an agent, replacing any existing policy assignment.
      *
-     *     This operation is idempotent - adding the same control multiple times has no effect.
-     *     Agents with this policy will immediately see the added control.
+     *     The agent will immediately inherit all controls from the assigned policy.
      *
      *     Args:
-     *         policy_id: ID of the policy
-     *         control_id: ID of the control to add
+     *         agent_name: Agent identifier
+     *         policy_id: ID of the policy to assign
      *         db: Database session (injected)
      *
      *     Returns:
-     *         AssocResponse with success flag
+     *         SetPolicyResponse with success flag and previous policy ID (if any)
      *
      *     Raises:
-     *         HTTPException 404: Policy or control not found
-     *         HTTPException 500: Database error
+     *         HTTPException 404: Agent or policy not found
+     *         HTTPException 500: Database error during assignment
      */
-    post: operations['add_control_to_policy_api_v1_policies__policy_id__controls__control_id__post'];
-    /**
-     * Remove control from policy
-     * @description Remove a control from a policy.
-     *
-     *     This operation is idempotent - removing a non-associated control has no effect.
-     *     Agents with this policy will immediately lose the removed control.
-     *
-     *     Args:
-     *         policy_id: ID of the policy
-     *         control_id: ID of the control to remove
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         AssocResponse with success flag
-     *
-     *     Raises:
-     *         HTTPException 404: Policy or control not found
-     *         HTTPException 500: Database error
-     */
-    delete: operations['remove_control_from_policy_api_v1_policies__policy_id__controls__control_id__delete'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/policies/{policy_id}/controls': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List policy's controls
-     * @description List all controls associated with a policy.
-     *
-     *     Args:
-     *         policy_id: ID of the policy
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         GetPolicyControlsResponse with list of control IDs
-     *
-     *     Raises:
-     *         HTTPException 404: Policy not found
-     */
-    get: operations['list_policy_controls_api_v1_policies__policy_id__controls_get'];
-    put?: never;
-    post?: never;
+    post: operations['set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -477,6 +355,33 @@ export interface paths {
      */
     put: operations['create_control_api_v1_controls_put'];
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/controls/validate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Validate control configuration
+     * @description Validate control configuration data without saving it.
+     *
+     *     Args:
+     *         request: Control configuration data to validate
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         ValidateControlDataResponse with success=True if valid
+     */
+    post: operations['validate_control_data_api_v1_controls_validate_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -607,6 +512,36 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/evaluation': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Analyze content safety
+     * @description Analyze content for safety and control violations.
+     *
+     *     Runs all controls assigned to the agent via policy through the
+     *     evaluation engine. Controls are evaluated in parallel with
+     *     cancel-on-deny for efficiency.
+     *
+     *     Custom evaluators must be deployed as Evaluator classes
+     *     with the engine. Their schemas are registered via initAgent.
+     *
+     *     Optionally accepts X-Trace-Id and X-Span-Id headers for
+     *     OpenTelemetry-compatible distributed tracing.
+     */
+    post: operations['evaluate_api_v1_evaluation_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/evaluator-configs': {
     parameters: {
       query?: never;
@@ -644,36 +579,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/evaluation': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Analyze content safety
-     * @description Analyze content for safety and control violations.
-     *
-     *     Runs all controls assigned to the agent via policy through the
-     *     evaluation engine. Controls are evaluated in parallel with
-     *     cancel-on-deny for efficiency.
-     *
-     *     Custom evaluators must be deployed as Evaluator classes
-     *     with the engine. Their schemas are registered via initAgent.
-     *
-     *     Optionally accepts X-Trace-Id and X-Span-Id headers for
-     *     OpenTelemetry-compatible distributed tracing.
-     */
-    post: operations['evaluate_api_v1_evaluation_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   '/api/v1/evaluators': {
     parameters: {
       query?: never;
@@ -694,7 +599,7 @@ export interface paths {
      *     - **sql**: SQL query validation
      *
      *     Custom evaluators are registered per-agent via initAgent.
-     *     Use GET /agents/{agent_id}/evaluators to list agent-specific schemas.
+     *     Use GET /agents/{agent_name}/evaluators to list agent-specific schemas.
      */
     get: operations['get_evaluators_api_v1_evaluators_get'];
     put?: never;
@@ -751,7 +656,7 @@ export interface paths {
      *     - trace_id: Get all events for a request
      *     - span_id: Get all events for a function call
      *     - control_execution_id: Get a specific event
-     *     - agent_uuid: Filter by agent
+     *     - agent_name: Filter by agent
      *     - control_ids: Filter by controls
      *     - actions: Filter by actions (allow, deny, warn, log)
      *     - matched: Filter by matched status
@@ -790,7 +695,7 @@ export interface paths {
      *     Use /stats/controls/{control_id} for single control stats.
      *
      *     Args:
-     *         agent_uuid: Agent to get stats for
+     *         agent_name: Agent to get stats for
      *         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
      *         include_timeseries: Include time-series data points for trend visualization
      *         store: Event store (injected)
@@ -822,7 +727,7 @@ export interface paths {
      *
      *     Args:
      *         control_id: Control ID to get stats for
-     *         agent_uuid: Agent to get stats for
+     *         agent_name: Agent to get stats for
      *         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
      *         include_timeseries: Include time-series data points for trend visualization
      *         store: Event store (injected)
@@ -856,6 +761,124 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/policies': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Create a new policy
+     * @description Create a new empty policy with a unique name.
+     *
+     *     Policies contain controls and can be assigned to agents.
+     *     A newly created policy has no controls until they are explicitly added.
+     *
+     *     Args:
+     *         request: Policy creation request with unique name
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         CreatePolicyResponse with the new policy's ID
+     *
+     *     Raises:
+     *         HTTPException 409: Policy with this name already exists
+     *         HTTPException 500: Database error during creation
+     */
+    put: operations['create_policy_api_v1_policies_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/policies/{policy_id}/controls': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List policy's controls
+     * @description List all controls associated with a policy.
+     *
+     *     Args:
+     *         policy_id: ID of the policy
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         GetPolicyControlsResponse with list of control IDs
+     *
+     *     Raises:
+     *         HTTPException 404: Policy not found
+     */
+    get: operations['list_policy_controls_api_v1_policies__policy_id__controls_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/policies/{policy_id}/controls/{control_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add control to policy
+     * @description Associate a control with a policy.
+     *
+     *     This operation is idempotent - adding the same control multiple times has no effect.
+     *     Agents with this policy will immediately see the added control.
+     *
+     *     Args:
+     *         policy_id: ID of the policy
+     *         control_id: ID of the control to add
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         AssocResponse with success flag
+     *
+     *     Raises:
+     *         HTTPException 404: Policy or control not found
+     *         HTTPException 500: Database error
+     */
+    post: operations['add_control_to_policy_api_v1_policies__policy_id__controls__control_id__post'];
+    /**
+     * Remove control from policy
+     * @description Remove a control from a policy.
+     *
+     *     This operation is idempotent - removing a non-associated control has no effect.
+     *     Agents with this policy will immediately lose the removed control.
+     *
+     *     Args:
+     *         policy_id: ID of the policy
+     *         control_id: ID of the control to remove
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         AssocResponse with success flag
+     *
+     *     Raises:
+     *         HTTPException 404: Policy or control not found
+     *         HTTPException 500: Database error
+     */
+    delete: operations['remove_control_from_policy_api_v1_policies__policy_id__controls__control_id__delete'];
     options?: never;
     head?: never;
     patch?: never;
@@ -895,10 +918,9 @@ export interface components {
      * @description Agent metadata for registration and tracking.
      *
      *     An agent represents an AI system that can be protected and monitored.
-     *     Each agent has a unique ID and can have multiple steps registered with it.
+     *     Each agent has a unique immutable name and can have multiple steps registered with it.
      * @example {
      *       "agent_description": "Handles customer inquiries and support tickets",
-     *       "agent_id": "550e8400-e29b-41d4-a716-446655440000",
      *       "agent_metadata": {
      *         "environment": "production",
      *         "team": "support"
@@ -909,26 +931,27 @@ export interface components {
      */
     Agent: {
       /**
-       * Agent Id
-       * Format: uuid
-       * @description Unique identifier for the agent (UUID format)
+       * Agent Created At
+       * @description ISO 8601 timestamp when agent was created
        */
-      agent_id: string;
-      /**
-       * Agent Name
-       * @description Human-readable name for the agent
-       */
-      agent_name: string;
+      agent_created_at?: string | null;
       /**
        * Agent Description
        * @description Optional description of the agent's purpose
        */
       agent_description?: string | null;
       /**
-       * Agent Created At
-       * @description ISO 8601 timestamp when agent was created
+       * Agent Metadata
+       * @description Free-form metadata dictionary for custom properties
        */
-      agent_created_at?: string | null;
+      agent_metadata?: {
+        [key: string]: unknown;
+      } | null;
+      /**
+       * Agent Name
+       * @description Unique immutable identifier for the agent
+       */
+      agent_name: string;
       /**
        * Agent Updated At
        * @description ISO 8601 timestamp when agent was last updated
@@ -939,13 +962,6 @@ export interface components {
        * @description Semantic version string (e.g. '1.0.0')
        */
       agent_version?: string | null;
-      /**
-       * Agent Metadata
-       * @description Free-form metadata dictionary for custom properties
-       */
-      agent_metadata?: {
-        [key: string]: unknown;
-      } | null;
     };
     /** AgentControlsResponse */
     AgentControlsResponse: {
@@ -961,13 +977,8 @@ export interface components {
      */
     AgentRef: {
       /**
-       * Agent Id
-       * @description Agent UUID
-       */
-      agent_id: string;
-      /**
        * Agent Name
-       * @description Agent name
+       * @description Agent identifier
        */
       agent_name: string;
     };
@@ -977,31 +988,21 @@ export interface components {
      */
     AgentSummary: {
       /**
-       * Agent Id
-       * @description UUID of the agent
+       * Active Controls Count
+       * @description Number of active controls from agent's policy
+       * @default 0
        */
-      agent_id: string;
+      active_controls_count: number;
       /**
        * Agent Name
-       * @description Human-readable name of the agent
+       * @description Unique identifier of the agent
        */
       agent_name: string;
-      /**
-       * Policy Id
-       * @description ID of assigned policy, if any
-       */
-      policy_id?: number | null;
       /**
        * Created At
        * @description ISO 8601 timestamp when agent was created
        */
       created_at?: string | null;
-      /**
-       * Step Count
-       * @description Number of steps registered with the agent
-       * @default 0
-       */
-      step_count: number;
       /**
        * Evaluator Count
        * @description Number of evaluators registered with the agent
@@ -1009,11 +1010,16 @@ export interface components {
        */
       evaluator_count: number;
       /**
-       * Active Controls Count
-       * @description Number of active controls from agent's policy
+       * Policy Id
+       * @description ID of assigned policy, if any
+       */
+      policy_id?: number | null;
+      /**
+       * Step Count
+       * @description Number of steps registered with the agent
        * @default 0
        */
-      active_controls_count: number;
+      step_count: number;
     };
     /** AssocResponse */
     AssocResponse: {
@@ -1037,7 +1043,6 @@ export interface components {
      *         {
      *           "action": "deny",
      *           "agent_name": "my-agent",
-     *           "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
      *           "applies_to": "llm_call",
      *           "check_stage": "pre",
      *           "confidence": 0.95,
@@ -1069,20 +1074,20 @@ export interface components {
      */
     BatchEventsResponse: {
       /**
-       * Received
-       * @description Number of events received
+       * Dropped
+       * @description Number of events dropped
        */
-      received: number;
+      dropped: number;
       /**
        * Enqueued
        * @description Number of events enqueued
        */
       enqueued: number;
       /**
-       * Dropped
-       * @description Number of events dropped
+       * Received
+       * @description Number of events received
        */
-      dropped: number;
+      received: number;
       /**
        * Status
        * @description Overall ingestion status
@@ -1091,6 +1096,15 @@ export interface components {
       status: 'queued' | 'partial' | 'failed';
     };
     /**
+     * ConflictMode
+     * @description Conflict handling mode for initAgent registration updates.
+     *
+     *     STRICT preserves compatibility checks and raises conflicts on incompatible changes.
+     *     OVERWRITE applies latest-init-wins replacement for steps and evaluators.
+     * @enum {string}
+     */
+    ConflictMode: 'strict' | 'overwrite';
+    /**
      * Control
      * @description A control with identity and configuration.
      *
@@ -1098,11 +1112,11 @@ export interface components {
      *     are returned from API endpoints. Unconfigured controls are filtered out.
      */
     Control: {
+      control: components['schemas']['ControlDefinition'];
       /** Id */
       id: number;
       /** Name */
       name: string;
-      control: components['schemas']['ControlDefinition'];
     };
     /**
      * ControlAction
@@ -1153,6 +1167,8 @@ export interface components {
      *     }
      */
     ControlDefinition: {
+      /** @description What action to take when control matches */
+      action: components['schemas']['ControlAction'];
       /**
        * Description
        * @description Detailed description of the control
@@ -1164,6 +1180,8 @@ export interface components {
        * @default true
        */
       enabled: boolean;
+      /** @description How to evaluate the selected data */
+      evaluator: components['schemas']['EvaluatorSpec'];
       /**
        * Execution
        * @description Where this control executes
@@ -1174,10 +1192,6 @@ export interface components {
       scope?: components['schemas']['ControlScope'];
       /** @description What data to select from the payload */
       selector: components['schemas']['ControlSelector'];
-      /** @description How to evaluate the selected data */
-      evaluator: components['schemas']['EvaluatorConfig'];
-      /** @description What action to take when control matches */
-      action: components['schemas']['ControlAction'];
       /**
        * Tags
        * @description Tags for categorization
@@ -1199,12 +1213,9 @@ export interface components {
      *         control_execution_id: Unique ID for this specific control execution
      *         trace_id: OpenTelemetry-compatible trace ID (128-bit hex, 32 chars)
      *         span_id: OpenTelemetry-compatible span ID (64-bit hex, 16 chars)
-     *         agent_uuid: UUID of the agent that executed the control
-     *         agent_name: Name of the agent (denormalized for queries)
+     *         agent_name: Identifier of the agent that executed the control
      *         control_id: Database ID of the control
      *         control_name: Name of the control (denormalized for queries)
-     *         control_set_id: Optional ID of the control set
-     *         control_set_name: Optional name of the control set
      *         check_stage: "pre" (before execution) or "post" (after execution)
      *         applies_to: "llm_call" or "tool_call"
      *         action: The action taken (allow, deny, warn, log)
@@ -1219,7 +1230,6 @@ export interface components {
      * @example {
      *       "action": "deny",
      *       "agent_name": "my-agent",
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
      *       "applies_to": "llm_call",
      *       "check_stage": "pre",
      *       "confidence": 0.95,
@@ -1237,31 +1247,38 @@ export interface components {
      */
     ControlExecutionEvent: {
       /**
+       * Action
+       * @description Action taken by the control
+       * @enum {string}
+       */
+      action: 'allow' | 'deny' | 'warn' | 'log';
+      /**
+       * Agent Name
+       * @description Identifier of the agent
+       */
+      agent_name: string;
+      /**
+       * Applies To
+       * @description Type of call: 'llm_call' or 'tool_call'
+       * @enum {string}
+       */
+      applies_to: 'llm_call' | 'tool_call';
+      /**
+       * Check Stage
+       * @description Check stage: 'pre' or 'post'
+       * @enum {string}
+       */
+      check_stage: 'pre' | 'post';
+      /**
+       * Confidence
+       * @description Confidence score (0.0 to 1.0)
+       */
+      confidence: number;
+      /**
        * Control Execution Id
        * @description Unique ID for this control execution
        */
       control_execution_id?: string;
-      /**
-       * Trace Id
-       * @description Trace ID for distributed tracing (SDK generates OTEL-compatible 32-char hex)
-       */
-      trace_id: string;
-      /**
-       * Span Id
-       * @description Span ID for distributed tracing (SDK generates OTEL-compatible 16-char hex)
-       */
-      span_id: string;
-      /**
-       * Agent Uuid
-       * Format: uuid
-       * @description UUID of the agent
-       */
-      agent_uuid: string;
-      /**
-       * Agent Name
-       * @description Name of the agent (denormalized)
-       */
-      agent_name: string;
       /**
        * Control Id
        * @description Database ID of the control
@@ -1273,59 +1290,25 @@ export interface components {
        */
       control_name: string;
       /**
-       * Check Stage
-       * @description Check stage: 'pre' or 'post'
-       * @enum {string}
+       * Error Message
+       * @description Error message if evaluation failed
        */
-      check_stage: 'pre' | 'post';
-      /**
-       * Applies To
-       * @description Type of call: 'llm_call' or 'tool_call'
-       * @enum {string}
-       */
-      applies_to: 'llm_call' | 'tool_call';
-      /**
-       * Action
-       * @description Action taken by the control
-       * @enum {string}
-       */
-      action: 'allow' | 'deny' | 'warn' | 'log';
-      /**
-       * Matched
-       * @description Whether the evaluator matched (True) or not (False)
-       */
-      matched: boolean;
-      /**
-       * Confidence
-       * @description Confidence score (0.0 to 1.0)
-       */
-      confidence: number;
-      /**
-       * Timestamp
-       * Format: date-time
-       * @description When the control was executed (UTC)
-       */
-      timestamp?: string;
-      /**
-       * Execution Duration Ms
-       * @description Execution duration in milliseconds
-       */
-      execution_duration_ms?: number | null;
+      error_message?: string | null;
       /**
        * Evaluator Name
        * @description Name of the evaluator used
        */
       evaluator_name?: string | null;
       /**
-       * Selector Path
-       * @description Selector path used to extract data
+       * Execution Duration Ms
+       * @description Execution duration in milliseconds
        */
-      selector_path?: string | null;
+      execution_duration_ms?: number | null;
       /**
-       * Error Message
-       * @description Error message if evaluation failed
+       * Matched
+       * @description Whether the evaluator matched (True) or not (False)
        */
-      error_message?: string | null;
+      matched: boolean;
       /**
        * Metadata
        * @description Additional metadata
@@ -1333,12 +1316,39 @@ export interface components {
       metadata?: {
         [key: string]: unknown;
       };
+      /**
+       * Selector Path
+       * @description Selector path used to extract data
+       */
+      selector_path?: string | null;
+      /**
+       * Span Id
+       * @description Span ID for distributed tracing (SDK generates OTEL-compatible 16-char hex)
+       */
+      span_id: string;
+      /**
+       * Timestamp
+       * Format: date-time
+       * @description When the control was executed (UTC)
+       */
+      timestamp?: string;
+      /**
+       * Trace Id
+       * @description Trace ID for distributed tracing (SDK generates OTEL-compatible 32-char hex)
+       */
+      trace_id: string;
     };
     /**
      * ControlMatch
      * @description Represents a control evaluation result (match, non-match, or error).
      */
     ControlMatch: {
+      /**
+       * Action
+       * @description Action configured for this control
+       * @enum {string}
+       */
+      action: 'allow' | 'deny' | 'warn' | 'log';
       /**
        * Control Execution Id
        * @description Unique ID for this control execution (generated by engine)
@@ -1354,12 +1364,6 @@ export interface components {
        * @description Name of the control
        */
       control_name: string;
-      /**
-       * Action
-       * @description Action configured for this control
-       * @enum {string}
-       */
-      action: 'allow' | 'deny' | 'warn' | 'log';
       /** @description Evaluator result (confidence, message, metadata) */
       result: components['schemas']['EvaluatorResult'];
     };
@@ -1394,25 +1398,25 @@ export interface components {
      */
     ControlScope: {
       /**
-       * Step Types
-       * @description Step types this control applies to (omit to apply to all types). Built-in types are 'tool' and 'llm'.
+       * Stages
+       * @description Evaluation stages this control applies to
        */
-      step_types?: string[] | null;
-      /**
-       * Step Names
-       * @description Exact step names this control applies to
-       */
-      step_names?: string[] | null;
+      stages?: ('pre' | 'post')[] | null;
       /**
        * Step Name Regex
        * @description RE2 pattern matched with search() against step name
        */
       step_name_regex?: string | null;
       /**
-       * Stages
-       * @description Evaluation stages this control applies to
+       * Step Names
+       * @description Exact step names this control applies to
        */
-      stages?: ('pre' | 'post')[] | null;
+      step_names?: string[] | null;
+      /**
+       * Step Types
+       * @description Step types this control applies to (omit to apply to all types). Built-in types are 'tool' and 'llm'.
+       */
+      step_types?: string[] | null;
     };
     /**
      * ControlSelector
@@ -1467,6 +1471,21 @@ export interface components {
      */
     ControlStats: {
       /**
+       * Allow Count
+       * @description Allow actions
+       */
+      allow_count: number;
+      /**
+       * Avg Confidence
+       * @description Average confidence
+       */
+      avg_confidence: number;
+      /**
+       * Avg Duration Ms
+       * @description Average duration (ms)
+       */
+      avg_duration_ms?: number | null;
+      /**
        * Control Id
        * @description Control ID
        */
@@ -1477,10 +1496,25 @@ export interface components {
        */
       control_name: string;
       /**
+       * Deny Count
+       * @description Deny actions
+       */
+      deny_count: number;
+      /**
+       * Error Count
+       * @description Evaluation errors
+       */
+      error_count: number;
+      /**
        * Execution Count
        * @description Total executions
        */
       execution_count: number;
+      /**
+       * Log Count
+       * @description Log actions
+       */
+      log_count: number;
       /**
        * Match Count
        * @description Total matches
@@ -1492,40 +1526,10 @@ export interface components {
        */
       non_match_count: number;
       /**
-       * Allow Count
-       * @description Allow actions
-       */
-      allow_count: number;
-      /**
-       * Deny Count
-       * @description Deny actions
-       */
-      deny_count: number;
-      /**
        * Warn Count
        * @description Warn actions
        */
       warn_count: number;
-      /**
-       * Log Count
-       * @description Log actions
-       */
-      log_count: number;
-      /**
-       * Error Count
-       * @description Evaluation errors
-       */
-      error_count: number;
-      /**
-       * Avg Confidence
-       * @description Average confidence
-       */
-      avg_confidence: number;
-      /**
-       * Avg Duration Ms
-       * @description Average duration (ms)
-       */
-      avg_duration_ms?: number | null;
     };
     /**
      * ControlStatsResponse
@@ -1534,7 +1538,7 @@ export interface components {
      *     Contains stats for a single control (with optional timeseries).
      *
      *     Attributes:
-     *         agent_uuid: Agent UUID
+     *         agent_name: Agent identifier
      *         time_range: Time range used
      *         control_id: Control ID
      *         control_name: Control name
@@ -1542,16 +1546,10 @@ export interface components {
      */
     ControlStatsResponse: {
       /**
-       * Agent Uuid
-       * Format: uuid
-       * @description Agent UUID
+       * Agent Name
+       * @description Agent identifier
        */
-      agent_uuid: string;
-      /**
-       * Time Range
-       * @description Time range used
-       */
-      time_range: string;
+      agent_name: string;
       /**
        * Control Id
        * @description Control ID
@@ -1564,22 +1562,17 @@ export interface components {
       control_name: string;
       /** @description Control statistics */
       stats: components['schemas']['StatsTotals'];
+      /**
+       * Time Range
+       * @description Time range used
+       */
+      time_range: string;
     };
     /**
      * ControlSummary
      * @description Summary of a control for list responses.
      */
     ControlSummary: {
-      /**
-       * Id
-       * @description Control ID
-       */
-      id: number;
-      /**
-       * Name
-       * @description Control name
-       */
-      name: string;
       /**
        * Description
        * @description Control description
@@ -1597,15 +1590,25 @@ export interface components {
        */
       execution?: string | null;
       /**
-       * Step Types
-       * @description Step types in scope
+       * Id
+       * @description Control ID
        */
-      step_types?: string[] | null;
+      id: number;
+      /**
+       * Name
+       * @description Control name
+       */
+      name: string;
       /**
        * Stages
        * @description Evaluation stages in scope
        */
       stages?: string[] | null;
+      /**
+       * Step Types
+       * @description Step types in scope
+       */
+      step_types?: string[] | null;
       /**
        * Tags
        * @description Control tags
@@ -1636,10 +1639,12 @@ export interface components {
      */
     CreateEvaluatorConfigRequest: {
       /**
-       * Name
-       * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
+       * Config
+       * @description Evaluator-specific configuration
        */
-      name: string;
+      config: {
+        [key: string]: unknown;
+      };
       /**
        * Description
        * @description Optional description
@@ -1651,12 +1656,10 @@ export interface components {
        */
       evaluator: string;
       /**
-       * Config
-       * @description Evaluator-specific configuration
+       * Name
+       * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
        */
-      config: {
-        [key: string]: unknown;
-      };
+      name: string;
     };
     /** CreatePolicyRequest */
     CreatePolicyRequest: {
@@ -1680,15 +1683,15 @@ export interface components {
      */
     DeleteControlResponse: {
       /**
-       * Success
-       * @description Whether the control was deleted
-       */
-      success: boolean;
-      /**
        * Dissociated From
        * @description Policy IDs the control was removed from before deletion
        */
       dissociated_from?: number[];
+      /**
+       * Success
+       * @description Whether the control was deleted
+       */
+      success: boolean;
     };
     /**
      * DeleteEvaluatorConfigResponse
@@ -1717,11 +1720,11 @@ export interface components {
      *     policy compliance, and control rules.
      *
      *     Attributes:
-     *         agent_uuid: UUID of the agent making the request
+     *         agent_name: Unique identifier of the agent making the request
      *         step: Step payload for evaluation
      *         stage: 'pre' (before execution) or 'post' (after execution)
      * @example {
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+     *       "agent_name": "customer-service-bot",
      *       "stage": "pre",
      *       "step": {
      *         "context": {
@@ -1734,7 +1737,7 @@ export interface components {
      *       }
      *     }
      * @example {
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+     *       "agent_name": "customer-service-bot",
      *       "stage": "post",
      *       "step": {
      *         "context": {
@@ -1748,7 +1751,7 @@ export interface components {
      *       }
      *     }
      * @example {
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+     *       "agent_name": "customer-service-bot",
      *       "stage": "pre",
      *       "step": {
      *         "context": {
@@ -1762,7 +1765,7 @@ export interface components {
      *       }
      *     }
      * @example {
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+     *       "agent_name": "customer-service-bot",
      *       "stage": "post",
      *       "step": {
      *         "context": {
@@ -1781,19 +1784,18 @@ export interface components {
      */
     EvaluationRequest: {
       /**
-       * Agent Uuid
-       * Format: uuid
-       * @description UUID of the agent making the evaluation request
+       * Agent Name
+       * @description Identifier of the agent making the evaluation request
        */
-      agent_uuid: string;
-      /** @description Agent step payload to evaluate */
-      step: components['schemas']['Step'];
+      agent_name: string;
       /**
        * Stage
        * @description Evaluation stage: 'pre' or 'post'
        * @enum {string}
        */
       stage: 'pre' | 'post';
+      /** @description Agent step payload to evaluate */
+      step: components['schemas']['Step'];
     };
     /**
      * EvaluationResponse
@@ -1812,95 +1814,41 @@ export interface components {
      */
     EvaluationResponse: {
       /**
-       * Is Safe
-       * @description Whether content is safe
-       */
-      is_safe: boolean;
-      /**
        * Confidence
        * @description Confidence score (0.0 to 1.0)
        */
       confidence: number;
-      /**
-       * Reason
-       * @description Explanation for the decision
-       */
-      reason?: string | null;
-      /**
-       * Matches
-       * @description List of controls that matched/triggered (if any)
-       */
-      matches?: components['schemas']['ControlMatch'][] | null;
       /**
        * Errors
        * @description List of controls that failed during evaluation (if any)
        */
       errors?: components['schemas']['ControlMatch'][] | null;
       /**
+       * Is Safe
+       * @description Whether content is safe
+       */
+      is_safe: boolean;
+      /**
+       * Matches
+       * @description List of controls that matched/triggered (if any)
+       */
+      matches?: components['schemas']['ControlMatch'][] | null;
+      /**
        * Non Matches
        * @description List of controls that were evaluated but did not match (if any)
        */
       non_matches?: components['schemas']['ControlMatch'][] | null;
-    };
-    /**
-     * EvaluatorConfig
-     * @description Evaluator configuration. See GET /evaluators for available evaluators and schemas.
-     *
-     *     Evaluator reference formats:
-     *     - Built-in: "regex", "list"
-     *     - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
-     */
-    EvaluatorConfig: {
       /**
-       * Name
-       * @description Evaluator name or agent-scoped reference (agent:evaluator)
-       * @example regex
-       * @example list
-       * @example my-agent:pii-detector
+       * Reason
+       * @description Explanation for the decision
        */
-      name: string;
-      /**
-       * Config
-       * @description Evaluator-specific configuration
-       * @example {
-       *       "pattern": "\\d{3}-\\d{2}-\\d{4}"
-       *     }
-       * @example {
-       *       "logic": "any",
-       *       "values": [
-       *         "admin"
-       *       ]
-       *     }
-       */
-      config: {
-        [key: string]: unknown;
-      };
+      reason?: string | null;
     };
     /**
      * EvaluatorConfigItem
      * @description Evaluator config template stored in the server.
      */
     EvaluatorConfigItem: {
-      /**
-       * Id
-       * @description Evaluator config ID
-       */
-      id: number;
-      /**
-       * Name
-       * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
-       */
-      name: string;
-      /**
-       * Description
-       * @description Optional description
-       */
-      description?: string | null;
-      /**
-       * Evaluator
-       * @description Evaluator name (built-in or custom)
-       */
-      evaluator: string;
       /**
        * Config
        * @description Evaluator-specific configuration
@@ -1914,6 +1862,26 @@ export interface components {
        */
       created_at?: string | null;
       /**
+       * Description
+       * @description Optional description
+       */
+      description?: string | null;
+      /**
+       * Evaluator
+       * @description Evaluator name (built-in or custom)
+       */
+      evaluator: string;
+      /**
+       * Id
+       * @description Evaluator config ID
+       */
+      id: number;
+      /**
+       * Name
+       * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
+       */
+      name: string;
+      /**
        * Updated At
        * @description ISO 8601 updated timestamp
        */
@@ -1925,20 +1893,22 @@ export interface components {
      */
     EvaluatorInfo: {
       /**
-       * Name
-       * @description Evaluator name
+       * Config Schema
+       * @description JSON Schema for config
        */
-      name: string;
-      /**
-       * Version
-       * @description Evaluator version
-       */
-      version: string;
+      config_schema: {
+        [key: string]: unknown;
+      };
       /**
        * Description
        * @description Evaluator description
        */
       description: string;
+      /**
+       * Name
+       * @description Evaluator name
+       */
+      name: string;
       /**
        * Requires Api Key
        * @description Whether evaluator requires API key
@@ -1950,12 +1920,10 @@ export interface components {
        */
       timeout_ms: number;
       /**
-       * Config Schema
-       * @description JSON Schema for config
+       * Version
+       * @description Evaluator version
        */
-      config_schema: {
-        [key: string]: unknown;
-      };
+      version: string;
     };
     /**
      * EvaluatorResult
@@ -1974,15 +1942,20 @@ export interface components {
      */
     EvaluatorResult: {
       /**
-       * Matched
-       * @description Whether the pattern matched
-       */
-      matched: boolean;
-      /**
        * Confidence
        * @description Confidence in the evaluation
        */
       confidence: number;
+      /**
+       * Error
+       * @description Error message if evaluation failed internally. When set, matched=False is due to error, not actual evaluation.
+       */
+      error?: string | null;
+      /**
+       * Matched
+       * @description Whether the pattern matched
+       */
+      matched: boolean;
       /**
        * Message
        * @description Explanation of the result
@@ -1995,11 +1968,6 @@ export interface components {
       metadata?: {
         [key: string]: unknown;
       } | null;
-      /**
-       * Error
-       * @description Error message if evaluation failed internally. When set, matched=False is due to error, not actual evaluation.
-       */
-      error?: string | null;
     };
     /**
      * EvaluatorSchema
@@ -2009,11 +1977,6 @@ export interface components {
      *     This schema is registered via initAgent for validation and UI purposes.
      */
     EvaluatorSchema: {
-      /**
-       * Name
-       * @description Unique evaluator name
-       */
-      name: string;
       /**
        * Config Schema
        * @description JSON Schema for evaluator config validation
@@ -2026,20 +1989,60 @@ export interface components {
        * @description Optional description
        */
       description?: string | null;
+      /**
+       * Name
+       * @description Unique evaluator name
+       */
+      name: string;
     };
     /**
      * EvaluatorSchemaItem
      * @description Evaluator schema summary for list response.
      */
     EvaluatorSchemaItem: {
-      /** Name */
-      name: string;
-      /** Description */
-      description: string | null;
       /** Config Schema */
       config_schema: {
         [key: string]: unknown;
       };
+      /** Description */
+      description: string | null;
+      /** Name */
+      name: string;
+    };
+    /**
+     * EvaluatorSpec
+     * @description Evaluator specification. See GET /evaluators for available evaluators and schemas.
+     *
+     *     Evaluator reference formats:
+     *     - Built-in: "regex", "list", "json", "sql"
+     *     - External: "galileo.luna2" (requires agent-control-evaluators[galileo])
+     *     - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
+     */
+    EvaluatorSpec: {
+      /**
+       * Config
+       * @description Evaluator-specific configuration
+       * @example {
+       *       "pattern": "\\d{3}-\\d{2}-\\d{4}"
+       *     }
+       * @example {
+       *       "logic": "any",
+       *       "values": [
+       *         "admin"
+       *       ]
+       *     }
+       */
+      config: {
+        [key: string]: unknown;
+      };
+      /**
+       * Name
+       * @description Evaluator name or agent-scoped reference (agent:evaluator)
+       * @example regex
+       * @example list
+       * @example my-agent:pii-detector
+       */
+      name: string;
     };
     /**
      * EventQueryRequest
@@ -2051,7 +2054,7 @@ export interface components {
      *         trace_id: Filter by trace ID (get all events for a request)
      *         span_id: Filter by span ID (get all events for a function call)
      *         control_execution_id: Filter by specific event ID
-     *         agent_uuid: Filter by agent UUID
+     *         agent_name: Filter by agent identifier
      *         control_ids: Filter by control IDs
      *         actions: Filter by actions (allow, deny, warn, log)
      *         matched: Filter by matched status
@@ -2069,62 +2072,42 @@ export interface components {
      *         "deny",
      *         "warn"
      *       ],
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
+     *       "agent_name": "my-agent",
      *       "limit": 50,
      *       "start_time": "2025-01-09T00:00:00Z"
      *     }
      */
     EventQueryRequest: {
       /**
-       * Trace Id
-       * @description Filter by trace ID (all events for a request)
-       */
-      trace_id?: string | null;
-      /**
-       * Span Id
-       * @description Filter by span ID (all events for a function)
-       */
-      span_id?: string | null;
-      /**
-       * Control Execution Id
-       * @description Filter by specific event ID
-       */
-      control_execution_id?: string | null;
-      /**
-       * Agent Uuid
-       * @description Filter by agent UUID
-       */
-      agent_uuid?: string | null;
-      /**
-       * Control Ids
-       * @description Filter by control IDs
-       */
-      control_ids?: number[] | null;
-      /**
        * Actions
        * @description Filter by actions
        */
       actions?: ('allow' | 'deny' | 'warn' | 'log')[] | null;
       /**
-       * Matched
-       * @description Filter by matched status
+       * Agent Name
+       * @description Filter by agent identifier
        */
-      matched?: boolean | null;
-      /**
-       * Check Stages
-       * @description Filter by check stages
-       */
-      check_stages?: ('pre' | 'post')[] | null;
+      agent_name?: string | null;
       /**
        * Applies To
        * @description Filter by call types
        */
       applies_to?: ('llm_call' | 'tool_call')[] | null;
       /**
-       * Start Time
-       * @description Filter events after this time
+       * Check Stages
+       * @description Filter by check stages
        */
-      start_time?: string | null;
+      check_stages?: ('pre' | 'post')[] | null;
+      /**
+       * Control Execution Id
+       * @description Filter by specific event ID
+       */
+      control_execution_id?: string | null;
+      /**
+       * Control Ids
+       * @description Filter by control IDs
+       */
+      control_ids?: number[] | null;
       /**
        * End Time
        * @description Filter events before this time
@@ -2137,11 +2120,31 @@ export interface components {
        */
       limit: number;
       /**
+       * Matched
+       * @description Filter by matched status
+       */
+      matched?: boolean | null;
+      /**
        * Offset
        * @description Pagination offset
        * @default 0
        */
       offset: number;
+      /**
+       * Span Id
+       * @description Filter by span ID (all events for a function)
+       */
+      span_id?: string | null;
+      /**
+       * Start Time
+       * @description Filter events after this time
+       */
+      start_time?: string | null;
+      /**
+       * Trace Id
+       * @description Filter by trace ID (all events for a request)
+       */
+      trace_id?: string | null;
     };
     /**
      * EventQueryResponse
@@ -2160,11 +2163,6 @@ export interface components {
        */
       events: components['schemas']['ControlExecutionEvent'][];
       /**
-       * Total
-       * @description Total matching events
-       */
-      total: number;
-      /**
        * Limit
        * @description Limit used in query
        */
@@ -2174,6 +2172,11 @@ export interface components {
        * @description Offset used in query
        */
       offset: number;
+      /**
+       * Total
+       * @description Total matching events
+       */
+      total: number;
     };
     /**
      * GetAgentResponse
@@ -2183,15 +2186,15 @@ export interface components {
       /** @description Agent metadata */
       agent: components['schemas']['Agent'];
       /**
-       * Steps
-       * @description Steps registered with this agent
-       */
-      steps: components['schemas']['StepSchema'][];
-      /**
        * Evaluators
        * @description Custom evaluators registered with this agent
        */
       evaluators?: components['schemas']['EvaluatorSchema'][];
+      /**
+       * Steps
+       * @description Steps registered with this agent
+       */
+      steps: components['schemas']['StepSchema'][];
     };
     /** GetControlDataResponse */
     GetControlDataResponse: {
@@ -2203,6 +2206,8 @@ export interface components {
      * @description Response containing control details.
      */
     GetControlResponse: {
+      /** @description Control configuration data (None if not yet configured) */
+      data?: components['schemas']['ControlDefinition'] | null;
       /**
        * Id
        * @description Control ID
@@ -2213,8 +2218,6 @@ export interface components {
        * @description Control name
        */
       name: string;
-      /** @description Control configuration data (None if not yet configured) */
-      data?: components['schemas']['ControlDefinition'] | null;
     };
     /**
      * GetPolicyControlsResponse
@@ -2255,12 +2258,85 @@ export interface components {
       version: string;
     };
     /**
+     * InitAgentEvaluatorRemoval
+     * @description Details for an evaluator removed during overwrite mode.
+     */
+    InitAgentEvaluatorRemoval: {
+      /**
+       * Control Ids
+       * @description IDs of active controls referencing this evaluator
+       */
+      control_ids?: number[];
+      /**
+       * Control Names
+       * @description Names of active controls referencing this evaluator
+       */
+      control_names?: string[];
+      /**
+       * Name
+       * @description Evaluator name removed by overwrite
+       */
+      name: string;
+      /**
+       * Referenced By Active Controls
+       * @description Whether this evaluator is still referenced by active controls
+       * @default false
+       */
+      referenced_by_active_controls: boolean;
+    };
+    /**
+     * InitAgentOverwriteChanges
+     * @description Detailed change summary for initAgent overwrite mode.
+     */
+    InitAgentOverwriteChanges: {
+      /**
+       * Evaluator Removals
+       * @description Per-evaluator removal details, including active control references
+       */
+      evaluator_removals?: components['schemas']['InitAgentEvaluatorRemoval'][];
+      /**
+       * Evaluators Added
+       * @description Evaluator names added by overwrite
+       */
+      evaluators_added?: string[];
+      /**
+       * Evaluators Removed
+       * @description Evaluator names removed by overwrite
+       */
+      evaluators_removed?: string[];
+      /**
+       * Evaluators Updated
+       * @description Existing evaluator names updated by overwrite
+       */
+      evaluators_updated?: string[];
+      /**
+       * Metadata Changed
+       * @description Whether agent metadata changed
+       * @default false
+       */
+      metadata_changed: boolean;
+      /**
+       * Steps Added
+       * @description Steps added by overwrite
+       */
+      steps_added?: components['schemas']['StepKey'][];
+      /**
+       * Steps Removed
+       * @description Steps removed by overwrite
+       */
+      steps_removed?: components['schemas']['StepKey'][];
+      /**
+       * Steps Updated
+       * @description Existing steps updated by overwrite
+       */
+      steps_updated?: components['schemas']['StepKey'][];
+    };
+    /**
      * InitAgentRequest
      * @description Request to initialize or update an agent registration.
      * @example {
      *       "agent": {
      *         "agent_description": "Handles customer inquiries",
-     *         "agent_id": "550e8400-e29b-41d4-a716-446655440000",
      *         "agent_name": "customer-service-bot",
      *         "agent_version": "1.0.0"
      *       },
@@ -2300,10 +2376,10 @@ export interface components {
       /** @description Agent metadata including ID, name, and version */
       agent: components['schemas']['Agent'];
       /**
-       * Steps
-       * @description List of steps available to the agent
+       * @description Conflict handling mode for init registration updates. 'strict' preserves existing compatibility checks. 'overwrite' applies latest-init-wins replacement for steps and evaluators.
+       * @default strict
        */
-      steps?: components['schemas']['StepSchema'][];
+      conflict_mode: components['schemas']['ConflictMode'];
       /**
        * Evaluators
        * @description Custom evaluator schemas for config validation
@@ -2315,6 +2391,11 @@ export interface components {
        * @default false
        */
       force_replace: boolean;
+      /**
+       * Steps
+       * @description List of steps available to the agent
+       */
+      steps?: components['schemas']['StepSchema'][];
     };
     /**
      * InitAgentResponse
@@ -2322,15 +2403,23 @@ export interface components {
      */
     InitAgentResponse: {
       /**
+       * Controls
+       * @description Active protection controls for the agent (if policy assigned)
+       */
+      controls?: components['schemas']['Control'][];
+      /**
        * Created
        * @description True if agent was newly created, False if updated
        */
       created: boolean;
       /**
-       * Controls
-       * @description Active protection controls for the agent (if policy assigned)
+       * Overwrite Applied
+       * @description True if overwrite mode changed registration data on an existing agent
+       * @default false
        */
-      controls?: components['schemas']['Control'][];
+      overwrite_applied: boolean;
+      /** @description Detailed list of changes applied in overwrite mode */
+      overwrite_changes?: components['schemas']['InitAgentOverwriteChanges'];
     };
     JSONObject: {
       [key: string]: components['schemas']['JSONValue'];
@@ -2391,25 +2480,25 @@ export interface components {
      */
     PaginationInfo: {
       /**
+       * Has More
+       * @description Whether there are more pages available
+       */
+      has_more: boolean;
+      /**
        * Limit
        * @description Number of items per page
        */
       limit: number;
-      /**
-       * Total
-       * @description Total number of items
-       */
-      total: number;
       /**
        * Next Cursor
        * @description Cursor for fetching the next page (null if no more pages)
        */
       next_cursor?: string | null;
       /**
-       * Has More
-       * @description Whether there are more pages available
+       * Total
+       * @description Total number of items
        */
-      has_more: boolean;
+      total: number;
     };
     /**
      * PatchAgentRequest
@@ -2417,15 +2506,15 @@ export interface components {
      */
     PatchAgentRequest: {
       /**
-       * Remove Steps
-       * @description Step identifiers to remove from the agent
-       */
-      remove_steps?: components['schemas']['StepKey'][];
-      /**
        * Remove Evaluators
        * @description Evaluator names to remove from the agent
        */
       remove_evaluators?: string[];
+      /**
+       * Remove Steps
+       * @description Step identifiers to remove from the agent
+       */
+      remove_steps?: components['schemas']['StepKey'][];
     };
     /**
      * PatchAgentResponse
@@ -2433,15 +2522,15 @@ export interface components {
      */
     PatchAgentResponse: {
       /**
-       * Steps Removed
-       * @description Step identifiers that were removed
-       */
-      steps_removed?: components['schemas']['StepKey'][];
-      /**
        * Evaluators Removed
        * @description Evaluator names that were removed
        */
       evaluators_removed?: string[];
+      /**
+       * Steps Removed
+       * @description Step identifiers that were removed
+       */
+      steps_removed?: components['schemas']['StepKey'][];
     };
     /**
      * PatchControlRequest
@@ -2449,15 +2538,15 @@ export interface components {
      */
     PatchControlRequest: {
       /**
-       * Name
-       * @description New name for the control
-       */
-      name?: string | null;
-      /**
        * Enabled
        * @description Enable or disable the control
        */
       enabled?: boolean | null;
+      /**
+       * Name
+       * @description New name for the control
+       */
+      name?: string | null;
     };
     /**
      * PatchControlResponse
@@ -2465,20 +2554,20 @@ export interface components {
      */
     PatchControlResponse: {
       /**
-       * Success
-       * @description Whether the update succeeded
+       * Enabled
+       * @description Current enabled status (if control has data configured)
        */
-      success: boolean;
+      enabled?: boolean | null;
       /**
        * Name
        * @description Current control name (may have changed)
        */
       name: string;
       /**
-       * Enabled
-       * @description Current enabled status (if control has data configured)
+       * Success
+       * @description Whether the update succeeded
        */
-      enabled?: boolean | null;
+      success: boolean;
     };
     /**
      * SetControlDataRequest
@@ -2499,15 +2588,15 @@ export interface components {
     /** SetPolicyResponse */
     SetPolicyResponse: {
       /**
-       * Success
-       * @description Whether the policy was successfully assigned
-       */
-      success: boolean;
-      /**
        * Old Policy Id
        * @description Previous policy id if one was replaced
        */
       old_policy_id?: number | null;
+      /**
+       * Success
+       * @description Whether the policy was successfully assigned
+       */
+      success: boolean;
     };
     /**
      * StatsResponse
@@ -2516,18 +2605,22 @@ export interface components {
      *     Contains agent-level totals (with optional timeseries) and per-control breakdown.
      *
      *     Attributes:
-     *         agent_uuid: Agent UUID
+     *         agent_name: Agent identifier
      *         time_range: Time range used
      *         totals: Agent-level aggregate statistics (includes timeseries)
      *         controls: Per-control breakdown for discovery and detail
      */
     StatsResponse: {
       /**
-       * Agent Uuid
-       * Format: uuid
-       * @description Agent UUID
+       * Agent Name
+       * @description Agent identifier
        */
-      agent_uuid: string;
+      agent_name: string;
+      /**
+       * Controls
+       * @description Per-control breakdown
+       */
+      controls: components['schemas']['ControlStats'][];
       /**
        * Time Range
        * @description Time range used
@@ -2535,11 +2628,6 @@ export interface components {
       time_range: string;
       /** @description Agent-level aggregate statistics */
       totals: components['schemas']['StatsTotals'];
-      /**
-       * Controls
-       * @description Per-control breakdown
-       */
-      controls: components['schemas']['ControlStats'][];
     };
     /**
      * StatsTotals
@@ -2560,6 +2648,19 @@ export interface components {
      */
     StatsTotals: {
       /**
+       * Action Counts
+       * @description Action breakdown for matches: {allow, deny, warn, log}
+       */
+      action_counts?: {
+        [key: string]: number;
+      };
+      /**
+       * Error Count
+       * @description Total errors
+       * @default 0
+       */
+      error_count: number;
+      /**
        * Execution Count
        * @description Total executions
        */
@@ -2577,19 +2678,6 @@ export interface components {
        */
       non_match_count: number;
       /**
-       * Error Count
-       * @description Total errors
-       * @default 0
-       */
-      error_count: number;
-      /**
-       * Action Counts
-       * @description Action breakdown for matches: {allow, deny, warn, log}
-       */
-      action_counts?: {
-        [key: string]: number;
-      };
-      /**
        * Timeseries
        * @description Time-series data points (only when include_timeseries=true)
        */
@@ -2600,22 +2688,22 @@ export interface components {
      * @description Runtime payload for an agent step invocation.
      */
     Step: {
-      /**
-       * Type
-       * @description Step type (e.g., 'tool', 'llm')
-       */
-      type: string;
+      /** @description Optional context (conversation history, metadata, etc.) */
+      context?: components['schemas']['JSONObject'] | null;
+      /** @description Input content for this step */
+      input: components['schemas']['JSONValue'];
       /**
        * Name
        * @description Step name (tool name or model/chain id)
        */
       name: string;
-      /** @description Input content for this step */
-      input: components['schemas']['JSONValue'];
       /** @description Output content for this step (None for pre-checks) */
       output?: components['schemas']['JSONValue'] | null;
-      /** @description Optional context (conversation history, metadata, etc.) */
-      context?: components['schemas']['JSONObject'] | null;
+      /**
+       * Type
+       * @description Step type (e.g., 'tool', 'llm')
+       */
+      type: string;
     };
     /**
      * StepKey
@@ -2623,15 +2711,15 @@ export interface components {
      */
     StepKey: {
       /**
-       * Type
-       * @description Step type
-       */
-      type: string;
-      /**
        * Name
        * @description Registered step name
        */
       name: string;
+      /**
+       * Type
+       * @description Step type
+       */
+      type: string;
     };
     /**
      * StepSchema
@@ -2676,16 +2764,6 @@ export interface components {
      */
     StepSchema: {
       /**
-       * Type
-       * @description Step type for this schema (e.g., 'tool', 'llm')
-       */
-      type: string;
-      /**
-       * Name
-       * @description Unique name for the step
-       */
-      name: string;
-      /**
        * Description
        * @description Optional description of the step
        */
@@ -2698,6 +2776,18 @@ export interface components {
         [key: string]: unknown;
       } | null;
       /**
+       * Metadata
+       * @description Additional metadata for the step
+       */
+      metadata?: {
+        [key: string]: unknown;
+      } | null;
+      /**
+       * Name
+       * @description Unique name for the step
+       */
+      name: string;
+      /**
        * Output Schema
        * @description JSON schema describing step output
        */
@@ -2705,12 +2795,10 @@ export interface components {
         [key: string]: unknown;
       } | null;
       /**
-       * Metadata
-       * @description Additional metadata for the step
+       * Type
+       * @description Step type for this schema (e.g., 'tool', 'llm')
        */
-      metadata?: {
-        [key: string]: unknown;
-      } | null;
+      type: string;
     };
     /**
      * TimeseriesBucket
@@ -2730,32 +2818,6 @@ export interface components {
      */
     TimeseriesBucket: {
       /**
-       * Timestamp
-       * Format: date-time
-       * @description Start time of the bucket (UTC)
-       */
-      timestamp: string;
-      /**
-       * Execution Count
-       * @description Total executions in bucket
-       */
-      execution_count: number;
-      /**
-       * Match Count
-       * @description Matches in bucket
-       */
-      match_count: number;
-      /**
-       * Non Match Count
-       * @description Non-matches in bucket
-       */
-      non_match_count: number;
-      /**
-       * Error Count
-       * @description Errors in bucket
-       */
-      error_count: number;
-      /**
        * Action Counts
        * @description Action breakdown: {allow, deny, warn, log}
        */
@@ -2772,6 +2834,32 @@ export interface components {
        * @description Average duration (ms)
        */
       avg_duration_ms?: number | null;
+      /**
+       * Error Count
+       * @description Errors in bucket
+       */
+      error_count: number;
+      /**
+       * Execution Count
+       * @description Total executions in bucket
+       */
+      execution_count: number;
+      /**
+       * Match Count
+       * @description Matches in bucket
+       */
+      match_count: number;
+      /**
+       * Non Match Count
+       * @description Non-matches in bucket
+       */
+      non_match_count: number;
+      /**
+       * Timestamp
+       * Format: date-time
+       * @description Start time of the bucket (UTC)
+       */
+      timestamp: string;
     };
     /**
      * UpdateEvaluatorConfigRequest
@@ -2779,10 +2867,12 @@ export interface components {
      */
     UpdateEvaluatorConfigRequest: {
       /**
-       * Name
-       * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
+       * Config
+       * @description Evaluator-specific configuration
        */
-      name: string;
+      config: {
+        [key: string]: unknown;
+      };
       /**
        * Description
        * @description Optional description
@@ -2794,15 +2884,33 @@ export interface components {
        */
       evaluator: string;
       /**
-       * Config
-       * @description Evaluator-specific configuration
+       * Name
+       * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
        */
-      config: {
-        [key: string]: unknown;
-      };
+      name: string;
+    };
+    /**
+     * ValidateControlDataRequest
+     * @description Request to validate control configuration data without saving.
+     */
+    ValidateControlDataRequest: {
+      /** @description Control configuration data to validate */
+      data: components['schemas']['ControlDefinition'];
+    };
+    /** ValidateControlDataResponse */
+    ValidateControlDataResponse: {
+      /**
+       * Success
+       * @description Whether the control data is valid
+       */
+      success: boolean;
     };
     /** ValidationError */
     ValidationError: {
+      /** Context */
+      ctx?: Record<string, never>;
+      /** Input */
+      input?: unknown;
       /** Location */
       loc: (string | number)[];
       /** Message */
@@ -2885,12 +2993,12 @@ export interface operations {
       };
     };
   };
-  get_agent_api_v1_agents__agent_id__get: {
+  get_agent_api_v1_agents__agent_name__get: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
@@ -2916,12 +3024,12 @@ export interface operations {
       };
     };
   };
-  patch_agent_api_v1_agents__agent_id__patch: {
+  patch_agent_api_v1_agents__agent_name__patch: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
@@ -2951,106 +3059,12 @@ export interface operations {
       };
     };
   };
-  set_agent_policy_api_v1_agents__agent_id__policy__policy_id__post: {
+  list_agent_controls_api_v1_agents__agent_name__controls_get: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
-        policy_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success status with previous policy ID */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['SetPolicyResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  get_agent_policy_api_v1_agents__agent_id__policy_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        agent_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Policy ID */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['GetPolicyResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  delete_agent_policy_api_v1_agents__agent_id__policy_delete: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        agent_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DeletePolicyResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  list_agent_controls_api_v1_agents__agent_id__controls_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
@@ -3076,7 +3090,7 @@ export interface operations {
       };
     };
   };
-  list_agent_evaluators_api_v1_agents__agent_id__evaluators_get: {
+  list_agent_evaluators_api_v1_agents__agent_name__evaluators_get: {
     parameters: {
       query?: {
         cursor?: string | null;
@@ -3084,7 +3098,7 @@ export interface operations {
       };
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
@@ -3110,12 +3124,12 @@ export interface operations {
       };
     };
   };
-  get_agent_evaluator_api_v1_agents__agent_id__evaluators__evaluator_name__get: {
+  get_agent_evaluator_api_v1_agents__agent_name__evaluators__evaluator_name__get: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
         evaluator_name: string;
       };
       cookie?: never;
@@ -3142,26 +3156,24 @@ export interface operations {
       };
     };
   };
-  create_policy_api_v1_policies_put: {
+  get_agent_policy_api_v1_agents__agent_name__policy_get: {
     parameters: {
       query?: never;
       header?: never;
-      path?: never;
+      path: {
+        agent_name: string;
+      };
       cookie?: never;
     };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreatePolicyRequest'];
-      };
-    };
+    requestBody?: never;
     responses: {
-      /** @description Created policy ID */
+      /** @description Policy ID */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['CreatePolicyResponse'];
+          'application/json': components['schemas']['GetPolicyResponse'];
         };
       };
       /** @description Validation Error */
@@ -3175,13 +3187,12 @@ export interface operations {
       };
     };
   };
-  add_control_to_policy_api_v1_policies__policy_id__controls__control_id__post: {
+  delete_agent_policy_api_v1_agents__agent_name__policy_delete: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        policy_id: number;
-        control_id: number;
+        agent_name: string;
       };
       cookie?: never;
     };
@@ -3193,7 +3204,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['AssocResponse'];
+          'application/json': components['schemas']['DeletePolicyResponse'];
         };
       };
       /** @description Validation Error */
@@ -3207,56 +3218,25 @@ export interface operations {
       };
     };
   };
-  remove_control_from_policy_api_v1_policies__policy_id__controls__control_id__delete: {
+  set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        policy_id: number;
-        control_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AssocResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  list_policy_controls_api_v1_policies__policy_id__controls_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
+        agent_name: string;
         policy_id: number;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List of control IDs */
+      /** @description Success status with previous policy ID */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['GetPolicyControlsResponse'];
+          'application/json': components['schemas']['SetPolicyResponse'];
         };
       };
       /** @description Validation Error */
@@ -3335,6 +3315,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['CreateControlResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  validate_control_data_api_v1_controls_validate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ValidateControlDataRequest'];
+      };
+    };
+    responses: {
+      /** @description Validation result */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ValidateControlDataResponse'];
         };
       };
       /** @description Validation Error */
@@ -3501,6 +3514,42 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['SetControlDataResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  evaluate_api_v1_evaluation_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        'X-Trace-Id'?: string | null;
+        'X-Span-Id'?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EvaluationRequest'];
+      };
+    };
+    responses: {
+      /** @description Safety analysis result */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EvaluationResponse'];
         };
       };
       /** @description Validation Error */
@@ -3681,42 +3730,6 @@ export interface operations {
       };
     };
   };
-  evaluate_api_v1_evaluation_post: {
-    parameters: {
-      query?: never;
-      header?: {
-        'X-Trace-Id'?: string | null;
-        'X-Span-Id'?: string | null;
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['EvaluationRequest'];
-      };
-    };
-    responses: {
-      /** @description Safety analysis result */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['EvaluationResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
   get_evaluators_api_v1_evaluators_get: {
     parameters: {
       query?: never;
@@ -3808,7 +3821,7 @@ export interface operations {
   get_stats_api_v1_observability_stats_get: {
     parameters: {
       query: {
-        agent_uuid: string;
+        agent_name: string;
         time_range?:
           | '1m'
           | '5m'
@@ -3850,7 +3863,7 @@ export interface operations {
   get_control_stats_api_v1_observability_stats_controls__control_id__get: {
     parameters: {
       query: {
-        agent_uuid: string;
+        agent_name: string;
         time_range?:
           | '1m'
           | '5m'
@@ -3909,6 +3922,134 @@ export interface operations {
           'application/json': {
             [key: string]: unknown;
           };
+        };
+      };
+    };
+  };
+  create_policy_api_v1_policies_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreatePolicyRequest'];
+      };
+    };
+    responses: {
+      /** @description Created policy ID */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CreatePolicyResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_policy_controls_api_v1_policies__policy_id__controls_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        policy_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of control IDs */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GetPolicyControlsResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  add_control_to_policy_api_v1_policies__policy_id__controls__control_id__post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        policy_id: number;
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssocResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  remove_control_from_policy_api_v1_policies__policy_id__controls__control_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        policy_id: number;
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssocResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };

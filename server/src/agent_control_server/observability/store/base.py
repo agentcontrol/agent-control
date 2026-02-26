@@ -15,7 +15,6 @@ Custom implementations users can create:
 from abc import ABC, abstractmethod
 from datetime import timedelta
 from typing import Literal
-from uuid import UUID
 
 from agent_control_models.observability import (
     ControlExecutionEvent,
@@ -134,7 +133,7 @@ class EventStore(ABC):
     @abstractmethod
     async def query_stats(
         self,
-        agent_uuid: UUID,
+        agent_name: str,
         time_range: timedelta,
         control_id: int | None = None,
         include_timeseries: bool = False,
@@ -143,7 +142,7 @@ class EventStore(ABC):
         """Query stats (aggregated at query time from raw events).
 
         Args:
-            agent_uuid: UUID of the agent to query stats for
+            agent_name: Identifier of the agent to query stats for
             time_range: Time range to aggregate over (from now)
             control_id: Optional control ID to filter by
             include_timeseries: Whether to include time-series data
