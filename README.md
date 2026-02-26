@@ -82,17 +82,11 @@ cd agent-control
 # Install dependencies
 make sync
 
-# Start PostgreSQL database
-docker compose -f docker-compose.dev.yml up -d
-
-# Run database migrations
-make server-migrate
-
-# Start the Agent Control server
+# Start server (automatically starts Postgres + runs migrations + starts server)
 make server-run
 ```
 
-> 📝 **Note:** Run `make server-migrate` on first setup or after database schema changes. Once migrations are complete, you only need `make server-run` to start the server (it automatically starts Postgres).
+> 💡 **First time?** The command above handles everything: starts Postgres, runs migrations, and starts the server. Migrations are idempotent - safe to run multiple times.
 
 **Server is now running at `http://localhost:8000`** ✅
 
