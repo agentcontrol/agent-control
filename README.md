@@ -83,14 +83,16 @@ cd agent-control
 make sync
 
 # Start PostgreSQL database
-cd server && docker-compose up -d && cd ..
+docker compose -f docker-compose.dev.yml up -d
 
 # Run database migrations
-make server-alembic-upgrade
+make server-migrate
 
 # Start the Agent Control server
 make server-run
 ```
+
+> 📝 **Note:** Run `make server-migrate` on first setup or after database schema changes. Once migrations are complete, you only need `make server-run` to start the server (it automatically starts Postgres).
 
 **Server is now running at `http://localhost:8000`** ✅
 

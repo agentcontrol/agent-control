@@ -17,6 +17,9 @@ ENV UV_LINK_MODE=copy
 # Copy workspace definition
 COPY pyproject.toml uv.lock* ./
 
+# Copy alembic configuration
+COPY alembic.ini ./
+
 # Copy shared dependencies (Workspaces)
 COPY models/ models/
 COPY engine/ engine/
@@ -50,6 +53,13 @@ ENV PORT=8000
 
 # Expose the port
 EXPOSE 8000
+
+# Copy and configure entrypoint script
+COPY server/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Set entrypoint to run migrations before starting server
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Run the server entrypoint defined in pyproject.toml
 CMD ["agent-control-server"]

@@ -5,10 +5,11 @@
 #
 # Usage:
 #   docker compose -f docker-compose.dev.yml up -d
+#   cd server && uvicorn main:app --reload
 #   OR
-#   make server-run  (uses this file automatically)
+#   make server-run  (handles this automatically)
 #
-# For production deployment with both postgres + server, use docker-compose.yml instead.
+# For running both Postgres + Server in Docker, use docker-compose.yml instead.
 
 services:
   postgres:

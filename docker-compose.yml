@@ -10,7 +10,8 @@
 # The server image is published to Docker Hub at:
 #   galileoai/agent-control-server:latest
 #
-# For local development, use docker-compose.dev.yml instead
+# For local development (run server with uvicorn), use:
+#   docker compose -f docker-compose.dev.yml up -d
 
 services:
   postgres:
