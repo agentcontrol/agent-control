@@ -80,10 +80,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Run database migrations automatically
     try:
+        from pathlib import Path
+
         from alembic import command
         from alembic.config import Config
-        import os
-        from pathlib import Path
 
         # Find alembic.ini (in server directory or parent)
         current_dir = Path(__file__).parent
