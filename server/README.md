@@ -53,8 +53,10 @@ agent-control-server
 Create a `.env` file in the server directory:
 
 ```env
-# Database
-DB_URL=postgresql+psycopg://user:password@localhost/agent_control
+# Database (use DATABASE_URL for Docker, DB_URL for local dev)
+DATABASE_URL=postgresql+psycopg://user:password@localhost/agent_control
+# Or use DB_URL (legacy):
+# DB_URL=postgresql+psycopg://user:password@localhost/agent_control
 # Or for development:
 # DB_URL=sqlite+aiosqlite:///./agent_control.db
 

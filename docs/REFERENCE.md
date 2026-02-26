@@ -890,7 +890,7 @@ Agent Control supports multiple API keys for zero-downtime rotation:
 | `DB_PASSWORD` | `agent_control` | Database password |
 | `DB_DATABASE` | `agent_control` | Database name |
 | `DB_DRIVER` | `psycopg` | Database driver |
-| `DB_URL` | — | Full database URL (overrides above) |
+| `DATABASE_URL` or `DB_URL` | — | Full database URL (overrides above). `DATABASE_URL` is preferred for Docker environments. |
 
 **Authentication**:
 

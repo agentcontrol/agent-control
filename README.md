@@ -266,7 +266,7 @@ uv run my_agent.py
 |----------|---------|-------------|
 | `AGENT_CONTROL_URL` | `http://localhost:8000` | Server URL for SDK |
 | `AGENT_CONTROL_API_KEY` | — | API key for authentication (if enabled) |
-| `DB_URL` | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
+| `DATABASE_URL` or `DB_URL` | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (`DATABASE_URL` preferred for Docker, `DB_URL` for local dev. SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
 | `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator |
 
 ### Server Configuration
