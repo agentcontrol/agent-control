@@ -196,10 +196,11 @@ class ControlEngine:
                         timeout=timeout,
                     )
 
-                    # Signal if this is a deny or steer match
+                    # Signal if this is a deny match - only deny should trigger cancellation
+                    # to preserve deny-first semantics
                     if (
                         eval_task.result.matched
-                        and eval_task.item.control.action.decision in ("deny", "steer")
+                        and eval_task.item.control.action.decision == "deny"
                     ):
                         deny_found.set()
                 except asyncio.CancelledError:

@@ -124,7 +124,7 @@ class ControlContext:
         # Log each control evaluation
         _log_control_evaluations(result, self.trace_id, self.span_id, check_stage)
 
-        # Handle deny/warn/log actions (may raise ControlViolationError)
+        # Handle deny/steer/warn/log actions (may raise ControlViolationError, ControlSteerError)
         _handle_evaluation_result(result)
 
         # Update stats in place
@@ -482,56 +482,79 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
             f"Errors: {'; '.join(error_messages)}"
         )
 
+    # CRITICAL: Handle actions in priority order: deny > steer > warn > log
+    # Check blocking actions first (deny/steer), then always log warn/log
+
     if not is_safe:
+        # Pass 1: Check for deny actions (highest priority - blocks immediately)
         for match in matches:
-            if not isinstance(match, dict):
-                logger.warning(f"Invalid match format: {match}")
+            if not isinstance(match, dict) or match.get("action", "deny") != "deny":
                 continue
 
-            action = match.get("action", "deny")
-            control_id = match.get("control_id")
-            matched_control = match.get("control_name", "unknown")
-
-            # Safely extract result message and metadata
             result_data = match.get("result") or {}
-            if isinstance(result_data, dict):
-                message = result_data.get("message", "Control triggered")
-                metadata = result_data.get("metadata", {})
-            else:
-                message = "Control triggered"
-                metadata = {}
+            message = (
+                result_data.get("message", "Control triggered")
+                if isinstance(result_data, dict)
+                else "Control triggered"
+            )
+            metadata = result_data.get("metadata", {}) if isinstance(result_data, dict) else {}
+            raise ControlViolationError(
+                control_id=match.get("control_id"),
+                control_name=match.get("control_name", "unknown"),
+                message=message,
+                metadata=metadata
+            )
 
-            if action == "deny":
-                raise ControlViolationError(
-                    control_id=control_id,
-                    control_name=matched_control,
-                    message=message,
-                    metadata=metadata
-                )
-            elif action == "steer":
-                # Extract steering_context from control action definition or metadata
-                control_data = match.get("control", {})
-                action_data = (
-                    control_data.get("action", {})
-                    if isinstance(control_data, dict)
-                    else {}
-                )
-                steering_context = (
-                    action_data.get("steering_context") if isinstance(action_data, dict)
-                    else metadata.get("steering_context")
-                ) or message
+        # Pass 2: Check for steer actions (second priority - signals correction needed)
+        for match in matches:
+            if not isinstance(match, dict) or match.get("action", "deny") != "steer":
+                continue
 
-                raise ControlSteerError(
-                    control_id=control_id,
-                    control_name=matched_control,
-                    message=message,
-                    metadata=metadata,
-                    steering_context=steering_context
-                )
-            elif action == "warn":
-                logger.warning(f"⚠️ Control [{matched_control}]: {message}")
-            elif action == "log":
-                logger.info(f"ℹ️ Control [{matched_control}]: {message}")
+            result_data = match.get("result") or {}
+            message = (
+                result_data.get("message", "Control triggered")
+                if isinstance(result_data, dict)
+                else "Control triggered"
+            )
+            metadata = result_data.get("metadata", {}) if isinstance(result_data, dict) else {}
+
+            # Extract steering_context from control action or metadata
+            control_data = match.get("control", {})
+            action_data = control_data.get("action", {}) if isinstance(control_data, dict) else {}
+            steering_context = (
+                action_data.get("steering_context") if isinstance(action_data, dict)
+                else metadata.get("steering_context")
+            ) or message
+
+            raise ControlSteerError(
+                control_id=match.get("control_id"),
+                control_name=match.get("control_name", "unknown"),
+                message=message,
+                metadata=metadata,
+                steering_context=steering_context
+            )
+
+    # Log warn and log actions (non-blocking, always processed)
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+
+        action = match.get("action", "deny")
+        if action not in ("warn", "log"):
+            continue
+
+        result_data = match.get("result") or {}
+        message = (
+            result_data.get("message", "Control triggered")
+            if isinstance(result_data, dict)
+            else "Control triggered"
+        )
+        control_name = match.get("control_name", "unknown")
+
+        if action == "warn":
+            logger.warning(f"⚠️ Control [{control_name}]: {message}")
+        else:  # action == "log"
+            logger.info(f"ℹ️ Control [{control_name}]: {message}")
 
 
 def _log_control_evaluations(
