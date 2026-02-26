@@ -180,7 +180,7 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
     policy_id, control_id, control_name = _create_policy_with_agent_evaluator_control(
         client, agent_name=agent_name, evaluator_name=evaluator_name
     )
-    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
     assert assign_resp.status_code == 200
 
     # When: overwrite mode removes the evaluator from the incoming registration payload.
