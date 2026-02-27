@@ -1,4 +1,15 @@
-version: "3.9"
+# Agent Control Server - Local Development Docker Compose
+#
+# This file is used for local development with `make server-run`.
+# It only starts PostgreSQL, allowing you to run the server locally with uvicorn.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#   cd server && uvicorn main:app --reload
+#   OR
+#   make server-run  (handles this automatically)
+#
+# For running both Postgres + Server in Docker, use docker-compose.yml instead.
 
 services:
   postgres:
