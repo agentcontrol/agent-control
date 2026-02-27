@@ -5,46 +5,26 @@
 import * as z from "zod/v4-mini";
 import { safeParse } from "../lib/schemas.js";
 import * as openEnums from "../types/enums.js";
-import { OpenEnum } from "../types/enums.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import {
   ControlAction,
   ControlAction$inboundSchema,
-  ControlAction$Outbound,
-  ControlAction$outboundSchema,
 } from "./control-action.js";
 import {
   ControlScope,
   ControlScope$inboundSchema,
-  ControlScope$Outbound,
-  ControlScope$outboundSchema,
 } from "./control-scope.js";
 import {
   ControlSelector,
   ControlSelector$inboundSchema,
-  ControlSelector$Outbound,
-  ControlSelector$outboundSchema,
 } from "./control-selector.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
   EvaluatorSpec,
   EvaluatorSpec$inboundSchema,
-  EvaluatorSpec$Outbound,
-  EvaluatorSpec$outboundSchema,
 } from "./evaluator-spec.js";
-
-/**
- * Where this control executes
- */
-export const Execution = {
-  Server: "server",
-  SDK: "sdk",
-} as const;
-/**
- * Where this control executes
- */
-export type Execution = OpenEnum<typeof Execution>;
+import { Execution } from "./control-definition-input.js";
 
 /**
  * A control definition to evaluate agent interactions.
@@ -54,7 +34,7 @@ export type Execution = OpenEnum<typeof Execution>;
  * This model contains only the logic and configuration.
  * Identity fields (id, name) are managed by the database.
  */
-export type ControlDefinition = {
+export type ControlDefinitionOutput = {
   /**
    * What to do when control matches.
    */
@@ -104,13 +84,10 @@ export type ControlDefinition = {
 /** @internal */
 export const Execution$inboundSchema: z.ZodMiniType<Execution, unknown> =
   openEnums.inboundSchema(Execution);
-/** @internal */
-export const Execution$outboundSchema: z.ZodMiniType<string, Execution> =
-  openEnums.outboundSchema(Execution);
 
 /** @internal */
-export const ControlDefinition$inboundSchema: z.ZodMiniType<
-  ControlDefinition,
+export const ControlDefinitionOutput$inboundSchema: z.ZodMiniType<
+  ControlDefinitionOutput,
   unknown
 > = z.object({
   action: ControlAction$inboundSchema,
@@ -122,46 +99,13 @@ export const ControlDefinition$inboundSchema: z.ZodMiniType<
   selector: ControlSelector$inboundSchema,
   tags: types.optional(z.array(types.string())),
 });
-/** @internal */
-export type ControlDefinition$Outbound = {
-  action: ControlAction$Outbound;
-  description?: string | null | undefined;
-  enabled: boolean;
-  evaluator: EvaluatorSpec$Outbound;
-  execution: string;
-  scope?: ControlScope$Outbound | undefined;
-  selector: ControlSelector$Outbound;
-  tags?: Array<string> | undefined;
-};
 
-/** @internal */
-export const ControlDefinition$outboundSchema: z.ZodMiniType<
-  ControlDefinition$Outbound,
-  ControlDefinition
-> = z.object({
-  action: ControlAction$outboundSchema,
-  description: z.optional(z.nullable(z.string())),
-  enabled: z._default(z.boolean(), true),
-  evaluator: EvaluatorSpec$outboundSchema,
-  execution: Execution$outboundSchema,
-  scope: z.optional(ControlScope$outboundSchema),
-  selector: ControlSelector$outboundSchema,
-  tags: z.optional(z.array(z.string())),
-});
-
-export function controlDefinitionToJSON(
-  controlDefinition: ControlDefinition,
-): string {
-  return JSON.stringify(
-    ControlDefinition$outboundSchema.parse(controlDefinition),
-  );
-}
-export function controlDefinitionFromJSON(
+export function controlDefinitionOutputFromJSON(
   jsonString: string,
-): SafeParseResult<ControlDefinition, SDKValidationError> {
+): SafeParseResult<ControlDefinitionOutput, SDKValidationError> {
   return safeParse(
     jsonString,
-    (x) => ControlDefinition$inboundSchema.parse(JSON.parse(x)),
-    `Failed to parse 'ControlDefinition' from JSON`,
+    (x) => ControlDefinitionOutput$inboundSchema.parse(JSON.parse(x)),
+    `Failed to parse 'ControlDefinitionOutput' from JSON`,
   );
 }
