@@ -67,7 +67,7 @@ Get up and running with Agent Control in **one command**:
 ### Option 1: Quick Install (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/agentcontrol/agent-control/main/setup.sh | sh
+curl -fsSL -H "Authorization: token YOUR_GITHUB_TOKEN" https://raw.githubusercontent.com/agentcontrol/agent-control/main/setup.sh | sh
 ```
 
 > ⚠️ **Note**: This will automatically download and run the setup script. [Review the script](https://github.com/agentcontrol/agent-control/blob/main/setup.sh) before running if you prefer.
