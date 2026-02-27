@@ -8,8 +8,13 @@ import { safeParse } from "../lib/schemas.js";
 import * as openEnums from "../types/enums.js";
 import { OpenEnum } from "../types/enums.js";
 import { Result as SafeParseResult } from "../types/fp.js";
-import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
+import {
+  SteeringContext,
+  SteeringContext$inboundSchema,
+  SteeringContext$Outbound,
+  SteeringContext$outboundSchema,
+} from "./steering-context.js";
 
 /**
  * Action to take when control is triggered
@@ -25,19 +30,6 @@ export const Decision = {
  * Action to take when control is triggered
  */
 export type Decision = OpenEnum<typeof Decision>;
-
-/**
- * Steering context for steer actions.
- *
- * This model provides an extensible structure for steering guidance.
- * Future fields could include severity, categories, suggested_actions, etc.
- */
-export type SteeringContext = {
-  /**
-   * Guidance message explaining what needs to be corrected and how
-   */
-  message: string;
-};
 
 /**
  * What to do when control matches.
@@ -61,22 +53,6 @@ export const Decision$outboundSchema: z.ZodMiniType<string, Decision> =
   openEnums.outboundSchema(Decision);
 
 /** @internal */
-export const SteeringContext$inboundSchema: z.ZodMiniType<
-  SteeringContext,
-  unknown
-> = z.object({
-  message: types.string(),
-});
-
-/** @internal */
-export const SteeringContext$outboundSchema: z.ZodMiniType<
-  SteeringContext,
-  SteeringContext
-> = z.object({
-  message: z.string(),
-});
-
-/** @internal */
 export const ControlAction$inboundSchema: z.ZodMiniType<
   ControlAction,
   unknown
@@ -94,7 +70,7 @@ export const ControlAction$inboundSchema: z.ZodMiniType<
 /** @internal */
 export type ControlAction$Outbound = {
   decision: string;
-  steering_context?: SteeringContext | null | undefined;
+  steering_context?: SteeringContext$Outbound | null | undefined;
 };
 
 /** @internal */

@@ -63,6 +63,7 @@ export * from "./set-control-data-response.js";
 export * from "./set-policy-response.js";
 export * from "./stats-response.js";
 export * from "./stats-totals.js";
+export * from "./steering-context.js";
 export * from "./step-key.js";
 export * from "./step-schema.js";
 export * from "./step.js";
