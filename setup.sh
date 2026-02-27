@@ -1,25 +1,42 @@
 #!/bin/bash
 set -e  # Exit on error
 
+# Support non-interactive mode for curl | sh
+NON_INTERACTIVE=${NON_INTERACTIVE:-false}
+if [ -t 0 ]; then
+    # Running interactively (not piped)
+    NON_INTERACTIVE=false
+else
+    # Running non-interactively (piped from curl)
+    NON_INTERACTIVE=true
+fi
+
 echo "=========================================="
 echo "Agent Control - Quick Setup"
 echo "=========================================="
 echo ""
+
+if [ "$NON_INTERACTIVE" = true ]; then
+    echo "Running in non-interactive mode..."
+    echo ""
+fi
 
 # 1. Check Python version
 echo "1. Checking Python version..."
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
 echo "   Found Python $PYTHON_VERSION"
 
-if [[ ! "$PYTHON_VERSION" =~ ^3\.12 ]]; then
-    echo "   ⚠ Warning: Python 3.12 is recommended, but found $PYTHON_VERSION"
-    read -p "   Continue anyway? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+# Extract major and minor version (e.g., 3.12, 3.14)
+PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+
+# Check if Python >= 3.12
+if [[ "$PYTHON_MAJOR" -lt 3 ]] || [[ "$PYTHON_MAJOR" -eq 3 && "$PYTHON_MINOR" -lt 12 ]]; then
+    echo "   ⚠ Error: Python 3.12+ is required, but found $PYTHON_VERSION"
+    echo "   Please install Python 3.12 or higher"
+    exit 1
 else
-    echo "   ✓ Python 3.12 detected"
+    echo "   ✓ Python $PYTHON_VERSION detected (3.12+ required)"
 fi
 echo ""
 
