@@ -290,6 +290,7 @@ async def check_evaluation_with_local(
                         confidence=0.0,
                         error=f"Failed to parse local control: {exc}",
                     ),
+                    steering_context=None,
                 )
             )
 

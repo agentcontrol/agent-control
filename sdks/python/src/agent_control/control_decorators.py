@@ -295,6 +295,10 @@ async def _evaluate(
                                 "metadata": m.result.metadata,
                             },
                             "control_execution_id": m.control_execution_id,
+                            "steering_context": (
+                                {"message": m.steering_context.message}
+                                if m.steering_context else None
+                            ),
                         }
                         for m in (result.matches or [])
                     ] if result.matches else None,
@@ -312,6 +316,10 @@ async def _evaluate(
                                 "metadata": e.result.metadata,
                             },
                             "control_execution_id": e.control_execution_id,
+                            "steering_context": (
+                                {"message": e.steering_context.message}
+                                if e.steering_context else None
+                            ),
                         }
                         for e in (result.errors or [])
                     ] if result.errors else None,
@@ -329,6 +337,10 @@ async def _evaluate(
                                 "metadata": nm.result.metadata,
                             },
                             "control_execution_id": nm.control_execution_id,
+                            "steering_context": (
+                                {"message": nm.steering_context.message}
+                                if nm.steering_context else None
+                            ),
                         }
                         for nm in (result.non_matches or [])
                     ] if result.non_matches else None,
@@ -514,22 +526,14 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
             )
             metadata = result_data.get("metadata", {}) if isinstance(result_data, dict) else {}
 
-            # Extract steering_context.message from control action
-            control_data = match.get("control", {})
-            action_data = (
-                control_data.get("action", {})
-                if isinstance(control_data, dict)
-                else {}
-            )
-            steering_context_obj = (
-                action_data.get("steering_context")
-                if isinstance(action_data, dict)
-                else None
-            )
+            # Extract steering_context directly from match (now a first-class field)
+            steering_context_obj = match.get("steering_context")
 
-            # Extract message from SteeringContext object
+            # Extract message from SteeringContext object or use as string
             if isinstance(steering_context_obj, dict):
                 steering_context = steering_context_obj.get("message", message)
+            elif isinstance(steering_context_obj, str):
+                steering_context = steering_context_obj
             else:
                 # No steering context provided, use evaluator message
                 steering_context = message

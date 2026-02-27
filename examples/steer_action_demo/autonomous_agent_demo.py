@@ -49,7 +49,6 @@ import asyncio
 import os
 import time
 from typing import Annotated, TypedDict
-from uuid import UUID
 
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
@@ -63,6 +62,7 @@ from agent_control import ControlSteerError, ControlViolationError, control
 # Configuration
 AGENT_ID = "f8e5d3c2-4b1a-4e7f-9c8d-2a3b4c5d6e7f"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"  # Set DEBUG=true to show technical error details
 
 
 # =============================================================================
@@ -82,20 +82,63 @@ def agent_think(message: str):
     print(" ✓")
 
 
+def agent_reason(message: str):
+    """Show agent internal reasoning in italic/dimmed style."""
+    print(f"\033[3m\033[90m   🧠 Reasoning: {message}\033[0m")
+    time.sleep(0.3)
+
+
+def log_trace(category: str, message: str):
+    """Log detailed trace information."""
+    print(f"\033[2m   ⚙️  [{category.upper()}] {message}\033[0m")
+    time.sleep(0.2)
+
+
+def log_escalation(message: str):
+    """Log when transferring to another person/system."""
+    print(f"\n   🔄 \033[1m{message}\033[0m")
+    time.sleep(0.5)
+
+
 def user_input(prompt: str) -> str:
     """Get input from user."""
     return input(f"\n👤 You: {prompt}").strip()
 
 
+def parse_steering_context(message: str) -> dict:
+    """Parse structured steering context from JSON string.
+
+    Returns a dict with:
+    - required_actions: list of action strings
+    - retry_flags: dict of flags to set for retry
+    - reason: human-readable explanation
+    - steps: optional list of step objects for multi-step workflows
+
+    Falls back to empty structure if parsing fails.
+    """
+    try:
+        import json
+        parsed = json.loads(message)
+        return parsed
+    except (json.JSONDecodeError, ValueError):
+        # Fallback for plain text steering context
+        log_trace("parser", "Failed to parse steering context as JSON, using fallback")
+        return {
+            "required_actions": ["unknown"],
+            "retry_flags": {},
+            "reason": message
+        }
+
+
 def check_fraud_score(amount: float, destination: str) -> float:
-    """Check fraud risk."""
+    """Check fraud risk based on destination.
+
+    Note: Amount thresholds are handled by steer controls, not here.
+    Controls are the source of truth for policy decisions.
+    """
     agent_think("Running fraud detection...")
     if "north korea" in destination.lower() or "iran" in destination.lower():
         return 0.95
-    elif amount > 50000:
-        return 0.6
-    elif amount > 10000:
-        return 0.3
     else:
         return 0.1
 
@@ -250,6 +293,15 @@ async def process_transfer_node(state: AgentState) -> AgentState:
     print(f"   🌍 Destination: {request['destination_country']}")
     print(f"   👤 Recipient: {request['recipient_name']}")
 
+    # Show if this is a retry with corrected flags
+    if state.get("verified_2fa") or state.get("manager_approved"):
+        print(f"\n   ♻️  \033[1mRETRY WITH CORRECTIONS:\033[0m")
+        if state.get("verified_2fa"):
+            print(f"      ✓ 2FA verified")
+        if state.get("manager_approved"):
+            print(f"      ✓ Manager approved")
+        log_trace("retry", "Re-evaluating transfer with corrected authorization flags")
+
     # Check fraud if first time
     if state.get("fraud_score") is None:
         fraud_score = check_fraud_score(request["amount"], request["destination_country"])
@@ -260,6 +312,8 @@ async def process_transfer_node(state: AgentState) -> AgentState:
         fraud_score = state["fraud_score"]
 
     agent_think("Checking compliance and policy controls...")
+    log_trace("agent-control", "Initiating pre-execution control evaluation")
+    agent_reason("All transfers must pass control checks before execution")
 
     # DEBUG: Show what we're about to evaluate
     print(f"   🔍 DEBUG: Calling process_wire_transfer with:")
@@ -268,8 +322,12 @@ async def process_transfer_node(state: AgentState) -> AgentState:
     print(f"      - verified_2fa: {state.get('verified_2fa', False)}")
     print(f"      - manager_approved: {state.get('manager_approved', False)}")
 
+    log_trace("agent-control", "Sending request to AgentControl server for evaluation")
+    log_trace("agent-control", f"Evaluating against {4} active controls")
+
     try:
         # Attempt transfer - AgentControl gates this
+        log_trace("execution", "Attempting wire transfer execution...")
         result = await process_wire_transfer(
             amount=request["amount"],
             destination_country=request["destination_country"],
@@ -281,9 +339,28 @@ async def process_transfer_node(state: AgentState) -> AgentState:
         )
 
         # Success!
+        log_trace("agent-control", "All control checks passed ✓")
+        log_trace("execution", "Wire transfer executed successfully")
+        agent_reason("Transfer complies with all policies - proceeding with execution")
+
+        # Show if this was a successful retry after steer correction
+        if state.get("verified_2fa") or state.get("manager_approved"):
+            print(f"\n   ✅ \033[1mALLOW PATH: Transfer succeeded after steer corrections!\033[0m")
+            log_trace("lifecycle", "STEER → FIX → RETRY → SUCCESS lifecycle completed")
+
         agent_say(f"✅ Transfer completed successfully!")
         print(f"   📝 Transaction ID: {result['transaction_id']}")
         print(f"   ✓ ${result['amount']:,.2f} sent to {result['recipient']}")
+        log_trace("audit", f"Transaction logged: ID={result['transaction_id']}, Amount=${result['amount']:,.2f}")
+
+        # Note: Warn actions (if any) are logged but don't block execution
+        # Check if this was a new recipient (which triggers warn control)
+        if request["recipient_name"] not in ["John Smith", "Acme Corp", "Global Suppliers Inc"]:
+            print(f"\n   ⚠️  \033[33mWARN: New recipient detected\033[0m")
+            print(f"   Control: warn-new-recipient")
+            print(f"   Note: Transfer to '{request['recipient_name']}' is not in known recipient list")
+            print(f"   Action: Logged for review (non-blocking)")
+            log_trace("warn", f"New recipient logged for review: {request['recipient_name']}")
 
         return {
             **state,
@@ -294,10 +371,28 @@ async def process_transfer_node(state: AgentState) -> AgentState:
 
     except ControlViolationError as e:
         # DENY - Hard block
+        log_trace("agent-control", f"DENY control triggered: {e.control_name}")
+        log_trace("compliance", "Transaction blocked by compliance policy")
+        agent_reason("This transaction violates a hard policy rule - cannot proceed")
         agent_say(f"❌ I cannot process this transfer.")
-        print(f"\n   🚫 COMPLIANCE BLOCK")
-        print(f"   Control: {e.control_name}")
-        print(f"   Reason: {e.message}")
+
+        # Control Evaluation Summary
+        print(f"\n   ┌─────────────────────────────────────────────────┐")
+        print(f"   │ 🚫 CONTROL EVALUATION SUMMARY                   │")
+        print(f"   ├─────────────────────────────────────────────────┤")
+        print(f"   │ Action:           DENY (Hard Block)             │")
+        print(f"   │ Control:          {e.control_name:<31}│")
+        print(f"   │ Reason:           {e.message[:31]:<31}│")
+        if len(e.message) > 31:
+            print(f"   │                   {e.message[31:62]:<31}│")
+        print(f"   └─────────────────────────────────────────────────┘")
+
+        # Show metadata in debug mode
+        if DEBUG and hasattr(e, 'metadata') and e.metadata:
+            print(f"\n   🐛 \033[90mDEBUG - Metadata:\033[0m")
+            print(f"   \033[90m{e.metadata}\033[0m")
+
+        log_trace("audit", f"Blocked transaction: Control={e.control_name}, Amount=${request['amount']:,.2f}")
         agent_say("This transaction violates compliance policies and cannot be approved under any circumstances.")
 
         return {
@@ -309,49 +404,81 @@ async def process_transfer_node(state: AgentState) -> AgentState:
     except ControlSteerError as e:
         # STEER - Need human input
         agent_say(f"⚠️  This transfer requires additional verification.")
-        print(f"\n   📋 Control: {e.control_name}")
-        print(f"   📌 Issue: {e.message}")
-        print(f"   💡 Steering context: {e.steering_context}")
 
-        # Interpret steering context with LLM
-        agent_think("Determining required action...")
+        log_trace("control", f"Steer action triggered by control '{e.control_name}'")
+        log_trace("decision", "Transfer cannot proceed without additional approvals")
+        agent_reason("Control policy requires verification before large transactions")
 
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        # Parse structured steering context (deterministic, no LLM needed)
+        agent_think("Parsing steering context...")
+        log_trace("parser", "Extracting required actions from structured JSON")
 
-        interpret_prompt = f"""Based on this control steering context, what action is needed?
+        steering_data = parse_steering_context(e.steering_context)
+        required_actions = steering_data.get("required_actions", [])
+        reason = steering_data.get("reason", "Additional verification required")
 
-Steering context: {e.steering_context}
+        # Control Evaluation Summary
+        print(f"\n   ┌─────────────────────────────────────────────────┐")
+        print(f"   │ 🔄 CONTROL EVALUATION SUMMARY                   │")
+        print(f"   ├─────────────────────────────────────────────────┤")
+        print(f"   │ Action:           STEER (Corrective)            │")
+        print(f"   │ Control:          {e.control_name:<31}│")
+        print(f"   │ Reason:           {reason[:31]:<31}│")
+        if len(reason) > 31:
+            print(f"   │                   {reason[31:62]:<31}│")
+        print(f"   │ Required Actions: {', '.join(required_actions)[:31]:<31}│")
+        if len(', '.join(required_actions)) > 31:
+            print(f"   │                   {', '.join(required_actions)[31:62]:<31}│")
+        print(f"   └─────────────────────────────────────────────────┘")
 
-Current state:
-- Amount: ${request['amount']:,.2f}
-- 2FA verified: {state.get('verified_2fa', False)}
-- Manager approved: {state.get('manager_approved', False)}
-- Has justification: {bool(state.get('justification'))}
+        # Show technical error message in debug mode
+        if DEBUG:
+            print(f"\n   🐛 \033[90mDEBUG - Technical Error Message:\033[0m")
+            print(f"   \033[90m{e.message}\033[0m")
 
-Respond with ONE word only:
-- "2fa" if 2FA verification needed
-- "approval" if manager approval needed
-- "unknown" if unclear"""
+        # Determine which action to take based on current state
+        action = None
+        if "request_2fa" in required_actions or "verify_2fa" in required_actions:
+            if not state.get("verified_2fa"):
+                action = "2fa"
+        if "justification" in required_actions or "approval" in required_actions:
+            if not state.get("manager_approved"):
+                action = "approval" if action is None else action
 
-        response = await llm.ainvoke([HumanMessage(content=interpret_prompt)])
-        action = response.content.strip().lower()
+        if action is None:
+            action = "unknown"
 
-        print(f"   → Action needed: {action.upper()}")
+        print(f"   → Next action: {action.upper()}")
 
         # Handle based on action
         if action == "2fa" and not state.get("verified_2fa"):
+            log_escalation("ESCALATING TO: Identity Verification System")
+            agent_reason(f"Control requires 2FA verification for this ${request['amount']:,.2f} transfer")
+            log_trace("security", "Initiating 2-factor authentication workflow")
+            log_trace("auth-system", "Preparing to send verification code to user")
+
             agent_say("I need to verify your identity with 2-factor authentication.")
+            log_trace("auth-system", "Waiting for user to enter verification code")
 
             while True:
                 code = user_input("Please enter your 6-digit 2FA code: ")
 
                 if code.lower() == 'cancel':
+                    log_trace("auth-system", "User cancelled verification")
                     agent_say("Transfer cancelled.")
                     return {**state, "fraud_score": fraud_score, "status": "cancelled"}
 
                 if len(code) == 6 and code.isdigit():
                     agent_think("Verifying code...")
+                    log_trace("auth-system", "Validating code against authentication server")
+                    log_trace("auth-system", "Code verified successfully")
+                    agent_reason("Identity confirmed via 2FA - proceeding with transfer")
                     agent_say("✅ Identity verified!")
+
+                    print(f"\n   🔄 \033[1mSTEER CORRECTION COMPLETE - RETRYING TRANSFER\033[0m")
+                    log_trace("workflow", "Returning to transfer processing with verified_2fa=True")
+                    log_trace("retry", "Transfer will be re-evaluated with corrected flags")
+
                     return {
                         **state,
                         "verified_2fa": True,
@@ -359,18 +486,26 @@ Respond with ONE word only:
                         "status": "processing"
                     }
                 else:
+                    log_trace("auth-system", "Invalid code format received")
                     agent_say("Invalid code format. Please enter exactly 6 digits.")
 
         elif action == "approval" and not state.get("manager_approved"):
+            log_escalation("ESCALATING TO: Manager Approval System")
+            agent_reason(f"Control requires manager approval for this ${request['amount']:,.2f} transfer")
+            log_trace("compliance", "Manager approval required per control policy")
+
             # Get justification
             if not state.get("justification"):
+                log_trace("workflow", "Business justification required for approval request")
                 agent_say("I need a business justification for this large transfer.")
 
                 justification = user_input("Why is this transfer needed? (or type 'auto' for AI): ")
 
                 if justification.lower() == 'auto':
                     agent_think("Generating justification...")
+                    log_trace("llm", "Using AI to generate business justification")
 
+                    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
                     llm_prompt = f"""Generate a realistic 2-sentence business justification for:
 Amount: ${request['amount']:,.2f}
 Recipient: {request['recipient_name']}
@@ -384,21 +519,38 @@ Only output the justification, nothing else."""
 
                     agent_say(f"Generated justification:")
                     print(f"   \"{justification}\"")
+                    log_trace("llm", "AI-generated justification created")
                 else:
+                    log_trace("workflow", "User-provided justification received")
                     justification = justification
             else:
                 justification = state["justification"]
 
             # Request manager approval
+            log_escalation("TRANSFERRING TO: Finance Manager")
+            agent_reason("Preparing approval request package with transaction details")
+            log_trace("approval-system", "Creating approval request ticket")
+            log_trace("approval-system", f"Ticket assigned to: Finance Manager")
+            log_trace("notification", "Email notification sent to manager")
+
             agent_say("Requesting manager approval...")
             print(f"\n   📄 Transfer Details:")
             print(f"      Amount: ${request['amount']:,.2f}")
             print(f"      Justification: {justification}")
 
+            log_trace("approval-system", "Waiting for manager decision...")
             approval = user_input("\n   [Acting as Manager] Approve transfer? (yes/no): ")
 
             if approval.lower() in ['yes', 'y']:
-                agent_say("✅ Manager approved! Retrying transfer...")
+                log_trace("approval-system", "Manager approved the transfer")
+                log_trace("audit", f"Approval logged: Manager ID: MGR-001, Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+                agent_reason("Manager authorization received - transfer now complies with policy")
+                agent_say("✅ Manager approved!")
+
+                print(f"\n   🔄 \033[1mSTEER CORRECTION COMPLETE - RETRYING TRANSFER\033[0m")
+                log_trace("workflow", "Returning to transfer processing with manager_approved=True")
+                log_trace("retry", "Transfer will be re-evaluated with corrected flags")
+
                 return {
                     **state,
                     "manager_approved": True,
@@ -407,6 +559,9 @@ Only output the justification, nothing else."""
                     "status": "processing"
                 }
             else:
+                log_trace("approval-system", "Manager rejected the transfer")
+                log_trace("audit", f"Rejection logged: Manager ID: MGR-001, Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+                agent_reason("Manager denied authorization - transfer cannot proceed")
                 agent_say("❌ Manager rejected. Transfer cancelled.")
                 return {
                     **state,
@@ -449,7 +604,6 @@ async def run_banking_agent():
     # Initialize
     agent_control.init(
         agent_name="banking-transaction-agent",
-        agent_id=UUID(AGENT_ID),
         server_url=SERVER_URL
     )
 

@@ -368,3 +368,7 @@ class ControlMatch(BaseModel):
     result: EvaluatorResult = Field(
         ..., description="Evaluator result (confidence, message, metadata)"
     )
+    steering_context: SteeringContext | None = Field(
+        None,
+        description="Steering context for steer actions if configured"
+    )

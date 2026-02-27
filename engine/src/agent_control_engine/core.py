@@ -133,6 +133,7 @@ class ControlEngine:
                                         ),
                                         error=f"Invalid step_name_regex: {e}",
                                     ),
+                                    steering_context=control_def.action.steering_context,
                                 )
                             )
                         continue
@@ -269,6 +270,7 @@ class ControlEngine:
         successful_count = 0
         evaluated_count = 0  # Controls that ran (not cancelled)
         deny_errored = False
+        steer_errored = False
         deny_matched = False
 
         for eval_task in eval_tasks:
@@ -286,11 +288,15 @@ class ControlEngine:
                         control_name=eval_task.item.name,
                         action=eval_task.item.control.action.decision,
                         result=eval_task.result,
+                        steering_context=eval_task.item.control.action.steering_context,
                     )
                 )
-                # Track if a deny or steer control errored (fail closed)
-                if eval_task.item.control.action.decision in ("deny", "steer"):
+                # Track if a deny or steer control errored
+                decision = eval_task.item.control.action.decision
+                if decision == "deny":
                     deny_errored = True
+                elif decision == "steer":
+                    steer_errored = True
                 continue
 
             # Count successful evaluations
@@ -298,12 +304,14 @@ class ControlEngine:
 
             # Collect successful matches
             if eval_task.result.matched:
+                steer_ctx = eval_task.item.control.action.steering_context
                 matches.append(
                     ControlMatch(
                         control_id=eval_task.item.id,
                         control_name=eval_task.item.name,
                         action=eval_task.item.control.action.decision,
                         result=eval_task.result,
+                        steering_context=steer_ctx,
                     )
                 )
 
@@ -319,12 +327,23 @@ class ControlEngine:
                         control_name=eval_task.item.name,
                         action=eval_task.item.control.action.decision,
                         result=eval_task.result,
+                        steering_context=eval_task.item.control.action.steering_context,
                     )
                 )
 
         # Fail closed if a deny control errored (couldn't verify safety)
         if deny_errored:
             is_safe = False
+
+        # Log steer errors for observability (non-blocking)
+        if steer_errored:
+            steer_error_names = [
+                e.control_name for e in errors
+                if e.action == "steer" and e.result.error
+            ]
+            logger.warning(
+                f"Steer control evaluation failed (non-blocking): {', '.join(steer_error_names)}"
+            )
 
         # Calculate confidence
         if deny_errored:

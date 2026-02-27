@@ -8,7 +8,32 @@ This example shows all three AgentControl action types in a real-world banking s
 
 - **ALLOW**: Auto-approve simple, low-risk transfers
 - **DENY**: Hard-block compliance violations (OFAC sanctions, high fraud)
+- **WARN**: Log suspicious activity without blocking (new recipients)
 - **STEER**: Guide agent through approval workflows (2FA, manager approval)
+
+## Understanding Steer Actions
+
+**Steer is a non-fatal control signal** - unlike DENY which blocks execution, STEER provides corrective guidance to help agents satisfy policy requirements:
+
+- **Philosophy**: Agents are expected to correct the issue and retry
+- **Behavior**: Raises `ControlSteerError` with structured guidance
+- **Outcome**: After correction, retry succeeds through the allow path
+
+**Key difference from DENY:**
+- DENY = "You cannot do this" (permanent block)
+- STEER = "You need to do X first" (correctable)
+
+## Demo Flow
+
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│ Request  │ --> │  STEER   │ --> │ Correct  │ --> │  Retry   │ --> │  ALLOW   │
+│ Transfer │     │ Triggered│     │  Issue   │     │ Transfer │     │ Success  │
+└──────────┘     └──────────┘     └──────────┘     └──────────┘     └──────────┘
+                      ↓                ↓
+                 "Need 2FA"       Get code
+                 "Need approval"  Get approval
+```
 
 ## Quick Start
 
@@ -57,31 +82,74 @@ The demo is an interactive conversation with a banking agent. Try these requests
 
 ## What You'll Learn
 
-- When to use **deny** vs **steer** actions
+- When to use **deny** vs **warn** vs **steer** actions
 - How to integrate human feedback (2FA, approvals) into agent workflows
-- How AgentControl guides agents with natural language instructions
+- How structured steering context enables deterministic agent workflows
 - Real-world compliance patterns (OFAC, AML, fraud prevention)
+- The steer → correct → retry → allow lifecycle
 
 ## How It Works
 
-The agent uses AgentControl to gate wire transfers through 4 controls:
+The agent uses AgentControl to gate wire transfers through 5 controls:
 
 | Control | Type | Triggers When |
 |---------|------|---------------|
 | OFAC Sanctions | DENY | Destination is sanctioned country |
 | High Fraud | DENY | Fraud score > 0.8 |
-| 2FA Required | STEER | Amount ≥ $10,000 |
-| Manager Approval | STEER | Amount ≥ $10,000 |
+| New Recipient | WARN | Recipient not in known list |
+| 2FA Required | STEER | Amount ≥ $10,000 without 2FA |
+| Manager Approval | STEER | Amount ≥ $10,000 without approval |
 
-When a STEER control triggers, it provides steering context like:
-> "This large transfer requires user verification. Request 2FA code from user, verify it, then retry the transaction with verified_2fa=True."
+### Structured Steering Context
 
-The agent interprets this steering context and takes the corrective action automatically.
+STEER controls provide **structured JSON guidance** for deterministic agent workflows:
+
+```json
+{
+  "required_actions": ["request_2fa", "verify_2fa"],
+  "retry_flags": {
+    "verified_2fa": true
+  },
+  "reason": "Large transfer requires identity verification via 2FA"
+}
+```
+
+**For multi-step workflows:**
+```json
+{
+  "required_actions": ["justification", "approval"],
+  "steps": [
+    {
+      "step": 1,
+      "action": "justification",
+      "description": "Request business justification from user"
+    },
+    {
+      "step": 2,
+      "action": "approval",
+      "description": "Submit to manager for approval"
+    }
+  ],
+  "retry_flags": {
+    "manager_approved": true,
+    "justification": "<collected_from_user>"
+  },
+  "reason": "Transfer exceeds daily limit - requires approval"
+}
+```
+
+**Key fields:**
+- `required_actions`: List of actions the agent must complete
+- `retry_flags`: Flags to set when retrying after correction
+- `reason`: Human-readable explanation
+- `steps`: (Optional) Sequential workflow steps with descriptions
+
+This structured format enables **deterministic agent behavior** without LLM interpretation.
 
 ## Files
 
-- `setup_controls.py` - Creates the 4 banking controls
-- `autonomous_agent_demo.py` - Interactive agent with natural language interface
+- `setup_controls.py` - Creates the 5 banking controls (deny, warn, steer)
+- `autonomous_agent_demo.py` - Interactive agent with deterministic steer handling
 - `README.md` - This file
 
 ---

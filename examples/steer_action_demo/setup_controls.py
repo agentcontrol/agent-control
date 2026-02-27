@@ -11,7 +11,6 @@ Run this once before running the autonomous agent demo.
 
 import asyncio
 import os
-from uuid import UUID
 
 from agent_control import Agent, AgentControlClient, agents, controls, policies
 
@@ -23,10 +22,7 @@ async def setup_banking_controls():
     """Create banking controls demonstrating allow, deny, and steer actions."""
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # 1. Register Agent
-        agent_uuid = UUID(AGENT_ID)
-
         agent = Agent(
-            agent_id=agent_uuid,
             agent_name="banking-transaction-agent",
             agent_description="AI agent that processes wire transfers with compliance and fraud controls"
         )
@@ -100,10 +96,40 @@ async def setup_banking_controls():
         }
 
         # ============================================================================
+        # WARN CONTROLS - Log suspicious activity without blocking
+        # ============================================================================
+
+        # Control 3: New Recipient Warning (WARN)
+        new_recipient_control = {
+            "description": "Log warning when transferring to a new recipient",
+            "enabled": True,
+            "execution": "server",
+            "scope": {
+                "step_types": ["tool"],
+                "step_names": ["process_wire_transfer"],
+                "stages": ["pre"]
+            },
+            "selector": {
+                "path": "input.recipient"
+            },
+            "evaluator": {
+                "name": "list",
+                "config": {
+                    "values": ["John Smith", "Acme Corp", "Global Suppliers Inc"],
+                    "match_type": "not_in",
+                    "case_sensitive": False
+                }
+            },
+            "action": {
+                "decision": "warn"
+            }
+        }
+
+        # ============================================================================
         # STEER CONTROLS - Guide agent through approval workflows
         # ============================================================================
 
-        # Control 3: Large Transfer Verification (STEER)
+        # Control 4: Large Transfer Verification (STEER)
         large_transfer_control = {
             "description": "Require verification for large transfers",
             "enabled": True,
@@ -131,12 +157,12 @@ async def setup_banking_controls():
             "action": {
                 "decision": "steer",
                 "steering_context": {
-                    "message": "This large transfer requires user verification. Request 2FA code from user, verify it, then retry the transaction with verified_2fa=True."
+                    "message": "{\"required_actions\": [\"request_2fa\", \"verify_2fa\"], \"retry_flags\": {\"verified_2fa\": true}, \"reason\": \"Large transfer requires identity verification via 2FA\"}"
                 }
             }
         }
 
-        # Control 4: Manager Approval Required (STEER)
+        # Control 5: Manager Approval Required (STEER)
         manager_approval_control = {
             "description": "Require manager approval for transfers exceeding daily limits",
             "enabled": True,
@@ -164,7 +190,7 @@ async def setup_banking_controls():
             "action": {
                 "decision": "steer",
                 "steering_context": {
-                    "message": "Transfer exceeds daily limit. Steps: 1) Ask user for business justification, 2) Request manager approval with amount and justification, 3) If approved, retry with manager_approved=True and justification filled in."
+                    "message": "{\"required_actions\": [\"justification\", \"approval\"], \"steps\": [{\"step\": 1, \"action\": \"justification\", \"description\": \"Request business justification from user for this large transfer\"}, {\"step\": 2, \"action\": \"approval\", \"description\": \"Submit transfer details and justification to manager for approval\"}], \"retry_flags\": {\"manager_approved\": true, \"justification\": \"<collected_from_user>\"}, \"reason\": \"Transfer exceeds daily limit - requires sequential justification and manager approval\"}"
                 }
             }
         }
@@ -173,6 +199,7 @@ async def setup_banking_controls():
         control_configs = [
             ("deny-sanctioned-countries", sanctioned_countries_control),
             ("deny-high-fraud-risk", fraud_risk_control),
+            ("warn-new-recipient", new_recipient_control),
             ("steer-large-transfer-verification", large_transfer_control),
             ("steer-manager-approval-required", manager_approval_control),
         ]
@@ -224,7 +251,7 @@ async def setup_banking_controls():
             if "409" in str(e):
                 print(f"  ℹ️  Policy 'banking-transaction-policy' already exists")
                 try:
-                    policy_info = await agents.get_agent_policy(client, str(agent_uuid))
+                    policy_info = await agents.get_agent_policy(client, agent.agent_name)
                     policy_id = policy_info.get("policy_id")
                     if policy_id:
                         print(f"  ℹ️  Using agent's existing policy (ID: {policy_id})")
@@ -256,8 +283,8 @@ async def setup_banking_controls():
         # 5. Assign Policy to Agent
         print("\n📋 Assigning policy to agent...")
         try:
-            await policies.assign_policy_to_agent(client, agent_uuid, policy_id)
-            print(f"  ✓ Assigned policy {policy_id} to agent {AGENT_ID}")
+            await policies.assign_policy_to_agent(client, agent.agent_name, policy_id)
+            print(f"  ✓ Assigned policy {policy_id} to agent {agent.agent_name}")
         except Exception as e:
             if "409" in str(e) or "already" in str(e).lower():
                 print(f"  ℹ️  Policy already assigned to agent (OK)")
