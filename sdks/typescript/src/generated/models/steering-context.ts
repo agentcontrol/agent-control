@@ -30,7 +30,6 @@ export const SteeringContext$inboundSchema: z.ZodMiniType<
 > = z.object({
   message: types.string(),
 });
-
 /** @internal */
 export type SteeringContext$Outbound = {
   message: string;
@@ -47,11 +46,8 @@ export const SteeringContext$outboundSchema: z.ZodMiniType<
 export function steeringContextToJSON(
   steeringContext: SteeringContext,
 ): string {
-  return JSON.stringify(
-    SteeringContext$outboundSchema.parse(steeringContext),
-  );
+  return JSON.stringify(SteeringContext$outboundSchema.parse(steeringContext));
 }
-
 export function steeringContextFromJSON(
   jsonString: string,
 ): SafeParseResult<SteeringContext, SDKValidationError> {

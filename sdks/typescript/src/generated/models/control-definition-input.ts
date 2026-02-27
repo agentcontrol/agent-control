@@ -4,7 +4,6 @@
 
 import * as z from "zod/v4-mini";
 import { ClosedEnum } from "../types/enums.js";
-import * as types from "../types/primitives.js";
 import {
   ControlAction,
   ControlAction$Outbound,
@@ -96,10 +95,9 @@ export type ControlDefinitionInput = {
 };
 
 /** @internal */
-export const ControlDefinitionInputExecution$outboundSchema: z.ZodMiniType<
-  string,
-  ControlDefinitionInputExecution
-> = z.enum(["server", "sdk"]);
+export const ControlDefinitionInputExecution$outboundSchema: z.ZodMiniEnum<
+  typeof ControlDefinitionInputExecution
+> = z.enum(ControlDefinitionInputExecution);
 
 /** @internal */
 export type ControlDefinitionInput$Outbound = {

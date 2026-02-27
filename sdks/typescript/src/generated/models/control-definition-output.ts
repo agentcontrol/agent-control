@@ -12,10 +12,7 @@ import {
   ControlAction,
   ControlAction$inboundSchema,
 } from "./control-action.js";
-import {
-  ControlScope,
-  ControlScope$inboundSchema,
-} from "./control-scope.js";
+import { ControlScope, ControlScope$inboundSchema } from "./control-scope.js";
 import {
   ControlSelector,
   ControlSelector$inboundSchema,
