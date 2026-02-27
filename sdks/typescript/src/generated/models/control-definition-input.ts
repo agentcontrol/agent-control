@@ -3,8 +3,7 @@
  */
 
 import * as z from "zod/v4-mini";
-import * as openEnums from "../types/enums.js";
-import { OpenEnum } from "../types/enums.js";
+import { ClosedEnum } from "../types/enums.js";
 import * as types from "../types/primitives.js";
 import {
   ControlAction,
@@ -30,14 +29,16 @@ import {
 /**
  * Where this control executes
  */
-export const Execution = {
+export const ControlDefinitionInputExecution = {
   Server: "server",
   SDK: "sdk",
 } as const;
 /**
  * Where this control executes
  */
-export type Execution = OpenEnum<typeof Execution>;
+export type ControlDefinitionInputExecution = ClosedEnum<
+  typeof ControlDefinitionInputExecution
+>;
 
 /**
  * A control definition to evaluate agent interactions.
@@ -74,7 +75,7 @@ export type ControlDefinitionInput = {
   /**
    * Where this control executes
    */
-  execution: Execution;
+  execution: ControlDefinitionInputExecution;
   /**
    * Defines when a control applies to a Step.
    */
@@ -95,8 +96,10 @@ export type ControlDefinitionInput = {
 };
 
 /** @internal */
-export const Execution$outboundSchema: z.ZodMiniType<string, Execution> =
-  openEnums.outboundSchema(Execution);
+export const ControlDefinitionInputExecution$outboundSchema: z.ZodMiniType<
+  string,
+  ControlDefinitionInputExecution
+> = z.enum(["server", "sdk"]);
 
 /** @internal */
 export type ControlDefinitionInput$Outbound = {
@@ -119,7 +122,7 @@ export const ControlDefinitionInput$outboundSchema: z.ZodMiniType<
   description: z.optional(z.nullable(z.string())),
   enabled: z._default(z.boolean(), true),
   evaluator: EvaluatorSpec$outboundSchema,
-  execution: Execution$outboundSchema,
+  execution: ControlDefinitionInputExecution$outboundSchema,
   scope: z.optional(ControlScope$outboundSchema),
   selector: ControlSelector$outboundSchema,
   tags: z.optional(z.array(z.string())),

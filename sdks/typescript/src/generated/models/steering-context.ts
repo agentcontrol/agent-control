@@ -44,11 +44,14 @@ export const SteeringContext$outboundSchema: z.ZodMiniType<
   message: z.string(),
 });
 
-export function steeringContextToJSON(steeringContext: SteeringContext): string {
+export function steeringContextToJSON(
+  steeringContext: SteeringContext,
+): string {
   return JSON.stringify(
     SteeringContext$outboundSchema.parse(steeringContext),
   );
 }
+
 export function steeringContextFromJSON(
   jsonString: string,
 ): SafeParseResult<SteeringContext, SDKValidationError> {

@@ -5,6 +5,7 @@
 import * as z from "zod/v4-mini";
 import { safeParse } from "../lib/schemas.js";
 import * as openEnums from "../types/enums.js";
+import { OpenEnum } from "../types/enums.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import {
@@ -24,7 +25,18 @@ import {
   EvaluatorSpec,
   EvaluatorSpec$inboundSchema,
 } from "./evaluator-spec.js";
-import { Execution } from "./control-definition-input.js";
+
+/**
+ * Where this control executes
+ */
+export const Execution = {
+  Server: "server",
+  SDK: "sdk",
+} as const;
+/**
+ * Where this control executes
+ */
+export type Execution = OpenEnum<typeof Execution>;
 
 /**
  * A control definition to evaluate agent interactions.
@@ -46,7 +58,7 @@ export type ControlDefinitionOutput = {
   /**
    * Whether this control is active
    */
-  enabled?: boolean | undefined;
+  enabled: boolean;
   /**
    * Evaluator specification. See GET /evaluators for available evaluators and schemas.
    *
