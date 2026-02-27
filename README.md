@@ -58,6 +58,32 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 
 ---
 
+## Real Quick Start
+
+Get up and running with Agent Control in **one command**:
+
+**Prerequisites**: Python 3.12+ and Docker must be installed.
+
+```bash
+# Run the automated setup script
+setup.sh
+```
+
+This script will:
+- ✓ Check Python 3.12 is installed
+- ✓ Create a virtual environment
+- ✓ Pull and start PostgreSQL + Agent Control Server via Docker
+- ✓ Install the Agent Control SDK
+
+**Server will be running at `http://localhost:8000` — ready to use!**
+
+
+---
+
+**Prefer manual setup?** Continue to the detailed [Quick Start](#quick-start) section below.
+
+---
+
 ## Quick Start
 
 Protect your AI agent in 4 simple steps.
