@@ -448,7 +448,7 @@ async def run_banking_agent():
 
     # Initialize
     agent_control.init(
-        agent_name="Banking Transaction Agent",
+        agent_name="banking-transaction-agent",
         agent_id=UUID(AGENT_ID),
         server_url=SERVER_URL
     )

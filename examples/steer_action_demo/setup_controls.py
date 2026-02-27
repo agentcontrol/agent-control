@@ -27,7 +27,7 @@ async def setup_banking_controls():
 
         agent = Agent(
             agent_id=agent_uuid,
-            agent_name="Banking Transaction Agent",
+            agent_name="banking-transaction-agent",
             agent_description="AI agent that processes wire transfers with compliance and fraud controls"
         )
 
