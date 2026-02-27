@@ -154,7 +154,11 @@ export const EditControlContent = ({
           decision: values.action_decision,
           ...(values.action_decision === 'steer' &&
           values.action_steering_context?.trim()
-            ? { steering_context: values.action_steering_context.trim() }
+            ? {
+                steering_context: {
+                  message: values.action_steering_context.trim(),
+                },
+              }
             : {}),
         },
         evaluator: { ...control.control.evaluator, config: finalConfig },
@@ -227,7 +231,7 @@ export const EditControlContent = ({
         action_decision: control.control.action.decision,
         action_steering_context:
           control.control.action.decision === 'steer'
-            ? (control.control.action.steering_context ?? '')
+            ? (control.control.action.steering_context?.message ?? '')
             : '',
         execution: control.control.execution ?? 'server',
       });

@@ -514,13 +514,25 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
             )
             metadata = result_data.get("metadata", {}) if isinstance(result_data, dict) else {}
 
-            # Extract steering_context from control action or metadata
+            # Extract steering_context.message from control action
             control_data = match.get("control", {})
-            action_data = control_data.get("action", {}) if isinstance(control_data, dict) else {}
-            steering_context = (
-                action_data.get("steering_context") if isinstance(action_data, dict)
-                else metadata.get("steering_context")
-            ) or message
+            action_data = (
+                control_data.get("action", {})
+                if isinstance(control_data, dict)
+                else {}
+            )
+            steering_context_obj = (
+                action_data.get("steering_context")
+                if isinstance(action_data, dict)
+                else None
+            )
+
+            # Extract message from SteeringContext object
+            if isinstance(steering_context_obj, dict):
+                steering_context = steering_context_obj.get("message", message)
+            else:
+                # No steering context provided, use evaluator message
+                steering_context = message
 
             raise ControlSteerError(
                 control_id=match.get("control_id"),

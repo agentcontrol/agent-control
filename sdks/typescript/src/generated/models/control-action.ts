@@ -27,6 +27,19 @@ export const Decision = {
 export type Decision = OpenEnum<typeof Decision>;
 
 /**
+ * Steering context for steer actions.
+ *
+ * This model provides an extensible structure for steering guidance.
+ * Future fields could include severity, categories, suggested_actions, etc.
+ */
+export type SteeringContext = {
+  /**
+   * Guidance message explaining what needs to be corrected and how
+   */
+  message: string;
+};
+
+/**
  * What to do when control matches.
  */
 export type ControlAction = {
@@ -35,9 +48,9 @@ export type ControlAction = {
    */
   decision: Decision;
   /**
-   * Steering context message for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
+   * Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
    */
-  steeringContext?: string | null | undefined;
+  steeringContext?: SteeringContext | null | undefined;
 };
 
 /** @internal */
@@ -48,13 +61,29 @@ export const Decision$outboundSchema: z.ZodMiniType<string, Decision> =
   openEnums.outboundSchema(Decision);
 
 /** @internal */
+export const SteeringContext$inboundSchema: z.ZodMiniType<
+  SteeringContext,
+  unknown
+> = z.object({
+  message: types.string(),
+});
+
+/** @internal */
+export const SteeringContext$outboundSchema: z.ZodMiniType<
+  SteeringContext,
+  SteeringContext
+> = z.object({
+  message: z.string(),
+});
+
+/** @internal */
 export const ControlAction$inboundSchema: z.ZodMiniType<
   ControlAction,
   unknown
 > = z.pipe(
   z.object({
     decision: Decision$inboundSchema,
-    steering_context: z.optional(z.nullable(types.string())),
+    steering_context: z.optional(z.nullable(SteeringContext$inboundSchema)),
   }),
   z.transform((v) => {
     return remap$(v, {
@@ -65,7 +94,7 @@ export const ControlAction$inboundSchema: z.ZodMiniType<
 /** @internal */
 export type ControlAction$Outbound = {
   decision: string;
-  steering_context?: string | null | undefined;
+  steering_context?: SteeringContext | null | undefined;
 };
 
 /** @internal */
@@ -75,7 +104,7 @@ export const ControlAction$outboundSchema: z.ZodMiniType<
 > = z.pipe(
   z.object({
     decision: Decision$outboundSchema,
-    steeringContext: z.optional(z.nullable(z.string())),
+    steeringContext: z.optional(z.nullable(SteeringContext$outboundSchema)),
   }),
   z.transform((v) => {
     return remap$(v, {

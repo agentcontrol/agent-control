@@ -85,7 +85,9 @@ def mock_steer_response():
                 "control": {
                     "action": {
                         "decision": "steer",
-                        "steering_context": "Please rephrase your question using respectful language"
+                        "steering_context": {
+                            "message": "Please rephrase your question using respectful language"
+                        }
                     }
                 },
                 "result": {

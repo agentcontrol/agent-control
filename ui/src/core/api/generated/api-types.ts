@@ -1119,6 +1119,23 @@ export interface components {
       name: string;
     };
     /**
+     * SteeringContext
+     * @description Steering context for steer actions.
+     *
+     *     This model provides an extensible structure for steering guidance.
+     *     Future fields could include severity, categories, suggested_actions, etc.
+     * @example {
+     *       "message": "This large transfer requires user verification. Request 2FA code from user, verify it, then retry the transaction with verified_2fa=True."
+     *     }
+     */
+    SteeringContext: {
+      /**
+       * Message
+       * @description Guidance message explaining what needs to be corrected and how
+       */
+      message: string;
+    };
+    /**
      * ControlAction
      * @description What to do when control matches.
      */
@@ -1131,9 +1148,9 @@ export interface components {
       decision: 'allow' | 'deny' | 'steer' | 'warn' | 'log';
       /**
        * Steering Context
-       * @description Steering context message for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
+       * @description Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
        */
-      steering_context?: string | null;
+      steering_context?: components['schemas']['SteeringContext'] | null;
     };
     /**
      * ControlDefinition
