@@ -15,8 +15,7 @@ def test_init_rejects_invalid_agent_name() -> None:
 def test_init_rejects_negative_policy_refresh_interval() -> None:
     with pytest.raises(ValueError, match="policy_refresh_interval_seconds must be >= 0"):
         agent_control.init(
-            agent_name="Negative Interval Agent",
-            agent_id="550e8400-e29b-41d4-a716-446655440000",
+            agent_name="negative-interval-agent",
             policy_refresh_interval_seconds=-1,
         )
 

@@ -29,10 +29,8 @@ async def test_check_evaluation_requires_step_name_before_server_call():
 
 
 @pytest.mark.asyncio
-async def test_check_evaluation_returns_runtime_fallback_without_models(monkeypatch):
-    """Fallback path should return an object with expected attributes."""
-    monkeypatch.setattr(evaluation, "MODELS_AVAILABLE", False)
-
+async def test_check_evaluation_returns_result_model():
+    """check_evaluation returns a parsed EvaluationResult."""
     class DummyResponse:
         def raise_for_status(self) -> None:
             return None
@@ -58,7 +56,13 @@ async def test_check_evaluation_returns_runtime_fallback_without_models(monkeypa
         "/api/v1/evaluation",
         json={
             "agent_name": "agent-example_01",
-            "step": {"type": "llm", "name": "chat", "input": "hello"},
+            "step": {
+                "type": "llm",
+                "name": "chat",
+                "input": "hello",
+                "output": None,
+                "context": None,
+            },
             "stage": "pre",
         },
     )

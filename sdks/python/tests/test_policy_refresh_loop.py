@@ -6,7 +6,6 @@ import threading
 import time
 from collections.abc import Generator
 from unittest.mock import AsyncMock, call, patch
-from uuid import uuid4
 
 import agent_control
 import pytest
@@ -44,8 +43,7 @@ def test_init_starts_policy_refresh_loop_by_default() -> None:
         "agent_control._start_policy_refresh_loop",
     ) as start_loop_mock:
         agent_control.init(
-            agent_name="Default Refresh Agent",
-            agent_id=str(uuid4()),
+            agent_name="default-refresh-agent",
         )
 
     # Then: the loop starts with the default interval (60s).
@@ -68,8 +66,7 @@ def test_init_disables_policy_refresh_loop_when_interval_is_zero() -> None:
         "agent_control._start_policy_refresh_loop",
     ) as start_loop_mock:
         agent_control.init(
-            agent_name="Disabled Refresh Agent",
-            agent_id=str(uuid4()),
+            agent_name="disabled-refresh-agent",
             policy_refresh_interval_seconds=0,
         )
 
@@ -95,13 +92,11 @@ def test_reinit_stops_and_restarts_policy_refresh_loop() -> None:
         "agent_control._start_policy_refresh_loop",
     ) as start_loop_mock:
         agent_control.init(
-            agent_name="Reinit Agent",
-            agent_id=str(uuid4()),
+            agent_name="reinit-agent",
             policy_refresh_interval_seconds=60,
         )
         agent_control.init(
-            agent_name="Reinit Agent",
-            agent_id=str(uuid4()),
+            agent_name="reinit-agent",
             policy_refresh_interval_seconds=5,
         )
 
@@ -263,8 +258,7 @@ def test_refresh_controls_sync_without_running_loop_uses_refresh_endpoint() -> N
         new=list_agent_controls_mock,
     ):
         agent_control.init(
-            agent_name="Sync Refresh Agent",
-            agent_id=str(uuid4()),
+            agent_name="sync-refresh-agent",
             policy_refresh_interval_seconds=0,
         )
 
@@ -295,8 +289,7 @@ async def test_refresh_controls_sync_with_running_loop_uses_worker_thread() -> N
         new=list_agent_controls_mock,
     ):
         agent_control.init(
-            agent_name="Async Refresh Agent",
-            agent_id=str(uuid4()),
+            agent_name="async-refresh-agent",
             policy_refresh_interval_seconds=0,
         )
 
@@ -327,8 +320,7 @@ async def test_refresh_fail_open_retains_previous_controls() -> None:
         new=list_agent_controls_mock,
     ):
         agent_control.init(
-            agent_name="Fail Open Agent",
-            agent_id=str(uuid4()),
+            agent_name="fail-open-agent",
             policy_refresh_interval_seconds=0,
         )
         previous_snapshot = agent_control.get_server_controls()
@@ -362,8 +354,7 @@ async def test_refresh_uses_swap_only_cache_publication() -> None:
         new=list_agent_controls_mock,
     ):
         agent_control.init(
-            agent_name="Swap Only Agent",
-            agent_id=str(uuid4()),
+            agent_name="swap-only-agent",
             policy_refresh_interval_seconds=0,
         )
         old_snapshot = agent_control.get_server_controls()
@@ -414,8 +405,7 @@ async def test_concurrent_reads_and_refresh_updates_do_not_raise() -> None:
         new=list_agent_controls_mock,
     ):
         agent_control.init(
-            agent_name="Concurrent Refresh Agent",
-            agent_id=str(uuid4()),
+            agent_name="concurrent-refresh-agent",
             policy_refresh_interval_seconds=0,
         )
         reader_thread = threading.Thread(target=reader, daemon=True)
