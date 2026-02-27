@@ -38,7 +38,7 @@ test.describe('SearchInput - Query Param Syncing', () => {
     await expect(searchInput).toHaveValue('Customer');
 
     // Verify filtered results are shown
-    await expect(mockedPage.getByText('Customer Support Bot')).toBeVisible();
+    await expect(mockedPage.getByText('customer-support-bot')).toBeVisible();
   });
 
   test('clear button removes query param from URL', async ({ mockedPage }) => {
@@ -87,8 +87,8 @@ test.describe('SearchInput - Query Param Syncing', () => {
     );
 
     // Navigate away
-    await mockedPage.getByText('Customer Support Bot').click();
-    await expect(mockedPage).toHaveURL(/\/agents\/agent-1/);
+    await mockedPage.getByText('customer-support-bot').click();
+    await expect(mockedPage).toHaveURL(/\/agents\/customer-support-bot/);
 
     // Go back
     await mockedPage.goBack();
@@ -105,13 +105,13 @@ test.describe('SearchInput - Query Param Syncing', () => {
     await expect(searchInputAfterBack).toHaveValue('Customer');
 
     // Verify filtered results are still shown
-    await expect(mockedPage.getByText('Customer Support Bot')).toBeVisible();
+    await expect(mockedPage.getByText('customer-support-bot')).toBeVisible();
   });
 });
 
 test.describe('SearchInput - Agent Detail Page', () => {
   test('syncs search value to URL query param (q)', async ({ mockedPage }) => {
-    await mockedPage.goto('/agents/agent-1/controls');
+    await mockedPage.goto('/agents/customer-support-bot/controls');
 
     const searchInput = mockedPage.getByPlaceholder('Search controls...');
     await searchInput.fill('PII');
@@ -124,7 +124,7 @@ test.describe('SearchInput - Agent Detail Page', () => {
   });
 
   test('reads search value from URL on page load', async ({ mockedPage }) => {
-    await mockedPage.goto('/agents/agent-1/controls?q=PII');
+    await mockedPage.goto('/agents/customer-support-bot/controls?q=PII');
 
     // Wait for page to load
     await expect(mockedPage.getByRole('table')).toBeVisible();

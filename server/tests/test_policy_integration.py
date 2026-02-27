@@ -6,12 +6,12 @@ from fastapi.testclient import TestClient
 
 
 def _create_agent(client: TestClient, name: str | None = None) -> tuple[str, str]:
-    """Helper: Create an agent and return (agent_id, agent_name)."""
-    agent_id = str(uuid.uuid4())
-    agent_name = name or f"agent-{uuid.uuid4()}"
+    """Helper: Create an agent and return (agent_name, agent_name)."""
+    agent_name = (name or f"agent-{uuid.uuid4().hex[:12]}").lower()
+    if len(agent_name) < 10:
+        agent_name = f"{agent_name}-agent".replace("--", "-")
     payload = {
         "agent": {
-            "agent_id": agent_id,
             "agent_name": agent_name,
             "agent_description": "test",
             "agent_version": "1.0",
@@ -21,7 +21,7 @@ def _create_agent(client: TestClient, name: str | None = None) -> tuple[str, str
     }
     resp = client.post("/api/v1/agents/initAgent", json=payload)
     assert resp.status_code == 200
-    return agent_id, agent_name
+    return agent_name, agent_name
 
 
 def _create_policy(client: TestClient, name: str | None = None) -> int:
@@ -281,8 +281,8 @@ def test_control_shared_between_policies(client: TestClient) -> None:
     assert control_id in resp_b.json()["control_ids"]
 
     # And: Agents with either policy see the control
-    agent_a_id, _ = _create_agent(client, "agent-a")
-    agent_b_id, _ = _create_agent(client, "agent-b")
+    agent_a_id, _ = _create_agent(client, "agent-alpha-01")
+    agent_b_id, _ = _create_agent(client, "agent-beta-02")
 
     client.post(f"/api/v1/agents/{agent_a_id}/policy/{policy_a_id}")
     client.post(f"/api/v1/agents/{agent_b_id}/policy/{policy_b_id}")

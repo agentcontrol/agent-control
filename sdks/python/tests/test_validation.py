@@ -1,42 +1,24 @@
 """Unit tests for SDK validation helpers."""
 
-from uuid import UUID, uuid4
-
 import pytest
 
-from agent_control.validation import ensure_uuid, ensure_uuid_str
+from agent_control.validation import ensure_agent_name
 
 
-def test_ensure_uuid_accepts_uuid_instance() -> None:
-    value = uuid4()
-    assert ensure_uuid(value) == value
+def test_ensure_agent_name_normalizes_to_lowercase() -> None:
+    assert ensure_agent_name("Agent-Name_123") == "agent-name_123"
 
 
-def test_ensure_uuid_accepts_uuid_string() -> None:
-    value = uuid4()
-    assert ensure_uuid(str(value)) == value
+def test_ensure_agent_name_rejects_too_short() -> None:
+    with pytest.raises(ValueError, match="at least 10 characters"):
+        ensure_agent_name("short")
 
 
-def test_ensure_uuid_rejects_invalid_value() -> None:
-    with pytest.raises(ValueError, match="agent_id must be a valid UUID string"):
-        ensure_uuid("not-a-uuid")
+def test_ensure_agent_name_rejects_invalid_characters() -> None:
+    with pytest.raises(ValueError, match="may only contain"):
+        ensure_agent_name("agent name with spaces")
 
 
-def test_ensure_uuid_respects_field_name() -> None:
-    with pytest.raises(ValueError, match="agent_uuid must be a valid UUID string"):
-        ensure_uuid("not-a-uuid", field_name="agent_uuid")
-
-
-def test_ensure_uuid_str_returns_string() -> None:
-    value = uuid4()
-    assert ensure_uuid_str(value) == str(value)
-
-
-def test_ensure_uuid_str_accepts_uuid_string() -> None:
-    value = str(uuid4())
-    assert ensure_uuid_str(value) == str(UUID(value))
-
-
-def test_ensure_uuid_str_rejects_invalid_value() -> None:
-    with pytest.raises(ValueError, match="agent_id must be a valid UUID string"):
-        ensure_uuid_str("not-a-uuid")
+def test_ensure_agent_name_respects_field_name() -> None:
+    with pytest.raises(ValueError, match="custom_field must be at least 10 characters"):
+        ensure_agent_name("small", field_name="custom_field")

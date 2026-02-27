@@ -34,9 +34,7 @@ import { Result } from "../types/fp.js";
  *
  * This endpoint is idempotent:
  * - If the agent name doesn't exist, creates a new agent
- * - If the agent name exists with the same UUID, updates registration data
- * - If the agent name exists with a different UUID, returns 409 Conflict
- * - If the UUID exists with a different name, returns 409 Conflict (no renames)
+ * - If the agent name exists, updates registration data in place
  *
  * conflict_mode controls registration conflict handling:
  * - strict (default): preserve compatibility checks and conflict errors
@@ -48,10 +46,6 @@ import { Result } from "../types/fp.js";
  *
  * Returns:
  *     InitAgentResponse with created flag and active controls (if policy assigned)
- *
- * Raises:
- *     HTTPException 409: Agent name exists with different UUID
- *     HTTPException 500: Database error during creation/update
  */
 export function agentsInit(
   client: AgentControlSDKCore,

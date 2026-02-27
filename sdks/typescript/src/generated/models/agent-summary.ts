@@ -18,11 +18,7 @@ export type AgentSummary = {
    */
   activeControlsCount: number;
   /**
-   * UUID of the agent
-   */
-  agentId: string;
-  /**
-   * Human-readable name of the agent
+   * Unique identifier of the agent
    */
   agentName: string;
   /**
@@ -48,7 +44,6 @@ export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
   z.pipe(
     z.object({
       active_controls_count: z._default(types.number(), 0),
-      agent_id: types.string(),
       agent_name: types.string(),
       created_at: z.optional(z.nullable(types.string())),
       evaluator_count: z._default(types.number(), 0),
@@ -58,7 +53,6 @@ export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
     z.transform((v) => {
       return remap$(v, {
         "active_controls_count": "activeControlsCount",
-        "agent_id": "agentId",
         "agent_name": "agentName",
         "created_at": "createdAt",
         "evaluator_count": "evaluatorCount",

@@ -601,7 +601,6 @@ async def list_controls(
         agents_query = (
             select(
                 policy_controls.c.control_id,
-                Agent.agent_uuid,
                 Agent.name,
             )
             .select_from(policy_controls)
@@ -611,12 +610,10 @@ async def list_controls(
         )
         agents_result = await db.execute(agents_query)
         for row in agents_result.all():
-            control_id, agent_uuid, agent_name = row
+            control_id, agent_name = row
             # Take the first agent found (1 control = 1 agent)
             if control_agent_map[control_id] is None:
-                control_agent_map[control_id] = AgentRef(
-                    agent_id=str(agent_uuid), agent_name=agent_name
-                )
+                control_agent_map[control_id] = AgentRef(agent_name=agent_name)
 
     # Build summaries (filtering already done at DB level)
     summaries: list[ControlSummary] = []

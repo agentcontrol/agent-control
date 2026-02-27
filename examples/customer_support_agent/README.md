@@ -161,7 +161,7 @@ import agent_control
 
 agent_control.init(
     agent_name="Customer Support Agent",
-    agent_id="646d5dea-c2e6-4453-b446-7035482b38e4",
+    agent_name="646d5dea-c2e6-4453-b446-7035482b38e4",
     agent_description="AI-powered customer support assistant",
 )
 ```

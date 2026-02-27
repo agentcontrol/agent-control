@@ -17,7 +17,7 @@ from agent_control_server.observability.ingest.base import IngestResult
 
 def create_test_event(
     control_id: int = 1,
-    agent_uuid: str | UUID | None = None,
+    agent_name: str | UUID | None = None,
     action: str = "allow",
     matched: bool = False,
     timestamp: datetime | None = None,
@@ -27,8 +27,7 @@ def create_test_event(
     return ControlExecutionEvent(
         trace_id="a" * 32,  # 128-bit hex (32 chars)
         span_id="b" * 16,  # 64-bit hex (16 chars)
-        agent_uuid=agent_uuid or uuid4(),
-        agent_name="test-agent",
+        agent_name=agent_name or f"agent-{uuid4().hex[:12]}",
         control_id=control_id,
         control_name=f"control-{control_id}",
         check_stage="pre",
@@ -107,7 +106,7 @@ class TestEventQueryRequest:
         """Test query request with various filters."""
         request = EventQueryRequest(
             trace_id="a" * 32,
-            agent_uuid=uuid4(),
+            agent_name=f"agent-{uuid4().hex[:12]}",
             control_ids=[1, 2, 3],
             actions=["allow", "deny"],
             matched=True,
@@ -153,8 +152,7 @@ class TestControlExecutionEvent:
         event = ControlExecutionEvent(
             trace_id="a" * 32,
             span_id="b" * 16,
-            agent_uuid=uuid4(),
-            agent_name="test-agent",
+                agent_name="test-agent",
             control_id=1,
             control_name="test-control",
             check_stage="post",
@@ -223,18 +221,39 @@ class TestStatsTimeseries:
     """Tests for time-series stats functionality."""
 
     @pytest.mark.asyncio
-    async def test_stats_without_timeseries(self, client: TestClient, setup_observability):
-        """Default response has no timeseries."""
+    async def test_stats_normalize_mixed_case_agent_name_query(
+        self, client: TestClient, setup_observability
+    ):
+        """Mixed-case agent_name query params are normalized."""
         store = setup_observability
-        agent_uuid = uuid4()
+        normalized_name = "agent-statsnorm01"
 
-        # Create and store an event
-        event = create_test_event(agent_uuid=agent_uuid, matched=True)
+        event = create_test_event(agent_name=normalized_name, matched=True)
         await store.store([event])
 
         response = client.get(
             "/api/v1/observability/stats",
-            params={"agent_uuid": str(agent_uuid), "time_range": "1h"},
+            params={"agent_name": "Agent-StatsNorm01", "time_range": "1h"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["agent_name"] == normalized_name
+        assert body["totals"]["execution_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_stats_without_timeseries(self, client: TestClient, setup_observability):
+        """Default response has no timeseries."""
+        store = setup_observability
+        agent_name = f"agent-{uuid4().hex[:12]}"
+
+        # Create and store an event
+        event = create_test_event(agent_name=agent_name, matched=True)
+        await store.store([event])
+
+        response = client.get(
+            "/api/v1/observability/stats",
+            params={"agent_name": str(agent_name), "time_range": "1h"},
         )
 
         assert response.status_code == 200
@@ -246,27 +265,27 @@ class TestStatsTimeseries:
     async def test_stats_with_timeseries(self, client: TestClient, setup_observability):
         """With include_timeseries=true, returns buckets."""
         store = setup_observability
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
         now = datetime.now(timezone.utc)
 
         # Create events spread across time
         events = [
             create_test_event(
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 matched=True,
                 action="allow",
                 timestamp=now - timedelta(minutes=30),
                 execution_duration_ms=10.0,
             ),
             create_test_event(
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 matched=True,
                 action="deny",
                 timestamp=now - timedelta(minutes=15),
                 execution_duration_ms=20.0,
             ),
             create_test_event(
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 matched=False,
                 timestamp=now - timedelta(minutes=5),
             ),
@@ -277,7 +296,7 @@ class TestStatsTimeseries:
         response = client.get(
             "/api/v1/observability/stats",
             params={
-                "agent_uuid": str(agent_uuid),
+                "agent_name": str(agent_name),
                 "time_range": "1h",
                 "include_timeseries": "true",
             },
@@ -303,12 +322,12 @@ class TestStatsTimeseries:
     async def test_timeseries_bucket_count_1h(self, client: TestClient, setup_observability):
         """Verify reasonable number of buckets for 1h time range (5m buckets)."""
         store = setup_observability
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
         now = datetime.now(timezone.utc)
 
         # Create a single event
         event = create_test_event(
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             matched=True,
             timestamp=now - timedelta(minutes=30),
         )
@@ -318,7 +337,7 @@ class TestStatsTimeseries:
         response = client.get(
             "/api/v1/observability/stats",
             params={
-                "agent_uuid": str(agent_uuid),
+                "agent_name": str(agent_name),
                 "time_range": "1h",
                 "include_timeseries": "true",
             },
@@ -334,12 +353,12 @@ class TestStatsTimeseries:
     async def test_timeseries_bucket_count_5m(self, client: TestClient, setup_observability):
         """Verify reasonable number of buckets for 5m time range (30s buckets)."""
         store = setup_observability
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
         now = datetime.now(timezone.utc)
 
         # Create a single event
         event = create_test_event(
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             matched=True,
             timestamp=now - timedelta(minutes=2),
         )
@@ -349,7 +368,7 @@ class TestStatsTimeseries:
         response = client.get(
             "/api/v1/observability/stats",
             params={
-                "agent_uuid": str(agent_uuid),
+                "agent_name": str(agent_name),
                 "time_range": "5m",
                 "include_timeseries": "true",
             },
@@ -367,28 +386,28 @@ class TestStatsTimeseries:
     ):
         """Events in the same bucket are aggregated."""
         store = setup_observability
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
         now = datetime.now(timezone.utc)
 
         # Create multiple events in the same 5-minute bucket
         base_time = now - timedelta(minutes=10)
         events = [
             create_test_event(
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 matched=True,
                 action="allow",
                 timestamp=base_time + timedelta(seconds=30),
                 execution_duration_ms=10.0,
             ),
             create_test_event(
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 matched=True,
                 action="deny",
                 timestamp=base_time + timedelta(seconds=60),
                 execution_duration_ms=20.0,
             ),
             create_test_event(
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 matched=False,
                 timestamp=base_time + timedelta(seconds=90),
                 execution_duration_ms=30.0,
@@ -400,7 +419,7 @@ class TestStatsTimeseries:
         response = client.get(
             "/api/v1/observability/stats",
             params={
-                "agent_uuid": str(agent_uuid),
+                "agent_name": str(agent_name),
                 "time_range": "1h",
                 "include_timeseries": "true",
             },
@@ -434,12 +453,12 @@ class TestStatsTimeseries:
     ):
         """Empty buckets are included with zero counts."""
         store = setup_observability
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
         now = datetime.now(timezone.utc)
 
         # Create events only at the start of the time range
         event = create_test_event(
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             matched=True,
             timestamp=now - timedelta(minutes=55),
         )
@@ -449,7 +468,7 @@ class TestStatsTimeseries:
         response = client.get(
             "/api/v1/observability/stats",
             params={
-                "agent_uuid": str(agent_uuid),
+                "agent_name": str(agent_name),
                 "time_range": "1h",
                 "include_timeseries": "true",
             },
@@ -484,27 +503,27 @@ class TestControlStats:
     async def test_control_stats_basic(self, client: TestClient, setup_observability):
         """Test getting stats for a single control."""
         store = setup_observability
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
 
         # Create events for multiple controls
         events = [
-            create_test_event(control_id=1, agent_uuid=agent_uuid, matched=True, action="allow"),
-            create_test_event(control_id=1, agent_uuid=agent_uuid, matched=True, action="deny"),
-            create_test_event(control_id=2, agent_uuid=agent_uuid, matched=True, action="warn"),
+            create_test_event(control_id=1, agent_name=agent_name, matched=True, action="allow"),
+            create_test_event(control_id=1, agent_name=agent_name, matched=True, action="deny"),
+            create_test_event(control_id=2, agent_name=agent_name, matched=True, action="warn"),
         ]
         await store.store(events)
 
         # Get stats for control 1 only
         response = client.get(
             "/api/v1/observability/stats/controls/1",
-            params={"agent_uuid": str(agent_uuid), "time_range": "1h"},
+            params={"agent_name": str(agent_name), "time_range": "1h"},
         )
 
         assert response.status_code == 200
         data = response.json()
 
         # Verify response structure
-        assert data["agent_uuid"] == str(agent_uuid)
+        assert data["agent_name"] == str(agent_name)
         assert data["control_id"] == 1
         assert data["control_name"] == "control-1"
         assert "stats" in data
@@ -520,21 +539,21 @@ class TestControlStats:
     async def test_control_stats_with_timeseries(self, client: TestClient, setup_observability):
         """Test control stats with timeseries."""
         store = setup_observability
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
         now = datetime.now(timezone.utc)
 
         # Create events for control 1 at different times
         events = [
             create_test_event(
                 control_id=1,
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 matched=True,
                 action="allow",
                 timestamp=now - timedelta(minutes=30),
             ),
             create_test_event(
                 control_id=1,
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 matched=True,
                 action="deny",
                 timestamp=now - timedelta(minutes=10),
@@ -542,7 +561,7 @@ class TestControlStats:
             # Control 2 event (should not appear)
             create_test_event(
                 control_id=2,
-                agent_uuid=agent_uuid,
+                agent_name=agent_name,
                 matched=True,
                 action="warn",
                 timestamp=now - timedelta(minutes=20),
@@ -553,7 +572,7 @@ class TestControlStats:
         response = client.get(
             "/api/v1/observability/stats/controls/1",
             params={
-                "agent_uuid": str(agent_uuid),
+                "agent_name": str(agent_name),
                 "time_range": "1h",
                 "include_timeseries": "true",
             },
@@ -579,16 +598,16 @@ class TestControlStats:
     async def test_control_stats_no_data(self, client: TestClient, setup_observability):
         """Test control stats when control has no events."""
         store = setup_observability
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
 
         # Create event for control 1 only
-        event = create_test_event(control_id=1, agent_uuid=agent_uuid, matched=True)
+        event = create_test_event(control_id=1, agent_name=agent_name, matched=True)
         await store.store([event])
 
         # Query for control 2 (no events)
         response = client.get(
             "/api/v1/observability/stats/controls/2",
-            params={"agent_uuid": str(agent_uuid), "time_range": "1h"},
+            params={"agent_name": str(agent_name), "time_range": "1h"},
         )
 
         assert response.status_code == 200
@@ -647,12 +666,12 @@ class TestObservabilityQueries:
     def test_get_stats_aggregates_events(self, client: TestClient, setup_observability):
         """Test GET /stats aggregates events for an agent."""
         # Given: events for a specific agent and one other agent
-        agent_uuid = uuid4()
+        agent_name = f"agent-{uuid4().hex[:12]}"
         event1 = create_test_event(control_id=1, action="allow", matched=True).model_copy(
-            update={"agent_uuid": agent_uuid}
+            update={"agent_name": agent_name}
         )
         event2 = create_test_event(control_id=2, action="deny", matched=True).model_copy(
-            update={"agent_uuid": agent_uuid, "trace_id": "c" * 32}
+            update={"agent_name": agent_name, "trace_id": "c" * 32}
         )
         # Event from different agent (should not be counted)
         event3 = create_test_event(control_id=1, action="warn", matched=True).model_copy(
@@ -669,7 +688,7 @@ class TestObservabilityQueries:
         # When: getting stats for the agent
         resp = client.get(
             "/api/v1/observability/stats",
-            params={"agent_uuid": str(agent_uuid), "time_range": "1h"},
+            params={"agent_name": str(agent_name), "time_range": "1h"},
         )
 
         assert resp.status_code == 200

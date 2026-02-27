@@ -18,8 +18,8 @@ def test_init_agent_force_replace_default_false_works_normally(client: TestClien
     Then: Creates agent normally (force_replace defaults to False)
     """
     # Given: New agent
-    agent_id = str(uuid.uuid4())
-    agent_name = f"TestAgent-{uuid.uuid4().hex[:8]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
 
     # When: Create without force_replace (default)
     resp = client.post("/api/v1/agents/initAgent", json={
@@ -45,8 +45,8 @@ def test_init_agent_force_replace_false_explicit_works_normally(client: TestClie
     Then: Creates agent normally
     """
     # Given: New agent
-    agent_id = str(uuid.uuid4())
-    agent_name = f"TestAgent-{uuid.uuid4().hex[:8]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
 
     # When: Create with force_replace=false
     resp = client.post("/api/v1/agents/initAgent", json={
@@ -73,8 +73,8 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
     Then: Updates normally without data loss
     """
     # Given: Create agent with steps
-    agent_id = str(uuid.uuid4())
-    agent_name = f"TestAgent-{uuid.uuid4().hex[:8]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     
     resp = client.post("/api/v1/agents/initAgent", json={
         "agent": {
@@ -130,8 +130,8 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
 def test_init_agent_force_replace_recovers_from_corrupted_data(client: TestClient) -> None:
     """Test that force_replace=true replaces corrupted stored data."""
     # Given: an existing agent with corrupted data in the DB
-    agent_id = str(uuid.uuid4())
-    agent_name = f"TestAgent-{uuid.uuid4().hex[:8]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
@@ -147,7 +147,7 @@ def test_init_agent_force_replace_recovers_from_corrupted_data(client: TestClien
     assert resp.status_code == 200
 
     with Session(engine) as session:
-        agent = session.execute(select(Agent).where(Agent.agent_uuid == agent_id)).scalar_one()
+        agent = session.execute(select(Agent).where(Agent.name == agent_name)).scalar_one()
         agent.data = {"steps": "not-a-list"}
         session.commit()
 

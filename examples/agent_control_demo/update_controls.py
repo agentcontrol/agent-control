@@ -29,10 +29,10 @@ AGENT_ID = "672e50df-af4c-429f-965a-3d7f8262302f"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
-async def get_control_by_name(client: AgentControlClient, agent_uuid: str, name: str) -> dict | None:
+async def get_control_by_name(client: AgentControlClient, agent_name: str, name: str) -> dict | None:
     """Find a control by name from the agent's controls."""
     try:
-        response = await client.http_client.get(f"/api/v1/agents/{agent_uuid}/controls")
+        response = await client.http_client.get(f"/api/v1/agents/{agent_name}/controls")
         response.raise_for_status()
         controls = response.json().get("controls", [])
 
@@ -126,13 +126,13 @@ async def block_ssn(client: AgentControlClient, control_id: int) -> None:
         raise
 
 
-async def show_current_status(client: AgentControlClient, agent_uuid: str) -> None:
+async def show_current_status(client: AgentControlClient, agent_name: str) -> None:
     """Show the current status of the SSN control."""
     print("\n" + "=" * 60)
     print("Current SSN Control Status")
     print("=" * 60)
 
-    ctrl = await get_control_by_name(client, agent_uuid, "block-ssn-output")
+    ctrl = await get_control_by_name(client, agent_name, "block-ssn-output")
     if ctrl:
         ctrl_def = ctrl.get("control", {})
         enabled = ctrl_def.get("enabled", True)
@@ -155,13 +155,13 @@ async def main():
     args = parser.parse_args()
 
     # Use the provided UUID
-    agent_uuid = AGENT_ID
+    agent_name = AGENT_ID
 
     print("\n" + "=" * 60)
     print("AGENT CONTROL DEMO: Update Controls")
     print("=" * 60)
     print(f"\nServer URL: {SERVER_URL}")
-    print(f"Agent UUID: {agent_uuid}")
+    print(f"Agent UUID: {agent_name}")
 
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # Check server health
@@ -174,7 +174,7 @@ async def main():
             return
 
         # Find the SSN control
-        ctrl = await get_control_by_name(client, agent_uuid, "block-ssn-output")
+        ctrl = await get_control_by_name(client, agent_name, "block-ssn-output")
         if not ctrl:
             print("\n✗ SSN control not found!")
             print("  Run setup_controls.py first:")
@@ -184,16 +184,16 @@ async def main():
         control_id = ctrl.get("id")
 
         if args.status:
-            await show_current_status(client, agent_uuid)
+            await show_current_status(client, agent_name)
         elif args.allow_ssn:
             await allow_ssn(client, control_id)
-            await show_current_status(client, agent_uuid)
+            await show_current_status(client, agent_name)
         elif args.block_ssn:
             await block_ssn(client, control_id)
-            await show_current_status(client, agent_uuid)
+            await show_current_status(client, agent_name)
         else:
             # Default: show status and usage
-            await show_current_status(client, agent_uuid)
+            await show_current_status(client, agent_name)
             print("\n" + "=" * 60)
             print("Usage")
             print("=" * 60)

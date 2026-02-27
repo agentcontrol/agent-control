@@ -236,10 +236,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                       <>
                         {allAgents.map((agent) => (
                           <AgentItem
-                            key={agent.agent_id}
-                            href={`/agents/${agent.agent_id}/controls`}
+                            key={agent.agent_name}
+                            href={`/agents/${agent.agent_name}/controls`}
                             label={agent.agent_name}
-                            active={router.query.id === agent.agent_id}
+                            active={router.query.id === agent.agent_name}
                             onClick={closeNavbar}
                           />
                         ))}

@@ -33,11 +33,11 @@ import { Result } from "../types/fp.js";
  * @remarks
  * List all registered agents with cursor-based pagination.
  *
- * Returns a summary of each agent including ID, name, policy assignment,
+ * Returns a summary of each agent including identifier, policy assignment,
  * and counts of registered steps and evaluators.
  *
  * Args:
- *     cursor: Optional cursor for pagination (UUID of last agent from previous page)
+ *     cursor: Optional cursor for pagination (last agent name from previous page)
  *     limit: Pagination limit (default 20, max 100)
  *     name: Optional name filter (case-insensitive partial match)
  *     db: Database session (injected)

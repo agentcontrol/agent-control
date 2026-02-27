@@ -2,6 +2,56 @@
 
 <!-- version list -->
 
+## v6.0.0 (2026-02-27)
+
+### Bug Fixes
+
+- **docs**: Update readme ([#37](https://github.com/agentcontrol/agent-control/pull/37),
+  [`7531d83`](https://github.com/agentcontrol/agent-control/commit/7531d8309d4755d9ceddf4a2d840c147b36a6e14))
+
+- **sdk**: A bug in docker file ([#46](https://github.com/agentcontrol/agent-control/pull/46),
+  [`12d1794`](https://github.com/agentcontrol/agent-control/commit/12d1794e3e7218eef10e371e12b001774bd81a68))
+
+- **server**: Feature/56688 fix docker and create bash
+  ([#45](https://github.com/agentcontrol/agent-control/pull/45),
+  [`7277e27`](https://github.com/agentcontrol/agent-control/commit/7277e2730c16e717ad5ba8248b946252b22e69cb))
+
+- **server**: Feature/56688 fix image bug
+  ([#48](https://github.com/agentcontrol/agent-control/pull/48),
+  [`71e6b44`](https://github.com/agentcontrol/agent-control/commit/71e6b44f3cdee26c7a97a2cfc0ef6223e52bdb3a))
+
+- **server**: Fix alembic migrations ([#47](https://github.com/agentcontrol/agent-control/pull/47),
+  [`c19c17c`](https://github.com/agentcontrol/agent-control/commit/c19c17c6359b031bf5d69e81bfe72054bd09f40c))
+
+- **ui**: Selector subpaths issue ([#34](https://github.com/agentcontrol/agent-control/pull/34),
+  [`79cb776`](https://github.com/agentcontrol/agent-control/commit/79cb776032cedfacac5f9480151acf184a9921a3))
+
+### Features
+
+- **sdk**: Ship TypeScript SDK with deterministic method naming
+  ([#32](https://github.com/agentcontrol/agent-control/pull/32),
+  [`a76e9b0`](https://github.com/agentcontrol/agent-control/commit/a76e9b005a99b3d23eca9d77e498c3c6f0476559))
+
+- **server**: Add initAgent conflict_mode overwrite mode with SDK defaults
+  ([#40](https://github.com/agentcontrol/agent-control/pull/40),
+  [`f3ed2b8`](https://github.com/agentcontrol/agent-control/commit/f3ed2b8a3207ff8fca324e0d01bdc33d768ce137))
+
+- **server**: Hard-cut migrate to remove agent UUID
+  ([#44](https://github.com/agentcontrol/agent-control/pull/44),
+  [`ee322c9`](https://github.com/agentcontrol/agent-control/commit/ee322c93eb91f69a04895685176e4977bac21c15))
+
+- **ui**: Allow to delete control ([#39](https://github.com/agentcontrol/agent-control/pull/39),
+  [`7dc4ca3`](https://github.com/agentcontrol/agent-control/commit/7dc4ca3e3d6b38c7cacfdabca18b28a0ed310b58))
+
+- **ui**: Steps dropdown rendered based on api return values
+  ([#36](https://github.com/agentcontrol/agent-control/pull/36),
+  [`a2aca43`](https://github.com/agentcontrol/agent-control/commit/a2aca43979d6089969408c3ee29f53a749b5cf1c))
+
+- **ui**: Update agent control icon and favicon
+  ([#42](https://github.com/agentcontrol/agent-control/pull/42),
+  [`19af8fa`](https://github.com/agentcontrol/agent-control/commit/19af8faf26d5fb3dd895500f63108351cb77164b))
+
+
 ## v5.2.0 (2026-02-20)
 
 ### Bug Fixes

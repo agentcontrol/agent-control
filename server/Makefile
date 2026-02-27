@@ -9,13 +9,14 @@ SHOW ?= head
 STAMP ?= head
 
 TEST_DB ?= agent_control_test
-.PHONY: help run start-dependencies test alembic-migrate alembic-revision alembic-upgrade alembic-downgrade alembic-current alembic-history alembic-heads alembic-show alembic-stamp
+.PHONY: help run start-dependencies test migrate alembic-migrate alembic-revision alembic-upgrade alembic-downgrade alembic-current alembic-history alembic-heads alembic-show alembic-stamp
 
 help:
 	@echo "Available targets:"
 	@echo "  run                          - start FastAPI server (reload)"
 	@echo "  start-dependencies           - docker compose up -d (start local dependencies)"
 	@echo "  test                         - run server tests (uses DB_DATABASE=$(TEST_DB))"
+	@echo "  migrate                      - run database migrations (alembic upgrade head)"
 	@echo "  alembic-migrate MSG='message'  - autogenerate alembic revision"
 	@echo "  alembic-upgrade UP=head        - upgrade to revision"
 	@echo "  alembic-downgrade DOWN=-1      - downgrade to revision"
@@ -24,6 +25,10 @@ help:
 	@echo "  alembic-heads                  - show heads"
 	@echo "  alembic-show SHOW=<rev>        - show revision detail"
 	@echo "  alembic-stamp STAMP=<rev>      - set head without running migrations"
+
+migrate:
+	@echo "Running database migrations..."
+	$(ALEMBIC) upgrade head
 
 alembic-migrate:
 	$(ALEMBIC) revision --autogenerate -m "$(MSG)"
@@ -50,10 +55,10 @@ alembic-stamp:
 	$(ALEMBIC) stamp $(STAMP)
 
 start-dependencies:
-	docker compose up -d
+	docker compose -f ../docker-compose.dev.yml up -d
 
 test:
 	DB_DATABASE=$(TEST_DB) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q
 
-run: start-dependencies
+run: start-dependencies migrate
 	uv run --package agent-control-server uvicorn agent_control_server.main:app --reload

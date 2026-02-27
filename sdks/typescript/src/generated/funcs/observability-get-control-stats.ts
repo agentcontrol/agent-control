@@ -37,7 +37,7 @@ import { Result } from "../types/fp.js";
  *
  * Args:
  *     control_id: Control ID to get stats for
- *     agent_uuid: Agent to get stats for
+ *     agent_name: Agent to get stats for
  *     time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
  *     include_timeseries: Include time-series data points for trend visualization
  *     store: Event store (injected)
@@ -121,7 +121,7 @@ async function $do(
   );
 
   const query = encodeFormQuery({
-    "agent_uuid": payload.agent_uuid,
+    "agent_name": payload.agent_name,
     "include_timeseries": payload.include_timeseries,
     "time_range": payload.time_range,
   });

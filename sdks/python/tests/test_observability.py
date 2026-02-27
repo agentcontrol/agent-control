@@ -26,7 +26,7 @@ def create_mock_event():
     mock_event.model_dump = MagicMock(return_value={
         "trace_id": "a" * 32,
         "span_id": "b" * 16,
-        "agent_uuid": str(uuid4()),
+        "agent_name": str(uuid4()),
         "agent_name": "test-agent",
         "control_id": 1,
         "control_name": "test-control",

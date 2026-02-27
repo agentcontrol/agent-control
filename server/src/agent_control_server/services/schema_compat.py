@@ -130,5 +130,5 @@ def format_compatibility_error(evaluator_name: str, errors: list[str]) -> str:
     return (
         f"Evaluator '{evaluator_name}' schema change is not backward compatible. "
         f"Changes detected: {error_list}. "
-        f"To make breaking changes, create a new agent with a different UUID/name."
+        "To make breaking changes, create a new agent with a different name."
     )

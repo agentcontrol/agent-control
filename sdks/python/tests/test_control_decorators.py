@@ -15,7 +15,7 @@ from agent_control.control_decorators import ControlViolationError, ControlSteer
 def mock_agent():
     """Create a mock agent."""
     agent = MagicMock()
-    agent.agent_id = "550e8400-e29b-41d4-a716-446655440000"
+    agent.agent_name = "550e8400-e29b-41d4-a716-446655440000"
     return agent
 
 
@@ -231,14 +231,14 @@ class TestPrePostExecution:
         call_stages = []
 
         async def mock_evaluate(
-            agent_uuid,
+            agent_name,
             step,
             stage,
             server_url,
             trace_id=None,
             span_id=None,
             controls=None,
-            agent_name=None,
+            event_agent_name=None,
         ):
             call_stages.append(stage)
             return mock_safe_response
@@ -261,14 +261,14 @@ class TestPrePostExecution:
         function_executed = False
 
         async def mock_evaluate(
-            agent_uuid,
+            agent_name,
             step,
             stage,
             server_url,
             trace_id=None,
             span_id=None,
             controls=None,
-            agent_name=None,
+            event_agent_name=None,
         ):
             if stage == "pre":
                 return mock_unsafe_response
@@ -294,14 +294,14 @@ class TestPrePostExecution:
         captured_step = {}
 
         async def mock_evaluate(
-            agent_uuid,
+            agent_name,
             step,
             stage,
             server_url,
             trace_id=None,
             span_id=None,
             controls=None,
-            agent_name=None,
+            event_agent_name=None,
         ):
             if stage == "post":
                 captured_step.update(step)
@@ -333,14 +333,14 @@ class TestInputExtraction:
         captured_step = {}
 
         async def mock_evaluate(
-            agent_uuid,
+            agent_name,
             step,
             stage,
             server_url,
             trace_id=None,
             span_id=None,
             controls=None,
-            agent_name=None,
+            event_agent_name=None,
         ):
             if stage == "pre":
                 captured_step.update(step)
@@ -363,14 +363,14 @@ class TestInputExtraction:
         captured_step = {}
 
         async def mock_evaluate(
-            agent_uuid,
+            agent_name,
             step,
             stage,
             server_url,
             trace_id=None,
             span_id=None,
             controls=None,
-            agent_name=None,
+            event_agent_name=None,
         ):
             if stage == "pre":
                 captured_step.update(step)
@@ -393,14 +393,14 @@ class TestInputExtraction:
         captured_step = {}
 
         async def mock_evaluate(
-            agent_uuid,
+            agent_name,
             step,
             stage,
             server_url,
             trace_id=None,
             span_id=None,
             controls=None,
-            agent_name=None,
+            event_agent_name=None,
         ):
             if stage == "pre":
                 captured_step.update(step)
@@ -600,14 +600,14 @@ class TestStepName:
         captured_steps = []
 
         async def mock_evaluate(
-            agent_uuid,
+            agent_name,
             step,
             stage,
             server_url,
             trace_id=None,
             span_id=None,
             controls=None,
-            agent_name=None,
+            event_agent_name=None,
         ):
             captured_steps.append(step)
             return mock_safe_response
@@ -638,14 +638,14 @@ class TestStepName:
         captured_steps = []
 
         async def mock_evaluate(
-            agent_uuid,
+            agent_name,
             step,
             stage,
             server_url,
             trace_id=None,
             span_id=None,
             controls=None,
-            agent_name=None,
+            event_agent_name=None,
         ):
             captured_steps.append(step)
             return mock_safe_response
@@ -676,14 +676,14 @@ class TestStepName:
         captured_steps = []
 
         async def mock_evaluate(
-            agent_uuid,
+            agent_name,
             step,
             stage,
             server_url,
             trace_id=None,
             span_id=None,
             controls=None,
-            agent_name=None,
+            event_agent_name=None,
         ):
             captured_steps.append(step)
             return mock_safe_response

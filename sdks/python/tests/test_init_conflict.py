@@ -19,7 +19,7 @@ def _make_conflict_error() -> httpx.HTTPStatusError:
     )
 
 
-def test_init_surfaces_uuid_conflict() -> None:
+def test_init_surfaces_conflict_response() -> None:
     conflict = _make_conflict_error()
 
     with patch(
@@ -31,7 +31,6 @@ def test_init_surfaces_uuid_conflict() -> None:
     ):
         with pytest.raises(httpx.HTTPStatusError):
             agent_control.init(
-                agent_name="Init Conflict Agent",
-                agent_id=str(uuid4()),
+                agent_name=f"agent-{uuid4().hex[:12]}",
                 agent_description="Testing init conflict handling",
             )

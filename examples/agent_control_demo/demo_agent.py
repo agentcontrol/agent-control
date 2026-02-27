@@ -161,8 +161,7 @@ async def run_demo():
     try:
         logger.info(f"Initializing agent: {AGENT_NAME}")
         agent_control.init(
-            agent_name=AGENT_NAME,
-            agent_id=AGENT_ID,
+            agent_name=AGENT_ID,
             server_url=SERVER_URL,
             agent_description="Demo chatbot for testing controls"
         )

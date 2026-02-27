@@ -95,7 +95,6 @@ class DirectEventIngestor(EventIngestor):
                 "event_type": "control_execution",
                 "trace_id": event.trace_id,
                 "span_id": event.span_id,
-                "agent_uuid": str(event.agent_uuid),
                 "agent_name": event.agent_name,
                 "control_id": event.control_id,
                 "control_name": event.control_name,

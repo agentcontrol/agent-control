@@ -1,5 +1,5 @@
 """Server configuration settings."""
-
+import os
 from functools import cached_property
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -86,8 +86,11 @@ class AgentControlServerDatabaseConfig(BaseSettings):
 
     def get_url(self) -> str:
         """Get database URL, preferring explicit url if set."""
-        if self.url:
-            return self.url
+
+        # Check for DATABASE_URL first (Docker standard), then DB_URL
+        database_url = os.getenv('DATABASE_URL') or self.url
+        if database_url:
+            return database_url
         return (
             f"postgresql+{self.driver}://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
         )

@@ -19,11 +19,11 @@ def _init_agent(
     steps: list[dict] | None = None,
     evaluators: list[dict] | None = None,
 ) -> tuple[str, str]:
-    aid = agent_id or str(uuid.uuid4())
-    name = agent_name or f"Agent-{uuid.uuid4().hex[:6]}"
+    name = (agent_name or agent_id or f"agent-{uuid.uuid4().hex[:12]}").lower()
+    if len(name) < 10:
+        name = f"{name}-agent".replace("--", "-")
     payload = {
         "agent": {
-            "agent_id": aid,
             "agent_name": name,
             "agent_description": "desc",
             "agent_version": "1.0",
@@ -33,7 +33,7 @@ def _init_agent(
     }
     resp = client.post("/api/v1/agents/initAgent", json=payload)
     assert resp.status_code == 200
-    return aid, name
+    return name, name
 
 
 def _create_control_with_data(client: TestClient, data: dict) -> int:
@@ -282,7 +282,7 @@ def test_init_agent_rejects_builtin_evaluator_name(client: TestClient) -> None:
     payload = {
         "agent": {
             "agent_id": str(uuid.uuid4()),
-            "agent_name": f"Agent-{uuid.uuid4().hex[:6]}",
+            "agent_name": f"agent-{uuid.uuid4().hex[:12]}",
             "agent_description": "desc",
             "agent_version": "1.0",
         },
@@ -300,16 +300,14 @@ def test_init_agent_rejects_builtin_evaluator_name(client: TestClient) -> None:
     assert resp.json()["error_code"] == "EVALUATOR_NAME_CONFLICT"
 
 
-def test_init_agent_uuid_conflict_on_same_name(client: TestClient) -> None:
+def test_init_agent_same_name_is_idempotent(client: TestClient) -> None:
     # Given: an existing agent with a specific name
-    name = f"Agent-{uuid.uuid4().hex[:6]}"
-    agent_id = str(uuid.uuid4())
-    _init_agent(client, agent_id=agent_id, agent_name=name)
+    name = f"agent-{uuid.uuid4().hex[:12]}"
+    _init_agent(client, agent_name=name)
 
-    # When: re-registering with the same name but a different UUID
+    # When: re-registering with the same name
     payload = {
         "agent": {
-            "agent_id": str(uuid.uuid4()),
             "agent_name": name,
             "agent_description": "desc",
             "agent_version": "1.0",
@@ -318,21 +316,19 @@ def test_init_agent_uuid_conflict_on_same_name(client: TestClient) -> None:
     }
     resp = client.post("/api/v1/agents/initAgent", json=payload)
 
-    # Then: UUID conflict is returned
-    assert resp.status_code == 409
-    assert resp.json()["error_code"] == "AGENT_UUID_CONFLICT"
+    # Then: request is idempotent
+    assert resp.status_code == 200
+    assert resp.json()["created"] is False
 
 
-def test_init_agent_name_conflict_on_same_uuid(client: TestClient) -> None:
-    # Given: an existing agent with a specific UUID
-    agent_id = str(uuid.uuid4())
-    original_name = f"Agent-{uuid.uuid4().hex[:6]}"
-    _init_agent(client, agent_id=agent_id, agent_name=original_name)
+def test_init_agent_different_name_creates_new_agent(client: TestClient) -> None:
+    # Given: an existing agent
+    original_name = f"agent-{uuid.uuid4().hex[:12]}"
+    _init_agent(client, agent_name=original_name)
 
-    # When: re-registering with the same UUID but a different name
+    # When: registering another agent with a different name
     payload = {
         "agent": {
-            "agent_id": agent_id,
             "agent_name": f"{original_name}-renamed",
             "agent_description": "desc",
             "agent_version": "1.0",
@@ -341,9 +337,9 @@ def test_init_agent_name_conflict_on_same_uuid(client: TestClient) -> None:
     }
     resp = client.post("/api/v1/agents/initAgent", json=payload)
 
-    # Then: name conflict is returned
-    assert resp.status_code == 409
-    assert resp.json()["error_code"] == "AGENT_NAME_CONFLICT"
+    # Then: a new agent is created
+    assert resp.status_code == 200
+    assert resp.json()["created"] is True
 
 
 def test_list_agent_controls_corrupted_control_data_returns_422(
@@ -377,8 +373,8 @@ def test_list_agent_controls_corrupted_control_data_returns_422(
 
 def test_list_agents_invalid_cursor_returns_first_page(client: TestClient) -> None:
     # Given: two agents
-    _init_agent(client, agent_name=f"Agent-{uuid.uuid4().hex[:6]}")
-    _init_agent(client, agent_name=f"Agent-{uuid.uuid4().hex[:6]}")
+    _init_agent(client, agent_name=f"agent-{uuid.uuid4().hex[:12]}")
+    _init_agent(client, agent_name=f"agent-{uuid.uuid4().hex[:12]}")
 
     # When: listing agents without cursor
     resp = client.get("/api/v1/agents")
@@ -400,7 +396,7 @@ def test_list_agent_evaluators_corrupted_data_returns_empty(client: TestClient) 
     agent_id, _ = _init_agent(client, evaluators=[{"name": "eval-a", "config_schema": {}}])
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": "{\"bad\": \"data\"}", "id": agent_id},
         )
 
@@ -424,7 +420,7 @@ def test_set_agent_policy_rejects_corrupted_agent_data(client: TestClient) -> No
 
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
@@ -554,7 +550,7 @@ def test_list_agents_corrupted_data_sets_zero_counts(client: TestClient) -> None
     )
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
@@ -563,7 +559,7 @@ def test_list_agents_corrupted_data_sets_zero_counts(client: TestClient) -> None
 
     # Then: step/evaluator counts are zeroed for corrupted data
     assert resp.status_code == 200
-    agents = {a["agent_id"]: a for a in resp.json()["agents"]}
+    agents = {a["agent_name"]: a for a in resp.json()["agents"]}
     agent = agents[agent_id]
     assert agent["step_count"] == 0
     assert agent["evaluator_count"] == 0
@@ -574,7 +570,7 @@ def test_get_agent_corrupted_data_returns_422(client: TestClient) -> None:
     agent_id, _ = _init_agent(client)
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
@@ -592,7 +588,7 @@ def test_get_agent_corrupted_metadata_returns_422(client: TestClient) -> None:
     corrupted = {"agent_metadata": {}, "steps": [], "evaluators": []}
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps(corrupted), "id": agent_id},
         )
 
@@ -623,7 +619,7 @@ def test_get_agent_policy_missing_policy_returns_404(client: TestClient) -> None
     with Session(engine) as session:
         agent_row = (
             session.execute(
-                select(AgentModel).where(AgentModel.agent_uuid == agent_id)
+                select(AgentModel).where(AgentModel.name == agent_id)
             )
             .scalars()
             .first()
@@ -718,8 +714,8 @@ def test_list_agents_includes_active_controls_count(client: TestClient) -> None:
 
 def test_list_agents_valid_cursor_not_found_returns_first_page(client: TestClient) -> None:
     # Given: two agents
-    _init_agent(client, agent_name=f"Agent-{uuid.uuid4().hex[:6]}")
-    _init_agent(client, agent_name=f"Agent-{uuid.uuid4().hex[:6]}")
+    _init_agent(client, agent_name=f"agent-{uuid.uuid4().hex[:12]}")
+    _init_agent(client, agent_name=f"agent-{uuid.uuid4().hex[:12]}")
 
     # When: listing without cursor
     resp = client.get("/api/v1/agents", params={"limit": 1})
@@ -738,8 +734,8 @@ def test_list_agents_valid_cursor_not_found_returns_first_page(client: TestClien
 
 def test_init_agent_adds_new_evaluator(client: TestClient) -> None:
     # Given: an existing agent with one evaluator
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     payload = {
         "agent": {
             "agent_id": agent_id,
@@ -777,8 +773,8 @@ def test_init_agent_adds_new_evaluator(client: TestClient) -> None:
 
 def test_init_agent_returns_controls_when_policy_assigned(client: TestClient) -> None:
     # Given: an agent assigned to a policy with a control
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     init_resp = client.post(
         "/api/v1/agents/initAgent",
         json={
@@ -828,7 +824,7 @@ def test_patch_agent_corrupted_data_returns_422(client: TestClient) -> None:
     agent_id, _ = _init_agent(client)
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
@@ -848,7 +844,7 @@ def test_get_agent_evaluator_corrupted_data_returns_404(client: TestClient) -> N
     agent_id, _ = _init_agent(client, evaluators=[{"name": "eval-a", "config_schema": {}}])
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
@@ -867,7 +863,7 @@ def test_init_agent_rejects_duplicate_step_names_in_single_request(
     payload = {
         "agent": {
             "agent_id": str(uuid.uuid4()),
-            "agent_name": f"Agent-{uuid.uuid4().hex[:6]}",
+            "agent_name": f"agent-{uuid.uuid4().hex[:12]}",
             "agent_description": "desc",
             "agent_version": "1.0",
         },
@@ -895,8 +891,8 @@ def test_init_agent_rejects_step_schema_conflict_across_registrations(
     client: TestClient,
 ) -> None:
     # Given: an agent registered with a step
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     original_payload = {
         "agent": {
             "agent_id": agent_id,
@@ -949,8 +945,8 @@ def test_init_agent_accepts_identical_step_schema_across_registrations(
     client: TestClient,
 ) -> None:
     # Given: an agent registered with a step
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     payload = {
         "agent": {
             "agent_id": agent_id,
