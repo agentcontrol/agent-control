@@ -90,7 +90,7 @@ export const ControlMatch$inboundSchema: z.ZodMiniType<ControlMatch, unknown> =
       control_id: types.number(),
       control_name: types.string(),
       result: EvaluatorResult$inboundSchema,
-      steering_context: types.optional(z.nullable(SteeringContext$inboundSchema)),
+      steering_context: z.optional(z.nullable(SteeringContext$inboundSchema)),
     }),
     z.transform((v) => {
       return remap$(v, {
