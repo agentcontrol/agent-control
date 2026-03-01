@@ -66,9 +66,9 @@ def test_plural_collection_get_is_list_but_singular_get_is_get(overlay_gen):
                     "operationId": "list_agents_api_v1_agents_get",
                 },
             },
-            "/api/v1/agents/{agent_id}": {
+            "/api/v1/agents/{agent_name}": {
                 "get": {
-                    "operationId": "get_agent_api_v1_agents__agent_id__get",
+                    "operationId": "get_agent_api_v1_agents__agent_name__get",
                 },
             },
             "/health": {
@@ -83,7 +83,7 @@ def test_plural_collection_get_is_list_but_singular_get_is_get(overlay_gen):
     names = overlay_gen.resolve_names(operations)
 
     assert names[("/api/v1/agents", "get")] == ("agents", "list")
-    assert names[("/api/v1/agents/{agent_id}", "get")] == ("agents", "get")
+    assert names[("/api/v1/agents/{agent_name}", "get")] == ("agents", "get")
     assert names[("/health", "get")] == ("system", "healthCheck")
 
 

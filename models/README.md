@@ -50,7 +50,7 @@ from agent_control_models import Agent, Step
 # Create an agent
 agent = Agent(
     agent_name="Customer Support Bot",
-    agent_id="550e8400-e29b-41d4-a716-446655440000",
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
     agent_description="Handles customer inquiries",
     agent_version="1.0.0"
 )
@@ -90,7 +90,7 @@ from agent_control_models import EvaluationRequest, EvaluationResponse
 
 # Create evaluation request
 request = EvaluationRequest(
-    agent_uuid="agent-uuid-here",
+    agent_name="agent-uuid-here",
     step=Step(
         type="llm_inference",
         name="chat",
@@ -129,7 +129,7 @@ Agent metadata and configuration.
 
 **Fields:**
 - `agent_name` (str): Human-readable agent name
-- `agent_id` (UUID): Unique identifier
+- `agent_name` (UUID): Unique identifier
 - `agent_description` (Optional[str]): Agent description
 - `agent_version` (Optional[str]): Agent version
 - `tools` (Optional[List[str]]): List of available tools
@@ -165,7 +165,7 @@ Complete control specification.
 Request for evaluating controls.
 
 **Fields:**
-- `agent_uuid` (str): Agent identifier
+- `agent_name` (str): Agent identifier
 - `step` (Step): Step to evaluate
 - `stage` (str): Evaluation stage ("pre" or "post")
 
@@ -198,7 +198,7 @@ from agent_control_models import Agent
 # Create with validation
 agent = Agent(
     agent_name="My Agent",
-    agent_id="550e8400-e29b-41d4-a716-446655440000"
+    agent_name="550e8400-e29b-41d4-a716-446655440000"
 )
 
 # Serialize to dict
@@ -227,7 +227,7 @@ step = Step(
 
 # Type-safe evaluation request
 request = EvaluationRequest(
-    agent_uuid="uuid-here",
+    agent_name="uuid-here",
     step=step,
     stage="pre"
 )
@@ -243,7 +243,7 @@ from agent_control_models import Agent
 # Add custom metadata
 agent = Agent(
     agent_name="Support Bot",
-    agent_id="550e8400-e29b-41d4-a716-446655440000",
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
     metadata={
         "team": "customer-success",
         "environment": "production",

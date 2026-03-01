@@ -58,6 +58,43 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 
 ---
 
+## Real Quick Start
+
+Get up and running with Agent Control in **one command**:
+
+**Prerequisites**: Python 3.12+ and Docker must be installed.
+
+### Option 1: Quick Install (Recommended)
+
+```bash
+curl -fsSL -H "Authorization: token YOUR_GITHUB_TOKEN" https://raw.githubusercontent.com/agentcontrol/agent-control/main/setup.sh | sh
+```
+
+> ⚠️ **Note**: This will automatically download and run the setup script. [Review the script](https://github.com/agentcontrol/agent-control/blob/main/setup.sh) before running if you prefer.
+
+### Option 2: Clone and Run
+
+```bash
+git clone https://github.com/agentcontrol/agent-control.git
+cd agent-control
+./setup.sh
+```
+
+**What the script does:**
+- ✓ Check Python 3.12+ is installed
+- ✓ Create a virtual environment
+- ✓ Pull and start PostgreSQL + Agent Control Server via Docker
+- ✓ Install the Agent Control SDK
+
+**Server will be running at `http://localhost:8000` — ready to use!**
+
+
+---
+
+**Prefer manual setup?** Continue to the detailed [Quick Start](#quick-start) section below.
+
+---
+
 ## Quick Start
 
 Protect your AI agent in 4 simple steps.
@@ -82,15 +119,11 @@ cd agent-control
 # Install dependencies
 make sync
 
-# Start PostgreSQL database
-cd server && docker-compose up -d && cd ..
-
-# Run database migrations
-make server-alembic-upgrade
-
-# Start the Agent Control server
+# Start server (automatically starts Postgres + runs migrations + starts server)
 make server-run
 ```
+
+> 💡 **First time?** The command above handles everything: starts Postgres, runs migrations, and starts the server. Migrations are idempotent - safe to run multiple times.
 
 **Server is now running at `http://localhost:8000`** ✅
 
@@ -130,7 +163,7 @@ async def setup():
         # 1. Register agent first (required before assigning policy)
         agent = Agent(
             # Your agent's UUID
-            agent_id="550e8400-e29b-41d4-a716-446655440000",
+            agent_name="550e8400-e29b-41d4-a716-446655440000",
             agent_name="My Chatbot",
             agent_created_at=datetime.now(UTC).isoformat()
         )
@@ -165,7 +198,7 @@ async def setup():
         # 5. Assign policy to agent
         await policies.assign_policy_to_agent(
             client,
-            agent_id=AGENT_ID,
+            agent_name=AGENT_ID,
             policy_id=policy["policy_id"]
         )
 
@@ -199,7 +232,7 @@ from agent_control import control, ControlViolationError
 # Initialize your agent
 agent_control.init(
     agent_name="My Chatbot",
-    agent_id="550e8400-e29b-41d4-a716-446655440000"
+    agent_name="550e8400-e29b-41d4-a716-446655440000"
 )
 
 # Protect any function (like LLM calls)
@@ -266,7 +299,7 @@ uv run my_agent.py
 |----------|---------|-------------|
 | `AGENT_CONTROL_URL` | `http://localhost:8000` | Server URL for SDK |
 | `AGENT_CONTROL_API_KEY` | — | API key for authentication (if enabled) |
-| `DB_URL` | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
+| `DATABASE_URL` or `DB_URL` | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (`DATABASE_URL` preferred for Docker, `DB_URL` for local dev. SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
 | `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator |
 
 ### Server Configuration

@@ -12,14 +12,17 @@ def make_agent_payload(
     evaluators: list | None = None,
 ):
     """Helper to create agent payload."""
-    if agent_id is None:
-        agent_id = str(uuid.uuid4())
-    if name is None:
-        name = f"Test Agent {uuid.uuid4().hex[:8]}"
+    if agent_id is not None:
+        name = agent_id
+    elif name is None:
+        name = f"agent-{uuid.uuid4().hex[:12]}"
+    canonical_name = name.lower().replace(" ", "-")
+    if len(canonical_name) < 10:
+        canonical_name = f"{canonical_name}-agent".replace("--", "-")
     return {
         "agent": {
-            "agent_id": agent_id,
-            "agent_name": name,
+            "agent_id": canonical_name,
+            "agent_name": canonical_name,
             "agent_description": "desc",
             "agent_version": "1.0",
         },
@@ -307,8 +310,8 @@ def test_policy_assignment_with_builtin_evaluator(client: TestClient) -> None:
 def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -> None:
     """Given an agent with custom evaluator and matching policy, when assigning policy, then succeeds."""
     # Given:
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Test Agent {uuid.uuid4().hex[:8]}"
+    agent_id = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_name = agent_id
     payload = make_agent_payload(
         agent_id=agent_id,
         name=agent_name,
@@ -339,8 +342,8 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
 def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) -> None:
     """Given an agent without evaluator, when setting control to use that evaluator, then fails."""
     # Given:
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Test Agent {uuid.uuid4().hex[:8]}"
+    agent_id = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_name = agent_id
     payload = make_agent_payload(agent_id=agent_id, name=agent_name)
     client.post("/api/v1/agents/initAgent", json=payload)
 
@@ -371,8 +374,8 @@ def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) 
 def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> None:
     """Given policy with Agent A's evaluator, when assigning to Agent B, then fails."""
     # Given: Agent A has evaluator, Agent B does not
-    agent_a_id = str(uuid.uuid4())
-    agent_a_name = f"Agent-A-{uuid.uuid4().hex[:8]}"
+    agent_a_id = f"agent-a-{uuid.uuid4().hex[:12]}"
+    agent_a_name = agent_a_id
     payload_a = make_agent_payload(
         agent_id=agent_a_id,
         name=agent_a_name,
@@ -380,8 +383,8 @@ def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> No
     )
     client.post("/api/v1/agents/initAgent", json=payload_a)
 
-    agent_b_id = str(uuid.uuid4())
-    agent_b_name = f"Agent-B-{uuid.uuid4().hex[:8]}"
+    agent_b_id = f"agent-b-{uuid.uuid4().hex[:12]}"
+    agent_b_name = agent_b_id
     payload_b = make_agent_payload(agent_id=agent_b_id, name=agent_b_name)
     client.post("/api/v1/agents/initAgent", json=payload_b)
 
@@ -537,8 +540,8 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
     Then: Returns 409 with error message about referencing control
     """
     # Given: Agent with custom evaluator
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Test Agent {uuid.uuid4().hex[:8]}"
+    agent_id = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_name = agent_id
     payload = make_agent_payload(
         agent_id=agent_id,
         name=agent_name,
@@ -588,8 +591,8 @@ def test_patch_agent_remove_evaluator_allowed_without_policy(client: TestClient)
     Then: Succeeds since no controls can reference it
     """
     # Given: Agent with custom evaluator but no policy
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Test Agent {uuid.uuid4().hex[:8]}"
+    agent_id = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_name = agent_id
     payload = make_agent_payload(
         agent_id=agent_id,
         name=agent_name,

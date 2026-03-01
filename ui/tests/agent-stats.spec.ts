@@ -3,10 +3,10 @@ import { expect, mockData, mockRoutes, test } from './fixtures';
 test.describe('Agent Monitor Tab', () => {
   test.beforeEach(async ({ mockedPage }) => {
     // Navigate to agent detail page
-    await mockedPage.goto('/agents/agent-1/monitor');
+    await mockedPage.goto('/agents/customer-support-bot/monitor');
     // Wait for the page to load
     await expect(
-      mockedPage.getByRole('heading', { name: 'Customer Support Bot' })
+      mockedPage.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();
   });
 
@@ -148,9 +148,9 @@ test.describe('Agent Monitor Tab - Empty State', () => {
     await mockRoutes.stats(page, { data: mockData.emptyStats });
 
     // Navigate to agent detail page
-    await page.goto('/agents/agent-1/monitor');
+    await page.goto('/agents/customer-support-bot/monitor');
     await expect(
-      page.getByRole('heading', { name: 'Customer Support Bot' })
+      page.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();
 
     // Navigate to stats tab
@@ -187,6 +187,7 @@ test.describe('Agent Monitor Tab - Refetch Flow', () => {
           non_match_count: 90,
           allow_count: 5,
           deny_count: 5,
+          steer_count: 0,
           warn_count: 0,
           log_count: 0,
           error_count: 0,
@@ -213,6 +214,7 @@ test.describe('Agent Monitor Tab - Refetch Flow', () => {
           non_match_count: 215,
           allow_count: 15,
           deny_count: 20,
+          steer_count: 0,
           warn_count: 0,
           log_count: 0,
           error_count: 1,
@@ -235,9 +237,9 @@ test.describe('Agent Monitor Tab - Refetch Flow', () => {
     });
 
     // Navigate to agent detail page
-    await page.goto('/agents/agent-1/monitor');
+    await page.goto('/agents/customer-support-bot/monitor');
     await expect(
-      page.getByRole('heading', { name: 'Customer Support Bot' })
+      page.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();
 
     // Navigate to stats tab
@@ -272,9 +274,9 @@ test.describe('Agent Monitor Tab - Error State', () => {
     });
 
     // Navigate to agent detail page
-    await page.goto('/agents/agent-1/monitor');
+    await page.goto('/agents/customer-support-bot/monitor');
     await expect(
-      page.getByRole('heading', { name: 'Customer Support Bot' })
+      page.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();
 
     // Navigate to stats tab

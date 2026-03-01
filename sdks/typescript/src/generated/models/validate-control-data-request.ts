@@ -4,10 +4,10 @@
 
 import * as z from "zod/v4-mini";
 import {
-  ControlDefinition,
-  ControlDefinition$Outbound,
-  ControlDefinition$outboundSchema,
-} from "./control-definition.js";
+  ControlDefinitionInput,
+  ControlDefinitionInput$Outbound,
+  ControlDefinitionInput$outboundSchema,
+} from "./control-definition-input.js";
 
 /**
  * Request to validate control configuration data without saving.
@@ -21,12 +21,12 @@ export type ValidateControlDataRequest = {
    * This model contains only the logic and configuration.
    * Identity fields (id, name) are managed by the database.
    */
-  data: ControlDefinition;
+  data: ControlDefinitionInput;
 };
 
 /** @internal */
 export type ValidateControlDataRequest$Outbound = {
-  data: ControlDefinition$Outbound;
+  data: ControlDefinitionInput$Outbound;
 };
 
 /** @internal */
@@ -34,7 +34,7 @@ export const ValidateControlDataRequest$outboundSchema: z.ZodMiniType<
   ValidateControlDataRequest$Outbound,
   ValidateControlDataRequest
 > = z.object({
-  data: ControlDefinition$outboundSchema,
+  data: ControlDefinitionInput$outboundSchema,
 });
 
 export function validateControlDataRequestToJSON(

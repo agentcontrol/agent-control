@@ -36,7 +36,7 @@ import { Result } from "../types/fp.js";
  * Returns the latest version of each step (deduplicated by type+name).
  *
  * Args:
- *     agent_id: UUID of the agent
+ *     agent_name: Agent identifier
  *     db: Database session (injected)
  *
  * Returns:
@@ -48,7 +48,7 @@ import { Result } from "../types/fp.js";
  */
 export function agentsGet(
   client: AgentControlSDKCore,
-  request: operations.GetAgentApiV1AgentsAgentIdGetRequest,
+  request: operations.GetAgentApiV1AgentsAgentNameGetRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -73,7 +73,7 @@ export function agentsGet(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.GetAgentApiV1AgentsAgentIdGetRequest,
+  request: operations.GetAgentApiV1AgentsAgentNameGetRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -96,7 +96,7 @@ async function $do(
     request,
     (value) =>
       z.parse(
-        operations.GetAgentApiV1AgentsAgentIdGetRequest$outboundSchema,
+        operations.GetAgentApiV1AgentsAgentNameGetRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -108,13 +108,13 @@ async function $do(
   const body = null;
 
   const pathParams = {
-    agent_id: encodeSimple("agent_id", payload.agent_id, {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
       explode: false,
       charEncoding: "percent",
     }),
   };
 
-  const path = pathToFunc("/api/v1/agents/{agent_id}")(pathParams);
+  const path = pathToFunc("/api/v1/agents/{agent_name}")(pathParams);
 
   const headers = new Headers(compactMap({
     Accept: "application/json",
@@ -127,7 +127,7 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "get_agent_api_v1_agents__agent_id__get",
+    operationID: "get_agent_api_v1_agents__agent_name__get",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,

@@ -15,7 +15,7 @@ class FailingStore(EventStore):
     async def store(self, events: list[ControlExecutionEvent]) -> int:
         raise RuntimeError("boom")
 
-    async def query_stats(self, agent_uuid, time_range, control_id=None):  # pragma: no cover - not used
+    async def query_stats(self, agent_name, time_range, control_id=None):  # pragma: no cover - not used
         raise NotImplementedError
 
     async def query_events(self, query):  # pragma: no cover - not used
@@ -30,7 +30,7 @@ class CountingStore(EventStore):
         self.calls.append(events)
         return len(events)
 
-    async def query_stats(self, agent_uuid, time_range, control_id=None):  # pragma: no cover - not used
+    async def query_stats(self, agent_name, time_range, control_id=None):  # pragma: no cover - not used
         raise NotImplementedError
 
     async def query_events(self, query):  # pragma: no cover - not used
@@ -45,8 +45,7 @@ async def test_direct_ingestor_drops_on_store_error() -> None:
         ControlExecutionEvent(
             trace_id="a" * 32,
             span_id="b" * 16,
-            agent_uuid=uuid4(),
-            agent_name="agent",
+                agent_name="agent-test-01",
             control_id=1,
             control_name="c",
             check_stage="pre",
@@ -74,8 +73,7 @@ async def test_direct_ingestor_logs_when_enabled(caplog: pytest.LogCaptureFixtur
     event = ControlExecutionEvent(
         trace_id="a" * 32,
         span_id="b" * 16,
-        agent_uuid=uuid4(),
-        agent_name="agent",
+                agent_name="agent-test-01",
         control_id=1,
         control_name="c",
         check_stage="pre",

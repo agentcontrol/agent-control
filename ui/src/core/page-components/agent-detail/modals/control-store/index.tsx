@@ -37,7 +37,7 @@ import { AddNewControlModal } from '../add-new-control';
 import { EditControlContent } from '../edit-control/edit-control-content';
 import { sanitizeControlNamePart } from '../edit-control/utils';
 
-// Extended ControlSummary with used_by_agent (until API types are regenerated)
+// Extended ControlSummary with optional used_by_agent
 type ControlSummaryWithAgent = ControlSummary & {
   used_by_agent?: AgentRef | null;
 };
@@ -289,7 +289,7 @@ export function ControlStoreModal({
           );
         }
         // Link to agent controls tab with control name filter
-        const href = `/agents/${agent.agent_id}/controls?q=${encodeURIComponent(control.name)}`;
+        const href = `/agents/${agent.agent_name}/controls?q=${encodeURIComponent(control.name)}`;
         return (
           <Anchor
             component={Link}

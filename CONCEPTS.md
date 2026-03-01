@@ -218,9 +218,14 @@ The **Action** defines what happens when the evaluator matches/detects an issue.
   - `"log"` - Log the match for observability only
 - `metadata`: Optional additional context (JSON object)
 
-**Important: "Deny Wins" Semantics**
+**Important: Priority Semantics**
 
-Agent Control uses "deny wins" logic: if **any** enabled control with a `deny` action matches, the request is blocked regardless of other control results. This ensures fail-safe behavior.
+Agent Control uses priority-based logic:
+1. **deny wins** - If any `deny` control matches, execution is blocked
+2. **steer second** - If any `steer` control matches (and no deny), steering context is provided for correction
+3. **allow/warn/log** - Observability actions that don't block
+
+This ensures fail-safe behavior while allowing corrective workflows.
 
 **Example 1: Block on match**
 ```json

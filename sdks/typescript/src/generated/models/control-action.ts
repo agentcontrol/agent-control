@@ -3,11 +3,18 @@
  */
 
 import * as z from "zod/v4-mini";
+import { remap as remap$ } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
 import * as openEnums from "../types/enums.js";
 import { OpenEnum } from "../types/enums.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
+import {
+  SteeringContext,
+  SteeringContext$inboundSchema,
+  SteeringContext$Outbound,
+  SteeringContext$outboundSchema,
+} from "./steering-context.js";
 
 /**
  * Action to take when control is triggered
@@ -15,6 +22,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
 export const Decision = {
   Allow: "allow",
   Deny: "deny",
+  Steer: "steer",
   Warn: "warn",
   Log: "log",
 } as const;
@@ -31,6 +39,10 @@ export type ControlAction = {
    * Action to take when control is triggered
    */
   decision: Decision;
+  /**
+   * Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
+   */
+  steeringContext?: SteeringContext | null | undefined;
 };
 
 /** @internal */
@@ -44,21 +56,38 @@ export const Decision$outboundSchema: z.ZodMiniType<string, Decision> =
 export const ControlAction$inboundSchema: z.ZodMiniType<
   ControlAction,
   unknown
-> = z.object({
-  decision: Decision$inboundSchema,
-});
+> = z.pipe(
+  z.object({
+    decision: Decision$inboundSchema,
+    steering_context: z.optional(z.nullable(SteeringContext$inboundSchema)),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "steering_context": "steeringContext",
+    });
+  }),
+);
 /** @internal */
 export type ControlAction$Outbound = {
   decision: string;
+  steering_context?: SteeringContext$Outbound | null | undefined;
 };
 
 /** @internal */
 export const ControlAction$outboundSchema: z.ZodMiniType<
   ControlAction$Outbound,
   ControlAction
-> = z.object({
-  decision: Decision$outboundSchema,
-});
+> = z.pipe(
+  z.object({
+    decision: Decision$outboundSchema,
+    steeringContext: z.optional(z.nullable(SteeringContext$outboundSchema)),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      steeringContext: "steering_context",
+    });
+  }),
+);
 
 export function controlActionToJSON(controlAction: ControlAction): string {
   return JSON.stringify(ControlAction$outboundSchema.parse(controlAction));

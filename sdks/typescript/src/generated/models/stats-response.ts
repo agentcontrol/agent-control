@@ -19,16 +19,16 @@ import { StatsTotals, StatsTotals$inboundSchema } from "./stats-totals.js";
  * Contains agent-level totals (with optional timeseries) and per-control breakdown.
  *
  * Attributes:
- *     agent_uuid: Agent UUID
+ *     agent_name: Agent identifier
  *     time_range: Time range used
  *     totals: Agent-level aggregate statistics (includes timeseries)
  *     controls: Per-control breakdown for discovery and detail
  */
 export type StatsResponse = {
   /**
-   * Agent UUID
+   * Agent identifier
    */
-  agentUuid: string;
+  agentName: string;
   /**
    * Per-control breakdown
    */
@@ -44,7 +44,7 @@ export type StatsResponse = {
    *
    * Invariant: execution_count = match_count + non_match_count + error_count
    *
-   * Matches have actions (allow, deny, warn, log) tracked in action_counts.
+   * Matches have actions (allow, deny, steer, warn, log) tracked in action_counts.
    * sum(action_counts.values()) == match_count
    *
    * Attributes:
@@ -64,14 +64,14 @@ export const StatsResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    agent_uuid: types.string(),
+    agent_name: types.string(),
     controls: z.array(ControlStats$inboundSchema),
     time_range: types.string(),
     totals: StatsTotals$inboundSchema,
   }),
   z.transform((v) => {
     return remap$(v, {
-      "agent_uuid": "agentUuid",
+      "agent_name": "agentName",
       "time_range": "timeRange",
     });
   }),

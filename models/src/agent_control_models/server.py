@@ -141,7 +141,6 @@ class InitAgentRequest(BaseModel):
             "examples": [
                 {
                     "agent": {
-                        "agent_id": "550e8400-e29b-41d4-a716-446655440000",
                         "agent_name": "customer-service-bot",
                         "agent_description": "Handles customer inquiries",
                         "agent_version": "1.0.0",
@@ -310,8 +309,7 @@ class PatchAgentResponse(BaseModel):
 class AgentSummary(BaseModel):
     """Summary of an agent for list responses."""
 
-    agent_id: str = Field(..., description="UUID of the agent")
-    agent_name: str = Field(..., description="Human-readable name of the agent")
+    agent_name: str = Field(..., description="Unique identifier of the agent")
     policy_id: int | None = Field(None, description="ID of assigned policy, if any")
     created_at: str | None = Field(None, description="ISO 8601 timestamp when agent was created")
     step_count: int = Field(0, description="Number of steps registered with the agent")
@@ -347,8 +345,7 @@ class ListAgentsResponse(BaseModel):
 class AgentRef(BaseModel):
     """Reference to an agent (for listing which agents use a control)."""
 
-    agent_id: str = Field(..., description="Agent UUID")
-    agent_name: str = Field(..., description="Agent name")
+    agent_name: str = Field(..., description="Agent identifier")
 
 
 class ControlSummary(BaseModel):

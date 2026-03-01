@@ -14,6 +14,10 @@ import {
   EvaluatorResult,
   EvaluatorResult$inboundSchema,
 } from "./evaluator-result.js";
+import {
+  SteeringContext,
+  SteeringContext$inboundSchema,
+} from "./steering-context.js";
 
 /**
  * Action configured for this control
@@ -21,6 +25,7 @@ import {
 export const Action = {
   Allow: "allow",
   Deny: "deny",
+  Steer: "steer",
   Warn: "warn",
   Log: "log",
 } as const;
@@ -66,6 +71,10 @@ export type ControlMatch = {
    * - Observability systems to monitor evaluator health separately from validation outcomes
    */
   result: EvaluatorResult;
+  /**
+   * Steering context for steer actions if configured
+   */
+  steeringContext?: SteeringContext | null | undefined;
 };
 
 /** @internal */
@@ -81,12 +90,14 @@ export const ControlMatch$inboundSchema: z.ZodMiniType<ControlMatch, unknown> =
       control_id: types.number(),
       control_name: types.string(),
       result: EvaluatorResult$inboundSchema,
+      steering_context: z.optional(z.nullable(SteeringContext$inboundSchema)),
     }),
     z.transform((v) => {
       return remap$(v, {
         "control_execution_id": "controlExecutionId",
         "control_id": "controlId",
         "control_name": "controlName",
+        "steering_context": "steeringContext",
       });
     }),
   );

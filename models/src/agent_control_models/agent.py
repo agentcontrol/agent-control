@@ -1,8 +1,8 @@
 """Agent entity and step models."""
 from __future__ import annotations
 
+import re
 from typing import Any
-from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 
@@ -15,19 +15,37 @@ STEP_TYPE_TOOL = "tool"
 STEP_TYPE_LLM = "llm"
 BUILTIN_STEP_TYPES: tuple[str, str] = (STEP_TYPE_TOOL, STEP_TYPE_LLM)
 
+AGENT_NAME_MIN_LENGTH = 10
+AGENT_NAME_PATTERN = r"^[a-z0-9:_-]+$"
+_AGENT_NAME_REGEX = re.compile(AGENT_NAME_PATTERN)
+
+
+def normalize_agent_name(value: str) -> str:
+    """Normalize and validate an agent identifier."""
+    normalized = value.strip().lower()
+    if len(normalized) < AGENT_NAME_MIN_LENGTH:
+        raise ValueError(
+            f"agent_name must be at least {AGENT_NAME_MIN_LENGTH} characters long"
+        )
+    if not _AGENT_NAME_REGEX.fullmatch(normalized):
+        raise ValueError(
+            "agent_name may only contain lowercase letters, digits, ':', '_' or '-'"
+        )
+    return normalized
+
 
 class Agent(BaseModel):
     """
     Agent metadata for registration and tracking.
 
     An agent represents an AI system that can be protected and monitored.
-    Each agent has a unique ID and can have multiple steps registered with it.
+    Each agent has a unique immutable name and can have multiple steps registered with it.
     """
-    agent_id: UUID = Field(
-        ..., description="Unique identifier for the agent (UUID format)"
-    )
     agent_name: str = Field(
-        ..., description="Human-readable name for the agent", min_length=1
+        ...,
+        min_length=AGENT_NAME_MIN_LENGTH,
+        pattern=AGENT_NAME_PATTERN,
+        description="Unique immutable identifier for the agent",
     )
     agent_description: str | None = Field(
         None, description="Optional description of the agent's purpose"
@@ -49,7 +67,6 @@ class Agent(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "agent_id": "550e8400-e29b-41d4-a716-446655440000",
                     "agent_name": "customer-service-bot",
                     "agent_description": "Handles customer inquiries and support tickets",
                     "agent_version": "1.0.0",
@@ -58,6 +75,11 @@ class Agent(BaseModel):
             ]
         }
     }
+
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def validate_and_normalize_agent_name(cls, value: str) -> str:
+        return normalize_agent_name(str(value))
 
 
 class StepSchema(BaseModel):

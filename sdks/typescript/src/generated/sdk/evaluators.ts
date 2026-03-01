@@ -23,7 +23,7 @@ export class Evaluators extends ClientSDK {
    * - **sql**: SQL query validation
    *
    * Custom evaluators are registered per-agent via initAgent.
-   * Use GET /agents/{agent_id}/evaluators to list agent-specific schemas.
+   * Use GET /agents/{agent_name}/evaluators to list agent-specific schemas.
    */
   async list(
     options?: RequestOptions,

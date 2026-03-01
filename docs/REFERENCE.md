@@ -118,11 +118,15 @@ An **Action** defines what to do when a control matches:
 | Action | Behavior |
 |--------|----------|
 | `deny` | Block the request/response, raise `ControlViolationError` |
+| `steer` | Raise `ControlSteerError` with steering context for correction and retry |
 | `allow` | Permit execution (no effect if a `deny` control also matches) |
 | `warn` | Log a warning but allow execution |
 | `log` | Silent logging for monitoring only |
 
-> **Note**: Agent Control uses "deny wins" semantics. If any enabled control with `deny` action matches, the request is blocked regardless of other control results.
+> **Note**: Agent Control uses priority-based semantics:
+> 1. **deny wins** - If any `deny` control matches, execution is blocked
+> 2. **steer second** - If any `steer` control matches (and no deny), a `ControlSteerError` is raised with correction steering context
+> 3. **allow/warn/log** - Observability actions that don't block execution
 
 ### Step Types
 
@@ -587,7 +591,7 @@ import agent_control
 
 agent_control.init(
     agent_name="my-agent",           # Required: human-readable name
-    agent_id="550e8400-e29b-41d4-a716-446655440000",  # Required: UUID
+    agent_name="550e8400-e29b-41d4-a716-446655440000",  # Required: UUID
     server_url="http://localhost:8000",  # Optional: defaults to env var
     steps=[                          # Optional: register available steps
         {
@@ -668,6 +672,36 @@ except ControlViolationError as e:
 |-----------|------|-------------|
 | `control_name` | str | Which control triggered |
 | `message` | str | Why it was blocked |
+| `metadata` | dict | Additional context |
+
+#### ControlSteerError
+
+Raised when a control with `action="steer"` matches. Provides steering context for correction and allows retry:
+
+```python
+from agent_control import control, ControlSteerError
+
+@control()
+async def process_transfer(amount: float, verified_2fa: bool = False) -> dict:
+    return {"status": "completed"}
+
+try:
+    result = await process_transfer(amount=15000, verified_2fa=False)
+except ControlSteerError as e:
+    print(f"Steering context: {e.steering_context}")
+    # Follow steering context: request 2FA from user
+    code = get_2fa_code_from_user()
+    # Retry with corrected parameters
+    result = await process_transfer(amount=15000, verified_2fa=True)
+```
+
+**ControlSteerError attributes**:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `control_name` | str | Which control triggered |
+| `message` | str | Why steering is required |
+| `steering_context` | str | Corrective action instructions |
 | `metadata` | dict | Additional context |
 
 ### Direct Client Usage
@@ -770,12 +804,12 @@ Default: `http://localhost:8000/api/v1`
 |--------|----------|-------------|
 | `GET` | `/agents` | List all agents |
 | `POST` | `/agents/initAgent` | Register a new agent |
-| `GET` | `/agents/{agent_id}` | Get agent details |
-| `PATCH` | `/agents/{agent_id}` | Update agent |
-| `GET` | `/agents/{agent_id}/controls` | List controls for agent |
-| `GET` | `/agents/{agent_id}/policy` | Get agent's policy |
-| `POST` | `/agents/{agent_id}/policy/{policy_id}` | Assign policy |
-| `DELETE` | `/agents/{agent_id}/policy` | Remove policy |
+| `GET` | `/agents/{agent_name}` | Get agent details |
+| `PATCH` | `/agents/{agent_name}` | Update agent |
+| `GET` | `/agents/{agent_name}/controls` | List controls for agent |
+| `GET` | `/agents/{agent_name}/policy` | Get agent's policy |
+| `POST` | `/agents/{agent_name}/policy/{policy_id}` | Assign policy |
+| `DELETE` | `/agents/{agent_name}/policy` | Remove policy |
 
 **Controls**:
 
@@ -890,7 +924,7 @@ Agent Control supports multiple API keys for zero-downtime rotation:
 | `DB_PASSWORD` | `agent_control` | Database password |
 | `DB_DATABASE` | `agent_control` | Database name |
 | `DB_DRIVER` | `psycopg` | Database driver |
-| `DB_URL` | — | Full database URL (overrides above) |
+| `DATABASE_URL` or `DB_URL` | — | Full database URL (overrides above). `DATABASE_URL` is preferred for Docker environments. |
 
 **Authentication**:
 

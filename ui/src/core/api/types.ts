@@ -106,11 +106,7 @@ export type ListControlsResponse =
   components['schemas']['ListControlsResponse'];
 
 // AgentRef - reference to an agent (for used_by_agents)
-// Note: This will be in generated types after running pnpm fetch-api-types
-export type AgentRef = {
-  agent_id: string;
-  agent_name: string;
-};
+export type AgentRef = components['schemas']['AgentRef'];
 
 // Helper type to extract query parameters from operations
 type ExtractQueryParams<T> = T extends { parameters: { query?: infer Q } }
@@ -134,10 +130,10 @@ export type ListAgentsQueryParams = ExtractQueryParams<
   operations['list_agents_api_v1_agents_get']
 >;
 export type GetAgentPathParams = ExtractPathParams<
-  operations['get_agent_api_v1_agents__agent_id__get']
+  operations['get_agent_api_v1_agents__agent_name__get']
 >;
 export type GetAgentControlsPathParams = ExtractPathParams<
-  operations['list_agent_controls_api_v1_agents__agent_id__controls_get']
+  operations['list_agent_controls_api_v1_agents__agent_name__controls_get']
 >;
 
 // Request body types

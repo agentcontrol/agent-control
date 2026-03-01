@@ -9,6 +9,7 @@ import { ClosedEnum } from "../types/enums.js";
 export const Actions = {
   Allow: "allow",
   Deny: "deny",
+  Steer: "steer",
   Warn: "warn",
   Log: "log",
 } as const;
@@ -37,9 +38,9 @@ export type CheckStages = ClosedEnum<typeof CheckStages>;
  *     trace_id: Filter by trace ID (get all events for a request)
  *     span_id: Filter by span ID (get all events for a function call)
  *     control_execution_id: Filter by specific event ID
- *     agent_uuid: Filter by agent UUID
+ *     agent_name: Filter by agent identifier
  *     control_ids: Filter by control IDs
- *     actions: Filter by actions (allow, deny, warn, log)
+ *     actions: Filter by actions (allow, deny, steer, warn, log)
  *     matched: Filter by matched status
  *     check_stages: Filter by check stages (pre, post)
  *     applies_to: Filter by call type (llm_call, tool_call)
@@ -54,9 +55,9 @@ export type EventQueryRequest = {
    */
   actions?: Array<Actions> | null | undefined;
   /**
-   * Filter by agent UUID
+   * Filter by agent identifier
    */
-  agentUuid?: string | null | undefined;
+  agentName?: string | null | undefined;
   /**
    * Filter by call types
    */
@@ -120,7 +121,7 @@ export const CheckStages$outboundSchema: z.ZodMiniEnum<typeof CheckStages> = z
 /** @internal */
 export type EventQueryRequest$Outbound = {
   actions?: Array<string> | null | undefined;
-  agent_uuid?: string | null | undefined;
+  agent_name?: string | null | undefined;
   applies_to?: Array<string> | null | undefined;
   check_stages?: Array<string> | null | undefined;
   control_execution_id?: string | null | undefined;
@@ -141,7 +142,7 @@ export const EventQueryRequest$outboundSchema: z.ZodMiniType<
 > = z.pipe(
   z.object({
     actions: z.optional(z.nullable(z.array(Actions$outboundSchema))),
-    agentUuid: z.optional(z.nullable(z.string())),
+    agentName: z.optional(z.nullable(z.string())),
     appliesTo: z.optional(z.nullable(z.array(AppliesTo$outboundSchema))),
     checkStages: z.optional(z.nullable(z.array(CheckStages$outboundSchema))),
     controlExecutionId: z.optional(z.nullable(z.string())),
@@ -160,7 +161,7 @@ export const EventQueryRequest$outboundSchema: z.ZodMiniType<
   }),
   z.transform((v) => {
     return remap$(v, {
-      agentUuid: "agent_uuid",
+      agentName: "agent_name",
       appliesTo: "applies_to",
       checkStages: "check_stages",
       controlExecutionId: "control_execution_id",

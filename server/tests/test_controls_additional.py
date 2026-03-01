@@ -358,6 +358,41 @@ def test_list_controls_cursor_with_name_and_enabled_filters(client: TestClient) 
     assert page2["controls"][0]["enabled"] is True
 
 
+def test_list_controls_includes_used_by_agent_mapping(client: TestClient) -> None:
+    # Given: one control linked through Policy -> Agent
+    control_id, control_name = _create_control(client, name=f"Mapped-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    policy_name = f"pol-{uuid.uuid4()}"
+    policy_resp = client.put("/api/v1/policies", json={"name": policy_name})
+    assert policy_resp.status_code == 200
+    policy_id = policy_resp.json()["policy_id"]
+
+    assoc_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert assoc_resp.status_code == 200
+
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert init_resp.status_code == 200
+
+    assign_resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+    assert assign_resp.status_code == 200
+
+    # When: listing controls
+    resp = client.get("/api/v1/controls", params={"name": "mapped"})
+    assert resp.status_code == 200
+    controls = resp.json()["controls"]
+
+    # Then: used_by_agent is populated from the join traversal
+    assert len(controls) == 1
+    assert controls[0]["id"] == control_id
+    assert controls[0]["name"] == control_name
+    assert controls[0]["used_by_agent"] == {"agent_name": agent_name}
+
+
 def test_delete_control_force_dissociates(client: TestClient) -> None:
     # Given: a control associated with a policy
     control_id, _ = _create_control(client)
@@ -463,8 +498,8 @@ def test_set_control_data_agent_scoped_agent_not_found(client: TestClient) -> No
 
 def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> None:
     # Given: an agent without the referenced evaluator
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
@@ -491,8 +526,8 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
 
 def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> None:
     # Given: an agent with evaluator schema requiring "pattern"
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
@@ -581,8 +616,8 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
     client: TestClient,
 ) -> None:
     # Given: an agent whose stored data is corrupted
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
@@ -595,7 +630,7 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
 
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 

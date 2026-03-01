@@ -38,7 +38,7 @@ import { Result } from "../types/fp.js";
  * - **sql**: SQL query validation
  *
  * Custom evaluators are registered per-agent via initAgent.
- * Use GET /agents/{agent_id}/evaluators to list agent-specific schemas.
+ * Use GET /agents/{agent_name}/evaluators to list agent-specific schemas.
  */
 export function evaluatorsList(
   client: AgentControlSDKCore,

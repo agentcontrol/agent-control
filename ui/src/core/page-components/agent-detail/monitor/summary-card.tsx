@@ -341,6 +341,17 @@ export function SummaryCard({
                       },
                       {
                         value:
+                          summary.actionCounts?.steer !== undefined
+                            ? (summary.actionCounts.steer /
+                                summary.totalMatches) *
+                              100 *
+                              ringAnimationProgress
+                            : 0,
+                        color: 'var(--mantine-color-cyan-4)',
+                        tooltip: `Steer: ${summary.actionCounts?.steer || 0}`,
+                      },
+                      {
+                        value:
                           summary.actionCounts?.warn !== undefined
                             ? (summary.actionCounts.warn /
                                 summary.totalMatches) *
@@ -379,6 +390,7 @@ export function SummaryCard({
                     {[
                       { key: 'allow', label: 'Allow', color: 'green' },
                       { key: 'deny', label: 'Deny', color: 'red' },
+                      { key: 'steer', label: 'Steer', color: 'cyan' },
                       { key: 'warn', label: 'Warn', color: 'yellow' },
                       { key: 'log', label: 'Log', color: 'blue' },
                     ].map(({ key, label, color }) => {
