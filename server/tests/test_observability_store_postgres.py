@@ -209,6 +209,73 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() -> None:
+    # Given: a Postgres-backed store with steer and warn events
+    session_maker = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    store = PostgresEventStore(session_maker)
+
+    agent_name = f"agent-{uuid4().hex[:12]}"
+    now = datetime.now(UTC)
+
+    events = [
+        _event(
+            agent_name=agent_name,
+            control_id=1,
+            action="steer",
+            matched=True,
+            timestamp=now - timedelta(seconds=10),
+            trace_id="a" * 32,
+        ),
+        _event(
+            agent_name=agent_name,
+            control_id=2,
+            action="warn",
+            matched=True,
+            timestamp=now - timedelta(seconds=5),
+            trace_id="b" * 32,
+        ),
+        _event(
+            agent_name=agent_name,
+            control_id=3,
+            action="allow",
+            matched=True,
+            timestamp=now,
+            trace_id="c" * 32,
+        ),
+    ]
+
+    # When: storing events
+    await store.store(events)
+
+    # When: querying stats with timeseries enabled
+    stats = await store.query_stats(
+        agent_name,
+        time_range=timedelta(hours=1),
+        include_timeseries=True,
+        bucket_size=timedelta(minutes=1),
+    )
+
+    # Then: action counts include steer and warn
+    assert stats.action_counts["steer"] == 1
+    assert stats.action_counts["warn"] == 1
+    assert stats.action_counts["allow"] == 1
+
+    # Then: timeseries buckets include steer and warn in their action_counts
+    assert stats.timeseries is not None
+    all_bucket_actions = [
+        action
+        for bucket in stats.timeseries
+        for action in bucket.action_counts.keys()
+    ]
+    assert "steer" in all_bucket_actions
+    assert "warn" in all_bucket_actions
+
+
+@pytest.mark.asyncio
 async def test_postgres_event_store_parses_string_json_rows() -> None:
     # Given: a store backed by a stub session returning string JSON data
     event = ControlExecutionEvent(

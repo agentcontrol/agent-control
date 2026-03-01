@@ -745,3 +745,66 @@ class TestCheckEvaluationWithLocal:
         # (the server will handle/reject the malformed controls)
         client.http_client.post.assert_called_once()
         assert result.is_safe is True
+
+    @pytest.mark.asyncio
+    async def test_local_evaluation_includes_steering_context(self, agent_name, llm_payload):
+        """Test that local evaluation includes steering_context in response.
+
+        Given: A local steer control with steering_context configured
+        When: Local evaluation is performed
+        Then: Response includes steering_context field in matches
+        Coverage: Lines 275, 280, 298-301 in control_decorators.py
+        """
+        from agent_control_models.controls import SteeringContext
+
+        controls = [
+            {
+                "id": 1,
+                "name": "local-steer-control",
+                "control": {
+                    "description": "Local steer control",
+                    "enabled": True,
+                    "execution": "sdk",
+                    "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                    "selector": {"path": "input"},
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "action": {
+                        "decision": "steer",
+                        "steering_context": {
+                            "message": "Please rephrase your input"
+                        }
+                    },
+                },
+            }
+        ]
+
+        client = MagicMock(spec=AgentControlClient)
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock()
+
+        result = await check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+        )
+
+        # Local evaluation should run without server call
+        client.http_client.post.assert_not_called()
+
+        # Result should include match with steering_context
+        assert result.is_safe is False
+        assert result.matches is not None
+        assert len(result.matches) == 1
+
+        match = result.matches[0]
+        assert match.control_name == "local-steer-control"
+        assert match.action == "steer"
+
+        # Verify steering_context is included and properly formatted
+        # Local evaluation returns SteeringContext objects, not dicts
+        assert match.steering_context is not None
+        from agent_control_models.controls import SteeringContext as SteeringContextModel
+        assert isinstance(match.steering_context, SteeringContextModel)
+        assert match.steering_context.message == "Please rephrase your input"

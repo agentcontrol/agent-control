@@ -25,6 +25,7 @@ from .controls import (
     ControlSelector,
     EvaluatorResult,
     EvaluatorSpec,
+    SteeringContext,
 )
 from .errors import (
     ERROR_TITLES,
@@ -108,6 +109,7 @@ __all__ = [
     "ControlSelector",
     "EvaluatorSpec",
     "EvaluatorResult",
+    "SteeringContext",
     # Error models
     "ProblemDetail",
     "ErrorCode",

@@ -710,3 +710,172 @@ class TestStepName:
             assert captured_steps[1]["name"] == "custom_tool_name"
             # THEN: Step should still be detected as tool type
             assert captured_steps[0]["type"] == "tool"
+
+
+# =============================================================================
+# STEERING CONTEXT TESTS
+# =============================================================================
+
+class TestSteeringContextHandling:
+    """Tests for steering context extraction and handling."""
+
+    @pytest.mark.asyncio
+    async def test_steering_context_as_string(self, mock_agent):
+        """Test steering_context extraction when it's a plain string."""
+        response_with_string_context = {
+            "is_safe": False,
+            "confidence": 0.85,
+            "matches": [
+                {
+                    "control_id": 2,
+                    "control_name": "steer-control",
+                    "action": "steer",
+                    "steering_context": "Please use a different approach",  # String instead of dict
+                    "result": {
+                        "matched": True,
+                        "message": "Issue detected",
+                        "metadata": {}
+                    }
+                }
+            ]
+        }
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=response_with_string_context):
+
+            @control()
+            async def test_func():
+                return "test"
+
+            with pytest.raises(ControlSteerError) as exc_info:
+                await test_func()
+
+            # String steering context should be used directly
+            assert exc_info.value.steering_context == "Please use a different approach"
+
+    @pytest.mark.asyncio
+    async def test_steering_context_fallback_to_message(self, mock_agent):
+        """Test steering_context falls back to evaluator message when not provided."""
+        response_without_context = {
+            "is_safe": False,
+            "confidence": 0.85,
+            "matches": [
+                {
+                    "control_id": 2,
+                    "control_name": "steer-control",
+                    "action": "steer",
+                    "steering_context": None,  # No steering context provided
+                    "result": {
+                        "matched": True,
+                        "message": "Default evaluator message",
+                        "metadata": {}
+                    }
+                }
+            ]
+        }
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=response_without_context):
+
+            @control()
+            async def test_func():
+                return "test"
+
+            with pytest.raises(ControlSteerError) as exc_info:
+                await test_func()
+
+            # Should fall back to evaluator message
+            assert exc_info.value.steering_context == "Default evaluator message"
+
+
+# =============================================================================
+# EXCEPTION HANDLING TESTS
+# =============================================================================
+
+class TestExceptionHandling:
+    """Tests for exception handling in pre/post execution checks."""
+
+    @pytest.mark.asyncio
+    async def test_control_steer_error_propagates_in_pre_execution(self, mock_agent, mock_steer_response):
+        """Test that ControlSteerError is propagated (not caught) in pre-execution."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_steer_response):
+
+            @control()
+            async def test_func():
+                return "should not execute"
+
+            # ControlSteerError should propagate to caller
+            with pytest.raises(ControlSteerError) as exc_info:
+                await test_func()
+
+            assert exc_info.value.control_name == "steer-control"
+
+    @pytest.mark.asyncio
+    async def test_control_steer_error_propagates_in_post_execution(self, mock_agent, mock_safe_response, mock_steer_response):
+        """Test that ControlSteerError is propagated (not caught) in post-execution."""
+        call_count = [0]
+
+        def mock_evaluate_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            # First call (pre) is safe, second call (post) triggers steer
+            if call_count[0] == 1:
+                return mock_safe_response
+            return mock_steer_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate_side_effect):
+
+            @control()
+            async def test_func():
+                return "executed"
+
+            # ControlSteerError from post-execution should propagate
+            with pytest.raises(ControlSteerError) as exc_info:
+                await test_func()
+
+            assert exc_info.value.control_name == "steer-control"
+
+    @pytest.mark.asyncio
+    async def test_other_exceptions_wrapped_in_pre_execution(self, mock_agent):
+        """Test that non-control exceptions are wrapped in RuntimeError in pre-execution."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=ValueError("Unexpected error")):
+
+            @control()
+            async def test_func():
+                return "should not execute"
+
+            # Other exceptions should be wrapped in RuntimeError
+            with pytest.raises(RuntimeError) as exc_info:
+                await test_func()
+
+            assert "Control check failed unexpectedly" in str(exc_info.value)
+            assert "Unexpected error" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_other_exceptions_logged_in_post_execution(self, mock_agent, mock_safe_response):
+        """Test that non-control exceptions are logged (not raised) in post-execution."""
+        call_count = [0]
+
+        def mock_evaluate_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_safe_response
+            raise ValueError("Post-execution error")
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate_side_effect), \
+             patch("agent_control.control_decorators.logger") as mock_logger:
+
+            @control()
+            async def test_func():
+                return "executed successfully"
+
+            # Function should still complete despite post-execution error
+            result = await test_func()
+            assert result == "executed successfully"
+
+            # Error should be logged
+            mock_logger.error.assert_called_once()
+            assert "Post-execution control check failed" in mock_logger.error.call_args[0][0]
