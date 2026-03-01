@@ -19,7 +19,6 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from uuid import UUID
 
 from dotenv import load_dotenv
 
@@ -33,7 +32,6 @@ from agent_control import Agent, AgentControlClient, agents, controls, policies
 
 
 AGENT_NAME = "interactive-support-demo"
-AGENT_ID = "550e8400-e29b-41d4-a716-446655440099"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 INTERACTIVE_CONTROLS = [
@@ -60,28 +58,28 @@ INTERACTIVE_CONTROLS = [
             "tags": ["pii", "security"]
         }
     },
-    {
-        "name": "prevent-sql-injection-user-input",
-        "description": "Prevent SQL injection patterns in user messages",
-        "definition": {
-            "description": "Block SQL injection patterns before LLM processes",
-            "enabled": True,
-            "execution": "server",
-            "scope": {
-                "step_names": ["check_before_invocation", "check_before_model"],
-                "stages": ["pre"]
-            },
-            "selector": {"path": "input"},
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    "pattern": r"(\bDROP\s+TABLE\b|\bDROP\s+DATABASE\b|--;)"
-                }
-            },
-            "action": {"decision": "deny", "message": "Potentially malicious SQL patterns detected"},
-            "tags": ["security"]
-        }
-    },
+    # {
+    #     "name": "prevent-sql-injection-user-input",
+    #     "description": "Prevent SQL injection patterns in user messages",
+    #     "definition": {
+    #         "description": "Block SQL injection patterns before LLM processes",
+    #         "enabled": True,
+    #         "execution": "server",
+    #         "scope": {
+    #             "step_names": ["check_before_invocation", "check_before_model"],
+    #             "stages": ["pre"]
+    #         },
+    #         "selector": {"path": "input"},
+    #         "evaluator": {
+    #             "name": "regex",
+    #             "config": {
+    #                 "pattern": r"(\bDROP\s+TABLE\b|\bDROP\s+DATABASE\b|--;)"
+    #             }
+    #         },
+    #         "action": {"decision": "deny", "message": "Potentially malicious SQL patterns detected"},
+    #         "tags": ["security"]
+    #     }
+    # },
 
     # Agent Output Controls - Block unsafe patterns in agent responses
     {
@@ -136,21 +134,19 @@ INTERACTIVE_CONTROLS = [
 async def create_agent(client: AgentControlClient) -> str:
     """Create the interactive support demo agent."""
     print(f"\n✓ Creating agent: {AGENT_NAME}")
-    agent_uuid = UUID(AGENT_ID)
 
     agent = Agent(
-        agent_id=agent_uuid,
         agent_name=AGENT_NAME,
         agent_description="Interactive demo with real-time safety"
     )
 
     try:
         await agents.register_agent(client, agent, steps=[])
-        print(f"  Agent UUID: {agent_uuid}")
-        return str(agent_uuid)
+        print(f"  Agent: {AGENT_NAME}")
+        return AGENT_NAME
     except Exception:
         print(f"  Agent already exists")
-        return str(agent_uuid)
+        return AGENT_NAME
 
 
 async def create_control_with_retry(
@@ -223,13 +219,13 @@ async def add_controls_to_policy(
 
 async def assign_policy(
     client: AgentControlClient,
-    agent_uuid: str,
+    agent_name: str,
     policy_id: int
 ) -> bool:
     """Assign a policy to an agent."""
     print(f"\n✓ Assigning policy to agent")
     try:
-        await policies.assign_policy_to_agent(client, agent_uuid, policy_id)
+        await policies.assign_policy_to_agent(client, agent_name, policy_id)
         return True
     except Exception:
         return False
@@ -251,11 +247,11 @@ async def main():
             return
 
         try:
-            agent_uuid = await create_agent(client)
+            agent_name = await create_agent(client)
             control_ids = await create_interactive_controls(client)
             policy_id = await create_policy_with_retry(client, "interactive-demo-policy")
             await add_controls_to_policy(client, policy_id, control_ids)
-            await assign_policy(client, agent_uuid, policy_id)
+            await assign_policy(client, agent_name, policy_id)
 
             print("\n" + "=" * 50)
             print("Setup Complete!")
@@ -265,13 +261,13 @@ async def main():
 
 Controls created:
   • block-pii-input (Scope: user input - check_before_invocation, check_before_model)
-  • prevent-sql-injection-user-input (Scope: user input - check_before_invocation, check_before_model)
+  # • prevent-sql-injection-user-input (Scope: user input - check_before_invocation, check_before_model)
   • block-pii-output (Scope: agent output - check_after_model)
   • block-pii-all-tool-inputs (Scope: ALL tools - step_types=["tool"])
 
 Test cases:
   ✓ "My SSN is 123-45-6789" → Blocked by block-pii-input
-  ✓ "DROP TABLE orders--" → Blocked by prevent-sql-injection-user-input
+  # ✓ "DROP TABLE orders--" → Blocked by prevent-sql-injection-user-input
   ✓ Tool call with PII → Blocked by block-pii-all-tool-inputs (universal)
 
 Run the demo:

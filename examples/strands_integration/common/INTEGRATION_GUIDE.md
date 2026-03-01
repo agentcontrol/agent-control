@@ -22,9 +22,16 @@ A **control** defines a safety rule with 4 components:
 1. **What to check**: Input/output/tool parameters
 2. **When to check**: Pre-stage (before) or post-stage (after)
 3. **How to check**: Regex, LLM, custom evaluator
-4. **What to do**: Allow, deny, warn, log
+4. **What to do**: Allow, deny, warn, log, **steer**
 
-Example:
+**Action Types:**
+- `allow` - Explicitly permit
+- `deny` - Hard block (raises `ControlViolationError`)
+- `warn` - Log warning, continue
+- `log` - Log info, continue
+- `steer` - Pause execution with corrective guidance (raises `ControlSteerError`), agent retries with steering context
+
+Example (deny):
 ```python
 {
     "scope": {"step_types": ["llm"], "stages": ["pre"]},
@@ -33,8 +40,21 @@ Example:
 }
 ```
 
+Example (steer):
+```python
+{
+    "scope": {"step_types": ["llm"], "stages": ["post"]},
+    "evaluator": {"name": "regex", "config": {"pattern": "PII_PATTERN"}},
+    "action": {
+        "decision": "steer",
+        "steering_context": {"message": "Redact PII: mask to last 4 digits"}
+    }
+}
+```
+
 ### How They Work Together
 
+**Deny Flow (Hard Block):**
 ```
 User: "My SSN is 123-45-6789"
   ↓
@@ -44,10 +64,45 @@ Hook: Extract text → Create Step(type="llm", input="...")
   ↓
 Server: Find matching controls → Run evaluators → Pattern match!
   ↓
-Server: Return is_safe=False
+Server: Return is_safe=False, action="deny"
   ↓
-Hook: Raise ControlViolationError → Block execution
+Hook: Raise ControlViolationError → Block execution ❌
 ```
+
+**Steer Flow (Corrective Guidance):**
+```
+Agent: Drafts "Account 123456789012..."
+  ↓
+Hook: Check LLM output → Step(type="llm", output="...")
+  ↓
+Server: Pattern match! → action="steer", steering_context="Redact to ****9012"
+  ↓
+Hook: Raise ControlSteerError with context
+  ↓
+SteeringHandler: Return Guide(reason=context) → Agent retries 🔄
+  ↓
+Agent: Redrafts "Account ****9012..." → Success ✅
+```
+
+### Steer vs Deny
+
+**When to use DENY (hard block):**
+- Critical security violations (credentials, secrets, malware)
+- Compliance red lines (cannot be negotiated)
+- Irreversible actions (data deletion, fund transfers)
+- Example: Block emails containing API keys
+
+**When to use STEER (corrective guidance):**
+- Fixable compliance issues (PII that can be redacted)
+- Quality improvements (formatting, tone)
+- Best practice violations (missing fields, suboptimal wording)
+- Example: Guide agent to redact account numbers to last 4 digits
+
+**Key difference:**
+- `deny` = "Stop completely" ❌
+- `steer` = "Try again with this guidance" 🔄
+
+**Best practice:** Use steer for compliance workflows where the agent can self-correct (e.g., PII redaction), reserve deny for true security red lines.
 
 ## Control Types
 
@@ -90,7 +145,7 @@ Use for: Input validation, SQL injection prevention, business rules
 **Pattern 1: LLM Safety Only**
 ```python
 hook = AgentControlHook(
-    agent_name="chatbot",
+    agent_name="chatbot-agent",
     event_control_list=[
         BeforeInvocationEvent,
         AfterModelCallEvent
@@ -120,6 +175,14 @@ hook = AgentControlHook(
     on_violation_callback=alert_on_violation
 )
 ```
+
+**Pattern 4: Steering Integration (Dual-Hook)**
+
+For steer actions, use a custom `SteeringHandler` alongside `AgentControlHook`:
+- `AgentControlHook` → tool-stage deny (hard blocks)
+- `AgentControlSteeringHandler` → LLM post-output steer (corrective guidance via `Guide()`)
+
+**Important:** Use a two-phase flow (draft → steer → tool) to avoid OpenAI tool_call errors. See `steering_demo/` for complete implementation.
 
 ## Benefits
 

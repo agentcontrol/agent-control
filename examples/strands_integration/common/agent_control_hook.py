@@ -8,7 +8,6 @@ Evaluates controls at each event and applies actions based on control definition
 
 import os
 from typing import Any, Callable, Literal, Optional
-from uuid import UUID
 
 from strands.hooks import (
     AfterModelCallEvent,
@@ -23,7 +22,42 @@ from strands.hooks import (
 )
 
 import agent_control
+from agent_control import ControlSteerError, ControlViolationError
+from agent_control_models import EvaluationResult
 
+def _action_error(result: EvaluationResult) -> tuple[str, Exception] | None:
+    """
+    Return the first blocking action as an exception.
+
+    Args:
+        result: EvaluationResult from AgentControl
+
+    Returns:
+        ("deny", ControlViolationError) or ("steer", ControlSteerError) if a blocking
+        action is present, otherwise None.
+    """
+    match = next(
+        (m for m in (result.matches or []) if m.action in ("deny", "steer")),
+        None,
+    )
+    if not match:
+        return None
+
+    msg = getattr(getattr(match, "result", None), "message", None) or result.reason
+    msg = msg or f"Control '{match.control_name}' triggered"
+
+    if match.action == "deny":
+        err = ControlViolationError(message=f"Policy violation [{match.control_name}]: {msg}")
+        return "deny", err
+
+    ctx = getattr(match, "steering_context", None)
+    ctx_msg = getattr(ctx, "message", None) if ctx else None
+    err = ControlSteerError(
+        control_name=match.control_name,
+        message=f"Steering required [{match.control_name}]: {msg}",
+        steering_context=ctx_msg or msg,
+    )
+    return "steer", err
 
 class AgentControlHook(HookProvider):
     """
@@ -39,17 +73,16 @@ class AgentControlHook(HookProvider):
         3. Call evaluate_controls() with step_name, input/output, and stage
         4. If unsafe, raise ControlViolationError to block execution
 
-    Multi-agent support: Each hook instance is tied to a specific agent via agent_uuid.
-    Controls are filtered by agent_uuid during evaluation.
+    Multi-agent support: Each hook instance is tied to a specific agent via agent_name.
+    Controls are filtered by agent_name during evaluation.
 
     Example:
         ```python
         # Initialize agent control SDK
-        agent_control.init(agent_name="support-agent", agent_id="...")
+        agent_control.init(agent_name="support-agent")
 
         # Create hook for monitoring specific events
         hook = AgentControlHook(
-            agent_uuid=UUID("..."),
             agent_name="support-agent",
             event_control_list=[BeforeModelCallEvent, AfterModelCallEvent]
         )
@@ -64,7 +97,6 @@ class AgentControlHook(HookProvider):
 
     def __init__(
         self,
-        agent_uuid: UUID,
         agent_name: str,
         server_url: Optional[str] = None,
         event_control_list: Optional[list[type]] = None,
@@ -75,8 +107,7 @@ class AgentControlHook(HookProvider):
         Initialize AgentControlHook.
 
         Args:
-            agent_uuid: UUID of the agent (used to filter controls on server)
-            agent_name: Name of the agent for logging
+            agent_name: Name of the agent for logging and control filtering
             server_url: AgentControl server URL (default: from env or localhost:8000)
             event_control_list: List of event types to monitor. If None, monitors all.
             on_violation_callback: Optional callback when safety violation detected.
@@ -84,7 +115,6 @@ class AgentControlHook(HookProvider):
             enable_logging: Whether to log control execution
         """
         super().__init__()
-        self.agent_uuid = agent_uuid
         self.agent_name = agent_name
         self.server_url = server_url or os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
         self.event_control_list = event_control_list
@@ -113,13 +143,30 @@ class AgentControlHook(HookProvider):
             output=output,
             step_type=step_type,
             stage=stage,
-            agent_uuid=self.agent_uuid,
             agent_name=self.agent_name,
         )
 
-        # Handle violation if unsafe
+        action = _action_error(result)
+        if action:
+            _, err = action
+            if isinstance(err, ControlSteerError):
+                print(f"\n🎯 STEER - {violation_type} needs correction")
+                print(f"   Reason: {err}")
+            if self.on_violation_callback:
+                self.on_violation_callback(
+                    {
+                        "agent": self.agent_name,
+                        "control_name": getattr(err, "control_name", "unknown"),
+                        "stage": stage,
+                    },
+                    result,
+                )
+            if use_runtime_error:
+                raise RuntimeError(str(err))
+            raise err
+
+        # Fail closed if unsafe without explicit deny/steer match
         if not result.is_safe:
-            # Extract detailed reason from control matches
             control_name = "unknown"
             reason = result.reason
 
@@ -127,37 +174,28 @@ class AgentControlHook(HookProvider):
                 first_match = result.matches[0]
                 control_name = first_match.control_name
 
-                # Build reason from available information
                 if not reason:
-                    # Try to get message from evaluator result
-                    if hasattr(first_match, 'result') and hasattr(first_match.result, 'message') and first_match.result.message:
-                        reason = first_match.result.message
-                    # Fallback to control name
-                    elif control_name:
-                        reason = f"Control '{control_name}' triggered"
-                    else:
-                        reason = "Control check failed"
+                    msg = getattr(getattr(first_match, "result", None), "message", None)
+                    reason = msg or f"Control '{control_name}' triggered"
 
             print(f"\n🚫 CONTROL VIOLATION - {violation_type} blocked")
             print(f"   Control: {control_name}")
             print(f"   Reason: {reason}")
 
-            # Track violation if callback provided
             if self.on_violation_callback:
-                violation_info = {
-                    "agent": self.agent_name,
-                    "control_name": control_name,
-                    "stage": stage,
-                }
-                self.on_violation_callback(violation_info, result)
+                self.on_violation_callback(
+                    {
+                        "agent": self.agent_name,
+                        "control_name": control_name,
+                        "stage": stage,
+                    },
+                    result,
+                )
 
-            # Raise appropriate error with detailed message
             error_msg = f"Policy violation [{control_name}]: {reason}"
             if use_runtime_error:
                 raise RuntimeError(error_msg)
-            else:
-                raise agent_control.ControlViolationError(message=error_msg)
-
+            raise agent_control.ControlViolationError(message=error_msg)
     # ============================================================================
     # Hook Registration
     # ============================================================================
@@ -176,7 +214,6 @@ class AgentControlHook(HookProvider):
         print(f"\n{'='*60}")
         print(f"🔧 AgentControlHook.register_hooks() CALLED")
         print(f"   Agent: {self.agent_name}")
-        print(f"   Agent UUID: {self.agent_uuid}")
         print(f"   Server URL: {self.server_url}")
         print(f"{'='*60}")
 

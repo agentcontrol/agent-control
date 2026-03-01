@@ -28,11 +28,9 @@ Usage:
 import asyncio
 import os
 import sys
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -46,6 +44,7 @@ try:
     from strands import Agent, tool
     from strands.models.openai import OpenAIModel
     from strands.experimental.steering import Guide, Proceed, SteeringHandler
+    from strands.hooks import BeforeToolCallEvent, AfterToolCallEvent
     import agent_control
     from agent_control import ControlViolationError
 except ImportError as e:
@@ -58,10 +57,162 @@ from agent_control_hook import AgentControlHook
 
 
 # =============================================================================
+# AgentControl + Strands Steering Integration
+# =============================================================================
+
+class AgentControlSteeringHandler(SteeringHandler):
+    """
+    Combined AgentControl + Strands Steering integration.
+
+    This steering handler performs AgentControl checks at the steering point
+    and converts steer actions directly to Strands Guide() actions.
+
+    Architecture:
+    - Extends Strands SteeringHandler (called automatically at steering points)
+    - Performs AgentControl evaluation internally using evaluate_controls()
+    - Converts ControlSteerError to Guide() for agent retry
+    - Allows deny/violation errors to propagate (blocking execution)
+    """
+
+    def __init__(self, agent_name: str, server_url: str, enable_logging: bool = True):
+        super().__init__()
+        self.agent_name = agent_name
+        self.server_url = server_url
+        self.enable_logging = enable_logging
+        self.steers_applied = 0
+        self.last_steer_info = None
+
+    async def steer_after_model(self, *, agent, message, stop_reason, **kwargs):
+        """
+        Check AgentControl policies after model output and convert steer to Guide.
+
+        Called automatically by Strands at the steering point after model generation.
+        """
+
+        if self.enable_logging:
+            print("\n" + "="*70)
+            print("✨ STEERING: AgentControlSteeringHandler.steer_after_model() CALLED")
+            print("="*70)
+
+        # Extract output text from message
+        output_text = self._extract_output(message)
+
+        if self.enable_logging:
+            print(f"📝 Checking output: {output_text[:200]}...")
+
+        # Evaluate AgentControl policies
+        try:
+            result = await agent_control.evaluate_controls(
+                step_name="check_after_model",
+                output=output_text,
+                step_type="llm",
+                stage="post",
+                agent_name=self.agent_name,
+            )
+
+            # Check for steer action
+            steer_match = next(
+                (m for m in (result.matches or []) if m.action == "steer"),
+                None
+            )
+
+            if steer_match:
+                # Extract steering context
+                ctx = getattr(steer_match, "steering_context", None)
+                steering_message = getattr(ctx, "message", None) if ctx else None
+                control_name = steer_match.control_name
+
+                if not steering_message:
+                    steering_message = getattr(
+                        getattr(steer_match, "result", None), "message", None
+                    ) or result.reason or f"Control '{control_name}' requires steering"
+
+                self.steers_applied += 1
+
+                print("\n" + "🚨"*35)
+                print("⚠️  AGENTCONTROL STEER → STRANDS GUIDE")
+                print("🚨"*35)
+                print(f"\n📋 Control: {control_name}")
+                print(f"\n📧 ORIGINAL CONTENT (BEFORE REDACTION):")
+                print("="*70)
+                print(output_text)  # Show full content before redaction
+                print("="*70)
+                print(f"\n📝 Steering Context (Redaction Instructions):")
+                print(steering_message)
+                print("\n✅ STEERING: Returning Guide() to agent")
+                print("   Agent will RETRY with AgentControl guidance")
+                print("="*70 + "\n")
+
+                # Store for UI display
+                self.last_steer_info = {
+                    "control_name": control_name,
+                    "steering_context": steering_message,
+                    "from_agentcontrol": True
+                }
+
+                # Return Guide with AgentControl's steering context
+                return Guide(reason=steering_message)
+
+            # Check for deny action (should block)
+            deny_match = next(
+                (m for m in (result.matches or []) if m.action == "deny"),
+                None
+            )
+
+            if deny_match:
+                control_name = deny_match.control_name
+                msg = getattr(getattr(deny_match, "result", None), "message", None) or result.reason
+                error_msg = f"Policy violation [{control_name}]: {msg}"
+                print(f"\n🚫 DENY - Raising ControlViolationError")
+                raise ControlViolationError(message=error_msg)
+
+        except ControlViolationError:
+            # Re-raise deny/violation errors (these should block)
+            raise
+        except Exception as e:
+            # Log unexpected errors but don't block
+            print(f"⚠️  Error during AgentControl evaluation: {e}")
+
+        # Clear steer info when no steer detected
+        self.last_steer_info = None
+        if self.enable_logging:
+            print(f"✅ STEERING: No AgentControl steer detected, returning Proceed()")
+            print("="*70 + "\n")
+        return Proceed()
+
+    def _extract_output(self, message) -> str:
+        """Extract text content from model message."""
+        if not message:
+            return ""
+
+        # Handle dict format
+        if isinstance(message, dict):
+            content = message.get("content", "")
+        # Handle object with content attribute
+        elif hasattr(message, "content"):
+            content = message.content
+        else:
+            content = str(message)
+
+        # Handle list of content blocks
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and "text" in block:
+                    text_parts.append(block["text"])
+                elif hasattr(block, "text"):
+                    text_parts.append(block.text)
+                else:
+                    text_parts.append(str(block))
+            return " ".join(text_parts)
+
+        return str(content) if content else ""
+
+
+# =============================================================================
 # Configuration
 # =============================================================================
 
-AGENT_ID = "550e8400-e29b-41d4-a716-446655440030"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
@@ -135,9 +286,12 @@ async def send_monthly_account_summary(
 ) -> dict:
     """Send monthly account summary email to customer.
 
+    IMPORTANT: Only call this tool AFTER the final email draft is approved and compliant.
+    Do not call this during the drafting phase.
+
     Args:
         customer_email: Customer's email address
-        summary_text: The summary email body text
+        summary_text: The summary email body text (final, redacted version)
     """
     print(f"\n📧 SENDING EMAIL to {customer_email}")
     print(f"   Preview: {summary_text[:100]}...")
@@ -152,266 +306,70 @@ async def send_monthly_account_summary(
 
 
 # =============================================================================
-# Quality Steering Handler
-# =============================================================================
-
-class BankingPIIRedactionHandler(SteeringHandler):
-    """Steering handler for banking PII redaction.
-
-    Detects financial PII in agent responses and guides redaction:
-    - Full account numbers → "account ending in XXXX"
-    - SSN → "SSN ending in XXXX"
-    - Large amounts → Rounded (e.g., "$45.2K")
-    - Full transaction details → Generalized
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.redactions_made = 0
-        self.guidances_given = 0
-        self.last_redaction_info = None  # Store info about latest redaction
-
-    async def steer_after_model(self, *, agent, message, stop_reason, **kwargs):
-        """Check LLM output for financial PII and guide redaction."""
-
-        print("\n" + "="*70)
-        print("✨ STEERING: steer_after_model() CALLED")
-        print("="*70)
-
-        # Extract response text AND tool parameters
-        response_text = self._extract_text(message)
-        tool_params_text = self._extract_tool_params(message)
-
-        # Combine both for PII checking
-        full_text = response_text + " " + tool_params_text
-
-        print(f"📝 Response preview: {response_text[:150] if response_text else '(no text)'}...")
-        if tool_params_text:
-            print(f"🔧 Tool params preview: {tool_params_text[:150]}...")
-
-        if not full_text.strip():
-            print("⚠️  No content to check, returning Proceed()")
-            print("="*70 + "\n")
-            return Proceed()
-
-        response_lower = full_text.lower()
-        needs_redaction = False
-        redaction_guidance = []
-
-        # Detect full account numbers (9-12 digits)
-        account_matches = re.findall(r'\b(\d{9,12})\b', full_text)
-        if account_matches:
-            needs_redaction = True
-            for acc_num in account_matches:
-                last_four = acc_num[-4:]
-                redaction_guidance.append(
-                    f"• Account number {acc_num} → 'account ending in {last_four}'"
-                )
-                print(f"🚨 PII DETECTED: Full account number {acc_num}")
-                print(f"   ✅ Redaction: 'account ending in {last_four}'")
-
-        # Detect SSN (XXX-XX-XXXX format)
-        ssn_matches = re.findall(r'\b(\d{3}[-\s]?\d{2}[-\s]?\d{4})\b', full_text)
-        if ssn_matches:
-            needs_redaction = True
-            for ssn in ssn_matches:
-                last_four = ssn[-4:]
-                redaction_guidance.append(
-                    f"• SSN {ssn} → 'SSN ending in {last_four}' OR remove entirely"
-                )
-                print(f"🚨 PII DETECTED: SSN {ssn}")
-                print(f"   ✅ Redaction: Remove or use 'SSN ending in {last_four}'")
-
-        # Detect large dollar amounts (> $10,000)
-        large_amounts = re.findall(r'\$([\d,]+\.?\d*)', full_text)
-        for amount in large_amounts:
-            # Parse amount
-            amount_clean = amount.replace(',', '')
-            try:
-                amount_value = float(amount_clean)
-                if amount_value > 10000:
-                    needs_redaction = True
-                    rounded = f"${amount_value/1000:.1f}K"
-                    redaction_guidance.append(
-                        f"• Large amount ${amount} → '{rounded}'"
-                    )
-                    print(f"🚨 SENSITIVE: Large amount ${amount}")
-                    print(f"   ✅ Redaction: '{rounded}'")
-            except:
-                pass
-
-        # Detect specific transaction details (e.g., "Deposit of $15,000")
-        # Only flag if transaction type is directly followed by amount
-        transaction_patterns = [
-            r'(deposit|withdrawal|transfer|payment)\s+(of|for|:)\s*\$[\d,]+',
-            r'\$[\d,]+\s+(deposit|withdrawal|transfer|payment)'
-        ]
-        for pattern in transaction_patterns:
-            if re.search(pattern, full_text, re.IGNORECASE):
-                # Extract the match to show what was found
-                match = re.search(pattern, full_text, re.IGNORECASE)
-                if match:
-                    needs_redaction = True
-                    matched_text = match.group(0)
-                    redaction_guidance.append(
-                        f"• Transaction detail '{matched_text}' → Generalize (e.g., 'Recent deposit activity')"
-                    )
-                    print(f"🔍 DETECTED: Specific transaction detail: {matched_text}")
-                    break  # Only need to flag once
-
-        if needs_redaction:
-            self.redactions_made += 1
-            self.guidances_given += 1
-
-            # Store redaction info for UI display
-            self.last_redaction_info = {
-                "redacted_items": redaction_guidance,
-                "count": len(redaction_guidance)
-            }
-
-            print("\n" + "🚨"*35)
-            print("⚠️  FINANCIAL PII DETECTED - GUIDING REDACTION")
-            print("🚨"*35)
-            print("\n📋 REDACTION INSTRUCTIONS:")
-            for instruction in redaction_guidance:
-                print(f"   {instruction}")
-            print("\n✅ STEERING: Returning Guide() to agent with redaction instructions")
-            print("   Agent will RETRY with redacted content")
-            print("="*70 + "\n")
-
-            guidance = (
-                "⚠️ FINANCIAL PII DETECTED - Apply these redactions:\n\n" +
-                "\n".join(redaction_guidance) +
-                "\n\n✅ Best practices:\n"
-                "- Use last 4 digits only for account/card numbers\n"
-                "- Round large amounts to nearest thousand ($45.2K)\n"
-                "- Generalize transaction types without exact amounts\n"
-                "- Never include full SSN, routing numbers, or PINs"
-            )
-
-            return Guide(reason=guidance)
-
-        # Clear redaction info when no PII detected
-        self.last_redaction_info = None
-        print(f"✅ STEERING: No PII detected, returning Proceed()")
-        print("="*70 + "\n")
-        return Proceed()
-
-    def _extract_text(self, message) -> str:
-        """Extract text from message content."""
-        if isinstance(message, dict):
-            content = message.get('content', [])
-        elif hasattr(message, 'content'):
-            content = message.content
-        else:
-            return ""
-
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            text_parts = []
-            for block in content:
-                if isinstance(block, dict) and 'text' in block:
-                    text_parts.append(block['text'])
-                elif hasattr(block, 'text'):
-                    text_parts.append(block.text)
-            return ' '.join(text_parts)
-        return ""
-
-    def _extract_tool_params(self, message) -> str:
-        """Extract text from tool call parameters."""
-        import json
-
-        if isinstance(message, dict):
-            content = message.get('content', [])
-        elif hasattr(message, 'content'):
-            content = message.content
-        else:
-            return ""
-
-        if not isinstance(content, list):
-            return ""
-
-        tool_params_text = []
-        for block in content:
-            # Check for toolUse blocks
-            if isinstance(block, dict):
-                if 'toolUse' in block:
-                    tool_use = block['toolUse']
-                    if 'input' in tool_use:
-                        # Convert tool params to string
-                        params_str = json.dumps(tool_use['input'])
-                        tool_params_text.append(params_str)
-                elif block.get('type') == 'tool_use':
-                    if 'input' in block:
-                        params_str = json.dumps(block['input'])
-                        tool_params_text.append(params_str)
-            elif hasattr(block, 'type') and block.type == 'tool_use':
-                if hasattr(block, 'input'):
-                    params_str = json.dumps(block.input)
-                    tool_params_text.append(params_str)
-
-        return ' '.join(tool_params_text)
-
-
-# =============================================================================
 # Initialize Agent
 # =============================================================================
 
 def initialize_agent():
-    """Initialize email agent with both safety and quality layers."""
+    """Initialize email agent with dual-hook AgentControl integration."""
 
     # Initialize AgentControl
     try:
         agent_control.init(
             agent_name="banking-email-agent",
-            agent_id=AGENT_ID,
             server_url=SERVER_URL
         )
     except Exception as e:
         if "409" not in str(e):
             raise
 
-    # Create PII redaction steering handler
-    steering_handler = BankingPIIRedactionHandler()
+    # Hook 1: AgentControlHook for tool-stage deny checks
+    # Enforces hard blocks (credentials, internal info) at tool execution
+    tool_hook = AgentControlHook(
+        agent_name="banking-email-agent",
+        server_url=SERVER_URL,
+        event_control_list=[BeforeToolCallEvent, AfterToolCallEvent],
+        enable_logging=True
+    )
 
-    # Create AgentControl hook (safety layer)
-    hook = AgentControlHook(
-        agent_uuid=UUID(AGENT_ID),
+    # Hook 2: AgentControlSteeringHandler for LLM post-output steer
+    # Guides PII redaction via Strands Guide() before tools are called
+    steering_handler = AgentControlSteeringHandler(
         agent_name="banking-email-agent",
         server_url=SERVER_URL,
         enable_logging=True
     )
 
-    # Create agent
+    # Create agent with both hooks
     model = OpenAIModel(model_id="gpt-4o-mini")
     agent = Agent(
         name="banking_email_agent",
         model=model,
         system_prompt="""You are a banking customer service assistant that sends automated monthly account summaries.
 
-WORKFLOW:
-1. When asked to send a summary, first use lookup_customer_account() to retrieve account data
-2. Draft a professional email including the account details from the lookup
-3. Use send_monthly_account_summary() to send the email
-4. AFTER sending, show the user the final email content that was sent
+WORKFLOW (STRICT - TWO PHASES):
+1. Look up account: Use lookup_customer_account() to retrieve account data
+2. Draft email: Compose the email as plain text. Include account details (number, balance, transactions).
+   - Do NOT call send_monthly_account_summary() yet
+   - Just draft the email content
+3. Send email: Call send_monthly_account_summary() with the final email text
+4. Report success to the user
 
 IMPORTANT:
-- Always look up account data first before drafting
-- Include specific details: account number, balance, recent transactions
+- Phase 1: Draft the email BEFORE calling send tool
+- Phase 2: Send the email AFTER draft is finalized
+- If you receive guidance to redact information, revise the draft before sending
+- Include specific account details in the email (these will be checked for PII)
 - Be professional, clear, and reassuring
-- If you receive guidance to redact information, follow it precisely
 - NEVER mention technical errors, policy violations, or safety systems to customers
-- After sending, display the email content to show what was sent
 
-Response format after sending:
+After sending, respond with:
 "✅ Monthly summary sent to [email]
 
-📧 **Email Sent:**
-[Show the actual email content that was sent]"
+📧 **Email Content:**
+[The email text that was sent]"
 """,
         tools=[lookup_customer_account, send_monthly_account_summary],
-        hooks=[hook, steering_handler]  # Both layers
+        hooks=[tool_hook, steering_handler]  # Dual hooks: tool deny + LLM steer
     )
 
     return agent, steering_handler
@@ -425,11 +383,15 @@ def render_header():
     """Render app header."""
     st.title("🏦 Banking Email Safety Demo")
     st.markdown("""
-    **Critical Scenario: Automated Monthly Account Summaries with Financial PII Redaction**
+    **AgentControl Steer + Strands Steering Integration**
 
-    Two governance layers working together:
-    - 🛡️ **AgentControl (Safety)**: Detects financial PII in agent responses
-    - ✨ **Steering (Redaction)**: Guides smart redaction instead of removal
+    Seamless integration of two governance systems:
+    - 🎯 **AgentControl Steer**: Server-side PII detection with steering context
+    - ✨ **Strands Guide**: Converts steer to Guide() for agent retry
+    - 🔄 **Automatic Retry**: Agent receives guidance and retries with redacted content
+
+    **How it works:** AgentControl detects PII via server-side controls, raises `ControlSteerError`
+    with steering context, which is automatically converted to a Strands `Guide()` action.
     """)
     st.divider()
 
@@ -439,22 +401,21 @@ def render_sidebar(steering_handler):
     with st.sidebar:
         st.header("📊 Governance Stats")
 
-        st.metric("🛡️ AgentControl Warnings", st.session_state.get('safety_blocks', 0))
-        st.metric("✨ PII Redactions Made", steering_handler.redactions_made)
-        st.metric("📝 Steering Guidances", steering_handler.guidances_given)
+        st.metric("🛡️ AgentControl Denies", st.session_state.get('safety_blocks', 0))
+        st.metric("🎯 AgentControl Steers", steering_handler.steers_applied)
 
         st.divider()
 
         st.header("🧪 Test Scenarios")
-        st.caption("Click to test - see redaction in action!")
+        st.caption("Click to test - AgentControl steer in action!")
 
         if st.button("📧 John's Summary", use_container_width=True):
             st.session_state['test_prompt'] = "Send monthly summary to john@example.com"
-        st.caption("**Will detect:** Account# 123456789012, Balance $45K, Deposit $15K")
+        st.caption("**AgentControl will detect:** Account# 123456789012, Balance $45K")
 
         if st.button("📧 Sarah's Summary", use_container_width=True):
             st.session_state['test_prompt'] = "Send monthly summary to sarah@example.com"
-        st.caption("**Will detect:** Account# + SSN 987-65-4321, Balance $128K, Transfer $50K")
+        st.caption("**AgentControl will detect:** Account# + SSN 987-65-4321, Balance $128K")
 
         st.divider()
 
@@ -462,10 +423,10 @@ def render_sidebar(steering_handler):
         **Flow:**
         1. 🔍 Lookup account (PII in backend)
         2. 📝 Draft email with full details
-        3. 🚨 Steering detects PII
-        4. ✨ Guide redaction
-        5. 📧 Send with redacted info
-        6. ✅ Show final email in UI
+        3. 🚨 AgentControl steer detects PII
+        4. ✨ Strands Guide with steering context
+        5. 🔄 Agent retries with guidance
+        6. ✅ Email sent with redacted info
         """)
 
 
@@ -486,13 +447,13 @@ def render_chat(agent, steering_handler):
     for msg in st.session_state['messages']:
         with st.chat_message(msg['role']):
             st.markdown(msg['content'])
-            # Show redaction info if present
-            if msg.get('redaction_info'):
-                st.info("🛡️ **PII Detected and Redacted**")
-                st.caption("The following sensitive information was redacted for security:")
-                for item in msg['redaction_info']['redacted_items']:
-                    st.caption(f"  {item}")
-                st.caption(f"✅ Email sent with {msg['redaction_info']['count']} redaction(s) applied")
+            # Show AgentControl steer info if present
+            if msg.get('steer_info'):
+                st.info("🎯 **AgentControl Steer Applied**")
+                st.caption(f"Control: {msg['steer_info']['control_name']}")
+                st.caption("Steering Context:")
+                st.caption(f"  {msg['steer_info']['steering_context'][:200]}...")
+                st.caption("✅ Agent retried with AgentControl guidance")
 
     # Handle test prompt injection
     user_input = None
@@ -539,15 +500,15 @@ def render_chat(agent, steering_handler):
 
                     st.markdown(response_text)
 
-                    # Check if redaction occurred and show info
+                    # Check if AgentControl steer occurred and show info
                     message_data = {'role': 'assistant', 'content': response_text}
-                    if steering_handler.last_redaction_info:
-                        message_data['redaction_info'] = steering_handler.last_redaction_info
-                        st.info("🛡️ **PII Detected and Redacted**")
-                        st.caption("The following sensitive information was redacted for security:")
-                        for item in steering_handler.last_redaction_info['redacted_items']:
-                            st.caption(f"  {item}")
-                        st.caption(f"✅ Email sent with {steering_handler.last_redaction_info['count']} redaction(s) applied")
+                    if steering_handler.last_steer_info:
+                        message_data['steer_info'] = steering_handler.last_steer_info
+                        st.info("🎯 **AgentControl Steer Applied**")
+                        st.caption(f"Control: {steering_handler.last_steer_info['control_name']}")
+                        st.caption("Steering Context:")
+                        st.caption(f"  {steering_handler.last_steer_info['steering_context'][:200]}...")
+                        st.caption("✅ Agent retried with AgentControl guidance")
 
                     st.session_state['messages'].append(message_data)
 

@@ -34,7 +34,7 @@ Open http://localhost:8501 and click test buttons to see safety controls in acti
 Customer support agent with PII blocking and SQL injection prevention. Shows real-time safety checks in Streamlit UI.
 
 ### [Steering Demo](steering_demo/)
-Banking email agent with PII redaction. Combines AgentControl (detection) + Strands Steering (smart redaction) for layered governance.
+Banking email agent with PII redaction. Combines AgentControl Hook (deny on tool calls) + Strands Steering (steer on LLM draft) for layered governance. Uses a two-phase draft → send flow so steer can guide before tool calls.
 
 ## How It Works
 
@@ -46,10 +46,10 @@ from strands import Agent
 
 # Initialize
 import agent_control
-agent_control.init(agent_name="my-agent", agent_id="...")
+agent_control.init(agent_name="my-customer-agent")
 
 # Create hook
-hook = AgentControlHook(agent_name="my-agent")
+hook = AgentControlHook(agent_name="my-customer-agent")
 
 # Attach to agent - done!
 agent = Agent(
@@ -61,6 +61,8 @@ agent = Agent(
 ```
 
 **Hook intercepts events** → **Server evaluates controls** → **Blocks unsafe actions**
+
+For steer actions, the steering handler converts AgentControl steer into a Strands `Guide()` retry.
 
 ## Controls
 
@@ -107,8 +109,7 @@ Hook enforces decision: Continue ✅ or Block ❌
 **Basic setup** (common/agent_control_hook.py):
 ```python
 hook = AgentControlHook(
-    agent_name="my-agent",
-    agent_uuid=UUID("..."),
+    agent_name="my-customer-agent",
     server_url="http://localhost:8000",
     enable_logging=True
 )
@@ -121,13 +122,18 @@ result = await agent_control.evaluate_controls(
     input={"body": "..."},
     step_type="tool",
     stage="pre",
-    agent_uuid="your-agent-uuid",
     agent_name="your-agent-name"
 )
 
 if not result.is_safe:
     raise ControlViolationError(message=result.reason)
 ```
+
+**Steering integration (dual-hook)**:
+- `AgentControlHook` for tool-stage deny (hard blocks)
+- `AgentControlSteeringHandler` for LLM steer → `Guide()` (corrective guidance)
+
+See `steering_demo/` for complete implementation.
 
 ## Troubleshooting
 

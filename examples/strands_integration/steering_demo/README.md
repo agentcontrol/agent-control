@@ -1,66 +1,73 @@
 # Banking Email Safety Demo
 
-**AgentControl + Strands Steering for PII Redaction**
+## Overview
 
-Demonstrates layered governance for banking agents that send automated account summaries containing financial PII.
+This demo shows how **AgentControl steering** integrates with **Strands** to make AI agents safer for sensitive tasks. A banking agent sends automated account summaries that include PII (account numbers, balances, SSNs) from backend systems. Instead of blocking the agent entirely, AgentControl **guides it to redact** sensitive information before sending—allowing useful work while maintaining compliance. At the tool stage, hard deny rules block credentials or internal system info. This demonstrates **safe autonomy**: steer when possible, block when necessary.
 
-## What It Does
+## How It Works
 
-Bank agent sends monthly account summaries. Backend data contains PII (account numbers, SSN, large amounts). Agent drafts emails including this data:
+**Simple 4-Step Flow:**
 
-```
-User: "Send monthly summary to john@example.com"
-  ↓
-Agent looks up account → 123456789012, balance $45,234.56
-  ↓
-Agent drafts: "Account 123456789012, balance $45,234.56..."
-  ↓
-🛡️ Steering detects PII in draft
-  ↓
-✨ Steering guides redaction: "Use 'account ending in 9012', '$45.2K'"
-  ↓
-Agent redrafts: "Account ending in 9012, balance $45.2K..."
-  ↓
-✅ Email sent (compliant!)
-```
+1. **Agent drafts email** (LLM generates text with PII from backend data)
+   - Example: "Account 123456789012 has balance $45,234.56..."
 
-**Key Point**: User input is clean (no PII). PII comes from backend lookup. AgentControl catches it in agent's draft and guides redaction.
+2. **AgentControl steer detects PII** in draft output
+   - Matches: account numbers, SSN, large amounts
+   - Provides redaction guidance: "Mask to last 4 digits, round amounts"
+
+3. **Strands Guide forces rewrite** with steering instructions
+   - Agent automatically retries with redacted content
+   - Example: "Account ****9012 has balance approximately $45K..."
+
+4. **Tool sends safe email** after deny checks pass
+   - AgentControl verifies no credentials or internal data leaked
+   - Email sent successfully ✅
 
 ## Running the Demo
 
-**Setup controls:**
+**1. Setup controls (creates policies on AgentControl server):**
 ```bash
 cd examples/strands_integration/steering_demo
 uv run setup_email_controls.py
 ```
 
-**Launch app:**
+**2. Launch the Streamlit app:**
 ```bash
 streamlit run email_safety_demo.py
 ```
 
-## Test It
+**3. Test it:**
+- Click **"📧 John's Summary"** in sidebar
+- Watch agent draft → detect PII → steer → redact → send
+- Console shows full flow with before/after content
 
-Click sidebar buttons in the UI:
+## Test Scenarios
 
-**📧 John's Summary**
-- Backend: Account 123456789012, $45,234.56, deposit $15,000
-- Detects: Account number + 2 large amounts
-- Redacts: "ending in 9012", "$45.2K", "$15.0K"
+**📧 John's Account:**
+- Backend: `123456789012`, `$45,234.56`, deposit `$15,000`
+- Detects: Account number + large amounts
+- Redacts: `****9012`, `$45K`, "recent deposit activity"
 
-**📧 Sarah's Summary**
-- Backend: Account 987654321098 + SSN 987-65-4321, $128,456.78
+**📧 Sarah's Account:**
+- Backend: `987654321098` + SSN `987-65-4321`, `$128,456.78`
 - Detects: Account + SSN + very large amount
-- Redacts: All PII to last 4 digits / rounded amounts
+- Redacts: All to last 4 digits + rounded amounts
 
-UI shows the redacted email + what was protected.
+**🚫 Credential Test (should block):**
+- Try sending: "password: secret123"
+- AgentControl DENY blocks at tool stage 🛡️
 
 ## Why This Matters
 
-**Without governance:**
-- Agent sends: "Your account 123456789012 has $128,456.78..."
-- GDPR violation → €20M fine
+**Safe Autonomy = Block When Needed, Steer When Possible**
 
-**With AgentControl + Steering:**
-- Agent sends: "Your account ending in 1098 has $128K..."
-- Compliant, secure, professional ✅
+❌ **Without governance:**
+- Agent sends raw PII → GDPR violation → €20M fine
+- Only option: disable agent entirely
+
+✅ **With AgentControl + Strands steering:**
+- Agent learns to redact PII → compliant emails sent
+- Hard blocks catch credentials/secrets
+- Useful work continues safely
+
+**Key benefit:** Agents can handle sensitive data with guardrails that guide rather than just block, enabling real-world deployment in regulated industries like banking, healthcare, and finance.

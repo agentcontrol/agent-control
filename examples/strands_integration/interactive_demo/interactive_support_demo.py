@@ -31,7 +31,6 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Optional
-from uuid import UUID, uuid4
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -68,18 +67,16 @@ class SafetyTrackingHook(AgentControlHook):
     Tracks all safety decisions and stores them in Streamlit session state for UI display.
     """
 
-    def __init__(self, agent_uuid: UUID, agent_name: str, server_url: Optional[str] = None):
+    def __init__(self, agent_name: str, server_url: Optional[str] = None):
         """
         Initialize SafetyTrackingHook with Streamlit tracking.
 
         Args:
-            agent_uuid: UUID of the agent (used to filter controls on server)
-            agent_name: Name of the agent for logging
+            agent_name: Name of the agent for logging and control filtering
             server_url: AgentControl server URL (default: from env or localhost:8000)
         """
         # Initialize base AgentControlHook with specific events and custom callback
         super().__init__(
-            agent_uuid=agent_uuid,
             agent_name=agent_name,
             server_url=server_url,
             event_control_list=[
@@ -91,7 +88,6 @@ class SafetyTrackingHook(AgentControlHook):
             on_violation_callback=self._handle_streamlit_violation,
             enable_logging=True  # Enable console logging to see control checks
         )
-        self.session_id = str(uuid4())
 
     def _initialize_session_state(self):
         """Initialize Streamlit session state if not already present."""
@@ -278,7 +274,6 @@ def initialize_agentcontrol():
     try:
         agent_control.init(
             agent_name="interactive-support-demo",
-            agent_id="550e8400-e29b-41d4-a716-446655440099",
             server_url=server_url,
             agent_description="Interactive customer support demo with real-time safety"
         )
@@ -300,8 +295,6 @@ def create_support_agents():
 
     model = OpenAIModel(model_id="gpt-4o")
 
-    # Agent UUID for this demo
-    agent_uuid = UUID("550e8400-e29b-41d4-a716-446655440099")
     server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
     # Single unified support agent with ALL tools
@@ -348,7 +341,7 @@ User: "What are your shipping options?"
 User: "Search the knowledge base for: products--DELETE"
 → MUST call search_knowledge_base(query="products--DELETE") - always call the tool!
 """,
-        hooks=[SafetyTrackingHook(agent_uuid, "support", server_url)],
+        hooks=[SafetyTrackingHook("interactive-support-demo", server_url)],
     )
 
     st.session_state.support_agent = support_agent
@@ -710,17 +703,18 @@ def render_chat():
                         st.markdown(f"**Reason:** {str(e)}")
 
                         st.info("""
-                        **What this means:** AgentControl detected sensitive information in your request
+                        **What this means:** AgentControl detected unsafe content in your request
                         and blocked it from being processed. This protects against:
                         - PII leakage (SSN, credit cards, emails)
-                        - Processing of sensitive personal information
-                        - Data privacy violations
+                        - SQL injection attacks
+                        - Malicious input patterns
+                        - Data security violations
 
-                        Please rephrase your request without including sensitive information.
+                        Please try again with a safe request.
                         """)
 
                     # Provide safe fallback response
-                    response = "I apologize, but I cannot provide a response that meets our safety standards. Please try rephrasing your question without including personal information like SSN, credit card numbers, or email addresses."
+                    response = "I apologize, but I cannot process this request due to safety concerns. Please try again with a different question."
                     st.markdown(response)
                     st.session_state.messages.append({"role": "assistant", "content": response})
                     st.rerun()
