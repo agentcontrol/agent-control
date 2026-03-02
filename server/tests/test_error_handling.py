@@ -406,11 +406,21 @@ def test_set_agent_policy_rollback_on_failure(
             mock_controls_result = MagicMock()
             mock_controls_result.scalars.return_value.unique.return_value.all.return_value = []
 
+            # Mock existing policy associations query
+            mock_existing_policy_assoc_result = MagicMock()
+            mock_existing_policy_assoc_result.all.return_value = []
+
+            # Mock delete/insert association statements
+            mock_mutation_result = MagicMock()
+
             # Return different results for different queries
             mock_session.execute = AsyncMock(side_effect=[
                 mock_agent_result,
                 mock_policy_result,
                 mock_controls_result,
+                mock_existing_policy_assoc_result,
+                mock_mutation_result,
+                mock_mutation_result,
             ])
             yield mock_session
 

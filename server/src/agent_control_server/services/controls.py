@@ -7,11 +7,11 @@ from agent_control_models import ControlDefinition
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.policy import Control as APIControl
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import APIValidationError
-from ..models import Agent, Control, Policy, policy_controls
+from ..models import Control, agent_controls, agent_policies, policy_controls
 
 _logger = logging.getLogger(__name__)
 
@@ -33,19 +33,30 @@ async def list_controls_for_agent(
     *,
     allow_invalid_step_name_regex: bool = False,
 ) -> list[APIControl]:
-    """Return API Control models for all configured controls associated with the agent's policy.
+    """Return API Control models for controls associated with the agent.
 
-    Traversal: Agent -> Policy -> Controls (direct relationship).
-    Uses explicit joins over association table to avoid async relationship loading.
+    Active controls are the de-duplicated union of:
+    - controls inherited from all assigned policies
+    - controls directly associated with the agent
 
     Note: Invalid ControlDefinition data triggers an APIValidationError.
     """
-    stmt = (
-        select(Control)
-        .join(policy_controls, Control.id == policy_controls.c.control_id)
-        .join(Policy, policy_controls.c.policy_id == Policy.id)
-        .join(Agent, Policy.id == Agent.policy_id)
-        .where(Agent.name == agent_name)
+    policy_control_ids = (
+        select(policy_controls.c.control_id.label("control_id"))
+        .select_from(
+            policy_controls.join(
+                agent_policies, policy_controls.c.policy_id == agent_policies.c.policy_id
+            )
+        )
+        .where(agent_policies.c.agent_name == agent_name)
+    )
+    direct_control_ids = select(agent_controls.c.control_id.label("control_id")).where(
+        agent_controls.c.agent_name == agent_name
+    )
+    control_ids_subquery = union(policy_control_ids, direct_control_ids).subquery()
+
+    stmt = select(Control).join(
+        control_ids_subquery, Control.id == control_ids_subquery.c.control_id
     )
 
     result = await db.execute(stmt)
