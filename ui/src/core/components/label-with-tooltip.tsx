@@ -1,10 +1,10 @@
-import { Group, Text, Tooltip } from "@mantine/core";
-import { IconInfoCircle } from "@tabler/icons-react";
+import { Group, Text, Tooltip } from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
 
-export interface LabelWithTooltipProps {
+export type LabelWithTooltipProps = {
   label: string;
   tooltip: string;
-}
+};
 
 /**
  * Label with (i) icon that shows tooltip on hover.
@@ -18,7 +18,7 @@ export function LabelWithTooltip({ label, tooltip }: LabelWithTooltipProps) {
         {label}
       </Text>
       <Tooltip label={tooltip}>
-        <IconInfoCircle size={14} color="gray" style={{ display: "block" }} />
+        <IconInfoCircle size={14} color="gray" style={{ display: 'block' }} />
       </Tooltip>
     </Group>
   );
@@ -26,5 +26,5 @@ export function LabelWithTooltip({ label, tooltip }: LabelWithTooltipProps) {
 
 /** Pass to labelProps on inputs so the label renders inline. */
 export const labelPropsInline = {
-  style: { display: "inline-block" as const },
+  style: { display: 'inline-block' as const },
 };

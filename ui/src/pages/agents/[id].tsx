@@ -1,10 +1,10 @@
-import { Box, Center, Loader, Stack, Text } from "@mantine/core";
-import { useRouter } from "next/router";
-import type { ReactElement } from "react";
+import { Box, Center, Loader, Stack, Text } from '@mantine/core';
+import { useRouter } from 'next/router';
+import type { ReactElement } from 'react';
 
-import { AppLayout } from "@/core/layouts/app-layout";
-import AgentDetailPage from "@/core/page-components/agent-detail/agent-detail";
-import type { NextPageWithLayout } from "@/core/types/page";
+import { AppLayout } from '@/core/layouts/app-layout';
+import AgentDetailPage from '@/core/page-components/agent-detail/agent-detail';
+import type { NextPageWithLayout } from '@/core/types/page';
 
 const AgentPage: NextPageWithLayout = () => {
   const router = useRouter();
@@ -13,11 +13,11 @@ const AgentPage: NextPageWithLayout = () => {
   // Show loading while router is initializing
   if (!id) {
     return (
-      <Box p='xl' maw={1400} mx='auto' my={0}>
+      <Box p="xl" maw={1400} mx="auto" my={0}>
         <Center h={400}>
-          <Stack align='center' gap='md'>
-            <Loader size='lg' />
-            <Text c='dimmed'>Loading...</Text>
+          <Stack align="center" gap="md">
+            <Loader size="lg" />
+            <Text c="dimmed">Loading...</Text>
           </Stack>
         </Center>
       </Box>
@@ -25,8 +25,8 @@ const AgentPage: NextPageWithLayout = () => {
   }
 
   // TODO: This is a temporary fix to ensure the agent ID is a string.
-  if (typeof id !== "string") {
-    throw new Error("Invalid agent ID");
+  if (typeof id !== 'string') {
+    throw new Error('Invalid agent ID');
   }
 
   // Let the component determine the default tab based on stats data

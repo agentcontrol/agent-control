@@ -3,67 +3,83 @@
 import pytest
 
 from agent_control_server.services.evaluator_utils import (
-    parse_evaluator_ref,
+    is_agent_scoped,
+    parse_evaluator_ref_full,
     validate_config_against_schema,
 )
 
 
-class TestParseEvaluatorRef:
-    """Tests for parse_evaluator_ref function."""
+class TestParseEvaluatorRefFull:
+    """Tests for parse_evaluator_ref_full function (full three-way parsing)."""
 
     def test_builtin_evaluator(self) -> None:
-        """Given a built-in evaluator name, when parsing, then returns None for agent."""
-        # When:
-        agent, name = parse_evaluator_ref("regex")
+        """Given a built-in evaluator, when parsing full, then type is builtin."""
+        # When
+        result = parse_evaluator_ref_full("regex")
 
-        # Then:
-        assert agent is None
-        assert name == "regex"
+        # Then
+        assert result.type == "builtin"
+        assert result.name == "regex"
+        assert result.namespace is None
+        assert result.local_name == "regex"
+
+    def test_external_evaluator(self) -> None:
+        """Given an external evaluator, when parsing full, then type is external."""
+        # When
+        result = parse_evaluator_ref_full("galileo.luna2")
+
+        # Then
+        assert result.type == "external"
+        assert result.name == "galileo.luna2"
+        assert result.namespace == "galileo"
+        assert result.local_name == "luna2"
 
     def test_agent_scoped_evaluator(self) -> None:
-        """Given an agent-scoped reference, when parsing, then returns both parts."""
-        # When:
-        agent, name = parse_evaluator_ref("my-agent:pii-detector")
+        """Given an agent-scoped evaluator, when parsing full, then type is agent."""
+        # When
+        result = parse_evaluator_ref_full("my-agent:pii-detector")
 
-        # Then:
-        assert agent == "my-agent"
-        assert name == "pii-detector"
+        # Then
+        assert result.type == "agent"
+        assert result.name == "my-agent:pii-detector"
+        assert result.namespace == "my-agent"
+        assert result.local_name == "pii-detector"
 
-    def test_multiple_colons(self) -> None:
-        """Given a reference with multiple colons, when parsing, then splits on first colon only."""
-        # When:
-        agent, name = parse_evaluator_ref("my-agent:complex:name")
+    def test_external_with_nested_path(self) -> None:
+        """Given an external evaluator with nested path, when parsing, splits on first dot."""
+        # When
+        result = parse_evaluator_ref_full("acme.safety.toxicity")
 
-        # Then:
-        assert agent == "my-agent"
-        assert name == "complex:name"
+        # Then
+        assert result.type == "external"
+        assert result.namespace == "acme"
+        assert result.local_name == "safety.toxicity"
 
-    def test_empty_string(self) -> None:
-        """Given an empty string, when parsing, then returns None agent and empty name."""
-        # When:
-        agent, name = parse_evaluator_ref("")
+    def test_agent_scoped_with_dot_in_name(self) -> None:
+        """Given agent-scoped with dot in name, when parsing, then colon takes precedence."""
+        # When - colon should be detected before dot
+        result = parse_evaluator_ref_full("my-agent:vendor.eval")
 
-        # Then:
-        assert agent is None
-        assert name == ""
+        # Then
+        assert result.type == "agent"
+        assert result.namespace == "my-agent"
+        assert result.local_name == "vendor.eval"
 
-    def test_list_evaluator(self) -> None:
-        """Given the list built-in evaluator, when parsing, then returns None for agent."""
-        # When:
-        agent, name = parse_evaluator_ref("list")
 
-        # Then:
-        assert agent is None
-        assert name == "list"
+class TestIsAgentScoped:
+    """Tests for is_agent_scoped helper function."""
 
-    def test_agent_name_with_hyphens(self) -> None:
-        """Given an agent name with hyphens, when parsing, then handles correctly."""
-        # When:
-        agent, name = parse_evaluator_ref("my-cool-agent:my-eval")
+    def test_builtin_not_agent_scoped(self) -> None:
+        """Given a built-in evaluator, when checking, then returns False."""
+        assert is_agent_scoped("regex") is False
 
-        # Then:
-        assert agent == "my-cool-agent"
-        assert name == "my-eval"
+    def test_external_not_agent_scoped(self) -> None:
+        """Given an external evaluator, when checking, then returns False."""
+        assert is_agent_scoped("galileo.luna2") is False
+
+    def test_agent_scoped_returns_true(self) -> None:
+        """Given an agent-scoped evaluator, when checking, then returns True."""
+        assert is_agent_scoped("my-agent:pii-detector") is True
 
 
 class TestValidateConfigAgainstSchema:

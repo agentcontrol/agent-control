@@ -2,6 +2,158 @@
 
 <!-- version list -->
 
+## v6.0.0 (2026-02-27)
+
+### Bug Fixes
+
+- **docs**: Update readme ([#37](https://github.com/agentcontrol/agent-control/pull/37),
+  [`7531d83`](https://github.com/agentcontrol/agent-control/commit/7531d8309d4755d9ceddf4a2d840c147b36a6e14))
+
+- **sdk**: A bug in docker file ([#46](https://github.com/agentcontrol/agent-control/pull/46),
+  [`12d1794`](https://github.com/agentcontrol/agent-control/commit/12d1794e3e7218eef10e371e12b001774bd81a68))
+
+- **server**: Feature/56688 fix docker and create bash
+  ([#45](https://github.com/agentcontrol/agent-control/pull/45),
+  [`7277e27`](https://github.com/agentcontrol/agent-control/commit/7277e2730c16e717ad5ba8248b946252b22e69cb))
+
+- **server**: Feature/56688 fix image bug
+  ([#48](https://github.com/agentcontrol/agent-control/pull/48),
+  [`71e6b44`](https://github.com/agentcontrol/agent-control/commit/71e6b44f3cdee26c7a97a2cfc0ef6223e52bdb3a))
+
+- **server**: Fix alembic migrations ([#47](https://github.com/agentcontrol/agent-control/pull/47),
+  [`c19c17c`](https://github.com/agentcontrol/agent-control/commit/c19c17c6359b031bf5d69e81bfe72054bd09f40c))
+
+- **ui**: Selector subpaths issue ([#34](https://github.com/agentcontrol/agent-control/pull/34),
+  [`79cb776`](https://github.com/agentcontrol/agent-control/commit/79cb776032cedfacac5f9480151acf184a9921a3))
+
+### Features
+
+- **sdk**: Ship TypeScript SDK with deterministic method naming
+  ([#32](https://github.com/agentcontrol/agent-control/pull/32),
+  [`a76e9b0`](https://github.com/agentcontrol/agent-control/commit/a76e9b005a99b3d23eca9d77e498c3c6f0476559))
+
+- **server**: Add initAgent conflict_mode overwrite mode with SDK defaults
+  ([#40](https://github.com/agentcontrol/agent-control/pull/40),
+  [`f3ed2b8`](https://github.com/agentcontrol/agent-control/commit/f3ed2b8a3207ff8fca324e0d01bdc33d768ce137))
+
+- **server**: Hard-cut migrate to remove agent UUID
+  ([#44](https://github.com/agentcontrol/agent-control/pull/44),
+  [`ee322c9`](https://github.com/agentcontrol/agent-control/commit/ee322c93eb91f69a04895685176e4977bac21c15))
+
+- **ui**: Allow to delete control ([#39](https://github.com/agentcontrol/agent-control/pull/39),
+  [`7dc4ca3`](https://github.com/agentcontrol/agent-control/commit/7dc4ca3e3d6b38c7cacfdabca18b28a0ed310b58))
+
+- **ui**: Steps dropdown rendered based on api return values
+  ([#36](https://github.com/agentcontrol/agent-control/pull/36),
+  [`a2aca43`](https://github.com/agentcontrol/agent-control/commit/a2aca43979d6089969408c3ee29f53a749b5cf1c))
+
+- **ui**: Update agent control icon and favicon
+  ([#42](https://github.com/agentcontrol/agent-control/pull/42),
+  [`19af8fa`](https://github.com/agentcontrol/agent-control/commit/19af8faf26d5fb3dd895500f63108351cb77164b))
+
+
+## v5.2.0 (2026-02-20)
+
+### Bug Fixes
+
+- **sdk**: Add step_name as parameter to control
+  ([#25](https://github.com/agentcontrol/agent-control/pull/25),
+  [`19ade9d`](https://github.com/agentcontrol/agent-control/commit/19ade9dcd69e264a62ccedf711722ef891d1b407))
+
+- **sdk**: Emit observability events for SDK-evaluated controls and fix non_matches propagation
+  ([#24](https://github.com/agentcontrol/agent-control/pull/24),
+  [`6a9da69`](https://github.com/agentcontrol/agent-control/commit/6a9da69aeb89a0a0a207f05fcbb03f1260faa40e))
+
+- **server**: Enforce public-safe API error responses
+  ([#20](https://github.com/agentcontrol/agent-control/pull/20),
+  [`e50d817`](https://github.com/agentcontrol/agent-control/commit/e50d817e2b81347c9143dcae8d461e7e3e581fd9))
+
+- **ui**: Json validation ([#10](https://github.com/agentcontrol/agent-control/pull/10),
+  [`a0cd5af`](https://github.com/agentcontrol/agent-control/commit/a0cd5af4a05a01fa7e5f8824001659ebc6bee7bc))
+
+- **ui**: UI feedback fixes ([#27](https://github.com/agentcontrol/agent-control/pull/27),
+  [`6004761`](https://github.com/agentcontrol/agent-control/commit/60047619ccbd1876100a38e02537d6987d8a02f7))
+
+### Chores
+
+- **ui**: Docs updates ([#21](https://github.com/agentcontrol/agent-control/pull/21),
+  [`081a578`](https://github.com/agentcontrol/agent-control/commit/081a5784b360760983818dce2fbd55b91477bcd8))
+
+- **ui**: Md cleanup ([#22](https://github.com/agentcontrol/agent-control/pull/22),
+  [`744ea11`](https://github.com/agentcontrol/agent-control/commit/744ea1167497ccc43ee55194b800dce7f8d3a9ff))
+
+- **ui**: UI feedback ([#17](https://github.com/agentcontrol/agent-control/pull/17),
+  [`fbd6419`](https://github.com/agentcontrol/agent-control/commit/fbd6419468d5c1c6acee61c061f0ad6eee6e588e))
+
+- **ui**: Update jds to latest ([#31](https://github.com/agentcontrol/agent-control/pull/31),
+  [`bb3c5d0`](https://github.com/agentcontrol/agent-control/commit/bb3c5d0181cac81a697660b8d08bb84be88340c6))
+
+### Features
+
+- **evaluators**: Add required_column_values for multi-tenant SQL validation
+  ([#30](https://github.com/agentcontrol/agent-control/pull/30),
+  [`532386c`](https://github.com/agentcontrol/agent-control/commit/532386cb933e5d3f07c0939f41701500ef4f4007))
+
+- **sdk**: Auto-populate init() steps from @control() decorators
+  ([#23](https://github.com/agentcontrol/agent-control/pull/23),
+  [`dc0f2a4`](https://github.com/agentcontrol/agent-control/commit/dc0f2a4061143a8e6de6a4a35677d229f14d03f9))
+
+
+## v5.1.0 (2026-02-05)
+
+### Documentation
+
+- **examples**: Update examples and docs for evaluators reorganization
+  ([#19](https://github.com/agentcontrol/agent-control/pull/19),
+  [`9cb1851`](https://github.com/agentcontrol/agent-control/commit/9cb1851c442536aeb344bdbd889629167984e7da))
+
+### Features
+
+- **sdk**: Export ControlScope, ControlMatch, and EvaluatorResult models
+  ([#18](https://github.com/agentcontrol/agent-control/pull/18),
+  [`0d49cad`](https://github.com/agentcontrol/agent-control/commit/0d49cad9da5c9e76c32d652fadbc69cec698a611))
+
+
+## v5.0.0 (2026-02-05)
+
+### Bug Fixes
+
+- **docs**: Add Example for Evaluator Extension
+  ([#3](https://github.com/agentcontrol/agent-control/pull/3),
+  [`c2a70b3`](https://github.com/agentcontrol/agent-control/commit/c2a70b335fb55481ad63b367ca87ba46de085343))
+
+- **docs**: Update README ([#2](https://github.com/agentcontrol/agent-control/pull/2),
+  [`379bb15`](https://github.com/agentcontrol/agent-control/commit/379bb158700b93aa549ef00eda57ccc2f88cb71f))
+
+- **infra**: Install engine/evaluators in server image
+  ([#14](https://github.com/agentcontrol/agent-control/pull/14),
+  [`d5ae157`](https://github.com/agentcontrol/agent-control/commit/d5ae1571071afd34a00b376e650d9e1ce02f0b2d))
+
+- **models**: Use StrEnum for error enums
+  ([#12](https://github.com/agentcontrol/agent-control/pull/12),
+  [`3f41c9f`](https://github.com/agentcontrol/agent-control/commit/3f41c9f974ba5afe873f30197aba7f2ff142f616))
+
+- **server**: Reject initAgent UUID/name mismatch
+  ([#13](https://github.com/agentcontrol/agent-control/pull/13),
+  [`19d61ff`](https://github.com/agentcontrol/agent-control/commit/19d61ff1e1605925162eca31bacbe35eddeb5c17))
+
+### Features
+
+- **sdk**: Get Agent Controls from SDK Init
+  ([#15](https://github.com/agentcontrol/agent-control/pull/15),
+  [`a485f93`](https://github.com/agentcontrol/agent-control/commit/a485f93e15e49ddb975dee4bf4e24dfa3310d976))
+
+### Refactoring
+
+- **evaluators**: Split into builtin + extra packages for PyPI
+  ([#5](https://github.com/agentcontrol/agent-control/pull/5),
+  [`0e0a78a`](https://github.com/agentcontrol/agent-control/commit/0e0a78a9fa9c39a5709299c2e3d77c0609110280))
+
+### Breaking Changes
+
+- **evaluators**: Evaluator reorganization with new package structure
+
+
 ## v4.0.0 (2026-02-03)
 
 ### Bug Fixes

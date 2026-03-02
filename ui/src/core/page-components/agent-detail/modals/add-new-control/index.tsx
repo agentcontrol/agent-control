@@ -10,20 +10,21 @@ import {
   TextInput,
   Title,
   Tooltip,
-} from "@mantine/core";
-import { Button, Table } from "@rungalileo/jupiter-ds";
-import { IconAlertCircle, IconSearch, IconX } from "@tabler/icons-react";
-import { type ColumnDef } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+} from '@mantine/core';
+import { Button, Table } from '@rungalileo/jupiter-ds';
+import { IconAlertCircle, IconSearch, IconX } from '@tabler/icons-react';
+import { type ColumnDef } from '@tanstack/react-table';
+import { useMemo, useState } from 'react';
 
-import { ErrorBoundary } from "@/components/error-boundary";
-import type { EvaluatorInfo } from "@/core/api/types";
-import { useAgent } from "@/core/hooks/query-hooks/use-agent";
-import { useEvaluators } from "@/core/hooks/query-hooks/use-evaluators";
-import { useModalRoute } from "@/core/hooks/use-modal-route";
+import { ErrorBoundary } from '@/components/error-boundary';
+import type { EvaluatorInfo } from '@/core/api/types';
+import { MODAL_NAMES, SUBMODAL_NAMES } from '@/core/constants/modal-routes';
+import { useAgent } from '@/core/hooks/query-hooks/use-agent';
+import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
+import { useModalRoute } from '@/core/hooks/use-modal-route';
 
-import { EditControlContent } from "../edit-control/edit-control-content";
-import { sanitizeControlNamePart } from "../edit-control/utils";
+import { EditControlContent } from '../edit-control/edit-control-content';
+import { sanitizeControlNamePart } from '../edit-control/utils';
 
 type EvaluatorWithId = EvaluatorInfo & { id: string };
 
@@ -33,13 +34,13 @@ type EvaluatorWithId = EvaluatorInfo & { id: string };
  */
 const DEFAULT_EVALUATOR_CONFIGS: Record<string, Record<string, unknown>> = {
   regex: {
-    pattern: "^.*$",
+    pattern: '^.*$',
   },
   list: {
     values: [],
-    logic: "any",
-    match_on: "match",
-    match_mode: "exact",
+    logic: 'any',
+    match_on: 'match',
+    match_mode: 'exact',
     case_sensitive: false,
   },
 };
@@ -50,25 +51,26 @@ function getDefaultConfigForEvaluator(
   return DEFAULT_EVALUATOR_CONFIGS[evaluatorId] ?? {};
 }
 
-interface AddNewControlModalProps {
+type AddNewControlModalProps = {
   opened: boolean;
   onClose: () => void;
   agentId: string;
-}
+};
 
 export function AddNewControlModal({
   opened,
   onClose,
   agentId,
 }: AddNewControlModalProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const { submodal, evaluator, openModal, closeSubmodal, closeModal } = useModalRoute();
+  const [searchQuery, setSearchQuery] = useState('');
+  const { submodal, evaluator, openModal, closeSubmodal, closeModal } =
+    useModalRoute();
   const { data: evaluatorsData, isLoading, error } = useEvaluators();
   const { data: agent } = useAgent(agentId);
   const agentName = agent?.agent?.agent_name ?? agentId;
 
   // Derive submodal open state from URL
-  const editModalOpened = submodal === "create";
+  const editModalOpened = submodal === SUBMODAL_NAMES.CREATE;
 
   // Find selected evaluator from URL or state
   const selectedEvaluator = useMemo(() => {
@@ -82,7 +84,10 @@ export function AddNewControlModal({
   }, [evaluator, evaluatorsData]);
 
   const handleAddClick = (evaluator: EvaluatorWithId) => {
-    openModal("control-store", { submodal: "create", evaluator: evaluator.id });
+    openModal(MODAL_NAMES.CONTROL_STORE, {
+      submodal: SUBMODAL_NAMES.CREATE,
+      evaluator: evaluator.id,
+    });
   };
 
   const handleEditModalClose = () => {
@@ -113,28 +118,28 @@ export function AddNewControlModal({
       control: {
         description: selectedEvaluator.description,
         enabled: true,
-        execution: "server" as const,
+        execution: 'server' as const,
         scope: {
-          step_types: ["llm"],
-          stages: ["post"] as ("post" | "pre")[],
+          step_types: ['llm'],
+          stages: ['post'] as ('post' | 'pre')[],
         },
         selector: {
-          path: "*",
+          path: '*',
         },
         evaluator: {
           name: selectedEvaluator.id,
           config: getDefaultConfigForEvaluator(selectedEvaluator.id),
         },
-        action: { decision: "deny" as const },
+        action: { decision: 'deny' as const },
       },
     };
   }, [selectedEvaluator, agentName]);
 
   const columns: ColumnDef<EvaluatorInfo & { id: string }>[] = [
     {
-      id: "name",
-      header: "Name",
-      accessorKey: "name",
+      id: 'name',
+      header: 'Name',
+      accessorKey: 'name',
       size: 150,
       cell: ({ row }) => (
         <Group gap="xs">
@@ -145,9 +150,9 @@ export function AddNewControlModal({
       ),
     },
     {
-      id: "description",
-      header: "Description",
-      accessorKey: "description",
+      id: 'description',
+      header: 'Description',
+      accessorKey: 'description',
       size: 400,
       cell: ({ row }) => (
         <Tooltip label={row.original.description} withArrow>
@@ -158,8 +163,8 @@ export function AddNewControlModal({
       ),
     },
     {
-      id: "actions",
-      header: "",
+      id: 'actions',
+      header: '',
       size: 100,
       cell: ({ row }) => (
         <Box pr="md">
@@ -192,7 +197,7 @@ export function AddNewControlModal({
       styles={{
         body: {
           padding: 0,
-          width: "800px",
+          width: '800px',
         },
       }}
     >
@@ -218,7 +223,10 @@ export function AddNewControlModal({
         <Divider />
 
         {/* Content */}
-        <Box p="md" style={{ height: "500px", display: "flex", flexDirection: "column" }}>
+        <Box
+          p="md"
+          style={{ height: '500px', display: 'flex', flexDirection: 'column' }}
+        >
           <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
             {/* Search and Docs Link */}
             <Group justify="space-between">
@@ -230,21 +238,21 @@ export function AddNewControlModal({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-                <Text size="sm" c="dimmed">
-                  Learn here on how to add new type of evaluator.{" "}
-                  <Text
-                    component="a"
-                    href="https://github.com/agentcontrol/agent-control/blob/main/README.md"
-                    c="blue"
-                    size="sm"
-                    td="none"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Docs ↗
-                  </Text>
+              <Text size="sm" c="dimmed">
+                Learn here on how to add new type of evaluator.{' '}
+                <Text
+                  component="a"
+                  href="https://github.com/agentcontrol/agent-control/blob/main/README.md"
+                  c="blue"
+                  size="sm"
+                  td="none"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Docs ↗
                 </Text>
-              </Group>
+              </Text>
+            </Group>
 
             {/* Table or Empty State */}
             {isLoading ? (
@@ -287,12 +295,12 @@ export function AddNewControlModal({
         size="xl"
         keepMounted={false}
         styles={{
-          title: { fontSize: "18px", fontWeight: 600 },
-          content: { maxWidth: "1500px", width: "90vw" },
+          title: { fontSize: '18px', fontWeight: 600 },
+          content: { maxWidth: '1500px', width: '90vw' },
         }}
       >
         <ErrorBoundary variant="modal">
-          {draftControl && (
+          {draftControl ? (
             <EditControlContent
               control={draftControl}
               agentId={agentId}
@@ -300,7 +308,7 @@ export function AddNewControlModal({
               onClose={handleEditModalClose}
               onSuccess={handleEditModalSuccess}
             />
-          )}
+          ) : null}
         </ErrorBoundary>
       </Modal>
     </Modal>

@@ -1,12 +1,13 @@
 """Generate OpenAPI specification for multi-language SDK generation."""
 
+import argparse
 import json
 from pathlib import Path
 
 from agent_control_server.main import app
 
 
-def generate_openapi_spec(output_path: str = "openapi.json") -> None:
+def generate_openapi_spec(output_path: str = "server/.generated/openapi.json") -> None:
     """
     Generate OpenAPI specification file.
 
@@ -27,17 +28,26 @@ def generate_openapi_spec(output_path: str = "openapi.json") -> None:
     }
 
     output_file = Path(output_path)
-    output_file.write_text(json.dumps(openapi_schema, indent=2))
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(
+        json.dumps(openapi_schema, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
     print(f"✓ OpenAPI spec generated: {output_file.absolute()}")
     print(f"  Version: {openapi_schema['info']['version']}")
     print(f"  Title: {openapi_schema['info']['title']}")
     print("\nUse this spec to generate SDKs:")
-    print(f"  TypeScript: openapi-generator-cli generate -i {output_path} -g typescript-axios")
-    print(f"  Go: openapi-generator-cli generate -i {output_path} -g go")
-    print(f"  Rust: openapi-generator-cli generate -i {output_path} -g rust")
+    print("  TypeScript (Speakeasy): make sdk-ts-generate")
 
 
 if __name__ == "__main__":
-    generate_openapi_spec()
+    parser = argparse.ArgumentParser(description="Generate OpenAPI specification.")
+    parser.add_argument(
+        "--output",
+        default="server/.generated/openapi.json",
+        help="Path where the OpenAPI spec should be saved.",
+    )
+    args = parser.parse_args()
 
+    generate_openapi_spec(output_path=args.output)

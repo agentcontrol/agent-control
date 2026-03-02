@@ -12,7 +12,6 @@ Performance characteristics:
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
 
 from agent_control_models.observability import (
     ControlExecutionEvent,
@@ -54,6 +53,9 @@ SQL_ALLOW_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
 SQL_DENY_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
     AND data->>'action' = 'deny' THEN 1 ELSE 0 END)"""
 
+SQL_STEER_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
+    AND data->>'action' = 'steer' THEN 1 ELSE 0 END)"""
+
 SQL_WARN_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
     AND data->>'action' = 'warn' THEN 1 ELSE 0 END)"""
 
@@ -74,6 +76,7 @@ SQL_STATS_AGGREGATIONS = f"""
     {SQL_ERROR_COUNT} as error_count,
     {SQL_ALLOW_COUNT} as allow_count,
     {SQL_DENY_COUNT} as deny_count,
+    {SQL_STEER_COUNT} as steer_count,
     {SQL_WARN_COUNT} as warn_count,
     {SQL_LOG_COUNT} as log_count,
     {SQL_AVG_CONFIDENCE} as avg_confidence,
@@ -84,7 +87,7 @@ class PostgresEventStore(EventStore):
     """PostgreSQL-based event store with JSONB storage and query-time aggregation.
 
     This implementation stores raw events with:
-    - Indexed columns (control_execution_id, timestamp, agent_uuid) for efficient filtering
+    - Indexed columns (control_execution_id, timestamp, agent_name) for efficient filtering
     - JSONB 'data' column containing the full event for flexible querying
 
     Stats are computed at query time from raw events, which is fast enough
@@ -109,7 +112,7 @@ class PostgresEventStore(EventStore):
         The simplified schema stores only 4 columns:
         - control_execution_id (PK)
         - timestamp (indexed)
-        - agent_uuid (indexed)
+        - agent_name (indexed)
         - data (JSONB containing full event)
 
         Args:
@@ -130,7 +133,7 @@ class PostgresEventStore(EventStore):
             values.append({
                 "control_execution_id": event.control_execution_id,
                 "timestamp": event.timestamp,
-                "agent_uuid": event.agent_uuid,
+                "agent_name": event.agent_name,
                 "data": json.dumps(event_data),
             })
 
@@ -139,9 +142,9 @@ class PostgresEventStore(EventStore):
             await session.execute(
                 text("""
                     INSERT INTO control_execution_events (
-                        control_execution_id, timestamp, agent_uuid, data
+                        control_execution_id, timestamp, agent_name, data
                     ) VALUES (
-                        :control_execution_id, :timestamp, :agent_uuid,
+                        :control_execution_id, :timestamp, :agent_name,
                         CAST(:data AS JSONB)
                     )
                     ON CONFLICT (control_execution_id) DO NOTHING
@@ -155,7 +158,7 @@ class PostgresEventStore(EventStore):
 
     async def query_stats(
         self,
-        agent_uuid: UUID,
+        agent_name: str,
         time_range: timedelta,
         control_id: int | None = None,
         include_timeseries: bool = False,
@@ -170,7 +173,7 @@ class PostgresEventStore(EventStore):
         and LEFT JOINs with aggregated data to include empty buckets.
 
         Args:
-            agent_uuid: UUID of the agent to query stats for
+            agent_name: identifier of the agent to query stats for
             time_range: Time range to aggregate over (from now)
             control_id: Optional control ID to filter by
             include_timeseries: Whether to include time-series data
@@ -183,7 +186,7 @@ class PostgresEventStore(EventStore):
         cutoff = now - time_range
 
         params: dict = {
-            "agent_uuid": agent_uuid,
+            "agent_name": agent_name,
             "cutoff": cutoff,
         }
 
@@ -204,7 +207,7 @@ class PostgresEventStore(EventStore):
                 WITH filtered_events AS (
                     SELECT timestamp, data
                     FROM control_execution_events
-                    WHERE agent_uuid = :agent_uuid
+                    WHERE agent_name = :agent_name
                       AND timestamp >= :cutoff
                       {control_filter}
                 ),
@@ -248,6 +251,7 @@ class PostgresEventStore(EventStore):
                         COALESCE(bs.error_count, 0) as error_count,
                         COALESCE(bs.allow_count, 0) as allow_count,
                         COALESCE(bs.deny_count, 0) as deny_count,
+                        COALESCE(bs.steer_count, 0) as steer_count,
                         COALESCE(bs.warn_count, 0) as warn_count,
                         COALESCE(bs.log_count, 0) as log_count,
                         bs.avg_confidence,
@@ -274,7 +278,7 @@ class PostgresEventStore(EventStore):
                     NULL::timestamptz as bucket,
                     {SQL_STATS_AGGREGATIONS}
                 FROM control_execution_events
-                WHERE agent_uuid = :agent_uuid
+                WHERE agent_name = :agent_name
                   AND timestamp >= :cutoff
                   {control_filter}
                 GROUP BY data->>'control_id', data->>'control_name'
@@ -292,7 +296,7 @@ class PostgresEventStore(EventStore):
         total_matches = 0
         total_non_matches = 0
         total_errors = 0
-        action_counts: dict[str, int] = {"allow": 0, "deny": 0, "warn": 0, "log": 0}
+        action_counts: dict[str, int] = {"allow": 0, "deny": 0, "steer": 0, "warn": 0, "log": 0}
 
         for row in rows:
             if row.query_type == "control":
@@ -305,6 +309,7 @@ class PostgresEventStore(EventStore):
                     error_count=row.error_count,
                     allow_count=row.allow_count,
                     deny_count=row.deny_count,
+                    steer_count=row.steer_count,
                     warn_count=row.warn_count,
                     log_count=row.log_count,
                     avg_confidence=row.avg_confidence or 0.0,
@@ -318,6 +323,7 @@ class PostgresEventStore(EventStore):
                 total_errors += row.error_count
                 action_counts["allow"] += row.allow_count
                 action_counts["deny"] += row.deny_count
+                action_counts["steer"] += row.steer_count
                 action_counts["warn"] += row.warn_count
                 action_counts["log"] += row.log_count
 
@@ -330,6 +336,8 @@ class PostgresEventStore(EventStore):
                     bucket_action_counts["allow"] = row.allow_count
                 if row.deny_count > 0:
                     bucket_action_counts["deny"] = row.deny_count
+                if row.steer_count > 0:
+                    bucket_action_counts["steer"] = row.steer_count
                 if row.warn_count > 0:
                     bucket_action_counts["warn"] = row.warn_count
                 if row.log_count > 0:
@@ -384,11 +392,11 @@ class PostgresEventStore(EventStore):
     async def query_events(self, query: EventQueryRequest) -> EventQueryResponse:
         """Query raw events with filters and pagination.
 
-        Supports filtering by trace_id, span_id, agent_uuid, control_ids,
+        Supports filtering by trace_id, span_id, agent_name, control_ids,
         actions, matched status, time range, and pagination.
 
         Filters use JSONB operators for fields stored in the 'data' column,
-        except for indexed columns (control_execution_id, timestamp, agent_uuid).
+        except for indexed columns (control_execution_id, timestamp, agent_name).
 
         Args:
             query: Query parameters (filters, pagination)
@@ -405,9 +413,9 @@ class PostgresEventStore(EventStore):
             where_clauses.append("control_execution_id = :control_execution_id")
             params["control_execution_id"] = query.control_execution_id
 
-        if query.agent_uuid:
-            where_clauses.append("agent_uuid = :agent_uuid")
-            params["agent_uuid"] = query.agent_uuid
+        if query.agent_name:
+            where_clauses.append("agent_name = :agent_name")
+            params["agent_name"] = query.agent_name
 
         if query.start_time:
             where_clauses.append("timestamp >= :start_time")

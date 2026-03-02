@@ -1,12 +1,12 @@
-import { Stack, TextInput } from "@mantine/core";
+import { Stack, TextInput } from '@mantine/core';
 
 import {
   labelPropsInline,
   LabelWithTooltip,
-} from "@/core/components/label-with-tooltip";
+} from '@/core/components/label-with-tooltip';
 
-import type { EvaluatorFormProps } from "../types";
-import type { RegexFormValues } from "./types";
+import type { EvaluatorFormProps } from '../types';
+import type { RegexFormValues } from './types';
 
 export const RegexForm = ({ form }: EvaluatorFormProps<RegexFormValues>) => {
   return (
@@ -21,8 +21,8 @@ export const RegexForm = ({ form }: EvaluatorFormProps<RegexFormValues>) => {
         labelProps={labelPropsInline}
         placeholder="Enter regex pattern (e.g., ^.*$)"
         size="sm"
-        styles={{ input: { fontFamily: "monospace" } }}
-        {...form.getInputProps("pattern")}
+        styles={{ input: { fontFamily: 'monospace' } }}
+        {...form.getInputProps('pattern')}
       />
     </Stack>
   );

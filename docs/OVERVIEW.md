@@ -28,7 +28,7 @@ Understanding these core concepts will help you get the most out of Agent Contro
 A **Control** is a single rule that defines what to check and what to do when a condition is met.
 
 ```
-Control = Selector + Evaluator + Action
+Control = Scope + Selector + Evaluator + Action
 ```
 
 Example: *"If the output contains an SSN pattern, block the response."*
@@ -104,6 +104,7 @@ An **Action** defines *what to do* when a control matches:
 | Action | Behavior |
 |--------|----------|
 | `deny` | Block the request/response |
+| `steer` | Raise error with steering context for correction and retry |
 | `allow` | Explicitly permit (override other controls) |
 | `warn` | Log a warning but allow |
 | `log` | Silent logging for monitoring |
@@ -236,7 +237,7 @@ Flexible value matching with multiple modes and logic options.
 
 ---
 
-### 3. Luna-2 Evaluator (`galileo-luna2`)
+### 3. Luna-2 Evaluator (`galileo.luna2`)
 
 AI-powered detection using Galileo's Luna-2 small language models. Provides real-time, low-latency evaluation for complex patterns that can't be caught with regex or lists.
 
@@ -267,7 +268,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 ```json
 // Block toxic inputs (score > 0.5)
 {
-  "name": "galileo-luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "input_toxicity",
     "operator": "gt",
@@ -278,7 +279,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Block prompt injection attempts
 {
-  "name": "galileo-luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "prompt_injection",
     "operator": "gt",
@@ -289,7 +290,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Flag potential hallucinations (warn but allow)
 {
-  "name": "galileo-luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "hallucination",
     "operator": "gt",
@@ -299,7 +300,7 @@ AI-powered detection using Galileo's Luna-2 small language models. Provides real
 
 // Using a central stage (pre-defined server-side rules)
 {
-  "name": "galileo-luna2",
+  "name": "galileo.luna2",
   "config": {
     "stage_type": "central",
     "stage_name": "production-safety",
@@ -434,22 +435,28 @@ Every evaluator implements the `Evaluator` base class:
 
 ```python
 from typing import Any
-from pydantic import BaseModel
-from agent_control_models import EvaluatorResult, Evaluator, EvaluatorMetadata, register_evaluator
+
+from agent_control_models import EvaluatorResult
+from agent_control_evaluators import (
+    Evaluator,
+    EvaluatorConfig,
+    EvaluatorMetadata,
+    register_evaluator,
+)
 
 
-class MyEvaluatorConfig(BaseModel):
+class MyEvaluatorConfig(EvaluatorConfig):
     """Configuration schema for your evaluator."""
     threshold: float = 0.5
     custom_option: str = "default"
 
 
 @register_evaluator
-class MyCustomEvaluator(Evaluator[MyEvaluatorConfig]):
+class MyEvaluator(Evaluator[MyEvaluatorConfig]):
     """Your custom evaluator."""
 
     metadata = EvaluatorMetadata(
-        name="my-custom-evaluator",
+        name="my-evaluator",
         version="1.0.0",
         description="Detects custom patterns using proprietary logic",
         requires_api_key=True,  # Set to True if you need credentials
@@ -526,7 +533,7 @@ except ImportError:
     AVAILABLE = False
 
 @register_evaluator
-class MyEvaluator(Evaluator[MyConfig]):
+class MyEvaluator(Evaluator[MyEvaluatorConfig]):
     @classmethod
     def is_available(cls) -> bool:
         return AVAILABLE
@@ -551,7 +558,7 @@ Here's how a partner might integrate their content moderation API:
 
 ```python
 @register_evaluator
-class ContentModerationEvaluator(Evaluator[ContentModConfig]):
+class ContentModerationEvaluator(Evaluator[ContentModerationEvaluatorConfig]):
     """Integration with Acme Content Moderation API."""
     
     metadata = EvaluatorMetadata(
@@ -561,9 +568,9 @@ class ContentModerationEvaluator(Evaluator[ContentModConfig]):
         requires_api_key=True,
         timeout_ms=3000,
     )
-    config_model = ContentModConfig
+    config_model = ContentModerationEvaluatorConfig
 
-    def __init__(self, config: ContentModConfig) -> None:
+    def __init__(self, config: ContentModerationEvaluatorConfig) -> None:
         super().__init__(config)
         self.client = AcmeClient(api_key=os.getenv("ACME_API_KEY"))
 
@@ -588,11 +595,13 @@ class ContentModerationEvaluator(Evaluator[ContentModConfig]):
 # Core SDK
 pip install agent-control
 
-# Server (with Luna-2 support)
-pip install agent-control-server[luna2]
+# Server
+pip install agent-control-server
 
-# Or install everything
-pip install agent-control-server[all]
+# With Galileo Luna-2 evaluator support
+pip install agent-control-evaluator-galileo
+# Or via convenience extra:
+pip install agent-control-server[galileo]
 ```
 
 ### Quick Start
@@ -655,7 +664,7 @@ We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelin
 ### Adding an Evaluator
 
 1. Fork the repository
-2. Create your evaluator in `evaluators/src/agent_control_evaluators/`
+2. Create your evaluator in `evaluators/builtin/src/agent_control_evaluators/` (for builtins) or in `evaluators/extra/` (for external packages)
 3. Add tests in `evaluators/tests/`
 4. Submit a pull request
 

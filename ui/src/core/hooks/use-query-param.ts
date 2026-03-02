@@ -1,12 +1,12 @@
-import { useRouter } from "next/router";
-import { useCallback, useMemo, useRef } from "react";
+import { useRouter } from 'next/router';
+import { useCallback, useMemo, useRef } from 'react';
 
-interface UseQueryParamOptions {
+type UseQueryParamOptions = {
   /** Default value when param is not in URL */
   defaultValue?: string;
   /** Whether to use shallow routing (no data fetching, default: true) */
   shallow?: boolean;
-}
+};
 
 /**
  * Sync a state value with a URL query parameter.
@@ -25,14 +25,14 @@ export function useQueryParam(
   key: string,
   options: UseQueryParamOptions = {}
 ): [string, (value: string) => void] {
-  const { defaultValue = "", shallow = true } = options;
+  const { defaultValue = '', shallow = true } = options;
   const router = useRouter();
 
   // Derive value directly from router.query (no local state needed)
   const value = useMemo(() => {
     if (!router.isReady) return defaultValue;
     const urlValue = router.query[key];
-    return typeof urlValue === "string" ? urlValue : defaultValue;
+    return typeof urlValue === 'string' ? urlValue : defaultValue;
   }, [router.isReady, router.query, key, defaultValue]);
 
   // Track if we're currently updating to prevent loops
@@ -52,9 +52,11 @@ export function useQueryParam(
         delete query[key];
       }
 
-      router.replace({ pathname: router.pathname, query }, undefined, { shallow }).finally(() => {
-        isUpdatingRef.current = false;
-      });
+      router
+        .replace({ pathname: router.pathname, query }, undefined, { shallow })
+        .finally(() => {
+          isUpdatingRef.current = false;
+        });
     },
     [router, key, shallow]
   );

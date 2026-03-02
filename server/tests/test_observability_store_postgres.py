@@ -21,7 +21,7 @@ def clear_event_table() -> None:
 
 def _event(
     *,
-    agent_uuid,
+    agent_name,
     control_id: int,
     action: str,
     matched: bool,
@@ -35,8 +35,7 @@ def _event(
     return ControlExecutionEvent(
         trace_id=trace_id,
         span_id=span_id,
-        agent_uuid=agent_uuid,
-        agent_name="agent",
+        agent_name=agent_name,
         control_id=control_id,
         control_name=f"control-{control_id}",
         check_stage=check_stage,
@@ -59,12 +58,12 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
     )
     store = PostgresEventStore(session_maker)
 
-    agent_uuid = uuid4()
+    agent_name = f"agent-{uuid4().hex[:12]}"
     now = datetime.now(UTC)
 
     events = [
         _event(
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             control_id=1,
             action="allow",
             matched=True,
@@ -72,7 +71,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
             trace_id="a" * 32,
         ),
         _event(
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             control_id=2,
             action="deny",
             matched=False,
@@ -80,7 +79,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
             trace_id="b" * 32,
         ),
         _event(
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             control_id=1,
             action="allow",
             matched=True,
@@ -93,7 +92,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
     await store.store(events)
 
     # When: querying events filtered by control_id
-    query = EventQueryRequest(agent_uuid=agent_uuid, control_ids=[1], limit=10, offset=0)
+    query = EventQueryRequest(agent_name=agent_name, control_ids=[1], limit=10, offset=0)
     resp = await store.query_events(query)
     # Then: only matching events are returned
     assert resp.total == 2
@@ -107,7 +106,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
     assert all(e.trace_id == "a" * 32 for e in resp.events)
 
     # When: querying stats
-    stats = await store.query_stats(agent_uuid, timedelta(hours=1))
+    stats = await store.query_stats(agent_name, timedelta(hours=1))
     # Then: totals and action counts are aggregated correctly
     assert stats.total_executions == 3
     assert stats.total_matches == 2
@@ -116,7 +115,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
     assert stats.action_counts == {"allow": 2}
 
     # When: querying stats with a control filter
-    filtered_stats = await store.query_stats(agent_uuid, timedelta(hours=1), control_id=1)
+    filtered_stats = await store.query_stats(agent_name, timedelta(hours=1), control_id=1)
     # Then: only the requested control is returned
     assert len(filtered_stats.stats) == 1
     assert filtered_stats.stats[0].control_id == 1
@@ -149,8 +148,8 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
     )
     store = PostgresEventStore(session_maker)
 
-    agent_uuid = uuid4()
-    other_agent = uuid4()
+    agent_name = f"agent-{uuid4().hex[:12]}"
+    other_agent = f"agent-{uuid4().hex[:12]}"
     now = datetime.now(UTC)
 
     target_exec_id = "exec-1"
@@ -159,7 +158,7 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
 
     events = [
         _event(
-            agent_uuid=agent_uuid,
+            agent_name=agent_name,
             control_id=1,
             action="allow",
             matched=True,
@@ -171,7 +170,7 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
             applies_to="llm_call",
         ),
         _event(
-            agent_uuid=other_agent,
+            agent_name=other_agent,
             control_id=2,
             action="deny",
             matched=False,
@@ -189,7 +188,7 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
     # When: querying with all supported filters
     query = EventQueryRequest(
         control_execution_id=target_exec_id,
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         start_time=now - timedelta(seconds=2),
         end_time=now,
         trace_id=target_trace_id,
@@ -210,13 +209,79 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
 
 
 @pytest.mark.asyncio
+async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() -> None:
+    # Given: a Postgres-backed store with steer and warn events
+    session_maker = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    store = PostgresEventStore(session_maker)
+
+    agent_name = f"agent-{uuid4().hex[:12]}"
+    now = datetime.now(UTC)
+
+    events = [
+        _event(
+            agent_name=agent_name,
+            control_id=1,
+            action="steer",
+            matched=True,
+            timestamp=now - timedelta(seconds=10),
+            trace_id="a" * 32,
+        ),
+        _event(
+            agent_name=agent_name,
+            control_id=2,
+            action="warn",
+            matched=True,
+            timestamp=now - timedelta(seconds=5),
+            trace_id="b" * 32,
+        ),
+        _event(
+            agent_name=agent_name,
+            control_id=3,
+            action="allow",
+            matched=True,
+            timestamp=now,
+            trace_id="c" * 32,
+        ),
+    ]
+
+    # When: storing events
+    await store.store(events)
+
+    # When: querying stats with timeseries enabled
+    stats = await store.query_stats(
+        agent_name,
+        time_range=timedelta(hours=1),
+        include_timeseries=True,
+        bucket_size=timedelta(minutes=1),
+    )
+
+    # Then: action counts include steer and warn
+    assert stats.action_counts["steer"] == 1
+    assert stats.action_counts["warn"] == 1
+    assert stats.action_counts["allow"] == 1
+
+    # Then: timeseries buckets include steer and warn in their action_counts
+    assert stats.timeseries is not None
+    all_bucket_actions = [
+        action
+        for bucket in stats.timeseries
+        for action in bucket.action_counts.keys()
+    ]
+    assert "steer" in all_bucket_actions
+    assert "warn" in all_bucket_actions
+
+
+@pytest.mark.asyncio
 async def test_postgres_event_store_parses_string_json_rows() -> None:
     # Given: a store backed by a stub session returning string JSON data
     event = ControlExecutionEvent(
         trace_id="a" * 32,
         span_id="b" * 16,
-        agent_uuid=uuid4(),
-        agent_name="agent",
+                agent_name="agent-test-01",
         control_id=1,
         control_name="control-1",
         check_stage="pre",

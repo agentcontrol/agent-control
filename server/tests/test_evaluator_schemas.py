@@ -14,14 +14,17 @@ def make_agent_payload(
     evaluators: list | None = None,
 ):
     """Helper to create agent payload with evaluators."""
-    if agent_id is None:
-        agent_id = str(uuid.uuid4())
-    if name is None:
-        name = f"Test Agent {uuid.uuid4().hex[:8]}"
+    if agent_id is not None:
+        name = agent_id
+    elif name is None:
+        name = f"agent-{uuid.uuid4().hex[:12]}"
+    canonical_name = name.lower().replace(" ", "-")
+    if len(canonical_name) < 10:
+        canonical_name = f"{canonical_name}-agent".replace("--", "-")
     return {
         "agent": {
-            "agent_id": agent_id,
-            "agent_name": name,
+            "agent_id": canonical_name,
+            "agent_name": canonical_name,
             "agent_description": "desc",
             "agent_version": "1.0",
         },

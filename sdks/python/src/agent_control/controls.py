@@ -2,14 +2,7 @@
 
 from typing import Any, Literal, cast
 
-# Import models if available
-try:
-    from agent_control_models import ControlDefinition
-
-    MODELS_AVAILABLE = True
-except ImportError:
-    MODELS_AVAILABLE = False
-    ControlDefinition = Any  # type: ignore
+from agent_control_models import ControlDefinition
 
 from .client import AgentControlClient
 
@@ -213,7 +206,7 @@ async def set_control_data(
         httpx.HTTPError: If request fails
         HTTPException 422: If data doesn't match schema
     """
-    if MODELS_AVAILABLE and isinstance(data, ControlDefinition):
+    if isinstance(data, ControlDefinition):
         # Convert model to dict, excluding None to keep payload clean
         payload: dict[str, Any] = data.model_dump(mode="json", exclude_none=True)
     else:

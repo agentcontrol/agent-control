@@ -45,14 +45,14 @@ async def create_agent(client: AgentControlClient) -> str:
     print("=" * 60)
 
     # Use the provided UUID for the agent
-    agent_uuid = UUID(AGENT_ID)
+    agent_name = UUID(AGENT_ID)
 
     try:
         response = await client.http_client.post(
             "/api/v1/agents/initAgent",  # Correct endpoint
             json={
                 "agent": {
-                    "agent_id": str(agent_uuid),
+                    "agent_name": str(agent_name),
                     "agent_name": AGENT_NAME,
                     "agent_description": "Demo chatbot for testing controls",
                 },
@@ -69,8 +69,8 @@ async def create_agent(client: AgentControlClient) -> str:
         else:
             print(f"✓ Agent already exists: {AGENT_NAME}")
 
-        print(f"  Agent UUID: {agent_uuid}")
-        return str(agent_uuid)
+        print(f"  Agent UUID: {agent_name}")
+        return str(agent_name)
 
     except Exception as e:
         print(f"✗ Failed to create agent: {e}")
@@ -234,7 +234,7 @@ async def add_control_to_policy(
 
 async def assign_policy_to_agent(
     client: AgentControlClient,
-    agent_uuid: str,
+    agent_name: str,
     policy_id: int
 ) -> bool:
     """Assign a policy to an agent."""
@@ -244,11 +244,11 @@ async def assign_policy_to_agent(
 
     try:
         response = await client.http_client.post(
-            f"/api/v1/agents/{agent_uuid}/policy/{policy_id}"
+            f"/api/v1/agents/{agent_name}/policy/{policy_id}"
         )
         response.raise_for_status()
         data = response.json()
-        print(f"✓ Assigned policy {policy_id} to agent {agent_uuid}")
+        print(f"✓ Assigned policy {policy_id} to agent {agent_name}")
         print(f"  Response: {data}")
         return True
     except Exception as e:
@@ -256,7 +256,7 @@ async def assign_policy_to_agent(
         return False
 
 
-async def list_agent_controls(client: AgentControlClient, agent_uuid: str) -> list:
+async def list_agent_controls(client: AgentControlClient, agent_name: str) -> list:
     """List all controls for the agent."""
     print("\n" + "=" * 60)
     print("STEP 6: Listing Agent's Controls")
@@ -264,7 +264,7 @@ async def list_agent_controls(client: AgentControlClient, agent_uuid: str) -> li
 
     try:
         response = await client.http_client.get(
-            f"/api/v1/agents/{agent_uuid}/controls"
+            f"/api/v1/agents/{agent_name}/controls"
         )
         response.raise_for_status()
         data = response.json()
@@ -363,7 +363,7 @@ async def get_control_data(client: AgentControlClient, control_id: int) -> dict:
         raise
 
 
-async def verify_full_chain(client: AgentControlClient, agent_uuid: str) -> None:
+async def verify_full_chain(client: AgentControlClient, agent_name: str) -> None:
     """Debug function to verify the entire chain."""
     print("\n" + "=" * 60)
     print("DEBUG: Verifying Full Chain")
@@ -372,7 +372,7 @@ async def verify_full_chain(client: AgentControlClient, agent_uuid: str) -> None
     # 1. Get agent info
     print("\n1. Agent Info:")
     try:
-        resp = await client.http_client.get(f"/api/v1/agents/{agent_uuid}")
+        resp = await client.http_client.get(f"/api/v1/agents/{agent_name}")
         resp.raise_for_status()
         agent_data = resp.json()
         print(f"   Agent: {agent_data}")
@@ -382,7 +382,7 @@ async def verify_full_chain(client: AgentControlClient, agent_uuid: str) -> None
     # 2. Get agent's policy
     print("\n2. Agent's Policy:")
     try:
-        resp = await client.http_client.get(f"/api/v1/agents/{agent_uuid}/policy")
+        resp = await client.http_client.get(f"/api/v1/agents/{agent_name}/policy")
         if resp.status_code == 404:
             print("   No policy assigned to agent")
             policy_id = None
@@ -407,7 +407,7 @@ async def verify_full_chain(client: AgentControlClient, agent_uuid: str) -> None
     # 4. Final: List agent controls (the API we're testing)
     print("\n4. Final Agent Controls (via /agents/{id}/controls):")
     try:
-        resp = await client.http_client.get(f"/api/v1/agents/{agent_uuid}/controls")
+        resp = await client.http_client.get(f"/api/v1/agents/{agent_name}/controls")
         resp.raise_for_status()
         controls = resp.json()
         print(f"   Controls: {controls}")
@@ -440,15 +440,15 @@ async def main():
             return
 
         # Use the provided UUID for verification
-        agent_uuid = AGENT_ID
+        agent_name = AGENT_ID
 
         # If verify-only mode, just run verification
         if args.verify_only:
-            await verify_full_chain(client, agent_uuid)
+            await verify_full_chain(client, agent_name)
             return
 
         # 1. Create agent
-        agent_uuid = await create_agent(client)
+        agent_name = await create_agent(client)
 
         # 2. Create controls
         regex_control_id = await create_regex_control(client)
@@ -457,14 +457,14 @@ async def main():
         # Skip remaining steps if controls already existed
         if regex_control_id == -1 or list_control_id == -1:
             print("\n⚠️  Some controls already exist. Running verification...")
-            await verify_full_chain(client, agent_uuid)
+            await verify_full_chain(client, agent_name)
             return
 
         # 3. Create policy
         policy_id = await create_policy(client, "demo-policy")
         if policy_id == -1:
             print("\n⚠️  Policy already exists. Running verification...")
-            await verify_full_chain(client, agent_uuid)
+            await verify_full_chain(client, agent_name)
             return
 
         # 4. Add controls to policy
@@ -487,7 +487,7 @@ async def main():
             print(f"  Failed to verify policy: {e}")
 
         # 5. Assign policy to agent
-        ok3 = await assign_policy_to_agent(client, agent_uuid, policy_id)
+        ok3 = await assign_policy_to_agent(client, agent_name, policy_id)
         if not ok3:
             print("\n⚠️  Failed to assign policy to agent!")
 
@@ -495,7 +495,7 @@ async def main():
         print("\n  Verifying agent policy assignment...")
         try:
             resp = await client.http_client.get(
-                f"/api/v1/agents/{agent_uuid}/policy"
+                f"/api/v1/agents/{agent_name}/policy"
             )
             resp.raise_for_status()
             agent_policy = resp.json()
@@ -508,7 +508,7 @@ async def main():
             print(f"  ✗ Failed to verify agent policy: {e}")
 
         # 6. List controls
-        await list_agent_controls(client, agent_uuid)
+        await list_agent_controls(client, agent_name)
 
         # 7. Update the list control
         await update_control(client, list_control_id)

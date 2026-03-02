@@ -12,6 +12,7 @@ import uuid
 import pytest
 
 import agent_control
+from agent_control_models.server import AgentControlsResponse
 
 
 @pytest.mark.asyncio
@@ -32,11 +33,8 @@ async def test_agent_registration_workflow(
 
     from agent_control_models import Agent
 
-    # Generate a proper UUID4 for the agent
-    agent_uuid = uuid.uuid4()
-    unique_name = f"Integration Test Agent {uuid.uuid4().hex[:8]}"
+    unique_name = f"agent-{uuid.uuid4().hex[:12]}"
     agent = Agent(
-        agent_id=agent_uuid,
         agent_name=unique_name,
         agent_description="Testing agent registration",
         agent_created_at=datetime.now(UTC).isoformat(),
@@ -80,10 +78,10 @@ async def test_agent_retrieval_workflow(
     - Response includes agent metadata
     - Response includes registered steps
     """
-    agent_id = test_agent["agent_id"]
+    agent_name = test_agent["agent_name"]
 
     # Retrieve agent
-    agent_data = await agent_control.agents.get_agent(client, agent_id)
+    agent_data = await agent_control.agents.get_agent(client, agent_name)
 
     # Verify response structure
     assert "agent" in agent_data
@@ -91,7 +89,7 @@ async def test_agent_retrieval_workflow(
 
     # Verify agent metadata
     agent = agent_data["agent"]
-    assert agent["agent_id"] == agent_id
+    assert agent["agent_name"] == agent_name
     assert agent["agent_name"] is not None
     assert "agent_description" in agent
 
@@ -136,6 +134,45 @@ async def test_agent_update_workflow(
 
 
 @pytest.mark.asyncio
+async def test_list_agent_controls_typed_returns_model(
+    client: agent_control.AgentControlClient,
+    test_agent: dict,
+) -> None:
+    """Typed controls endpoint returns AgentControlsResponse."""
+    # GIVEN: an existing registered agent.
+
+    # WHEN: controls are requested via the typed API wrapper.
+    response = await agent_control.agents.list_agent_controls_typed(
+        client,
+        test_agent["agent_name"],
+    )
+
+    # THEN: a typed model is returned.
+    assert isinstance(response, AgentControlsResponse)
+    assert isinstance(response.controls, list)
+
+
+@pytest.mark.asyncio
+async def test_list_agent_controls_returns_dict_payload(
+    client: agent_control.AgentControlClient,
+    test_agent: dict,
+) -> None:
+    """Dict controls endpoint returns a dict payload with controls list."""
+    # GIVEN: an existing registered agent.
+
+    # WHEN: controls are requested via the dict API wrapper.
+    response = await agent_control.agents.list_agent_controls(
+        client,
+        test_agent["agent_name"],
+    )
+
+    # THEN: a dict payload is returned with controls list.
+    assert isinstance(response, dict)
+    assert "controls" in response
+    assert isinstance(response["controls"], list)
+
+
+@pytest.mark.asyncio
 async def test_convenience_get_agent_function(
     test_agent: dict,
     server_url: str,
@@ -148,14 +185,14 @@ async def test_convenience_get_agent_function(
     - Convenience function works without manual client management
     - Returns same data as client-based approach
     """
-    agent_id = test_agent["agent_id"]
+    agent_name = test_agent["agent_name"]
 
     # Use convenience function
-    agent_data = await agent_control.get_agent(agent_id, server_url=server_url, api_key=api_key)
+    agent_data = await agent_control.get_agent(agent_name, server_url=server_url, api_key=api_key)
 
     # Verify response
     assert "agent" in agent_data
-    assert agent_data["agent"]["agent_id"] == agent_id
+    assert agent_data["agent"]["agent_name"] == agent_name
 
     print("✓ Convenience function works")
 
@@ -177,20 +214,20 @@ async def test_init_function_workflow(
     """
     # Initialize agent
     agent = agent_control.init(
-        agent_name=f"Init Test Agent {test_agent_id}",
-        agent_id=test_agent_id,
+        agent_name=test_agent_id,
         agent_description="Testing init function",
         agent_version="1.0.0",
         server_url=server_url,
         api_key=api_key,
         steps=sample_steps,
+        policy_refresh_interval_seconds=0,
         environment="test"
     )
 
     # Verify agent instance
     assert agent is not None
-    assert agent.agent_name == f"Init Test Agent {test_agent_id}"
-    assert hasattr(agent, "agent_id")
+    assert agent.agent_name == test_agent_id
+    assert hasattr(agent, "agent_name")
 
     # Verify current_agent()
     current = agent_control.current_agent()

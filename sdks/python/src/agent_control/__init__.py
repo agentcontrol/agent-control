@@ -9,8 +9,7 @@ Usage:
 
     # Initialize at the base of your agent file
     agent_control.init(
-        agent_name="my-customer-service-bot",
-        agent_id="550e8400-e29b-41d4-a716-446655440000"
+        agent_name="my-customer-service-bot"
     )
 
     # Apply server-defined controls using the decorator
@@ -24,31 +23,66 @@ Usage:
     async def process(input: str) -> str:
         return await pipeline.run(input)
 
+    # Use custom step name for control matching
+    @agent_control.control(step_name="user_query_handler")
+    async def handle_input(user_message: str) -> str:
+        return await process_query(user_message)
+
     # Or use the client directly for server-side checks
     async with agent_control.AgentControlClient() as client:
         result = await agent_control.evaluation.check_evaluation(
             client,
-            agent_uuid,
+            agent_name,
             step={"type": "llm", "name": "chat", "input": "Hello"},
             stage="pre",
         )
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("agent-control-sdk")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev"
+
+import asyncio
 import os
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
-from uuid import UUID
+from typing import Any, Literal, TypeVar
 
 import httpx
+from agent_control_models import (
+    Agent,
+    ControlAction,
+    ControlDefinition,
+    ControlMatch,
+    ControlScope,
+    ControlSelector,
+    EvaluationRequest,
+    EvaluationResult,
+    EvaluatorResult,
+    EvaluatorSpec,
+    Step,
+    StepSchema,
+)
 
 from . import agents, controls, evaluation, evaluators, policies
+from ._control_registry import (
+    StepSchemaDict,
+    get_registered_steps,
+    merge_explicit_and_auto_steps,
+)
+from ._control_registry import (
+    clear as clear_step_registry,
+)
 
 # Import client and operations modules
 from .client import AgentControlClient
 
 # Import control decorator
-from .control_decorators import ControlViolationError, control
+from .control_decorators import ControlSteerError, ControlViolationError, control
 from .evaluation import check_evaluation_with_local
 from .observability import (
     LogConfig,
@@ -71,105 +105,10 @@ from .tracing import (
     is_otel_available,
     with_trace,
 )
-from .validation import ensure_uuid
+from .validation import ensure_agent_name
 
 # Module logger
 logger = get_logger(__name__)
-
-# Import models if available
-try:
-    from agent_control_models import (
-        Agent,
-        ControlAction,
-        ControlDefinition,
-        ControlSelector,
-        EvaluationRequest,
-        EvaluationResult,
-        EvaluatorConfig,
-        Step,
-        StepSchema,
-    )
-    MODELS_AVAILABLE = True
-except ImportError:
-    MODELS_AVAILABLE = False
-    if not TYPE_CHECKING:
-        class ControlDefinition:
-            pass
-
-        class ControlSelector:
-            pass
-
-        class ControlAction:
-            pass
-
-        class EvaluatorConfig:
-            pass
-
-        class Agent:  # runtime fallback
-            def __init__(
-                self,
-                agent_id: str | UUID,
-                agent_name: str,
-                **kwargs: object
-            ):
-                self.agent_id = agent_id
-                self.agent_name = agent_name
-                for k, v in kwargs.items():
-                    setattr(self, k, v)
-
-        class Step:  # runtime fallback
-            def __init__(
-                self,
-                type: str,
-                name: str,
-                input: Any,
-                output: Any = None,
-                context: dict[str, Any] | None = None,
-            ):
-                self.type = type
-                self.name = name
-                self.input = input
-                self.output = output
-                self.context = context
-
-        class StepSchema:  # runtime fallback
-            def __init__(
-                self,
-                type: str,
-                name: str,
-                description: str | None = None,
-                input_schema: dict[str, Any] | None = None,
-                output_schema: dict[str, Any] | None = None,
-                metadata: dict[str, Any] | None = None,
-            ):
-                self.type = type
-                self.name = name
-                self.description = description
-                self.input_schema = input_schema
-                self.output_schema = output_schema
-                self.metadata = metadata
-
-        class EvaluationRequest:  # runtime fallback
-            def __init__(
-                self,
-                agent_uuid: UUID,
-                step: Step,
-                stage: str,
-            ):
-                self.agent_uuid = agent_uuid
-                self.step = step
-                self.stage = stage
-
-        class EvaluationResult:  # runtime fallback
-            def __init__(
-                self,
-                is_safe: bool,
-                confidence: float,
-                reason: str | None = None
-            ):
-                self.is_safe = is_safe
-                self.confidence = confidence
-                self.reason = reason
 
 
 # ============================================================================
@@ -180,9 +119,192 @@ except ImportError:
 _current_agent: Agent | None = None
 _control_engine = None
 _client: AgentControlClient | None = None
-_server_controls: list | None = None
+_server_controls: list[dict[str, Any]] | None = None
+_server_url: str | None = None
+_api_key: str | None = None
+_policy_refresh_interval_seconds: int | None = None
+_refresh_thread: threading.Thread | None = None
+_refresh_stop_event: threading.Event | None = None
+_refresh_lock = threading.Lock()
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+def get_server_controls() -> list[dict[str, Any]] | None:
+    """Get the cached server controls.
+
+    Returns the controls that were fetched during init() or the last
+    refresh_controls() call. Returns None if no controls are cached.
+
+    Returns:
+        List of control dicts or None if not initialized.
+
+    Example:
+        controls = agent_control.get_server_controls()
+        if controls:
+            print(f"Loaded {len(controls)} controls")
+            for c in controls:
+                print(f"  - {c['name']} (execution: {c['control'].get('execution', 'server')})")
+    """
+    return _server_controls
+
+
+def _publish_server_controls(
+    controls: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    """Publish controls using swap-only snapshot semantics."""
+    global _server_controls
+
+    if controls is None:
+        _server_controls = None
+        return None
+
+    # Snapshot copy: publish a new list reference and avoid in-place mutation.
+    _server_controls = list(controls)
+    return _server_controls
+
+
+def _run_coro_in_new_loop[T](coro: Coroutine[Any, Any, T]) -> T:
+    """Run a coroutine on a dedicated event loop in the current thread."""
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+        asyncio.set_event_loop(None)
+
+
+def _policy_refresh_worker(stop_event: threading.Event, interval_seconds: int) -> None:
+    """Background worker that periodically refreshes controls."""
+    while not stop_event.wait(interval_seconds):
+        try:
+            _run_coro_in_new_loop(refresh_controls_async())
+        except Exception as exc:
+            logger.error(
+                "Background policy refresh loop iteration failed: %s",
+                exc,
+                exc_info=True,
+            )
+
+
+def _stop_policy_refresh_loop() -> None:
+    """Stop the background policy refresh loop if running."""
+    global _policy_refresh_interval_seconds, _refresh_thread, _refresh_stop_event
+
+    with _refresh_lock:
+        stop_event = _refresh_stop_event
+        refresh_thread = _refresh_thread
+        _policy_refresh_interval_seconds = None
+        _refresh_stop_event = None
+        _refresh_thread = None
+
+    if stop_event is not None:
+        stop_event.set()
+
+    if refresh_thread is not None and refresh_thread.is_alive():
+        refresh_thread.join(timeout=2)
+        if refresh_thread.is_alive():
+            logger.warning("Timed out while stopping policy refresh loop thread")
+
+
+def _start_policy_refresh_loop(interval_seconds: int) -> None:
+    """Start a background loop that refreshes controls on a fixed interval."""
+    global _policy_refresh_interval_seconds, _refresh_thread, _refresh_stop_event
+
+    if interval_seconds <= 0:
+        return
+
+    stop_event = threading.Event()
+    refresh_thread = threading.Thread(
+        target=_policy_refresh_worker,
+        args=(stop_event, interval_seconds),
+        name="agent-control-policy-refresh",
+        daemon=True,
+    )
+    with _refresh_lock:
+        _policy_refresh_interval_seconds = interval_seconds
+        _refresh_stop_event = stop_event
+        _refresh_thread = refresh_thread
+
+    refresh_thread.start()
+    logger.info("Started policy refresh loop (interval=%ss)", interval_seconds)
+
+
+async def refresh_controls_async() -> list[dict[str, Any]] | None:
+    """Refresh controls from the server asynchronously.
+
+    Fetches the latest controls from the server and updates the cache.
+    Use this when you've made changes to controls in the UI or API
+    and want the SDK to pick them up without restarting.
+
+    Returns:
+        List of control dicts or None if fetch failed.
+
+    Example:
+        # After updating a control in the UI
+        controls = await agent_control.refresh_controls_async()
+        print(f"Refreshed {len(controls)} controls")
+    """
+    if _current_agent is None:
+        raise RuntimeError("Agent not initialized. Call agent_control.init() first.")
+
+    if _server_url is None:
+        raise RuntimeError("Server URL not set. Call agent_control.init() first.")
+
+    try:
+        async with AgentControlClient(base_url=_server_url, api_key=_api_key) as client:
+            response = await agents.list_agent_controls(client, _current_agent.agent_name)
+            refreshed_controls = _publish_server_controls(response.get("controls", []))
+            logger.info("Refreshed %d control(s) from server", len(refreshed_controls or []))
+            return refreshed_controls
+    except Exception as exc:
+        logger.error(
+            "Failed to refresh controls; keeping previous cache (%d control(s)): %s",
+            len(_server_controls or []),
+            exc,
+            exc_info=True,
+        )
+        return _server_controls
+
+
+def refresh_controls() -> list[dict[str, Any]] | None:
+    """Refresh controls from the server synchronously.
+
+    Fetches the latest controls from the server and updates the cache.
+    Use this when you've made changes to controls in the UI or API
+    and want the SDK to pick them up without restarting.
+
+    Returns:
+        List of control dicts or None if fetch failed.
+
+    Example:
+        # After updating a control in the UI
+        controls = agent_control.refresh_controls()
+        print(f"Refreshed {len(controls)} controls")
+    """
+    try:
+        asyncio.get_running_loop()
+        # We're in an async context - run in thread
+        result_container: list[list[dict[str, Any]] | None] = [None]
+        exception_container: list[Exception | None] = [None]
+
+        def run_in_thread() -> None:
+            try:
+                result_container[0] = _run_coro_in_new_loop(refresh_controls_async())
+            except Exception as e:
+                exception_container[0] = e
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
+        thread.join(timeout=10)
+
+        if exception_container[0]:
+            raise exception_container[0]
+        return result_container[0]
+
+    except RuntimeError:
+        # No running event loop - we're in a sync context
+        return _run_coro_in_new_loop(refresh_controls_async())
 
 
 # ============================================================================
@@ -191,15 +313,16 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def init(
     agent_name: str,
-    agent_id: str | UUID,
     agent_description: str | None = None,
     agent_version: str | None = None,
     server_url: str | None = None,
     api_key: str | None = None,
     controls_file: str | None = None,
-    steps: list[dict[str, Any]] | None = None,
+    steps: list[StepSchemaDict] | None = None,
+    conflict_mode: Literal["strict", "overwrite"] = "overwrite",
     observability_enabled: bool | None = None,
     log_config: dict[str, Any] | None = None,
+    policy_refresh_interval_seconds: int = 60,
     **kwargs: object
 ) -> Agent:
     """
@@ -214,8 +337,7 @@ def init(
     5. Enable the @control decorator
 
     Args:
-        agent_name: Human-readable name for your agent (e.g., "Customer Service Bot")
-        agent_id: Unique identifier for your agent (UUID string or UUID instance)
+        agent_name: Unique identifier for your agent (will be normalized to lowercase)
         agent_description: Optional description of what your agent does
         agent_version: Optional version string (e.g., "1.0.0")
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var
@@ -224,9 +346,13 @@ def init(
         controls_file: Optional explicit path to controls.yaml (auto-discovered if not provided)
         steps: Optional list of step schemas for registration:
                [{"type": "tool", "name": "search", "input_schema": {...}, "output_schema": {...}}]
+        conflict_mode: Conflict handling mode for initAgent registration.
+            Defaults to "overwrite" in SDK flows.
         observability_enabled: Optional bool to enable/disable observability (defaults to env var)
         log_config: Optional logging configuration dict:
                {"enabled": True, "span_start": True, "span_end": True, "control_eval": True}
+        policy_refresh_interval_seconds: Interval for background policy refresh loop.
+            Defaults to 60 seconds. Set to 0 to disable background refresh.
         **kwargs: Additional metadata to store with the agent
 
     Returns:
@@ -236,8 +362,7 @@ def init(
         import agent_control
 
         agent_control.init(
-            agent_name="Customer Service Bot",
-            agent_id="550e8400-e29b-41d4-a716-446655440000",
+            agent_name="customer-service-bot",
             agent_description="Handles customer inquiries and support tickets",
             agent_version="2.1.0",
             steps=[
@@ -260,18 +385,23 @@ def init(
     Environment Variables:
         AGENT_CONTROL_URL: Server URL (default: http://localhost:8000)
     """
-    global _current_agent, _control_engine, _client, _server_controls
+    global _current_agent, _control_engine, _client, _server_url, _api_key
 
-    if not agent_id:
+    if not agent_name:
         raise ValueError(
-            "The 'agent_id' argument is required for initialization.\n"
-            "Please provide a valid UUID string for your agent, e.g.:\n"
-            '    agent_control.init(agent_name="my-agent", '
-            'agent_id="550e8400-e29b-41d4-a716-446655440000")'
+            "The 'agent_name' argument is required for initialization.\n"
+            "Please provide a valid agent identifier, e.g.:\n"
+            '    agent_control.init(agent_name="customer-service-bot")'
         )
 
-    # Validate agent_id is a UUID (string or UUID instance)
-    _agent_uuid = ensure_uuid(agent_id)
+    # Validate and normalize agent_name
+    _agent_name = ensure_agent_name(agent_name)
+
+    if policy_refresh_interval_seconds < 0:
+        raise ValueError("policy_refresh_interval_seconds must be >= 0")
+
+    # Re-init behavior: always stop existing loop before mutating shared agent/session globals.
+    _stop_policy_refresh_loop()
 
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
@@ -279,8 +409,7 @@ def init(
 
     # Create agent instance with metadata
     _current_agent = Agent(
-        agent_id=_agent_uuid,
-        agent_name=agent_name,
+        agent_name=_agent_name,
         agent_description=agent_description,
         agent_created_at=datetime.now(UTC).isoformat(),
         agent_updated_at=None,
@@ -290,12 +419,34 @@ def init(
 
     # Get server URL (ensure it's always a string)
     _server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    _api_key = api_key
+
+    # Merge auto-discovered steps from @control() decorators with explicit steps.
+    # Explicit steps take precedence when (type, name) collides.
+    auto_steps = get_registered_steps()
+    merge_result = merge_explicit_and_auto_steps(steps, auto_steps)
+    registration_steps: list[dict[str, Any]] = [dict(step) for step in merge_result.steps]
+
+    if auto_steps:
+        if merge_result.overridden_keys:
+            formatted = ", ".join(
+                f"{step_type}:{step_name}" for step_type, step_name in merge_result.overridden_keys
+            )
+            logger.warning(
+                "Skipping %d auto-discovered step(s) overridden by explicit steps: %s",
+                len(merge_result.overridden_keys),
+                formatted,
+            )
+
+        logger.debug(
+            "Auto-discovered %d step(s) from @control() decorators (%d after merge)",
+            len(auto_steps),
+            len(registration_steps),
+        )
 
     # Register with server and fetch controls
     server_controls = None
     try:
-        import asyncio
-
         async def register() -> list[dict[str, Any]] | None:
             async with AgentControlClient(base_url=_server_url, api_key=api_key) as client:
                 # Check server health first
@@ -312,22 +463,23 @@ def init(
                     response = await agents.register_agent(
                         client,
                         _current_agent,
-                        steps=steps or []
+                        steps=registration_steps,
+                        conflict_mode=conflict_mode,
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])
 
                     if created:
-                        logger.info("Agent registered: %s (ID: %s)", agent_name, _agent_uuid)
+                        logger.info("Agent registered: %s", _agent_name)
                     else:
-                        logger.info("Agent updated: %s (ID: %s)", agent_name, _agent_uuid)
+                        logger.info("Agent updated: %s", _agent_name)
 
-                    if steps:
-                        logger.debug("Registered %d step(s)", len(steps))
+                    if registration_steps:
+                        logger.debug("Registered %d step(s)", len(registration_steps))
 
                     return controls
                 except httpx.HTTPStatusError:
-                    # Surface API errors like UUID conflicts
+                    # Surface API errors like name conflicts
                     raise
                 except Exception as e:
                     logger.error("Failed to register agent: %s", e, exc_info=True)
@@ -336,24 +488,18 @@ def init(
         # Run registration - handle both sync and async contexts
         try:
             # Check if we're already in an event loop
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # We're in an async context - schedule the coroutine
-            import threading
-
             result_container: list[list[dict[str, Any]] | None] = [None]
             exception_container: list[Exception | None] = [None]
 
             def run_in_thread() -> None:
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
                 try:
-                    result_container[0] = new_loop.run_until_complete(register())
+                    result_container[0] = _run_coro_in_new_loop(register())
                 except Exception as e:
                     exception_container[0] = e
-                finally:
-                    new_loop.close()
 
-            thread = threading.Thread(target=run_in_thread)
+            thread = threading.Thread(target=run_in_thread, daemon=True)
             thread.start()
             thread.join(timeout=10)  # 10 second timeout
 
@@ -363,22 +509,19 @@ def init(
 
         except RuntimeError:
             # No running event loop - we're in a sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            server_controls = loop.run_until_complete(register())
-            loop.close()
+            server_controls = _run_coro_in_new_loop(register())
 
     except httpx.HTTPStatusError:
-        # Surface server-side errors (e.g., 409 UUID conflicts)
+        # Surface server-side errors (e.g., 409 conflicts)
         raise
     except Exception as e:
         logger.error("Could not connect to server: %s", e, exc_info=True)
         logger.info("Will use local controls if available")
 
-    # Store server controls globally for later use by @control decorator
-    _server_controls = server_controls
-    if server_controls:
-        logger.info("Loaded %d control(s) from server", len(server_controls))
+    # Store server controls globally for later use by @control decorator.
+    published_controls = _publish_server_controls(server_controls)
+    if published_controls:
+        logger.info("Loaded %d control(s) from server", len(published_controls))
     else:
         logger.debug(
             "No controls returned from server "
@@ -394,25 +537,30 @@ def init(
     if batcher:
         logger.info("Observability enabled")
 
+    if policy_refresh_interval_seconds > 0:
+        _start_policy_refresh_loop(policy_refresh_interval_seconds)
+    else:
+        logger.debug("Policy refresh loop disabled (policy_refresh_interval_seconds=0)")
+
     return _current_agent
 
 
 async def get_agent(
-    agent_id: str | UUID,
+    agent_name: str,
     server_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
     """
-    Get agent details from the server by ID.
+    Get agent details from the server by name.
 
     Args:
-        agent_id: UUID string or UUID instance
+        agent_name: Agent identifier
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
 
     Returns:
         Dictionary containing:
-            - agent: Agent metadata (agent_name, agent_id, etc.)
+            - agent: Agent metadata
             - steps: List of steps registered with the agent
 
     Raises:
@@ -425,7 +573,7 @@ async def get_agent(
         # Fetch agent from server
         async def main():
             agent_data = await agent_control.get_agent(
-                "550e8400-e29b-41d4-a716-446655440000"
+                "customer-service-bot"
             )
             print(f"Agent: {agent_data['agent']['agent_name']}")
             print(f"Steps: {len(agent_data['steps'])}")
@@ -435,13 +583,13 @@ async def get_agent(
         # Or using the client directly
         async with agent_control.AgentControlClient() as client:
             agent_data = await agent_control.agents.get_agent(
-                client, "550e8400-e29b-41d4-a716-446655440000"
+                client, "customer-service-bot"
             )
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.get_agent(client, agent_id)
+        return await agents.get_agent(client, agent_name)
 
 
 def current_agent() -> Agent | None:
@@ -454,7 +602,6 @@ def current_agent() -> Agent | None:
     Example:
         agent_control.init(
             agent_name="My Bot",
-            agent_id="550e8400-e29b-41d4-a716-446655440000",
         )
         agent = agent_control.current_agent()
         print(agent.agent_name)  # "My Bot"
@@ -474,12 +621,12 @@ async def list_agents(
     Args:
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
-        cursor: Optional cursor for pagination (UUID of last agent from previous page)
+        cursor: Optional cursor for pagination (agent name of last item from previous page)
         limit: Number of results per page (default 20, max 100)
 
     Returns:
         Dictionary containing:
-            - agents: List of agent summaries with agent_id, agent_name,
+            - agents: List of agent summaries with agent_name,
                       policy_id, created_at, step_count, evaluator_count
             - pagination: Object with limit, total, next_cursor, has_more
 
@@ -494,7 +641,7 @@ async def list_agents(
             result = await agent_control.list_agents()
             print(f"Total agents: {result['pagination']['total']}")
             for agent in result['agents']:
-                print(f"  - {agent['agent_name']} ({agent['agent_id']})")
+                print(f"  - {agent['agent_name']}")
             # Fetch next page
             if result['pagination']['has_more']:
                 next_page = await agent_control.list_agents(
@@ -901,72 +1048,54 @@ async def list_policy_controls(
         return await policies.list_policy_controls(client, policy_id)
 
 
-# Note: The @control decorator is imported from control_decorators.py
-# It applies server-defined policies to agent functions.
-# See: from agent_control import control
-
-
-# ============================================================================
-# Exports
-# ============================================================================
-
 __all__ = [
     # Initialization
     "init",
     "current_agent",
 
+    # Control sync
+    "get_server_controls",
+    "refresh_controls",
+    "refresh_controls_async",
+    # Step registry (auto-discovered from @control decorators)
+    "get_registered_steps",
+    "clear_step_registry",
+
     # SDK Logging
     "get_logger",
-
     # Agent management
     "get_agent",
     "list_agents",
-
     # Control management
     "create_control",
     "list_controls",
     "get_control",
     "delete_control",
     "update_control",
-
-    # Decorator (server-side policy evaluation)
-    "control",
-
-    # Control Decorator
+    # Decorator
     "control",
     "ControlViolationError",
-
+    "ControlSteerError",
     # Client
     "AgentControlClient",
-
     # Operation modules
     "agents",
     "policies",
     "controls",
     "evaluation",
     "evaluators",
-
     # Policy-Control management
     "add_control_to_policy",
     "remove_control_from_policy",
     "list_policy_controls",
-
-
-    # Tool inference utilities
-    "tool",
-    "extract_tools_from_functions",
-    "tools_from_module",
-
     # Local evaluation
     "check_evaluation_with_local",
-
     # Tracing
     "get_trace_and_span_ids",
     "get_current_trace_id",
     "get_current_span_id",
     "with_trace",
     "is_otel_available",
-
     # Observability
     "init_observability",
     "add_event",
@@ -977,8 +1106,7 @@ __all__ = [
     "get_log_config",
     "log_control_evaluation",
     "LogConfig",
-
-    # Models (if available)
+    # Models (re-exported when available)
     "Agent",
     "Step",
     "StepSchema",
@@ -986,8 +1114,9 @@ __all__ = [
     "EvaluationResult",
     "ControlDefinition",
     "ControlSelector",
+    "ControlScope",
     "ControlAction",
-    "EvaluatorConfig",
+    "ControlMatch",
+    "EvaluatorSpec",
+    "EvaluatorResult",
 ]
-
-__version__ = "0.1.0"

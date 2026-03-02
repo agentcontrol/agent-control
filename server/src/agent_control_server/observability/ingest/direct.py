@@ -66,8 +66,8 @@ class DirectEventIngestor(EventIngestor):
             if self.log_to_stdout:
                 self._log_events(events)
 
-        except Exception as e:
-            logger.error(f"Failed to store events: {e}", exc_info=True)
+        except Exception:
+            logger.error("Failed to store events", exc_info=True)
             dropped = received
 
         return IngestResult(
@@ -95,7 +95,6 @@ class DirectEventIngestor(EventIngestor):
                 "event_type": "control_execution",
                 "trace_id": event.trace_id,
                 "span_id": event.span_id,
-                "agent_uuid": str(event.agent_uuid),
                 "agent_name": event.agent_name,
                 "control_id": event.control_id,
                 "control_name": event.control_name,

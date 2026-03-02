@@ -1,9 +1,11 @@
 [project]
 name = "agent-control-server"
-version = "4.0.0"
+version = "6.0.0"
 description = "Server for Agent Control - manage and evaluate controls for AI agents"
 requires-python = ">=3.12"
-# Note: agent-control-models, agent-control-engine, and agent-control-evaluators are bundled at build time
+# Note: agent-control-models and agent-control-engine are bundled at build time
+# Note: agent-control-evaluators is a runtime dependency (NOT vendored) to avoid
+#       duplicate module conflict when galileo extras are installed
 dependencies = [
     "fastapi>=0.109.0",
     "starlette-exporter>=0.23.0",
@@ -18,7 +20,7 @@ dependencies = [
     "jsonschema>=4.25.1",
     "jsonschema-rs>=0.22.0",
     "google-re2>=1.1",  # For engine (bundled)
-    "sqlglot[rs]>=20.0.0",  # For SQL evaluator (bundled)
+    "agent-control-evaluators>=3.0.0",  # NOT vendored - avoid conflict with galileo
 ]
 authors = [
     {name = "Agent Control Team"}
@@ -27,9 +29,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 
 [project.optional-dependencies]
-luna2 = [
-    "httpx>=0.24.0",
-]
+galileo = ["agent-control-evaluator-galileo>=3.0.0"]
 
 [dependency-groups]
 dev = [
@@ -55,8 +55,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# Note: agent_control_models, agent_control_engine, and agent_control_evaluators are copied by scripts/build.py
-packages = ["src/agent_control_server", "src/agent_control_models", "src/agent_control_engine", "src/agent_control_evaluators"]
+# Note: agent_control_models and agent_control_engine are copied by scripts/build.py
+# Note: agent_control_evaluators is a runtime dep, not vendored
+packages = ["src/agent_control_server", "src/agent_control_models", "src/agent_control_engine"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -86,3 +87,5 @@ known-first-party = ["agent_control_server"]
 agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
 agent-control-evaluators = { workspace = true }
+# For local dev: use local galileo package instead of PyPI
+agent-control-evaluator-galileo = { path = "../evaluators/extra/galileo", editable = true }

@@ -1,6 +1,11 @@
 """Agent Control Models - Shared data models for server and SDK."""
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("agent-control-models")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev"
 
 from .agent import (
     BUILTIN_STEP_TYPES,
@@ -18,12 +23,9 @@ from .controls import (
     ControlMatch,
     ControlScope,
     ControlSelector,
-    EvaluatorConfig,
     EvaluatorResult,
-    JSONEvaluatorConfig,
-    ListEvaluatorConfig,
-    RegexEvaluatorConfig,
-    SQLEvaluatorConfig,
+    EvaluatorSpec,
+    SteeringContext,
 )
 from .errors import (
     ERROR_TITLES,
@@ -40,14 +42,6 @@ from .evaluation import (
     EvaluationRequest,
     EvaluationResponse,
     EvaluationResult,
-)
-from .evaluator import (
-    Evaluator,
-    EvaluatorMetadata,
-    clear_evaluators,
-    get_all_evaluators,
-    get_evaluator,
-    register_evaluator,
 )
 from .health import HealthResponse
 from .observability import (
@@ -67,6 +61,7 @@ from .policy import Policy
 from .server import (
     AgentRef,
     AgentSummary,
+    ConflictMode,
     ControlSummary,
     CreateEvaluatorConfigRequest,
     DeleteControlResponse,
@@ -74,6 +69,8 @@ from .server import (
     EvaluatorConfigItem,
     EvaluatorSchema,
     GetPolicyControlsResponse,
+    InitAgentEvaluatorRemoval,
+    InitAgentOverwriteChanges,
     ListAgentsResponse,
     ListControlsResponse,
     ListEvaluatorConfigsResponse,
@@ -82,6 +79,8 @@ from .server import (
     PatchControlResponse,
     StepKey,
     UpdateEvaluatorConfigRequest,
+    ValidateControlDataRequest,
+    ValidateControlDataResponse,
 )
 
 __all__ = [
@@ -108,21 +107,10 @@ __all__ = [
     "ControlMatch",
     "ControlScope",
     "ControlSelector",
-    "EvaluatorConfig",
+    "EvaluatorSpec",
     "EvaluatorResult",
-    # Evaluator configs
-    "JSONEvaluatorConfig",
-    "ListEvaluatorConfig",
-    "RegexEvaluatorConfig",
-    "SQLEvaluatorConfig",
-    # Evaluator system
-    "Evaluator",
-    "EvaluatorMetadata",
-    "register_evaluator",
-    "get_evaluator",
-    "get_all_evaluators",
-    "clear_evaluators",
-    # Error models (RFC 7807 / Kubernetes / GitHub-style)
+    "SteeringContext",
+    # Error models
     "ProblemDetail",
     "ErrorCode",
     "ErrorReason",
@@ -135,6 +123,7 @@ __all__ = [
     # Server models
     "AgentRef",
     "AgentSummary",
+    "ConflictMode",
     "ControlSummary",
     "CreateEvaluatorConfigRequest",
     "DeleteEvaluatorConfigResponse",
@@ -142,6 +131,8 @@ __all__ = [
     "EvaluatorConfigItem",
     "EvaluatorSchema",
     "GetPolicyControlsResponse",
+    "InitAgentEvaluatorRemoval",
+    "InitAgentOverwriteChanges",
     "ListAgentsResponse",
     "ListControlsResponse",
     "ListEvaluatorConfigsResponse",
@@ -150,6 +141,8 @@ __all__ = [
     "PatchControlResponse",
     "StepKey",
     "UpdateEvaluatorConfigRequest",
+    "ValidateControlDataRequest",
+    "ValidateControlDataResponse",
     # Observability models
     "ControlExecutionEvent",
     "BatchEventsRequest",

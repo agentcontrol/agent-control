@@ -1,12 +1,12 @@
-import { Checkbox, Select, Stack, Textarea } from "@mantine/core";
+import { Checkbox, Select, Stack, Textarea } from '@mantine/core';
 
 import {
   labelPropsInline,
   LabelWithTooltip,
-} from "@/core/components/label-with-tooltip";
+} from '@/core/components/label-with-tooltip';
 
-import type { EvaluatorFormProps } from "../types";
-import type { ListFormValues } from "./types";
+import type { EvaluatorFormProps } from '../types';
+import type { ListFormValues } from './types';
 
 export const ListForm = ({ form }: EvaluatorFormProps<ListFormValues>) => {
   return (
@@ -24,7 +24,7 @@ export const ListForm = ({ form }: EvaluatorFormProps<ListFormValues>) => {
         maxRows={8}
         autosize
         size="sm"
-        {...form.getInputProps("values")}
+        {...form.getInputProps('values')}
       />
 
       <Select
@@ -36,13 +36,16 @@ export const ListForm = ({ form }: EvaluatorFormProps<ListFormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "any", label: "Any (match if any value matches)" },
-          { value: "all", label: "All (match if all values match)" },
+          { value: 'any', label: 'Any (match if any value matches)' },
+          { value: 'all', label: 'All (match if all values match)' },
         ]}
         size="sm"
-        {...form.getInputProps("logic")}
+        {...form.getInputProps('logic')}
         onChange={(value) =>
-          form.setFieldValue("logic", (value as ListFormValues["logic"]) || "any")
+          form.setFieldValue(
+            'logic',
+            (value as ListFormValues['logic']) || 'any'
+          )
         }
       />
 
@@ -55,15 +58,15 @@ export const ListForm = ({ form }: EvaluatorFormProps<ListFormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "match", label: "Match (trigger when matched)" },
-          { value: "no_match", label: "No match (trigger when not matched)" },
+          { value: 'match', label: 'Match (trigger when matched)' },
+          { value: 'no_match', label: 'No match (trigger when not matched)' },
         ]}
         size="sm"
-        {...form.getInputProps("match_on")}
+        {...form.getInputProps('match_on')}
         onChange={(value) =>
           form.setFieldValue(
-            "match_on",
-            (value as ListFormValues["match_on"]) || "match"
+            'match_on',
+            (value as ListFormValues['match_on']) || 'match'
           )
         }
       />
@@ -77,15 +80,15 @@ export const ListForm = ({ form }: EvaluatorFormProps<ListFormValues>) => {
         }
         labelProps={labelPropsInline}
         data={[
-          { value: "exact", label: "Exact (full string match)" },
-          { value: "contains", label: "Contains (substring match)" },
+          { value: 'exact', label: 'Exact (full string match)' },
+          { value: 'contains', label: 'Contains (substring match)' },
         ]}
         size="sm"
-        {...form.getInputProps("match_mode")}
+        {...form.getInputProps('match_mode')}
         onChange={(value) =>
           form.setFieldValue(
-            "match_mode",
-            (value as ListFormValues["match_mode"]) || "exact"
+            'match_mode',
+            (value as ListFormValues['match_mode']) || 'exact'
           )
         }
       />
@@ -93,7 +96,7 @@ export const ListForm = ({ form }: EvaluatorFormProps<ListFormValues>) => {
       <Checkbox
         label="Case sensitive"
         size="sm"
-        {...form.getInputProps("case_sensitive", { type: "checkbox" })}
+        {...form.getInputProps('case_sensitive', { type: 'checkbox' })}
       />
     </Stack>
   );
