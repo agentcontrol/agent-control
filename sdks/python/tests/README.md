@@ -152,7 +152,7 @@ PASSED
 ### Function-Scoped Fixtures
 - `client`: Authenticated AgentProtectClient instance
 - `unique_name`: Unique name generator for test resources
-- `test_agent_id`: Unique agent ID for testing
+- `test_agent_id`: Unique agent UUID for testing
 - `test_agent`: Registered test agent
 - `test_policy`: Created test policy
 - `test_control`: Created test control
@@ -317,10 +317,10 @@ async def test_my_new_workflow(
     - Feature Y returns expected data
     """
     # Arrange
-    agent_id = test_agent["agent_id"]
+    agent_name = test_agent["agent_name"]
     
     # Act
-    result = await agent_control.my_module.my_operation(client, agent_id)
+    result = await agent_control.my_module.my_operation(client, agent_name)
     
     # Assert
     assert result["success"] is True

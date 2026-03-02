@@ -17,18 +17,16 @@ def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
     Then: Returns 400 with clear error message
     """
     # Given: an agent without evaluators
-    agent_uuid = uuid.uuid4()
+    agent_name = f"testagent-{uuid.uuid4().hex[:12]}"
     client.post("/api/v1/agents/initAgent", json={
         "agent": {
-            "agent_id": str(agent_uuid),
-            "agent_name": f"TestAgent-{uuid.uuid4().hex[:8]}"
+            "agent_name": agent_name
         },
         "steps": [],
         "evaluators": []
     })
 
     # And: a control referencing a non-existent agent evaluator
-    agent_name = f"TestAgent-{uuid.uuid4().hex[:8]}"
     control_data = {
         "description": "Test control",
         "enabled": True,
@@ -112,7 +110,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(client, control_data)
+    agent_name, control_name = create_and_assign_policy(client, control_data)
 
     # And: an evaluator instance that throws during evaluation
     mock_evaluator = MagicMock()
@@ -130,7 +128,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     # When: sending an evaluation request
     payload = Step(type="llm", name="test-step", input="test content", output=None)
     req = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=payload,
         stage="pre"
     )
@@ -150,8 +148,12 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     assert data["errors"] is not None
     assert len(data["errors"]) == 1
     assert data["errors"][0]["control_name"] == control_name
-    assert "RuntimeError" in data["errors"][0]["result"]["error"]
-    assert "Simulated evaluator crash" in data["errors"][0]["result"]["error"]
+    assert (
+        data["errors"][0]["result"]["error"]
+        == "Evaluation failed due to an internal evaluator error."
+    )
+    assert "RuntimeError" not in data["errors"][0]["result"]["error"]
+    assert "Simulated evaluator crash" not in data["errors"][0]["result"]["error"]
 
     # And: no matches are returned because evaluation failed
     assert data["matches"] is None or len(data["matches"]) == 0
@@ -169,7 +171,7 @@ def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypat
         "evaluator": {"name": "regex", "config": {"pattern": "test"}},
         "action": {"decision": "deny"},
     }
-    agent_uuid, _ = create_and_assign_policy(client, control_data)
+    agent_name, _ = create_and_assign_policy(client, control_data)
 
     # And: the engine raises a ValueError during processing
     import agent_control_engine.core as core_module
@@ -181,20 +183,22 @@ def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypat
 
     # When: sending an evaluation request
     payload = Step(type="llm", name="test-step", input="test content", output=None)
-    req = EvaluationRequest(agent_uuid=agent_uuid, step=payload, stage="pre")
+    req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
 
     # Then: a validation error is returned
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "EVALUATION_FAILED"
+    assert "bad config" not in body["detail"]
+    assert body["errors"][0]["message"] == "Invalid evaluation request or control configuration."
 
 
 def test_evaluation_warns_when_observability_drops_events(
     client: TestClient, app, caplog
 ) -> None:
     # Given: an agent with a control that will match
-    agent_uuid, _ = create_and_assign_policy(client)
+    agent_name, _ = create_and_assign_policy(client)
 
     class DroppingIngestor:
         async def ingest(self, events):  # type: ignore[no-untyped-def]
@@ -208,7 +212,7 @@ def test_evaluation_warns_when_observability_drops_events(
 
         # When: sending an evaluation request
         payload = Step(type="llm", name="test-step", input="x", output=None)
-        req = EvaluationRequest(agent_uuid=agent_uuid, step=payload, stage="pre")
+        req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
         resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
 
         # Then: the evaluation succeeds but logs a dropped-events warning

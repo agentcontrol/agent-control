@@ -218,7 +218,9 @@ class TestAuthMisconfiguration:
 
         # Then:
         assert response.status_code == 500
-        assert "misconfigured" in response.json()["detail"]
+        body = response.json()
+        assert body["error_code"] == "AUTH_MISCONFIGURED"
+        assert body["detail"] == "Server authentication is misconfigured. Contact administrator."
 
 
 class TestOptionalApiKey:

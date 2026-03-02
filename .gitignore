@@ -38,10 +38,12 @@ uv.lock
 *.swo
 *~
 .DS_Store
+coverage-*.xml
 
 # Testing
 .pytest_cache/
 .coverage
+coverage-*.xml
 htmlcov/
 .tox/
 .mypy_cache/
@@ -64,6 +66,8 @@ logs/
 # Database
 *.db
 *.sqlite3
+server/openapi.json
+server/.generated/
 
 # Temporary files
 tmp/

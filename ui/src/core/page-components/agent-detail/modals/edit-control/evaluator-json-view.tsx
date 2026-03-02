@@ -1,73 +1,102 @@
-import {
-  Box,
-  // Group,
-  ScrollArea,
-  // SegmentedControl,
-  Textarea,
-} from "@mantine/core";
+import { Box, Textarea } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
+import { useEffect, useRef } from 'react';
 
-import { JsonEditor } from "@/components/json-editor";
+import { isApiError } from '@/core/api/errors';
 
-import type { EvaluatorJsonViewProps } from "./types";
+import { ApiErrorAlert } from './api-error-alert';
+import type { EvaluatorJsonViewProps } from './types';
 
 const DEFAULT_HEIGHT = 400;
+const DEFAULT_VALIDATE_DEBOUNCE_MS = 500;
 
 export const EvaluatorJsonView = ({
-  config,
-  onChange,
-  jsonViewMode,
-  onJsonViewModeChange: _onJsonViewModeChange,
-  rawJsonText,
-  onRawJsonTextChange,
-  rawJsonError,
+  jsonText,
+  handleJsonChange,
+  jsonError,
+  setJsonError,
+  validationError,
+  setValidationError,
+  onValidateConfig,
+  onValidationStatusChange,
+  validateDebounceMs = DEFAULT_VALIDATE_DEBOUNCE_MS,
   height = DEFAULT_HEIGHT,
 }: EvaluatorJsonViewProps) => {
-  // TODO: Re-enable tree/raw toggle when needed
-  // <Group justify='flex-end'>
-  //   <SegmentedControl
-  //     value={jsonViewMode}
-  //     onChange={handleModeChange}
-  //     data={[
-  //       { value: "tree", label: "Tree" },
-  //       { value: "raw", label: "Raw" },
-  //     ]}
-  //     size='xs'
-  //   />
-  // </Group>
+  const [debouncedJsonText] = useDebouncedValue(jsonText, validateDebounceMs);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  if (jsonViewMode === "tree") {
-    return (
-      <ScrollArea h={height} type="auto">
-        <Box p="xs">
-          <JsonEditor
-            data={config}
-            setData={onChange}
-            rootName="config"
-            restrictEdit={false}
-            restrictDelete={false}
-            restrictAdd={false}
-            collapse={false}
-            rootFontSize={12}
-          />
-        </Box>
-      </ScrollArea>
-    );
-  }
+  useEffect(() => {
+    if (!onValidateConfig) return;
+    if (!debouncedJsonText) {
+      setJsonError?.(null);
+      setValidationError?.(null);
+      onValidationStatusChange?.('idle');
+      return;
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(debouncedJsonText);
+    } catch {
+      setJsonError?.('Invalid JSON');
+      setValidationError?.(null);
+      onValidationStatusChange?.('invalid');
+      return;
+    }
+
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setJsonError?.(null);
+    onValidationStatusChange?.('validating');
+    onValidateConfig(parsed, { signal: controller.signal })
+      .then(() => {
+        setValidationError?.(null);
+        onValidationStatusChange?.('valid');
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        if (isApiError(error)) {
+          setValidationError?.(error.problemDetail);
+          onValidationStatusChange?.('invalid');
+        } else {
+          setJsonError?.('Validation failed.');
+          setValidationError?.(null);
+          onValidationStatusChange?.('invalid');
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    debouncedJsonText,
+    setJsonError,
+    onValidateConfig,
+    setValidationError,
+    onValidationStatusChange,
+  ]);
 
   return (
-    <Textarea
-      value={rawJsonText}
-      onChange={(e) => onRawJsonTextChange(e.currentTarget.value)}
-      styles={{
-        input: {
-          fontFamily: "monospace",
-          fontSize: 12,
-          height,
-          overflow: "auto",
-        },
-      }}
-      error={rawJsonError}
-      data-testid="raw-json-textarea"
-    />
+    <Box>
+      <Textarea
+        value={jsonText}
+        onChange={(e) => handleJsonChange(e.currentTarget.value)}
+        styles={{
+          input: {
+            fontFamily: 'monospace',
+            fontSize: 12,
+            height,
+            overflow: 'auto',
+          },
+        }}
+        error={jsonError}
+        data-testid="raw-json-textarea"
+      />
+      {validationError ? (
+        <Box mt="sm">
+          <ApiErrorAlert error={validationError} unmappedErrors={[]} />
+        </Box>
+      ) : null}
+    </Box>
   );
 };

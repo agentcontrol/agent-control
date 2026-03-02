@@ -49,11 +49,11 @@ async with AgentControlClient(base_url="http://localhost:8000") as client:
 
 **Endpoints Covered**:
 - `POST /api/v1/agents/initAgent` - Register or update an agent
-- `GET /api/v1/agents/{agent_id}` - Get agent details
+- `GET /api/v1/agents/{agent_name}` - Get agent details
 
 **Functions**:
 - `async def register_agent(client, agent, tools)` - Register an agent with tools
-- `async def get_agent(client, agent_id)` - Fetch agent details by ID
+- `async def get_agent(client, agent_name)` - Fetch agent details by ID
 
 **Usage**:
 ```python
@@ -66,7 +66,9 @@ async with agent_control.AgentControlClient() as client:
     )
     
     # Get agent
-    agent_data = await agent_control.agents.get_agent(client, "agent-id")
+    agent_data = await agent_control.agents.get_agent(
+        client, "550e8400-e29b-41d4-a716-446655440000"
+    )
 ```
 
 ### `policies.py` - Policy Operations
@@ -217,8 +219,8 @@ class MyCustomEvaluator(Evaluator):
 **Purpose**: Public API, convenience functions, and initialization.
 
 **Key Functions**:
-- `init(agent_name, agent_id, ...)` - Initialize Agent Control
-- `get_agent(agent_id, server_url)` - Convenience function for fetching agents
+- `init(agent_name, agent_name, ...)` - Initialize Agent Control
+- `get_agent(agent_name, server_url)` - Convenience function for fetching agents
 - `list_agents()` - List all registered agents
 - `current_agent()` - Get the currently initialized agent
 - `control()` - Decorator for server-side policy enforcement
@@ -259,11 +261,13 @@ High-level convenience functions are provided in `__init__.py` for common operat
 
 ```python
 # Convenience: No need to manage client manually
-agent_data = await agent_control.get_agent("agent-id")
+agent_data = await agent_control.get_agent("550e8400-e29b-41d4-a716-446655440000")
 
 # Equivalent module-first approach:
 async with AgentControlClient() as client:
-    agent_data = await agent_control.agents.get_agent(client, "agent-id")
+    agent_data = await agent_control.agents.get_agent(
+        client, "550e8400-e29b-41d4-a716-446655440000"
+    )
 ```
 
 ### 4. API Stability

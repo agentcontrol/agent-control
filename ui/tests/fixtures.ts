@@ -1,4 +1,4 @@
-import { type Page, test as base } from "@playwright/test";
+import { type Page, test as base } from '@playwright/test';
 
 import type {
   AgentControlsResponse,
@@ -9,8 +9,8 @@ import type {
   GetAgentResponse,
   ListAgentsResponse,
   ListControlsResponse,
-} from "@/core/api/types";
-import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-stats";
+} from '@/core/api/types';
+import type { StatsResponse } from '@/core/hooks/query-hooks/use-agent-monitor';
 
 /**
  * Mock data for API responses
@@ -20,28 +20,25 @@ import type { StatsResponse } from "@/core/hooks/query-hooks/use-agent-stats";
 // Satisfies ensures type checking while allowing inference of literal types
 const agentsList: AgentSummary[] = [
   {
-    agent_id: "agent-1",
-    agent_name: "Customer Support Bot",
+    agent_name: 'customer-support-bot',
     policy_id: 1,
-    created_at: "2024-01-01T00:00:00Z",
+    created_at: '2024-01-01T00:00:00Z',
     step_count: 5,
     evaluator_count: 2,
     active_controls_count: 3,
   },
   {
-    agent_id: "agent-2",
-    agent_name: "Data Analysis Agent",
+    agent_name: 'data-analysis-agent',
     policy_id: 2,
-    created_at: "2024-01-02T00:00:00Z",
+    created_at: '2024-01-02T00:00:00Z',
     step_count: 3,
     evaluator_count: 1,
     active_controls_count: 2,
   },
   {
-    agent_id: "agent-3",
-    agent_name: "Code Review Assistant",
+    agent_name: 'code-review-assistant',
     policy_id: 3,
-    created_at: "2024-01-03T00:00:00Z",
+    created_at: '2024-01-03T00:00:00Z',
     step_count: 8,
     evaluator_count: 4,
     active_controls_count: 5,
@@ -60,72 +57,82 @@ const agentsResponse: ListAgentsResponse = {
 
 const agentResponse: GetAgentResponse = {
   agent: {
-    agent_id: "agent-1",
-    agent_name: "Customer Support Bot",
-    agent_description: "Handles customer inquiries and support tickets",
-    agent_created_at: "2024-01-01T00:00:00Z",
-    agent_updated_at: "2024-01-15T00:00:00Z",
-    agent_version: "1.0.0",
+    agent_name: 'customer-support-bot',
+    agent_description: 'Handles customer inquiries and support tickets',
+    agent_created_at: '2024-01-01T00:00:00Z',
+    agent_updated_at: '2024-01-15T00:00:00Z',
+    agent_version: '1.0.0',
     agent_metadata: null,
   },
   steps: [],
   evaluators: [],
 };
 
+/** Agent with populated steps for step dropdown tests */
+const agentWithStepsResponse: GetAgentResponse = {
+  ...agentResponse,
+  steps: [
+    { type: 'tool', name: 'search_db' },
+    { type: 'tool', name: 'fetch_user' },
+    { type: 'tool', name: 'database_query' },
+    { type: 'llm', name: 'support-answer' },
+  ],
+};
+
 const controlsList: Control[] = [
   {
     id: 1,
-    name: "PII Detection",
+    name: 'PII Detection',
     control: {
-      description: "Detects and masks personally identifiable information",
+      description: 'Detects and masks personally identifiable information',
       enabled: true,
-      execution: "server",
-      scope: { step_types: ["llm"], stages: ["post"] },
-      selector: { path: "output" },
+      execution: 'server',
+      scope: { step_types: ['llm'], stages: ['post'] },
+      selector: { path: 'output' },
       evaluator: {
-        name: "regex",
-        config: { pattern: "\\b\\d{3}-\\d{2}-\\d{4}\\b" },
+        name: 'regex',
+        config: { pattern: '\\b\\d{3}-\\d{2}-\\d{4}\\b' },
       },
-      action: { decision: "deny" },
-      tags: ["pii", "compliance"],
+      action: { decision: 'deny' },
+      tags: ['pii', 'compliance'],
     },
   },
   {
     id: 2,
-    name: "SQL Injection Guard",
+    name: 'SQL Injection Guard',
     control: {
-      description: "Prevents SQL injection attacks",
+      description: 'Prevents SQL injection attacks',
       enabled: true,
-      execution: "server",
+      execution: 'server',
       scope: {
-        step_types: ["tool"],
-        step_names: ["database_query"],
-        step_name_regex: "^db_.*",
-        stages: ["pre"],
+        step_types: ['tool'],
+        step_names: ['database_query'],
+        step_name_regex: '^db_.*',
+        stages: ['pre'],
       },
-      selector: { path: "input.query" },
+      selector: { path: 'input.query' },
       evaluator: {
-        name: "sql",
-        config: { mode: "safe" },
+        name: 'sql',
+        config: { mode: 'safe' },
       },
-      action: { decision: "deny" },
-      tags: ["security"],
+      action: { decision: 'deny' },
+      tags: ['security'],
     },
   },
   {
     id: 3,
-    name: "Rate Limiter",
+    name: 'Rate Limiter',
     control: {
-      description: "Limits API call frequency",
+      description: 'Limits API call frequency',
       enabled: false,
-      execution: "server",
-      scope: { step_types: ["llm"], stages: ["pre"] },
-      selector: { path: "*" },
+      execution: 'server',
+      scope: { step_types: ['llm'], stages: ['pre'] },
+      selector: { path: '*' },
       evaluator: {
-        name: "list",
-        config: { values: [], logic: "any", match_on: "match" },
+        name: 'list',
+        config: { values: [], logic: 'any', match_on: 'match' },
       },
-      action: { decision: "allow" },
+      action: { decision: 'allow' },
       tags: [],
     },
   },
@@ -136,37 +143,39 @@ const controlsResponse: AgentControlsResponse = {
 };
 
 // Control summaries for GET /api/v1/controls (list all controls)
-const controlSummariesList: (ControlSummary & { used_by_agent?: { agent_id: string; agent_name: string } | null })[] = [
+const controlSummariesList: (ControlSummary & {
+  used_by_agent?: { agent_name: string } | null;
+})[] = [
   {
     id: 1,
-    name: "PII Detection",
-    description: "Detects and masks personally identifiable information",
+    name: 'PII Detection',
+    description: 'Detects and masks personally identifiable information',
     enabled: true,
-    execution: "server",
-    step_types: ["llm"],
-    stages: ["post"],
-    tags: ["pii", "compliance"],
-    used_by_agent: { agent_id: "agent-1", agent_name: "Customer Support Bot" },
+    execution: 'server',
+    step_types: ['llm'],
+    stages: ['post'],
+    tags: ['pii', 'compliance'],
+    used_by_agent: { agent_name: 'customer-support-bot' },
   },
   {
     id: 2,
-    name: "SQL Injection Guard",
-    description: "Prevents SQL injection attacks",
+    name: 'SQL Injection Guard',
+    description: 'Prevents SQL injection attacks',
     enabled: true,
-    execution: "server",
-    step_types: ["tool"],
-    stages: ["pre"],
-    tags: ["security"],
-    used_by_agent: { agent_id: "agent-2", agent_name: "Data Analysis Agent" },
+    execution: 'server',
+    step_types: ['tool'],
+    stages: ['pre'],
+    tags: ['security'],
+    used_by_agent: { agent_name: 'data-analysis-agent' },
   },
   {
     id: 3,
-    name: "Rate Limiter",
-    description: "Limits API call frequency",
+    name: 'Rate Limiter',
+    description: 'Limits API call frequency',
     enabled: false,
-    execution: "server",
-    step_types: ["llm"],
-    stages: ["pre"],
+    execution: 'server',
+    step_types: ['llm'],
+    stages: ['pre'],
     tags: [],
     used_by_agent: null,
   },
@@ -184,89 +193,103 @@ const listControlsResponse: ListControlsResponse = {
 
 const evaluatorsResponse: EvaluatorsResponse = {
   regex: {
-    name: "Regex",
-    version: "1.0.0",
-    description: "Pattern matching using regular expressions",
+    name: 'Regex',
+    version: '1.0.0',
+    description: 'Pattern matching using regular expressions',
     requires_api_key: false,
     timeout_ms: 5000,
     config_schema: {
-      type: "object",
+      type: 'object',
       properties: {
-        pattern: { type: "string", description: "Regular expression pattern" },
+        pattern: { type: 'string', description: 'Regular expression pattern' },
       },
-      required: ["pattern"],
+      required: ['pattern'],
     },
   },
   list: {
-    name: "List",
-    version: "1.0.0",
-    description: "Match against a list of allowed or blocked values",
+    name: 'List',
+    version: '1.0.0',
+    description: 'Match against a list of allowed or blocked values',
     requires_api_key: false,
     timeout_ms: 5000,
     config_schema: {
-      type: "object",
+      type: 'object',
       properties: {
-        values: { type: "array", items: { type: "string" } },
-        logic: { type: "string", enum: ["any", "all"] },
-        match_on: { type: "string", enum: ["match", "no_match"] },
+        values: { type: 'array', items: { type: 'string' } },
+        logic: { type: 'string', enum: ['any', 'all'] },
+        match_on: { type: 'string', enum: ['match', 'no_match'] },
       },
-      required: ["values"],
+      required: ['values'],
     },
   },
   sql: {
-    name: "SQL",
-    version: "1.0.0",
-    description: "SQL injection detection and prevention",
+    name: 'SQL',
+    version: '1.0.0',
+    description: 'SQL injection detection and prevention',
     requires_api_key: false,
     timeout_ms: 5000,
     config_schema: {
-      type: "object",
+      type: 'object',
       properties: {
-        mode: { type: "string", enum: ["safe", "strict"] },
+        mode: { type: 'string', enum: ['safe', 'strict'] },
       },
     },
   },
   json: {
-    name: "JSON",
-    version: "1.0.0",
-    description: "JSON schema validation",
+    name: 'JSON',
+    version: '1.0.0',
+    description: 'JSON schema validation',
     requires_api_key: false,
     timeout_ms: 5000,
     config_schema: {
-      type: "object",
+      type: 'object',
       properties: {
-        schema: { type: "object" },
+        schema: { type: 'object' },
       },
-      required: ["schema"],
+      required: ['schema'],
     },
   },
-  "galileo-luna2": {
-    name: "Galileo Luna-2",
-    version: "1.0.0",
-    description: "AI-powered content moderation using Galileo Luna-2",
+  'galileo.luna2': {
+    name: 'Galileo Luna-2',
+    version: '1.0.0',
+    description: 'AI-powered content moderation using Galileo Luna-2',
     requires_api_key: true,
     timeout_ms: 30000,
     config_schema: {
-      type: "object",
+      type: 'object',
       properties: {
-        threshold: { type: "number" },
+        threshold: { type: 'number' },
       },
     },
   },
 };
 
 const statsResponse: StatsResponse = {
-  agent_uuid: "agent-1",
-  time_range: "1h",
-  stats: [
+  agent_name: 'customer-support-bot',
+  time_range: '1h',
+  totals: {
+    execution_count: 430,
+    match_count: 40,
+    non_match_count: 390,
+    error_count: 2,
+    action_counts: {
+      allow: 10,
+      deny: 25,
+      steer: 0,
+      warn: 3,
+      log: 2,
+    },
+  },
+  controls: [
     {
       control_id: 1,
-      control_name: "PII Detection",
+      control_name: 'PII Detection',
       execution_count: 150,
       match_count: 25,
       non_match_count: 125,
       allow_count: 5,
       deny_count: 15,
+      steer_count: 0,
       warn_count: 3,
       log_count: 2,
       error_count: 0,
@@ -275,12 +298,13 @@ const statsResponse: StatsResponse = {
     },
     {
       control_id: 2,
-      control_name: "SQL Injection Guard",
+      control_name: 'SQL Injection Guard',
       execution_count: 80,
       match_count: 10,
       non_match_count: 70,
       allow_count: 0,
       deny_count: 10,
+      steer_count: 0,
       warn_count: 0,
       log_count: 0,
       error_count: 2,
@@ -289,12 +313,13 @@ const statsResponse: StatsResponse = {
     },
     {
       control_id: 3,
-      control_name: "Rate Limiter",
+      control_name: 'Rate Limiter',
       execution_count: 200,
       match_count: 5,
       non_match_count: 195,
       allow_count: 5,
       deny_count: 0,
+      steer_count: 0,
       warn_count: 0,
       log_count: 0,
       error_count: 0,
@@ -302,27 +327,19 @@ const statsResponse: StatsResponse = {
       avg_duration_ms: 12,
     },
   ],
-  total_executions: 430,
-  total_matches: 40,
-  total_non_matches: 390,
-  total_errors: 2,
-  action_counts: {
-    allow: 10,
-    deny: 25,
-    warn: 3,
-    log: 2,
-  },
 };
 
 const emptyStatsResponse: StatsResponse = {
-  agent_uuid: "agent-1",
-  time_range: "1h",
-  stats: [],
-  total_executions: 0,
-  total_matches: 0,
-  total_non_matches: 0,
-  total_errors: 0,
-  action_counts: {},
+  agent_name: 'customer-support-bot',
+  time_range: '1h',
+  totals: {
+    execution_count: 0,
+    match_count: 0,
+    non_match_count: 0,
+    error_count: 0,
+    action_counts: {},
+  },
+  controls: [],
 };
 
 /**
@@ -331,6 +348,7 @@ const emptyStatsResponse: StatsResponse = {
 export const mockData = {
   agents: agentsResponse,
   agent: agentResponse,
+  agentWithSteps: agentWithStepsResponse,
   controls: controlsResponse,
   listControls: listControlsResponse,
   evaluators: evaluatorsResponse,
@@ -350,27 +368,27 @@ type MockResponseOptions<T> =
  * Helper to fulfill a route with consistent formatting
  */
 async function fulfillRoute<T>(
-  route: Parameters<Parameters<Page["route"]>[1]>[0],
+  route: Parameters<Parameters<Page['route']>[1]>[0],
   options: MockResponseOptions<T>,
   defaultData: T
 ) {
-  if ("error" in options) {
+  if ('error' in options) {
     await route.fulfill({
       status: options.status,
-      contentType: "application/json",
+      contentType: 'application/json',
       body: JSON.stringify({ error: options.error }),
     });
-  } else if ("handler" in options) {
+  } else if ('handler' in options) {
     const data = await options.handler();
     await route.fulfill({
       status: 200,
-      contentType: "application/json",
+      contentType: 'application/json',
       body: JSON.stringify(data),
     });
   } else {
     await route.fulfill({
       status: options.status ?? 200,
-      contentType: "application/json",
+      contentType: 'application/json',
       body: JSON.stringify(options.data ?? defaultData),
     });
   }
@@ -385,22 +403,22 @@ export const mockRoutes = {
     page: Page,
     options: MockResponseOptions<ListAgentsResponse> = { data: mockData.agents }
   ) => {
-    await page.route("**/api/v1/agents?**", async (route, request) => {
+    await page.route('**/api/v1/agents?**', async (route, request) => {
       // Helper to filter agents based on query params (server-side search)
       const getFilteredResponse = (url: string): ListAgentsResponse => {
         const urlObj = new URL(url);
-        const nameFilter = urlObj.searchParams.get("name");
-        
+        const nameFilter = urlObj.searchParams.get('name');
+
         let agents = mockData.agents.agents;
-        
+
         // Apply name filter (case-insensitive partial match, like the real API)
         if (nameFilter) {
           const lowerFilter = nameFilter.toLowerCase();
-          agents = agents.filter(a => 
+          agents = agents.filter((a) =>
             a.agent_name.toLowerCase().includes(lowerFilter)
           );
         }
-        
+
         return {
           agents,
           pagination: {
@@ -414,8 +432,12 @@ export const mockRoutes = {
 
       const url = request.url();
       const filteredData = getFilteredResponse(url);
-      
-      await fulfillRoute(route, { ...options, data: filteredData }, filteredData);
+
+      await fulfillRoute(
+        route,
+        { ...options, data: filteredData },
+        filteredData
+      );
     });
   },
 
@@ -431,15 +453,15 @@ export const mockRoutes = {
     const agentOpts = options.agent ?? { data: mockData.agent };
 
     // Register controls route first (more specific pattern)
-    await page.route("**/api/v1/agents/*/controls", async (route) => {
+    await page.route('**/api/v1/agents/*/controls', async (route) => {
       await fulfillRoute(route, controlsOpts, mockData.controls);
     });
 
     // Register agent route second
-    await page.route("**/api/v1/agents/*", async (route, request) => {
+    await page.route('**/api/v1/agents/*', async (route, request) => {
       const url = request.url();
       // Skip if it's a controls request (handled by separate route above)
-      if (url.includes("/controls")) {
+      if (url.includes('/controls')) {
         await route.continue();
         return;
       }
@@ -450,9 +472,11 @@ export const mockRoutes = {
   /** Mock GET /api/v1/evaluators */
   evaluators: async (
     page: Page,
-    options: MockResponseOptions<EvaluatorsResponse> = { data: mockData.evaluators }
+    options: MockResponseOptions<EvaluatorsResponse> = {
+      data: mockData.evaluators,
+    }
   ) => {
-    await page.route("**/api/v1/evaluators", async (route) => {
+    await page.route('**/api/v1/evaluators', async (route) => {
       await fulfillRoute(route, options, mockData.evaluators);
     });
   },
@@ -460,24 +484,27 @@ export const mockRoutes = {
   /** Mock GET /api/v1/controls (list all controls) and PUT /api/v1/controls (create) */
   controlsList: async (
     page: Page,
-    options: MockResponseOptions<ListControlsResponse> = { data: mockData.listControls }
+    options: MockResponseOptions<ListControlsResponse> = {
+      data: mockData.listControls,
+    }
   ) => {
     // Helper to filter controls based on query params (server-side search)
     const getFilteredResponse = (url: string): ListControlsResponse => {
       const urlObj = new URL(url);
-      const nameFilter = urlObj.searchParams.get("name");
-      
+      const nameFilter = urlObj.searchParams.get('name');
+
       let controls = mockData.listControls.controls;
-      
+
       // Apply name filter (case-insensitive partial match, like the real API)
       if (nameFilter) {
         const lowerFilter = nameFilter.toLowerCase();
-        controls = controls.filter(c => 
-          c.name.toLowerCase().includes(lowerFilter) ||
-          (c.description ?? "").toLowerCase().includes(lowerFilter)
+        controls = controls.filter(
+          (c) =>
+            c.name.toLowerCase().includes(lowerFilter) ||
+            (c.description ?? '').toLowerCase().includes(lowerFilter)
         );
       }
-      
+
       return {
         controls,
         pagination: {
@@ -490,13 +517,13 @@ export const mockRoutes = {
     };
 
     // Handle both with and without query params
-    await page.route("**/api/v1/controls?**", async (route, request) => {
+    await page.route('**/api/v1/controls?**', async (route, request) => {
       const method = request.method();
-      if (method === "GET") {
+      if (method === 'GET') {
         const response = getFilteredResponse(request.url());
         await route.fulfill({
           status: 200,
-          contentType: "application/json",
+          contentType: 'application/json',
           body: JSON.stringify(response),
         });
         return;
@@ -504,20 +531,20 @@ export const mockRoutes = {
       await route.continue();
     });
     // Handle base path for GET (list) and PUT (create)
-    await page.route("**/api/v1/controls", async (route, request) => {
+    await page.route('**/api/v1/controls', async (route, request) => {
       const method = request.method();
-      if (method === "GET") {
+      if (method === 'GET') {
         await fulfillRoute(route, options, mockData.listControls);
         return;
       }
-      if (method === "PUT") {
+      if (method === 'PUT') {
         const body = await request.postDataJSON();
         await route.fulfill({
           status: 200,
-          contentType: "application/json",
+          contentType: 'application/json',
           body: JSON.stringify({
             control_id: 100,
-            name: body.name || "New Control",
+            name: body.name || 'New Control',
           }),
         });
         return;
@@ -533,35 +560,48 @@ export const mockRoutes = {
 
   /** Mock GET and PUT /api/v1/controls/:id/data */
   controlGetData: async (page: Page) => {
-    await page.route("**/api/v1/controls/*/data", async (route, request) => {
+    await page.route('**/api/v1/controls/*/data', async (route, request) => {
       const method = request.method();
-      if (method === "GET") {
+      if (method === 'GET') {
         // Extract control ID from URL
         const url = request.url();
         const match = url.match(/\/controls\/(\d+)\/data/);
         const controlId = match ? parseInt(match[1], 10) : 1;
-        
+
         // Find matching control from mock data
-        const control = controlsList.find(c => c.id === controlId) ?? controlsList[0];
-        
+        const control =
+          controlsList.find((c) => c.id === controlId) ?? controlsList[0];
+
         await route.fulfill({
           status: 200,
-          contentType: "application/json",
+          contentType: 'application/json',
           body: JSON.stringify({
             data: control.control,
           }),
         });
         return;
       }
-      if (method === "PUT") {
+      if (method === 'PUT') {
         await route.fulfill({
           status: 200,
-          contentType: "application/json",
+          contentType: 'application/json',
           body: JSON.stringify({ success: true }),
         });
         return;
       }
       await route.continue();
+    });
+  },
+
+  /** Mock POST /api/v1/controls/validate */
+  controlValidate: async (
+    page: Page,
+    options: MockResponseOptions<{ success: boolean }> = {
+      data: { success: true },
+    }
+  ) => {
+    await page.route('**/api/v1/controls/validate', async (route) => {
+      await fulfillRoute(route, options, { success: true });
     });
   },
 
@@ -575,7 +615,7 @@ export const mockRoutes = {
     page: Page,
     options: MockResponseOptions<StatsResponse> = { data: mockData.stats }
   ) => {
-    await page.route("**/api/v1/observability/stats**", async (route) => {
+    await page.route('**/api/v1/observability/stats**', async (route) => {
       await fulfillRoute(route, options, mockData.stats);
     });
   },
@@ -590,6 +630,7 @@ export async function mockApiRoutes(page: Page) {
   await mockRoutes.evaluators(page);
   await mockRoutes.controlsList(page);
   await mockRoutes.controlGetData(page);
+  await mockRoutes.controlValidate(page);
   await mockRoutes.controlCreate(page);
   await mockRoutes.controlUpdate(page);
   await mockRoutes.stats(page);
@@ -607,4 +648,4 @@ export const test = base.extend<{ mockedPage: Page }>({
   /* eslint-enable react-hooks/rules-of-hooks */
 });
 
-export { expect } from "@playwright/test";
+export { expect } from '@playwright/test';

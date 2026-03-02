@@ -1,5 +1,5 @@
 """Server configuration settings."""
-
+import os
 from functools import cached_property
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -86,8 +86,11 @@ class AgentControlServerDatabaseConfig(BaseSettings):
 
     def get_url(self) -> str:
         """Get database URL, preferring explicit url if set."""
-        if self.url:
-            return self.url
+
+        # Check for DATABASE_URL first (Docker standard), then DB_URL
+        database_url = os.getenv('DATABASE_URL') or self.url
+        if database_url:
+            return database_url
         return (
             f"postgresql+{self.driver}://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
         )
@@ -95,8 +98,6 @@ class AgentControlServerDatabaseConfig(BaseSettings):
 
 class Settings(BaseSettings):
     """Server configuration settings."""
-    # TODO: Clean this up since we may want to connect to pg, etc., so
-    # database_url may have to go
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -145,17 +146,8 @@ class ObservabilitySettings(BaseSettings):
     # Enable/disable observability features
     enabled: bool = True
 
-    # Raw event storage (7-day retention)
-    store_raw: bool = True
-
     # Stdout logging of events
     stdout: bool = False
-
-    # SSE resync interval in seconds
-    resync_interval: int = 15
-
-    # Event queue settings
-    queue_maxsize: int = 10000
 
 
 auth_settings = AuthSettings()

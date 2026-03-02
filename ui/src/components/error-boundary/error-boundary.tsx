@@ -1,21 +1,21 @@
-import { Alert, Button, Stack, Text, Title } from "@mantine/core";
-import { IconAlertTriangle } from "@tabler/icons-react";
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Alert, Button, Stack, Text, Title } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 
-export interface ErrorBoundaryProps {
+export type ErrorBoundaryProps = {
   children: ReactNode;
   /** Fallback UI to show on error. If not provided, uses default error UI */
   fallback?: ReactNode;
   /** Custom error handler */
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
   /** Variant affects styling: 'page' for full-page, 'content' for inline, 'modal' for modals */
-  variant?: "page" | "content" | "modal";
-}
+  variant?: 'page' | 'content' | 'modal';
+};
 
-interface ErrorBoundaryState {
+type ErrorBoundaryState = {
   hasError: boolean;
   error: Error | null;
-}
+};
 
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,
@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     // Log error to console (can be extended to send to monitoring service)
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
     this.props.onError?.(error, errorInfo);
   }
 
@@ -52,13 +52,13 @@ export class ErrorBoundary extends Component<
       }
 
       // Default fallback based on variant
-      const { variant = "content" } = this.props;
+      const { variant = 'content' } = this.props;
 
-      if (variant === "page") {
+      if (variant === 'page') {
         return <FullPageError onRefresh={this.handleRefresh} />;
       }
 
-      if (variant === "modal") {
+      if (variant === 'modal') {
         return <ModalError onRetry={this.handleReset} />;
       }
 
@@ -80,7 +80,7 @@ function FullPageError({ onRefresh }: { onRefresh: () => void }) {
       gap="lg"
       p="xl"
       bg="var(--mantine-color-body)"
-      style={{ textAlign: "center" }}
+      style={{ textAlign: 'center' }}
     >
       <IconAlertTriangle size={64} color="var(--mantine-color-red-6)" />
       <Title order={2}>Something went wrong</Title>
@@ -97,7 +97,7 @@ function FullPageError({ onRefresh }: { onRefresh: () => void }) {
 // Content area error - used inside layout, keeps nav visible
 function ContentError({ onRetry }: { onRetry: () => void }) {
   return (
-    <Stack align="center" justify="center" h="100vh" p="xl" >
+    <Stack align="center" justify="center" h="100vh" p="xl">
       <Alert
         icon={<IconAlertTriangle size={20} />}
         title="Something went wrong"
@@ -134,4 +134,3 @@ function ModalError({ onRetry }: { onRetry: () => void }) {
     </Stack>
   );
 }
-

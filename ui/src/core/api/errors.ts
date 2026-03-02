@@ -2,15 +2,18 @@
  * API error utilities for handling RFC 7807 ProblemDetail responses
  */
 
-import type { ProblemDetail } from "./types";
+import type { ProblemDetail } from './types';
 
 /**
  * Custom error class that includes the ProblemDetail response
  */
 export class ApiError extends Error {
-  constructor(message: string, public problemDetail: ProblemDetail) {
+  constructor(
+    message: string,
+    public problemDetail: ProblemDetail
+  ) {
     super(message);
-    this.name = "ApiError";
+    this.name = 'ApiError';
   }
 }
 
@@ -22,12 +25,12 @@ export function createFallbackProblemDetail(
   status = 500
 ): ProblemDetail {
   return {
-    type: "about:blank",
-    title: "Error",
+    type: 'about:blank',
+    title: 'Error',
     status,
     detail: message,
-    error_code: "UNKNOWN_ERROR",
-    reason: "Unknown",
+    error_code: 'UNKNOWN_ERROR',
+    reason: 'Unknown',
   };
 }
 

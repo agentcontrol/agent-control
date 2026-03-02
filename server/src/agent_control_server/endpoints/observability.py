@@ -15,20 +15,27 @@ Dependencies are stored on app.state during server lifespan (see main.py):
 import logging
 import time
 from typing import Literal, cast
-from uuid import UUID
 
 from agent_control_models import (
     BatchEventsRequest,
     BatchEventsResponse,
+    ControlStatsResponse,
     EventQueryRequest,
     EventQueryResponse,
     StatsResponse,
+    StatsTotals,
 )
 from fastapi import APIRouter, Depends, Request
 
 from ..auth import require_api_key
 from ..observability.ingest.base import EventIngestor
-from ..observability.store.base import EventStore, parse_time_range
+from ..observability.store.base import (
+    EventStore,
+    TimeRange,
+    get_bucket_size,
+    parse_time_range,
+)
+from ..services.agent_names import normalize_agent_name_or_422
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +133,7 @@ async def query_events(
     - trace_id: Get all events for a request
     - span_id: Get all events for a function call
     - control_execution_id: Get a specific event
-    - agent_uuid: Filter by agent
+    - agent_name: Filter by agent
     - control_ids: Filter by controls
     - actions: Filter by actions (allow, deny, warn, log)
     - matched: Filter by matched status
@@ -153,38 +160,104 @@ async def query_events(
 
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats(
-    agent_uuid: UUID,
-    time_range: Literal["1m", "5m", "15m", "1h", "24h", "7d"] = "5m",
-    control_id: int | None = None,
+    agent_name: str,
+    time_range: TimeRange = "5m",
+    include_timeseries: bool = False,
     store: EventStore = Depends(get_event_store),
 ) -> StatsResponse:
     """
-    Get aggregated control execution statistics.
+    Get agent-level aggregated statistics.
 
-    Statistics are computed at query time from raw events. This is fast
-    enough for most use cases (sub-200ms for 1-hour windows).
+    Returns totals across all controls plus per-control breakdown.
+    Use /stats/controls/{control_id} for single control stats.
 
     Args:
-        agent_uuid: Agent to get stats for
-        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d)
-        control_id: Optional filter by specific control
+        agent_name: Agent to get stats for
+        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
+        include_timeseries: Include time-series data points for trend visualization
         store: Event store (injected)
 
     Returns:
-        StatsResponse with per-control statistics
+        StatsResponse with agent-level totals and per-control breakdown
     """
+    agent_name = normalize_agent_name_or_422(agent_name)
     interval = parse_time_range(time_range)
-    result = await store.query_stats(agent_uuid, interval, control_id)
+    bucket_size = get_bucket_size(time_range) if include_timeseries else None
+
+    result = await store.query_stats(
+        agent_name,
+        interval,
+        control_id=None,
+        include_timeseries=include_timeseries,
+        bucket_size=bucket_size,
+    )
 
     return StatsResponse(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         time_range=time_range,
-        stats=result.stats,
-        total_executions=result.total_executions,
-        total_matches=result.total_matches,
-        total_non_matches=result.total_non_matches,
-        total_errors=result.total_errors,
-        action_counts=result.action_counts,
+        totals=StatsTotals(
+            execution_count=result.total_executions,
+            match_count=result.total_matches,
+            non_match_count=result.total_non_matches,
+            error_count=result.total_errors,
+            action_counts=result.action_counts,
+            timeseries=result.timeseries,
+        ),
+        controls=result.stats,
+    )
+
+
+@router.get("/stats/controls/{control_id}", response_model=ControlStatsResponse)
+async def get_control_stats(
+    control_id: int,
+    agent_name: str,
+    time_range: TimeRange = "5m",
+    include_timeseries: bool = False,
+    store: EventStore = Depends(get_event_store),
+) -> ControlStatsResponse:
+    """
+    Get statistics for a single control.
+
+    Returns stats for the specified control with optional time-series.
+
+    Args:
+        control_id: Control ID to get stats for
+        agent_name: Agent to get stats for
+        time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
+        include_timeseries: Include time-series data points for trend visualization
+        store: Event store (injected)
+
+    Returns:
+        ControlStatsResponse with control stats and optional timeseries
+    """
+    agent_name = normalize_agent_name_or_422(agent_name)
+    interval = parse_time_range(time_range)
+    bucket_size = get_bucket_size(time_range) if include_timeseries else None
+
+    result = await store.query_stats(
+        agent_name,
+        interval,
+        control_id=control_id,
+        include_timeseries=include_timeseries,
+        bucket_size=bucket_size,
+    )
+
+    # Get control name from the stats (should be exactly one)
+    control_name = result.stats[0].control_name if result.stats else f"control-{control_id}"
+
+    return ControlStatsResponse(
+        agent_name=agent_name,
+        time_range=time_range,
+        control_id=control_id,
+        control_name=control_name,
+        stats=StatsTotals(
+            execution_count=result.total_executions,
+            match_count=result.total_matches,
+            non_match_count=result.total_non_matches,
+            error_count=result.total_errors,
+            action_counts=result.action_counts,
+            timeseries=result.timeseries,
+        ),
     )
 
 

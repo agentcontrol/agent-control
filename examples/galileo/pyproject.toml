@@ -5,7 +5,7 @@ description = "Agent Control Luna-2 Galileo Protect Integration Example"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "agent-control-evaluators[luna2]",
+    "agent-control-evaluators[galileo]",
     "httpx>=0.24.0",
 ]
 

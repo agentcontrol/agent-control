@@ -8,7 +8,7 @@ This document provides comprehensive technical reference for Agent Control. Each
 
 - [Introduction](#introduction)
 - [Concepts](#concepts)
-- [Architecture](#architecture)
+- [Architecture](#agent-control-architecture)
 - [Evaluators](#evaluators)
 - [SDK Reference](#sdk-reference)
 - [Server API](#server-api)
@@ -45,7 +45,7 @@ Understanding these core concepts will help you get the most out of Agent Contro
 A **Control** is a single rule that defines what to check and what to do when a condition is met.
 
 ```
-Control = Selector + Evaluator + Action
+Control = Scope + Selector + Evaluator + Action
 ```
 
 Example: *"If the output contains an SSN pattern, block the response."*
@@ -118,11 +118,15 @@ An **Action** defines what to do when a control matches:
 | Action | Behavior |
 |--------|----------|
 | `deny` | Block the request/response, raise `ControlViolationError` |
+| `steer` | Raise `ControlSteerError` with steering context for correction and retry |
 | `allow` | Permit execution (no effect if a `deny` control also matches) |
 | `warn` | Log a warning but allow execution |
 | `log` | Silent logging for monitoring only |
 
-> **Note**: Agent Control uses "deny wins" semantics. If any enabled control with `deny` action matches, the request is blocked regardless of other control results.
+> **Note**: Agent Control uses priority-based semantics:
+> 1. **deny wins** - If any `deny` control matches, execution is blocked
+> 2. **steer second** - If any `steer` control matches (and no deny), a `ControlSteerError` is raised with correction steering context
+> 3. **allow/warn/log** - Observability actions that don't block execution
 
 ### Step Types
 
@@ -135,62 +139,143 @@ Controls can scope to different step types:
 
 ---
 
-## Architecture
+## Agent Control Architecture
 
-Agent Control is built as a monorepo with these components:
+```mermaid
+graph TB
+    subgraph "User Application Layer"
+        APP[Your AI Agent Application]
+        SDK[Agent Control SDK<br/>@control decorator]
+        APP --> SDK
+    end
 
+    subgraph "Agent Control Platform"
+        subgraph "Server Layer"
+            API[REST API Server<br/>FastAPI]
+            AUTH[Authentication<br/>API Keys]
+            API --> AUTH
+        end
+
+        subgraph "Processing Layer"
+            ENGINE[Control Engine<br/>Evaluation Logic]
+            REGISTRY[Evaluator Registry<br/>Evaluator Discovery]
+            ENGINE --> REGISTRY
+        end
+
+        subgraph "Evaluator Ecosystem"
+            BUILTIN[Built-in Evaluators<br/>Regex, List, JSON, SQL]
+            LUNA[Luna-2 Evaluator<br/>AI-powered Detection]
+            CUSTOM[Custom Evaluators<br/>User Extensions]
+        end
+
+        subgraph "Data Layer"
+            DB[(PostgreSQL<br/>Controls & Observability)]
+            MODELS[Shared Models<br/>Pydantic v2]
+        end
+
+        subgraph "Management Layer"
+            UI[Web Dashboard<br/>Next.js + React]
+            UIAPI[Dashboard API Client]
+            UI --> UIAPI
+        end
+    end
+
+    %% SDK to Server connections
+    SDK -->|HTTP/REST| API
+
+    %% Server to Engine connections
+    API --> ENGINE
+    API --> DB
+
+    %% Engine to Evaluators connections
+    REGISTRY --> BUILTIN
+    REGISTRY --> LUNA
+    REGISTRY --> CUSTOM
+
+    %% Engine to Models
+    ENGINE --> MODELS
+    API --> MODELS
+
+    %% Dashboard connections
+    UIAPI -->|HTTP/REST| API
+
+    %% Database connections
+    ENGINE --> DB
+
+    %% External services
+    LUNA -.->|API Calls| GALILEO[Galileo Luna-2 API]
+    CUSTOM -.->|Optional| EXTERNAL[External APIs<br/>DeepEval, etc.]
+
+    classDef userLayer fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef serverLayer fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef engineLayer fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef evaluatorLayer fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef dataLayer fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef uiLayer fill:#e0f2f1,stroke:#004d40,stroke-width:2px
+
+    class APP,SDK userLayer
+    class API,AUTH serverLayer
+    class ENGINE,REGISTRY engineLayer
+    class BUILTIN,LUNA,CUSTOM evaluatorLayer
+    class DB,MODELS dataLayer
+    class UI,UIAPI uiLayer
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Your Application                         │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │                     @control() decorator                   │  │
-│  │                            │                               │  │
-│  │                            ▼                               │  │
-│  │  ┌──────────┐    ┌─────────────────┐    ┌──────────────┐   │  │
-│  │  │  Input   │───▶│  Agent Control  │───▶│    Output    │   │  │
-│  │  │          │    │     Engine      │    │              │   │  │
-│  │  └──────────┘    └─────────────────┘    └──────────────┘   │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                      Agent Control Server                        │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
-│  │    API     │  │    API     │  │  Registry  │  │    API     │  │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                       Evaluator Ecosystem                        │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │   Regex    │  │    List    │  │   Luna-2   │  │   Custom   │  │
-│  │ Evaluator  │  │ Evaluator  │  │ Evaluator  │  │ Evaluators │  │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-```
 
-### Components
+## Component Overview
 
-| Component | Package | Description |
-|-----------|---------|-------------|
-| SDK | `agent-control` | Python client library with `@control()` decorator |
-| Server | `agent-control-server` | FastAPI service that stores and evaluates controls |
-| Engine | `agent-control-engine` | Core evaluation logic (can run locally or server-side) |
-| Evaluators | `agent-control-evaluators` | Extensible evaluators for different detection methods |
-| Models | `agent-control-models` | Shared Pydantic models for type-safe communication |
-| UI | `ui/` | Next.js web dashboard for control management |
+### User Application Layer
+- **Your AI Agent Application**: Any Python application using AI agents (LangChain, CrewAI, custom, etc.)
+- **Agent Control SDK**: Python package with `@control()` decorator for protecting functions
 
-### Data Flow
+### Server Layer
+- **REST API Server**: FastAPI-based server exposing control management endpoints
+- **Authentication**: Optional API key authentication for production deployments
 
-1. Agent initializes with `agent_control.init()`, registering with the server
-2. Server returns the agent's assigned policy and controls
-3. When a decorated function is called, the SDK evaluates `pre` controls
-4. If all `pre` controls pass, the function executes
-5. After execution, `post` controls evaluate the output
-6. If any control with `deny` action matches, `ControlViolationError` is raised
+### Processing Layer
+- **Control Engine**: Core evaluation engine that processes control rules and evaluates data
+- **Evaluator Registry**: Evaluator system for discovering and loading evaluators via entry points
+
+### Evaluator Ecosystem
+- **Built-in Evaluators**: Out-of-the-box evaluators (regex, list matching, JSON validation, SQL injection detection)
+- **Luna-2 Evaluator**: AI-powered detection using Galileo's Luna-2 API
+- **Custom Evaluators**: User-defined evaluators extending the base `Evaluator` class
+
+### Data Layer
+- **PostgreSQL**: Persistent storage for controls, agents, and observability data
+- **Shared Models**: Pydantic v2 models shared across all components
+
+### Management Layer
+- **Web Dashboard**: Next.js + React UI for managing agents and controls
+- **Dashboard API Client**: Type-safe API client for frontend-backend communication
+
+## Data Flow
+
+### Agent Initialization
+1. **Agent Registration**: Agent initializes with `agent_control.init()`, registering with the server
+2. **Policy Assignment**: Server returns the agent's assigned policy and active controls
+
+### Control Execution Flow
+1. **Function Invocation**: User calls a function decorated with `@control()`
+2. **Pre-Stage Evaluation**: SDK evaluates `pre` controls before function execution
+3. **Function Execution**: If all `pre` controls pass, the protected function executes
+4. **Post-Stage Evaluation**: SDK evaluates `post` controls on the output
+5. **Server Processing**: Server receives evaluation request and fetches active controls
+6. **Engine Evaluation**: Engine runs applicable evaluators based on control configuration
+7. **Decision Enforcement**: If any control with `deny` action matches, `ControlViolationError` is raised; otherwise execution continues
+
+### Control Management Flow
+1. **User Configures**: Admin uses Web Dashboard or API to create/modify controls
+2. **Server Stores**: Server validates and stores control configuration in database
+3. **Runtime Updates**: Changes take effect immediately for new requests (no deployment needed)
+4. **Observability**: All control executions are logged for monitoring and analysis
+
+## Key Features
+
+- **Runtime Configuration**: Update controls without redeploying applications
+- **Extensible**: Evaluator architecture for custom evaluators
+- **Fail-Safe**: Configurable error handling (fail open/closed)
+- **Observable**: Full audit trail of control executions
+- **Production-Ready**: API authentication, PostgreSQL, horizontal scaling support
 
 ---
 
@@ -304,12 +389,16 @@ Flexible value matching with multiple modes and logic options.
 
 AI-powered detection using Galileo's Luna-2 small language models. Provides real-time, low-latency evaluation for complex patterns that can't be caught with regex or lists.
 
-**Evaluator name**: `galileo-luna2`
+**Evaluator name**: `galileo.luna2`
 
-**Installation**: Luna-2 requires an optional dependency:
+**Installation**: Luna-2 is available as a separate package:
 
 ```bash
-pip install agent-control-evaluators[luna2]
+# Direct install
+pip install agent-control-evaluator-galileo
+
+# Or via convenience extra
+pip install agent-control-evaluators[galileo]
 ```
 
 **Requirements**: Set `GALILEO_API_KEY` environment variable where evaluations run (on the server for server-side controls, or in the client environment for local controls).
@@ -348,7 +437,7 @@ pip install agent-control-evaluators[luna2]
 ```json
 // Block toxic inputs (score > 0.5)
 {
-  "name": "galileo-luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "input_toxicity",
     "operator": "gt",
@@ -359,7 +448,7 @@ pip install agent-control-evaluators[luna2]
 
 // Block prompt injection attempts
 {
-  "name": "galileo-luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "prompt_injection",
     "operator": "gt",
@@ -370,7 +459,7 @@ pip install agent-control-evaluators[luna2]
 
 // Flag potential hallucinations (warn but allow)
 {
-  "name": "galileo-luna2",
+  "name": "galileo.luna2",
   "config": {
     "metric": "hallucination",
     "operator": "gt",
@@ -380,7 +469,7 @@ pip install agent-control-evaluators[luna2]
 
 // Using central stage (pre-defined in Galileo)
 {
-  "name": "galileo-luna2",
+  "name": "galileo.luna2",
   "config": {
     "stage_type": "central",
     "stage_name": "production-safety",
@@ -401,27 +490,28 @@ You can create custom evaluators to extend Agent Control with your own detection
 
 ```python
 from typing import Any
-from pydantic import BaseModel
-from agent_control_models import (
-    EvaluatorResult,
+
+from agent_control_models import EvaluatorResult
+from agent_control_evaluators import (
     Evaluator,
+    EvaluatorConfig,
     EvaluatorMetadata,
     register_evaluator,
 )
 
 
-class MyEvaluatorConfig(BaseModel):
+class MyEvaluatorConfig(EvaluatorConfig):
     """Configuration schema for your evaluator."""
     threshold: float = 0.5
     custom_option: str = "default"
 
 
 @register_evaluator
-class MyCustomEvaluator(Evaluator[MyEvaluatorConfig]):
+class MyEvaluator(Evaluator[MyEvaluatorConfig]):
     """Your custom evaluator."""
 
     metadata = EvaluatorMetadata(
-        name="my-custom-evaluator",
+        name="my-evaluator",
         version="1.0.0",
         description="Detects custom patterns using proprietary logic",
         requires_api_key=True,
@@ -458,14 +548,14 @@ class MyCustomEvaluator(Evaluator[MyEvaluatorConfig]):
 
 ```toml
 [project.entry-points."agent_control.evaluators"]
-my-evaluator = "my_package.evaluator:MyCustomEvaluator"
+my-evaluator = "my_package.evaluator:MyEvaluator"
 ```
 
 **Optional Dependencies**: Override `is_available()` if your evaluator has optional dependencies:
 
 ```python
 @register_evaluator
-class MyEvaluator(Evaluator[MyConfig]):
+class MyEvaluator(Evaluator[MyEvaluatorConfig]):
     @classmethod
     def is_available(cls) -> bool:
         try:
@@ -501,7 +591,7 @@ import agent_control
 
 agent_control.init(
     agent_name="my-agent",           # Required: human-readable name
-    agent_id="my-agent-v1",          # Required: unique identifier
+    agent_name="550e8400-e29b-41d4-a716-446655440000",  # Required: UUID
     server_url="http://localhost:8000",  # Optional: defaults to env var
     steps=[                          # Optional: register available steps
         {
@@ -536,6 +626,29 @@ async def chat(message: str) -> str:
 
 **Works with both sync and async functions**.
 
+**Parameters**:
+
+- `policy` (str, optional): Policy name for documentation purposes. The agent's assigned policy is automatically used.
+- `step_name` (str, optional): Custom name for this step. If not provided, uses the function name. Useful for:
+  - Overriding auto-detected names when they don't match your control configuration
+  - Applying the same controls to functions with different names
+
+**Custom Step Name Example**:
+
+```python
+# Use custom step name for control matching
+@control(step_name="user_input_handler")
+async def handle_customer_query(text: str) -> str:
+    return await process(text)
+
+@control(step_name="user_input_handler")
+async def handle_support_request(request: str) -> str:
+    return await process(request)
+
+# Both functions are evaluated using the same "user_input_handler" step name,
+# allowing you to apply the same controls to both without duplicating configuration
+```
+
 ### Error Handling
 
 ```python
@@ -559,6 +672,36 @@ except ControlViolationError as e:
 |-----------|------|-------------|
 | `control_name` | str | Which control triggered |
 | `message` | str | Why it was blocked |
+| `metadata` | dict | Additional context |
+
+#### ControlSteerError
+
+Raised when a control with `action="steer"` matches. Provides steering context for correction and allows retry:
+
+```python
+from agent_control import control, ControlSteerError
+
+@control()
+async def process_transfer(amount: float, verified_2fa: bool = False) -> dict:
+    return {"status": "completed"}
+
+try:
+    result = await process_transfer(amount=15000, verified_2fa=False)
+except ControlSteerError as e:
+    print(f"Steering context: {e.steering_context}")
+    # Follow steering context: request 2FA from user
+    code = get_2fa_code_from_user()
+    # Retry with corrected parameters
+    result = await process_transfer(amount=15000, verified_2fa=True)
+```
+
+**ControlSteerError attributes**:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `control_name` | str | Which control triggered |
+| `message` | str | Why steering is required |
+| `steering_context` | str | Corrective action instructions |
 | `metadata` | dict | Additional context |
 
 ### Direct Client Usage
@@ -661,12 +804,12 @@ Default: `http://localhost:8000/api/v1`
 |--------|----------|-------------|
 | `GET` | `/agents` | List all agents |
 | `POST` | `/agents/initAgent` | Register a new agent |
-| `GET` | `/agents/{agent_id}` | Get agent details |
-| `PATCH` | `/agents/{agent_id}` | Update agent |
-| `GET` | `/agents/{agent_id}/controls` | List controls for agent |
-| `GET` | `/agents/{agent_id}/policy` | Get agent's policy |
-| `POST` | `/agents/{agent_id}/policy/{policy_id}` | Assign policy |
-| `DELETE` | `/agents/{agent_id}/policy` | Remove policy |
+| `GET` | `/agents/{agent_name}` | Get agent details |
+| `PATCH` | `/agents/{agent_name}` | Update agent |
+| `GET` | `/agents/{agent_name}/controls` | List controls for agent |
+| `GET` | `/agents/{agent_name}/policy` | Get agent's policy |
+| `POST` | `/agents/{agent_name}/policy/{policy_id}` | Assign policy |
+| `DELETE` | `/agents/{agent_name}/policy` | Remove policy |
 
 **Controls**:
 
@@ -781,7 +924,7 @@ Agent Control supports multiple API keys for zero-downtime rotation:
 | `DB_PASSWORD` | `agent_control` | Database password |
 | `DB_DATABASE` | `agent_control` | Database name |
 | `DB_DRIVER` | `psycopg` | Database driver |
-| `DB_URL` | — | Full database URL (overrides above) |
+| `DATABASE_URL` or `DB_URL` | — | Full database URL (overrides above). `DATABASE_URL` is preferred for Docker environments. |
 
 **Authentication**:
 
@@ -879,12 +1022,12 @@ make alembic-upgrade
 
 ### Luna-2 Evaluator Errors
 
-1. Ensure `httpx` is installed: `pip install agent-control-evaluators[luna2]`
+1. Ensure the Galileo package is installed: `pip install agent-control-evaluator-galileo` (or `pip install agent-control-evaluators[galileo]`)
 2. Ensure `GALILEO_API_KEY` is set
 3. Check network connectivity to Galileo API
 4. Verify the metric name is valid
 5. Check `on_error` setting if failures are silently allowed
 
-**Evaluator Not Found**: If `galileo-luna2` doesn't appear in `list_evaluators()`:
-- Verify `httpx` is installed (Luna-2's `is_available()` returns `False` without it)
+**Evaluator Not Found**: If `galileo.luna2` doesn't appear in `list_evaluators()`:
+- Verify the Galileo package is installed
 - Check server logs for evaluator discovery messages

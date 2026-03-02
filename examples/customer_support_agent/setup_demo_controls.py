@@ -13,12 +13,10 @@ Run this after starting the server to have a working demo out of the box.
 
 import asyncio
 import os
-import uuid
-
 from agent_control import Agent, AgentControlClient, agents, controls, policies
 
 # Same agent ID as in support_agent.py
-AGENT_ID = "customer-support-agent"
+AGENT_ID = "646d5dea-c2e6-4453-b446-7035482b38e4"
 AGENT_NAME = "Customer Support Agent"
 AGENT_DESCRIPTION = "AI-powered customer support assistant"
 
@@ -228,8 +226,8 @@ DEMO_CONTROLS = [
 
 async def setup_demo(quiet: bool = False):
     """Set up the demo agent with controls."""
-    # Generate the same UUID5 that the SDK generates
-    agent_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
+    # Use the provided agent identifier (must match support_agent.py)
+    agent_name = AGENT_ID
 
     async with AgentControlClient(base_url=SERVER_URL, timeout=30.0) as client:
         # Check server health
@@ -244,8 +242,7 @@ async def setup_demo(quiet: bool = False):
         # Register the agent
         try:
             agent = Agent(
-                agent_id=agent_uuid,
-                agent_name=AGENT_NAME,
+                agent_name=agent_name,
                 agent_description=AGENT_DESCRIPTION,
             )
             result = await agents.register_agent(client, agent, steps=[])
@@ -261,7 +258,7 @@ async def setup_demo(quiet: bool = False):
 
         # Check if agent already has a policy
         try:
-            policy_info = await agents.get_agent_policy(client, agent_uuid)
+            policy_info = await agents.get_agent_policy(client, agent_name)
             policy_id = policy_info.get("policy_id")
         except Exception:
             policy_id = None  # No policy yet
@@ -284,7 +281,7 @@ async def setup_demo(quiet: bool = False):
                     return False
 
             try:
-                await policies.assign_policy_to_agent(client, agent_uuid, policy_id)
+                await policies.assign_policy_to_agent(client, agent_name, policy_id)
             except Exception as e:
                 print(f"  Error assigning policy: {e}")
                 return False

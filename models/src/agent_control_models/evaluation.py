@@ -1,10 +1,9 @@
 """Evaluation-related models."""
 from typing import Literal
-from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
-from .agent import Step
+from .agent import AGENT_NAME_MIN_LENGTH, AGENT_NAME_PATTERN, Step, normalize_agent_name
 from .base import BaseModel
 from .controls import ControlMatch
 
@@ -17,12 +16,15 @@ class EvaluationRequest(BaseModel):
     policy compliance, and control rules.
 
     Attributes:
-        agent_uuid: UUID of the agent making the request
+        agent_name: Unique identifier of the agent making the request
         step: Step payload for evaluation
         stage: 'pre' (before execution) or 'post' (after execution)
     """
-    agent_uuid: UUID = Field(
-        ..., description="UUID of the agent making the evaluation request"
+    agent_name: str = Field(
+        ...,
+        min_length=AGENT_NAME_MIN_LENGTH,
+        pattern=AGENT_NAME_PATTERN,
+        description="Identifier of the agent making the evaluation request",
     )
     step: Step = Field(
         ..., description="Agent step payload to evaluate"
@@ -35,7 +37,7 @@ class EvaluationRequest(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+                    "agent_name": "customer-service-bot",
                     "step": {
                         "type": "llm",
                         "name": "support-answer",
@@ -45,7 +47,7 @@ class EvaluationRequest(BaseModel):
                     "stage": "pre"
                 },
                 {
-                    "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+                    "agent_name": "customer-service-bot",
                     "step": {
                         "type": "llm",
                         "name": "support-answer",
@@ -56,7 +58,7 @@ class EvaluationRequest(BaseModel):
                     "stage": "post"
                 },
                 {
-                    "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+                    "agent_name": "customer-service-bot",
                     "step": {
                         "type": "tool",
                         "name": "search_database",
@@ -66,7 +68,7 @@ class EvaluationRequest(BaseModel):
                     "stage": "pre"
                 },
                 {
-                    "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+                    "agent_name": "customer-service-bot",
                     "step": {
                         "type": "tool",
                         "name": "search_database",
@@ -79,6 +81,11 @@ class EvaluationRequest(BaseModel):
             ]
         }
     }
+
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def validate_and_normalize_agent_name(cls, value: str) -> str:
+        return normalize_agent_name(str(value))
 
 
 class EvaluationResponse(BaseModel):

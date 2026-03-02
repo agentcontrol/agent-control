@@ -1,6 +1,6 @@
 /**
  * Form values for the regex evaluator.
  */
-export interface RegexFormValues {
+export type RegexFormValues = {
   pattern: string;
-}
+};

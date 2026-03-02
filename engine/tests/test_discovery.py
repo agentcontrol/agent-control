@@ -5,16 +5,20 @@ from unittest.mock import MagicMock, patch
 
 from pydantic import BaseModel
 
-from agent_control_engine import discover_evaluators, ensure_evaluators_discovered, list_evaluators
-from agent_control_engine.discovery import reset_evaluator_discovery
-from agent_control_models import (
+from agent_control_engine import (
+    discover_evaluators,
+    ensure_evaluators_discovered,
+    list_evaluators,
+    reset_evaluator_discovery,
+)
+from agent_control_evaluators import (
     Evaluator,
     EvaluatorMetadata,
-    EvaluatorResult,
     clear_evaluators,
     get_evaluator,
     register_evaluator,
 )
+from agent_control_models import EvaluatorResult
 
 
 class TestDiscoverEvaluators:
@@ -28,7 +32,7 @@ class TestDiscoverEvaluators:
         assert "regex" in evaluators
         assert "list" in evaluators
 
-    @patch("agent_control_engine.discovery.entry_points")
+    @patch("agent_control_evaluators._discovery.entry_points")
     def test_discover_evaluators_loads_entry_points(
         self, mock_entry_points: MagicMock
     ) -> None:
@@ -62,7 +66,7 @@ class TestDiscoverEvaluators:
         # Count only includes entry-point registrations (not built-ins loaded via import)
         assert count >= 1
 
-    @patch("agent_control_engine.discovery.entry_points")
+    @patch("agent_control_evaluators._discovery.entry_points")
     def test_discover_evaluators_handles_load_error(
         self, mock_entry_points: MagicMock
     ) -> None:
@@ -97,7 +101,7 @@ class TestDiscoverEvaluators:
         assert "regex" in evaluators
         assert "list" in evaluators
 
-    def test_reset_discovery_allows_rediscovery(self) -> None:
+    def test_reset_evaluator_discovery_allows_rediscovery(self) -> None:
         """Test that reset_evaluator_discovery allows discovery to run again."""
         discover_evaluators()
         evaluators1 = list_evaluators()
@@ -112,7 +116,7 @@ class TestDiscoverEvaluators:
         assert "regex" in evaluators2
         assert "list" in evaluators2
 
-    @patch("agent_control_engine.discovery.entry_points")
+    @patch("agent_control_evaluators._discovery.entry_points")
     def test_discover_evaluators_skips_unavailable(
         self, mock_entry_points: MagicMock
     ) -> None:
@@ -148,7 +152,7 @@ class TestDiscoverEvaluators:
         assert "unavailable-evaluator" not in evaluators
         assert count == 0
 
-    @patch("agent_control_engine.discovery.entry_points")
+    @patch("agent_control_evaluators._discovery.entry_points")
     def test_discover_evaluators_registers_available(
         self, mock_entry_points: MagicMock
     ) -> None:

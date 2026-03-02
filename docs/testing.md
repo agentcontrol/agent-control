@@ -91,7 +91,7 @@ async def test_sdk_denies_on_local_control() -> None:
     # When: evaluating via the SDK public API
     result = await check_evaluation_with_local(
         client=client,
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", name="db_query", input={"sql": "SELECT 1"}, output=None),
         stage="pre",
         controls=controls,

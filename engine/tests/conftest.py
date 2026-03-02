@@ -2,9 +2,8 @@
 
 import pytest
 
-from agent_control_engine.discovery import reset_evaluator_discovery
-from agent_control_engine.evaluators import clear_evaluator_cache
-from agent_control_models import clear_evaluators
+from agent_control_engine import clear_evaluator_cache, reset_evaluator_discovery
+from agent_control_evaluators import clear_evaluators
 
 
 @pytest.fixture(autouse=True)

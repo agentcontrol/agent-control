@@ -11,17 +11,19 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from agent_control_engine import clear_evaluator_cache
 from agent_control_engine.core import ControlEngine, _compile_regex
-from agent_control_engine.evaluators import clear_evaluator_cache
+from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import (
+    ControlAction,
     ControlDefinition,
+    ControlScope,
+    ControlSelector,
     EvaluationRequest,
-    Evaluator,
-    EvaluatorConfig,
-    EvaluatorMetadata,
     EvaluatorResult,
+    EvaluatorSpec,
     Step,
-    register_evaluator,
+    SteeringContext,
 )
 from pydantic import BaseModel
 
@@ -181,6 +183,7 @@ def make_control(
     step_names: list[str] | None = None,
     step_name_regex: str | None = None,
     execution: str = "server",
+    steering_context: SteeringContext | None = None,
 ) -> MockControlWithIdentity:
     """Create a mock control for testing."""
     selector: dict[str, Any] = {}
@@ -208,11 +211,15 @@ def make_control(
             execution=execution,
             scope=scope,
             selector=selector or {"path": "*"},
-            evaluator=EvaluatorConfig(
+            evaluator=EvaluatorSpec(
                 name=evaluator,
                 config={"value": config_value},
             ),
-            action={"decision": action},
+            action=(
+                ControlAction(decision=action, steering_context=steering_context)
+                if steering_context
+                else ControlAction(decision=action)
+            ),
         ),
     )
 
@@ -238,7 +245,7 @@ class TestParallelExecution:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -270,7 +277,7 @@ class TestParallelExecution:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -305,7 +312,7 @@ class TestCancelOnDeny:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -340,7 +347,7 @@ class TestCancelOnDeny:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -366,7 +373,7 @@ class TestCancelOnDeny:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -392,7 +399,7 @@ class TestCancelOnDeny:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -426,7 +433,7 @@ class TestResultCollection:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -449,7 +456,7 @@ class TestResultCollection:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -537,7 +544,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -573,7 +580,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -611,7 +618,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -643,7 +650,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -680,7 +687,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -726,7 +733,7 @@ class TestErrorHandling:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -767,7 +774,7 @@ class TestConfidenceCalculation:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -801,7 +808,7 @@ class TestConfidenceCalculation:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -833,7 +840,7 @@ class TestConfidenceCalculation:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -862,7 +869,7 @@ class TestConfidenceCalculation:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -951,7 +958,7 @@ class TestSelectorStepScoping:
         ]
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="copy_file", input={}, output=None),
             stage="pre",
         )
@@ -988,7 +995,7 @@ class TestSelectorStepScoping:
         ]
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="db_query", input={}, output=None),
             stage="pre",
         )
@@ -1016,7 +1023,7 @@ class TestSelectorStepScoping:
         engine = ControlEngine(controls)
         # Matches by regex despite name mismatch
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="db_export", input={}, output=None),
             stage="pre",
         )
@@ -1041,7 +1048,7 @@ class TestSelectorStepScoping:
         ]
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="copy_file", input={}, output=None),
             stage="pre",
         )
@@ -1057,7 +1064,7 @@ class TestSelectorStepScoping:
                 execution="server",
                 scope={"step_types": ["tool"], "stages": ["pre"], "step_name_regex": "("},
                 selector={"path": "input"},
-                evaluator=EvaluatorConfig(name="test-allow", config={"value": "x"}),
+                evaluator=EvaluatorSpec(name="test-allow", config={"value": "x"}),
                 action={"decision": "log"},
             )
 
@@ -1094,7 +1101,7 @@ class TestTimeoutEnforcement:
                     execution="server",
                     scope={"step_types": ["llm"], "stages": ["pre"]},
                     selector={"path": "input"},
-                    evaluator=EvaluatorConfig(
+                    evaluator=EvaluatorSpec(
                         name="test-timeout",
                         config={"value": "t1", "timeout_ms": 100},
                     ),
@@ -1106,7 +1113,7 @@ class TestTimeoutEnforcement:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1152,7 +1159,7 @@ class TestTimeoutEnforcement:
                     execution="server",
                     scope={"step_types": ["llm"], "stages": ["pre"]},
                     selector={"path": "input"},
-                    evaluator=EvaluatorConfig(
+                    evaluator=EvaluatorSpec(
                         name="test-timeout",
                         config={"value": "slow", "timeout_ms": 100},
                     ),
@@ -1164,7 +1171,7 @@ class TestTimeoutEnforcement:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1249,7 +1256,7 @@ class TestConcurrencyLimit:
 
         # When: Processing
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1298,7 +1305,7 @@ def make_control_with_execution(
             execution=execution,
             scope=scope,
             selector={"path": path},
-            evaluator=EvaluatorConfig(
+            evaluator=EvaluatorSpec(
                 name=evaluator,
                 config={"value": config_value},
             ),
@@ -1329,7 +1336,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="server")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1359,7 +1366,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1389,7 +1396,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls)  # No context param
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1419,7 +1426,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1451,7 +1458,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="server")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1480,7 +1487,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
             stage="pre",
         )
@@ -1524,7 +1531,7 @@ class TestContextFiltering:
         engine = ControlEngine(controls, context="sdk")
 
         request = EvaluationRequest(
-            agent_uuid="00000000-0000-0000-0000-000000000001",
+            agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="tool", name="copy_file", input={}, output=None),
             stage="pre",
         )
@@ -1581,3 +1588,263 @@ class TestRegexCaching:
         info = _compile_regex.cache_info()
         assert info.hits == 0
         assert info.misses == 2
+
+# =============================================================================
+# Test: Steer Error Handling
+# =============================================================================
+
+
+class TestSteerErrorHandling:
+    """Tests for steer control error handling (lines 299, 340-344)."""
+
+    @pytest.mark.asyncio
+    async def test_steer_control_error_non_blocking(self):
+        """Test that steer control errors don't block execution (unlike deny errors).
+
+        Given: A steer control with an evaluator that errors
+        When: Engine processes the request
+        Then: Result is still safe (steer errors are non-blocking)
+              Error is logged for observability
+        Coverage: Lines 299 (steer_errored = True), 340-344 (logging)
+        """
+        reset_test_state()
+        register_evaluator(ErrorEvaluator)
+
+        controls = [
+            make_control(
+                1,
+                "steer-with-error",
+                evaluator="test-error",
+                config_value="steer",
+                action="steer",
+                steering_context=SteeringContext(message="Steering guidance"),
+            ),
+        ]
+
+        engine = ControlEngine(controls)
+        request = EvaluationRequest(
+            agent_name="test-agent",
+            stage="pre",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+        )
+
+        # Capture logs to verify warning is logged
+        import logging
+        from io import StringIO
+
+        log_capture = StringIO()
+        handler = logging.StreamHandler(log_capture)
+        handler.setLevel(logging.WARNING)
+        logger = logging.getLogger("agent_control_engine.core")
+        logger.addHandler(handler)
+
+        try:
+            result = await engine.process(request)
+
+            # Steer errors are NON-BLOCKING - result should still be safe
+            assert result.is_safe is True
+
+            # Error should be captured in errors list
+            assert result.errors is not None
+            assert len(result.errors) == 1
+            assert result.errors[0].control_name == "steer-with-error"
+            assert result.errors[0].action == "steer"
+            assert result.errors[0].result.error is not None
+
+            # Verify warning was logged (lines 340-344)
+            log_output = log_capture.getvalue()
+            assert "Steer control evaluation failed (non-blocking)" in log_output
+            assert "steer-with-error" in log_output
+
+        finally:
+            logger.removeHandler(handler)
+
+    @pytest.mark.asyncio
+    async def test_deny_control_error_blocks(self):
+        """Test that deny control errors DO block execution (fail closed).
+
+        Given: A deny control with an evaluator that errors
+        When: Engine processes the request
+        Then: Result is unsafe (deny errors fail closed)
+        """
+        reset_test_state()
+        register_evaluator(ErrorEvaluator)
+
+        controls = [
+            make_control(
+                1,
+                "deny-with-error",
+                evaluator="test-error",
+                config_value="deny",
+                action="deny",
+            ),
+        ]
+
+        engine = ControlEngine(controls)
+        request = EvaluationRequest(
+            agent_name="test-agent",
+            stage="pre",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+        )
+
+        result = await engine.process(request)
+
+        # Deny errors BLOCK - result should be unsafe (fail closed)
+        assert result.is_safe is False
+
+        # Error should be captured
+        assert result.errors is not None
+        assert len(result.errors) == 1
+        assert result.errors[0].control_name == "deny-with-error"
+
+    @pytest.mark.asyncio
+    async def test_mixed_deny_and_steer_errors(self):
+        """Test that both deny and steer errors are handled correctly together.
+
+        Given: One deny control that errors and one steer control that errors
+        When: Engine processes the request
+        Then: Result is unsafe (deny error fails closed)
+              Both errors are captured
+              Steer error warning is logged
+        Coverage: Lines 299, 340-344
+        """
+        reset_test_state()
+        register_evaluator(ErrorEvaluator)
+
+        controls = [
+            make_control(
+                1,
+                "deny-error",
+                evaluator="test-error",
+                config_value="deny",
+                action="deny",
+            ),
+            make_control(
+                2,
+                "steer-error",
+                evaluator="test-error",
+                config_value="steer",
+                action="steer",
+                steering_context=SteeringContext(message="Steer guidance"),
+            ),
+        ]
+
+        engine = ControlEngine(controls)
+        request = EvaluationRequest(
+            agent_name="test-agent",
+            stage="pre",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+        )
+
+        # Capture logs
+        import logging
+        from io import StringIO
+
+        log_capture = StringIO()
+        handler = logging.StreamHandler(log_capture)
+        handler.setLevel(logging.WARNING)
+        logger = logging.getLogger("agent_control_engine.core")
+        logger.addHandler(handler)
+
+        try:
+            result = await engine.process(request)
+
+            # Deny error fails closed
+            assert result.is_safe is False
+
+            # Both errors captured
+            assert result.errors is not None
+            assert len(result.errors) == 2
+            error_names = {e.control_name for e in result.errors}
+            assert error_names == {"deny-error", "steer-error"}
+
+            # Steer error warning logged (lines 340-344)
+            log_output = log_capture.getvalue()
+            assert "Steer control evaluation failed (non-blocking)" in log_output
+            assert "steer-error" in log_output
+
+        finally:
+            logger.removeHandler(handler)
+
+
+# =============================================================================
+# Test: Invalid Regex Handling
+# =============================================================================
+
+
+class TestInvalidRegexHandling:
+    """Tests for invalid step_name_regex error handling (line 139)."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_step_name_regex_captured_in_selector_errors(self):
+        """Test that invalid step_name_regex is captured in selector_errors.
+
+        Given: A control with an invalid step_name_regex pattern
+        When: Engine gets applicable controls with selector_errors list
+        Then: The invalid regex error is added to selector_errors
+              Control is skipped
+        Coverage: Line 139 (continue after regex error)
+        """
+
+        @dataclass
+        class MockControl:
+            id: int
+            name: str
+            control: ControlDefinition
+
+        # Create ControlDefinition with model_validate to bypass validation
+        control_data = {
+            "description": "Control with invalid regex",
+            "enabled": True,
+            "execution": "server",
+            "scope": {
+                "stages": ["pre"],
+                "step_types": ["llm"],
+                "step_name_regex": "[invalid(regex",  # Invalid regex pattern
+            },
+            "selector": {"path": "input"},
+            "evaluator": {
+                "name": "test-allow",
+                "config": {"value": "test"},
+            },
+            "action": {"decision": "deny"},
+        }
+
+        # Use model_validate with context to allow invalid regex
+        control_def = ControlDefinition.model_validate(
+            control_data,
+            context={"allow_invalid_step_name_regex": True}
+        )
+
+        controls = [
+            MockControl(
+                id=1,
+                name="invalid-regex-control",
+                control=control_def,
+            ),
+        ]
+
+        engine = ControlEngine(controls)
+        request = EvaluationRequest(
+            agent_name="test-agent",
+            stage="pre",
+            step=Step(
+                type="llm",
+                name="matching-step-name",
+                input="test input",
+                output=None,
+            ),
+        )
+
+        selector_errors = []
+        applicable = engine.get_applicable_controls(request, selector_errors=selector_errors)
+
+        # Control should be skipped (not in applicable list)
+        assert len(applicable) == 0
+
+        # Error should be captured in selector_errors (line 139 coverage)
+        assert len(selector_errors) == 1
+        assert selector_errors[0].control_name == "invalid-regex-control"
+        assert selector_errors[0].result.error is not None
+        assert "Invalid step_name_regex" in selector_errors[0].result.error
+        assert "[invalid(regex" in selector_errors[0].result.message

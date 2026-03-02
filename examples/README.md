@@ -19,6 +19,16 @@ This directory contains examples demonstrating how to use Agent Control in vario
 
 ## Example Categories
 
+### 🧩 TypeScript SDK (`typescript_sdk/`)
+
+Consumer-style TypeScript example that installs `agent-control` from npm and calls the Agent Control API:
+
+```bash
+cd examples/typescript_sdk
+npm install
+AGENT_CONTROL_URL=http://localhost:8000 npm run start
+```
+
 ### 🚀 Agent Control Demo (`agent_control_demo/`)
 
 Complete examples showing the agent control workflow:
@@ -57,22 +67,17 @@ Programmatic control setup using SDK models:
 uv run python examples/demo_setup_controls.py
 ```
 
-### 🤖 LangGraph Integration (`langgraph/my_agent/`)
+### 🤖 LangGraph Integration (`langchain/`)
 
-LangGraph agent with built-in safety checks:
+LangGraph examples are available in `examples/langchain`:
 
 ```bash
-cd examples/langgraph/my_agent
-pip install -e .
-cp env.example .env
-python cli.py
+cd examples/langchain
+uv run langgraph_auto_schema_agent.py
 ```
 
-**Files:**
-- `agent.py` - LangGraph agent with safety check node
-- `simple_example.py` - Simplified protection engine usage
-- `decorator_example.py` - Visual demonstration of data extraction
-- `protect_engine.py` - Local YAML-based protection engine
+This specific example demonstrates auto-derived step schemas from `@control()`
+decorators, so no explicit `steps=...` list is required in `agent_control.init(...)`.
 
 ### 🛡️ Luna-2 Demo (`luna2_demo.py`)
 
@@ -83,6 +88,36 @@ export GALILEO_API_KEY=your_key_here
 uv run python examples/luna2_demo.py
 ```
 
+### 🔄 Steer Action Demo (`steer_action_demo/`)
+
+**NEW!** Autonomous agent with self-correction using steer actions:
+
+```bash
+cd examples/steer_action_demo
+
+# 1. Setup steer controls
+uv run setup_controls.py
+
+# 2. Run autonomous agent (uses LangGraph)
+uv run autonomous_agent_demo.py
+
+# OR: Run interactive CLI demo
+uv run interactive_demo.py
+```
+
+**What it demonstrates:**
+- ✅ **Steer actions** - Corrective steering context instead of hard blocks
+- ✅ **Autonomous retry** - Agent automatically revises based on feedback
+- ✅ **LangGraph workflow** - State-managed revision loop
+- ✅ **Multiple controls** - Language, PII, length, completeness checks
+
+**Key Features:**
+- Agent generates content → Gets steer steering context → Autonomously revises → Succeeds or fails after max retries
+- Shows difference between `ControlSteerError` (can retry) vs `ControlViolationError` (hard block)
+- Real-world use cases: inappropriate language, PII exposure, length limits, missing information
+
+See [steer_action_demo/README.md](steer_action_demo/README.md) for details.
+
 ## Common Patterns
 
 ### Pattern 1: Using @control Decorator (Server-Side)
@@ -92,7 +127,10 @@ import agent_control
 from agent_control import control, ControlViolationError
 
 # Initialize agent (connects to server, loads policy)
-agent_control.init(agent_name="my-bot", agent_id="bot-123")
+agent_control.init(
+    agent_name="my-bot",
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
+)
 
 # Apply the agent's assigned policy
 @control()
@@ -106,7 +144,38 @@ except ControlViolationError as e:
     print(f"Blocked: {e.message}")
 ```
 
-### Pattern 2: Direct SDK Usage
+### Pattern 2: Using Steer Actions for Autonomous Retry
+
+```python
+import agent_control
+from agent_control import control, ControlSteerError, ControlViolationError
+
+agent_control.init(agent_name="my-bot", agent_id="...")
+
+@control()
+async def generate_content(prompt: str) -> str:
+    return await llm.generate(prompt)
+
+# Autonomous retry with steering context
+async def generate_with_retry(prompt: str, max_retries: int = 3):
+    for attempt in range(max_retries):
+        try:
+            return await generate_content(prompt)
+        except ControlSteerError as e:
+            # Steer: can retry with corrections
+            print(f"Steering context: {e.steering_context}")
+            if attempt < max_retries - 1:
+                # Revise prompt based on steering context
+                prompt = f"{prompt}\n\nRevise to: {e.steering_context}"
+            else:
+                raise
+        except ControlViolationError as e:
+            # Deny: cannot proceed
+            print(f"Blocked: {e.message}")
+            raise
+```
+
+### Pattern 3: Direct SDK Usage
 
 ```python
 from agent_control import AgentControlClient
@@ -114,12 +183,12 @@ from agent_control import AgentControlClient
 async with AgentControlClient() as client:
     # Check server health
     health = await client.health_check()
-    
+
     # Make API calls via http_client
     response = await client.http_client.get("/api/v1/controls")
 ```
 
-### Pattern 3: Programmatic Control Setup
+### Pattern 4: Programmatic Control Setup
 
 ```python
 from agent_control import (
@@ -128,7 +197,7 @@ from agent_control import (
     ControlSelector,
     ControlScope,
     ControlAction,
-    EvaluatorConfig,
+    EvaluatorSpec,
     controls,
 )
 
@@ -143,7 +212,7 @@ async with AgentControlClient() as client:
         execution="server",
         scope=ControlScope(step_types=["llm"], stages=["post"]),
         selector=ControlSelector(path="output"),
-        evaluator=EvaluatorConfig(
+        evaluator=EvaluatorSpec(
             name="regex",
             config={"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
         ),
@@ -184,5 +253,6 @@ pip install -e sdks/python
 
 - [Main Documentation](../README.md)
 - [SDK Documentation](../sdks/python/README.md)
+- [TypeScript SDK Documentation](../sdks/typescript/README.md)
 - [Server Documentation](../server/README.md)
 - [Models Documentation](../models/README.md)

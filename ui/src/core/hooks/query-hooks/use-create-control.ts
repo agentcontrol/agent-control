@@ -1,12 +1,12 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { api } from "@/core/api/client";
-import type { ControlDefinition } from "@/core/api/types";
+import { api } from '@/core/api/client';
+import type { ControlDefinition } from '@/core/api/types';
 
-interface CreateControlParams {
+type CreateControlParams = {
   name: string;
   definition: ControlDefinition;
-}
+};
 
 /**
  * Mutation hook to create a new control with its definition
@@ -23,7 +23,7 @@ export function useCreateControl() {
         await api.controls.create({ name });
 
       if (createError) throw createError;
-      if (!createResult) throw new Error("Failed to create control");
+      if (!createResult) throw new Error('Failed to create control');
 
       const controlId = createResult.control_id;
 
@@ -37,8 +37,8 @@ export function useCreateControl() {
     },
     onSuccess: () => {
       // Invalidate relevant queries to refetch data
-      queryClient.invalidateQueries({ queryKey: ["controls"] });
-      queryClient.invalidateQueries({ queryKey: ["agent"] });
+      queryClient.invalidateQueries({ queryKey: ['controls'] });
+      queryClient.invalidateQueries({ queryKey: ['agent'] });
     },
   });
 }

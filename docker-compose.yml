@@ -1,0 +1,53 @@
+# Agent Control Server - Docker Compose Configuration
+#
+# Quick Start:
+#   docker compose up -d
+#
+# Services:
+#   - PostgreSQL database (port 5432)
+#   - Agent Control Server API (port 8000)
+#
+# The server image is published to Docker Hub at:
+#   galileoai/agent-control-server:latest
+#
+# For local development (run server with uvicorn), use:
+#   docker compose -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent_control_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: agent_control
+      POSTGRES_USER: agent_control
+      POSTGRES_PASSWORD: agent_control
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent_control -d agent_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  server:
+    image: galileoai/agent-control-server:latest
+    container_name: agent_control_server
+    ports:
+      - "8000:8000"
+    environment:
+      # Database connection (uses Docker service name 'postgres')
+      # Use postgresql+psycopg:// (supports both sync migrations and async app code)
+      DATABASE_URL: postgresql+psycopg://agent_control:agent_control@postgres:5432/agent_control
+      # Server configuration
+      HOST: 0.0.0.0
+      PORT: 8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

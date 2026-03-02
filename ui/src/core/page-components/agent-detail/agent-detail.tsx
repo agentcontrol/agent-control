@@ -1,67 +1,54 @@
 import {
-  ActionIcon,
   Alert,
-  Badge,
   Box,
   Center,
   Group,
   Loader,
   Modal,
-  Paper,
   Stack,
   Tabs,
   Text,
   Title,
-} from "@mantine/core";
-import { Button, Switch, Table } from "@rungalileo/jupiter-ds";
-import {
-  IconAlertCircle,
-  IconChartBar,
-  IconInbox,
-  IconPencil,
-  IconShield,
-} from "@tabler/icons-react";
-import { type ColumnDef } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+} from '@mantine/core';
+import { Button, TimeRangeSwitch } from '@rungalileo/jupiter-ds';
+import { IconAlertCircle, IconChartBar, IconShield } from '@tabler/icons-react';
+import { useRouter } from 'next/router';
+import React, { useMemo, useState } from 'react';
 
-import { ErrorBoundary } from "@/components/error-boundary";
-import type { Control } from "@/core/api/types";
-import { SearchInput } from "@/core/components/search-input";
-import { useAgent } from "@/core/hooks/query-hooks/use-agent";
-import { useAgentControls } from "@/core/hooks/query-hooks/use-agent-controls";
-import { useUpdateControl } from "@/core/hooks/query-hooks/use-update-control";
-import { useQueryParam } from "@/core/hooks/use-query-param";
+import { ErrorBoundary } from '@/components/error-boundary';
+import type { Control } from '@/core/api/types';
+import { SearchInput } from '@/core/components/search-input';
+import { MODAL_NAMES } from '@/core/constants/modal-routes';
+import { useAgent } from '@/core/hooks/query-hooks/use-agent';
+import { useAgentControls } from '@/core/hooks/query-hooks/use-agent-controls';
+import { useHasMonitorData } from '@/core/hooks/query-hooks/use-has-monitor-data';
+import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
+import { useModalRoute } from '@/core/hooks/use-modal-route';
+import { useQueryParam } from '@/core/hooks/use-query-param';
+import { useTimeRangePreference } from '@/core/hooks/use-time-range-preference';
 
-import { AgentStats } from "./agent-stats";
-import { ControlStoreModal } from "./modals/control-store";
-import { EditControlContent } from "./modals/edit-control/edit-control-content";
+import { ControlsTab } from './controls/controls-tab';
+import { useControlsTableColumns } from './controls/table-columns';
+import { useDeleteControlFlow } from './controls/use-delete-control-flow';
+import { ControlStoreModal } from './modals/control-store';
+import { EditControlContent } from './modals/edit-control/edit-control-content';
+import { AgentsMonitor, TIME_RANGE_SEGMENTS } from './monitor';
 
-interface AgentDetailPageProps {
+type AgentDetailPageProps = {
   agentId: string;
-}
-
-const getStepTypeLabelAndColor = (
-  stepType: string
-): { label: string; color: string } => {
-  switch (stepType) {
-    case "llm":
-      return { label: "LLM", color: "blue" };
-    case "tool":
-      return { label: "Tool", color: "green" };
-    default:
-      return { label: stepType, color: "gray" };
-  }
+  defaultTab?: 'controls' | 'monitor';
 };
 
-const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
-  const [activeTab, setActiveTab] = useState<string | null>("controls");
-  const [editModalOpened, setEditModalOpened] = useState(false);
-  const [controlStoreOpened, setControlStoreOpened] = useState(false);
+const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
+  const router = useRouter();
+  const { modal, controlId, openModal, closeModal } = useModalRoute();
   const [selectedControl, setSelectedControl] = useState<Control | null>(null);
-  // Get search value for filtering (SearchInput handles the UI and URL sync)
-  const [searchQuery] = useQueryParam("q");
+  const [searchQuery] = useQueryParam('q');
+  const [timeRangeValue, setTimeRangeValue] = useTimeRangePreference();
 
-  // Fetch agent details and controls
+  const controlStoreOpened = modal === MODAL_NAMES.CONTROL_STORE;
+  const editModalOpened = modal === MODAL_NAMES.EDIT;
+
   const {
     data: agent,
     isLoading: agentLoading,
@@ -72,9 +59,51 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
     isLoading: controlsLoading,
     error: controlsError,
   } = useAgentControls(agentId);
+
+  const needsInitialTabCheck = !defaultTab;
+  const { data: hasMonitorData, isLoading: checkingMonitorData } =
+    useHasMonitorData(agentId, {
+      enabled: needsInitialTabCheck,
+    });
+
   const updateControl = useUpdateControl();
 
-  // Filter controls based on search query
+  const handleCloseEditModal = () => {
+    closeModal();
+    // Do not clear selectedControl here so modal content stays mounted during
+    // the close animation; the effect syncs selectedControl when the modal opens.
+  };
+
+  const { handleDeleteControl, deleteControl } = useDeleteControlFlow({
+    agentId,
+    selectedControl,
+    onCloseEditModal: handleCloseEditModal,
+  });
+
+  const [activeTab, setActiveTab] = useState<string | null>(() => {
+    if (defaultTab === 'monitor') return 'monitor';
+    if (defaultTab === 'controls') return 'controls';
+    return 'controls';
+  });
+
+  const hasCheckedInitialTab = React.useRef(false);
+  React.useEffect(() => {
+    if (!defaultTab && !hasCheckedInitialTab.current && !checkingMonitorData) {
+      hasCheckedInitialTab.current = true;
+      if (hasMonitorData) {
+        setActiveTab('monitor');
+        router.replace(`/agents/${agentId}/monitor`, undefined, {
+          shallow: true,
+        });
+      } else {
+        setActiveTab('controls');
+        router.replace(`/agents/${agentId}/controls`, undefined, {
+          shallow: true,
+        });
+      }
+    }
+  }, [defaultTab, checkingMonitorData, hasMonitorData, agentId, router]);
+
   const controls = useMemo(() => {
     const allControls = controlsResponse?.controls || [];
     if (!searchQuery.trim()) return allControls;
@@ -86,305 +115,248 @@ const AgentDetailPage = ({ agentId }: AgentDetailPageProps) => {
     );
   }, [controlsResponse, searchQuery]);
 
-  // Loading state
+  // Sync selectedControl to URL controlId when edit modal is open.
+  // We do not clear selectedControl on close so modal content stays mounted
+  // during the close animation (avoids content disappearing before title/backdrop).
+  React.useEffect(() => {
+    if (!editModalOpened || !controlId || !controlsResponse?.controls) return;
+    const control = controlsResponse.controls.find(
+      (c) => c.id.toString() === controlId
+    );
+    setSelectedControl(control ?? null);
+  }, [editModalOpened, controlId, controlsResponse]);
+
+  const handleEditControl = (control: Control) => {
+    openModal(MODAL_NAMES.EDIT, { controlId: control.id.toString() });
+  };
+
+  const columns = useControlsTableColumns({
+    agentId,
+    updateControl,
+    deleteControl,
+    onEditControl: handleEditControl,
+    onDeleteControl: handleDeleteControl,
+  });
+
   if (agentLoading) {
     return (
-      <Box p='xl' maw={1400} mx='auto' my={0}>
+      <Box p="xl" maw={1400} mx="auto" my={0}>
         <Center h={400}>
-          <Stack align='center' gap='md'>
-            <Loader size='lg' />
-            <Text c='dimmed'>Loading agent details...</Text>
+          <Stack align="center" gap="md">
+            <Loader size="lg" />
+            <Text c="dimmed">Loading agent details...</Text>
           </Stack>
         </Center>
       </Box>
     );
   }
 
-  // Error state
   if (agentError || !agent) {
     return (
-      <Box p='xl' maw={1400} mx='auto' my={0}>
+      <Box p="xl" maw={1400} mx="auto" my={0}>
         <Alert
           icon={<IconAlertCircle size={16} />}
-          title='Error loading agent'
-          color='red'
+          title="Error loading agent"
+          color="red"
         >
-          Failed to fetch agent details. Please try again later.
+          <Stack gap="xs">
+            <Text>Failed to fetch agent details. Please try again later.</Text>
+            <Text size="sm" c="dimmed" mt="xs">
+              Possible reasons:
+            </Text>
+            <Stack gap={4} pl="md">
+              <Text size="sm" c="dimmed">
+                • Check server for API errors
+              </Text>
+              <Text size="sm" c="dimmed">
+                • The agent ID might be incorrect
+              </Text>
+            </Stack>
+          </Stack>
         </Alert>
       </Box>
     );
   }
 
-  // Define table columns
-  const columns: ColumnDef<Control>[] = [
-    {
-      id: "enabled",
-      header: "",
-      size: 60,
-      cell: ({ row }: { row: any }) => (
-        <Switch
-          checked={row.original.control?.enabled ?? false}
-          color='violet'
-          onChange={(e) => {
-            const control = row.original as Control;
-            updateControl.mutate({
-              agentId,
-              controlId: control.id,
-              definition: {
-                ...control.control,
-                enabled: e.currentTarget.checked,
-              },
-            });
-          }}
-        />
-      ),
-    },
-    {
-      id: "name",
-      header: "Control",
-      accessorKey: "name",
-      cell: ({ row }: { row: any }) => (
-        <Text size='sm' fw={500}>
-          {row.original.name}
-        </Text>
-      ),
-    },
-    {
-      id: "step_types",
-      header: "Step types",
-      accessorKey: "control.scope.step_types",
-      size: 180,
-      cell: ({ row }: { row: any }) => {
-        const stepTypes = row.original.control?.scope?.step_types ?? [];
-        if (stepTypes.length === 0) {
-          return (
-            <Badge variant='light' color='gray' size='sm'>
-              All
-            </Badge>
-          );
-        }
-
-        return (
-          <Group gap={4} wrap='nowrap'>
-            {stepTypes.map((stepType: string) => {
-              const { label, color } = getStepTypeLabelAndColor(stepType);
-              return (
-                <Badge key={stepType} variant='light' color={color} size='sm'>
-                  {label}
-                </Badge>
-              );
-            })}
-          </Group>
-        );
-      },
-    },
-    {
-      id: "stages",
-      header: "Stages",
-      accessorKey: "control.scope.stages",
-      size: 120,
-      cell: ({ row }: { row: any }) => {
-        const stages = row.original.control?.scope?.stages ?? [];
-        if (stages.length === 0) {
-          return (
-            <Badge variant='light' color='gray' size='sm'>
-              All
-            </Badge>
-          );
-        }
-
-        if (stages.length > 1) {
-          return (
-            <Badge variant='light' color='gray' size='sm'>
-              Pre/Post
-            </Badge>
-          );
-        }
-
-        const stage = stages[0];
-        const label = stage === "pre" ? "Pre" : "Post";
-        const color = stage === "pre" ? "violet" : "orange";
-        return (
-          <Badge variant='light' color={color} size='sm'>
-            {label}
-          </Badge>
-        );
-      },
-    },
-    {
-      id: "actions",
-      header: "",
-      size: 60,
-      cell: ({ row }: { row: any }) => (
-        <ActionIcon
-          variant='subtle'
-          color='gray'
-          size='sm'
-          onClick={() => handleEditControl(row.original)}
-        >
-          <IconPencil size={16} />
-        </ActionIcon>
-      ),
-    },
-  ];
-
-  const handleEditControl = (control: Control) => {
-    setSelectedControl(control);
-    setEditModalOpened(true);
-  };
-
-  const handleCloseEditModal = () => {
-    setEditModalOpened(false);
-    setSelectedControl(null);
-  };
-
   const handleEditControlSuccess = () => {
-    setSelectedControl(null);
+    closeModal();
+    // Do not clear selectedControl so modal content stays visible during close animation.
   };
+
+  function renderEditModalBody() {
+    if (selectedControl) {
+      return (
+        <EditControlContent
+          control={selectedControl}
+          agentId={agentId}
+          onClose={handleCloseEditModal}
+          onSuccess={handleEditControlSuccess}
+        />
+      );
+    }
+    // We have a controlId in the URL and the controls list has loaded, but no control in that list matched → invalid or deleted
+    const controlNotFound = controlId && controlsResponse && !selectedControl;
+    if (controlNotFound) {
+      return (
+        <Stack gap="md" py="md">
+          <Alert
+            icon={<IconAlertCircle size={16} />}
+            title="Control not found"
+            color="orange"
+            variant="light"
+          >
+            <Text size="sm">
+              No control matches ID &quot;{controlId}&quot;. It may have been
+              deleted or the link is invalid.
+            </Text>
+          </Alert>
+          <Group justify="flex-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCloseEditModal}
+              data-testid="edit-modal-close-invalid-control"
+            >
+              Close
+            </Button>
+          </Group>
+        </Stack>
+      );
+    }
+
+    if (controlId) {
+      return (
+        <Center py="xl">
+          <Stack align="center" gap="md">
+            <Loader size="sm" />
+            <Text size="sm" c="dimmed">
+              Loading control…
+            </Text>
+          </Stack>
+        </Center>
+      );
+    }
+    return null;
+  }
 
   return (
-    <Box p='xl' maw={1400} mx='auto' my={0}>
-      <Stack gap='lg'>
-        {/* Header */}
+    <Box p="xl" maw={1400} mx="auto" my={0}>
+      <Stack gap="lg">
         <Stack gap={4}>
           <Title order={2} fw={600}>
             {agent.agent.agent_name}
           </Title>
-          {agent.agent.agent_description && (
-            <Text size='sm' c='dimmed'>
+          {agent.agent.agent_description ? (
+            <Text size="sm" c="dimmed">
               {agent.agent.agent_description}
             </Text>
-          )}
+          ) : null}
         </Stack>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onChange={setActiveTab}>
-          <Box mb='md'>
-            <Group justify='space-between' pos='relative'>
+        <Tabs
+          value={activeTab}
+          onChange={(value) => {
+            setActiveTab(value);
+            if (value === 'monitor') {
+              router.push(`/agents/${agentId}/monitor`, undefined, {
+                shallow: true,
+              });
+            } else if (value === 'controls') {
+              router.push(`/agents/${agentId}/controls`, undefined, {
+                shallow: true,
+              });
+            }
+          }}
+        >
+          <Box mb="md">
+            <Group justify="space-between" pos="relative">
               <Tabs.List>
                 <Tabs.Tab
-                  value='controls'
+                  value="controls"
                   leftSection={<IconShield size={16} />}
                 >
                   Controls
                 </Tabs.Tab>
                 <Tabs.Tab
-                  value='stats'
+                  value="monitor"
                   leftSection={<IconChartBar size={16} />}
                 >
-                  Stats
+                  Monitor
                 </Tabs.Tab>
               </Tabs.List>
 
-              <Group gap='md' pos='absolute' right={0} top='-8px'>
-                <SearchInput
-                  queryKey="q"
-                  placeholder="Search controls..."
-                  w={250}
-                  h={32}
-                  size="xs"
-                />
-                <Button
-                  variant='filled'
-                  color='violet'
-                  size='sm'
-                  data-testid='add-control-button'
-                  h={32}
-                  onClick={() => setControlStoreOpened(true)}
-                >
-                  Add Control
-                </Button>
+              <Group gap="md" pos="absolute" right={0} top="-8px">
+                {activeTab === 'controls' ? (
+                  <>
+                    <SearchInput
+                      queryKey="q"
+                      placeholder="Search controls..."
+                      w={250}
+                      size="sm"
+                    />
+                    <Button
+                      variant="filled"
+                      size="sm"
+                      data-testid="add-control-button"
+                      h={32}
+                      onClick={() => openModal('control-store')}
+                    >
+                      Add Control
+                    </Button>
+                  </>
+                ) : (
+                  <TimeRangeSwitch
+                    value={timeRangeValue}
+                    onChange={setTimeRangeValue}
+                    allowCustomSelection={false}
+                    segmentOptions={TIME_RANGE_SEGMENTS}
+                  />
+                )}
               </Group>
             </Group>
           </Box>
 
-          <Tabs.Panel value='controls' pt='lg'>
-            {/* Loading state for controls */}
-            {controlsLoading ? (
-              <Center py='xl'>
-                <Stack align='center' gap='md'>
-                  <Loader size='md' />
-                  <Text c='dimmed'>Loading controls...</Text>
-                </Stack>
-              </Center>
-            ) : controlsError ? (
-              <Alert
-                icon={<IconAlertCircle size={16} />}
-                title='Error loading controls'
-                color='red'
-              >
-                Failed to fetch controls. Please try again later.
-              </Alert>
-            ) : controls.length === 0 ? (
-              <Paper p='xl' withBorder radius='sm' ta='center'>
-                <Stack align='center' gap='md' py='xl'>
-                  <IconInbox size={48} color='var(--mantine-color-gray-4)' />
-                  <Stack gap='xs' align='center'>
-                    <Text fw={500} c='dimmed'>
-                      No controls configured
-                    </Text>
-                    <Text size='sm' c='dimmed'>
-                      This agent doesn&apos;t have any controls set up yet.
-                    </Text>
-                  </Stack>
-                  <Button
-                    variant='filled'
-                    mt='md'
-                    data-testid='add-control-button'
-                    onClick={() => setControlStoreOpened(true)}
-                  >
-                    Add Control
-                  </Button>
-                </Stack>
-              </Paper>
-            ) : (
-              <Table
-                columns={columns}
-                data={controls}
-                highlightOnHover
-                withColumnBorders
-              />
-            )}
+          <Tabs.Panel value="controls" pt="lg">
+            <ControlsTab
+              controls={controls}
+              controlsLoading={controlsLoading}
+              controlsError={controlsError}
+              columns={columns}
+              onAddControl={() => openModal(MODAL_NAMES.CONTROL_STORE)}
+            />
           </Tabs.Panel>
 
-          <Tabs.Panel value='stats' pt='lg'>
+          <Tabs.Panel value="monitor" pt="lg">
             <ErrorBoundary variant="page">
-              {agent?.agent.agent_id && (
-                <AgentStats agentUuid={agent.agent.agent_id} />
-              )}
+              {agent?.agent.agent_name && activeTab === 'monitor' ? (
+                <AgentsMonitor
+                  agentUuid={agent.agent.agent_name}
+                  timeRangeValue={timeRangeValue}
+                />
+              ) : null}
             </ErrorBoundary>
           </Tabs.Panel>
         </Tabs>
       </Stack>
 
-      {/* Control Store Modal */}
       <ControlStoreModal
         opened={controlStoreOpened}
-        onClose={() => setControlStoreOpened(false)}
+        onClose={closeModal}
         agentId={agentId}
       />
 
-      {/* Edit Control Modal - Modal shell owned by parent, content wrapped in ErrorBoundary */}
+      {/* Edit Control Modal */}
       <Modal
         opened={editModalOpened}
         onClose={handleCloseEditModal}
-        title="Configure Control"
+        title="Edit Control"
         size="xl"
         styles={{
-          title: { fontSize: "18px", fontWeight: 600 },
-          content: { maxWidth: "1400px", width: "95vw" },
+          title: { fontSize: '18px', fontWeight: 600 },
+          content: { maxWidth: '1500px', width: '95vw' },
         }}
       >
-        <ErrorBoundary variant="modal">
-          {selectedControl && (
-            <EditControlContent
-              control={selectedControl}
-              agentId={agentId}
-              onClose={handleCloseEditModal}
-              onSuccess={handleEditControlSuccess}
-            />
-          )}
-        </ErrorBoundary>
+        <ErrorBoundary variant="modal">{renderEditModalBody()}</ErrorBoundary>
       </Modal>
     </Box>
   );

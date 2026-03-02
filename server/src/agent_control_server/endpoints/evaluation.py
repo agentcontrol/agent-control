@@ -8,6 +8,7 @@ from agent_control_engine.core import ControlEngine
 from agent_control_models import (
     ControlDefinition,
     ControlExecutionEvent,
+    ControlMatch,
     EvaluationRequest,
     EvaluationResponse,
 )
@@ -33,6 +34,10 @@ _logger = get_logger(__name__)
 # These are immediately recognizable as "not traced" and can be filtered in queries.
 INVALID_TRACE_ID = "0" * 32  # 128-bit, 32 hex chars
 INVALID_SPAN_ID = "0" * 16   # 64-bit, 16 hex chars
+SAFE_EVALUATOR_ERROR = "Evaluation failed due to an internal evaluator error."
+SAFE_EVALUATOR_TIMEOUT_ERROR = "Evaluation timed out before completion."
+SAFE_INVALID_STEP_REGEX_ERROR = "Control configuration error: invalid step name regex."
+SAFE_ENGINE_VALIDATION_MESSAGE = "Invalid evaluation request or control configuration."
 
 
 class ControlAdapter:
@@ -42,6 +47,54 @@ class ControlAdapter:
         self.id = id
         self.name = name
         self.control = control
+
+
+def _sanitize_evaluator_error(error_message: str) -> str:
+    """Convert evaluator runtime errors into safe client-facing text."""
+    if "invalid step_name_regex" in error_message.lower():
+        return SAFE_INVALID_STEP_REGEX_ERROR
+    if "timeout" in error_message.lower():
+        return SAFE_EVALUATOR_TIMEOUT_ERROR
+    return SAFE_EVALUATOR_ERROR
+
+
+def _sanitize_control_match(match: ControlMatch) -> ControlMatch:
+    """Redact internal evaluator error strings from a control match."""
+    if match.result.error is None:
+        return match
+
+    safe_error = _sanitize_evaluator_error(match.result.error)
+    safe_message = safe_error
+    sanitized_result = match.result.model_copy(
+        update={
+            "error": safe_error,
+            "message": safe_message,
+        }
+    )
+    return match.model_copy(update={"result": sanitized_result})
+
+
+def _sanitize_evaluation_response(response: EvaluationResponse) -> EvaluationResponse:
+    """Return a copy of the evaluation response with safe public error text."""
+    return response.model_copy(
+        update={
+            "matches": (
+                [_sanitize_control_match(match) for match in response.matches]
+                if response.matches
+                else None
+            ),
+            "errors": (
+                [_sanitize_control_match(match) for match in response.errors]
+                if response.errors
+                else None
+            ),
+            "non_matches": (
+                [_sanitize_control_match(match) for match in response.non_matches]
+                if response.non_matches
+                else None
+            ),
+        }
+    )
 
 
 @router.post(
@@ -88,22 +141,22 @@ async def evaluate(
 
     # Fetch agent to get the name
     agent_result = await db.execute(
-        select(Agent).where(Agent.agent_uuid == request.agent_uuid)
+        select(Agent).where(Agent.name == request.agent_name)
     )
     agent = agent_result.scalar_one_or_none()
     if agent is None:
         raise NotFoundError(
             error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent '{request.agent_uuid}' not found",
+            detail=f"Agent '{request.agent_name}' not found",
             resource="Agent",
-            resource_id=str(request.agent_uuid),
+            resource_id=request.agent_name,
             hint="Register the agent via initAgent before evaluating.",
         )
     agent_name = agent.name
 
     # Fetch controls for the agent (already validated as ControlDefinition)
     api_controls = await list_controls_for_agent(
-        request.agent_uuid,
+        request.agent_name,
         db,
         allow_invalid_step_name_regex=True,
     )
@@ -118,8 +171,8 @@ async def evaluate(
     engine = ControlEngine(engine_controls)
     try:
         response = await engine.process(request)
-    except ValueError as e:
-        _logger.error(f"Evaluation failed: {e}")
+    except ValueError:
+        _logger.exception("Evaluation failed due to invalid configuration or input")
         raise APIValidationError(
             error_code=ErrorCode.EVALUATION_FAILED,
             detail="Evaluation failed due to invalid configuration or input",
@@ -130,10 +183,12 @@ async def evaluate(
                     resource="Evaluation",
                     field=None,
                     code="evaluation_error",
-                    message=str(e),
+                    message=SAFE_ENGINE_VALIDATION_MESSAGE,
                 )
             ],
         )
+
+    response = _sanitize_evaluation_response(response)
 
     # Calculate total execution time
     total_duration_ms = (time.perf_counter() - start_time) * 1000
@@ -189,7 +244,6 @@ async def _emit_observability_events(
                     control_execution_id=match.control_execution_id,
                     trace_id=trace_id,
                     span_id=span_id,
-                    agent_uuid=request.agent_uuid,
                     agent_name=agent_name,
                     control_id=match.control_id,
                     control_name=match.control_name,
@@ -200,6 +254,7 @@ async def _emit_observability_events(
                     confidence=match.result.confidence,
                     timestamp=now,
                     evaluator_name=ctrl.control.evaluator.name if ctrl else None,
+                    selector_path=ctrl.control.selector.path if ctrl else None,
                     error_message=match.result.error,
                     metadata=match.result.metadata or {},
                 )
@@ -214,7 +269,6 @@ async def _emit_observability_events(
                     control_execution_id=error.control_execution_id,
                     trace_id=trace_id,
                     span_id=span_id,
-                    agent_uuid=request.agent_uuid,
                     agent_name=agent_name,
                     control_id=error.control_id,
                     control_name=error.control_name,
@@ -225,6 +279,7 @@ async def _emit_observability_events(
                     confidence=error.result.confidence,
                     timestamp=now,
                     evaluator_name=ctrl.control.evaluator.name if ctrl else None,
+                    selector_path=ctrl.control.selector.path if ctrl else None,
                     error_message=error.result.error,
                     metadata=error.result.metadata or {},
                 )
@@ -239,7 +294,6 @@ async def _emit_observability_events(
                     control_execution_id=non_match.control_execution_id,
                     trace_id=trace_id,
                     span_id=span_id,
-                    agent_uuid=request.agent_uuid,
                     agent_name=agent_name,
                     control_id=non_match.control_id,
                     control_name=non_match.control_name,
@@ -250,6 +304,7 @@ async def _emit_observability_events(
                     confidence=non_match.result.confidence,
                     timestamp=now,
                     evaluator_name=ctrl.control.evaluator.name if ctrl else None,
+                    selector_path=ctrl.control.selector.path if ctrl else None,
                     error_message=None,
                     metadata=non_match.result.metadata or {},
                 )

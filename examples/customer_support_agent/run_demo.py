@@ -54,26 +54,23 @@ logger = logging.getLogger(__name__)
 # Add parent directory to path for imports
 sys.path.insert(0, str(__file__).rsplit("/", 2)[0])
 
-# Agent ID used in support_agent.py
-AGENT_ID = "customer-support-agent"
+# Agent UUID used in support_agent.py
+AGENT_ID = "646d5dea-c2e6-4453-b446-7035482b38e4"
 
 
 async def reset_agent():
     """Reset the agent by removing its policy (which disconnects all controls)."""
-    import uuid
-
-    # Generate the same UUID5 that the SDK generates
-    agent_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
+    agent_name = AGENT_ID
     server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
-    logger.info(f"Resetting agent '{AGENT_ID}' (UUID: {agent_uuid})")
-    print(f"Resetting agent '{AGENT_ID}' (UUID: {agent_uuid})...")
+    logger.info(f"Resetting agent '{AGENT_ID}' (UUID: {agent_name})")
+    print(f"Resetting agent '{AGENT_ID}' (UUID: {agent_name})...")
     print()
 
     async with AgentControlClient(base_url=server_url) as client:
         # Check if agent exists
         try:
-            await agents.get_agent(client, agent_uuid)
+            await agents.get_agent(client, agent_name)
             logger.debug("Agent exists, proceeding with reset")
         except Exception as e:
             if "404" in str(e):
@@ -86,7 +83,7 @@ async def reset_agent():
 
         # Remove policy from agent (disconnects all controls)
         try:
-            await agents.remove_agent_policy(client, agent_uuid)
+            await agents.remove_agent_policy(client, agent_name)
             logger.info("Successfully removed policy from agent")
             print("Removed policy from agent (all controls disconnected).")
         except Exception as e:

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 import re2
+from agent_control_evaluators import get_evaluator_instance
 from agent_control_models import (
     ControlDefinition,
     ControlMatch,
@@ -20,7 +21,6 @@ from agent_control_models import (
     EvaluatorResult,
 )
 
-from .evaluators import get_evaluator_instance
 from .selectors import select_data
 
 logger = logging.getLogger(__name__)
@@ -133,6 +133,7 @@ class ControlEngine:
                                         ),
                                         error=f"Invalid step_name_regex: {e}",
                                     ),
+                                    steering_context=control_def.action.steering_context,
                                 )
                             )
                         continue
@@ -196,7 +197,8 @@ class ControlEngine:
                         timeout=timeout,
                     )
 
-                    # Signal if this is a deny match
+                    # Signal if this is a deny match - only deny should trigger cancellation
+                    # to preserve deny-first semantics
                     if (
                         eval_task.result.matched
                         and eval_task.item.control.action.decision == "deny"
@@ -210,7 +212,8 @@ class ControlEngine:
                     error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
                     logger.warning(
                         f"Evaluator timeout for control '{eval_task.item.name}' "
-                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}"
+                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}",
+                        exc_info=True,
                     )
                     eval_task.result = EvaluatorResult(
                         matched=False,
@@ -222,9 +225,10 @@ class ControlEngine:
                     # Evaluation error - fail open but mark as error
                     # The error field signals to callers that this was not a real evaluation
                     error_msg = f"{type(e).__name__}: {e}"
-                    logger.warning(
+                    logger.error(
                         f"Evaluator error for control '{eval_task.item.name}' "
-                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}"
+                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}",
+                        exc_info=True,
                     )
                     eval_task.result = EvaluatorResult(
                         matched=False,
@@ -266,6 +270,7 @@ class ControlEngine:
         successful_count = 0
         evaluated_count = 0  # Controls that ran (not cancelled)
         deny_errored = False
+        steer_errored = False
         deny_matched = False
 
         for eval_task in eval_tasks:
@@ -283,11 +288,15 @@ class ControlEngine:
                         control_name=eval_task.item.name,
                         action=eval_task.item.control.action.decision,
                         result=eval_task.result,
+                        steering_context=eval_task.item.control.action.steering_context,
                     )
                 )
-                # Track if a deny control errored (fail closed)
-                if eval_task.item.control.action.decision == "deny":
+                # Track if a deny or steer control errored
+                decision = eval_task.item.control.action.decision
+                if decision == "deny":
                     deny_errored = True
+                elif decision == "steer":
+                    steer_errored = True
                 continue
 
             # Count successful evaluations
@@ -295,18 +304,21 @@ class ControlEngine:
 
             # Collect successful matches
             if eval_task.result.matched:
+                steer_ctx = eval_task.item.control.action.steering_context
                 matches.append(
                     ControlMatch(
                         control_id=eval_task.item.id,
                         control_name=eval_task.item.name,
                         action=eval_task.item.control.action.decision,
                         result=eval_task.result,
+                        steering_context=steer_ctx,
                     )
                 )
 
-                if eval_task.item.control.action.decision == "deny":
+                if eval_task.item.control.action.decision in ("deny", "steer"):
                     is_safe = False
-                    deny_matched = True
+                    if eval_task.item.control.action.decision == "deny":
+                        deny_matched = True
             else:
                 # Collect non-matches (evaluated but did not match)
                 non_matches.append(
@@ -315,12 +327,23 @@ class ControlEngine:
                         control_name=eval_task.item.name,
                         action=eval_task.item.control.action.decision,
                         result=eval_task.result,
+                        steering_context=eval_task.item.control.action.steering_context,
                     )
                 )
 
         # Fail closed if a deny control errored (couldn't verify safety)
         if deny_errored:
             is_safe = False
+
+        # Log steer errors for observability (non-blocking)
+        if steer_errored:
+            steer_error_names = [
+                e.control_name for e in errors
+                if e.action == "steer" and e.result.error
+            ]
+            logger.warning(
+                f"Steer control evaluation failed (non-blocking): {', '.join(steer_error_names)}"
+            )
 
         # Calculate confidence
         if deny_errored:

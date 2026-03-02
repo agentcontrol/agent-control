@@ -30,13 +30,13 @@ def test_sql_read_only_agent(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_name, control_name = create_and_assign_policy(
         client, control_data, agent_name="ReadOnlyAgent"
     )
 
     # When: evaluating a SELECT with LIMIT 100
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users LIMIT 100"},
@@ -51,7 +51,7 @@ def test_sql_read_only_agent(client: TestClient):
 
     # When: evaluating an INSERT query (not allowed)
     req_insert = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "INSERT INTO users (name) VALUES ('test')"},
@@ -67,7 +67,7 @@ def test_sql_read_only_agent(client: TestClient):
 
     # When: evaluating a SELECT without LIMIT
     req_no_limit = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users"},
@@ -82,7 +82,7 @@ def test_sql_read_only_agent(client: TestClient):
 
     # When: evaluating a SELECT with LIMIT 5000 (exceeds max_limit)
     req_high_limit = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users LIMIT 5000"},
@@ -114,13 +114,13 @@ def test_sql_multi_tenant_security(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_name, control_name = create_and_assign_policy(
         client, control_data, agent_name="MultiTenantAgent"
     )
 
     # When: evaluating a query with tenant_id in WHERE
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM orders WHERE tenant_id = 123"},
@@ -135,7 +135,7 @@ def test_sql_multi_tenant_security(client: TestClient):
 
     # When: evaluating a query without tenant_id in WHERE
     req_no_tenant = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM orders WHERE status = 'active'"},
@@ -151,7 +151,7 @@ def test_sql_multi_tenant_security(client: TestClient):
 
     # When: evaluating a query with tenant_id only in SELECT
     req_select_only = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT tenant_id, name FROM orders"},
@@ -182,13 +182,13 @@ def test_sql_block_destructive_operations(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_name, control_name = create_and_assign_policy(
         client, control_data, agent_name="SafeAgent"
     )
 
     # When: evaluating a safe SELECT query
     req_select = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users"},
@@ -203,7 +203,7 @@ def test_sql_block_destructive_operations(client: TestClient):
 
     # When: evaluating a non-destructive INSERT query
     req_insert = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "INSERT INTO logs (message) VALUES ('test')"},
@@ -218,7 +218,7 @@ def test_sql_block_destructive_operations(client: TestClient):
 
     # When: evaluating a DROP TABLE query
     req_drop = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "DROP TABLE users"},
@@ -234,7 +234,7 @@ def test_sql_block_destructive_operations(client: TestClient):
 
     # When: evaluating a DELETE query
     req_delete = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "DELETE FROM users WHERE id = 1"},
@@ -249,7 +249,7 @@ def test_sql_block_destructive_operations(client: TestClient):
 
     # When: evaluating a TRUNCATE TABLE query
     req_truncate = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "TRUNCATE TABLE logs"},
@@ -280,13 +280,13 @@ def test_sql_table_restrictions(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_name, control_name = create_and_assign_policy(
         client, control_data, agent_name="AnalyticsAgent"
     )
 
     # When: evaluating a query against an allowed table (users)
     req_users = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users"},
@@ -301,7 +301,7 @@ def test_sql_table_restrictions(client: TestClient):
 
     # When: evaluating a query against an allowed table (orders)
     req_orders = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM orders"},
@@ -316,7 +316,7 @@ def test_sql_table_restrictions(client: TestClient):
 
     # When: evaluating a query against a disallowed table (admin_data)
     req_admin = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM admin_data"},
@@ -332,7 +332,7 @@ def test_sql_table_restrictions(client: TestClient):
 
     # When: evaluating a query against a disallowed table (sensitive_data)
     req_sensitive = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM sensitive_data"},
@@ -363,13 +363,13 @@ def test_sql_multi_statement_blocking(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_name, control_name = create_and_assign_policy(
         client, control_data, agent_name="SingleStatementAgent"
     )
 
     # When: evaluating a single-statement query
     req_single = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users WHERE id = 1"},
@@ -384,7 +384,7 @@ def test_sql_multi_statement_blocking(client: TestClient):
 
     # When: evaluating a multi-statement query
     req_multi = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users; DROP TABLE users;"},
@@ -417,13 +417,13 @@ def test_sql_limit_enforcement(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_name, control_name = create_and_assign_policy(
         client, control_data, agent_name="LimitAgent"
     )
 
     # When: evaluating a SELECT with LIMIT 500
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users LIMIT 500"},
@@ -438,7 +438,7 @@ def test_sql_limit_enforcement(client: TestClient):
 
     # When: evaluating a SELECT with LIMIT 1000 (boundary)
     req_boundary = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users LIMIT 1000"},
@@ -453,7 +453,7 @@ def test_sql_limit_enforcement(client: TestClient):
 
     # When: evaluating a SELECT with LIMIT 1001 (exceeds max)
     req_exceed = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users LIMIT 1001"},
@@ -469,7 +469,7 @@ def test_sql_limit_enforcement(client: TestClient):
 
     # When: evaluating a SELECT without LIMIT
     req_no_limit = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "SELECT * FROM users"},
@@ -484,7 +484,7 @@ def test_sql_limit_enforcement(client: TestClient):
 
     # When: evaluating an INSERT without LIMIT (LIMIT only applies to SELECT)
     req_insert = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="tool", 
             name="execute_sql",
             input={"query": "INSERT INTO users (name) VALUES ('test')"},
@@ -522,13 +522,13 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_name, control_name = create_and_assign_policy(
         client, control_data, agent_name="LlmReadOnlyAgent"
     )
 
     # When: LLM outputs SELECT with LIMIT
     req_safe = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="llm", name="test-step", 
             input="Generate a query to get all users",
             output="SELECT * FROM users LIMIT 10"
@@ -542,7 +542,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
 
     # When: LLM outputs DELETE
     req_delete = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="llm", name="test-step", 
             input="Delete user with id 1",
             output="DELETE FROM users WHERE id = 1"
@@ -557,7 +557,7 @@ def test_sql_llm_output_validation_read_only(client: TestClient):
 
     # When: LLM outputs SELECT without LIMIT
     req_no_limit = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="llm", name="test-step", 
             input="Get all users",
             output="SELECT * FROM users"
@@ -587,13 +587,13 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_name, control_name = create_and_assign_policy(
         client, control_data, agent_name="LlmSingleStatementAgent"
     )
 
     # When: LLM outputs a single statement
     req_single = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="llm", name="test-step", 
             input="Get user by id",
             output="SELECT * FROM users WHERE id = 1"
@@ -607,7 +607,7 @@ def test_sql_llm_output_multi_statement_blocking(client: TestClient):
 
     # When: LLM outputs a multi-statement query
     req_multi = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="llm", name="test-step", 
             input="Get users and drop table",
             output="SELECT * FROM users; DROP TABLE users;"
@@ -638,13 +638,13 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
         },
         "action": {"decision": "deny"}
     }
-    agent_uuid, control_name = create_and_assign_policy(
+    agent_name, control_name = create_and_assign_policy(
         client, control_data, agent_name="LlmAnalyticsAgent"
     )
 
     # When: LLM outputs a query on an allowed table (analytics)
     req_analytics = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="llm", name="test-step", 
             input="Get analytics data",
             output="SELECT * FROM analytics WHERE date > '2024-01-01'"
@@ -658,7 +658,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
 
     # When: LLM outputs a query on an allowed table (reports)
     req_reports = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="llm", name="test-step", 
             input="Get monthly reports",
             output="SELECT * FROM reports WHERE month = 'January'"
@@ -672,7 +672,7 @@ def test_sql_llm_output_table_restrictions(client: TestClient):
 
     # When: LLM outputs a query on a disallowed table (users)
     req_users = EvaluationRequest(
-        agent_uuid=agent_uuid,
+        agent_name=agent_name,
         step=Step(type="llm", name="test-step", 
             input="Get all users",
             output="SELECT * FROM users"

@@ -161,7 +161,7 @@ import agent_control
 
 agent_control.init(
     agent_name="Customer Support Agent",
-    agent_id="customer-support-agent",
+    agent_name="646d5dea-c2e6-4453-b446-7035482b38e4",
     agent_description="AI-powered customer support assistant",
 )
 ```
@@ -302,9 +302,12 @@ scope:
 selector:
   path: input
 evaluator:
-  name: luna2
+  name: galileo.luna2
   config:
-    threshold: 0.8
+    stage_type: local
+    metric: input_toxicity
+    operator: gt
+    target_value: 0.8
 action:
   decision: deny
   message: "Inappropriate content detected"

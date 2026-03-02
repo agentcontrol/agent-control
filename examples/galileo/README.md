@@ -78,11 +78,11 @@ Testing toxicity detection with Central Stage...
 - **"GALILEO_API_KEY environment variable is required"**: Export your API key
 - **"Project not found"**: Set `GALILEO_PROJECT_NAME` to match your Galileo project
 - **"Stage not found"**: Set `GALILEO_STAGE_NAME` to match a stage in your project
-- **Import errors**: Ensure you installed with `[luna2]` extra: `pip install agent-control-evaluators[luna2]`
+- **Import errors**: Ensure you installed with `[galileo]` extra: `pip install agent-control-evaluators[galileo]`
 
 ### Documentation
 
 - [Galileo Protect Overview](https://v2docs.galileo.ai/concepts/protect/overview)
 - [Luna-2 Python API Reference](https://v2docs.galileo.ai/sdk-api/python/reference/protect)
-- [Agent Control Luna-2 Evaluator](../../evaluators/src/agent_control_evaluators/luna2/)
+- [Agent Control Luna-2 Evaluator](../../evaluators/extra/galileo/)
 

@@ -15,7 +15,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
-          token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN }}
+          token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || github.token }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -31,7 +31,7 @@ jobs:
         with:
           git_committer_name: galileo-automation
           git_committer_email: ci@rungalileo.io
-          github_token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN }}
+          github_token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || github.token }}
           ssh_public_signing_key: ${{ secrets.GALILEO_AUTOMATION_SSH_PUBLIC_KEY }}
           ssh_private_signing_key: ${{ secrets.GALILEO_AUTOMATION_SSH_PRIVATE_KEY }}
           root_options: "-vv"
@@ -42,11 +42,20 @@ jobs:
           uv sync
           uv run python scripts/build.py all
 
+      # Publish in dependency order: models -> evaluators -> sdk -> evaluator-galileo
       - name: Publish agent-control-models to PyPI
         if: steps.release.outputs.released == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: models/dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Publish agent-control-evaluators to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: evaluators/builtin/dist/
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
@@ -58,14 +67,24 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
+      - name: Publish agent-control-evaluator-galileo to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: evaluators/extra/galileo/dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
       - name: Upload to GitHub Release
         if: steps.release.outputs.released == 'true'
         uses: python-semantic-release/upload-to-gh-release@main
         with:
-          github_token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN }}
+          github_token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || github.token }}
           tag: ${{ steps.release.outputs.tag }}
           root_options: "-vv"
           dist_glob: |
             models/dist/*
+            evaluators/builtin/dist/*
             sdks/python/dist/*
             server/dist/*
+            evaluators/extra/galileo/dist/*

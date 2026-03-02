@@ -1,18 +1,18 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from '@tanstack/react-query';
 
-import { api } from "@/core/api/client";
-import type { ListControlsResponse } from "@/core/api/types";
+import { api } from '@/core/api/client';
+import type { ListControlsResponse } from '@/core/api/types';
 
 const CONTROLS_PAGE_SIZE = 10;
 
-export interface UseControlsInfiniteParams {
+export type UseControlsInfiniteParams = {
   name?: string;
   enabled?: boolean;
   step_type?: string;
   stage?: string;
   execution?: string;
   tag?: string;
-}
+};
 
 /**
  * Infinite query hook to fetch controls with cursor-based pagination
@@ -22,7 +22,7 @@ export function useControlsInfinite(params?: UseControlsInfiniteParams) {
   const { enabled = true, ...filterParams } = params ?? {};
 
   return useInfiniteQuery({
-    queryKey: ["controls", "infinite", filterParams],
+    queryKey: ['controls', 'infinite', filterParams],
     queryFn: async ({ pageParam }: { pageParam: number | undefined }) => {
       const { data, error } = await api.controls.list({
         cursor: pageParam,

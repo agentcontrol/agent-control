@@ -1,11 +1,11 @@
 [project]
 name = "agent-control-engine"
-version = "0.1.0"
+version = "2.1.0"
 description = "Control execution engine for Agent Control"
 requires-python = ">=3.12"
 dependencies = [
-    "agent-control-models>=0.1.0",
-    "agent-control-evaluators>=0.1.0",
+    "agent-control-models>=3.0.0",
+    "agent-control-evaluators>=3.0.0",
     "google-re2>=1.1",
 ]
 authors = [

@@ -14,9 +14,13 @@
     "test:integration:ui": "playwright test --ui",
     "test:integration:headed": "playwright test --headed",
     "test:integration:debug": "playwright test --debug",
-    "test:integration:report": "playwright show-report"
+    "test:integration:report": "playwright show-report",
+    "prettify": "prettier --write .",
+    "prettify:check": "prettier --check ."
   },
   "dependencies": {
+    "@emotion/is-prop-valid": "^1.4.0",
+    "@mantine/charts": "^7.17.8",
     "@mantine/code-highlight": "7.17.5",
     "@mantine/core": "7.17.5",
     "@mantine/dates": "7.17.5",
@@ -26,7 +30,7 @@
     "@mantine/modals": "7.17.7",
     "@mantine/notifications": "7.17.7",
     "@rungalileo/icons": "^0.0.1",
-    "@rungalileo/jupiter-ds": "^0.0.2",
+    "@rungalileo/jupiter-ds": "^0.0.8",
     "@tabler/icons-react": "3.31",
     "@tanstack/react-query": "5.74.4",
     "@tanstack/react-query-devtools": "5.72.2",
@@ -35,10 +39,12 @@
     "classix": "2.2.0",
     "date-fns": "4.1.0",
     "json-edit-react": "^1.29.0",
+    "motion": "^12.33.0",
     "next": "15.4.10",
     "openapi-fetch": "0.14.0",
     "react": "^19.1.4",
-    "react-dom": "^19.1.4"
+    "react-dom": "^19.1.4",
+    "recharts": "2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
@@ -54,7 +60,9 @@
     "openapi-typescript": "^7.10.1",
     "postcss-preset-mantine": "1.17.0",
     "postcss-simple-vars": "7.0.1",
+    "prettier": "^3.4.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-eslint": "^8.32.1"
   }
 }

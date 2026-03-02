@@ -13,13 +13,12 @@ you may need to either:
 import asyncio
 import os
 import pathlib
-import uuid
 
 import requests
 
 from agent_control import Agent, AgentControlClient, agents, controls, policies
 
-AGENT_ID = "sql-agent-demo"
+AGENT_ID = "edf66504-0db5-4ee8-9e09-3ef37bbb8faa"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
@@ -52,11 +51,10 @@ async def setup_sql_controls():
     """Create SQL control, policy, and assign to agent."""
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # 1. Register Agent
-        agent_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID)
+        agent_name = AGENT_ID
         
         agent = Agent(
-            agent_id=agent_uuid,
-            agent_name="SQL Demo Agent",
+            agent_name=agent_name,
             agent_description="SQL agent with server-side controls"
         )
         
@@ -141,7 +139,7 @@ async def setup_sql_controls():
             if "409" in str(e):
                 print("ℹ️  Policy 'sql-protection-policy' already exists, checking agent...")
                 try:
-                    policy_info = await agents.get_agent_policy(client, str(agent_uuid))
+                    policy_info = await agents.get_agent_policy(client, str(agent_name))
                     policy_id = policy_info.get("policy_id")
                     if policy_id is None:
                         raise ValueError("No policy assigned to agent.")
@@ -172,7 +170,7 @@ async def setup_sql_controls():
         
         # 5. Assign Policy to Agent
         try:
-            await policies.assign_policy_to_agent(client, agent_uuid, policy_id)
+            await policies.assign_policy_to_agent(client, agent_name, policy_id)
             print(f"✓ Assigned policy to agent")
         except Exception as e:
             if "409" in str(e) or "already" in str(e).lower():
