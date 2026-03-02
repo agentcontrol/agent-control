@@ -28,19 +28,31 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Remove all policy associations from agent
+ * Remove agent's policy assignment
  *
  * @remarks
- * Remove all policy associations from an agent.
+ * Remove the policy assignment from an agent.
+ *
+ * The agent will no longer have any protection controls active.
+ *
+ * Args:
+ *     agent_name: Agent identifier
+ *     db: Database session (injected)
+ *
+ * Returns:
+ *     DeletePolicyResponse with success flag
+ *
+ * Raises:
+ *     HTTPException 404: Agent not found or agent has no policy assigned
+ *     HTTPException 500: Database error during removal
  */
-export function agentsRemoveAllAgentPolicies(
+export function agentsDeletePolicy(
   client: AgentControlSDKCore,
-  request:
-    operations.RemoveAllAgentPoliciesApiV1AgentsAgentIdPoliciesDeleteRequest,
+  request: operations.DeleteAgentPolicyApiV1AgentsAgentNamePolicyDeleteRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.AssocResponse,
+    models.DeletePolicyResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -61,13 +73,12 @@ export function agentsRemoveAllAgentPolicies(
 
 async function $do(
   client: AgentControlSDKCore,
-  request:
-    operations.RemoveAllAgentPoliciesApiV1AgentsAgentIdPoliciesDeleteRequest,
+  request: operations.DeleteAgentPolicyApiV1AgentsAgentNamePolicyDeleteRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.AssocResponse,
+      models.DeletePolicyResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -86,7 +97,7 @@ async function $do(
     (value) =>
       z.parse(
         operations
-          .RemoveAllAgentPoliciesApiV1AgentsAgentIdPoliciesDeleteRequest$outboundSchema,
+          .DeleteAgentPolicyApiV1AgentsAgentNamePolicyDeleteRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -98,13 +109,13 @@ async function $do(
   const body = null;
 
   const pathParams = {
-    agent_id: encodeSimple("agent_id", payload.agent_id, {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
       explode: false,
       charEncoding: "percent",
     }),
   };
 
-  const path = pathToFunc("/api/v1/agents/{agent_id}/policies")(pathParams);
+  const path = pathToFunc("/api/v1/agents/{agent_name}/policy")(pathParams);
 
   const headers = new Headers(compactMap({
     Accept: "application/json",
@@ -117,8 +128,7 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID:
-      "remove_all_agent_policies_api_v1_agents__agent_id__policies_delete",
+    operationID: "delete_agent_policy_api_v1_agents__agent_name__policy_delete",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -161,7 +171,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.AssocResponse,
+    models.DeletePolicyResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -172,7 +182,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.AssocResponse$inboundSchema),
+    M.json(200, models.DeletePolicyResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

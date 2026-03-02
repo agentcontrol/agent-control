@@ -55,7 +55,7 @@ def _create_control(client: TestClient, name: str | None = None, data: dict | No
 def test_agent_gets_controls_from_policy(client: TestClient) -> None:
     """Agent should see all controls from its policy."""
     # Given: Agent with policy containing 6 controls
-    agent_id, _ = _create_agent(client)
+    agent_name, _ = _create_agent(client)
     policy_id = _create_policy(client)
 
     # Create 6 controls
@@ -69,11 +69,11 @@ def test_agent_gets_controls_from_policy(client: TestClient) -> None:
         assert resp.status_code == 200
 
     # Assign policy to agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
     assert resp.status_code == 200
 
     # When: Get agent's controls
-    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     assert resp.status_code == 200
     controls = resp.json()["controls"]
 
@@ -88,7 +88,7 @@ def test_agent_gets_controls_from_policy(client: TestClient) -> None:
 def test_agent_controls_update_when_control_added_to_policy(client: TestClient) -> None:
     """Adding a control to policy should make it visible to agents."""
     # Given: Agent → Policy → 2 controls
-    agent_id, _ = _create_agent(client)
+    agent_name, _ = _create_agent(client)
     policy_id = _create_policy(client)
 
     control_1_id = _create_control(client, "control-1", {"id": 1})
@@ -96,10 +96,10 @@ def test_agent_controls_update_when_control_added_to_policy(client: TestClient) 
 
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_1_id}")
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_2_id}")
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
     # Verify initial state: 2 controls
-    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     assert len(resp.json()["controls"]) == 2
 
     # When: Add 3 more controls to the policy
@@ -115,7 +115,7 @@ def test_agent_controls_update_when_control_added_to_policy(client: TestClient) 
     assert resp.status_code == 200
 
     # Then: Agent now sees 5 controls total
-    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     controls = resp.json()["controls"]
     assert len(controls) == 5
 
@@ -126,7 +126,7 @@ def test_agent_controls_update_when_control_added_to_policy(client: TestClient) 
 def test_switching_agent_policy_changes_controls(client: TestClient) -> None:
     """Switching agent's policy should completely change its controls."""
     # Given: Two policies with different controls
-    agent_id, _ = _create_agent(client)
+    agent_name, _ = _create_agent(client)
 
     # Policy A with controls {1, 2}
     policy_a_id = _create_policy(client, "policy-a")
@@ -143,18 +143,18 @@ def test_switching_agent_policy_changes_controls(client: TestClient) -> None:
     client.post(f"/api/v1/policies/{policy_b_id}/controls/{control_4_id}")
 
     # Assign policy A to agent
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_a_id}")
-    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    client.post(f"/api/v1/agents/{agent_name}/policy/{policy_a_id}")
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     controls_a = resp.json()["controls"]
     assert len(controls_a) == 2
     assert {r["id"] for r in controls_a} == {control_1_id, control_2_id}
 
     # When: Switch to policy B
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_b_id}")
+    resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_b_id}")
     assert resp.status_code == 200
 
     # Then: Agent's controls change completely
-    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     controls_b = resp.json()["controls"]
     assert len(controls_b) == 2
     assert {r["id"] for r in controls_b} == {control_3_id, control_4_id}
@@ -163,23 +163,23 @@ def test_switching_agent_policy_changes_controls(client: TestClient) -> None:
 def test_removing_agent_policy_clears_controls(client: TestClient) -> None:
     """Removing policy from agent should result in empty controls list."""
     # Given: Agent with policy that has controls
-    agent_id, _ = _create_agent(client)
+    agent_name, _ = _create_agent(client)
     policy_id = _create_policy(client)
     control_id = _create_control(client, "control-1", {"id": 1})
 
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
     # Verify agent has controls
-    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     assert len(resp.json()["controls"]) > 0
 
     # When: Remove policy from agent
-    resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
+    resp = client.delete(f"/api/v1/agents/{agent_name}/policy")
     assert resp.status_code == 200
 
     # Then: Agent returns empty controls list
-    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     assert resp.status_code == 200
     assert resp.json()["controls"] == []
 
@@ -187,7 +187,7 @@ def test_removing_agent_policy_clears_controls(client: TestClient) -> None:
 def test_removing_control_from_policy_removes_from_agent(client: TestClient) -> None:
     """Removing control from policy should remove it from agent."""
     # Given: Agent → Policy → 4 controls
-    agent_id, _ = _create_agent(client)
+    agent_name, _ = _create_agent(client)
     policy_id = _create_policy(client)
 
     control_1_id = _create_control(client, "control-1", {"id": 1})
@@ -199,10 +199,10 @@ def test_removing_control_from_policy_removes_from_agent(client: TestClient) -> 
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_2_id}")
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_3_id}")
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_4_id}")
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
     # Verify initial state: 4 controls
-    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     assert len(resp.json()["controls"]) == 4
 
     # When: Remove 2 controls from policy
@@ -212,7 +212,7 @@ def test_removing_control_from_policy_removes_from_agent(client: TestClient) -> 
     assert resp.status_code == 200
 
     # Then: Agent sees 2 remaining controls
-    resp = client.get(f"/api/v1/agents/{agent_id}/controls")
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     controls = resp.json()["controls"]
     assert len(controls) == 2
     assert {r["id"] for r in controls} == {control_3_id, control_4_id}

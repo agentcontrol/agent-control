@@ -184,7 +184,7 @@ Initialize Agent Control with your agent's information.
 **Returns:** `Agent` instance
 
 When background refresh is enabled, the SDK refreshes cache snapshots via
-`GET /agents/{agent_id}/controls`. On refresh failures, it keeps the previous
+`GET /agents/{agent_name}/controls`. On refresh failures, it keeps the previous
 snapshot (fail-open behavior).
 
 ### Decorator

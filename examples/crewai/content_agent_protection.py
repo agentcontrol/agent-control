@@ -54,7 +54,7 @@ server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 agent_control.init(
     agent_name=AGENT_NAME,
-    agent_id=AGENT_ID,
+    agent_name=AGENT_ID,
     agent_description=AGENT_DESCRIPTION,
     server_url=server_url,
 )

@@ -12,7 +12,7 @@ import type {
  * @param agentId - UUID of the agent (required)
  */
 export function useAgentControls(
-  agentId: GetAgentControlsPathParams['agent_id']
+  agentId: GetAgentControlsPathParams['agent_name']
 ) {
   return useQuery<AgentControlsResponse>({
     queryKey: ['agent', agentId, 'controls'],

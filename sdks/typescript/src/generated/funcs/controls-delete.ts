@@ -33,7 +33,7 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Delete a control by ID.
  *
- * By default, deletion fails if the control is associated with any policy or agent.
+ * By default, deletion fails if the control is associated with any policy.
  * Use force=true to automatically dissociate and delete.
  *
  * Args:
@@ -42,7 +42,7 @@ import { Result } from "../types/fp.js";
  *     db: Database session (injected)
  *
  * Returns:
- *     DeleteControlResponse with success flag and dissociation details
+ *     DeleteControlResponse with success flag and list of dissociated policies
  *
  * Raises:
  *     HTTPException 404: Control not found

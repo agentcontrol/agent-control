@@ -28,18 +28,28 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * List policies associated with agent
+ * Get agent's assigned policy
  *
  * @remarks
- * List policy IDs associated with an agent.
+ * Retrieve the policy currently assigned to an agent.
+ *
+ * Args:
+ *     agent_name: Agent identifier
+ *     db: Database session (injected)
+ *
+ * Returns:
+ *     GetPolicyResponse with policy ID
+ *
+ * Raises:
+ *     HTTPException 404: Agent not found or agent has no policy assigned
  */
-export function agentsGetPolicies(
+export function agentsGetPolicy(
   client: AgentControlSDKCore,
-  request: operations.GetAgentPoliciesApiV1AgentsAgentIdPoliciesGetRequest,
+  request: operations.GetAgentPolicyApiV1AgentsAgentNamePolicyGetRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.GetAgentPoliciesResponse,
+    models.GetPolicyResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -60,12 +70,12 @@ export function agentsGetPolicies(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.GetAgentPoliciesApiV1AgentsAgentIdPoliciesGetRequest,
+  request: operations.GetAgentPolicyApiV1AgentsAgentNamePolicyGetRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.GetAgentPoliciesResponse,
+      models.GetPolicyResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -84,7 +94,7 @@ async function $do(
     (value) =>
       z.parse(
         operations
-          .GetAgentPoliciesApiV1AgentsAgentIdPoliciesGetRequest$outboundSchema,
+          .GetAgentPolicyApiV1AgentsAgentNamePolicyGetRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -96,13 +106,13 @@ async function $do(
   const body = null;
 
   const pathParams = {
-    agent_id: encodeSimple("agent_id", payload.agent_id, {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
       explode: false,
       charEncoding: "percent",
     }),
   };
 
-  const path = pathToFunc("/api/v1/agents/{agent_id}/policies")(pathParams);
+  const path = pathToFunc("/api/v1/agents/{agent_name}/policy")(pathParams);
 
   const headers = new Headers(compactMap({
     Accept: "application/json",
@@ -115,7 +125,7 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "get_agent_policies_api_v1_agents__agent_id__policies_get",
+    operationID: "get_agent_policy_api_v1_agents__agent_name__policy_get",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -158,7 +168,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.GetAgentPoliciesResponse,
+    models.GetPolicyResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -169,7 +179,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.GetAgentPoliciesResponse$inboundSchema),
+    M.json(200, models.GetPolicyResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

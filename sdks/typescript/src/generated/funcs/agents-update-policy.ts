@@ -28,22 +28,33 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Remove policy association from agent
+ * Assign policy to agent
  *
  * @remarks
- * Remove a policy association from an agent.
+ * Assign a policy to an agent, replacing any existing policy assignment.
  *
- * Idempotent for existing resources: removing a non-associated link is a no-op.
- * Missing agent/policy resources still return 404.
+ * The agent will immediately inherit all controls from the assigned policy.
+ *
+ * Args:
+ *     agent_name: Agent identifier
+ *     policy_id: ID of the policy to assign
+ *     db: Database session (injected)
+ *
+ * Returns:
+ *     SetPolicyResponse with success flag and previous policy ID (if any)
+ *
+ * Raises:
+ *     HTTPException 404: Agent or policy not found
+ *     HTTPException 500: Database error during assignment
  */
-export function agentsRemovePolicy(
+export function agentsUpdatePolicy(
   client: AgentControlSDKCore,
   request:
-    operations.RemoveAgentPolicyApiV1AgentsAgentIdPoliciesPolicyIdDeleteRequest,
+    operations.SetAgentPolicyApiV1AgentsAgentNamePolicyPolicyIdPostRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.AssocResponse,
+    models.SetPolicyResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -65,12 +76,12 @@ export function agentsRemovePolicy(
 async function $do(
   client: AgentControlSDKCore,
   request:
-    operations.RemoveAgentPolicyApiV1AgentsAgentIdPoliciesPolicyIdDeleteRequest,
+    operations.SetAgentPolicyApiV1AgentsAgentNamePolicyPolicyIdPostRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.AssocResponse,
+      models.SetPolicyResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -89,7 +100,7 @@ async function $do(
     (value) =>
       z.parse(
         operations
-          .RemoveAgentPolicyApiV1AgentsAgentIdPoliciesPolicyIdDeleteRequest$outboundSchema,
+          .SetAgentPolicyApiV1AgentsAgentNamePolicyPolicyIdPostRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -101,7 +112,7 @@ async function $do(
   const body = null;
 
   const pathParams = {
-    agent_id: encodeSimple("agent_id", payload.agent_id, {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
       explode: false,
       charEncoding: "percent",
     }),
@@ -111,7 +122,7 @@ async function $do(
     }),
   };
 
-  const path = pathToFunc("/api/v1/agents/{agent_id}/policies/{policy_id}")(
+  const path = pathToFunc("/api/v1/agents/{agent_name}/policy/{policy_id}")(
     pathParams,
   );
 
@@ -127,7 +138,7 @@ async function $do(
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
     operationID:
-      "remove_agent_policy_api_v1_agents__agent_id__policies__policy_id__delete",
+      "set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -141,7 +152,7 @@ async function $do(
 
   const requestRes = client._createRequest(context, {
     security: requestSecurity,
-    method: "DELETE",
+    method: "POST",
     baseURL: options?.serverURL,
     path: path,
     headers: headers,
@@ -170,7 +181,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.AssocResponse,
+    models.SetPolicyResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -181,7 +192,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.AssocResponse$inboundSchema),
+    M.json(200, models.SetPolicyResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

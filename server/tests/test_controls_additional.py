@@ -499,11 +499,11 @@ def test_set_control_data_agent_scoped_agent_not_found(client: TestClient) -> No
 def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> None:
     # Given: an agent without the referenced evaluator
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_id": agent_id, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name, "agent_name": agent_name},
             "steps": [],
             "evaluators": [],
         },
@@ -527,11 +527,11 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
 def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> None:
     # Given: an agent with evaluator schema requiring "pattern"
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_id": agent_id, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name, "agent_name": agent_name},
             "steps": [],
             "evaluators": [
                 {
@@ -617,11 +617,11 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
 ) -> None:
     # Given: an agent whose stored data is corrupted
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_id": agent_id, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name, "agent_name": agent_name},
             "steps": [],
             "evaluators": [{"name": "custom", "config_schema": {"type": "object"}}],
         },
@@ -631,7 +631,7 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
-            {"data": json.dumps({"bad": "data"}), "id": agent_id},
+            {"data": json.dumps({"bad": "data"}), "id": agent_name},
         )
 
     control_id, _ = _create_control(client)

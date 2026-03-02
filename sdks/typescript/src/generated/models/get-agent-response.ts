@@ -24,7 +24,7 @@ export type GetAgentResponse = {
    * @remarks
    *
    * An agent represents an AI system that can be protected and monitored.
-   * Each agent has a unique ID and can have multiple steps registered with it.
+   * Each agent has a unique immutable name and can have multiple steps registered with it.
    */
   agent: Agent;
   /**

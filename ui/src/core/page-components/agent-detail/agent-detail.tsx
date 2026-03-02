@@ -328,9 +328,9 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
 
           <Tabs.Panel value="monitor" pt="lg">
             <ErrorBoundary variant="page">
-              {agent?.agent.agent_id && activeTab === 'monitor' ? (
+              {agent?.agent.agent_name && activeTab === 'monitor' ? (
                 <AgentsMonitor
-                  agentUuid={agent.agent.agent_id}
+                  agentUuid={agent.agent.agent_name}
                   timeRangeValue={timeRangeValue}
                 />
               ) : null}

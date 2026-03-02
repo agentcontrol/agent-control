@@ -18,7 +18,7 @@ from agent_control_models.server import AgentControlsResponse
 @pytest.mark.asyncio
 async def test_agent_registration_workflow(
     client: agent_control.AgentControlClient,
-    test_agent_id: str,
+    test_agent_name: str,
     sample_steps: list
 ) -> None:
     """
@@ -199,7 +199,7 @@ async def test_convenience_get_agent_function(
 
 @pytest.mark.asyncio
 async def test_init_function_workflow(
-    test_agent_id: str,
+    test_agent_name: str,
     server_url: str,
     api_key: str | None,
     sample_steps: list,
@@ -214,7 +214,7 @@ async def test_init_function_workflow(
     """
     # Initialize agent
     agent = agent_control.init(
-        agent_name=test_agent_id,
+        agent_name=test_agent_name,
         agent_description="Testing init function",
         agent_version="1.0.0",
         server_url=server_url,
@@ -226,7 +226,7 @@ async def test_init_function_workflow(
 
     # Verify agent instance
     assert agent is not None
-    assert agent.agent_name == test_agent_id
+    assert agent.agent_name == test_agent_name
     assert hasattr(agent, "agent_name")
 
     # Verify current_agent()

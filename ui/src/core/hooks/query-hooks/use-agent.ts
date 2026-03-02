@@ -11,7 +11,7 @@ import type { GetAgentPathParams, GetAgentResponse } from '@/core/api/types';
  *
  */
 export function useAgent(
-  agentId: GetAgentPathParams['agent_id'],
+  agentId: GetAgentPathParams['agent_name'],
   options?: Omit<
     UseQueryOptions<
       GetAgentResponse,

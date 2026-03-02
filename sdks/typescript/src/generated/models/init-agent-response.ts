@@ -19,7 +19,7 @@ import {
  */
 export type InitAgentResponse = {
   /**
-   * Active protection controls for the agent
+   * Active protection controls for the agent (if policy assigned)
    */
   controls?: Array<Control> | undefined;
   /**

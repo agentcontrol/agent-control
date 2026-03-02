@@ -10,7 +10,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 export type AgentControlsResponse = {
   /**
-   * List of active controls associated with the agent
+   * List of controls associated with the agent via its policy
    */
   controls: Array<Control>;
 };

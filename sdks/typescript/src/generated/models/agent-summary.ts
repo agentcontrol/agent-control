@@ -14,15 +14,11 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type AgentSummary = {
   /**
-   * Number of active controls for this agent
+   * Number of active controls from agent's policy
    */
   activeControlsCount: number;
   /**
-   * UUID of the agent
-   */
-  agentId: string;
-  /**
-   * Human-readable name of the agent
+   * Unique identifier of the agent
    */
   agentName: string;
   /**
@@ -34,9 +30,9 @@ export type AgentSummary = {
    */
   evaluatorCount: number;
   /**
-   * IDs of policies associated with the agent
+   * ID of assigned policy, if any
    */
-  policyIds?: Array<number> | undefined;
+  policyId?: number | null | undefined;
   /**
    * Number of steps registered with the agent
    */
@@ -48,21 +44,19 @@ export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
   z.pipe(
     z.object({
       active_controls_count: z._default(types.number(), 0),
-      agent_id: types.string(),
       agent_name: types.string(),
       created_at: z.optional(z.nullable(types.string())),
       evaluator_count: z._default(types.number(), 0),
-      policy_ids: types.optional(z.array(types.number())),
+      policy_id: z.optional(z.nullable(types.number())),
       step_count: z._default(types.number(), 0),
     }),
     z.transform((v) => {
       return remap$(v, {
         "active_controls_count": "activeControlsCount",
-        "agent_id": "agentId",
         "agent_name": "agentName",
         "created_at": "createdAt",
         "evaluator_count": "evaluatorCount",
-        "policy_ids": "policyIds",
+        "policy_id": "policyId",
         "step_count": "stepCount",
       });
     }),

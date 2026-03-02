@@ -129,7 +129,7 @@ test.describe('Home Page - Agents Overview', () => {
     // Verify navigation to agent detail page
     // Since stats mock returns data, it will redirect to monitor tab
     await expect(mockedPage).toHaveURL(
-      `/agents/${firstAgent.agent_id}/monitor`
+      `/agents/${firstAgent.agent_name}/monitor`
     );
   });
 
