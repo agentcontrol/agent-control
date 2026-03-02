@@ -36,7 +36,7 @@ import { Result } from "../types/fp.js";
  * - trace_id: Get all events for a request
  * - span_id: Get all events for a function call
  * - control_execution_id: Get a specific event
- * - agent_uuid: Filter by agent
+ * - agent_name: Filter by agent
  * - control_ids: Filter by controls
  * - actions: Filter by actions (allow, deny, warn, log)
  * - matched: Filter by matched status

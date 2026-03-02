@@ -55,42 +55,30 @@ export const api = {
       apiClient.GET('/api/v1/agents', {
         params: { query: params },
       }),
-    get: (agentId: GetAgentPathParams['agent_id']) =>
-      apiClient.GET('/api/v1/agents/{agent_id}', {
-        params: { path: { agent_id: agentId } },
+    get: (agentName: GetAgentPathParams['agent_name']) =>
+      apiClient.GET('/api/v1/agents/{agent_name}', {
+        params: { path: { agent_name: agentName } },
       }),
     initAgent: (data: InitAgentRequestBody) =>
       apiClient.POST('/api/v1/agents/initAgent', { body: data }),
-    getControls: (agentId: GetAgentControlsPathParams['agent_id']) =>
-      apiClient.GET('/api/v1/agents/{agent_id}/controls', {
-        params: { path: { agent_id: agentId } },
+    getControls: (agentName: GetAgentControlsPathParams['agent_name']) =>
+      apiClient.GET('/api/v1/agents/{agent_name}/controls', {
+        params: { path: { agent_name: agentName } },
       }),
-    addPolicy: (agentId: GetAgentPathParams['agent_id'], policyId: number) =>
-      apiClient.POST('/api/v1/agents/{agent_id}/policies/{policy_id}', {
-        params: { path: { agent_id: agentId, policy_id: policyId } },
-      }),
-    removePolicy: (agentId: GetAgentPathParams['agent_id'], policyId: number) =>
-      apiClient.DELETE('/api/v1/agents/{agent_id}/policies/{policy_id}', {
-        params: { path: { agent_id: agentId, policy_id: policyId } },
-      }),
-    getPolicies: (agentId: GetAgentPathParams['agent_id']) =>
-      apiClient.GET('/api/v1/agents/{agent_id}/policies', {
-        params: { path: { agent_id: agentId } },
-      }),
-    clearPolicies: (agentId: GetAgentPathParams['agent_id']) =>
-      apiClient.DELETE('/api/v1/agents/{agent_id}/policies', {
-        params: { path: { agent_id: agentId } },
-      }),
-    addControl: (agentId: GetAgentPathParams['agent_id'], controlId: number) =>
-      apiClient.POST('/api/v1/agents/{agent_id}/controls/{control_id}', {
-        params: { path: { agent_id: agentId, control_id: controlId } },
-      }),
-    removeControl: (
-      agentId: GetAgentPathParams['agent_id'],
-      controlId: number
+    setPolicy: (
+      agentName: GetAgentPathParams['agent_name'],
+      policyId: number
     ) =>
-      apiClient.DELETE('/api/v1/agents/{agent_id}/controls/{control_id}', {
-        params: { path: { agent_id: agentId, control_id: controlId } },
+      apiClient.POST('/api/v1/agents/{agent_name}/policy/{policy_id}', {
+        params: { path: { agent_name: agentName, policy_id: policyId } },
+      }),
+    getPolicy: (agentName: GetAgentPathParams['agent_name']) =>
+      apiClient.GET('/api/v1/agents/{agent_name}/policy', {
+        params: { path: { agent_name: agentName } },
+      }),
+    deletePolicy: (agentName: GetAgentPathParams['agent_name']) =>
+      apiClient.DELETE('/api/v1/agents/{agent_name}/policy', {
+        params: { path: { agent_name: agentName } },
       }),
   },
   evaluators: {
@@ -158,7 +146,7 @@ export const api = {
   },
   observability: {
     getStats: (params: {
-      agent_uuid: string;
+      agent_name: string;
       time_range?:
         | '1m'
         | '5m'

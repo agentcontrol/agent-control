@@ -70,8 +70,7 @@ export type CheckStage = OpenEnum<typeof CheckStage>;
  *     control_execution_id: Unique ID for this specific control execution
  *     trace_id: OpenTelemetry-compatible trace ID (128-bit hex, 32 chars)
  *     span_id: OpenTelemetry-compatible span ID (64-bit hex, 16 chars)
- *     agent_uuid: UUID of the agent that executed the control
- *     agent_name: Name of the agent (denormalized for queries)
+ *     agent_name: Identifier of the agent that executed the control
  *     control_id: Database ID of the control
  *     control_name: Name of the control (denormalized for queries)
  *     check_stage: "pre" (before execution) or "post" (after execution)
@@ -92,13 +91,9 @@ export type ControlExecutionEvent = {
    */
   action: ControlExecutionEventAction;
   /**
-   * Name of the agent (denormalized)
+   * Identifier of the agent
    */
   agentName: string;
-  /**
-   * UUID of the agent
-   */
-  agentUuid: string;
   /**
    * Type of call: 'llm_call' or 'tool_call'
    */
@@ -198,7 +193,6 @@ export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
   z.object({
     action: ControlExecutionEventAction$inboundSchema,
     agent_name: types.string(),
-    agent_uuid: types.string(),
     applies_to: ControlExecutionEventAppliesTo$inboundSchema,
     check_stage: CheckStage$inboundSchema,
     confidence: types.number(),
@@ -218,7 +212,6 @@ export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
   z.transform((v) => {
     return remap$(v, {
       "agent_name": "agentName",
-      "agent_uuid": "agentUuid",
       "applies_to": "appliesTo",
       "check_stage": "checkStage",
       "control_execution_id": "controlExecutionId",
@@ -237,7 +230,6 @@ export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
 export type ControlExecutionEvent$Outbound = {
   action: string;
   agent_name: string;
-  agent_uuid: string;
   applies_to: string;
   check_stage: string;
   confidence: number;
@@ -263,7 +255,6 @@ export const ControlExecutionEvent$outboundSchema: z.ZodMiniType<
   z.object({
     action: ControlExecutionEventAction$outboundSchema,
     agentName: z.string(),
-    agentUuid: z.string(),
     appliesTo: ControlExecutionEventAppliesTo$outboundSchema,
     checkStage: CheckStage$outboundSchema,
     confidence: z.number(),
@@ -283,7 +274,6 @@ export const ControlExecutionEvent$outboundSchema: z.ZodMiniType<
   z.transform((v) => {
     return remap$(v, {
       agentName: "agent_name",
-      agentUuid: "agent_uuid",
       appliesTo: "applies_to",
       checkStage: "check_stage",
       controlExecutionId: "control_execution_id",

@@ -15,11 +15,11 @@ export interface paths {
      * List all agents
      * @description List all registered agents with cursor-based pagination.
      *
-     *     Returns a summary of each agent including ID, name, policy associations,
+     *     Returns a summary of each agent including identifier, policy assignment,
      *     and counts of registered steps and evaluators.
      *
      *     Args:
-     *         cursor: Optional cursor for pagination (UUID of last agent from previous page)
+     *         cursor: Optional cursor for pagination (last agent name from previous page)
      *         limit: Pagination limit (default 20, max 100)
      *         name: Optional name filter (case-insensitive partial match)
      *         db: Database session (injected)
@@ -51,23 +51,18 @@ export interface paths {
      *
      *     This endpoint is idempotent:
      *     - If the agent name doesn't exist, creates a new agent
-     *     - If the agent name exists with the same UUID, updates step schemas
-     *     - If the agent name exists with a different UUID, returns 409 Conflict
-     *     - If the UUID exists with a different name, returns 409 Conflict (no renames)
+     *     - If the agent name exists, updates registration data in place
      *
-     *     Step versioning: When step schemas change (input_schema or output_schema),
-     *     a new version is created automatically.
+     *     conflict_mode controls registration conflict handling:
+     *     - strict (default): preserve compatibility checks and conflict errors
+     *     - overwrite: latest init payload replaces steps/evaluators and returns change summary
      *
      *     Args:
      *         request: Agent metadata and step schemas
      *         db: Database session (injected)
      *
      *     Returns:
-     *         InitAgentResponse with created flag and active controls
-     *
-     *     Raises:
-     *         HTTPException 409: Agent name exists with different UUID
-     *         HTTPException 500: Database error during creation/update
+     *         InitAgentResponse with created flag and active controls (if policy assigned)
      */
     post: operations['init_agent_api_v1_agents_initAgent_post'];
     delete?: never;
@@ -76,7 +71,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}': {
+  '/api/v1/agents/{agent_name}': {
     parameters: {
       query?: never;
       header?: never;
@@ -90,7 +85,7 @@ export interface paths {
      *     Returns the latest version of each step (deduplicated by type+name).
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         db: Database session (injected)
      *
      *     Returns:
@@ -100,7 +95,7 @@ export interface paths {
      *         HTTPException 404: Agent not found
      *         HTTPException 422: Agent data is corrupted
      */
-    get: operations['get_agent_api_v1_agents__agent_id__get'];
+    get: operations['get_agent_api_v1_agents__agent_name__get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -114,7 +109,7 @@ export interface paths {
      *     Removals are idempotent - attempting to remove non-existent items is not an error.
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         request: Lists of step/evaluator identifiers to remove
      *         db: Database session (injected)
      *
@@ -125,10 +120,10 @@ export interface paths {
      *         HTTPException 404: Agent not found
      *         HTTPException 500: Database error during update
      */
-    patch: operations['patch_agent_api_v1_agents__agent_id__patch'];
+    patch: operations['patch_agent_api_v1_agents__agent_name__patch'];
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}/controls': {
+  '/api/v1/agents/{agent_name}/controls': {
     parameters: {
       query?: never;
       header?: never;
@@ -139,19 +134,20 @@ export interface paths {
      * List agent's active controls
      * @description List all protection controls active for an agent.
      *
-     *     Controls include the union of policy-derived and directly associated controls.
+     *     Controls are inherited from the agent's assigned policy.
+     *     Returns an empty list if the agent has no policy.
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         db: Database session (injected)
      *
      *     Returns:
-     *         AgentControlsResponse with list of active controls
+     *         AgentControlsResponse with list of controls (empty if no policy)
      *
      *     Raises:
      *         HTTPException 404: Agent not found
      */
-    get: operations['list_agent_controls_api_v1_agents__agent_id__controls_get'];
+    get: operations['list_agent_controls_api_v1_agents__agent_name__controls_get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -160,31 +156,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}/controls/{control_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Associate control directly with agent
-     * @description Associate a control directly with an agent (idempotent).
-     */
-    post: operations['add_agent_control_api_v1_agents__agent_id__controls__control_id__post'];
-    /**
-     * Remove direct control association from agent
-     * @description Remove a direct control association from an agent (idempotent).
-     */
-    delete: operations['remove_agent_control_api_v1_agents__agent_id__controls__control_id__delete'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/agents/{agent_id}/evaluators': {
+  '/api/v1/agents/{agent_name}/evaluators': {
     parameters: {
       query?: never;
       header?: never;
@@ -200,7 +172,7 @@ export interface paths {
      *     - UI to display available config options
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         cursor: Optional cursor for pagination (name of last evaluator from previous page)
      *         limit: Pagination limit (default 20, max 100)
      *         db: Database session (injected)
@@ -211,7 +183,7 @@ export interface paths {
      *     Raises:
      *         HTTPException 404: Agent not found
      */
-    get: operations['list_agent_evaluators_api_v1_agents__agent_id__evaluators_get'];
+    get: operations['list_agent_evaluators_api_v1_agents__agent_name__evaluators_get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -220,7 +192,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}/evaluators/{evaluator_name}': {
+  '/api/v1/agents/{agent_name}/evaluators/{evaluator_name}': {
     parameters: {
       query?: never;
       header?: never;
@@ -232,7 +204,7 @@ export interface paths {
      * @description Get a specific evaluator schema registered with an agent.
      *
      *     Args:
-     *         agent_id: UUID of the agent
+     *         agent_name: Agent identifier
      *         evaluator_name: Name of the evaluator
      *         db: Database session (injected)
      *
@@ -242,7 +214,7 @@ export interface paths {
      *     Raises:
      *         HTTPException 404: Agent or evaluator not found
      */
-    get: operations['get_agent_evaluator_api_v1_agents__agent_id__evaluators__evaluator_name__get'];
+    get: operations['get_agent_evaluator_api_v1_agents__agent_name__evaluators__evaluator_name__get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -251,7 +223,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}/policies': {
+  '/api/v1/agents/{agent_name}/policy': {
     parameters: {
       query?: never;
       header?: never;
@@ -259,23 +231,46 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List policies associated with agent
-     * @description List policy IDs associated with an agent.
+     * Get agent's assigned policy
+     * @description Retrieve the policy currently assigned to an agent.
+     *
+     *     Args:
+     *         agent_name: Agent identifier
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         GetPolicyResponse with policy ID
+     *
+     *     Raises:
+     *         HTTPException 404: Agent not found or agent has no policy assigned
      */
-    get: operations['get_agent_policies_api_v1_agents__agent_id__policies_get'];
+    get: operations['get_agent_policy_api_v1_agents__agent_name__policy_get'];
     put?: never;
     post?: never;
     /**
-     * Remove all policy associations from agent
-     * @description Remove all policy associations from an agent.
+     * Remove agent's policy assignment
+     * @description Remove the policy assignment from an agent.
+     *
+     *     The agent will no longer have any protection controls active.
+     *
+     *     Args:
+     *         agent_name: Agent identifier
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         DeletePolicyResponse with success flag
+     *
+     *     Raises:
+     *         HTTPException 404: Agent not found or agent has no policy assigned
+     *         HTTPException 500: Database error during removal
      */
-    delete: operations['remove_all_agent_policies_api_v1_agents__agent_id__policies_delete'];
+    delete: operations['delete_agent_policy_api_v1_agents__agent_name__policy_delete'];
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_id}/policies/{policy_id}': {
+  '/api/v1/agents/{agent_name}/policy/{policy_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -285,15 +280,25 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Associate policy with agent
-     * @description Associate a policy with an agent (idempotent).
+     * Assign policy to agent
+     * @description Assign a policy to an agent, replacing any existing policy assignment.
+     *
+     *     The agent will immediately inherit all controls from the assigned policy.
+     *
+     *     Args:
+     *         agent_name: Agent identifier
+     *         policy_id: ID of the policy to assign
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         SetPolicyResponse with success flag and previous policy ID (if any)
+     *
+     *     Raises:
+     *         HTTPException 404: Agent or policy not found
+     *         HTTPException 500: Database error during assignment
      */
-    post: operations['add_agent_policy_api_v1_agents__agent_id__policies__policy_id__post'];
-    /**
-     * Remove policy association from agent
-     * @description Remove a policy association from an agent (idempotent).
-     */
-    delete: operations['remove_agent_policy_api_v1_agents__agent_id__policies__policy_id__delete'];
+    post: operations['set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post'];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -411,7 +416,7 @@ export interface paths {
      * Delete a control
      * @description Delete a control by ID.
      *
-     *     By default, deletion fails if the control is associated with any policy or agent.
+     *     By default, deletion fails if the control is associated with any policy.
      *     Use force=true to automatically dissociate and delete.
      *
      *     Args:
@@ -420,7 +425,7 @@ export interface paths {
      *         db: Database session (injected)
      *
      *     Returns:
-     *         DeleteControlResponse with success flag and dissociation details
+     *         DeleteControlResponse with success flag and list of dissociated policies
      *
      *     Raises:
      *         HTTPException 404: Control not found
@@ -594,7 +599,7 @@ export interface paths {
      *     - **sql**: SQL query validation
      *
      *     Custom evaluators are registered per-agent via initAgent.
-     *     Use GET /agents/{agent_id}/evaluators to list agent-specific schemas.
+     *     Use GET /agents/{agent_name}/evaluators to list agent-specific schemas.
      */
     get: operations['get_evaluators_api_v1_evaluators_get'];
     put?: never;
@@ -651,7 +656,7 @@ export interface paths {
      *     - trace_id: Get all events for a request
      *     - span_id: Get all events for a function call
      *     - control_execution_id: Get a specific event
-     *     - agent_uuid: Filter by agent
+     *     - agent_name: Filter by agent
      *     - control_ids: Filter by controls
      *     - actions: Filter by actions (allow, deny, steer, warn, log)
      *     - matched: Filter by matched status
@@ -690,7 +695,7 @@ export interface paths {
      *     Use /stats/controls/{control_id} for single control stats.
      *
      *     Args:
-     *         agent_uuid: Agent to get stats for
+     *         agent_name: Agent to get stats for
      *         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
      *         include_timeseries: Include time-series data points for trend visualization
      *         store: Event store (injected)
@@ -722,7 +727,7 @@ export interface paths {
      *
      *     Args:
      *         control_id: Control ID to get stats for
-     *         agent_uuid: Agent to get stats for
+     *         agent_name: Agent to get stats for
      *         time_range: Time range (1m, 5m, 15m, 1h, 24h, 7d, 30d, 180d, 365d)
      *         include_timeseries: Include time-series data points for trend visualization
      *         store: Event store (injected)
@@ -913,10 +918,9 @@ export interface components {
      * @description Agent metadata for registration and tracking.
      *
      *     An agent represents an AI system that can be protected and monitored.
-     *     Each agent has a unique ID and can have multiple steps registered with it.
+     *     Each agent has a unique immutable name and can have multiple steps registered with it.
      * @example {
      *       "agent_description": "Handles customer inquiries and support tickets",
-     *       "agent_id": "550e8400-e29b-41d4-a716-446655440000",
      *       "agent_metadata": {
      *         "environment": "production",
      *         "team": "support"
@@ -937,12 +941,6 @@ export interface components {
        */
       agent_description?: string | null;
       /**
-       * Agent Id
-       * Format: uuid
-       * @description Unique identifier for the agent (UUID format)
-       */
-      agent_id: string;
-      /**
        * Agent Metadata
        * @description Free-form metadata dictionary for custom properties
        */
@@ -951,7 +949,7 @@ export interface components {
       } | null;
       /**
        * Agent Name
-       * @description Human-readable name for the agent
+       * @description Unique immutable identifier for the agent
        */
       agent_name: string;
       /**
@@ -969,7 +967,7 @@ export interface components {
     AgentControlsResponse: {
       /**
        * Controls
-       * @description List of active controls associated with the agent
+       * @description List of controls associated with the agent via its policy
        */
       controls: components['schemas']['Control'][];
     };
@@ -979,13 +977,8 @@ export interface components {
      */
     AgentRef: {
       /**
-       * Agent Id
-       * @description Agent UUID
-       */
-      agent_id: string;
-      /**
        * Agent Name
-       * @description Agent name
+       * @description Agent identifier
        */
       agent_name: string;
     };
@@ -996,18 +989,13 @@ export interface components {
     AgentSummary: {
       /**
        * Active Controls Count
-       * @description Number of active controls for this agent
+       * @description Number of active controls from agent's policy
        * @default 0
        */
       active_controls_count: number;
       /**
-       * Agent Id
-       * @description UUID of the agent
-       */
-      agent_id: string;
-      /**
        * Agent Name
-       * @description Human-readable name of the agent
+       * @description Unique identifier of the agent
        */
       agent_name: string;
       /**
@@ -1022,10 +1010,10 @@ export interface components {
        */
       evaluator_count: number;
       /**
-       * Policy Ids
-       * @description IDs of policies associated with the agent
+       * Policy Id
+       * @description ID of assigned policy, if any
        */
-      policy_ids?: number[];
+      policy_id?: number | null;
       /**
        * Step Count
        * @description Number of steps registered with the agent
@@ -1055,7 +1043,6 @@ export interface components {
      *         {
      *           "action": "deny",
      *           "agent_name": "my-agent",
-     *           "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
      *           "applies_to": "llm_call",
      *           "check_stage": "pre",
      *           "confidence": 0.95,
@@ -1108,6 +1095,15 @@ export interface components {
        */
       status: 'queued' | 'partial' | 'failed';
     };
+    /**
+     * ConflictMode
+     * @description Conflict handling mode for initAgent registration updates.
+     *
+     *     STRICT preserves compatibility checks and raises conflicts on incompatible changes.
+     *     OVERWRITE applies latest-init-wins replacement for steps and evaluators.
+     * @enum {string}
+     */
+    ConflictMode: 'strict' | 'overwrite';
     /**
      * Control
      * @description A control with identity and configuration.
@@ -1239,8 +1235,7 @@ export interface components {
      *         control_execution_id: Unique ID for this specific control execution
      *         trace_id: OpenTelemetry-compatible trace ID (128-bit hex, 32 chars)
      *         span_id: OpenTelemetry-compatible span ID (64-bit hex, 16 chars)
-     *         agent_uuid: UUID of the agent that executed the control
-     *         agent_name: Name of the agent (denormalized for queries)
+     *         agent_name: Identifier of the agent that executed the control
      *         control_id: Database ID of the control
      *         control_name: Name of the control (denormalized for queries)
      *         check_stage: "pre" (before execution) or "post" (after execution)
@@ -1257,7 +1252,6 @@ export interface components {
      * @example {
      *       "action": "deny",
      *       "agent_name": "my-agent",
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
      *       "applies_to": "llm_call",
      *       "check_stage": "pre",
      *       "confidence": 0.95,
@@ -1282,15 +1276,9 @@ export interface components {
       action: 'allow' | 'deny' | 'steer' | 'warn' | 'log';
       /**
        * Agent Name
-       * @description Name of the agent (denormalized)
+       * @description Identifier of the agent
        */
       agent_name: string;
-      /**
-       * Agent Uuid
-       * Format: uuid
-       * @description UUID of the agent
-       */
-      agent_uuid: string;
       /**
        * Applies To
        * @description Type of call: 'llm_call' or 'tool_call'
@@ -1577,7 +1565,7 @@ export interface components {
      *     Contains stats for a single control (with optional timeseries).
      *
      *     Attributes:
-     *         agent_uuid: Agent UUID
+     *         agent_name: Agent identifier
      *         time_range: Time range used
      *         control_id: Control ID
      *         control_name: Control name
@@ -1585,11 +1573,10 @@ export interface components {
      */
     ControlStatsResponse: {
       /**
-       * Agent Uuid
-       * Format: uuid
-       * @description Agent UUID
+       * Agent Name
+       * @description Agent identifier
        */
-      agent_uuid: string;
+      agent_name: string;
       /**
        * Control Id
        * @description Control ID
@@ -1656,12 +1643,6 @@ export interface components {
       tags?: string[];
       /** @description Agent using this control */
       used_by_agent?: components['schemas']['AgentRef'] | null;
-      /**
-       * Used By Agents Count
-       * @description Number of unique agents using this control
-       * @default 0
-       */
-      used_by_agents_count: number;
     };
     /** CreateControlRequest */
     CreateControlRequest: {
@@ -1729,15 +1710,10 @@ export interface components {
      */
     DeleteControlResponse: {
       /**
-       * Dissociated From Agents
-       * @description Agent IDs the control was removed from before deletion
-       */
-      dissociated_from_agents?: string[];
-      /**
-       * Dissociated From Policies
+       * Dissociated From
        * @description Policy IDs the control was removed from before deletion
        */
-      dissociated_from_policies?: number[];
+      dissociated_from?: number[];
       /**
        * Success
        * @description Whether the control was deleted
@@ -1755,6 +1731,14 @@ export interface components {
        */
       success: boolean;
     };
+    /** DeletePolicyResponse */
+    DeletePolicyResponse: {
+      /**
+       * Success
+       * @description Whether the policy was successfully removed
+       */
+      success: boolean;
+    };
     /**
      * EvaluationRequest
      * @description Request model for evaluation analysis.
@@ -1763,11 +1747,11 @@ export interface components {
      *     policy compliance, and control rules.
      *
      *     Attributes:
-     *         agent_uuid: UUID of the agent making the request
+     *         agent_name: Unique identifier of the agent making the request
      *         step: Step payload for evaluation
      *         stage: 'pre' (before execution) or 'post' (after execution)
      * @example {
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+     *       "agent_name": "customer-service-bot",
      *       "stage": "pre",
      *       "step": {
      *         "context": {
@@ -1780,7 +1764,7 @@ export interface components {
      *       }
      *     }
      * @example {
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+     *       "agent_name": "customer-service-bot",
      *       "stage": "post",
      *       "step": {
      *         "context": {
@@ -1794,7 +1778,7 @@ export interface components {
      *       }
      *     }
      * @example {
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+     *       "agent_name": "customer-service-bot",
      *       "stage": "pre",
      *       "step": {
      *         "context": {
@@ -1808,7 +1792,7 @@ export interface components {
      *       }
      *     }
      * @example {
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440000",
+     *       "agent_name": "customer-service-bot",
      *       "stage": "post",
      *       "step": {
      *         "context": {
@@ -1827,11 +1811,10 @@ export interface components {
      */
     EvaluationRequest: {
       /**
-       * Agent Uuid
-       * Format: uuid
-       * @description UUID of the agent making the evaluation request
+       * Agent Name
+       * @description Identifier of the agent making the evaluation request
        */
-      agent_uuid: string;
+      agent_name: string;
       /**
        * Stage
        * @description Evaluation stage: 'pre' or 'post'
@@ -2098,7 +2081,7 @@ export interface components {
      *         trace_id: Filter by trace ID (get all events for a request)
      *         span_id: Filter by span ID (get all events for a function call)
      *         control_execution_id: Filter by specific event ID
-     *         agent_uuid: Filter by agent UUID
+     *         agent_name: Filter by agent identifier
      *         control_ids: Filter by control IDs
      *         actions: Filter by actions (allow, deny, steer, warn, log)
      *         matched: Filter by matched status
@@ -2116,7 +2099,7 @@ export interface components {
      *         "deny",
      *         "warn"
      *       ],
-     *       "agent_uuid": "550e8400-e29b-41d4-a716-446655440001",
+     *       "agent_name": "my-agent",
      *       "limit": 50,
      *       "start_time": "2025-01-09T00:00:00Z"
      *     }
@@ -2128,10 +2111,10 @@ export interface components {
        */
       actions?: ('allow' | 'deny' | 'steer' | 'warn' | 'log')[] | null;
       /**
-       * Agent Uuid
-       * @description Filter by agent UUID
+       * Agent Name
+       * @description Filter by agent identifier
        */
-      agent_uuid?: string | null;
+      agent_name?: string | null;
       /**
        * Applies To
        * @description Filter by call types
@@ -2222,14 +2205,6 @@ export interface components {
        */
       total: number;
     };
-    /** GetAgentPoliciesResponse */
-    GetAgentPoliciesResponse: {
-      /**
-       * Policy Ids
-       * @description IDs of policies associated with the agent
-       */
-      policy_ids?: number[];
-    };
     /**
      * GetAgentResponse
      * @description Response containing agent details and registered steps.
@@ -2282,6 +2257,14 @@ export interface components {
        */
       control_ids: number[];
     };
+    /** GetPolicyResponse */
+    GetPolicyResponse: {
+      /**
+       * Policy Id
+       * @description Identifier of the policy assigned to the agent
+       */
+      policy_id: number;
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
@@ -2302,12 +2285,85 @@ export interface components {
       version: string;
     };
     /**
+     * InitAgentEvaluatorRemoval
+     * @description Details for an evaluator removed during overwrite mode.
+     */
+    InitAgentEvaluatorRemoval: {
+      /**
+       * Control Ids
+       * @description IDs of active controls referencing this evaluator
+       */
+      control_ids?: number[];
+      /**
+       * Control Names
+       * @description Names of active controls referencing this evaluator
+       */
+      control_names?: string[];
+      /**
+       * Name
+       * @description Evaluator name removed by overwrite
+       */
+      name: string;
+      /**
+       * Referenced By Active Controls
+       * @description Whether this evaluator is still referenced by active controls
+       * @default false
+       */
+      referenced_by_active_controls: boolean;
+    };
+    /**
+     * InitAgentOverwriteChanges
+     * @description Detailed change summary for initAgent overwrite mode.
+     */
+    InitAgentOverwriteChanges: {
+      /**
+       * Evaluator Removals
+       * @description Per-evaluator removal details, including active control references
+       */
+      evaluator_removals?: components['schemas']['InitAgentEvaluatorRemoval'][];
+      /**
+       * Evaluators Added
+       * @description Evaluator names added by overwrite
+       */
+      evaluators_added?: string[];
+      /**
+       * Evaluators Removed
+       * @description Evaluator names removed by overwrite
+       */
+      evaluators_removed?: string[];
+      /**
+       * Evaluators Updated
+       * @description Existing evaluator names updated by overwrite
+       */
+      evaluators_updated?: string[];
+      /**
+       * Metadata Changed
+       * @description Whether agent metadata changed
+       * @default false
+       */
+      metadata_changed: boolean;
+      /**
+       * Steps Added
+       * @description Steps added by overwrite
+       */
+      steps_added?: components['schemas']['StepKey'][];
+      /**
+       * Steps Removed
+       * @description Steps removed by overwrite
+       */
+      steps_removed?: components['schemas']['StepKey'][];
+      /**
+       * Steps Updated
+       * @description Existing steps updated by overwrite
+       */
+      steps_updated?: components['schemas']['StepKey'][];
+    };
+    /**
      * InitAgentRequest
      * @description Request to initialize or update an agent registration.
      * @example {
      *       "agent": {
      *         "agent_description": "Handles customer inquiries",
-     *         "agent_id": "550e8400-e29b-41d4-a716-446655440000",
      *         "agent_name": "customer-service-bot",
      *         "agent_version": "1.0.0"
      *       },
@@ -2347,6 +2403,11 @@ export interface components {
       /** @description Agent metadata including ID, name, and version */
       agent: components['schemas']['Agent'];
       /**
+       * @description Conflict handling mode for init registration updates. 'strict' preserves existing compatibility checks. 'overwrite' applies latest-init-wins replacement for steps and evaluators.
+       * @default strict
+       */
+      conflict_mode: components['schemas']['ConflictMode'];
+      /**
        * Evaluators
        * @description Custom evaluator schemas for config validation
        */
@@ -2370,7 +2431,7 @@ export interface components {
     InitAgentResponse: {
       /**
        * Controls
-       * @description Active protection controls for the agent
+       * @description Active protection controls for the agent (if policy assigned)
        */
       controls?: components['schemas']['Control'][];
       /**
@@ -2378,6 +2439,14 @@ export interface components {
        * @description True if agent was newly created, False if updated
        */
       created: boolean;
+      /**
+       * Overwrite Applied
+       * @description True if overwrite mode changed registration data on an existing agent
+       * @default false
+       */
+      overwrite_applied: boolean;
+      /** @description Detailed list of changes applied in overwrite mode */
+      overwrite_changes?: components['schemas']['InitAgentOverwriteChanges'];
     };
     JSONObject: {
       [key: string]: components['schemas']['JSONValue'];
@@ -2528,27 +2597,6 @@ export interface components {
       success: boolean;
     };
     /**
-     * RemoveAgentControlResponse
-     * @description Response for removing a direct agent-control association.
-     */
-    RemoveAgentControlResponse: {
-      /**
-       * Control Still Active
-       * @description True if the control remains active via policy association(s)
-       */
-      control_still_active: boolean;
-      /**
-       * Removed Direct Association
-       * @description True if a direct agent-control link was removed
-       */
-      removed_direct_association: boolean;
-      /**
-       * Success
-       * @description Whether the request succeeded
-       */
-      success: boolean;
-    };
-    /**
      * SetControlDataRequest
      * @description Request to update control configuration data.
      */
@@ -2564,6 +2612,19 @@ export interface components {
        */
       success: boolean;
     };
+    /** SetPolicyResponse */
+    SetPolicyResponse: {
+      /**
+       * Old Policy Id
+       * @description Previous policy id if one was replaced
+       */
+      old_policy_id?: number | null;
+      /**
+       * Success
+       * @description Whether the policy was successfully assigned
+       */
+      success: boolean;
+    };
     /**
      * StatsResponse
      * @description Response model for agent-level aggregated statistics.
@@ -2571,18 +2632,17 @@ export interface components {
      *     Contains agent-level totals (with optional timeseries) and per-control breakdown.
      *
      *     Attributes:
-     *         agent_uuid: Agent UUID
+     *         agent_name: Agent identifier
      *         time_range: Time range used
      *         totals: Agent-level aggregate statistics (includes timeseries)
      *         controls: Per-control breakdown for discovery and detail
      */
     StatsResponse: {
       /**
-       * Agent Uuid
-       * Format: uuid
-       * @description Agent UUID
+       * Agent Name
+       * @description Agent identifier
        */
-      agent_uuid: string;
+      agent_name: string;
       /**
        * Controls
        * @description Per-control breakdown
@@ -2960,12 +3020,12 @@ export interface operations {
       };
     };
   };
-  get_agent_api_v1_agents__agent_id__get: {
+  get_agent_api_v1_agents__agent_name__get: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
@@ -2991,12 +3051,12 @@ export interface operations {
       };
     };
   };
-  patch_agent_api_v1_agents__agent_id__patch: {
+  patch_agent_api_v1_agents__agent_name__patch: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
@@ -3026,18 +3086,18 @@ export interface operations {
       };
     };
   };
-  list_agent_controls_api_v1_agents__agent_id__controls_get: {
+  list_agent_controls_api_v1_agents__agent_name__controls_get: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List of controls from agent policy and direct associations */
+      /** @description List of controls from agent's policy */
       200: {
         headers: {
           [name: string]: unknown;
@@ -3057,71 +3117,7 @@ export interface operations {
       };
     };
   };
-  add_agent_control_api_v1_agents__agent_id__controls__control_id__post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        agent_id: string;
-        control_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AssocResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  remove_agent_control_api_v1_agents__agent_id__controls__control_id__delete: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        agent_id: string;
-        control_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['RemoveAgentControlResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  list_agent_evaluators_api_v1_agents__agent_id__evaluators_get: {
+  list_agent_evaluators_api_v1_agents__agent_name__evaluators_get: {
     parameters: {
       query?: {
         cursor?: string | null;
@@ -3129,7 +3125,7 @@ export interface operations {
       };
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
@@ -3155,12 +3151,12 @@ export interface operations {
       };
     };
   };
-  get_agent_evaluator_api_v1_agents__agent_id__evaluators__evaluator_name__get: {
+  get_agent_evaluator_api_v1_agents__agent_name__evaluators__evaluator_name__get: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
         evaluator_name: string;
       };
       cookie?: never;
@@ -3187,24 +3183,24 @@ export interface operations {
       };
     };
   };
-  get_agent_policies_api_v1_agents__agent_id__policies_get: {
+  get_agent_policy_api_v1_agents__agent_name__policy_get: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List of policy IDs */
+      /** @description Policy ID */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['GetAgentPoliciesResponse'];
+          'application/json': components['schemas']['GetPolicyResponse'];
         };
       };
       /** @description Validation Error */
@@ -3218,12 +3214,12 @@ export interface operations {
       };
     };
   };
-  remove_all_agent_policies_api_v1_agents__agent_id__policies_delete: {
+  delete_agent_policy_api_v1_agents__agent_name__policy_delete: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
       };
       cookie?: never;
     };
@@ -3235,7 +3231,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['AssocResponse'];
+          'application/json': components['schemas']['DeletePolicyResponse'];
         };
       };
       /** @description Validation Error */
@@ -3249,57 +3245,25 @@ export interface operations {
       };
     };
   };
-  add_agent_policy_api_v1_agents__agent_id__policies__policy_id__post: {
+  set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        agent_id: string;
+        agent_name: string;
         policy_id: number;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Success confirmation */
+      /** @description Success status with previous policy ID */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['AssocResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  remove_agent_policy_api_v1_agents__agent_id__policies__policy_id__delete: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        agent_id: string;
-        policy_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AssocResponse'];
+          'application/json': components['schemas']['SetPolicyResponse'];
         };
       };
       /** @description Validation Error */
@@ -3458,7 +3422,7 @@ export interface operations {
   delete_control_api_v1_controls__control_id__delete: {
     parameters: {
       query?: {
-        /** @description If true, dissociate from all policy/agent links before deleting. If false, fail if control is associated with any policy or agent. */
+        /** @description If true, dissociate from all policies before deleting. If false, fail if control is associated with any policy. */
         force?: boolean;
       };
       header?: never;
@@ -3884,7 +3848,7 @@ export interface operations {
   get_stats_api_v1_observability_stats_get: {
     parameters: {
       query: {
-        agent_uuid: string;
+        agent_name: string;
         time_range?:
           | '1m'
           | '5m'
@@ -3926,7 +3890,7 @@ export interface operations {
   get_control_stats_api_v1_observability_stats_controls__control_id__get: {
     parameters: {
       query: {
-        agent_uuid: string;
+        agent_name: string;
         time_range?:
           | '1m'
           | '5m'

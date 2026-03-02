@@ -53,8 +53,10 @@ agent-control-server
 Create a `.env` file in the server directory:
 
 ```env
-# Database
-DB_URL=postgresql+psycopg://user:password@localhost/agent_control
+# Database (use DATABASE_URL for Docker, DB_URL for local dev)
+DATABASE_URL=postgresql+psycopg://user:password@localhost/agent_control
+# Or use DB_URL (legacy):
+# DB_URL=postgresql+psycopg://user:password@localhost/agent_control
 # Or for development:
 # DB_URL=sqlite+aiosqlite:///./agent_control.db
 
@@ -155,45 +157,32 @@ GET /api/v1/evaluators
 
 ```bash
 # Register or update agent
-POST /api/v1/agents/initAgent
-Body: { "agent": {...}, "steps": [...], "evaluators": [...], "force_replace": false }
+POST /api/v1/agents/init
+Body: { "agent": {...}, "tools": [...], "force_replace": false }
 
 # Get agent
-GET /api/v1/agents/{agent_id}
+GET /api/v1/agents/{agent_name}
 
-# List active controls for agent (union of policy-derived + direct agent controls)
-GET /api/v1/agents/{agent_id}/controls
-
-# Add/remove policy associations on agent (many-to-many)
-POST /api/v1/agents/{agent_id}/policies/{policy_id}
-GET /api/v1/agents/{agent_id}/policies
-DELETE /api/v1/agents/{agent_id}/policies/{policy_id}
-DELETE /api/v1/agents/{agent_id}/policies
-
-# Add/remove direct control associations on agent (many-to-many)
-POST /api/v1/agents/{agent_id}/controls/{control_id}
-DELETE /api/v1/agents/{agent_id}/controls/{control_id}
+# List controls for agent (based on assigned policy)
+GET /api/v1/agents/{agent_name}/controls
 ```
 
 ### Control Management
 
 ```bash
 # Create control
-PUT /api/v1/controls
-Body: { "name": "my-control" }
+POST /api/v1/controls
+Body: { "control": {...} }
 
 # List controls
-GET /api/v1/controls?limit=100
+GET /api/v1/controls?skip=0&limit=100
 
 # Get control
 GET /api/v1/controls/{control_id}
 
-# Update control metadata
-PATCH /api/v1/controls/{control_id}
-
-# Set control data
-PUT /api/v1/controls/{control_id}/data
-Body: { "data": {...} }
+# Update control
+PUT /api/v1/controls/{control_id}
+Body: { "control": {...} }
 
 # Delete control
 DELETE /api/v1/controls/{control_id}
@@ -203,17 +192,17 @@ DELETE /api/v1/controls/{control_id}
 
 ```bash
 # Create policy
-PUT /api/v1/policies
-Body: { "name": "my-policy" }
+POST /api/v1/policies
+Body: { "name": "my-policy", "description": "..." }
+
+# List policies
+GET /api/v1/policies
+
+# Assign policy to agent
+POST /api/v1/policies/{policy_id}/agents/{agent_name}
 
 # Add control to policy
 POST /api/v1/policies/{policy_id}/controls/{control_id}
-
-# Remove control from policy
-DELETE /api/v1/policies/{policy_id}/controls/{control_id}
-
-# List policy controls
-GET /api/v1/policies/{policy_id}/controls
 ```
 
 ### Evaluation
@@ -222,7 +211,7 @@ GET /api/v1/policies/{policy_id}/controls
 # Evaluate step against controls
 POST /api/v1/evaluation
 Body: {
-  "agent_uuid": "uuid",
+  "agent_name": "uuid",
   "step": { "type": "llm", "name": "chat", "input": "..." },
   "stage": "pre"
 }
@@ -244,13 +233,13 @@ Body: { "events": [...] }
 
 # Query events
 POST /api/v1/observability/events/query
-Body: { "agent_uuid": "...", "start_time": "...", ... }
+Body: { "agent_name": "...", "start_time": "...", ... }
 
 # Get agent stats
-GET /api/v1/observability/stats?agent_uuid=...&time_range=5m
+GET /api/v1/observability/stats?agent_name=...&time_range=5m
 
 # Get control stats
-GET /api/v1/observability/stats/controls/{control_id}?agent_uuid=...&time_range=5m
+GET /api/v1/observability/stats/controls/{control_id}?agent_name=...&time_range=5m
 ```
 
 See [docs/REFERENCE.md](../docs/REFERENCE.md) for complete API documentation.
@@ -321,7 +310,7 @@ docker build -f server/Dockerfile -t agent-control-server .
 
 # Run container
 docker run -p 8000:8000 \
-  -e DB_URL=postgresql://... \
+  -e DATABASE_URL=postgresql+psycopg://user:password@host:5432/agent_control \
   -e AGENT_CONTROL_API_KEY_ENABLED=true \
   -e AGENT_CONTROL_API_KEYS=your-key-here \
   agent-control-server
