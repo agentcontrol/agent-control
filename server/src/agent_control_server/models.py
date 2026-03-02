@@ -1,12 +1,12 @@
 import datetime as dt
-import uuid as _uuid
-from typing import Any
+from typing import Any, Optional
 
-from agent_control_models.agent import StepSchema
+from agent_control_models.agent import StepSchema, normalize_agent_name
 from agent_control_models.base import BaseModel
 from agent_control_models.server import EvaluatorSchema
 from pydantic import Field
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -17,8 +17,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from .db import Base
 
@@ -39,31 +38,13 @@ policy_controls: Table = Table(
     Column("control_id", ForeignKey("controls.id"), primary_key=True, index=True),
 )
 
-# Association table for Agent <> Policy many-to-many relationship
-agent_policies: Table = Table(
-    "agent_policies",
-    Base.metadata,
-    Column("agent_uuid", ForeignKey("agents.agent_uuid"), primary_key=True, index=True),
-    Column("policy_id", ForeignKey("policies.id"), primary_key=True, index=True),
-)
-
-# Association table for Agent <> Control many-to-many direct relationship
-agent_controls: Table = Table(
-    "agent_controls",
-    Base.metadata,
-    Column("agent_uuid", ForeignKey("agents.agent_uuid"), primary_key=True, index=True),
-    Column("control_id", ForeignKey("controls.id"), primary_key=True, index=True),
-)
-
 
 class Policy(Base):
     __tablename__ = "policies"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    agents: Mapped[list["Agent"]] = relationship(
-        "Agent", secondary=lambda: agent_policies, back_populates="policies"
-    )
+    agents: Mapped[list["Agent"]] = relationship("Agent", back_populates="policy")
     # Many-to-many: Policy <> Control (direct relationship, no ControlSet layer)
     controls: Mapped[list["Control"]] = relationship(
         "Control", secondary=lambda: policy_controls, back_populates="policies"
@@ -82,10 +63,6 @@ class Control(Base):
     # Many-to-many backref: Control <> Policy
     policies: Mapped[list["Policy"]] = relationship(
         "Policy", secondary=lambda: policy_controls, back_populates="controls"
-    )
-    # Many-to-many backref: Control <> Agent (direct relationship)
-    agents: Mapped[list["Agent"]] = relationship(
-        "Agent", secondary=lambda: agent_controls, back_populates="controls"
     )
 
 
@@ -111,23 +88,26 @@ class EvaluatorConfigDB(Base):
 
 class Agent(Base):
     __tablename__ = "agents"
-
-    agent_uuid: Mapped[_uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True
+    __table_args__ = (
+        CheckConstraint("char_length(name) >= 10", name="ck_agents_name_min_length"),
+        CheckConstraint("name ~ '^[a-z0-9:_-]+$'", name="ck_agents_name_format"),
     )
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+
+    name: Mapped[str] = mapped_column(String(255), primary_key=True)
     data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
-    policies: Mapped[list["Policy"]] = relationship(
-        "Policy", secondary=lambda: agent_policies, back_populates="agents"
+    policy_id: Mapped[int | None] = mapped_column(
+        ForeignKey("policies.id"), nullable=True, index=True
     )
-    controls: Mapped[list["Control"]] = relationship(
-        "Control", secondary=lambda: agent_controls, back_populates="agents"
-    )
+    policy: Mapped[Optional["Policy"]] = relationship("Policy", back_populates="agents")
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(), server_default=text("CURRENT_TIMESTAMP"), nullable=False, index=True
     )
+
+    @validates("name")
+    def _normalize_name(self, _key: str, value: str) -> str:
+        return normalize_agent_name(value)
 
 
 # =============================================================================
@@ -140,12 +120,12 @@ class ControlExecutionEventDB(Base):
     Raw control execution events with minimal indexed columns + JSONB.
 
     Schema designed for simplicity and flexibility:
-    - Only 4 columns: control_execution_id, timestamp, agent_uuid, data
+    - Only 4 columns: control_execution_id, timestamp, agent_name, data
     - Full event stored in JSONB 'data' column
     - Query-time aggregation from JSONB fields
     - No migrations needed for new event fields
 
-    Primary access pattern: (agent_uuid, timestamp DESC) for stats queries.
+    Primary access pattern: (agent_name, timestamp DESC) for stats queries.
     Expression index on (data->>'control_id') for grouping.
     """
 
@@ -162,9 +142,7 @@ class ControlExecutionEventDB(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
-    agent_uuid: Mapped[_uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), nullable=False,
-    )
+    agent_name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Full event data as JSONB
     data: Mapped[dict[str, Any]] = mapped_column(
@@ -173,5 +151,6 @@ class ControlExecutionEventDB(Base):
 
     # Composite index for agent + time queries (primary access pattern)
     __table_args__ = (
-        Index("ix_events_agent_time", "agent_uuid", timestamp.desc()),
+        Index("ix_events_agent_time", "agent_name", timestamp.desc()),
+        Index("ix_events_data_control_id", text("(data ->> 'control_id'::text)")),
     )

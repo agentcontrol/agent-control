@@ -63,8 +63,7 @@ def test_init_passes_merged_steps_to_register_agent(
     ):
         with caplog.at_level(logging.WARNING):
             agent_control.init(
-                agent_name="Init Merge Agent",
-                agent_id=str(uuid4()),
+                agent_name=f"agent-{uuid4().hex[:12]}",
                 steps=explicit_steps,
                 policy_refresh_interval_seconds=0,
             )
@@ -103,8 +102,7 @@ def test_init_uses_auto_discovered_steps_from_control_decorator() -> None:
         new=register_agent_mock,
     ):
         agent_control.init(
-            agent_name="Auto Discovery Agent",
-            agent_id=str(uuid4()),
+            agent_name=f"agent-{uuid4().hex[:12]}",
             policy_refresh_interval_seconds=0,
         )
 
@@ -147,8 +145,7 @@ def test_init_logs_fallback_warning_for_unresolved_type_hints(
     ):
         with caplog.at_level(logging.WARNING):
             agent_control.init(
-                agent_name="Fallback Warning Agent",
-                agent_id=str(uuid4()),
+                agent_name=f"agent-{uuid4().hex[:12]}",
                 policy_refresh_interval_seconds=0,
             )
 
@@ -185,11 +182,7 @@ def test_init_logs_agent_updated_when_registration_already_exists(
         new=register_agent_mock,
     ):
         with caplog.at_level(logging.INFO):
-            agent_control.init(
-                agent_name=agent_name,
-                agent_id=str(uuid4()),
-                policy_refresh_interval_seconds=0,
-            )
+            agent_control.init(agent_name=agent_name, policy_refresh_interval_seconds=0)
 
     # Then the SDK emits the "updated" log branch.
     assert "Agent updated" in caplog.text
@@ -214,8 +207,7 @@ async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
         new=list_agent_controls_mock,
     ):
         agent_control.init(
-            agent_name="Refresh Strict Agent",
-            agent_id=str(uuid4()),
+            agent_name=f"agent-{uuid4().hex[:12]}",
             policy_refresh_interval_seconds=0,
         )
 

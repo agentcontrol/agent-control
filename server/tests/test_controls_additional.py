@@ -6,12 +6,15 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
-from agent_control_evaluators import RegexEvaluatorConfig
-from agent_control_server.endpoints import controls as controls_module
-from agent_control_server.models import Control
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+from agent_control_server.models import Control
+
+from agent_control_evaluators import RegexEvaluatorConfig
+from agent_control_server.endpoints import controls as controls_module
+from agent_control_server.models import Control
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -27,24 +30,6 @@ def _create_control(client: TestClient, name: str | None = None) -> tuple[int, s
 def _set_control_data(client: TestClient, control_id: int, data: dict) -> None:
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": data})
     assert resp.status_code == 200, resp.text
-
-
-def _init_agent(client: TestClient, name: str | None = None) -> str:
-    agent_id = str(uuid.uuid4())
-    payload = {
-        "agent": {
-            "agent_id": agent_id,
-            "agent_name": name or f"agent-{uuid.uuid4()}",
-            "agent_description": "test",
-            "agent_version": "1.0",
-            "agent_metadata": {},
-        },
-        "steps": [],
-        "evaluators": [],
-    }
-    resp = client.post("/api/v1/agents/initAgent", json=payload)
-    assert resp.status_code == 200
-    return agent_id
 
 
 def test_list_controls_filters_and_pagination(client: TestClient) -> None:
@@ -139,40 +124,6 @@ def test_list_controls_filters_and_pagination(client: TestClient) -> None:
     page2 = resp2.json()
     # Then: the next page has a different item
     assert page2["controls"][0]["id"] != first_id
-
-
-def test_list_controls_includes_unique_used_by_agents_count(client: TestClient) -> None:
-    # Given: one control linked to two agents via policy and one duplicated direct link
-    control_id, control_name = _create_control(client, name=f"CountedControl-{uuid.uuid4()}")
-    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
-
-    policy_resp = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
-    assert policy_resp.status_code == 200
-    policy_id = policy_resp.json()["policy_id"]
-
-    assoc_control = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc_control.status_code == 200
-
-    agent_a_id = _init_agent(client, name=f"agent-a-{uuid.uuid4()}")
-    agent_b_id = _init_agent(client, name=f"agent-b-{uuid.uuid4()}")
-
-    assoc_policy_a = client.post(f"/api/v1/agents/{agent_a_id}/policies/{policy_id}")
-    assoc_policy_b = client.post(f"/api/v1/agents/{agent_b_id}/policies/{policy_id}")
-    assert assoc_policy_a.status_code == 200
-    assert assoc_policy_b.status_code == 200
-
-    # Duplicate path for agent A: direct + policy should still count as one unique agent
-    assoc_direct_a = client.post(f"/api/v1/agents/{agent_a_id}/controls/{control_id}")
-    assert assoc_direct_a.status_code == 200
-
-    # When: listing controls
-    list_resp = client.get("/api/v1/controls", params={"name": control_name})
-    assert list_resp.status_code == 200
-    controls = list_resp.json()["controls"]
-    assert len(controls) == 1
-
-    # Then: used-by count is de-duplicated at agent level
-    assert controls[0]["used_by_agents_count"] == 2
 
 
 def test_patch_control_enabled_requires_data(client: TestClient) -> None:
@@ -284,31 +235,11 @@ def test_list_controls_combined_filters(client: TestClient) -> None:
     assert names == [control1_name]
 
 
-def test_list_controls_name_filter_treats_wildcards_as_literals(client: TestClient) -> None:
-    # Given: two controls where one only matches if '_' is interpreted as wildcard
-    literal_name = f"Control_{uuid.uuid4().hex[:6]}"
-    wildcard_match_name = literal_name.replace("_", "X", 1)
-
-    _, created_literal_name = _create_control(client, name=literal_name)
-    _create_control(client, name=wildcard_match_name)
-
-    # When: filtering by the literal name containing '_'
-    resp = client.get("/api/v1/controls", params={"name": literal_name})
-    assert resp.status_code == 200
-    names = [control["name"] for control in resp.json()["controls"]]
-
-    # Then: only exact literal '_' matches are returned
-    assert names == [created_literal_name]
-    assert resp.json()["pagination"]["total"] == 1
-
-
 def test_list_controls_enabled_true_includes_missing_enabled(client: TestClient) -> None:
     # Given: controls with enabled true, enabled false, and missing enabled
     control_true_id, control_true_name = _create_control(client, name=f"Enabled-{uuid.uuid4()}")
     control_false_id, control_false_name = _create_control(client, name=f"Disabled-{uuid.uuid4()}")
-    control_missing_id, control_missing_name = _create_control(
-        client, name=f"Missing-{uuid.uuid4()}"
-    )
+    control_missing_id, control_missing_name = _create_control(client, name=f"Missing-{uuid.uuid4()}")
 
     data_true = deepcopy(VALID_CONTROL_PAYLOAD)
     data_true["enabled"] = True
@@ -427,6 +358,41 @@ def test_list_controls_cursor_with_name_and_enabled_filters(client: TestClient) 
     assert page2["controls"][0]["enabled"] is True
 
 
+def test_list_controls_includes_used_by_agent_mapping(client: TestClient) -> None:
+    # Given: one control linked through Policy -> Agent
+    control_id, control_name = _create_control(client, name=f"Mapped-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    policy_name = f"pol-{uuid.uuid4()}"
+    policy_resp = client.put("/api/v1/policies", json={"name": policy_name})
+    assert policy_resp.status_code == 200
+    policy_id = policy_resp.json()["policy_id"]
+
+    assoc_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert assoc_resp.status_code == 200
+
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert init_resp.status_code == 200
+
+    assign_resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+    assert assign_resp.status_code == 200
+
+    # When: listing controls
+    resp = client.get("/api/v1/controls", params={"name": "mapped"})
+    assert resp.status_code == 200
+    controls = resp.json()["controls"]
+
+    # Then: used_by_agent is populated from the join traversal
+    assert len(controls) == 1
+    assert controls[0]["id"] == control_id
+    assert controls[0]["name"] == control_name
+    assert controls[0]["used_by_agent"] == {"agent_name": agent_name}
+
+
 def test_delete_control_force_dissociates(client: TestClient) -> None:
     # Given: a control associated with a policy
     control_id, _ = _create_control(client)
@@ -451,80 +417,12 @@ def test_delete_control_force_dissociates(client: TestClient) -> None:
     assert resp2.status_code == 200
     body = resp2.json()
     assert body["success"] is True
-    assert policy_id in body.get("dissociated_from_policies", [])
-    assert body.get("dissociated_from_agents") == []
+    assert policy_id in body.get("dissociated_from", [])
 
     # Then: policy no longer lists the control
     list_resp = client.get(f"/api/v1/policies/{policy_id}/controls")
     assert list_resp.status_code == 200
     assert control_id not in list_resp.json()["control_ids"]
-
-
-def test_delete_control_force_dissociates_from_policy_and_direct(client: TestClient) -> None:
-    # Given: one control associated both to a policy and directly to an agent
-    control_id, _ = _create_control(client)
-    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
-
-    policy_resp = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
-    assert policy_resp.status_code == 200
-    policy_id = policy_resp.json()["policy_id"]
-    assoc_policy = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert assoc_policy.status_code == 200
-
-    agent_id = _init_agent(client, name=f"agent-{uuid.uuid4()}")
-    assoc_direct = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
-    assert assoc_direct.status_code == 200
-
-    # When: deleting with force
-    delete_resp = client.delete(f"/api/v1/controls/{control_id}?force=true")
-
-    # Then: response reports dissociation from both paths
-    assert delete_resp.status_code == 200
-    body = delete_resp.json()
-    assert body["success"] is True
-    assert body["dissociated_from_policies"] == [policy_id]
-    assert body["dissociated_from_agents"] == [agent_id]
-
-    # Then: policy and agent no longer expose the control
-    list_policy_controls = client.get(f"/api/v1/policies/{policy_id}/controls")
-    assert list_policy_controls.status_code == 200
-    assert control_id not in list_policy_controls.json()["control_ids"]
-
-    list_agent_controls = client.get(f"/api/v1/agents/{agent_id}/controls")
-    assert list_agent_controls.status_code == 200
-    assert control_id not in {control["id"] for control in list_agent_controls.json()["controls"]}
-
-    # Then: the control resource is deleted globally
-    get_control = client.get(f"/api/v1/controls/{control_id}")
-    assert get_control.status_code == 404
-
-
-def test_delete_control_without_force_blocked_by_direct_association(
-    client: TestClient,
-) -> None:
-    # Given: a control directly associated to an agent
-    control_id, _ = _create_control(client)
-    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
-
-    agent_id = _init_agent(client, name=f"agent-{uuid.uuid4()}")
-    assoc_direct = client.post(f"/api/v1/agents/{agent_id}/controls/{control_id}")
-    assert assoc_direct.status_code == 200
-
-    # When: deleting without force
-    delete_resp = client.delete(f"/api/v1/controls/{control_id}")
-
-    # Then: delete is rejected as control-in-use by agent association
-    assert delete_resp.status_code == 409
-    body = delete_resp.json()
-    assert body["error_code"] == "CONTROL_IN_USE"
-    assert any(
-        err.get("resource") == "Agent"
-        and (
-            err.get("value") == agent_id
-            or agent_id in err.get("message", "")
-        )
-        for err in body.get("errors", [])
-    )
 
 
 def test_get_control_corrupted_data_returns_none(client: TestClient) -> None:
@@ -600,8 +498,8 @@ def test_set_control_data_agent_scoped_agent_not_found(client: TestClient) -> No
 
 def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> None:
     # Given: an agent without the referenced evaluator
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
@@ -628,8 +526,8 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
 
 def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> None:
     # Given: an agent with evaluator schema requiring "pattern"
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
@@ -718,8 +616,8 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
     client: TestClient,
 ) -> None:
     # Given: an agent whose stored data is corrupted
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
@@ -732,7 +630,7 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
 
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 

@@ -141,7 +141,6 @@ class InitAgentRequest(BaseModel):
             "examples": [
                 {
                     "agent": {
-                        "agent_id": "550e8400-e29b-41d4-a716-446655440000",
                         "agent_name": "customer-service-bot",
                         "agent_description": "Handles customer inquiries",
                         "agent_version": "1.0.0",
@@ -177,7 +176,7 @@ class InitAgentResponse(BaseModel):
     )
     controls: list[Control] = Field(
         default_factory=list,
-        description="Active protection controls for the agent",
+        description="Active protection controls for the agent (if policy assigned)",
     )
     overwrite_applied: bool = Field(
         default=False,
@@ -202,15 +201,24 @@ class CreatePolicyResponse(BaseModel):
     policy_id: int = Field(description="Identifier of the created policy")
 
 
-class GetAgentPoliciesResponse(BaseModel):
-    policy_ids: list[int] = Field(
-        default_factory=list, description="IDs of policies associated with the agent"
+class SetPolicyResponse(BaseModel):
+    success: bool = Field(description="Whether the policy was successfully assigned")
+    old_policy_id: int | None = Field(
+        default=None, description="Previous policy id if one was replaced"
     )
+
+
+class GetPolicyResponse(BaseModel):
+    policy_id: int = Field(description="Identifier of the policy assigned to the agent")
+
+
+class DeletePolicyResponse(BaseModel):
+    success: bool = Field(description="Whether the policy was successfully removed")
 
 
 class AgentControlsResponse(BaseModel):
     controls: list[Control] = Field(
-        description="List of active controls associated with the agent"
+        description="List of controls associated with the agent via its policy"
     )
 
 
@@ -238,18 +246,6 @@ class GetPolicyControlsResponse(BaseModel):
 
 class AssocResponse(BaseModel):
     success: bool = Field(description="Whether the association change succeeded")
-
-
-class RemoveAgentControlResponse(BaseModel):
-    """Response for removing a direct agent-control association."""
-
-    success: bool = Field(description="Whether the request succeeded")
-    removed_direct_association: bool = Field(
-        description="True if a direct agent-control link was removed"
-    )
-    control_still_active: bool = Field(
-        description="True if the control remains active via policy association(s)"
-    )
 
 
 class GetControlDataResponse(BaseModel):
@@ -313,16 +309,13 @@ class PatchAgentResponse(BaseModel):
 class AgentSummary(BaseModel):
     """Summary of an agent for list responses."""
 
-    agent_id: str = Field(..., description="UUID of the agent")
-    agent_name: str = Field(..., description="Human-readable name of the agent")
-    policy_ids: list[int] = Field(
-        default_factory=list, description="IDs of policies associated with the agent"
-    )
+    agent_name: str = Field(..., description="Unique identifier of the agent")
+    policy_id: int | None = Field(None, description="ID of assigned policy, if any")
     created_at: str | None = Field(None, description="ISO 8601 timestamp when agent was created")
     step_count: int = Field(0, description="Number of steps registered with the agent")
     evaluator_count: int = Field(0, description="Number of evaluators registered with the agent")
     active_controls_count: int = Field(
-        0, description="Number of active controls for this agent"
+        0, description="Number of active controls from agent's policy"
     )
 
 
@@ -352,8 +345,7 @@ class ListAgentsResponse(BaseModel):
 class AgentRef(BaseModel):
     """Reference to an agent (for listing which agents use a control)."""
 
-    agent_id: str = Field(..., description="Agent UUID")
-    agent_name: str = Field(..., description="Agent name")
+    agent_name: str = Field(..., description="Agent identifier")
 
 
 class ControlSummary(BaseModel):
@@ -368,10 +360,6 @@ class ControlSummary(BaseModel):
     stages: list[str] | None = Field(None, description="Evaluation stages in scope")
     tags: list[str] = Field(default_factory=list, description="Control tags")
     used_by_agent: AgentRef | None = Field(None, description="Agent using this control")
-    # TODO: Follow-up with full `used_by_agents` list for richer attribution.
-    used_by_agents_count: int = Field(
-        0, description="Number of unique agents using this control"
-    )
 
 
 class ListControlsResponse(BaseModel):
@@ -385,13 +373,9 @@ class DeleteControlResponse(BaseModel):
     """Response for deleting a control."""
 
     success: bool = Field(..., description="Whether the control was deleted")
-    dissociated_from_policies: list[int] = Field(
+    dissociated_from: list[int] = Field(
         default_factory=list,
         description="Policy IDs the control was removed from before deletion",
-    )
-    dissociated_from_agents: list[str] = Field(
-        default_factory=list,
-        description="Agent IDs the control was removed from before deletion",
     )
 
 

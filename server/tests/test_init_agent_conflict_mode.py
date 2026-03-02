@@ -21,10 +21,11 @@ def _init_payload(
     evaluators: list[dict[str, Any]] | None = None,
     conflict_mode: str | None = None,
 ) -> dict[str, Any]:
+    canonical_name = agent_name.lower()
     payload: dict[str, Any] = {
         "agent": {
-            "agent_id": agent_id,
-            "agent_name": agent_name,
+            "agent_id": canonical_name,
+            "agent_name": canonical_name,
             "agent_description": agent_description,
             "agent_version": agent_version,
         },
@@ -71,8 +72,8 @@ def _create_policy_with_agent_evaluator_control(
 
 def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) -> None:
     # Given: an existing agent registration with baseline steps and evaluators.
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:8]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
 
     create_payload = _init_payload(
         agent_id=agent_id,
@@ -163,8 +164,8 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
 
 def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: TestClient) -> None:
     # Given: an agent whose assigned policy contains a control referencing an agent evaluator.
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:8]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     evaluator_name = "custom-eval"
 
     init_resp = client.post(
@@ -180,7 +181,7 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
     policy_id, control_id, control_name = _create_policy_with_agent_evaluator_control(
         client, agent_name=agent_name, evaluator_name=evaluator_name
     )
-    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
     assert assign_resp.status_code == 200
 
     # When: overwrite mode removes the evaluator from the incoming registration payload.
@@ -215,8 +216,8 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
 
 def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> None:
     # Given: an existing agent registration and an equivalent overwrite payload.
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:8]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     payload = _init_payload(
         agent_id=agent_id,
         agent_name=agent_name,

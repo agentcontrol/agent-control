@@ -136,7 +136,7 @@ Agent → Policy → Control(s)
 2. Create controls with `/api/v1/controls` and configure them
 3. Create a policy and add controls to it
 4. Assign the policy to your agent
-5. Query agent's active controls with `/api/v1/agents/{agent_id}/controls`
+5. Query agent's active controls with `/api/v1/agents/{agent_name}/controls`
     """,
     version="0.1.0",
     lifespan=lifespan,

@@ -9,8 +9,7 @@ Usage:
 
     # Initialize at the base of your agent file
     agent_control.init(
-        agent_name="my-customer-service-bot",
-        agent_id="550e8400-e29b-41d4-a716-446655440000"
+        agent_name="my-customer-service-bot"
     )
 
     # Apply server-defined controls using the decorator
@@ -33,7 +32,7 @@ Usage:
     async with agent_control.AgentControlClient() as client:
         result = await agent_control.evaluation.check_evaluation(
             client,
-            agent_uuid,
+            agent_name,
             step={"type": "llm", "name": "chat", "input": "Hello"},
             stage="pre",
         )
@@ -52,7 +51,6 @@ import threading
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any, Literal, TypeVar
-from uuid import UUID
 
 import httpx
 from agent_control_models import (
@@ -107,10 +105,11 @@ from .tracing import (
     is_otel_available,
     with_trace,
 )
-from .validation import ensure_uuid
+from .validation import ensure_agent_name
 
 # Module logger
 logger = get_logger(__name__)
+
 
 # ============================================================================
 # Global State
@@ -255,7 +254,7 @@ async def refresh_controls_async() -> list[dict[str, Any]] | None:
 
     try:
         async with AgentControlClient(base_url=_server_url, api_key=_api_key) as client:
-            response = await agents.list_agent_controls(client, _current_agent.agent_id)
+            response = await agents.list_agent_controls(client, _current_agent.agent_name)
             refreshed_controls = _publish_server_controls(response.get("controls", []))
             logger.info("Refreshed %d control(s) from server", len(refreshed_controls or []))
             return refreshed_controls
@@ -314,7 +313,6 @@ def refresh_controls() -> list[dict[str, Any]] | None:
 
 def init(
     agent_name: str,
-    agent_id: str | UUID,
     agent_description: str | None = None,
     agent_version: str | None = None,
     server_url: str | None = None,
@@ -339,8 +337,7 @@ def init(
     5. Enable the @control decorator
 
     Args:
-        agent_name: Human-readable name for your agent (e.g., "Customer Service Bot")
-        agent_id: Unique identifier for your agent (UUID string or UUID instance)
+        agent_name: Unique identifier for your agent (will be normalized to lowercase)
         agent_description: Optional description of what your agent does
         agent_version: Optional version string (e.g., "1.0.0")
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var
@@ -365,8 +362,7 @@ def init(
         import agent_control
 
         agent_control.init(
-            agent_name="Customer Service Bot",
-            agent_id="550e8400-e29b-41d4-a716-446655440000",
+            agent_name="customer-service-bot",
             agent_description="Handles customer inquiries and support tickets",
             agent_version="2.1.0",
             steps=[
@@ -391,16 +387,15 @@ def init(
     """
     global _current_agent, _control_engine, _client, _server_url, _api_key
 
-    if not agent_id:
+    if not agent_name:
         raise ValueError(
-            "The 'agent_id' argument is required for initialization.\n"
-            "Please provide a valid UUID string for your agent, e.g.:\n"
-            '    agent_control.init(agent_name="my-agent", '
-            'agent_id="550e8400-e29b-41d4-a716-446655440000")'
+            "The 'agent_name' argument is required for initialization.\n"
+            "Please provide a valid agent identifier, e.g.:\n"
+            '    agent_control.init(agent_name="customer-service-bot")'
         )
 
-    # Validate agent_id is a UUID (string or UUID instance)
-    _agent_uuid = ensure_uuid(agent_id)
+    # Validate and normalize agent_name
+    _agent_name = ensure_agent_name(agent_name)
 
     if policy_refresh_interval_seconds < 0:
         raise ValueError("policy_refresh_interval_seconds must be >= 0")
@@ -414,8 +409,7 @@ def init(
 
     # Create agent instance with metadata
     _current_agent = Agent(
-        agent_id=_agent_uuid,
-        agent_name=agent_name,
+        agent_name=_agent_name,
         agent_description=agent_description,
         agent_created_at=datetime.now(UTC).isoformat(),
         agent_updated_at=None,
@@ -476,16 +470,16 @@ def init(
                     controls: list[dict[str, Any]] = response.get('controls', [])
 
                     if created:
-                        logger.info("Agent registered: %s (ID: %s)", agent_name, _agent_uuid)
+                        logger.info("Agent registered: %s", _agent_name)
                     else:
-                        logger.info("Agent updated: %s (ID: %s)", agent_name, _agent_uuid)
+                        logger.info("Agent updated: %s", _agent_name)
 
                     if registration_steps:
                         logger.debug("Registered %d step(s)", len(registration_steps))
 
                     return controls
                 except httpx.HTTPStatusError:
-                    # Surface API errors like UUID conflicts
+                    # Surface API errors like name conflicts
                     raise
                 except Exception as e:
                     logger.error("Failed to register agent: %s", e, exc_info=True)
@@ -518,7 +512,7 @@ def init(
             server_controls = _run_coro_in_new_loop(register())
 
     except httpx.HTTPStatusError:
-        # Surface server-side errors (e.g., 409 UUID conflicts)
+        # Surface server-side errors (e.g., 409 conflicts)
         raise
     except Exception as e:
         logger.error("Could not connect to server: %s", e, exc_info=True)
@@ -552,21 +546,21 @@ def init(
 
 
 async def get_agent(
-    agent_id: str | UUID,
+    agent_name: str,
     server_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
     """
-    Get agent details from the server by ID.
+    Get agent details from the server by name.
 
     Args:
-        agent_id: UUID string or UUID instance
+        agent_name: Agent identifier
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
 
     Returns:
         Dictionary containing:
-            - agent: Agent metadata (agent_name, agent_id, etc.)
+            - agent: Agent metadata
             - steps: List of steps registered with the agent
 
     Raises:
@@ -579,7 +573,7 @@ async def get_agent(
         # Fetch agent from server
         async def main():
             agent_data = await agent_control.get_agent(
-                "550e8400-e29b-41d4-a716-446655440000"
+                "customer-service-bot"
             )
             print(f"Agent: {agent_data['agent']['agent_name']}")
             print(f"Steps: {len(agent_data['steps'])}")
@@ -589,13 +583,13 @@ async def get_agent(
         # Or using the client directly
         async with agent_control.AgentControlClient() as client:
             agent_data = await agent_control.agents.get_agent(
-                client, "550e8400-e29b-41d4-a716-446655440000"
+                client, "customer-service-bot"
             )
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.get_agent(client, agent_id)
+        return await agents.get_agent(client, agent_name)
 
 
 def current_agent() -> Agent | None:
@@ -608,7 +602,6 @@ def current_agent() -> Agent | None:
     Example:
         agent_control.init(
             agent_name="My Bot",
-            agent_id="550e8400-e29b-41d4-a716-446655440000",
         )
         agent = agent_control.current_agent()
         print(agent.agent_name)  # "My Bot"
@@ -628,13 +621,13 @@ async def list_agents(
     Args:
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
-        cursor: Optional cursor for pagination (UUID of last agent from previous page)
+        cursor: Optional cursor for pagination (agent name of last item from previous page)
         limit: Number of results per page (default 20, max 100)
 
     Returns:
         Dictionary containing:
-            - agents: List of agent summaries with agent_id, agent_name,
-                      policy_ids, created_at, step_count, evaluator_count
+            - agents: List of agent summaries with agent_name,
+                      policy_id, created_at, step_count, evaluator_count
             - pagination: Object with limit, total, next_cursor, has_more
 
     Raises:
@@ -648,7 +641,7 @@ async def list_agents(
             result = await agent_control.list_agents()
             print(f"Total agents: {result['pagination']['total']}")
             for agent in result['agents']:
-                print(f"  - {agent['agent_name']} ({agent['agent_id']})")
+                print(f"  - {agent['agent_name']}")
             # Fetch next page
             if result['pagination']['has_more']:
                 next_page = await agent_control.list_agents(
@@ -661,93 +654,6 @@ async def list_agents(
 
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
         return await agents.list_agents(client, cursor=cursor, limit=limit)
-
-
-# ============================================================================
-# Agent Association Convenience Functions
-# ============================================================================
-
-
-async def get_agent_policies(
-    agent_id: str | UUID,
-    server_url: str | None = None,
-    api_key: str | None = None,
-) -> dict[str, Any]:
-    """
-    List policy IDs associated with an agent.
-    """
-    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.get_agent_policies(client, agent_id)
-
-
-async def add_policy_to_agent(
-    agent_id: str | UUID,
-    policy_id: int,
-    server_url: str | None = None,
-    api_key: str | None = None,
-) -> dict[str, Any]:
-    """
-    Associate a policy with an agent.
-    """
-    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.add_agent_policy(client, agent_id, policy_id)
-
-
-async def remove_policy_from_agent(
-    agent_id: str | UUID,
-    policy_id: int,
-    server_url: str | None = None,
-    api_key: str | None = None,
-) -> dict[str, Any]:
-    """
-    Remove a specific policy association from an agent.
-    """
-    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.remove_agent_policy_association(client, agent_id, policy_id)
-
-
-async def clear_agent_policies(
-    agent_id: str | UUID,
-    server_url: str | None = None,
-    api_key: str | None = None,
-) -> dict[str, Any]:
-    """
-    Remove all policy associations from an agent.
-    """
-    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.remove_agent_policies(client, agent_id)
-
-
-async def add_control_to_agent(
-    agent_id: str | UUID,
-    control_id: int,
-    server_url: str | None = None,
-    api_key: str | None = None,
-) -> dict[str, Any]:
-    """
-    Associate a control directly with an agent.
-    """
-    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.add_agent_control(client, agent_id, control_id)
-
-
-async def remove_control_from_agent(
-    agent_id: str | UUID,
-    control_id: int,
-    server_url: str | None = None,
-    api_key: str | None = None,
-) -> dict[str, Any]:
-    """
-    Remove a direct control association from an agent.
-    """
-    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.remove_agent_control(client, agent_id, control_id)
 
 
 # ============================================================================
@@ -930,7 +836,7 @@ async def delete_control(
     """
     Delete a control from the server.
 
-    By default, deletion fails if the control is associated with any policy or agent.
+    By default, deletion fails if the control is associated with any policy.
     Use force=True to automatically dissociate and delete.
 
     Args:
@@ -942,8 +848,7 @@ async def delete_control(
     Returns:
         Dictionary containing:
             - success: True if control was deleted
-            - dissociated_from_policies: List of policy IDs the control was removed from
-            - dissociated_from_agents: List of agent UUIDs the control was removed from
+            - dissociated_from: List of policy IDs the control was removed from
 
     Raises:
         httpx.HTTPError: If request fails
@@ -957,11 +862,7 @@ async def delete_control(
         async def main():
             # Force delete
             result = await agent_control.delete_control(5, force=True)
-            print(
-                "Deleted, removed from "
-                f"{len(result['dissociated_from_policies'])} policies and "
-                f"{len(result['dissociated_from_agents'])} agents"
-            )
+            print(f"Deleted, removed from {len(result['dissociated_from'])} policies")
 
         asyncio.run(main())
     """
@@ -1165,12 +1066,6 @@ __all__ = [
     # Agent management
     "get_agent",
     "list_agents",
-    "get_agent_policies",
-    "add_policy_to_agent",
-    "remove_policy_from_agent",
-    "clear_agent_policies",
-    "add_control_to_agent",
-    "remove_control_from_agent",
     # Control management
     "create_control",
     "list_controls",

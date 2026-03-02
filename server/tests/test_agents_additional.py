@@ -7,8 +7,8 @@ from copy import deepcopy
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
+from .conftest import engine
 
 
 def _init_agent(
@@ -19,11 +19,11 @@ def _init_agent(
     steps: list[dict] | None = None,
     evaluators: list[dict] | None = None,
 ) -> tuple[str, str]:
-    aid = agent_id or str(uuid.uuid4())
-    name = agent_name or f"Agent-{uuid.uuid4().hex[:6]}"
+    name = (agent_name or agent_id or f"agent-{uuid.uuid4().hex[:12]}").lower()
+    if len(name) < 10:
+        name = f"{name}-agent".replace("--", "-")
     payload = {
         "agent": {
-            "agent_id": aid,
             "agent_name": name,
             "agent_description": "desc",
             "agent_version": "1.0",
@@ -33,7 +33,7 @@ def _init_agent(
     }
     resp = client.post("/api/v1/agents/initAgent", json=payload)
     assert resp.status_code == 200
-    return aid, name
+    return name, name
 
 
 def _create_control_with_data(client: TestClient, data: dict) -> int:
@@ -230,7 +230,7 @@ def test_patch_agent_remove_evaluator_in_use_conflict(client: TestClient) -> Non
     policy_id = _create_policy(client)
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
     assert assign.status_code == 200
 
     # When: attempting to remove evaluator in use
@@ -270,44 +270,11 @@ def test_set_agent_policy_incompatible_controls(client: TestClient) -> None:
     agent_b_id, _ = _init_agent(client)
 
     # When: assigning policy to agent B
-    resp = client.post(f"/api/v1/agents/{agent_b_id}/policies/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_b_id}/policy/{policy_id}")
 
     # Then: incompatible controls error
     assert resp.status_code == 400
     assert resp.json()["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
-
-
-def test_add_agent_control_incompatible_with_agent_returns_400(client: TestClient) -> None:
-    # Given: Agent A exposes a custom evaluator
-    evaluators = [
-        {
-            "name": "custom",
-            "description": "custom",
-            "config_schema": {"type": "object", "properties": {}, "additionalProperties": True},
-        }
-    ]
-    _, agent_a_name = _init_agent(client, evaluators=evaluators)
-
-    # And: control references Agent A's evaluator
-    control_payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    control_payload["evaluator"] = {
-        "name": f"{agent_a_name}:custom",
-        "config": {},
-    }
-    control_id = _create_control_with_data(client, control_payload)
-
-    # And: Agent B does not expose that evaluator
-    agent_b_id, _ = _init_agent(client)
-
-    # When: associating the control directly with Agent B
-    resp = client.post(f"/api/v1/agents/{agent_b_id}/controls/{control_id}")
-
-    # Then: validation fails with compatibility error
-    assert resp.status_code == 400
-    body = resp.json()
-    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
-    assert body["errors"]
-    assert all(err.get("field") == "evaluator" for err in body["errors"])
 
 
 def test_init_agent_rejects_builtin_evaluator_name(client: TestClient) -> None:
@@ -315,7 +282,7 @@ def test_init_agent_rejects_builtin_evaluator_name(client: TestClient) -> None:
     payload = {
         "agent": {
             "agent_id": str(uuid.uuid4()),
-            "agent_name": f"Agent-{uuid.uuid4().hex[:6]}",
+            "agent_name": f"agent-{uuid.uuid4().hex[:12]}",
             "agent_description": "desc",
             "agent_version": "1.0",
         },
@@ -333,16 +300,14 @@ def test_init_agent_rejects_builtin_evaluator_name(client: TestClient) -> None:
     assert resp.json()["error_code"] == "EVALUATOR_NAME_CONFLICT"
 
 
-def test_init_agent_uuid_conflict_on_same_name(client: TestClient) -> None:
+def test_init_agent_same_name_is_idempotent(client: TestClient) -> None:
     # Given: an existing agent with a specific name
-    name = f"Agent-{uuid.uuid4().hex[:6]}"
-    agent_id = str(uuid.uuid4())
-    _init_agent(client, agent_id=agent_id, agent_name=name)
+    name = f"agent-{uuid.uuid4().hex[:12]}"
+    _init_agent(client, agent_name=name)
 
-    # When: re-registering with the same name but a different UUID
+    # When: re-registering with the same name
     payload = {
         "agent": {
-            "agent_id": str(uuid.uuid4()),
             "agent_name": name,
             "agent_description": "desc",
             "agent_version": "1.0",
@@ -351,21 +316,19 @@ def test_init_agent_uuid_conflict_on_same_name(client: TestClient) -> None:
     }
     resp = client.post("/api/v1/agents/initAgent", json=payload)
 
-    # Then: UUID conflict is returned
-    assert resp.status_code == 409
-    assert resp.json()["error_code"] == "AGENT_UUID_CONFLICT"
+    # Then: request is idempotent
+    assert resp.status_code == 200
+    assert resp.json()["created"] is False
 
 
-def test_init_agent_name_conflict_on_same_uuid(client: TestClient) -> None:
-    # Given: an existing agent with a specific UUID
-    agent_id = str(uuid.uuid4())
-    original_name = f"Agent-{uuid.uuid4().hex[:6]}"
-    _init_agent(client, agent_id=agent_id, agent_name=original_name)
+def test_init_agent_different_name_creates_new_agent(client: TestClient) -> None:
+    # Given: an existing agent
+    original_name = f"agent-{uuid.uuid4().hex[:12]}"
+    _init_agent(client, agent_name=original_name)
 
-    # When: re-registering with the same UUID but a different name
+    # When: registering another agent with a different name
     payload = {
         "agent": {
-            "agent_id": agent_id,
             "agent_name": f"{original_name}-renamed",
             "agent_description": "desc",
             "agent_version": "1.0",
@@ -374,9 +337,9 @@ def test_init_agent_name_conflict_on_same_uuid(client: TestClient) -> None:
     }
     resp = client.post("/api/v1/agents/initAgent", json=payload)
 
-    # Then: name conflict is returned
-    assert resp.status_code == 409
-    assert resp.json()["error_code"] == "AGENT_NAME_CONFLICT"
+    # Then: a new agent is created
+    assert resp.status_code == 200
+    assert resp.json()["created"] is True
 
 
 def test_list_agent_controls_corrupted_control_data_returns_422(
@@ -390,7 +353,7 @@ def test_list_agent_controls_corrupted_control_data_returns_422(
     policy_id = _create_policy(client)
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
     assert assign.status_code == 200
 
     # And: the control data is corrupted in the DB
@@ -410,8 +373,8 @@ def test_list_agent_controls_corrupted_control_data_returns_422(
 
 def test_list_agents_invalid_cursor_returns_first_page(client: TestClient) -> None:
     # Given: two agents
-    _init_agent(client, agent_name=f"Agent-{uuid.uuid4().hex[:6]}")
-    _init_agent(client, agent_name=f"Agent-{uuid.uuid4().hex[:6]}")
+    _init_agent(client, agent_name=f"agent-{uuid.uuid4().hex[:12]}")
+    _init_agent(client, agent_name=f"agent-{uuid.uuid4().hex[:12]}")
 
     # When: listing agents without cursor
     resp = client.get("/api/v1/agents")
@@ -433,7 +396,7 @@ def test_list_agent_evaluators_corrupted_data_returns_empty(client: TestClient) 
     agent_id, _ = _init_agent(client, evaluators=[{"name": "eval-a", "config_schema": {}}])
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": "{\"bad\": \"data\"}", "id": agent_id},
         )
 
@@ -457,12 +420,12 @@ def test_set_agent_policy_rejects_corrupted_agent_data(client: TestClient) -> No
 
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
     # When: assigning policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
 
     # Then: incompatible controls error is returned
     assert resp.status_code == 400
@@ -491,7 +454,7 @@ def test_set_agent_policy_rejects_missing_agent_evaluator(client: TestClient) ->
         )
 
     # When: assigning policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
 
     # Then: incompatible controls error is returned
     assert resp.status_code == 400
@@ -533,7 +496,7 @@ def test_set_agent_policy_rejects_invalid_agent_evaluator_config(client: TestCli
         )
 
     # When: assigning policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
 
     # Then: incompatible controls error is returned
     assert resp.status_code == 400
@@ -547,7 +510,7 @@ def test_get_agent_policy_agent_not_found(client: TestClient) -> None:
     missing_agent = str(uuid.uuid4())
 
     # When: retrieving policy for a non-existent agent
-    resp = client.get(f"/api/v1/agents/{missing_agent}/policies")
+    resp = client.get(f"/api/v1/agents/{missing_agent}/policy")
 
     # Then: not found error is returned
     assert resp.status_code == 404
@@ -559,74 +522,19 @@ def test_delete_agent_policy_agent_not_found(client: TestClient) -> None:
     missing_agent = str(uuid.uuid4())
 
     # When: deleting policy for a non-existent agent
-    resp = client.delete(f"/api/v1/agents/{missing_agent}/policies")
+    resp = client.delete(f"/api/v1/agents/{missing_agent}/policy")
 
     # Then: not found error is returned
     assert resp.status_code == 404
     assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
 
 
-def test_delete_agent_policy_no_policy_assigned_is_idempotent(client: TestClient) -> None:
+def test_delete_agent_policy_no_policy_assigned_returns_404(client: TestClient) -> None:
     # Given: an agent with no policy assigned
     agent_id, _ = _init_agent(client)
 
     # When: deleting policy
-    resp = client.delete(f"/api/v1/agents/{agent_id}/policies")
-
-    # Then: deletion is idempotent
-    assert resp.status_code == 200
-    assert resp.json()["success"] is True
-
-
-def test_remove_agent_policy_removes_only_target_association(client: TestClient) -> None:
-    # Given: an agent associated with two policies
-    agent_id, _ = _init_agent(client)
-    policy_a_id = _create_policy(client)
-    policy_b_id = _create_policy(client)
-
-    assoc_a = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_a_id}")
-    assert assoc_a.status_code == 200
-    assoc_b = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_b_id}")
-    assert assoc_b.status_code == 200
-
-    # When: removing one specific policy association
-    remove_resp = client.delete(f"/api/v1/agents/{agent_id}/policies/{policy_a_id}")
-
-    # Then: only that policy association is removed
-    assert remove_resp.status_code == 200
-    assert remove_resp.json()["success"] is True
-    get_resp = client.get(f"/api/v1/agents/{agent_id}/policies")
-    assert get_resp.status_code == 200
-    assert get_resp.json()["policy_ids"] == [policy_b_id]
-
-
-def test_remove_agent_policy_non_associated_existing_policy_is_noop(client: TestClient) -> None:
-    # Given: an agent associated with policy A, but policy B exists and is not associated
-    agent_id, _ = _init_agent(client)
-    policy_a_id = _create_policy(client)
-    policy_b_id = _create_policy(client)
-
-    assoc_a = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_a_id}")
-    assert assoc_a.status_code == 200
-
-    # When: removing non-associated policy B
-    remove_resp = client.delete(f"/api/v1/agents/{agent_id}/policies/{policy_b_id}")
-
-    # Then: operation succeeds and existing association remains
-    assert remove_resp.status_code == 200
-    assert remove_resp.json()["success"] is True
-    get_resp = client.get(f"/api/v1/agents/{agent_id}/policies")
-    assert get_resp.status_code == 200
-    assert get_resp.json()["policy_ids"] == [policy_a_id]
-
-
-def test_remove_agent_policy_missing_policy_returns_404(client: TestClient) -> None:
-    # Given: an existing agent and a non-existent policy id
-    agent_id, _ = _init_agent(client)
-    missing_policy_id = 999999999
-
-    # When: removing a missing policy association
-    resp = client.delete(f"/api/v1/agents/{agent_id}/policies/{missing_policy_id}")
+    resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
 
     # Then: policy not found error is returned
     assert resp.status_code == 404
@@ -642,7 +550,7 @@ def test_list_agents_corrupted_data_sets_zero_counts(client: TestClient) -> None
     )
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
@@ -651,7 +559,7 @@ def test_list_agents_corrupted_data_sets_zero_counts(client: TestClient) -> None
 
     # Then: step/evaluator counts are zeroed for corrupted data
     assert resp.status_code == 200
-    agents = {a["agent_id"]: a for a in resp.json()["agents"]}
+    agents = {a["agent_name"]: a for a in resp.json()["agents"]}
     agent = agents[agent_id]
     assert agent["step_count"] == 0
     assert agent["evaluator_count"] == 0
@@ -662,7 +570,7 @@ def test_get_agent_corrupted_data_returns_422(client: TestClient) -> None:
     agent_id, _ = _init_agent(client)
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
@@ -680,7 +588,7 @@ def test_get_agent_corrupted_metadata_returns_422(client: TestClient) -> None:
     corrupted = {"agent_metadata": {}, "steps": [], "evaluators": []}
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps(corrupted), "id": agent_id},
         )
 
@@ -692,16 +600,53 @@ def test_get_agent_corrupted_metadata_returns_422(client: TestClient) -> None:
     assert resp.json()["error_code"] == "CORRUPTED_DATA"
 
 
-def test_get_agent_policies_returns_empty_when_none_assigned(client: TestClient) -> None:
-    # Given: an agent with no policy assignments
+def test_get_agent_policy_missing_policy_returns_404(client: TestClient) -> None:
+    # Given: an agent assigned to a policy that cannot be found
     agent_id, _ = _init_agent(client)
+    policy_id = _create_policy(client)
+    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assert assign.status_code == 200
 
-    # When: retrieving associated policies
-    resp = client.get(f"/api/v1/agents/{agent_id}/policies")
+    from agent_control_server.db import get_async_db
+    from agent_control_server.main import app
+    from agent_control_server.models import Agent as AgentModel
+    from sqlalchemy.orm import Session
+    from unittest.mock import AsyncMock, MagicMock
+    from collections.abc import AsyncGenerator
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy import select
 
-    # Then: an empty policy list is returned
-    assert resp.status_code == 200
-    assert resp.json()["policy_ids"] == []
+    with Session(engine) as session:
+        agent_row = (
+            session.execute(
+                select(AgentModel).where(AgentModel.name == agent_id)
+            )
+            .scalars()
+            .first()
+        )
+        assert agent_row is not None
+
+    async def mock_db_missing_policy() -> AsyncGenerator[AsyncSession, None]:
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_agent_result = MagicMock()
+        mock_agent_result.scalars.return_value.first.return_value = agent_row
+        mock_policy_result = MagicMock()
+        mock_policy_result.scalars.return_value.first.return_value = None
+        mock_session.execute = AsyncMock(
+            side_effect=[mock_agent_result, mock_policy_result]
+        )
+        yield mock_session
+
+    # When: retrieving the agent policy and policy lookup returns None
+    app.dependency_overrides[get_async_db] = mock_db_missing_policy
+    try:
+        resp = client.get(f"/api/v1/agents/{agent_id}/policy")
+    finally:
+        app.dependency_overrides.clear()
+
+    # Then: policy not found error is returned
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "POLICY_NOT_FOUND"
 
 
 def test_set_agent_policy_skips_controls_without_data(client: TestClient) -> None:
@@ -715,7 +660,7 @@ def test_set_agent_policy_skips_controls_without_data(client: TestClient) -> Non
     assert assoc.status_code == 200
 
     # When: assigning the policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
 
     # Then: assignment succeeds because empty data is ignored during validation
     assert resp.status_code == 200
@@ -737,7 +682,7 @@ def test_set_agent_policy_skips_controls_without_evaluator_name(client: TestClie
         )
 
     # When: assigning the policy to the agent
-    resp = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
 
     # Then: assignment succeeds because evaluator name is missing
     assert resp.status_code == 200
@@ -755,7 +700,7 @@ def test_list_agents_includes_active_controls_count(client: TestClient) -> None:
     for control_id in control_ids:
         assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
         assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
     assert assign.status_code == 200
 
     # When: listing agents
@@ -767,34 +712,10 @@ def test_list_agents_includes_active_controls_count(client: TestClient) -> None:
     assert agent["active_controls_count"] == 2
 
 
-def test_list_agents_active_controls_count_deduplicates_policy_and_direct(
-    client: TestClient,
-) -> None:
-    # Given: an agent with the same control linked through both policy and direct association
-    agent_id, _ = _init_agent(client)
-    policy_id = _create_policy(client)
-    shared_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
-
-    assoc_policy_control = client.post(f"/api/v1/policies/{policy_id}/controls/{shared_control_id}")
-    assert assoc_policy_control.status_code == 200
-    assign_policy = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
-    assert assign_policy.status_code == 200
-    assoc_direct_control = client.post(f"/api/v1/agents/{agent_id}/controls/{shared_control_id}")
-    assert assoc_direct_control.status_code == 200
-
-    # When: listing agents
-    resp = client.get("/api/v1/agents")
-
-    # Then: active_controls_count counts the shared control once
-    assert resp.status_code == 200
-    agent = next(a for a in resp.json()["agents"] if a["agent_id"] == agent_id)
-    assert agent["active_controls_count"] == 1
-
-
 def test_list_agents_valid_cursor_not_found_returns_first_page(client: TestClient) -> None:
     # Given: two agents
-    _init_agent(client, agent_name=f"Agent-{uuid.uuid4().hex[:6]}")
-    _init_agent(client, agent_name=f"Agent-{uuid.uuid4().hex[:6]}")
+    _init_agent(client, agent_name=f"agent-{uuid.uuid4().hex[:12]}")
+    _init_agent(client, agent_name=f"agent-{uuid.uuid4().hex[:12]}")
 
     # When: listing without cursor
     resp = client.get("/api/v1/agents", params={"limit": 1})
@@ -813,8 +734,8 @@ def test_list_agents_valid_cursor_not_found_returns_first_page(client: TestClien
 
 def test_init_agent_adds_new_evaluator(client: TestClient) -> None:
     # Given: an existing agent with one evaluator
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     payload = {
         "agent": {
             "agent_id": agent_id,
@@ -852,8 +773,8 @@ def test_init_agent_adds_new_evaluator(client: TestClient) -> None:
 
 def test_init_agent_returns_controls_when_policy_assigned(client: TestClient) -> None:
     # Given: an agent assigned to a policy with a control
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     init_resp = client.post(
         "/api/v1/agents/initAgent",
         json={
@@ -873,7 +794,7 @@ def test_init_agent_returns_controls_when_policy_assigned(client: TestClient) ->
     control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
-    assign = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
+    assign = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
     assert assign.status_code == 200
 
     # When: re-initializing the agent with the same UUID
@@ -898,90 +819,12 @@ def test_init_agent_returns_controls_when_policy_assigned(client: TestClient) ->
     assert controls[0]["id"] == control_id
 
 
-def test_init_agent_returns_union_and_deduplicates_policy_and_direct_controls(
-    client: TestClient,
-) -> None:
-    # Given: an agent with policy-only, direct-only, and shared control associations
-    agent_id, agent_name = _init_agent(client)
-    policy_id = _create_policy(client)
-
-    policy_only_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
-    direct_only_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
-    shared_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
-
-    assoc_policy_only = client.post(
-        f"/api/v1/policies/{policy_id}/controls/{policy_only_control_id}"
-    )
-    assert assoc_policy_only.status_code == 200
-    assoc_shared_policy = client.post(f"/api/v1/policies/{policy_id}/controls/{shared_control_id}")
-    assert assoc_shared_policy.status_code == 200
-    assign_policy = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
-    assert assign_policy.status_code == 200
-
-    assoc_direct_only = client.post(f"/api/v1/agents/{agent_id}/controls/{direct_only_control_id}")
-    assert assoc_direct_only.status_code == 200
-    assoc_shared_direct = client.post(f"/api/v1/agents/{agent_id}/controls/{shared_control_id}")
-    assert assoc_shared_direct.status_code == 200
-
-    # When: re-initializing the same agent
-    reinit_resp = client.post(
-        "/api/v1/agents/initAgent",
-        json={
-            "agent": {
-                "agent_id": agent_id,
-                "agent_name": agent_name,
-                "agent_description": "desc",
-                "agent_version": "1.0",
-            },
-            "steps": [],
-            "evaluators": [],
-        },
-    )
-
-    # Then: initAgent returns the union of controls with shared control de-duplicated
-    assert reinit_resp.status_code == 200
-    body = reinit_resp.json()
-    assert body["created"] is False
-    returned_control_ids = [control["id"] for control in body["controls"]]
-    assert set(returned_control_ids) == {
-        policy_only_control_id,
-        direct_only_control_id,
-        shared_control_id,
-    }
-    assert len(returned_control_ids) == 3
-
-
-def test_policy_removal_does_not_remove_direct_association_for_same_control(
-    client: TestClient,
-) -> None:
-    # Given: an agent where the same control is linked both via policy and directly
-    agent_id, _ = _init_agent(client)
-    policy_id = _create_policy(client)
-    shared_control_id = _create_control_with_data(client, deepcopy(VALID_CONTROL_PAYLOAD))
-
-    assoc_control = client.post(f"/api/v1/policies/{policy_id}/controls/{shared_control_id}")
-    assert assoc_control.status_code == 200
-    assign_policy = client.post(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
-    assert assign_policy.status_code == 200
-    assoc_direct = client.post(f"/api/v1/agents/{agent_id}/controls/{shared_control_id}")
-    assert assoc_direct.status_code == 200
-
-    # When: removing the policy association from the agent
-    remove_policy = client.delete(f"/api/v1/agents/{agent_id}/policies/{policy_id}")
-
-    # Then: the control is still active through the direct association
-    assert remove_policy.status_code == 200
-    list_controls = client.get(f"/api/v1/agents/{agent_id}/controls")
-    assert list_controls.status_code == 200
-    assert {control["id"] for control in list_controls.json()["controls"]} == {shared_control_id}
-
-
 def test_patch_agent_corrupted_data_returns_422(client: TestClient) -> None:
     # Given: an agent with corrupted stored data
     agent_id, _ = _init_agent(client)
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
@@ -1001,7 +844,7 @@ def test_get_agent_evaluator_corrupted_data_returns_404(client: TestClient) -> N
     agent_id, _ = _init_agent(client, evaluators=[{"name": "eval-a", "config_schema": {}}])
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE agent_uuid = :id"),
+            text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
             {"data": json.dumps({"bad": "data"}), "id": agent_id},
         )
 
@@ -1020,7 +863,7 @@ def test_init_agent_rejects_duplicate_step_names_in_single_request(
     payload = {
         "agent": {
             "agent_id": str(uuid.uuid4()),
-            "agent_name": f"Agent-{uuid.uuid4().hex[:6]}",
+            "agent_name": f"agent-{uuid.uuid4().hex[:12]}",
             "agent_description": "desc",
             "agent_version": "1.0",
         },
@@ -1048,8 +891,8 @@ def test_init_agent_rejects_step_schema_conflict_across_registrations(
     client: TestClient,
 ) -> None:
     # Given: an agent registered with a step
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     original_payload = {
         "agent": {
             "agent_id": agent_id,
@@ -1102,8 +945,8 @@ def test_init_agent_accepts_identical_step_schema_across_registrations(
     client: TestClient,
 ) -> None:
     # Given: an agent registered with a step
-    agent_id = str(uuid.uuid4())
-    agent_name = f"Agent-{uuid.uuid4().hex[:6]}"
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    agent_id = agent_name
     payload = {
         "agent": {
             "agent_id": agent_id,

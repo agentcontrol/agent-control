@@ -21,7 +21,7 @@ from agent_control_models.server import (
 from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import ValidationError
-from sqlalchemy import delete, func, or_, select, union_all
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
@@ -32,12 +32,11 @@ from ..errors import (
     NotFoundError,
 )
 from ..logging_utils import get_logger
-from ..models import Agent, AgentData, Control, agent_controls, agent_policies, policy_controls
+from ..models import Agent, AgentData, Control, Policy, policy_controls
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
 )
-from ..services.query_utils import escape_like_pattern
 
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
@@ -497,15 +496,19 @@ async def list_controls(
     Example:
         GET /controls?limit=10&enabled=true&step_type=tool
     """
+    # Get total count (with filters applied)
+    count_query = select(func.count()).select_from(Control)
     query = select(Control).order_by(Control.id.desc())
 
     # Apply cursor
     if cursor is not None:
         query = query.where(Control.id < cursor)
+        count_query = count_query.where(Control.id < cursor)
 
     # Apply name filter (case-insensitive partial match)
     if name is not None:
-        query = query.where(Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\"))
+        query = query.where(Control.name.ilike(f"%{name}%"))
+        # Don't apply to count_query - total should be pre-filter
 
     # Apply JSONB filters at database level
     if enabled is not None:
@@ -551,9 +554,7 @@ async def list_controls(
     # Get total count (with same filters, but without cursor/limit)
     total_query = select(func.count()).select_from(Control)
     if name is not None:
-        total_query = total_query.where(
-            Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
-        )
+        total_query = total_query.where(Control.name.ilike(f"%{name}%"))
     if enabled is not None:
         if enabled:
             total_query = total_query.where(
@@ -592,51 +593,27 @@ async def list_controls(
     if has_more:
         controls = controls[:-1]
 
-    # Build mapping of control_id -> usage attribution
-    # Traversal includes both:
-    # - Control -> policy_controls -> agent_policies -> Agent
-    # - Control -> agent_controls -> Agent
+    # Build mapping of control_id -> agent that uses it
+    # Traversal: Control -> policy_controls -> Policy -> Agent
     control_agent_map: dict[int, AgentRef | None] = {ctrl.id: None for ctrl in controls}
-    control_agent_ids_map: dict[int, set[str]] = {ctrl.id: set() for ctrl in controls}
-    control_agent_repr_map: dict[int, tuple[str, str] | None] = {ctrl.id: None for ctrl in controls}
     if controls:
         control_ids = [ctrl.id for ctrl in controls]
-        policy_agents_query = (
+        agents_query = (
             select(
                 policy_controls.c.control_id,
-                agent_policies.c.agent_uuid,
                 Agent.name,
             )
             .select_from(policy_controls)
-            .join(agent_policies, policy_controls.c.policy_id == agent_policies.c.policy_id)
-            .join(Agent, Agent.agent_uuid == agent_policies.c.agent_uuid)
+            .join(Policy, policy_controls.c.policy_id == Policy.id)
+            .join(Agent, Agent.policy_id == Policy.id)
             .where(policy_controls.c.control_id.in_(control_ids))
         )
-        direct_agents_query = (
-            select(
-                agent_controls.c.control_id,
-                agent_controls.c.agent_uuid,
-                Agent.name,
-            )
-            .select_from(agent_controls)
-            .join(Agent, Agent.agent_uuid == agent_controls.c.agent_uuid)
-            .where(agent_controls.c.control_id.in_(control_ids))
-        )
-        agents_query = union_all(policy_agents_query, direct_agents_query)
         agents_result = await db.execute(agents_query)
         for row in agents_result.all():
-            control_id, agent_uuid, agent_name = row
-            agent_uuid_str = str(agent_uuid)
-            control_agent_ids_map[control_id].add(agent_uuid_str)
-
-            # Keep a deterministic representative agent for backward compatibility.
-            current_repr = control_agent_repr_map[control_id]
-            candidate_repr = (agent_name, agent_uuid_str)
-            if current_repr is None or candidate_repr < current_repr:
-                control_agent_repr_map[control_id] = candidate_repr
-                control_agent_map[control_id] = AgentRef(
-                    agent_id=agent_uuid_str, agent_name=agent_name
-                )
+            control_id, agent_name = row
+            # Take the first agent found (1 control = 1 agent)
+            if control_agent_map[control_id] is None:
+                control_agent_map[control_id] = AgentRef(agent_name=agent_name)
 
     # Build summaries (filtering already done at DB level)
     summaries: list[ControlSummary] = []
@@ -655,7 +632,6 @@ async def list_controls(
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
                 used_by_agent=control_agent_map.get(ctrl.id),
-                used_by_agents_count=len(control_agent_ids_map.get(ctrl.id, set())),
             )
         )
 
@@ -685,15 +661,15 @@ async def delete_control(
     control_id: int,
     force: bool = Query(
         False,
-        description="If true, dissociate from all policy/agent links before deleting. "
-        "If false, fail if control is associated with any policy or agent.",
+        description="If true, dissociate from all policies before deleting. "
+        "If false, fail if control is associated with any policy.",
     ),
     db: AsyncSession = Depends(get_async_db),
 ) -> DeleteControlResponse:
     """
     Delete a control by ID.
 
-    By default, deletion fails if the control is associated with any policy or agent.
+    By default, deletion fails if the control is associated with any policy.
     Use force=true to automatically dissociate and delete.
 
     Args:
@@ -702,7 +678,7 @@ async def delete_control(
         db: Database session (injected)
 
     Returns:
-        DeleteControlResponse with success flag and dissociation details
+        DeleteControlResponse with success flag and list of dissociated policies
 
     Raises:
         HTTPException 404: Control not found
@@ -721,66 +697,48 @@ async def delete_control(
             hint="Verify the control ID is correct and the control has been created.",
         )
 
-    # Check for associations with policies and direct agent links
-    policy_assoc_result = await db.execute(
-        select(policy_controls.c.policy_id).where(policy_controls.c.control_id == control_id)
+    # Check for associations with policies
+    assoc_result = await db.execute(
+        select(policy_controls.c.policy_id).where(
+            policy_controls.c.control_id == control_id
+        )
     )
-    associated_policy_ids = [row[0] for row in policy_assoc_result.all()]
+    associated_policy_ids = [row[0] for row in assoc_result.all()]
 
-    agent_assoc_result = await db.execute(
-        select(agent_controls.c.agent_uuid).where(agent_controls.c.control_id == control_id)
-    )
-    associated_agent_ids = [str(row[0]) for row in agent_assoc_result.all()]
-
-    if (associated_policy_ids or associated_agent_ids) and not force:
-        errors = [
-            ValidationErrorItem(
-                resource="Policy",
-                field="controls",
-                code="control_in_use",
-                message=f"Control is associated with policy ID {pid}",
-                value=pid,
-            )
-            for pid in associated_policy_ids
-        ] + [
-            ValidationErrorItem(
-                resource="Agent",
-                field="controls",
-                code="control_in_use",
-                message=f"Control is directly associated with agent ID {agent_id}",
-                value=agent_id,
-            )
-            for agent_id in associated_agent_ids
-        ]
+    if associated_policy_ids and not force:
         raise ConflictError(
             error_code=ErrorCode.CONTROL_IN_USE,
             detail=(
                 f"Control '{control.name}' is associated with "
-                f"{len(associated_policy_ids)} policy/policies and "
-                f"{len(associated_agent_ids)} agent(s)"
+                f"{len(associated_policy_ids)} policy/policies"
             ),
             resource="Control",
             resource_id=control.name,
             hint="Use force=true to dissociate and delete, or remove associations manually first.",
-            errors=errors,
+            errors=[
+                ValidationErrorItem(
+                    resource="Policy",
+                    field="controls",
+                    code="control_in_use",
+                    message=f"Control is associated with policy ID {pid}",
+                    value=pid,
+                )
+                for pid in associated_policy_ids
+            ],
         )
 
     # Remove associations if force=true
-    dissociated_from_policies: list[int] = []
-    dissociated_from_agents: list[str] = []
+    dissociated_from: list[int] = []
     if associated_policy_ids:
-        await db.execute(delete(policy_controls).where(policy_controls.c.control_id == control_id))
-        dissociated_from_policies = associated_policy_ids
-    if associated_agent_ids:
-        await db.execute(delete(agent_controls).where(agent_controls.c.control_id == control_id))
-        dissociated_from_agents = associated_agent_ids
-    if dissociated_from_policies or dissociated_from_agents:
+        await db.execute(
+            delete(policy_controls).where(
+                policy_controls.c.control_id == control_id
+            )
+        )
+        dissociated_from = associated_policy_ids
         _logger.info(
-            "Dissociated control '%s' (%s) from %s policy/policies and %s agent(s)",
-            control.name,
-            control_id,
-            len(dissociated_from_policies),
-            len(dissociated_from_agents),
+            f"Dissociated control '{control.name}' ({control_id}) "
+            f"from {len(dissociated_from)} policy/policies"
         )
 
     # Delete the control
@@ -800,11 +758,7 @@ async def delete_control(
             operation="delete",
         )
 
-    return DeleteControlResponse(
-        success=True,
-        dissociated_from_policies=dissociated_from_policies,
-        dissociated_from_agents=dissociated_from_agents,
-    )
+    return DeleteControlResponse(success=True, dissociated_from=dissociated_from)
 
 
 @router.patch(

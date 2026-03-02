@@ -20,7 +20,7 @@ async def test_check_evaluation_requires_step_name_before_server_call():
     with pytest.raises(ValidationError):
         await evaluation.check_evaluation(
             client=client,
-            agent_uuid=UUID("00000000-0000-0000-0000-000000000001"),
+            agent_name=UUID("00000000-0000-0000-0000-000000000001"),
             step={"type": "llm", "input": "hello"},
             stage="pre",
         )
@@ -44,7 +44,7 @@ async def test_check_evaluation_returns_result_model():
 
     result = await evaluation.check_evaluation(
         client=client,
-        agent_uuid=UUID("00000000-0000-0000-0000-000000000001"),
+        agent_name="Agent-Example_01",
         step={"type": "llm", "name": "chat", "input": "hello"},
         stage="pre",
     )
@@ -55,7 +55,7 @@ async def test_check_evaluation_returns_result_model():
     client.http_client.post.assert_awaited_once_with(
         "/api/v1/evaluation",
         json={
-            "agent_uuid": "00000000-0000-0000-0000-000000000001",
+            "agent_name": "agent-example_01",
             "step": {
                 "type": "llm",
                 "name": "chat",

@@ -335,7 +335,7 @@ async def delete_control(
     """
     Delete a control by ID.
 
-    By default, deletion fails if the control is associated with any policy or agent.
+    By default, deletion fails if the control is associated with any policy.
     Use force=True to automatically dissociate and delete.
 
     Args:
@@ -346,8 +346,7 @@ async def delete_control(
     Returns:
         Dictionary containing:
             - success: True if control was deleted
-            - dissociated_from_policies: List of policy IDs the control was removed from
-            - dissociated_from_agents: List of agent UUIDs the control was removed from
+            - dissociated_from: List of policy IDs the control was removed from
 
     Raises:
         httpx.HTTPError: If request fails
@@ -363,11 +362,7 @@ async def delete_control(
                 if e.response.status_code == 409:
                     # Force delete
                     result = await delete_control(client, control_id=5, force=True)
-                    print(
-                        "Removed from "
-                        f"{len(result['dissociated_from_policies'])} policies and "
-                        f"{len(result['dissociated_from_agents'])} agents"
-                    )
+                    print(f"Removed from {len(result['dissociated_from'])} policies")
     """
     params = {"force": force}
     response = await client.http_client.delete(
