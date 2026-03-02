@@ -31,7 +31,7 @@ Traditional guardrails embedded inside your agent code have critical limitations
 
 - **Safety Without Code Changes** — Add guardrails with a `@control()` decorator
 - **Runtime Configuration** — Update controls instantly via API or UI without having to re-deploy your agentic applications
-- **Centralized Policies** — Define controls once, apply to multiple agents
+- **Centralized Controls** — Define controls once, apply to multiple agents
 - **Web Dashboard** — Visual interface for managing agents, controls, and viewing analytics
 - **Pluggable Evaluators** — Built-in (regex, list matching, Luna-2 AI) or custom evaluators
 - **Fail-Safe Defaults** — Deny controls fail closed on error with configurable error handling
@@ -58,21 +58,25 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 
 ---
 
-## Real Quick Start
+## Quick Start
+
+### Step 1: Setup AgentControl Server
+
+The server stores controls and evaluates agent operations for safety.
+
+#### Recommended: One-Line Setup (Works for Development Too!)
 
 Get up and running with Agent Control in **one command**:
 
-**Prerequisites**: Python 3.12+ and Docker must be installed.
-
-### Option 1: Quick Install (Recommended)
+**Prerequisites**:
+- Python 3.12+
+- Docker must be installed.
 
 ```bash
 curl -fsSL -H "Authorization: token YOUR_GITHUB_TOKEN" https://raw.githubusercontent.com/agentcontrol/agent-control/main/setup.sh | sh
 ```
 
-> ⚠️ **Note**: This will automatically download and run the setup script. [Review the script](https://github.com/agentcontrol/agent-control/blob/main/setup.sh) before running if you prefer.
-
-### Option 2: Clone and Run
+**OR clone first** (recommended if you want to review the script):
 
 ```bash
 git clone https://github.com/agentcontrol/agent-control.git
@@ -81,53 +85,44 @@ cd agent-control
 ```
 
 **What the script does:**
-- ✓ Check Python 3.12+ is installed
-- ✓ Create a virtual environment
-- ✓ Pull and start PostgreSQL + Agent Control Server via Docker
-- ✓ Install the Agent Control SDK
+- ✓ Checks Python 3.12+ is installed
+- ✓ Creates a virtual environment
+- ✓ Pulls and starts PostgreSQL + Agent Control Server via Docker
+- ✓ Installs the Agent Control SDK
 
 **Server will be running at `http://localhost:8000` — ready to use!**
 
+> ✅ **This setup works great for development!** You can build agents, integrate with your apps, and develop using the SDK. The server runs in Docker for convenience and isolation.
 
 ---
 
-**Prefer manual setup?** Continue to the detailed [Quick Start](#quick-start) section below.
+#### Alternative: Run Server from Source (For Server Development)
 
----
+**Only use this if you need to modify and debug the Agent Control server code itself** (e.g., adding server features, custom endpoints, or working on the core engine with hot reload).
 
-## Quick Start
-
-Protect your AI agent in 4 simple steps.
-
-**Prerequisites:** 
+**Prerequisites:**
 - **Python 3.12+**
 - **uv** — Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - **Docker** — For running PostgreSQL
 - **Node.js 18+** — For the web dashboard (optional)
 
----
-
-### Step 1: Start the Agent Control Server
-
-The server stores controls and evaluates agent operations for safety.
-
 ```bash
-# Clone the repository (contains the server)
+# Clone the repository
 git clone https://github.com/agentcontrol/agent-control.git
 cd agent-control
 
-# Install dependencies
+# Install all workspace dependencies
 make sync
 
-# Start server (automatically starts Postgres + runs migrations + starts server)
+# Start server from source (Postgres in Docker, server runs locally with hot reload)
 make server-run
 ```
 
-> 💡 **First time?** The command above handles everything: starts Postgres, runs migrations, and starts the server. Migrations are idempotent - safe to run multiple times.
+**Server is now running at `http://localhost:8000` with hot reload** ✅
 
-**Server is now running at `http://localhost:8000`** ✅
+> 💡 **What's the difference?** This method runs the server locally from source with auto-reload when you change server code. The quick setup method runs a pre-built server in Docker—faster to start, but no hot reload for server changes.
 
-> 💡 **Verify it's working:** Open http://localhost:8000/health in your browser - you should see `{"status": "ok"}`
+> 💡 **Verify it's working:** Open [http://localhost:8000/health](http://localhost:8000/health) in your browser - you should see `{"status": "ok"}`
 
 ---
 
@@ -149,7 +144,21 @@ pnpm dev
 
 ### Step 3: Setup Controls for Your Agent
 
-Create controls to protect your agent's operations:
+If you have setup your environbment from server source, you will need to install agent-control-sdk.
+
+**In your Agent application directory** (not inside the agent-control repo):
+```bash
+uv venv
+uv .venv/bin/activate
+uv pip install agent-control-sdk
+```
+
+This gives you complete SDK you would need for building controls into your agentic applications.
+
+**NOTE:** If you used the ./setup.sh method of setting up your environment, sdk is installed automatically for you.
+
+Now, you can create controls to protect your agent's operations like below:
+
 
 ```python
 # setup.py - Run once to configure everything
@@ -162,9 +171,7 @@ async def setup():
     async with AgentControlClient() as client:  # Defaults to localhost:8000
         # 1. Register agent first (required before assigning policy)
         agent = Agent(
-            # Your agent's UUID
-            agent_name="550e8400-e29b-41d4-a716-446655440000",
-            agent_name="My Chatbot",
+            agent_name="My-Support-Chatbot",
             agent_created_at=datetime.now(UTC).isoformat()
         )
         await agents.register_agent(client, agent, steps=[])
@@ -198,7 +205,7 @@ async def setup():
         # 5. Assign policy to agent
         await policies.assign_policy_to_agent(
             client,
-            agent_name=AGENT_ID,
+            agent_name="My-Support-Chatbot",
             policy_id=policy["policy_id"]
         )
 
@@ -209,11 +216,9 @@ async def setup():
 asyncio.run(setup())
 ```
 
-**In your Agent application directory** (not inside the agent-control repo):
+Create controls 
 ```bash
-uv venv
-uv .venv/bin/activate
-uv pip install agent-control-sdk
+
 uv run setup.py
 ```
 
@@ -231,8 +236,7 @@ from agent_control import control, ControlViolationError
 
 # Initialize your agent
 agent_control.init(
-    agent_name="My Chatbot",
-    agent_name="550e8400-e29b-41d4-a716-446655440000"
+    agent_name="My-Support-Chatbot",
 )
 
 # Protect any function (like LLM calls)
@@ -363,36 +367,51 @@ Agent Control is built as a monorepo with these components:
 
 ## Development
 
+### Getting Started with Development
+
+**For most developers** (building agents, integrating with apps):
+- Use the [quick setup script](#recommended-one-line-setup-works-for-development-too) (`./setup.sh`)
+- Develop your agent applications against the running server
+- Install SDK in your app: `pip install agent-control-sdk`
+
+**For contributors** (modifying Agent Control itself):
+- Use [`make sync`](#alternative-run-server-from-source-for-server-development) and `make server-run` for server development with hot reload
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed workflows
+- Run quality checks before submitting PRs: `make check`
+
 ### Directory Structure
 
 ```
 agent-control/
-├── sdks/python/     # Python SDK (agent-control)
-├── server/          # FastAPI server (agent-control-server)
-├── engine/          # Evaluation engine (agent-control-engine)
-├── models/          # Shared models (agent-control-models)
-├── evaluators/      # Evaluator implementations (agent-control-evaluators)
-└── examples/        # Usage examples
+├── sdks/
+│   ├── python/       # Python SDK (agent-control-sdk)
+│   └── typescript/   # TypeScript SDK (agent-control)
+├── server/           # FastAPI server (agent-control-server)
+├── engine/           # Evaluation engine (agent-control-engine)
+├── models/           # Shared models (agent-control-models)
+├── evaluators/       # Evaluator implementations (agent-control-evaluators)
+├── ui/               # Next.js web dashboard
+└── examples/         # Usage examples
 ```
 
 ### Makefile Commands
 
-The project uses a Makefile for common tasks:
+The project uses a Makefile for common development tasks:
 
 | Command | Description |
 |:--------|:------------|
-| `make sync` | Install dependencies for all workspace packages |
+| `make sync` | Install all workspace dependencies (requires `uv`) |
+| `make server-run` | Start server from source with hot reload |
 | `make test` | Run tests across all packages |
 | `make lint` | Run ruff linting |
 | `make lint-fix` | Run ruff with auto-fix |
 | `make typecheck` | Run mypy type checking |
 | `make check` | Run all quality checks (test + lint + typecheck) |
-| `make server-run` | Start the server |
-| `make server-<target>` | Forward commands to server (e.g., `make server-alembic-upgrade`) |
+| `make server-<target>` | Forward commands to server (e.g., `make server-test`) |
 | `make sdk-<target>` | Forward commands to SDK (e.g., `make sdk-test`) |
 | `make engine-<target>` | Forward commands to engine (e.g., `make engine-test`) |
 
-For detailed development workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For detailed development workflows and contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
