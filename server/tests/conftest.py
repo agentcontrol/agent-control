@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import MetaData, create_engine, inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from agent_control_engine import discover_evaluators
@@ -27,6 +27,25 @@ AsyncSessionTest = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+
+def _truncate_all_tables() -> None:
+    """Clear all tables in the configured test database."""
+    with engine.begin() as conn:
+        schema = "public" if conn.dialect.name == "postgresql" else None
+        table_names = inspect(conn).get_table_names(schema=schema)
+        if not table_names:
+            return
+
+        if conn.dialect.name == "postgresql":
+            qualified_tables = ", ".join(f'"{schema}"."{table_name}"' for table_name in table_names)
+            conn.execute(text(f"TRUNCATE TABLE {qualified_tables} RESTART IDENTITY CASCADE"))
+            return
+
+        reflected_metadata = MetaData()
+        reflected_metadata.reflect(bind=conn)
+        for table in reversed(reflected_metadata.sorted_tables):
+            conn.execute(table.delete())
 
 
 @pytest.fixture(scope="session")
@@ -59,8 +78,10 @@ def db_schema() -> None:
                 conn.execute(text(f'CREATE DATABASE "{db_config.database}"'))
         admin_engine.dispose()
 
-    # Recreate tables for tests in the configured database
-    Base.metadata.drop_all(bind=engine)
+    # Recreate tables for tests in the configured database.
+    reflected_metadata = MetaData()
+    reflected_metadata.reflect(bind=engine)
+    reflected_metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
 
@@ -104,14 +125,7 @@ def unauthenticated_client(app: object) -> TestClient:
 
 @pytest.fixture(autouse=True)
 def clean_db():
-    with engine.begin() as conn:
-        # Delete in dependency order (children before parents)
-        conn.execute(text("DELETE FROM evaluator_configs"))
-        conn.execute(text("DELETE FROM agents"))
-        conn.execute(text("DELETE FROM policy_controls"))
-        conn.execute(text("DELETE FROM policies"))
-        conn.execute(text("DELETE FROM controls"))
-        conn.execute(text("DELETE FROM control_execution_events"))
+    _truncate_all_tables()
     yield
 
 

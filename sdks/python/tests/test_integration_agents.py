@@ -12,6 +12,7 @@ import uuid
 import pytest
 
 import agent_control
+from agent_control_models.server import AgentControlsResponse
 
 
 @pytest.mark.asyncio
@@ -133,6 +134,45 @@ async def test_agent_update_workflow(
 
 
 @pytest.mark.asyncio
+async def test_list_agent_controls_typed_returns_model(
+    client: agent_control.AgentControlClient,
+    test_agent: dict,
+) -> None:
+    """Typed controls endpoint returns AgentControlsResponse."""
+    # GIVEN: an existing registered agent.
+
+    # WHEN: controls are requested via the typed API wrapper.
+    response = await agent_control.agents.list_agent_controls_typed(
+        client,
+        test_agent["agent_name"],
+    )
+
+    # THEN: a typed model is returned.
+    assert isinstance(response, AgentControlsResponse)
+    assert isinstance(response.controls, list)
+
+
+@pytest.mark.asyncio
+async def test_list_agent_controls_returns_dict_payload(
+    client: agent_control.AgentControlClient,
+    test_agent: dict,
+) -> None:
+    """Dict controls endpoint returns a dict payload with controls list."""
+    # GIVEN: an existing registered agent.
+
+    # WHEN: controls are requested via the dict API wrapper.
+    response = await agent_control.agents.list_agent_controls(
+        client,
+        test_agent["agent_name"],
+    )
+
+    # THEN: a dict payload is returned with controls list.
+    assert isinstance(response, dict)
+    assert "controls" in response
+    assert isinstance(response["controls"], list)
+
+
+@pytest.mark.asyncio
 async def test_convenience_get_agent_function(
     test_agent: dict,
     server_url: str,
@@ -180,6 +220,7 @@ async def test_init_function_workflow(
         server_url=server_url,
         api_key=api_key,
         steps=sample_steps,
+        policy_refresh_interval_seconds=0,
         environment="test"
     )
 

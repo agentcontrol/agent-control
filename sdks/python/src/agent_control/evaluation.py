@@ -4,6 +4,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
+from agent_control_engine import list_evaluators
+from agent_control_engine.core import ControlEngine
+from agent_control_models import (
+    ControlDefinition,
+    ControlExecutionEvent,
+    ControlMatch,
+    EvaluationRequest,
+    EvaluationResponse,
+    EvaluationResult,
+    EvaluatorResult,
+    Step,
+)
+
 from .client import AgentControlClient
 from .observability import add_event, get_logger, is_observability_enabled
 from .validation import ensure_agent_name
@@ -15,37 +28,6 @@ _logger = get_logger(__name__)
 _FALLBACK_TRACE_ID = "0" * 32
 _FALLBACK_SPAN_ID = "0" * 16
 _trace_warning_logged = False
-
-# Import models if available
-try:
-    from agent_control_engine import list_evaluators
-    from agent_control_engine.core import ControlEngine
-    from agent_control_models import (
-        ControlDefinition,
-        ControlExecutionEvent,
-        ControlMatch,
-        EvaluationRequest,
-        EvaluationResponse,
-        EvaluationResult,
-        EvaluatorResult,
-        Step,
-    )
-
-    MODELS_AVAILABLE = True
-    ENGINE_AVAILABLE = True
-except ImportError:
-    MODELS_AVAILABLE = False
-    ENGINE_AVAILABLE = False
-    Step = Any  # type: ignore
-    EvaluationRequest = Any  # type: ignore
-    EvaluationResponse = Any  # type: ignore
-    EvaluationResult = Any  # type: ignore
-    EvaluatorResult = Any  # type: ignore
-    ControlDefinition = Any  # type: ignore
-    ControlMatch = Any  # type: ignore
-    ControlEngine = Any  # type: ignore
-    ControlExecutionEvent = Any  # type: ignore
-
 
 def _map_applies_to(step_type: str) -> Literal["llm_call", "tool_call"]:
     return "tool_call" if step_type == "tool" else "llm_call"
@@ -59,8 +41,17 @@ def _emit_local_events(
     span_id: str | None,
     agent_name: str | None,
 ) -> None:
-    """Emit observability events for locally-evaluated controls."""
-    if not is_observability_enabled() or not ENGINE_AVAILABLE:
+    """Emit observability events for locally-evaluated controls.
+
+    Mirrors the server's _emit_observability_events() so that SDK-evaluated
+    controls are visible in the observability pipeline.
+
+    When trace_id/span_id are missing, fallback all-zero IDs are used so events
+    are still recorded (but clearly marked as uncorrelated).
+
+    Only runs when observability is enabled.
+    """
+    if not is_observability_enabled():
         return
 
     global _trace_warning_logged  # noqa: PLW0603
@@ -120,50 +111,17 @@ async def check_evaluation(
     """Check if agent interaction is safe."""
     normalized_name = ensure_agent_name(agent_name)
 
-    if MODELS_AVAILABLE:
-        request = EvaluationRequest(
-            agent_name=normalized_name,
-            step=step,
-            stage=stage,
-        )
-        request_payload = request.model_dump(mode="json")
-    else:
-        if isinstance(step, dict):
-            step_dict = step
-        else:
-            step_dict = {
-                "type": getattr(step, "type", None),
-                "name": getattr(step, "name", None),
-                "input": getattr(step, "input", None),
-                "output": getattr(step, "output", None),
-                "context": getattr(step, "context", None),
-            }
-            step_dict = {k: v for k, v in step_dict.items() if v is not None}
-
-        if not step_dict.get("name"):
-            raise ValueError("step.name is required for evaluation requests")
-
-        request_payload = {
-            "agent_name": normalized_name,
-            "step": step_dict,
-            "stage": stage,
-        }
+    request = EvaluationRequest(
+        agent_name=normalized_name,
+        step=step,
+        stage=stage,
+    )
+    request_payload = request.model_dump(mode="json")
 
     response = await client.http_client.post("/api/v1/evaluation", json=request_payload)
     response.raise_for_status()
 
-    if MODELS_AVAILABLE:
-        return cast(EvaluationResult, EvaluationResult.from_dict(response.json()))
-
-    data = response.json()
-
-    class _EvaluationResult:
-        def __init__(self, is_safe: bool, confidence: float, reason: str | None = None):
-            self.is_safe = is_safe
-            self.confidence = confidence
-            self.reason = reason
-
-    return cast(EvaluationResult, _EvaluationResult(**data))
+    return cast(EvaluationResult, EvaluationResult.from_dict(response.json()))
 
 
 @dataclass
@@ -223,15 +181,34 @@ async def check_evaluation_with_local(
     span_id: str | None = None,
     event_agent_name: str | None = None,
 ) -> EvaluationResult:
-    """Check safety, running local SDK controls before server controls."""
-    if not ENGINE_AVAILABLE:
-        raise RuntimeError(
-            "Local evaluation requires agent_control_engine. "
-            "Install with: pip install agent-control-engine"
-        )
+    """
+    Check if agent interaction is safe, running local controls first.
 
+    This function executes controls with execution="sdk" locally in the SDK,
+    then calls the server for execution="server" controls. If a local control
+    denies, it short-circuits and returns immediately without calling the server.
+
+    Note on parse errors: If a local control fails to parse/validate, it is
+    skipped (logged as WARNING) and the error is included in result.errors.
+    This does NOT affect is_safe or confidence—callers concerned with safety
+    should check result.errors for any parse failures.
+
+    Args:
+        client: AgentControlClient instance
+        agent_name: Normalized agent identifier
+        step: Step payload to evaluate
+        stage: 'pre' for pre-execution check, 'post' for post-execution check
+        controls: List of control dicts from initAgent response
+                  (each has 'id', 'name', 'control' keys)
+
+    Returns:
+        EvaluationResult with safety analysis (merged from local + server)
+
+    Raises:
+        httpx.HTTPError: If server request fails
+    """
     normalized_name = ensure_agent_name(agent_name)
-
+    # Partition controls by local flag
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []
     has_server_controls = False

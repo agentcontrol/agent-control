@@ -593,6 +593,7 @@ agent_control.init(
     agent_name="my-agent",           # Required: human-readable name
     agent_name="550e8400-e29b-41d4-a716-446655440000",  # Required: UUID
     server_url="http://localhost:8000",  # Optional: defaults to env var
+    policy_refresh_interval_seconds=60,  # Optional: set 0 to disable background refresh
     steps=[                          # Optional: register available steps
         {
             "type": "tool",
@@ -603,6 +604,9 @@ agent_control.init(
     ]
 )
 ```
+
+When enabled, background refresh fetches controls via `GET /agents/{agent_id}/controls`.
+Refresh failures are fail-open: the SDK keeps the last successful local cache snapshot.
 
 ### The @control Decorator
 
