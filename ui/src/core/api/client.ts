@@ -143,6 +143,10 @@ export const api = {
       apiClient.POST('/api/v1/policies/{policy_id}/controls/{control_id}', {
         params: { path: { policy_id: policyId, control_id: controlId } },
       }),
+    removeControl: (policyId: number, controlId: number) =>
+      apiClient.DELETE('/api/v1/policies/{policy_id}/controls/{control_id}', {
+        params: { path: { policy_id: policyId, control_id: controlId } },
+      }),
   },
   observability: {
     getStats: (params: {

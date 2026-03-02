@@ -161,10 +161,9 @@ async def run_demo():
     try:
         logger.info(f"Initializing agent: {AGENT_NAME}")
         agent_control.init(
-            agent_name=AGENT_NAME,
             agent_name=AGENT_ID,
+            agent_description=AGENT_NAME,
             server_url=SERVER_URL,
-            agent_description="Demo chatbot for testing controls"
         )
         logger.info("Agent initialized successfully")
     except Exception as e:

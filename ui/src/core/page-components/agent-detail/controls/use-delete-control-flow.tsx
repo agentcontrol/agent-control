@@ -27,8 +27,8 @@ export function useDeleteControlFlow({
       children: (
         <Text size="sm" c="dimmed">
           Remove &quot;{control.name}&quot; from this agent? This only removes
-          the association for this agent and does not delete the control
-          globally.
+          it from the agent&apos;s assigned policy and does not delete the
+          control globally.
         </Text>
       ),
       labels: { confirm: 'Remove', cancel: 'Cancel' },
@@ -46,25 +46,18 @@ export function useDeleteControlFlow({
           },
           {
             onSuccess: (result: RemoveControlFromAgentResult) => {
-              const removedDirect = result.removed_direct_association ?? true;
-              const stillActive = result.control_still_active ?? false;
-
-              if (!removedDirect) {
+              if (result.no_policy_assigned) {
                 notifications.show({
-                  title: 'Control is linked indirectly',
-                  message: `"${control.name}" has no direct link on this agent. Remove its inherited link to disable it.`,
+                  title: 'No policy assigned',
+                  message: `"${control.name}" was not removed because this agent has no assigned policy.`,
                   color: 'yellow',
                 });
                 return;
               }
 
               notifications.show({
-                title: stillActive
-                  ? 'Direct association removed'
-                  : 'Control removed',
-                message: stillActive
-                  ? `"${control.name}" is still active through another inherited link.`
-                  : `"${control.name}" has been removed from this agent.`,
+                title: 'Control removed',
+                message: `"${control.name}" has been removed from this agent policy.`,
                 color: 'green',
               });
               if (selectedControl?.id === control.id) {

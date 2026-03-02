@@ -109,7 +109,6 @@ export type ListControlsResponse =
 // Note: This will be in generated types after running pnpm fetch-api-types
 export type AgentRef = {
   agent_name: string;
-  agent_name: string;
 };
 
 // Helper type to extract query parameters from operations

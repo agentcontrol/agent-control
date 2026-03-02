@@ -267,8 +267,8 @@ export function ControlStoreModal({
       header: 'Used by',
       size: 150,
       cell: ({ row }) => {
-        const count = row.original.used_by_agents_count ?? 0;
-        if (count === 0) {
+        const usedByAgent = row.original.used_by_agent;
+        if (!usedByAgent) {
           return (
             <Text size="sm" c="dimmed">
               —
@@ -277,7 +277,7 @@ export function ControlStoreModal({
         }
         return (
           <Text size="sm" c="dimmed">
-            {count} {count === 1 ? 'agent' : 'agents'}
+            {usedByAgent.agent_name}
           </Text>
         );
       },

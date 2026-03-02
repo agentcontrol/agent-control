@@ -168,7 +168,7 @@ async def setup():
         agent = Agent(
             # Your agent's UUID
             agent_name="550e8400-e29b-41d4-a716-446655440000",
-            agent_name="My Chatbot",
+            agent_description="My Chatbot",
             agent_created_at=datetime.now(UTC).isoformat()
         )
         await agents.register_agent(client, agent, steps=[])
@@ -235,8 +235,8 @@ from agent_control import control, ControlViolationError
 
 # Initialize your agent
 agent_control.init(
-    agent_name="My Chatbot",
-    agent_name="550e8400-e29b-41d4-a716-446655440000"
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
+    agent_description="My Chatbot",
 )
 
 # Protect any function (like LLM calls)

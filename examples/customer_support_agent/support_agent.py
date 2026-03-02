@@ -29,7 +29,6 @@ from agent_control.tracing import with_trace
 # The agent registers with the server and loads its assigned policy.
 
 agent_control.init(
-    agent_name="Customer Support Agent",
     agent_name="646d5dea-c2e6-4453-b446-7035482b38e4",
     agent_description="AI-powered customer support assistant that helps with inquiries, "
                       "searches knowledge bases, and creates support tickets.",

@@ -44,8 +44,8 @@ function EmptyAgentsState() {
 from agent_control import control, ControlViolationError
 
 agent_control.init(
-    agent_name="Customer Support Agent",
     agent_name="support-agent-v1",
+    agent_description="Customer Support Agent",
     server_url="http://localhost:8000",
 )
 

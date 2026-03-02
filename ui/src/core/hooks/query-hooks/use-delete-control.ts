@@ -10,8 +10,8 @@ type RemoveControlFromAgentParams = {
 
 export type RemoveControlFromAgentResult = {
   success: boolean;
-  removed_direct_association?: boolean;
-  control_still_active?: boolean;
+  removed_from_policy?: boolean;
+  no_policy_assigned?: boolean;
 };
 
 /**
@@ -25,20 +25,41 @@ export function useRemoveControlFromAgent() {
       agentId,
       controlId,
     }: RemoveControlFromAgentParams) => {
-      const { data, error, response } = await api.agents.removeControl(
-        agentId,
+      const {
+        data: policyData,
+        error: policyError,
+        response: policyResponse,
+      } = await api.agents.getPolicy(agentId);
+
+      if (policyResponse?.status === 404) {
+        return { success: true, no_policy_assigned: true };
+      }
+
+      if (policyError || !policyData) {
+        throw parseApiError(
+          policyError,
+          'Failed to fetch agent policy',
+          policyResponse?.status
+        );
+      }
+
+      const { data, error, response } = await api.policies.removeControl(
+        policyData.policy_id,
         controlId
       );
 
       if (error) {
         throw parseApiError(
           error,
-          'Failed to remove control from agent',
+          'Failed to remove control from agent policy',
           response?.status
         );
       }
 
-      return (data ?? { success: true }) as RemoveControlFromAgentResult;
+      return {
+        success: data?.success ?? true,
+        removed_from_policy: true,
+      } satisfies RemoveControlFromAgentResult;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
