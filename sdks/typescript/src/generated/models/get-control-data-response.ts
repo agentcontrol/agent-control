@@ -6,9 +6,9 @@ import * as z from "zod/v4-mini";
 import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import {
-  ControlDefinition,
-  ControlDefinition$inboundSchema,
-} from "./control-definition.js";
+  ControlDefinitionOutput,
+  ControlDefinitionOutput$inboundSchema,
+} from "./control-definition-output.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 export type GetControlDataResponse = {
@@ -20,7 +20,7 @@ export type GetControlDataResponse = {
    * This model contains only the logic and configuration.
    * Identity fields (id, name) are managed by the database.
    */
-  data: ControlDefinition;
+  data: ControlDefinitionOutput;
 };
 
 /** @internal */
@@ -28,7 +28,7 @@ export const GetControlDataResponse$inboundSchema: z.ZodMiniType<
   GetControlDataResponse,
   unknown
 > = z.object({
-  data: ControlDefinition$inboundSchema,
+  data: ControlDefinitionOutput$inboundSchema,
 });
 
 export function getControlDataResponseFromJSON(

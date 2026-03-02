@@ -1,5 +1,7 @@
 .PHONY: help test lint lint-fix typecheck build publish
 
+TEST_DB ?= agent_control_test
+
 help:
 	@echo "Agent Control SDK - Makefile commands"
 	@echo ""
@@ -17,14 +19,15 @@ help:
 
 test:
 	@echo "Starting server for tests..."
-	$(MAKE) -C ../../ server-alembic-upgrade
+	DB_DATABASE=$(TEST_DB) uv run --package agent-control-server python scripts/reset_test_db.py
+	DB_DATABASE=$(TEST_DB) $(MAKE) -C ../../ server-alembic-upgrade
 	@# Start server in background and save PID
-	@uv run --package agent-control-server uvicorn agent_control_server.main:app --port 8000 --host 0.0.0.0 > server.log 2>&1 & echo $$! > server.pid
+	@DB_DATABASE=$(TEST_DB) uv run --package agent-control-server uvicorn agent_control_server.main:app --port 8000 --host 0.0.0.0 > server.log 2>&1 & echo $$! > server.pid
 	@echo "Waiting for server..."
 	@bash -c 'for i in {1..30}; do if curl -s http://localhost:8000/health >/dev/null; then echo "Server up!"; exit 0; fi; sleep 1; done; echo "Server failed"; cat server.log; exit 1'
 	@# Run tests, capture exit code, and ensure cleanup
 	@set -e; \
-	uv run pytest --cov=src --cov-report=xml:../../coverage-sdk.xml -q; \
+	DB_DATABASE=$(TEST_DB) uv run pytest --cov=src --cov-report=xml:../../coverage-sdk.xml -q; \
 	TEST_EXIT_CODE=$$?; \
 	echo "Stopping server..."; \
 	if [ -f server.pid ]; then kill `cat server.pid` && rm server.pid; fi; \

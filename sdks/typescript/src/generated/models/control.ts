@@ -7,9 +7,9 @@ import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import {
-  ControlDefinition,
-  ControlDefinition$inboundSchema,
-} from "./control-definition.js";
+  ControlDefinitionOutput,
+  ControlDefinitionOutput$inboundSchema,
+} from "./control-definition-output.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 /**
@@ -29,14 +29,14 @@ export type Control = {
    * This model contains only the logic and configuration.
    * Identity fields (id, name) are managed by the database.
    */
-  control: ControlDefinition;
+  control: ControlDefinitionOutput;
   id: number;
   name: string;
 };
 
 /** @internal */
 export const Control$inboundSchema: z.ZodMiniType<Control, unknown> = z.object({
-  control: ControlDefinition$inboundSchema,
+  control: ControlDefinitionOutput$inboundSchema,
   id: types.number(),
   name: types.string(),
 });

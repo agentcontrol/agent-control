@@ -44,7 +44,7 @@ export type StatsResponse = {
    *
    * Invariant: execution_count = match_count + non_match_count + error_count
    *
-   * Matches have actions (allow, deny, warn, log) tracked in action_counts.
+   * Matches have actions (allow, deny, steer, warn, log) tracked in action_counts.
    * sum(action_counts.values()) == match_count
    *
    * Attributes:

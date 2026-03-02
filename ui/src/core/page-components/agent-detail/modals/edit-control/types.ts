@@ -33,6 +33,7 @@ export type ControlDefinitionFormValues = {
   step_name_mode: 'names' | 'regex';
   selector_path: string;
   action_decision: ControlActionDecision;
+  action_steering_context?: string;
   execution: ControlExecution;
 };
 

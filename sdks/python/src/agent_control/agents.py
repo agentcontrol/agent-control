@@ -4,18 +4,11 @@ from typing import Any, Literal, cast
 from uuid import UUID
 
 from agent_control_engine import ensure_evaluators_discovered
+from agent_control_models import Agent
+from agent_control_models.server import AgentControlsResponse
 
 from .client import AgentControlClient
 from .validation import ensure_uuid_str
-
-# Import models if available
-try:
-    from agent_control_models import Agent
-    MODELS_AVAILABLE = True
-except ImportError:
-    MODELS_AVAILABLE = False
-    Agent = Any  # type: ignore
-
 
 async def register_agent(
     client: AgentControlClient,
@@ -47,31 +40,14 @@ async def register_agent(
     # Ensure evaluators are discovered for local evaluation support
     ensure_evaluators_discovered()
 
-    if steps is None:
-        steps = []
-
-    if MODELS_AVAILABLE:
-        agent_dict = agent.to_dict()
-        # Ensure UUID is converted to string for JSON serialization
-        if isinstance(agent_dict.get('agent_id'), UUID):
-            agent_dict['agent_id'] = str(agent_dict['agent_id'])
-        payload = {
-            "agent": agent_dict,
-            "steps": steps,
-            "conflict_mode": conflict_mode,
-        }
-    else:
-        payload = {
-            "agent": {
-                "agent_id": str(agent.agent_id),
-                "agent_name": agent.agent_name,
-                "agent_description": getattr(agent, 'agent_description', None),
-                "agent_version": getattr(agent, 'agent_version', None),
-                "agent_metadata": getattr(agent, 'agent_metadata', None),
-            },
-            "steps": steps,
-            "conflict_mode": conflict_mode,
-        }
+    agent_dict = agent.to_dict()
+    if isinstance(agent_dict.get("agent_id"), UUID):
+        agent_dict["agent_id"] = str(agent_dict["agent_id"])
+    payload = {
+        "agent": agent_dict,
+        "steps": steps or [],
+        "conflict_mode": conflict_mode,
+    }
 
     response = await client.http_client.post("/api/v1/agents/initAgent", json=payload)
     response.raise_for_status()
@@ -275,3 +251,25 @@ async def remove_agent_control(
     )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
+
+
+async def list_agent_controls(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+) -> dict[str, Any]:
+    """List active controls associated with an agent."""
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/controls")
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
+async def list_agent_controls_typed(
+    client: AgentControlClient,
+    agent_id: str | UUID,
+) -> AgentControlsResponse:
+    """List active controls associated with an agent (typed response)."""
+    agent_id_str = ensure_uuid_str(agent_id)
+    response = await client.http_client.get(f"/api/v1/agents/{agent_id_str}/controls")
+    response.raise_for_status()
+    return AgentControlsResponse.model_validate(response.json())

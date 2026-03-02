@@ -208,11 +208,55 @@ class EvaluatorSpec(BaseModel):
         return self
 
 
+class SteeringContext(BaseModel):
+    """Steering context for steer actions.
+
+    This model provides an extensible structure for steering guidance.
+    Future fields could include severity, categories, suggested_actions, etc.
+    """
+
+    message: str = Field(
+        ...,
+        description="Guidance message explaining what needs to be corrected and how"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "message": (
+                        "This large transfer requires user verification. "
+                        "Request 2FA code from user, verify it, then retry "
+                        "the transaction with verified_2fa=True."
+                    )
+                },
+                {
+                    "message": (
+                        "Transfer exceeds daily limit. Steps: "
+                        "1) Ask user for business justification, "
+                        "2) Request manager approval with amount and justification, "
+                        "3) If approved, retry with manager_approved=True and "
+                        "justification filled in."
+                    )
+                }
+            ]
+        }
+    }
+
+
 class ControlAction(BaseModel):
     """What to do when control matches."""
 
-    decision: Literal["allow", "deny", "warn", "log"] = Field(
+    decision: Literal["allow", "deny", "steer", "warn", "log"] = Field(
         ..., description="Action to take when control is triggered"
+    )
+    steering_context: SteeringContext | None = Field(
+        None,
+        description=(
+            "Steering context object for steer actions. Strongly recommended when "
+            "decision='steer' to provide correction suggestions. If not provided, the "
+            "evaluator result message will be used as fallback."
+        )
     )
 
 
@@ -318,9 +362,13 @@ class ControlMatch(BaseModel):
     )
     control_id: int = Field(..., description="Database ID of the control")
     control_name: str = Field(..., description="Name of the control")
-    action: Literal["allow", "deny", "warn", "log"] = Field(
+    action: Literal["allow", "deny", "steer", "warn", "log"] = Field(
         ..., description="Action configured for this control"
     )
     result: EvaluatorResult = Field(
         ..., description="Evaluator result (confidence, message, metadata)"
+    )
+    steering_context: SteeringContext | None = Field(
+        None,
+        description="Steering context for steer actions if configured"
     )

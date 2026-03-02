@@ -7,9 +7,9 @@ import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import {
-  ControlDefinition,
-  ControlDefinition$inboundSchema,
-} from "./control-definition.js";
+  ControlDefinitionOutput,
+  ControlDefinitionOutput$inboundSchema,
+} from "./control-definition-output.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 /**
@@ -19,7 +19,7 @@ export type GetControlResponse = {
   /**
    * Control configuration data (None if not yet configured)
    */
-  data?: ControlDefinition | null | undefined;
+  data?: ControlDefinitionOutput | null | undefined;
   /**
    * Control ID
    */
@@ -35,7 +35,7 @@ export const GetControlResponse$inboundSchema: z.ZodMiniType<
   GetControlResponse,
   unknown
 > = z.object({
-  data: z.optional(z.nullable(ControlDefinition$inboundSchema)),
+  data: z.optional(z.nullable(ControlDefinitionOutput$inboundSchema)),
   id: types.number(),
   name: types.string(),
 });

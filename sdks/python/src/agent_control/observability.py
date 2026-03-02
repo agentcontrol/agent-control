@@ -48,10 +48,11 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from agent_control.settings import configure_settings, get_settings
 
 if TYPE_CHECKING:
-    import httpx
     from agent_control_models import ControlExecutionEvent
 
 # =============================================================================
@@ -403,7 +404,6 @@ class EventBatcher:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client for connection pooling."""
         if self._client is None:
-            import httpx
             self._client = httpx.AsyncClient(timeout=30.0)
         return self._client
 
@@ -417,12 +417,6 @@ class EventBatcher:
         Returns:
             True if sent successfully, False otherwise
         """
-        try:
-            import httpx
-        except ImportError:
-            logger.warning("httpx not installed, cannot send events")
-            return False
-
         url = f"{self.server_url}/api/v1/observability/events"
         headers = {"Content-Type": "application/json"}
         if self.api_key:

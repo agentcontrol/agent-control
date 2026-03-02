@@ -134,7 +134,7 @@ class TestControlExecutionEvent:
 
     def test_action_values(self):
         """Test valid action values."""
-        for action in ["allow", "deny", "warn", "log"]:
+        for action in ["allow", "deny", "steer", "warn", "log"]:
             event = ControlExecutionEvent(
                 trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
                 span_id="00f067aa0ba902b7",
@@ -336,6 +336,7 @@ class TestControlStats:
             non_match_count=950,
             allow_count=950,
             deny_count=45,
+            steer_count=0,
             warn_count=5,
             log_count=0,
             error_count=0,

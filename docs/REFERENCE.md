@@ -114,11 +114,15 @@ An **Action** defines what to do when a control matches:
 | Action | Behavior |
 |--------|----------|
 | `deny` | Block the request/response, raise `ControlViolationError` |
+| `steer` | Raise `ControlSteerError` with steering context for correction and retry |
 | `allow` | Permit execution (no effect if a `deny` control also matches) |
 | `warn` | Log a warning but allow execution |
 | `log` | Silent logging for monitoring only |
 
-> **Note**: Agent Control uses "deny wins" semantics. If any enabled control with `deny` action matches, the request is blocked regardless of other control results.
+> **Note**: Agent Control uses priority-based semantics:
+> 1. **deny wins** - If any `deny` control matches, execution is blocked
+> 2. **steer second** - If any `steer` control matches (and no deny), a `ControlSteerError` is raised with correction steering context
+> 3. **allow/warn/log** - Observability actions that don't block execution
 
 ### Step Types
 
@@ -585,6 +589,7 @@ agent_control.init(
     agent_name="my-agent",           # Required: human-readable name
     agent_id="550e8400-e29b-41d4-a716-446655440000",  # Required: UUID
     server_url="http://localhost:8000",  # Optional: defaults to env var
+    policy_refresh_interval_seconds=60,  # Optional: set 0 to disable background refresh
     steps=[                          # Optional: register available steps
         {
             "type": "tool",
@@ -595,6 +600,9 @@ agent_control.init(
     ]
 )
 ```
+
+When enabled, background refresh fetches controls via `GET /agents/{agent_id}/controls`.
+Refresh failures are fail-open: the SDK keeps the last successful local cache snapshot.
 
 ### The @control Decorator
 
@@ -663,6 +671,36 @@ except ControlViolationError as e:
 |-----------|------|-------------|
 | `control_name` | str | Which control triggered |
 | `message` | str | Why it was blocked |
+| `metadata` | dict | Additional context |
+
+#### ControlSteerError
+
+Raised when a control with `action="steer"` matches. Provides steering context for correction and allows retry:
+
+```python
+from agent_control import control, ControlSteerError
+
+@control()
+async def process_transfer(amount: float, verified_2fa: bool = False) -> dict:
+    return {"status": "completed"}
+
+try:
+    result = await process_transfer(amount=15000, verified_2fa=False)
+except ControlSteerError as e:
+    print(f"Steering context: {e.steering_context}")
+    # Follow steering context: request 2FA from user
+    code = get_2fa_code_from_user()
+    # Retry with corrected parameters
+    result = await process_transfer(amount=15000, verified_2fa=True)
+```
+
+**ControlSteerError attributes**:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `control_name` | str | Which control triggered |
+| `message` | str | Why steering is required |
+| `steering_context` | str | Corrective action instructions |
 | `metadata` | dict | Additional context |
 
 ### Direct Client Usage
