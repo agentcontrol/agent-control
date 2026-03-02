@@ -251,9 +251,10 @@ async def setup_banking_controls():
             if "409" in str(e):
                 print(f"  ℹ️  Policy 'banking-transaction-policy' already exists")
                 try:
-                    policy_info = await agents.get_agent_policy(client, agent.agent_name)
-                    policy_id = policy_info.get("policy_id")
-                    if policy_id:
+                    policy_info = await agents.get_agent_policies(client, agent.agent_name)
+                    policy_ids = policy_info.get("policy_ids", [])
+                    policy_id = policy_ids[0] if policy_ids else None
+                    if policy_id is not None:
                         print(f"  ℹ️  Using agent's existing policy (ID: {policy_id})")
                     else:
                         raise ValueError("No policy assigned")

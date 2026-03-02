@@ -14,7 +14,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type AgentSummary = {
   /**
-   * Number of active controls from agent's policy
+   * Number of active controls for this agent
    */
   activeControlsCount: number;
   /**
@@ -30,9 +30,13 @@ export type AgentSummary = {
    */
   evaluatorCount: number;
   /**
-   * ID of assigned policy, if any
+   * Deprecated: first associated policy ID, if any
    */
   policyId?: number | null | undefined;
+  /**
+   * IDs of policies associated with the agent
+   */
+  policyIds?: Array<number> | undefined;
   /**
    * Number of steps registered with the agent
    */
@@ -48,6 +52,7 @@ export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
       created_at: z.optional(z.nullable(types.string())),
       evaluator_count: z._default(types.number(), 0),
       policy_id: z.optional(z.nullable(types.number())),
+      policy_ids: types.optional(z.array(types.number())),
       step_count: z._default(types.number(), 0),
     }),
     z.transform((v) => {
@@ -57,6 +62,7 @@ export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
         "created_at": "createdAt",
         "evaluator_count": "evaluatorCount",
         "policy_id": "policyId",
+        "policy_ids": "policyIds",
         "step_count": "stepCount",
       });
     }),

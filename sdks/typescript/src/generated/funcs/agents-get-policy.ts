@@ -28,20 +28,10 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Get agent's assigned policy
+ * Get agent's assigned policy (compatibility)
  *
  * @remarks
- * Retrieve the policy currently assigned to an agent.
- *
- * Args:
- *     agent_name: Agent identifier
- *     db: Database session (injected)
- *
- * Returns:
- *     GetPolicyResponse with policy ID
- *
- * Raises:
- *     HTTPException 404: Agent not found or agent has no policy assigned
+ * Compatibility endpoint that returns the first associated policy.
  */
 export function agentsGetPolicy(
   client: AgentControlSDKCore,

@@ -139,10 +139,11 @@ async def setup_sql_controls():
             if "409" in str(e):
                 print("ℹ️  Policy 'sql-protection-policy' already exists, checking agent...")
                 try:
-                    policy_info = await agents.get_agent_policy(client, str(agent_name))
-                    policy_id = policy_info.get("policy_id")
+                    policy_info = await agents.get_agent_policies(client, str(agent_name))
+                    policy_ids = policy_info.get("policy_ids", [])
+                    policy_id = policy_ids[0] if policy_ids else None
                     if policy_id is None:
-                        raise ValueError("No policy assigned to agent.")
+                        raise ValueError("No policies assigned to agent.")
                     print(f"ℹ️  Using agent's existing policy (ID: {policy_id})")
                 except Exception:
                     # Create a new policy name to avoid conflicts and keep script idempotent.

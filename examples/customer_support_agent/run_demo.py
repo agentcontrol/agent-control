@@ -59,7 +59,7 @@ AGENT_ID = "646d5dea-c2e6-4453-b446-7035482b38e4"
 
 
 async def reset_agent():
-    """Reset the agent by removing its policy (which disconnects all controls)."""
+    """Reset the agent by removing all policy associations."""
     agent_name = AGENT_ID
     server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
@@ -81,22 +81,22 @@ async def reset_agent():
             print(f"Error checking agent: {e}")
             return
 
-        # Remove policy from agent (disconnects all controls)
+        # Remove all policies from agent (disconnects policy-derived controls)
         try:
-            await agents.remove_agent_policy(client, agent_name)
-            logger.info("Successfully removed policy from agent")
-            print("Removed policy from agent (all controls disconnected).")
+            await agents.remove_all_agent_policies(client, agent_name)
+            logger.info("Successfully removed all policies from agent")
+            print("Removed all policies from agent.")
         except Exception as e:
             if "404" in str(e):
-                logger.info("Agent has no policy attached")
-                print("Agent has no policy - already clean.")
+                logger.info("Agent not found while removing policies")
+                print("Agent not found - nothing to reset.")
                 return
-            logger.error(f"Error removing policy: {e}")
-            print(f"Error removing policy: {e}")
+            logger.error(f"Error removing policies: {e}")
+            print(f"Error removing policies: {e}")
             return
 
     print()
-    print("Reset complete. The agent now has no controls.")
+    print("Reset complete. The agent now has no policy-derived controls.")
     print("Run the demo again and add controls via the UI to test.")
 
 

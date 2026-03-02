@@ -22,6 +22,7 @@ const agentsList: AgentSummary[] = [
   {
     agent_name: 'customer-support-bot',
     policy_id: 1,
+    policy_ids: [1],
     created_at: '2024-01-01T00:00:00Z',
     step_count: 5,
     evaluator_count: 2,
@@ -30,6 +31,7 @@ const agentsList: AgentSummary[] = [
   {
     agent_name: 'data-analysis-agent',
     policy_id: 2,
+    policy_ids: [2],
     created_at: '2024-01-02T00:00:00Z',
     step_count: 3,
     evaluator_count: 1,
@@ -38,6 +40,7 @@ const agentsList: AgentSummary[] = [
   {
     agent_name: 'code-review-assistant',
     policy_id: 3,
+    policy_ids: [3],
     created_at: '2024-01-03T00:00:00Z',
     step_count: 8,
     evaluator_count: 4,
@@ -156,6 +159,7 @@ const controlSummariesList: (ControlSummary & {
     stages: ['post'],
     tags: ['pii', 'compliance'],
     used_by_agent: { agent_name: 'customer-support-bot' },
+    used_by_agents_count: 1,
   },
   {
     id: 2,
@@ -167,6 +171,7 @@ const controlSummariesList: (ControlSummary & {
     stages: ['pre'],
     tags: ['security'],
     used_by_agent: { agent_name: 'data-analysis-agent' },
+    used_by_agents_count: 1,
   },
   {
     id: 3,
@@ -178,6 +183,7 @@ const controlSummariesList: (ControlSummary & {
     stages: ['pre'],
     tags: [],
     used_by_agent: null,
+    used_by_agents_count: 0,
   },
 ];
 

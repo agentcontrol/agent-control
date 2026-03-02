@@ -19,8 +19,6 @@ Run this after starting the server to have a working demo.
 import asyncio
 import os
 import sys
-import uuid
-
 import httpx
 
 # Add the current directory to the path so we can import the evaluator
@@ -148,12 +146,11 @@ DEEPEVAL_CONTROLS = [
 
 async def setup_demo(quiet: bool = False):
     """Set up the demo agent with DeepEval controls."""
-    # Generate the same UUID5 that the SDK generates
-    agent_name = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
+    agent_name = AGENT_ID
 
     print(f"Setting up agent: {AGENT_NAME}")
     print(f"Agent ID: {AGENT_ID}")
-    print(f"Agent UUID: {agent_name}")
+    print(f"Agent Name: {agent_name}")
     print(f"Server URL: {SERVER_URL}")
     print()
 
@@ -176,10 +173,10 @@ async def setup_demo(quiet: bool = False):
                 json={
                     "agent": {
                         "agent_name": agent_name,
-                        "agent_name": AGENT_NAME,
                         "agent_description": AGENT_DESCRIPTION,
+                        "agent_version": "1.0.0",
                     },
-                    "tools": [],
+                    "steps": [],
                 },
             )
             resp.raise_for_status()
@@ -194,14 +191,16 @@ async def setup_demo(quiet: bool = False):
         policy_name = f"policy-{AGENT_ID}"
         policy_id = None
 
-        # Check if agent already has a policy
+        # Check if agent already has associated policies
         try:
-            resp = await client.get(f"/api/v1/agents/{agent_name}/policy")
+            resp = await client.get(f"/api/v1/agents/{agent_name}/policies")
             if resp.status_code == 200:
-                policy_id = resp.json().get("policy_id")
-                print(f"✓ Found existing policy: {policy_id}")
+                policy_ids = resp.json().get("policy_ids", [])
+                if policy_ids:
+                    policy_id = policy_ids[0]
+                    print(f"✓ Found existing policy: {policy_id}")
         except httpx.HTTPError:
-            pass  # No policy yet
+            pass  # No policies yet
 
         # Create policy if needed
         if not policy_id:
@@ -223,10 +222,12 @@ async def setup_demo(quiet: bool = False):
                 policy_id = resp.json()["policy_id"]
                 print(f"✓ Created policy: {policy_name}")
 
-                # Assign policy to agent
-                resp = await client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+                # Associate policy with agent
+                resp = await client.post(
+                    f"/api/v1/agents/{agent_name}/policies/{policy_id}"
+                )
                 resp.raise_for_status()
-                print(f"✓ Assigned policy to agent")
+                print("✓ Associated policy with agent")
             except httpx.HTTPError as e:
                 print(f"❌ Error setting up policy: {e}")
                 return False

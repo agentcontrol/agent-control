@@ -4,7 +4,7 @@
 
 import * as z from "zod/v4-mini";
 import { AgentControlSDKCore } from "../core.js";
-import { encodeFormQuery } from "../lib/encodings.js";
+import { encodeSimple } from "../lib/encodings.js";
 import * as M from "../lib/matchers.js";
 import { compactMap } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
@@ -28,30 +28,19 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * List all agents
+ * Associate control directly with agent
  *
  * @remarks
- * List all registered agents with cursor-based pagination.
- *
- * Returns a summary of each agent including identifier, policy associations,
- * and counts of registered steps and evaluators.
- *
- * Args:
- *     cursor: Optional cursor for pagination (last agent name from previous page)
- *     limit: Pagination limit (default 20, max 100)
- *     name: Optional name filter (case-insensitive partial match)
- *     db: Database session (injected)
- *
- * Returns:
- *     ListAgentsResponse with agent summaries and pagination info
+ * Associate a control directly with an agent (idempotent).
  */
-export function agentsList(
+export function agentsAddControl(
   client: AgentControlSDKCore,
-  request?: operations.ListAgentsApiV1AgentsGetRequest | undefined,
+  request:
+    operations.AddAgentControlApiV1AgentsAgentNameControlsControlIdPostRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.ListAgentsResponse,
+    models.AssocResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -72,12 +61,13 @@ export function agentsList(
 
 async function $do(
   client: AgentControlSDKCore,
-  request?: operations.ListAgentsApiV1AgentsGetRequest | undefined,
+  request:
+    operations.AddAgentControlApiV1AgentsAgentNameControlsControlIdPostRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.ListAgentsResponse,
+      models.AssocResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -95,7 +85,8 @@ async function $do(
     request,
     (value) =>
       z.parse(
-        z.optional(operations.ListAgentsApiV1AgentsGetRequest$outboundSchema),
+        operations
+          .AddAgentControlApiV1AgentsAgentNameControlsControlIdPostRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -106,13 +97,20 @@ async function $do(
   const payload = parsed.value;
   const body = null;
 
-  const path = pathToFunc("/api/v1/agents")();
+  const pathParams = {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
+      explode: false,
+      charEncoding: "percent",
+    }),
+    control_id: encodeSimple("control_id", payload.control_id, {
+      explode: false,
+      charEncoding: "percent",
+    }),
+  };
 
-  const query = encodeFormQuery({
-    "cursor": payload?.cursor,
-    "limit": payload?.limit,
-    "name": payload?.name,
-  });
+  const path = pathToFunc("/api/v1/agents/{agent_name}/controls/{control_id}")(
+    pathParams,
+  );
 
   const headers = new Headers(compactMap({
     Accept: "application/json",
@@ -125,7 +123,8 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "list_agents_api_v1_agents_get",
+    operationID:
+      "add_agent_control_api_v1_agents__agent_name__controls__control_id__post",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -139,11 +138,10 @@ async function $do(
 
   const requestRes = client._createRequest(context, {
     security: requestSecurity,
-    method: "GET",
+    method: "POST",
     baseURL: options?.serverURL,
     path: path,
     headers: headers,
-    query: query,
     body: body,
     userAgent: client._options.userAgent,
     timeoutMs: options?.timeoutMs || client._options.timeoutMs || -1,
@@ -169,7 +167,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.ListAgentsResponse,
+    models.AssocResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -180,7 +178,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.ListAgentsResponse$inboundSchema),
+    M.json(200, models.AssocResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

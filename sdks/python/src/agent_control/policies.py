@@ -155,9 +155,9 @@ async def assign_policy_to_agent(
     policy_id: int
 ) -> dict[str, Any]:
     """
-    Assign a policy to an agent.
+    Associate a policy with an agent.
 
-    This makes the policy active for the agent. Any existing policy assignment is replaced.
+    This operation is additive and idempotent. Agents can have multiple policy associations.
 
     Args:
         client: AgentControlClient instance
@@ -173,7 +173,7 @@ async def assign_policy_to_agent(
     """
     agent_name_str = ensure_agent_name(agent_name)
     response = await client.http_client.post(
-        f"/api/v1/agents/{agent_name_str}/policy/{policy_id}"
+        f"/api/v1/agents/{agent_name_str}/policies/{policy_id}"
     )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())

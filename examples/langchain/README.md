@@ -192,7 +192,7 @@ Raise ControlViolationError (DENY) or Execute (ALLOW)
 ## Files
 
 - `sql_agent_protection.py` - Main SQL agent with `@control()` decorator
-- `setup_sql_controls.py` - One-time setup script for controls/policy
+- `setup_sql_controls.py` - One-time setup script for controls/policies
 - `pyproject.toml` - Dependencies and configuration
 - `README.md` - This file
 

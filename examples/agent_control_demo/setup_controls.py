@@ -244,7 +244,7 @@ async def assign_policy_to_agent(
 
     try:
         response = await client.http_client.post(
-            f"/api/v1/agents/{agent_name}/policy/{policy_id}"
+            f"/api/v1/agents/{agent_name}/policies/{policy_id}"
         )
         response.raise_for_status()
         data = response.json()
@@ -379,27 +379,23 @@ async def verify_full_chain(client: AgentControlClient, agent_name: str) -> None
     except Exception as e:
         print(f"   Error: {e}")
 
-    # 2. Get agent's policy
-    print("\n2. Agent's Policy:")
+    # 2. Get agent policy associations
+    print("\n2. Agent Policy Associations:")
     try:
-        resp = await client.http_client.get(f"/api/v1/agents/{agent_name}/policy")
-        if resp.status_code == 404:
-            print("   No policy assigned to agent")
-            policy_id = None
-        else:
-            resp.raise_for_status()
-            policy_data = resp.json()
-            policy_id = policy_data.get("policy_id")
-            print(f"   Policy ID: {policy_id}")
+        resp = await client.http_client.get(f"/api/v1/agents/{agent_name}/policies")
+        resp.raise_for_status()
+        policy_ids = resp.json().get("policy_ids", [])
+        policy_id = policy_ids[0] if policy_ids else None
+        print(f"   Policy IDs: {policy_ids}")
 
-            if policy_id:
-                # 3. Get policy's controls
-                print("\n3. Policy's Controls:")
-                resp = await client.http_client.get(f"/api/v1/policies/{policy_id}/controls")
-                resp.raise_for_status()
-                ctrl_data = resp.json()
-                control_ids = ctrl_data.get("control_ids", [])
-                print(f"   Control IDs: {control_ids}")
+        if policy_id is not None:
+            # 3. Get policy's controls
+            print("\n3. Policy's Controls:")
+            resp = await client.http_client.get(f"/api/v1/policies/{policy_id}/controls")
+            resp.raise_for_status()
+            ctrl_data = resp.json()
+            control_ids = ctrl_data.get("control_ids", [])
+            print(f"   Control IDs: {control_ids}")
     except Exception as e:
         print(f"   Error: {e}")
         policy_id = None
@@ -495,15 +491,16 @@ async def main():
         print("\n  Verifying agent policy assignment...")
         try:
             resp = await client.http_client.get(
-                f"/api/v1/agents/{agent_name}/policy"
+                f"/api/v1/agents/{agent_name}/policies"
             )
             resp.raise_for_status()
-            agent_policy = resp.json()
-            assigned_policy_id = agent_policy.get("policy_id")
-            if assigned_policy_id == policy_id:
+            assigned_policy_ids = resp.json().get("policy_ids", [])
+            if policy_id in assigned_policy_ids:
                 print(f"  ✓ Agent correctly assigned to policy {policy_id}")
             else:
-                print(f"  ⚠️  Agent assigned to policy {assigned_policy_id}, expected {policy_id}")
+                print(
+                    f"  ⚠️  Agent policy IDs are {assigned_policy_ids}, expected to include {policy_id}"
+                )
         except Exception as e:
             print(f"  ✗ Failed to verify agent policy: {e}")
 

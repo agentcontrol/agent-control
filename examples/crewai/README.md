@@ -475,7 +475,7 @@ Return result or raise ControlViolationError
 ## Files
 
 - `content_agent_protection.py` - Main CrewAI crew with @control()
-- `setup_content_controls.py` - One-time setup for controls/policy
+- `setup_content_controls.py` - One-time setup for controls/policies
 - `pyproject.toml` - Dependencies
 - `README.md` - This file
 

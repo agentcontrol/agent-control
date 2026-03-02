@@ -783,11 +783,12 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
            PUT /api/v1/policies {"name": "safety-policy"}
            POST /api/v1/policies/{policy_id}/controls/{control_id}
 
-        3. Assign policy to agent:
-           POST /api/v1/agents/{agent_name}/policy/{policy_id}
+        3. Associate policy and/or controls with an agent:
+           POST /api/v1/agents/{agent_name}/policies/{policy_id}
+           POST /api/v1/agents/{agent_name}/controls/{control_id}
     """
-    # The policy parameter is for documentation only - the server uses
-    # the agent's assigned policy automatically
+    # The policy parameter is for documentation only - the server evaluates
+    # controls associated with the agent via policy and direct links.
     _ = policy
 
     def decorator(func: F) -> F:

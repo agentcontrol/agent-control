@@ -4,7 +4,7 @@
 
 import * as z from "zod/v4-mini";
 import { AgentControlSDKCore } from "../core.js";
-import { encodeFormQuery } from "../lib/encodings.js";
+import { encodeSimple } from "../lib/encodings.js";
 import * as M from "../lib/matchers.js";
 import { compactMap } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
@@ -28,30 +28,22 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * List all agents
+ * Remove policy association from agent
  *
  * @remarks
- * List all registered agents with cursor-based pagination.
+ * Remove a policy association from an agent.
  *
- * Returns a summary of each agent including identifier, policy associations,
- * and counts of registered steps and evaluators.
- *
- * Args:
- *     cursor: Optional cursor for pagination (last agent name from previous page)
- *     limit: Pagination limit (default 20, max 100)
- *     name: Optional name filter (case-insensitive partial match)
- *     db: Database session (injected)
- *
- * Returns:
- *     ListAgentsResponse with agent summaries and pagination info
+ * Idempotent for existing resources: removing a non-associated link is a no-op.
+ * Missing agent/policy resources still return 404.
  */
-export function agentsList(
+export function agentsRemovePolicy(
   client: AgentControlSDKCore,
-  request?: operations.ListAgentsApiV1AgentsGetRequest | undefined,
+  request:
+    operations.RemoveAgentPolicyApiV1AgentsAgentNamePoliciesPolicyIdDeleteRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.ListAgentsResponse,
+    models.AssocResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -72,12 +64,13 @@ export function agentsList(
 
 async function $do(
   client: AgentControlSDKCore,
-  request?: operations.ListAgentsApiV1AgentsGetRequest | undefined,
+  request:
+    operations.RemoveAgentPolicyApiV1AgentsAgentNamePoliciesPolicyIdDeleteRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.ListAgentsResponse,
+      models.AssocResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -95,7 +88,8 @@ async function $do(
     request,
     (value) =>
       z.parse(
-        z.optional(operations.ListAgentsApiV1AgentsGetRequest$outboundSchema),
+        operations
+          .RemoveAgentPolicyApiV1AgentsAgentNamePoliciesPolicyIdDeleteRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -106,13 +100,20 @@ async function $do(
   const payload = parsed.value;
   const body = null;
 
-  const path = pathToFunc("/api/v1/agents")();
+  const pathParams = {
+    agent_name: encodeSimple("agent_name", payload.agent_name, {
+      explode: false,
+      charEncoding: "percent",
+    }),
+    policy_id: encodeSimple("policy_id", payload.policy_id, {
+      explode: false,
+      charEncoding: "percent",
+    }),
+  };
 
-  const query = encodeFormQuery({
-    "cursor": payload?.cursor,
-    "limit": payload?.limit,
-    "name": payload?.name,
-  });
+  const path = pathToFunc("/api/v1/agents/{agent_name}/policies/{policy_id}")(
+    pathParams,
+  );
 
   const headers = new Headers(compactMap({
     Accept: "application/json",
@@ -125,7 +126,8 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "list_agents_api_v1_agents_get",
+    operationID:
+      "remove_agent_policy_api_v1_agents__agent_name__policies__policy_id__delete",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -139,11 +141,10 @@ async function $do(
 
   const requestRes = client._createRequest(context, {
     security: requestSecurity,
-    method: "GET",
+    method: "DELETE",
     baseURL: options?.serverURL,
     path: path,
     headers: headers,
-    query: query,
     body: body,
     userAgent: client._options.userAgent,
     timeoutMs: options?.timeoutMs || client._options.timeoutMs || -1,
@@ -169,7 +170,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.ListAgentsResponse,
+    models.AssocResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -180,7 +181,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.ListAgentsResponse$inboundSchema),
+    M.json(200, models.AssocResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

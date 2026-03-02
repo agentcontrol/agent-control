@@ -256,12 +256,13 @@ async def setup_demo(quiet: bool = False):
         policy_name = f"policy-{AGENT_ID}"
         policy_id = None
 
-        # Check if agent already has a policy
+        # Check if agent already has policies
         try:
-            policy_info = await agents.get_agent_policy(client, agent_name)
-            policy_id = policy_info.get("policy_id")
+            policy_info = await agents.get_agent_policies(client, agent_name)
+            policy_ids = policy_info.get("policy_ids", [])
+            policy_id = policy_ids[0] if policy_ids else None
         except Exception:
-            policy_id = None  # No policy yet
+            policy_id = None  # No policy associations yet
 
         # Create policy if needed
         if not policy_id:
