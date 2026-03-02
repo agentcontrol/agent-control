@@ -6,12 +6,11 @@
 [![CI](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/agentcontrol/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/agentcontrol/agent-control)
 
-**Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
+**Runtime guardrails for AI agents—configurable, extensible, and production-ready.**
 
-AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, policy-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
+AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides a policy-based runtime layer that evaluates inputs and outputs against configurable rules—blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
 
 ![Agent Control Architecture](docs/images/Architecture.png)
-
 
 ## Why Do You Need It?
 Traditional guardrails embedded inside your agent code have critical limitations:
@@ -39,6 +38,16 @@ Traditional guardrails embedded inside your agent code have critical limitations
 
 ---
 
+## How It Works (30s)
+
+- Your agent wraps functions with `@control()` and sends inputs/outputs to the Agent Control server
+- The server evaluates those payloads against policies and controls you configured
+- Evaluators run (regex, list, or AI) and return allow/deny decisions with reasons
+- The SDK blocks unsafe operations, raising `ControlViolationError` when a control denies or `ControlSteerError` when a control steers the output
+- You update rules centrally in the UI/API without redeploying agent code
+
+---
+
 ## Core Concepts
 See the [Concepts guide](CONCEPTS.md) to familiarize yourself with Agent Control's core concepts and terminology—essential for designing effective controls and evaluators for your application.
 
@@ -46,15 +55,15 @@ See the [Concepts guide](CONCEPTS.md) to familiarize yourself with Agent Control
 
 ### Examples
 
-Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start) for hands-on setup. 
+Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start) to get started.
 
-- **[Examples Overview](examples/README.md)** — Working code examples and integration patterns
-- **[TypeScript SDK (npm consumer)](examples/typescript_sdk/)** — Monorepo example that installs `agent-control` from npm
-- **[Customer Support Agent](examples/customer_support_agent/)** — Full example with multiple tools
-- **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection with LangChain
+- **[Examples Overview](examples/README.md)** — Complete catalog of examples and patterns
+- **[TypeScript SDK](examples/typescript_sdk/)** — Using Agent Control with TypeScript/npm
+- **[Customer Support Agent](examples/customer_support_agent/)** — Full multi-tool agent example
+- **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection
 - **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
-- **[CrewAI SDK Integration](examples/crewai/)** — Working example on integrating with third party Agent SDKs and using Agent Control along side their guardrails
-- **[DeepEval Integration](examples/deepeval/)** — Working Example on How to create custom evaluators to use with your controls
+- **[CrewAI Integration](examples/crewai/)** — Using Agent Control with third-party agent frameworks
+- **[DeepEval Integration](examples/deepeval/)** — Building custom evaluators
 
 ---
 
@@ -64,7 +73,11 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 
 The server stores controls and evaluates agent operations for safety.
 
-#### Recommended: One-Line Setup (Works for Development Too!)
+**Choose your path:**
+**Dev (default)** runs a pre-built server in Docker using `./setup.sh`. **OR**
+**Server dev** runs the server from source with hot reload for contributor work.
+
+#### Dev (default): Quick Setup
 
 Get up and running with Agent Control in **one command**:
 
@@ -96,7 +109,7 @@ cd agent-control
 
 ---
 
-#### Alternative: Run Server from Source (For Server Development)
+#### Server Dev: Run from Source
 
 **Only use this if you need to modify and debug the Agent Control server code itself** (e.g., adding server features, custom endpoints, or working on the core engine with hot reload).
 
@@ -122,7 +135,13 @@ make server-run
 
 > 💡 **What's the difference?** This method runs the server locally from source with auto-reload when you change server code. The quick setup method runs a pre-built server in Docker—faster to start, but no hot reload for server changes.
 
-> 💡 **Verify it's working:** Open [http://localhost:8000/health](http://localhost:8000/health) in your browser - you should see `{"status": "ok"}`
+---
+
+Confirm the server is up:
+
+```bash
+curl -s http://localhost:8000/health
+```
 
 ---
 
@@ -142,26 +161,26 @@ pnpm dev
 
 ---
 
-### Step 3: Setup Controls for Your Agent
+### Step 3: Create Controls (Setup Script)
 
-If you have setup your environbment from server source, you will need to install agent-control-sdk.
+> **Note:** If you used `./setup.sh`, the SDK is already installed—skip to creating controls.
 
-**In your Agent application directory** (not inside the agent-control repo):
+#### Install SDK (if using source setup)
+
+If you used the **source setup** (`make server-run`), install the SDK first:
+
 ```bash
+# In your agent application directory (not inside agent-control repo)
 uv venv
-uv .venv/bin/activate
+source .venv/bin/activate
 uv pip install agent-control-sdk
 ```
 
-This gives you complete SDK you would need for building controls into your agentic applications.
-
-**NOTE:** If you used the ./setup.sh method of setting up your environment, sdk is installed automatically for you.
-
-Now, you can create controls to protect your agent's operations like below:
-
+#### Creating Controls
+Create a setup script to configure your agent's controls:
 
 ```python
-# setup.py - Run once to configure everything
+# setup.py - Run once to configure agent controls
 import asyncio
 from datetime import datetime, UTC
 from agent_control import AgentControlClient, controls, policies, agents
@@ -169,14 +188,14 @@ from agent_control_models import Agent
 
 async def setup():
     async with AgentControlClient() as client:  # Defaults to localhost:8000
-        # 1. Register agent first (required before assigning policy)
+        # 1. Register agent
         agent = Agent(
             agent_name="My-Support-Chatbot",
             agent_created_at=datetime.now(UTC).isoformat()
         )
         await agents.register_agent(client, agent, steps=[])
 
-        # 2. Create control (blocks SSN patterns)
+        # 2. Create control (blocks SSN patterns in output)
         control = await controls.create_control(
             client,
             name="block-ssn",
@@ -192,17 +211,16 @@ async def setup():
                 "action": {"decision": "deny"}
             }
         )
-        # 3. Create policy
-        policy = await policies.create_policy(client,   name="production-policy")
 
-        # 4. Add control to policy
+        # 3. Create policy and add control
+        policy = await policies.create_policy(client, name="production-policy")
         await policies.add_control_to_policy(
             client,
             policy_id=policy["policy_id"],
             control_id=control["control_id"]
         )
 
-        # 5. Assign policy to agent
+        # 4. Assign policy to agent
         await policies.assign_policy_to_agent(
             client,
             agent_name="My-Support-Chatbot",
@@ -216,17 +234,17 @@ async def setup():
 asyncio.run(setup())
 ```
 
-Create controls 
-```bash
+Run the setup script:
 
+```bash
 uv run setup.py
 ```
 
 ---
 
-### Step 4: Now, Use in Your Agent
+### Step 4: Use `@control()` (Agent Code)
 
-Now protect your functions with `@control()`:
+Protect any function with the `@control()` decorator:
 
 ```python
 # my_agent.py
@@ -235,34 +253,42 @@ import agent_control
 from agent_control import control, ControlViolationError
 
 # Initialize your agent
-agent_control.init(
-    agent_name="My-Support-Chatbot",
-)
+agent_control.init(agent_name="My-Support-Chatbot")
 
-# Protect any function (like LLM calls)
+# Protect any function with @control()
 @control()
 async def chat(message: str) -> str:
-    # In production: response = await llm.ainvoke(message)
-    # For demo: simulate LLM that might leak sensitive data
+    # Your LLM call goes here: response = await llm.ainvoke(message)
+    # For demo, we'll simulate a response that leaks data
     if "test" in message.lower():
         return "Your SSN is 123-45-6789"  # Will be blocked!
     return f"Echo: {message}"
 
-# Test it
 async def main():
     try:
-        print(await chat("test"))  # ❌ Blocked
+        result = await chat("test")
+        print(result)
     except ControlViolationError as e:
-        print(f"❌ Blocked: {e.control_name}")
+        print(f"❌ Control violation: {e.control_name}")
 
 asyncio.run(main())
 ```
+
+---
+
+### Step 5: Run It (Expected Output)
 
 ```bash
 uv run my_agent.py
 ```
 
-**🎉 Done!** Your agent now blocks SSN patterns automatically.
+Expected output:
+
+```
+❌ Control violation: block-ssn
+```
+
+**🎉 Done!** Your agent now blocks SSN patterns in outputs automatically.
 
 ---
 
