@@ -219,12 +219,12 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
     )
     store = PostgresEventStore(session_maker)
 
-    agent_name = f"agent-{uuid4().hex[:12]}"
+    agent_uuid = uuid4()
     now = datetime.now(UTC)
 
     events = [
         _event(
-            agent_name=agent_name,
+            agent_uuid=agent_uuid,
             control_id=1,
             action="steer",
             matched=True,
@@ -232,7 +232,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
             trace_id="a" * 32,
         ),
         _event(
-            agent_name=agent_name,
+            agent_uuid=agent_uuid,
             control_id=2,
             action="warn",
             matched=True,
@@ -240,7 +240,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
             trace_id="b" * 32,
         ),
         _event(
-            agent_name=agent_name,
+            agent_uuid=agent_uuid,
             control_id=3,
             action="allow",
             matched=True,
@@ -254,7 +254,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
 
     # When: querying stats with timeseries enabled
     stats = await store.query_stats(
-        agent_name,
+        agent_uuid,
         time_range=timedelta(hours=1),
         include_timeseries=True,
         bucket_size=timedelta(minutes=1),

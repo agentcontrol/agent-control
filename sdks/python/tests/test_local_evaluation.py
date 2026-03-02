@@ -748,7 +748,7 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
 
     @pytest.mark.asyncio
-    async def test_local_evaluation_includes_steering_context(self, agent_name, llm_payload):
+    async def test_local_evaluation_includes_steering_context(self, agent_uuid, llm_payload):
         """Test that local evaluation includes steering_context in response.
 
         Given: A local steer control with steering_context configured
@@ -785,7 +785,7 @@ class TestCheckEvaluationWithLocal:
 
         result = await check_evaluation_with_local(
             client=client,
-            agent_name=agent_name,
+            agent_uuid=agent_uuid,
             step=llm_payload,
             stage="pre",
             controls=controls,

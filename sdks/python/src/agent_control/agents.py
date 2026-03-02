@@ -10,6 +10,7 @@ from agent_control_models.server import AgentControlsResponse
 from .client import AgentControlClient
 from .validation import ensure_uuid_str
 
+
 async def register_agent(
     client: AgentControlClient,
     agent: Agent,

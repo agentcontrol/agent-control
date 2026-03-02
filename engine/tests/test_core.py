@@ -9,6 +9,7 @@ These tests verify:
 import asyncio
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from agent_control_engine import clear_evaluator_cache
@@ -1623,7 +1624,7 @@ class TestSteerErrorHandling:
 
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_name="test-agent",
+            agent_uuid=uuid4(),
             stage="pre",
             step=Step(type="llm", name="test-step", input="test", output=None),
         )
@@ -1682,7 +1683,7 @@ class TestSteerErrorHandling:
 
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_name="test-agent",
+            agent_uuid=uuid4(),
             stage="pre",
             step=Step(type="llm", name="test-step", input="test", output=None),
         )
@@ -1731,7 +1732,7 @@ class TestSteerErrorHandling:
 
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_name="test-agent",
+            agent_uuid=uuid4(),
             stage="pre",
             step=Step(type="llm", name="test-step", input="test", output=None),
         )
@@ -1826,7 +1827,7 @@ class TestInvalidRegexHandling:
 
         engine = ControlEngine(controls)
         request = EvaluationRequest(
-            agent_name="test-agent",
+            agent_uuid=uuid4(),
             stage="pre",
             step=Step(
                 type="llm",

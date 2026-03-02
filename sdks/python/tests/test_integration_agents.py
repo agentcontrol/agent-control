@@ -147,7 +147,7 @@ async def test_list_agent_controls_typed_returns_model(
     # WHEN: controls are requested via the typed API wrapper.
     response = await agent_control.agents.list_agent_controls_typed(
         client,
-        test_agent["agent_name"],
+        test_agent["agent_id"],
     )
 
     # THEN: a typed model is returned.
@@ -166,7 +166,7 @@ async def test_list_agent_controls_returns_dict_payload(
     # WHEN: controls are requested via the dict API wrapper.
     response = await agent_control.agents.list_agent_controls(
         client,
-        test_agent["agent_name"],
+        test_agent["agent_id"],
     )
 
     # THEN: a dict payload is returned with controls list.
