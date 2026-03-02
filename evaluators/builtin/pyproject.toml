@@ -34,4 +34,4 @@ packages = ["src/agent_control_evaluators"]
 [tool.uv.sources]
 agent-control-models = { workspace = true }
 # For local dev: use local galileo package instead of PyPI
-agent-control-evaluator-galileo = { path = "../extra/galileo", editable = true }
+agent-control-evaluator-galileo = { path = "../contrib/galileo", editable = true }

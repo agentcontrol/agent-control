@@ -20,7 +20,7 @@ members = [
     "sdks/python",
     "engine",
     "evaluators/builtin",
-    # NOTE: evaluators/extra/* excluded - install separately when needed
+    # NOTE: evaluators/contrib/* excluded - install separately when needed
 ]
 
 [tool.uv]
@@ -69,7 +69,7 @@ version_toml = [
     "sdks/python/pyproject.toml:project.version",
     "server/pyproject.toml:project.version",
     "evaluators/builtin/pyproject.toml:project.version",
-    "evaluators/extra/galileo/pyproject.toml:project.version",
+    "evaluators/contrib/galileo/pyproject.toml:project.version",
 ]
 version_source = "tag"
 commit_message = "chore(release): v{version}"

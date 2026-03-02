@@ -80,7 +80,7 @@ class MyEvaluator(Evaluator[MyEvaluatorConfig]):
 
 Run tests with:
 ```bash
-cd evaluators/extra/{{org}}
+cd evaluators/contrib/{{org}}
 uv run pytest
 ```
 
