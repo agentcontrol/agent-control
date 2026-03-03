@@ -126,13 +126,13 @@ See [steer_action_demo/README.md](steer_action_demo/README.md) for details.
 import agent_control
 from agent_control import control, ControlViolationError
 
-# Initialize agent (connects to server, loads policy)
+# Initialize agent (connects to server, loads control associations)
 agent_control.init(
     agent_name="my-bot",
     agent_description="My Bot",
 )
 
-# Apply the agent's assigned policy
+# Apply controls associated with the agent
 @control()
 async def chat(message: str) -> str:
     return await assistant.respond(message)

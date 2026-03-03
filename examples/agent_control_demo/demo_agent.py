@@ -105,12 +105,12 @@ async def execute_query(query: str) -> str:
     return result
 
 
-@control()  # Apply agent's assigned policy
+@control()  # Apply agent-associated controls
 async def process_request(input: str) -> str:
     """
-    General processing function with the agent's policy applied.
-    
-    All controls in the policy are evaluated (both pre and post stage).
+    General processing function with agent-associated controls applied.
+
+    Controls associated through policy or direct links are evaluated.
     """
     print(f"  [Agent] Processing request: {input}")
     response = simulate_llm_response(input)

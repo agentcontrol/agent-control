@@ -42,7 +42,7 @@ uv run setup_sql_controls.py
 This creates:
 - SQL safety control (blocks DROP, DELETE, TRUNCATE, ALTER, GRANT)
 - Policy with the control
-- Assigns policy to the SQL agent
+- Associates policy with the SQL agent
 
 > For local execution, create the control with `execution: "sdk"` in
 > `setup_sql_controls.py` (see `sql_control_data_sdk`) and enable
@@ -155,7 +155,7 @@ cd server && make run
 
 **Causes:**
 1. Server not running or evaluators not loaded (remote mode)
-2. Control not assigned to agent's policy
+2. Control not associated with the agent (policy or direct)
 3. Control data missing/invalid (control not returned to agent)
 4. Local mode enabled but control is still `execution: "server"`
 

@@ -167,7 +167,7 @@ agent_control.init(
 
 This:
 - Registers the agent with the server
-- Fetches the assigned policy and controls
+- Fetches controls associated with the agent
 - Enables the `@control()` decorator
 
 ### 2. Protecting Functions

@@ -375,10 +375,10 @@ def init(
             ]
         )
 
-        # Now use @control decorator to apply the agent's policy
+        # Now use @control decorator to apply agent-associated controls
         from agent_control import control
 
-        @control()  # Applies agent's assigned policy
+        @control()  # Applies controls associated with the agent
         async def handle(message: str):
             return message
 

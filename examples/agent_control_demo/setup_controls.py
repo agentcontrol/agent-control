@@ -487,7 +487,7 @@ async def main():
         if not ok3:
             print("\n⚠️  Failed to assign policy to agent!")
 
-        # Verify: Get agent's policy
+        # Verify: Get agent policy associations
         print("\n  Verifying agent policy assignment...")
         try:
             resp = await client.http_client.get(
