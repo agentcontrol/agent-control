@@ -71,7 +71,7 @@ jobs:
         if: steps.release.outputs.released == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: evaluators/extra/galileo/dist/
+          packages-dir: evaluators/contrib/galileo/dist/
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
@@ -87,4 +87,4 @@ jobs:
             evaluators/builtin/dist/*
             sdks/python/dist/*
             server/dist/*
-            evaluators/extra/galileo/dist/*
+            evaluators/contrib/galileo/dist/*

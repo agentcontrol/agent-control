@@ -16,9 +16,9 @@ echo "pre-push: running make typecheck"
 make typecheck
 
 # Check extras if they exist and have changes
-if [ -d "evaluators/extra/galileo" ]; then
-  echo "pre-push: checking evaluators/extra/galileo"
-  cd evaluators/extra/galileo
+if [ -d "evaluators/contrib/galileo" ]; then
+  echo "pre-push: checking evaluators/contrib/galileo"
+  cd evaluators/contrib/galileo
   uv run --extra dev ruff check --config ../../../pyproject.toml src/
   uv run --extra dev mypy --config-file ../../../pyproject.toml src/
   cd "$REPO_ROOT"
