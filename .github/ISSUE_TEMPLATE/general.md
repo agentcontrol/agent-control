@@ -1,7 +1,7 @@
 ---
 name: General issue
 about: Report a bug, request a feature, or propose a change
-title: "[Issue] "
+title: ""
 labels: []
 assignees: []
 ---

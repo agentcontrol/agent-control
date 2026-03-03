@@ -662,7 +662,7 @@ We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelin
 
 1. Fork the repository
 2. Create your evaluator in `evaluators/builtin/src/agent_control_evaluators/` (for builtins) or in `evaluators/contrib/` (for external packages)
-3. Add tests in `evaluators/tests/`
+3. Add tests in `evaluators/builtin/tests/` (for builtins) or `evaluators/contrib/<your-evaluator>/tests/` (for contrib)
 4. Submit a pull request
 
 ---
