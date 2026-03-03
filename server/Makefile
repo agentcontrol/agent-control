@@ -55,7 +55,7 @@ alembic-stamp:
 	$(ALEMBIC) stamp $(STAMP)
 
 start-dependencies:
-	docker compose -f ../docker-compose.dev.yml up -d
+	docker compose -f ../docker-compose.dev.yml up -d --wait
 
 test:
 	DB_DATABASE=$(TEST_DB) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q

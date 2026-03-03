@@ -3,10 +3,9 @@
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import agent_control
 import httpx
 import pytest
-
-import agent_control
 
 
 def _make_conflict_error() -> httpx.HTTPStatusError:
@@ -33,4 +32,5 @@ def test_init_surfaces_conflict_response() -> None:
             agent_control.init(
                 agent_name=f"agent-{uuid4().hex[:12]}",
                 agent_description="Testing init conflict handling",
+                policy_refresh_interval_seconds=0,
             )

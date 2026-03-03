@@ -5,8 +5,8 @@ description = "AgentControl + AWS Strands integration examples"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "agent-control-sdk>=3.0.0,<6.0.0",
-    "agent-control-models>=3.0.0,<6.0.0",
+    "agent-control-sdk>=6.0.0,<8.0.0",
+    "agent-control-models>=6.0.0,<8.0.0",
     "agent-control-engine",
     "strands-agents[otel]>=0.1.0",
     "openai>=1.0.0",

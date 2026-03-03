@@ -35,7 +35,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
+from agent_control_models import Step
+
 from agent_control import AgentControlClient
+from agent_control.evaluation import check_evaluation_with_local
 from agent_control.observability import (
     get_logger,
     log_control_evaluation,
@@ -250,14 +253,8 @@ async def _evaluate(
         # If we have controls, use local evaluation which handles both SDK and server controls
         if controls is not None:
             try:
-                from agent_control.evaluation import check_evaluation_with_local
-
                 # Build Step object for evaluation
-                try:
-                    from agent_control_models import Step
-                    step_obj = Step(**step)
-                except ImportError:
-                    step_obj = step  # type: ignore
+                step_obj = Step(**step)
 
                 result = await check_evaluation_with_local(
                     client=client,
@@ -345,12 +342,6 @@ async def _evaluate(
                         for nm in (result.non_matches or [])
                     ] if result.non_matches else None,
                 }
-            except ImportError:
-                logger.warning(
-                    "Local evaluation not available (missing agent_control_engine). "
-                    "Falling back to server-only evaluation. "
-                    "Controls with execution='sdk' will be skipped."
-                )
             except Exception as e:
                 logger.warning(
                     "Local evaluation failed: %s. Falling back to server-only evaluation.",

@@ -45,28 +45,28 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0.dev"
 
+import asyncio
 import os
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 import httpx
-
-if TYPE_CHECKING:
-    from agent_control_models import (
-        Agent,
-        ControlAction,
-        ControlDefinition,
-        ControlMatch,
-        ControlScope,
-        ControlSelector,
-        EvaluationRequest,
-        EvaluationResult,
-        EvaluatorResult,
-        EvaluatorSpec,
-        Step,
-        StepSchema,
-    )
+from agent_control_models import (
+    Agent,
+    ControlAction,
+    ControlDefinition,
+    ControlMatch,
+    ControlScope,
+    ControlSelector,
+    EvaluationRequest,
+    EvaluationResult,
+    EvaluatorResult,
+    EvaluatorSpec,
+    Step,
+    StepSchema,
+)
 
 from . import agents, controls, evaluation, evaluators, policies
 from ._control_registry import (
@@ -110,111 +110,6 @@ from .validation import ensure_agent_name
 # Module logger
 logger = get_logger(__name__)
 
-# Import models if available
-try:
-    from agent_control_models import (
-        Agent,
-        ControlAction,
-        ControlDefinition,
-        ControlMatch,
-        ControlScope,
-        ControlSelector,
-        EvaluationRequest,
-        EvaluationResult,
-        EvaluatorResult,
-        EvaluatorSpec,
-        Step,
-        StepSchema,
-    )
-    MODELS_AVAILABLE = True
-except ImportError:
-    MODELS_AVAILABLE = False
-    if not TYPE_CHECKING:
-        class ControlDefinition:
-            pass
-
-        class ControlSelector:
-            pass
-
-        class ControlScope:
-            pass
-
-        class ControlMatch:
-            pass
-
-        class EvaluatorResult:
-            pass
-
-        class ControlAction:
-            pass
-
-        class EvaluatorSpec:
-            pass
-
-        class Agent:  # runtime fallback
-            def __init__(
-                self,
-                agent_name: str,
-                **kwargs: object
-            ):
-                self.agent_name = agent_name
-                for k, v in kwargs.items():
-                    setattr(self, k, v)
-
-        class Step:  # runtime fallback
-            def __init__(
-                self,
-                type: str,
-                name: str,
-                input: Any,
-                output: Any = None,
-                context: dict[str, Any] | None = None,
-            ):
-                self.type = type
-                self.name = name
-                self.input = input
-                self.output = output
-                self.context = context
-
-        class StepSchema:  # runtime fallback
-            def __init__(
-                self,
-                type: str,
-                name: str,
-                description: str | None = None,
-                input_schema: dict[str, Any] | None = None,
-                output_schema: dict[str, Any] | None = None,
-                metadata: dict[str, Any] | None = None,
-            ):
-                self.type = type
-                self.name = name
-                self.description = description
-                self.input_schema = input_schema
-                self.output_schema = output_schema
-                self.metadata = metadata
-
-        class EvaluationRequest:  # runtime fallback
-            def __init__(
-                self,
-                agent_name: str,
-                step: Step,
-                stage: str,
-            ):
-                self.agent_name = agent_name
-                self.step = step
-                self.stage = stage
-
-        class EvaluationResult:  # runtime fallback
-            def __init__(
-                self,
-                is_safe: bool,
-                confidence: float,
-                reason: str | None = None
-            ):
-                self.is_safe = is_safe
-                self.confidence = confidence
-                self.reason = reason
-
 
 # ============================================================================
 # Global State
@@ -224,6 +119,12 @@ except ImportError:
 from ._state import state  # noqa: E402
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+# Policy refresh loop state
+_refresh_lock = threading.Lock()
+_policy_refresh_interval_seconds: int | None = None
+_refresh_thread: threading.Thread | None = None
+_refresh_stop_event: threading.Event | None = None
 
 
 def get_server_controls() -> list[dict[str, Any]] | None:
@@ -243,6 +144,86 @@ def get_server_controls() -> list[dict[str, Any]] | None:
                 print(f"  - {c['name']} (execution: {c['control'].get('execution', 'server')})")
     """
     return state.server_controls
+
+
+def _publish_server_controls(
+    controls: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    """Publish controls using swap-only snapshot semantics."""
+    if controls is None:
+        state.server_controls = None
+        return None
+
+    # Snapshot copy: publish a new list reference and avoid in-place mutation.
+    state.server_controls = list(controls)
+    return state.server_controls
+
+
+def _run_coro_in_new_loop[T](coro: Coroutine[Any, Any, T]) -> T:
+    """Run a coroutine on a dedicated event loop in the current thread."""
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+        asyncio.set_event_loop(None)
+
+
+def _policy_refresh_worker(stop_event: threading.Event, interval_seconds: int) -> None:
+    """Background worker that periodically refreshes controls."""
+    while not stop_event.wait(interval_seconds):
+        try:
+            _run_coro_in_new_loop(refresh_controls_async())
+        except Exception as exc:
+            logger.error(
+                "Background policy refresh loop iteration failed: %s",
+                exc,
+                exc_info=True,
+            )
+
+
+def _stop_policy_refresh_loop() -> None:
+    """Stop the background policy refresh loop if running."""
+    global _policy_refresh_interval_seconds, _refresh_thread, _refresh_stop_event
+
+    with _refresh_lock:
+        stop_event = _refresh_stop_event
+        refresh_thread = _refresh_thread
+        _policy_refresh_interval_seconds = None
+        _refresh_stop_event = None
+        _refresh_thread = None
+
+    if stop_event is not None:
+        stop_event.set()
+
+    if refresh_thread is not None and refresh_thread.is_alive():
+        refresh_thread.join(timeout=2)
+        if refresh_thread.is_alive():
+            logger.warning("Timed out while stopping policy refresh loop thread")
+
+
+def _start_policy_refresh_loop(interval_seconds: int) -> None:
+    """Start a background loop that refreshes controls on a fixed interval."""
+    global _policy_refresh_interval_seconds, _refresh_thread, _refresh_stop_event
+
+    if interval_seconds <= 0:
+        return
+
+    stop_event = threading.Event()
+    refresh_thread = threading.Thread(
+        target=_policy_refresh_worker,
+        args=(stop_event, interval_seconds),
+        name="agent-control-policy-refresh",
+        daemon=True,
+    )
+    with _refresh_lock:
+        _policy_refresh_interval_seconds = interval_seconds
+        _refresh_stop_event = stop_event
+        _refresh_thread = refresh_thread
+
+    refresh_thread.start()
+    logger.info("Started policy refresh loop (interval=%ss)", interval_seconds)
 
 
 async def refresh_controls_async() -> list[dict[str, Any]] | None:
@@ -266,17 +247,19 @@ async def refresh_controls_async() -> list[dict[str, Any]] | None:
     if state.server_url is None:
         raise RuntimeError("Server URL not set. Call agent_control.init() first.")
 
-    async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
-        response = await agents.register_agent(
-            client,
-            state.current_agent,
-            steps=[],
-            # Refresh only needs current controls.
-            # Strict avoids destructive overwrite with empty steps.
-            conflict_mode="strict",
+    try:
+        async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
+            response = await agents.list_agent_controls(client, state.current_agent.agent_name)
+            refreshed_controls = _publish_server_controls(response.get("controls", []))
+            logger.info("Refreshed %d control(s) from server", len(refreshed_controls or []))
+            return refreshed_controls
+    except Exception as exc:
+        logger.error(
+            "Failed to refresh controls; keeping previous cache (%d control(s)): %s",
+            len(state.server_controls or []),
+            exc,
+            exc_info=True,
         )
-        state.server_controls = response.get('controls', [])
-        logger.info("Refreshed %d control(s) from server", len(state.server_controls or []))
         return state.server_controls
 
 
@@ -295,27 +278,18 @@ def refresh_controls() -> list[dict[str, Any]] | None:
         controls = agent_control.refresh_controls()
         print(f"Refreshed {len(controls)} controls")
     """
-    import asyncio
-
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         # We're in an async context - run in thread
-        import threading
-
         result_container: list[list[dict[str, Any]] | None] = [None]
         exception_container: list[Exception | None] = [None]
 
         def run_in_thread() -> None:
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
             try:
-                result_container[0] = new_loop.run_until_complete(refresh_controls_async())
+                result_container[0] = _run_coro_in_new_loop(refresh_controls_async())
             except Exception as e:
                 exception_container[0] = e
-            finally:
-                new_loop.close()
-
-        thread = threading.Thread(target=run_in_thread)
+        thread = threading.Thread(target=run_in_thread, daemon=True)
         thread.start()
         thread.join(timeout=10)
 
@@ -325,12 +299,7 @@ def refresh_controls() -> list[dict[str, Any]] | None:
 
     except RuntimeError:
         # No running event loop - we're in a sync context
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(refresh_controls_async())
-        finally:
-            loop.close()
+        return _run_coro_in_new_loop(refresh_controls_async())
 
 
 # ============================================================================
@@ -348,6 +317,7 @@ def init(
     conflict_mode: Literal["strict", "overwrite"] = "overwrite",
     observability_enabled: bool | None = None,
     log_config: dict[str, Any] | None = None,
+    policy_refresh_interval_seconds: int = 60,
     **kwargs: object
 ) -> Agent:
     """
@@ -376,6 +346,8 @@ def init(
         observability_enabled: Optional bool to enable/disable observability (defaults to env var)
         log_config: Optional logging configuration dict:
                {"enabled": True, "span_start": True, "span_end": True, "control_eval": True}
+        policy_refresh_interval_seconds: Interval for background policy refresh loop.
+            Defaults to 60 seconds. Set to 0 to disable background refresh.
         **kwargs: Additional metadata to store with the agent
 
     Returns:
@@ -417,6 +389,12 @@ def init(
 
     # Validate and normalize agent_name
     _agent_name = ensure_agent_name(agent_name)
+
+    if policy_refresh_interval_seconds < 0:
+        raise ValueError("policy_refresh_interval_seconds must be >= 0")
+
+    # Re-init behavior: always stop existing loop before mutating shared agent/session globals.
+    _stop_policy_refresh_loop()
 
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
@@ -462,8 +440,6 @@ def init(
     # Register with server and fetch controls
     server_controls = None
     try:
-        import asyncio
-
         async def register() -> list[dict[str, Any]] | None:
             # Type assertions for mypy - these values are guaranteed to be set above
             assert state.server_url is not None
@@ -511,24 +487,18 @@ def init(
         # Run registration - handle both sync and async contexts
         try:
             # Check if we're already in an event loop
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # We're in an async context - schedule the coroutine
-            import threading
-
             result_container: list[list[dict[str, Any]] | None] = [None]
             exception_container: list[Exception | None] = [None]
 
             def run_in_thread() -> None:
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
                 try:
-                    result_container[0] = new_loop.run_until_complete(register())
+                    result_container[0] = _run_coro_in_new_loop(register())
                 except Exception as e:
                     exception_container[0] = e
-                finally:
-                    new_loop.close()
 
-            thread = threading.Thread(target=run_in_thread)
+            thread = threading.Thread(target=run_in_thread, daemon=True)
             thread.start()
             thread.join(timeout=10)  # 10 second timeout
 
@@ -538,10 +508,7 @@ def init(
 
         except RuntimeError:
             # No running event loop - we're in a sync context
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            server_controls = loop.run_until_complete(register())
-            loop.close()
+            server_controls = _run_coro_in_new_loop(register())
 
     except httpx.HTTPStatusError:
         # Surface server-side errors (e.g., 409 conflicts)
@@ -550,10 +517,10 @@ def init(
         logger.error("Could not connect to server: %s", e, exc_info=True)
         logger.info("Will use local controls if available")
 
-    # Store server controls globally for later use by @control decorator
-    state.server_controls = server_controls
-    if server_controls:
-        logger.info("Loaded %d control(s) from server", len(server_controls))
+    # Store server controls globally for later use by @control decorator.
+    published_controls = _publish_server_controls(server_controls)
+    if published_controls:
+        logger.info("Loaded %d control(s) from server", len(published_controls))
     else:
         logger.debug(
             "No controls returned from server "
@@ -568,6 +535,11 @@ def init(
     )
     if batcher:
         logger.info("Observability enabled")
+
+    if policy_refresh_interval_seconds > 0:
+        _start_policy_refresh_loop(policy_refresh_interval_seconds)
+    else:
+        logger.debug("Policy refresh loop disabled (policy_refresh_interval_seconds=0)")
 
     return state.current_agent
 

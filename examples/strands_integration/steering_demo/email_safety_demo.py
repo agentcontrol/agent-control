@@ -94,6 +94,13 @@ class AgentControlSteeringHandler(SteeringHandler):
             print("✨ STEERING: AgentControlSteeringHandler.steer_after_model() CALLED")
             print("="*70)
 
+            # Debug: Check what ControlMatch expects
+            import typing
+            from agent_control_models.controls import ControlMatch
+            action_types = typing.get_args(ControlMatch.model_fields['action'].annotation)
+            print(f"🔍 DEBUG: ControlMatch.action expects: {action_types}")
+            print(f"🔍 DEBUG: 'steer' in action_types: {'steer' in action_types}")
+
         # Extract output text from message
         output_text = self._extract_output(message)
 
@@ -339,7 +346,7 @@ def initialize_agent():
         enable_logging=True
     )
 
-    # Create agent with both hooks
+    # Create agent with both hooks and plugins
     model = OpenAIModel(model_id="gpt-4o-mini")
     agent = Agent(
         name="banking_email_agent",
@@ -369,7 +376,8 @@ After sending, respond with:
 [The email text that was sent]"
 """,
         tools=[lookup_customer_account, send_monthly_account_summary],
-        hooks=[tool_hook, steering_handler]  # Dual hooks: tool deny + LLM steer
+        hooks=[tool_hook],  # HookProvider for tool-stage deny checks
+        plugins=[steering_handler]  # Plugin for LLM post-output steering
     )
 
     return agent, steering_handler

@@ -3,21 +3,21 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from agent_control import evaluation
 from agent_control.evaluation import EvaluationResult
 
 
 @pytest.mark.asyncio
-async def test_check_evaluation_requires_step_name_without_models(monkeypatch):
-    """Fallback path should reject steps without a name before calling the server."""
-    monkeypatch.setattr(evaluation, "MODELS_AVAILABLE", False)
+async def test_check_evaluation_requires_step_name_before_server_call():
+    """Typed request validation should reject steps without a name before server call."""
 
     client = MagicMock()
     client.http_client = AsyncMock()
     client.http_client.post = AsyncMock()
 
-    with pytest.raises(ValueError, match="step.name is required"):
+    with pytest.raises(ValidationError):
         await evaluation.check_evaluation(
             client=client,
             agent_name="test-agent",
@@ -113,31 +113,8 @@ async def test_evaluate_controls_with_context(monkeypatch):
     assert call_args is not None
 
 
-@pytest.mark.asyncio
-async def test_evaluate_controls_without_models(monkeypatch):
-    """Test evaluate_controls when MODELS_AVAILABLE is False."""
-    # Mock check_evaluation_with_local
-    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
-    mock_check = AsyncMock(return_value=mock_result)
-    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
-
-    # Mock MODELS_AVAILABLE as False
-    monkeypatch.setattr(evaluation, "MODELS_AVAILABLE", False)
-
-    with patch("agent_control.state.server_url", "http://localhost:8000"):
-        with patch("agent_control.state.api_key", None):
-            result = await evaluation.evaluate_controls(
-                step_name="chat",
-                input="hello",
-                stage="pre",
-                agent_name="test-bot",
-            )
-
-    assert result.is_safe is True
-async def test_check_evaluation_returns_runtime_fallback_without_models(monkeypatch):
-    """Fallback path should return an object with expected attributes."""
-    monkeypatch.setattr(evaluation, "MODELS_AVAILABLE", False)
-
+async def test_check_evaluation_returns_result_model():
+    """check_evaluation returns a parsed EvaluationResult."""
     class DummyResponse:
         def raise_for_status(self) -> None:
             return None
@@ -163,7 +140,13 @@ async def test_check_evaluation_returns_runtime_fallback_without_models(monkeypa
         "/api/v1/evaluation",
         json={
             "agent_name": "agent-example_01",
-            "step": {"type": "llm", "name": "chat", "input": "hello"},
+            "step": {
+                "type": "llm",
+                "name": "chat",
+                "input": "hello",
+                "output": None,
+                "context": None,
+            },
             "stage": "pre",
         },
     )

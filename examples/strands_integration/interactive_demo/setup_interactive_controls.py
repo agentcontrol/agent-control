@@ -58,28 +58,28 @@ INTERACTIVE_CONTROLS = [
             "tags": ["pii", "security"]
         }
     },
-    # {
-    #     "name": "prevent-sql-injection-user-input",
-    #     "description": "Prevent SQL injection patterns in user messages",
-    #     "definition": {
-    #         "description": "Block SQL injection patterns before LLM processes",
-    #         "enabled": True,
-    #         "execution": "server",
-    #         "scope": {
-    #             "step_names": ["check_before_invocation", "check_before_model"],
-    #             "stages": ["pre"]
-    #         },
-    #         "selector": {"path": "input"},
-    #         "evaluator": {
-    #             "name": "regex",
-    #             "config": {
-    #                 "pattern": r"(\bDROP\s+TABLE\b|\bDROP\s+DATABASE\b|--;)"
-    #             }
-    #         },
-    #         "action": {"decision": "deny", "message": "Potentially malicious SQL patterns detected"},
-    #         "tags": ["security"]
-    #     }
-    # },
+    {
+        "name": "prevent-sql-injection-user-input",
+        "description": "Prevent SQL injection patterns in user messages",
+        "definition": {
+            "description": "Block SQL injection patterns before LLM processes",
+            "enabled": True,
+            "execution": "server",
+            "scope": {
+                "step_names": ["check_before_invocation", "check_before_model"],
+                "stages": ["pre"]
+            },
+            "selector": {"path": "input"},
+            "evaluator": {
+                "name": "regex",
+                "config": {
+                    "pattern": r"(\bDROP\s+TABLE\b|\bDROP\s+DATABASE\b|--;)"
+                }
+            },
+            "action": {"decision": "deny", "message": "Potentially malicious SQL patterns detected"},
+            "tags": ["security"]
+        }
+    },
 
     # Agent Output Controls - Block unsafe patterns in agent responses
     {
