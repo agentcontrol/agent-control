@@ -335,10 +335,6 @@ class AgentSummary(BaseModel):
     """Summary of an agent for list responses."""
 
     agent_name: str = Field(..., description="Unique identifier of the agent")
-    policy_id: int | None = Field(
-        default=None,
-        description="Deprecated: first associated policy ID, if any",
-    )
     policy_ids: list[int] = Field(
         default_factory=list, description="IDs of policies associated with the agent"
     )

@@ -30,10 +30,6 @@ export type AgentSummary = {
    */
   evaluatorCount: number;
   /**
-   * Deprecated: first associated policy ID, if any
-   */
-  policyId?: number | null | undefined;
-  /**
    * IDs of policies associated with the agent
    */
   policyIds?: Array<number> | undefined;
@@ -51,7 +47,6 @@ export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
       agent_name: types.string(),
       created_at: z.optional(z.nullable(types.string())),
       evaluator_count: z._default(types.number(), 0),
-      policy_id: z.optional(z.nullable(types.number())),
       policy_ids: types.optional(z.array(types.number())),
       step_count: z._default(types.number(), 0),
     }),
@@ -61,7 +56,6 @@ export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
         "agent_name": "agentName",
         "created_at": "createdAt",
         "evaluator_count": "evaluatorCount",
-        "policy_id": "policyId",
         "policy_ids": "policyIds",
         "step_count": "stepCount",
       });

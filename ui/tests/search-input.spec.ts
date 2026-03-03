@@ -38,7 +38,7 @@ test.describe('SearchInput - Query Param Syncing', () => {
     await expect(searchInput).toHaveValue('Customer');
 
     // Verify filtered results are shown
-    await expect(mockedPage.getByText('Customer Support Bot')).toBeVisible();
+    await expect(mockedPage.getByText('customer-support-bot')).toBeVisible();
   });
 
   test('clear button removes query param from URL', async ({ mockedPage }) => {
@@ -87,8 +87,10 @@ test.describe('SearchInput - Query Param Syncing', () => {
     );
 
     // Navigate away
-    await mockedPage.getByText('Customer Support Bot').click();
-    await expect(mockedPage).toHaveURL(/\/agents\/agent-1/);
+    await mockedPage.getByText('customer-support-bot').click();
+    await expect(mockedPage).toHaveURL(
+      /\/agents\/customer-support-bot\/monitor/
+    );
 
     // Go back
     await mockedPage.goBack();
@@ -105,7 +107,7 @@ test.describe('SearchInput - Query Param Syncing', () => {
     await expect(searchInputAfterBack).toHaveValue('Customer');
 
     // Verify filtered results are still shown
-    await expect(mockedPage.getByText('Customer Support Bot')).toBeVisible();
+    await expect(mockedPage.getByText('customer-support-bot')).toBeVisible();
   });
 });
 

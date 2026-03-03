@@ -80,7 +80,9 @@ export type ControlDefinitionInput =
   components['schemas']['ControlDefinition-Input'];
 export type ControlDefinitionOutput =
   components['schemas']['ControlDefinition-Output'];
-export type ControlDefinition = ControlDefinitionInput | ControlDefinitionOutput;
+export type ControlDefinition =
+  | ControlDefinitionInput
+  | ControlDefinitionOutput;
 export type Control = components['schemas']['Control'];
 export type AgentControlsResponse =
   components['schemas']['AgentControlsResponse'];

@@ -292,3 +292,113 @@ def test_control_shared_between_policies(client: TestClient) -> None:
 
     assert control_id in {c["id"] for c in resp_a.json()["controls"]}
     assert control_id in {c["id"] for c in resp_b.json()["controls"]}
+
+
+def test_agent_gets_controls_from_direct_associations(client: TestClient) -> None:
+    """Agent should see controls directly associated with it."""
+    agent_name, _ = _create_agent(client)
+    control_1_id = _create_control(client)
+    control_2_id = _create_control(client)
+
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_1_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_2_id}")
+    assert resp.status_code == 200
+
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert resp.status_code == 200
+    controls = resp.json()["controls"]
+    assert {control["id"] for control in controls} == {control_1_id, control_2_id}
+
+
+def test_agent_controls_are_union_of_policy_and_direct_with_dedupe(client: TestClient) -> None:
+    """Agent control list should union policy + direct controls and de-duplicate by control id."""
+    agent_name, _ = _create_agent(client)
+    policy_id = _create_policy(client)
+
+    shared_control_id = _create_control(client)
+    policy_only_control_id = _create_control(client)
+    direct_only_control_id = _create_control(client)
+
+    # Associate shared + policy-only controls via policy.
+    resp = client.post(f"/api/v1/policies/{policy_id}/controls/{shared_control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/policies/{policy_id}/controls/{policy_only_control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_id}")
+    assert resp.status_code == 200
+
+    # Associate shared + direct-only controls directly with agent.
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{shared_control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{direct_only_control_id}")
+    assert resp.status_code == 200
+
+    # Shared control should appear only once in active controls.
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert resp.status_code == 200
+    controls = resp.json()["controls"]
+    received_control_ids = {control["id"] for control in controls}
+    assert received_control_ids == {shared_control_id, policy_only_control_id, direct_only_control_id}
+    assert len(controls) == 3
+
+    # list_agents active_controls_count should reflect deduplicated union as well.
+    agents_resp = client.get("/api/v1/agents", params={"name": agent_name})
+    assert agents_resp.status_code == 200
+    matching_agents = [
+        agent for agent in agents_resp.json()["agents"] if agent["agent_name"] == agent_name
+    ]
+    assert len(matching_agents) == 1
+    assert matching_agents[0]["active_controls_count"] == 3
+
+
+def test_remove_direct_control_keeps_policy_inherited_control_active(client: TestClient) -> None:
+    """Removing a direct association should keep control active when policy still provides it."""
+    agent_name, _ = _create_agent(client)
+    policy_id = _create_policy(client)
+    control_id = _create_control(client)
+
+    resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert resp.status_code == 200
+
+    resp = client.delete(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["removed_direct_association"] is True
+    assert body["control_still_active"] is True
+
+    # Idempotent behavior when no direct link remains but policy inheritance still exists.
+    resp = client.delete(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["removed_direct_association"] is False
+    assert body["control_still_active"] is True
+
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert resp.status_code == 200
+    assert control_id in {control["id"] for control in resp.json()["controls"]}
+
+
+def test_remove_direct_control_deactivates_when_not_inherited(client: TestClient) -> None:
+    """Removing a direct-only control should make it inactive for the agent."""
+    agent_name, _ = _create_agent(client)
+    control_id = _create_control(client)
+
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert resp.status_code == 200
+
+    resp = client.delete(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["removed_direct_association"] is True
+    assert body["control_still_active"] is False
+
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert resp.status_code == 200
+    assert control_id not in {control["id"] for control in resp.json()["controls"]}

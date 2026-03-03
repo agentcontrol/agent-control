@@ -541,18 +541,18 @@ def test_list_agents_returns_created_agents(client: TestClient) -> None:
     assert agent1["agent_name"] == "agent-one-01"
     assert agent1["step_count"] == 1  # from make_agent_payload
     assert agent1["evaluator_count"] == 1
-    assert agent1["policy_id"] is None
+    assert agent1["policy_ids"] == []
 
     assert "agent-two-02" in agent_map
     agent2 = agent_map["agent-two-02"]
     assert agent2["agent_name"] == "agent-two-02"
     assert agent2["step_count"] == 2
     assert agent2["evaluator_count"] == 0
-    assert agent2["policy_id"] is None
+    assert agent2["policy_ids"] == []
 
 
 def test_list_agents_with_policy(client: TestClient) -> None:
-    """Test that list agents shows policy_id when assigned."""
+    """Test that list agents shows policy_ids when assigned."""
     # Given: an agent with a policy assigned
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
@@ -563,11 +563,11 @@ def test_list_agents_with_policy(client: TestClient) -> None:
 
     # When: listing agents
     resp = client.get("/api/v1/agents")
-    # Then: the agent shows the policy_id
+    # Then: the agent shows policy_ids
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["agents"]) == 1
-    assert body["agents"][0]["policy_id"] == policy_id
+    assert body["agents"][0]["policy_ids"] == [policy_id]
 
 
 def test_list_agents_pagination(client: TestClient) -> None:

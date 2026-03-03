@@ -58,16 +58,19 @@ test.describe('Control Store Modal', () => {
     }
   });
 
-  test('displays usage counts in Used by column', async ({ mockedPage }) => {
+  test('displays usage attribution in Used by column', async ({
+    mockedPage,
+  }) => {
     const modal = await openControlStoreModal(mockedPage);
 
-    // Two controls are used by one agent each in fixture data
-    await expect(modal.getByText('1 agent')).toHaveCount(2);
+    // Two controls show direct agent-name attribution in fixture data.
+    await expect(modal.getByText('customer-support-bot')).toBeVisible();
+    await expect(modal.getByText('data-analysis-agent')).toBeVisible();
     // One control has no usage and renders as an em dash
     await expect(modal.getByText('—')).toBeVisible();
-    // Agent links are no longer rendered in this column
+    // Attribution is plain text, not links.
     await expect(
-      modal.getByRole('link', { name: 'Customer Support Bot' })
+      modal.getByRole('link', { name: 'customer-support-bot' })
     ).toHaveCount(0);
   });
 

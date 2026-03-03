@@ -378,12 +378,10 @@ async def list_agents(
         active_controls = control_counts_map.get(agent.name, 0)
 
         policy_ids = policy_ids_map.get(agent.name, [])
-        primary_policy_id = policy_ids[0] if policy_ids else None
 
         summaries.append(
             AgentSummary(
                 agent_name=agent.name,
-                policy_id=primary_policy_id,
                 policy_ids=policy_ids,
                 created_at=agent.created_at.isoformat() if agent.created_at else None,
                 step_count=step_count,

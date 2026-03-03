@@ -205,7 +205,7 @@ def control(policy: Optional[str] = None):
 Decorator to protect a function with server-defined controls.
 
 **Parameters:**
-- `policy`: Optional policy name to use (defaults to agent's assigned policy)
+- `policy`: Optional policy label for code readability when multiple policies exist
 
 **Example:**
 ```python

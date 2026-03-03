@@ -21,7 +21,6 @@ import type { StatsResponse } from '@/core/hooks/query-hooks/use-agent-monitor';
 const agentsList: AgentSummary[] = [
   {
     agent_name: 'customer-support-bot',
-    policy_id: 1,
     policy_ids: [1],
     created_at: '2024-01-01T00:00:00Z',
     step_count: 5,
@@ -30,7 +29,6 @@ const agentsList: AgentSummary[] = [
   },
   {
     agent_name: 'data-analysis-agent',
-    policy_id: 2,
     policy_ids: [2],
     created_at: '2024-01-02T00:00:00Z',
     step_count: 3,
@@ -39,7 +37,6 @@ const agentsList: AgentSummary[] = [
   },
   {
     agent_name: 'code-review-assistant',
-    policy_id: 3,
     policy_ids: [3],
     created_at: '2024-01-03T00:00:00Z',
     step_count: 8,
