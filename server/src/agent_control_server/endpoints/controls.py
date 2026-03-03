@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import ValidationError
 from sqlalchemy import Integer, String, delete, func, literal, or_, select, union_all
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
@@ -236,6 +237,15 @@ async def create_control(
     try:
         await db.commit()
         await db.refresh(control)
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+            detail=f"Control with name '{request.name}' already exists",
+            resource="Control",
+            resource_id=request.name,
+            hint="Choose a different name or update the existing control.",
+        )
     except Exception:
         await db.rollback()
         _logger.error(
@@ -497,14 +507,11 @@ async def list_controls(
     Example:
         GET /controls?limit=10&enabled=true&step_type=tool
     """
-    # Get total count (with filters applied)
-    count_query = select(func.count()).select_from(Control)
     query = select(Control).order_by(Control.id.desc())
 
     # Apply cursor
     if cursor is not None:
         query = query.where(Control.id < cursor)
-        count_query = count_query.where(Control.id < cursor)
 
     # Apply name filter (case-insensitive partial match)
     if name is not None:
@@ -943,6 +950,16 @@ async def patch_control(
         try:
             await db.commit()
             _logger.info(f"Updated control '{control.name}' ({control_id})")
+        except IntegrityError:
+            await db.rollback()
+            conflicting_name = request.name or control.name
+            raise ConflictError(
+                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                detail=f"Control with name '{conflicting_name}' already exists",
+                resource="Control",
+                resource_id=conflicting_name,
+                hint="Choose a different name or update the existing control.",
+            )
         except Exception:
             await db.rollback()
             _logger.error(

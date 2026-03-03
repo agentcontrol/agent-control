@@ -6,7 +6,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { useMemo } from 'react';
 
 import type { Control } from '@/core/api/types';
-import type { useRemoveControlFromAgent } from '@/core/hooks/query-hooks/use-delete-control';
+import type { useRemoveControlFromAgent } from '@/core/hooks/query-hooks/use-remove-control-from-agent';
 import type { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 
 import { getStepTypeLabelAndColor } from './utils';

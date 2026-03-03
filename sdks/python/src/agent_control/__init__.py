@@ -18,7 +18,8 @@ Usage:
     async def chat(message: str) -> str:
         return await assistant.respond(message)
 
-    # Apply all controls for this agent
+    # Optional policy label for grouping/readability; control selection still follows
+    # the server's active controls (policy + direct associations).
     @agent_control.control(policy="safety-policy")
     async def process(input: str) -> str:
         return await pipeline.run(input)

@@ -180,7 +180,7 @@ async def _build_overwrite_evaluator_removals(
 ) -> list[InitAgentEvaluatorRemoval]:
     """Build evaluator removal details, including active-control references."""
     if not removed_evaluators:
-        return [InitAgentEvaluatorRemoval(name=name) for name in sorted(removed_evaluators)]
+        return []
 
     try:
         controls = await list_controls_for_agent(

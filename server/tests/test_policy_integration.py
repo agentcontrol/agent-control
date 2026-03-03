@@ -349,6 +349,168 @@ def test_agent_controls_union_across_multiple_policies_with_dedupe(client: TestC
     assert matching_agents[0]["active_controls_count"] == 3
 
 
+def test_remove_one_policy_keeps_controls_from_remaining_policies(client: TestClient) -> None:
+    """Removing one policy should preserve controls inherited from other policies."""
+    agent_name, _ = _create_agent(client)
+    policy_a_id = _create_policy(client, "policy-a")
+    policy_b_id = _create_policy(client, "policy-b")
+
+    shared_control_id = _create_control(client)
+    policy_a_only_control_id = _create_control(client)
+    policy_b_only_control_id = _create_control(client)
+
+    # Policy A: shared + A-only
+    resp = client.post(f"/api/v1/policies/{policy_a_id}/controls/{shared_control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/policies/{policy_a_id}/controls/{policy_a_only_control_id}")
+    assert resp.status_code == 200
+
+    # Policy B: shared + B-only
+    resp = client.post(f"/api/v1/policies/{policy_b_id}/controls/{shared_control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/policies/{policy_b_id}/controls/{policy_b_only_control_id}")
+    assert resp.status_code == 200
+
+    resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_a_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_b_id}")
+    assert resp.status_code == 200
+
+    # Remove only policy A.
+    resp = client.delete(f"/api/v1/agents/{agent_name}/policies/{policy_a_id}")
+    assert resp.status_code == 200
+
+    policies_resp = client.get(f"/api/v1/agents/{agent_name}/policies")
+    assert policies_resp.status_code == 200
+    assert policies_resp.json()["policy_ids"] == [policy_b_id]
+
+    controls_resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert controls_resp.status_code == 200
+    received_control_ids = {control["id"] for control in controls_resp.json()["controls"]}
+    assert received_control_ids == {shared_control_id, policy_b_only_control_id}
+
+
+def test_remove_all_policies_preserves_direct_controls(client: TestClient) -> None:
+    """Removing all policy links should keep direct agent-control associations active."""
+    agent_name, _ = _create_agent(client)
+    policy_id = _create_policy(client)
+    policy_control_id = _create_control(client)
+    direct_control_id = _create_control(client)
+
+    resp = client.post(f"/api/v1/policies/{policy_id}/controls/{policy_control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{direct_control_id}")
+    assert resp.status_code == 200
+
+    resp = client.delete(f"/api/v1/agents/{agent_name}/policies")
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    policies_resp = client.get(f"/api/v1/agents/{agent_name}/policies")
+    assert policies_resp.status_code == 200
+    assert policies_resp.json()["policy_ids"] == []
+
+    controls_resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert controls_resp.status_code == 200
+    assert {control["id"] for control in controls_resp.json()["controls"]} == {direct_control_id}
+
+
+def test_add_agent_policy_is_idempotent(client: TestClient) -> None:
+    """Adding the same policy association twice should not duplicate links."""
+    agent_name, _ = _create_agent(client)
+    policy_id = _create_policy(client)
+
+    resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_id}")
+    assert resp.status_code == 200
+
+    policies_resp = client.get(f"/api/v1/agents/{agent_name}/policies")
+    assert policies_resp.status_code == 200
+    assert policies_resp.json()["policy_ids"] == [policy_id]
+
+
+def test_add_agent_control_is_idempotent(client: TestClient) -> None:
+    """Adding the same direct control twice should not duplicate active controls."""
+    agent_name, _ = _create_agent(client)
+    control_id = _create_control(client)
+
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert resp.status_code == 200
+
+    controls_resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert controls_resp.status_code == 200
+    controls = controls_resp.json()["controls"]
+    assert {control["id"] for control in controls} == {control_id}
+    assert len(controls) == 1
+
+
+def test_agent_policy_endpoints_return_404_for_missing_resources(client: TestClient) -> None:
+    """Plural policy endpoints should return consistent 404s for missing agent/policy."""
+    existing_agent_name, _ = _create_agent(client)
+    existing_policy_id = _create_policy(client)
+
+    missing_agent_name = "missing-agent-1234"
+    missing_policy_id = 999999
+
+    # Missing agent on add/list/remove-one/remove-all.
+    resp = client.post(f"/api/v1/agents/{missing_agent_name}/policies/{existing_policy_id}")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
+
+    resp = client.get(f"/api/v1/agents/{missing_agent_name}/policies")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
+
+    resp = client.delete(f"/api/v1/agents/{missing_agent_name}/policies/{existing_policy_id}")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
+
+    resp = client.delete(f"/api/v1/agents/{missing_agent_name}/policies")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
+
+    # Missing policy on add/remove-one.
+    resp = client.post(f"/api/v1/agents/{existing_agent_name}/policies/{missing_policy_id}")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "POLICY_NOT_FOUND"
+
+    resp = client.delete(f"/api/v1/agents/{existing_agent_name}/policies/{missing_policy_id}")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "POLICY_NOT_FOUND"
+
+
+def test_agent_control_endpoints_return_404_for_missing_resources(client: TestClient) -> None:
+    """Direct control association endpoints should return 404s for missing agent/control."""
+    existing_agent_name, _ = _create_agent(client)
+    existing_control_id = _create_control(client)
+
+    missing_agent_name = "missing-agent-1234"
+    missing_control_id = 999999
+
+    # Missing agent on add/remove.
+    resp = client.post(f"/api/v1/agents/{missing_agent_name}/controls/{existing_control_id}")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
+
+    resp = client.delete(f"/api/v1/agents/{missing_agent_name}/controls/{existing_control_id}")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
+
+    # Missing control on add/remove.
+    resp = client.post(f"/api/v1/agents/{existing_agent_name}/controls/{missing_control_id}")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
+
+    resp = client.delete(f"/api/v1/agents/{existing_agent_name}/controls/{missing_control_id}")
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
+
+
 def test_agent_gets_controls_from_direct_associations(client: TestClient) -> None:
     """Agent should see controls directly associated with it."""
     agent_name, _ = _create_agent(client)

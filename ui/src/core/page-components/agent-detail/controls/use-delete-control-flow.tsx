@@ -6,7 +6,7 @@ import type { Control } from '@/core/api/types';
 import {
   type RemoveControlFromAgentResult,
   useRemoveControlFromAgent,
-} from '@/core/hooks/query-hooks/use-delete-control';
+} from '@/core/hooks/query-hooks/use-remove-control-from-agent';
 
 type UseDeleteControlFlowParams = {
   agentId: string;

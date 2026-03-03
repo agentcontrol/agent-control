@@ -2,8 +2,8 @@
 
 from typing import Any, cast
 
+from . import agents
 from .client import AgentControlClient
-from .validation import ensure_agent_name
 
 
 async def create_policy(
@@ -171,9 +171,5 @@ async def assign_policy_to_agent(
         httpx.HTTPError: If request fails
         HTTPException 404: Agent or policy not found
     """
-    agent_name_str = ensure_agent_name(agent_name)
-    response = await client.http_client.post(
-        f"/api/v1/agents/{agent_name_str}/policies/{policy_id}"
-    )
-    response.raise_for_status()
-    return cast(dict[str, Any], response.json())
+    # Keep policy module API while delegating to the canonical agents helper.
+    return await agents.add_agent_policy(client, agent_name, policy_id)
