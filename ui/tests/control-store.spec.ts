@@ -68,10 +68,15 @@ test.describe('Control Store Modal', () => {
     await expect(modal.getByText('data-analysis-agent')).toBeVisible();
     // One control has no usage and renders as an em dash
     await expect(modal.getByText('—')).toBeVisible();
-    // Attribution is plain text, not links.
-    await expect(
-      modal.getByRole('link', { name: 'customer-support-bot' })
-    ).toHaveCount(0);
+    // Agent attribution renders as navigation links.
+    const customerSupportLink = modal.getByRole('link', {
+      name: 'customer-support-bot',
+    });
+    await expect(customerSupportLink).toHaveCount(1);
+    await expect(customerSupportLink).toHaveAttribute(
+      'href',
+      '/agents/customer-support-bot'
+    );
   });
 
   test('can search for controls', async ({ mockedPage }) => {
