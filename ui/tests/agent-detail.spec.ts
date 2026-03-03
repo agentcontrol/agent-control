@@ -3,7 +3,7 @@ import type { AgentControlsResponse, GetAgentResponse } from '@/core/api/types';
 import { expect, mockData, mockRoutes, test } from './fixtures';
 
 test.describe('Agent Detail Page', () => {
-  const agentId = 'customer-support-bot';
+  const agentId = 'agent-1';
   const agentUrl = `/agents/${agentId}/controls`;
 
   // Type-safe access to mock agent data
@@ -412,17 +412,24 @@ test.describe('Agent Detail Page', () => {
       }
     );
 
-    await mockedPage.route('**/api/v1/controls/*', async (route, request) => {
-      if (request.method() === 'DELETE') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ success: true }),
-        });
-      } else {
-        await route.continue();
+    await mockedPage.route(
+      '**/api/v1/agents/*/controls/*',
+      async (route, request) => {
+        if (request.method() === 'DELETE') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              removed_direct_association: true,
+              control_still_active: false,
+            }),
+          });
+        } else {
+          await route.continue();
+        }
       }
-    });
+    );
 
     await mockedPage.goto(agentUrl);
 
@@ -439,32 +446,33 @@ test.describe('Agent Detail Page', () => {
     await targetRow.scrollIntoViewIfNeeded();
 
     const deleteButton = targetRow.getByRole('button', {
-      name: 'Delete control',
+      name: 'Remove control from agent',
     });
     await deleteButton.click();
 
     const confirmModal = mockedPage.getByRole('dialog', {
-      name: /Delete control\?/i,
+      name: /Remove control from agent\?/i,
     });
     await expect(confirmModal).toBeVisible();
     await expect(
-      confirmModal.getByText(/This action cannot be undone/)
+      confirmModal.getByText(/does not delete the control globally/i)
     ).toBeVisible();
 
     const deleteRequest = mockedPage.waitForRequest(
       (request) =>
         request.method() === 'DELETE' &&
-        new RegExp(`/api/v1/controls/${deletedControlId}(\\?|$)`).test(
-          request.url()
-        ),
+        new RegExp(
+          `/api/v1/agents/[^/]+/controls/${deletedControlId}(\\?|$)`
+        ).test(request.url()),
       { timeout: 5000 }
     );
 
-    await confirmModal.getByRole('button', { name: 'Delete' }).click();
+    await confirmModal.getByRole('button', { name: 'Remove' }).click();
 
     const request = await deleteRequest;
-    expect(request.url()).toContain(`/api/v1/controls/${deletedControlId}`);
-    expect(new URL(request.url()).searchParams.get('force')).toBe('true');
+    expect(request.url()).toMatch(
+      new RegExp(`/api/v1/agents/[^/]+/controls/${deletedControlId}(\\?|$)`)
+    );
     expect(request.method()).toBe('DELETE');
 
     await expect(confirmModal).not.toBeVisible({ timeout: 5000 });
@@ -638,7 +646,7 @@ test.describe('Agent Detail - Empty State', () => {
       });
     });
 
-    await page.goto('/agents/customer-support-bot/controls');
+    await page.goto('/agents/agent-1/controls');
 
     // Check for empty state message
     await expect(page.getByText('No controls configured')).toBeVisible();

@@ -11,14 +11,14 @@ Usage:
 import asyncio
 import os
 
-from agent_control import Agent, AgentControlClient, agents, controls, policies
+from agent_control import Agent, AgentControlClient, agents, controls
 
 AGENT_ID = "989d84f0-9afe-4fb2-9e9e-e9d076271e29"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
 async def setup_content_controls():
-    """Create PII protection and unauthorized access controls, policy, and assign to agent."""
+    """Create PII protection/unauthorized-access controls and add them directly to the agent."""
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # 1. Register Agent
         agent_name = AGENT_ID
@@ -172,65 +172,35 @@ async def setup_content_controls():
             else:
                 raise
 
-        # 6. Create Policy
+        # 6. Associate controls directly with agent
         try:
-            policy_result = await policies.create_policy(
-                client, name="support-pii-protection-policy"
-            )
-            policy_id = policy_result["policy_id"]
-            print(f"✓ Policy created (ID: {policy_id})")
-        except Exception as e:
-            if "409" in str(e):
-                print(f"⚠️  Policy 'support-pii-protection-policy' already exists.")
-                print("    Cannot proceed - SDK doesn't support looking up policies by name.")
-                print("\n    To fix this, run one of these commands:")
-                print("    1. Delete via server API:")
-                print(f"       curl -X DELETE {SERVER_URL}/api/v1/policies/<policy_id>")
-                print("    2. Or use the server UI to delete the policy")
-                print("\n    Then re-run this script.")
-                raise SystemExit(1)
-            raise
-
-        # 7. Add Controls to Policy
-        try:
-            await policies.add_control_to_policy(client, policy_id, unauthorized_control_id)
-            print(f"✓ Added unauthorized access control to policy")
+            await agents.add_agent_control(client, agent_name, unauthorized_control_id)
+            print("✓ Added unauthorized access control to agent")
         except Exception as e:
             if "409" in str(e) or "already" in str(e).lower():
-                print(f"ℹ️  Unauthorized access control already in policy (OK)")
+                print("ℹ️  Unauthorized access control already associated with agent (OK)")
             else:
-                print(f"❌ Failed to add control to policy: {e}")
+                print(f"❌ Failed to add unauthorized access control to agent: {e}")
                 raise
 
         try:
-            await policies.add_control_to_policy(client, policy_id, pii_control_id)
-            print(f"✓ Added PII detection control to policy")
+            await agents.add_agent_control(client, agent_name, pii_control_id)
+            print("✓ Added PII detection control to agent")
         except Exception as e:
             if "409" in str(e) or "already" in str(e).lower():
-                print(f"ℹ️  PII detection control already in policy (OK)")
+                print("ℹ️  PII detection control already associated with agent (OK)")
             else:
-                print(f"❌ Failed to add control to policy: {e}")
+                print(f"❌ Failed to add PII detection control to agent: {e}")
                 raise
 
         try:
-            await policies.add_control_to_policy(client, policy_id, final_output_control_id)
-            print(f"✓ Added final output validation control to policy")
+            await agents.add_agent_control(client, agent_name, final_output_control_id)
+            print("✓ Added final output validation control to agent")
         except Exception as e:
             if "409" in str(e) or "already" in str(e).lower():
-                print(f"ℹ️  Final output validation control already in policy (OK)")
+                print("ℹ️  Final output validation control already associated with agent (OK)")
             else:
-                print(f"❌ Failed to add control to policy: {e}")
-                raise
-
-        # 8. Assign Policy to Agent
-        try:
-            await policies.assign_policy_to_agent(client, agent_name, policy_id)
-            print(f"✓ Assigned policy to agent")
-        except Exception as e:
-            if "409" in str(e) or "already" in str(e).lower():
-                print(f"ℹ️  Policy already assigned to agent (OK)")
-            else:
-                print(f"❌ Failed to assign policy: {e}")
+                print(f"❌ Failed to add final output validation control to agent: {e}")
                 raise
 
         print("\n✅ Setup complete! You can now run content_agent_protection.py")

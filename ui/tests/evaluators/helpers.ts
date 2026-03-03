@@ -4,7 +4,7 @@
 
 import { expect, type Page } from '@playwright/test';
 
-const AGENT_URL = '/agents/customer-support-bot/controls';
+const AGENT_URL = '/agents/agent-1/controls';
 
 /**
  * Opens the control store and selects an evaluator to create a new control

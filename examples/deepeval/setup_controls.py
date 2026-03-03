@@ -5,8 +5,7 @@ Setup script that creates DeepEval-based controls for the Q&A Agent.
 This script:
 1. Registers the agent with the server
 2. Creates DeepEval GEval evaluator controls for quality checks
-3. Creates a policy and attaches controls
-4. Assigns the policy to the agent
+3. Directly associates controls to the agent
 
 The controls demonstrate using DeepEval's LLM-as-a-judge to enforce:
 - Response coherence
@@ -19,8 +18,6 @@ Run this after starting the server to have a working demo.
 import asyncio
 import os
 import sys
-import uuid
-
 import httpx
 
 # Add the current directory to the path so we can import the evaluator
@@ -148,12 +145,11 @@ DEEPEVAL_CONTROLS = [
 
 async def setup_demo(quiet: bool = False):
     """Set up the demo agent with DeepEval controls."""
-    # Generate the same UUID5 that the SDK generates
-    agent_name = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
+    agent_name = AGENT_ID
 
     print(f"Setting up agent: {AGENT_NAME}")
     print(f"Agent ID: {AGENT_ID}")
-    print(f"Agent UUID: {agent_name}")
+    print(f"Agent Name: {agent_name}")
     print(f"Server URL: {SERVER_URL}")
     print()
 
@@ -176,10 +172,10 @@ async def setup_demo(quiet: bool = False):
                 json={
                     "agent": {
                         "agent_name": agent_name,
-                        "agent_name": AGENT_NAME,
                         "agent_description": AGENT_DESCRIPTION,
+                        "agent_version": "1.0.0",
                     },
-                    "tools": [],
+                    "steps": [],
                 },
             )
             resp.raise_for_status()
@@ -190,48 +186,7 @@ async def setup_demo(quiet: bool = False):
             print(f"❌ Error registering agent: {e}")
             return False
 
-        # Get or create a policy for the agent
-        policy_name = f"policy-{AGENT_ID}"
-        policy_id = None
-
-        # Check if agent already has a policy
-        try:
-            resp = await client.get(f"/api/v1/agents/{agent_name}/policy")
-            if resp.status_code == 200:
-                policy_id = resp.json().get("policy_id")
-                print(f"✓ Found existing policy: {policy_id}")
-        except httpx.HTTPError:
-            pass  # No policy yet
-
-        # Create policy if needed
-        if not policy_id:
-            try:
-                resp = await client.put(
-                    "/api/v1/policies",
-                    json={"name": policy_name},
-                )
-                if resp.status_code == 409:
-                    # Policy name exists but not assigned - create with unique name
-                    import time
-
-                    policy_name = f"policy-{AGENT_ID}-{int(time.time())}"
-                    resp = await client.put(
-                        "/api/v1/policies",
-                        json={"name": policy_name},
-                    )
-                resp.raise_for_status()
-                policy_id = resp.json()["policy_id"]
-                print(f"✓ Created policy: {policy_name}")
-
-                # Assign policy to agent
-                resp = await client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
-                resp.raise_for_status()
-                print(f"✓ Assigned policy to agent")
-            except httpx.HTTPError as e:
-                print(f"❌ Error setting up policy: {e}")
-                return False
-
-        # Create controls and add to policy
+        # Create controls and associate them directly with the agent
         print()
         print("Creating DeepEval controls...")
         controls_created = 0
@@ -270,9 +225,10 @@ async def setup_demo(quiet: bool = False):
                 )
                 resp.raise_for_status()
 
-                # Add control to policy
-                resp = await client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-                resp.raise_for_status()
+                # Associate control directly with the agent
+                resp = await client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+                if resp.status_code not in (200, 409):
+                    resp.raise_for_status()
 
                 status = "✓" if definition.get("enabled") else "○"
                 enabled_text = "enabled" if definition.get("enabled") else "disabled"

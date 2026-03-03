@@ -5,13 +5,12 @@ Script to create, list, update, and manage controls on the server.
 This script demonstrates the full control lifecycle:
 1. Create an agent
 2. Create controls (regex and list)
-3. Create a policy and add controls to it
-4. Assign the policy to the agent
-5. List controls
-6. Update a control
+3. Associate controls directly with the agent
+4. List controls
+5. Update a control
 
 API Structure:
-    Agent → Policy → Controls
+    Agent → Controls
 
 Prerequisites:
     - Agent Control server running at http://localhost:8000
@@ -53,7 +52,6 @@ async def create_agent(client: AgentControlClient) -> str:
             json={
                 "agent": {
                     "agent_name": str(agent_name),
-                    "agent_name": AGENT_NAME,
                     "agent_description": "Demo chatbot for testing controls",
                 },
                 "steps": []
@@ -185,74 +183,27 @@ async def create_list_control(client: AgentControlClient) -> int:
 
 
 
-async def create_policy(client: AgentControlClient, name: str) -> int:
-    """Create a policy."""
-    print("\n" + "=" * 60)
-    print("STEP 4: Creating Policy")
-    print("=" * 60)
-
-    try:
-        response = await client.http_client.put(
-            "/api/v1/policies",
-            json={"name": name}
-        )
-
-        if response.status_code == 409:
-            print(f"  ℹ️  Policy '{name}' already exists")
-            return -1
-
-        response.raise_for_status()
-        policy_id = response.json().get("policy_id")
-
-        print(f"✓ Created policy '{name}' with ID: {policy_id}")
-        return policy_id
-
-    except Exception as e:
-        print(f"✗ Failed to create policy: {e}")
-        raise
-
-
-async def add_control_to_policy(
-    client: AgentControlClient,
-    policy_id: int,
-    control_id: int
-) -> bool:
-    """Add a control directly to a policy."""
-    try:
-        response = await client.http_client.post(
-            f"/api/v1/policies/{policy_id}/controls/{control_id}"
-        )
-        response.raise_for_status()
-        data = response.json()
-        print(f"  ✓ Added control {control_id} to policy {policy_id}")
-        print(f"    Response: {data}")
-        return True
-    except Exception as e:
-        print(f"  ✗ Failed to add control to policy: {e}")
-        return False
-
-
-async def assign_policy_to_agent(
+async def add_control_to_agent(
     client: AgentControlClient,
     agent_name: str,
-    policy_id: int
+    control_id: int,
 ) -> bool:
-    """Assign a policy to an agent."""
+    """Associate a control directly with an agent."""
     print("\n" + "=" * 60)
-    print("STEP 5: Assigning Policy to Agent")
+    print("STEP 4: Associating Control to Agent")
     print("=" * 60)
 
     try:
         response = await client.http_client.post(
-            f"/api/v1/agents/{agent_name}/policy/{policy_id}"
+            f"/api/v1/agents/{agent_name}/controls/{control_id}"
         )
         response.raise_for_status()
         data = response.json()
-        print(f"✓ Assigned policy {policy_id} to agent {agent_name}")
+        print(f"✓ Associated control {control_id} to agent {agent_name}")
         print(f"  Response: {data}")
         return True
     except Exception as e:
-        print(f"✗ Failed to assign policy: {e}")
+        print(f"✗ Failed to associate control to agent: {e}")
         return False
 
 
@@ -379,33 +330,8 @@ async def verify_full_chain(client: AgentControlClient, agent_name: str) -> None
     except Exception as e:
         print(f"   Error: {e}")
 
-    # 2. Get agent's policy
-    print("\n2. Agent's Policy:")
-    try:
-        resp = await client.http_client.get(f"/api/v1/agents/{agent_name}/policy")
-        if resp.status_code == 404:
-            print("   No policy assigned to agent")
-            policy_id = None
-        else:
-            resp.raise_for_status()
-            policy_data = resp.json()
-            policy_id = policy_data.get("policy_id")
-            print(f"   Policy ID: {policy_id}")
-
-            if policy_id:
-                # 3. Get policy's controls
-                print("\n3. Policy's Controls:")
-                resp = await client.http_client.get(f"/api/v1/policies/{policy_id}/controls")
-                resp.raise_for_status()
-                ctrl_data = resp.json()
-                control_ids = ctrl_data.get("control_ids", [])
-                print(f"   Control IDs: {control_ids}")
-    except Exception as e:
-        print(f"   Error: {e}")
-        policy_id = None
-
-    # 4. Final: List agent controls (the API we're testing)
-    print("\n4. Final Agent Controls (via /agents/{id}/controls):")
+    # 2. Final: List agent controls (the API we're testing)
+    print("\n2. Final Agent Controls (via /agents/{id}/controls):")
     try:
         resp = await client.http_client.get(f"/api/v1/agents/{agent_name}/controls")
         resp.raise_for_status()
@@ -460,52 +386,29 @@ async def main():
             await verify_full_chain(client, agent_name)
             return
 
-        # 3. Create policy
-        policy_id = await create_policy(client, "demo-policy")
-        if policy_id == -1:
-            print("\n⚠️  Policy already exists. Running verification...")
-            await verify_full_chain(client, agent_name)
-            return
-
-        # 4. Add controls to policy
-        print("\n  Adding controls to policy...")
-        ok1 = await add_control_to_policy(client, policy_id, regex_control_id)
-        ok2 = await add_control_to_policy(client, policy_id, list_control_id)
+        # 3. Associate controls directly with the agent
+        print("\n  Associating controls directly to agent...")
+        ok1 = await add_control_to_agent(client, agent_name, regex_control_id)
+        ok2 = await add_control_to_agent(client, agent_name, list_control_id)
         if not (ok1 and ok2):
-            print("\n⚠️  Failed to add controls to policy!")
+            print("\n⚠️  Failed to associate one or more controls to agent!")
 
-        # Verify: List controls in policy
-        print("\n  Verifying policy contents...")
+        # Verify: ensure both controls are active on the agent
+        print("\n  Verifying direct control associations...")
         try:
-            resp = await client.http_client.get(
-                f"/api/v1/policies/{policy_id}/controls"
-            )
+            resp = await client.http_client.get(f"/api/v1/agents/{agent_name}/controls")
             resp.raise_for_status()
-            policy_controls = resp.json()
-            print(f"  Policy {policy_id} has controls: {policy_controls}")
-        except Exception as e:
-            print(f"  Failed to verify policy: {e}")
-
-        # 5. Assign policy to agent
-        ok3 = await assign_policy_to_agent(client, agent_name, policy_id)
-        if not ok3:
-            print("\n⚠️  Failed to assign policy to agent!")
-
-        # Verify: Get agent's policy
-        print("\n  Verifying agent policy assignment...")
-        try:
-            resp = await client.http_client.get(
-                f"/api/v1/agents/{agent_name}/policy"
-            )
-            resp.raise_for_status()
-            agent_policy = resp.json()
-            assigned_policy_id = agent_policy.get("policy_id")
-            if assigned_policy_id == policy_id:
-                print(f"  ✓ Agent correctly assigned to policy {policy_id}")
+            active_controls = resp.json().get("controls", [])
+            active_ids = {control.get("id") for control in active_controls}
+            expected_ids = {regex_control_id, list_control_id}
+            if expected_ids.issubset(active_ids):
+                print(f"  ✓ Agent has expected control IDs: {sorted(expected_ids)}")
             else:
-                print(f"  ⚠️  Agent assigned to policy {assigned_policy_id}, expected {policy_id}")
+                print(
+                    f"  ⚠️  Active control IDs are {sorted(active_ids)}, expected at least {sorted(expected_ids)}"
+                )
         except Exception as e:
-            print(f"  ✗ Failed to verify agent policy: {e}")
+            print(f"  ✗ Failed to verify direct control associations: {e}")
 
         # 6. List controls
         await list_agent_controls(client, agent_name)
@@ -533,7 +436,7 @@ Controls created for agent '{AGENT_NAME}':
    - Keywords: DROP, DELETE, TRUNCATE, ALTER, GRANT, REVOKE, EXECUTE, SHUTDOWN, BACKUP
 
 API Flow:
-  Agent → Policy → Controls
+  Agent → Controls
 
 Now run the agent demo:
   uv run python examples/agent_control_demo/demo_agent.py

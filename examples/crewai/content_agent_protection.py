@@ -298,7 +298,7 @@ Keep the response under 150 words and be friendly."""
                 print("\n🚫 [LAYER 2: Agent Control POST] BLOCKED")
                 print(f"   Reason: {e.message}")
                 print("   Tool executed but output contained violations")
-                print("   LLM generated content that violated policies")
+                print("   LLM generated content that violated controls")
                 stage = "POST-execution"
 
             error_msg = f"🚫 SECURITY VIOLATION ({stage}): {e.message}\n\nThis request has been logged for security review."
@@ -377,7 +377,7 @@ def create_support_crew():
         goal="Provide helpful customer support while protecting user privacy and data security",
         backstory=(
             "You are an experienced customer support agent who helps customers with their questions. "
-            "You are friendly, professional, and always respect customer privacy and data security policies."
+            "You are friendly, professional, and always respect customer privacy and data security controls."
         ),
         tools=[ticket_handler_tool],
         verbose=True

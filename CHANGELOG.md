@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v6.1.0 (2026-03-03)
+
+### Bug Fixes
+
+- **docs**: Add setup script ([#49](https://github.com/agentcontrol/agent-control/pull/49),
+  [`7a212c3`](https://github.com/agentcontrol/agent-control/commit/7a212c3d182ba3e07e56b0131957315b788f553a))
+
+- **sdk**: 54253 add steer action and example
+  ([#38](https://github.com/agentcontrol/agent-control/pull/38),
+  [`bf2380a`](https://github.com/agentcontrol/agent-control/commit/bf2380aea5c879c77feb8f84a7fa14be5aa658b8))
+
+### Features
+
+- **sdk**: Refresh controls in a background loop
+  ([#43](https://github.com/agentcontrol/agent-control/pull/43),
+  [`03f826d`](https://github.com/agentcontrol/agent-control/commit/03f826d3e02f844d81c1a70ae4ea621a1788f9c7))
+
+
 ## v6.0.0 (2026-02-27)
 
 ### Bug Fixes

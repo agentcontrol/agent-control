@@ -155,9 +155,11 @@ async def assign_policy_to_agent(
     policy_id: int
 ) -> dict[str, Any]:
     """
-    Assign a policy to an agent.
+    Assign a single policy to an agent via compatibility endpoint.
 
-    This makes the policy active for the agent. Any existing policy assignment is replaced.
+    This call uses replace semantics for backward compatibility:
+    existing policy associations are removed and replaced with ``policy_id``.
+    For additive behavior, use ``agents.add_agent_policy(...)``.
 
     Args:
         client: AgentControlClient instance
@@ -171,9 +173,9 @@ async def assign_policy_to_agent(
         httpx.HTTPError: If request fails
         HTTPException 404: Agent or policy not found
     """
-    agent_name_str = ensure_agent_name(agent_name)
+    normalized_name = ensure_agent_name(agent_name)
     response = await client.http_client.post(
-        f"/api/v1/agents/{agent_name_str}/policy/{policy_id}"
+        f"/api/v1/agents/{normalized_name}/policy/{policy_id}"
     )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())

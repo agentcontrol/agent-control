@@ -9,16 +9,15 @@ These tests verify the full agent lifecycle:
 
 import uuid
 
-import pytest
-
 import agent_control
+import pytest
 from agent_control_models.server import AgentControlsResponse
 
 
 @pytest.mark.asyncio
 async def test_agent_registration_workflow(
     client: agent_control.AgentControlClient,
-    test_agent_id: str,
+    test_agent_name: str,
     sample_steps: list
 ) -> None:
     """
@@ -198,8 +197,106 @@ async def test_convenience_get_agent_function(
 
 
 @pytest.mark.asyncio
+async def test_convenience_agent_association_functions(
+    test_agent: dict,
+    test_policy: dict,
+    test_control: dict,
+    server_url: str,
+    api_key: str | None,
+) -> None:
+    """Top-level convenience helpers support multi-policy and direct controls."""
+    agent_name = test_agent["agent_name"]
+    policy_id = test_policy["policy_id"]
+    control_id = test_control["control_id"]
+
+    control_data = {
+        "description": "Integration test control",
+        "enabled": True,
+        "execution": "server",
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
+        "selector": {"path": "input"},
+        "evaluator": {
+            "name": "regex",
+            "config": {"pattern": ".*"},
+        },
+        "action": {"decision": "allow"},
+        "tags": ["test"],
+    }
+
+    add_policy_result = await agent_control.add_agent_policy(
+        agent_name,
+        policy_id,
+        server_url=server_url,
+        api_key=api_key,
+    )
+    assert add_policy_result["success"] is True
+
+    policies_result = await agent_control.get_agent_policies(
+        agent_name,
+        server_url=server_url,
+        api_key=api_key,
+    )
+    assert policy_id in policies_result["policy_ids"]
+
+    add_control_result = await agent_control.add_agent_control(
+        agent_name,
+        control_id,
+        server_url=server_url,
+        api_key=api_key,
+    )
+    assert add_control_result["success"] is True
+
+    async with agent_control.AgentControlClient(
+        base_url=server_url,
+        api_key=api_key,
+    ) as client:
+        await agent_control.controls.set_control_data(client, control_id, control_data)
+        controls_result = await agent_control.agents.list_agent_controls(client, agent_name)
+    control_ids = {item["id"] for item in controls_result["controls"]}
+    assert control_id in control_ids
+
+    remove_control_result = await agent_control.remove_agent_control(
+        agent_name,
+        control_id,
+        server_url=server_url,
+        api_key=api_key,
+    )
+    assert remove_control_result["success"] is True
+    assert remove_control_result["removed_direct_association"] is True
+
+    remove_policy_result = await agent_control.remove_agent_policy_association(
+        agent_name,
+        policy_id,
+        server_url=server_url,
+        api_key=api_key,
+    )
+    assert remove_policy_result["success"] is True
+
+    # Re-associate then clear all to verify remove_all convenience path.
+    await agent_control.add_agent_policy(
+        agent_name,
+        policy_id,
+        server_url=server_url,
+        api_key=api_key,
+    )
+    clear_result = await agent_control.remove_all_agent_policies(
+        agent_name,
+        server_url=server_url,
+        api_key=api_key,
+    )
+    assert clear_result["success"] is True
+
+    policies_after_clear = await agent_control.get_agent_policies(
+        agent_name,
+        server_url=server_url,
+        api_key=api_key,
+    )
+    assert policies_after_clear["policy_ids"] == []
+
+
+@pytest.mark.asyncio
 async def test_init_function_workflow(
-    test_agent_id: str,
+    test_agent_name: str,
     server_url: str,
     api_key: str | None,
     sample_steps: list,
@@ -214,7 +311,7 @@ async def test_init_function_workflow(
     """
     # Initialize agent
     agent = agent_control.init(
-        agent_name=test_agent_id,
+        agent_name=test_agent_name,
         agent_description="Testing init function",
         agent_version="1.0.0",
         server_url=server_url,
@@ -226,7 +323,7 @@ async def test_init_function_workflow(
 
     # Verify agent instance
     assert agent is not None
-    assert agent.agent_name == test_agent_id
+    assert agent.agent_name == test_agent_name
     assert hasattr(agent, "agent_name")
 
     # Verify current_agent()

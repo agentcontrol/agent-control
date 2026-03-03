@@ -9,15 +9,15 @@ import type {
 /**
  * Query hook to fetch active controls for an agent
  *
- * @param agentName - Immutable agent name (required)
+ * @param agentId - UUID of the agent (required)
  */
 export function useAgentControls(
-  agentName: GetAgentControlsPathParams['agent_name']
+  agentId: GetAgentControlsPathParams['agent_name']
 ) {
   return useQuery<AgentControlsResponse>({
-    queryKey: ['agent', agentName, 'controls'],
+    queryKey: ['agent', agentId, 'controls'],
     queryFn: async () => {
-      const { data, error } = await api.agents.getControls(agentName);
+      const { data, error } = await api.agents.getControls(agentId);
       if (error) throw error;
       return data;
     },

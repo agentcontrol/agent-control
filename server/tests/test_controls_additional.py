@@ -2,19 +2,24 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import AsyncGenerator
 from copy import deepcopy
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from agent_control_server.db import get_async_db
 from agent_control_server.models import Control
 
 from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_server.endpoints import controls as controls_module
-from agent_control_server.models import Control
+from agent_control_server.main import app
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -30,6 +35,71 @@ def _create_control(client: TestClient, name: str | None = None) -> tuple[int, s
 def _set_control_data(client: TestClient, control_id: int, data: dict) -> None:
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": data})
     assert resp.status_code == 200, resp.text
+
+
+def test_create_control_integrity_error_returns_conflict(client: TestClient) -> None:
+    """DB uniqueness violations during create should be surfaced as 409 conflicts."""
+
+    async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
+        mock_session = AsyncMock(spec=AsyncSession)
+        existing_result = MagicMock()
+        existing_result.first.return_value = None
+
+        mock_session.execute = AsyncMock(return_value=existing_result)
+        mock_session.add = MagicMock()
+        mock_session.refresh = AsyncMock()
+        mock_session.commit = AsyncMock(
+            side_effect=IntegrityError(
+                "INSERT INTO controls ...",
+                {"name": "duplicate-control"},
+                Exception("duplicate key value violates unique constraint"),
+            )
+        )
+        yield mock_session
+
+    app.dependency_overrides[get_async_db] = mock_db_integrity_error
+    try:
+        resp = client.put("/api/v1/controls", json={"name": "duplicate-control"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "CONTROL_NAME_CONFLICT"
+
+
+def test_patch_control_rename_integrity_error_returns_conflict(client: TestClient) -> None:
+    """DB uniqueness violations during rename should be surfaced as 409 conflicts."""
+    control_obj = SimpleNamespace(id=1, name="old-control", data={})
+
+    async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
+        mock_session = AsyncMock(spec=AsyncSession)
+
+        control_lookup_result = MagicMock()
+        control_lookup_result.scalars.return_value.first.return_value = control_obj
+
+        name_lookup_result = MagicMock()
+        name_lookup_result.first.return_value = None
+
+        mock_session.execute = AsyncMock(
+            side_effect=[control_lookup_result, name_lookup_result]
+        )
+        mock_session.commit = AsyncMock(
+            side_effect=IntegrityError(
+                "UPDATE controls ...",
+                {"name": "existing-control"},
+                Exception("duplicate key value violates unique constraint"),
+            )
+        )
+        yield mock_session
+
+    app.dependency_overrides[get_async_db] = mock_db_integrity_error
+    try:
+        resp = client.patch("/api/v1/controls/1", json={"name": "existing-control"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "CONTROL_NAME_CONFLICT"
 
 
 def test_list_controls_filters_and_pagination(client: TestClient) -> None:
@@ -425,6 +495,32 @@ def test_delete_control_force_dissociates(client: TestClient) -> None:
     assert control_id not in list_resp.json()["control_ids"]
 
 
+def test_delete_control_force_dissociates_direct_agent_links(client: TestClient) -> None:
+    # Given: a control directly associated with an agent
+    control_id, _ = _create_control(client)
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert init_resp.status_code == 200
+
+    assoc_resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert assoc_resp.status_code == 200
+
+    # When: force-deleting the control
+    resp = client.delete(f"/api/v1/controls/{control_id}?force=true")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Then: direct agent dissociation details are returned
+    assert body["success"] is True
+    assert body.get("dissociated_from_policies", []) == []
+    assert body.get("dissociated_from_agents", []) == [agent_name]
+
+
 def test_get_control_corrupted_data_returns_none(client: TestClient) -> None:
     # Given: a control with corrupted data in DB
     control_id, control_name = _create_control(client)
@@ -499,11 +595,11 @@ def test_set_control_data_agent_scoped_agent_not_found(client: TestClient) -> No
 def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> None:
     # Given: an agent without the referenced evaluator
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_id": agent_id, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name, "agent_name": agent_name},
             "steps": [],
             "evaluators": [],
         },
@@ -527,11 +623,11 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
 def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> None:
     # Given: an agent with evaluator schema requiring "pattern"
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_id": agent_id, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name, "agent_name": agent_name},
             "steps": [],
             "evaluators": [
                 {
@@ -617,11 +713,11 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
 ) -> None:
     # Given: an agent whose stored data is corrupted
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_id": agent_id, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name, "agent_name": agent_name},
             "steps": [],
             "evaluators": [{"name": "custom", "config_schema": {"type": "object"}}],
         },
@@ -631,7 +727,7 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE agents SET data = CAST(:data AS JSONB) WHERE name = :id"),
-            {"data": json.dumps({"bad": "data"}), "id": agent_id},
+            {"data": json.dumps({"bad": "data"}), "id": agent_name},
         )
 
     control_id, _ = _create_control(client)

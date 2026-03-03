@@ -20,13 +20,13 @@ async def test_list_agent_controls_typed_calls_controls_endpoint() -> None:
     response.raise_for_status = Mock()
     response.json = Mock(return_value=response_payload)
     client = SimpleNamespace(http_client=SimpleNamespace(get=AsyncMock(return_value=response)))
-    agent_id = str(uuid4())
+    agent_name = str(uuid4())
 
     # WHEN: typed controls are requested.
-    result = await agent_control.agents.list_agent_controls_typed(client, agent_id)
+    result = await agent_control.agents.list_agent_controls_typed(client, agent_name)
 
     # THEN: wrapper calls the expected endpoint and returns a typed result.
-    client.http_client.get.assert_awaited_once_with(f"/api/v1/agents/{agent_id}/controls")
+    client.http_client.get.assert_awaited_once_with(f"/api/v1/agents/{agent_name}/controls")
     assert isinstance(result.controls, list)
 
 

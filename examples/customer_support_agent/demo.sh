@@ -222,13 +222,13 @@ setup_demo_controls() {
     python setup_demo_controls.py
 }
 
-# Agent UUID used by the demo (must match support_agent.py)
-get_agent_uuid() {
+# Agent name used by the demo (must match support_agent.py)
+get_agent_name() {
     echo "646d5dea-c2e6-4453-b446-7035482b38e4"
 }
 
 show_observability_stats() {
-    local agent_name=$(get_agent_uuid)
+    local agent_name=$(get_agent_name)
     local server_url="${AGENT_CONTROL_URL:-http://localhost:8000}"
 
     echo ""

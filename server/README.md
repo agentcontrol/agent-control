@@ -157,13 +157,13 @@ GET /api/v1/evaluators
 
 ```bash
 # Register or update agent
-POST /api/v1/agents/init
+POST /api/v1/agents/initAgent
 Body: { "agent": {...}, "tools": [...], "force_replace": false }
 
 # Get agent
 GET /api/v1/agents/{agent_name}
 
-# List controls for agent (based on assigned policy)
+# List controls for agent (union of policy-associated + directly associated controls)
 GET /api/v1/agents/{agent_name}/controls
 ```
 
@@ -198,8 +198,11 @@ Body: { "name": "my-policy", "description": "..." }
 # List policies
 GET /api/v1/policies
 
-# Assign policy to agent
-POST /api/v1/policies/{policy_id}/agents/{agent_name}
+# Associate policy with agent (additive; policy is optional)
+POST /api/v1/agents/{agent_name}/policies/{policy_id}
+
+# Associate control directly with agent
+POST /api/v1/agents/{agent_name}/controls/{control_id}
 
 # Add control to policy
 POST /api/v1/policies/{policy_id}/controls/{control_id}

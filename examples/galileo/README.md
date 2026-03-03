@@ -41,7 +41,7 @@ The demo tests various inputs against a pre-configured toxicity detection stage:
 
 ### Central vs Local Stages
 
-- **Central Stage** (used in this demo): Rulesets and policies are pre-configured on the Galileo server. Simply reference the stage by name.
+- **Central Stage** (used in this demo): Rulesets are pre-configured on the Galileo server. Simply reference the stage by name.
 - **Local Stage**: Define rulesets at runtime in your code (see evaluator documentation).
 
 ### Expected Output

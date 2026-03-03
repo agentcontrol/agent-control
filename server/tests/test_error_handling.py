@@ -32,10 +32,10 @@ def test_init_agent_rollback_on_create_failure(
     """Test that init_agent rolls back transaction when commit fails on create."""
     # Given: a valid agent init payload
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     payload = {
         "agent": {
-            "agent_id": agent_id,
+            "agent_name": agent_name,
             "agent_name": agent_name,
             "agent_description": "test",
             "agent_version": "1.0",
@@ -63,7 +63,7 @@ def test_delete_agent_policy_rollback_on_failure(
     # Given: an agent with an assigned policy
     agent_payload = {
         "agent": {
-            "agent_id": str(uuid.uuid4()),
+            "agent_name": str(uuid.uuid4()),
             "agent_name": f"test-agent-{uuid.uuid4()}",
             "agent_description": "test",
             "agent_version": "1.0",
@@ -73,14 +73,14 @@ def test_delete_agent_policy_rollback_on_failure(
     }
     r1 = client.post("/api/v1/agents/initAgent", json=agent_payload)
     assert r1.status_code == 200
-    agent_id = agent_payload["agent"]["agent_name"]
+    agent_name = agent_payload["agent"]["agent_name"]
 
     policy_name = f"test-policy-{uuid.uuid4()}"
     r2 = client.put("/api/v1/policies", json={"name": policy_name})
     assert r2.status_code == 200
     policy_id = r2.json()["policy_id"]
 
-    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assign_resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
     assert assign_resp.status_code == 200
 
     # And: a database session that fails on commit
@@ -89,7 +89,7 @@ def test_delete_agent_policy_rollback_on_failure(
 
     with Session(db_engine) as session:
         existing_agent = (
-            session.query(Agent).filter(Agent.name == agent_id).first()
+            session.query(Agent).filter(Agent.name == agent_name).first()
         )
         assert existing_agent is not None
 
@@ -106,7 +106,7 @@ def test_delete_agent_policy_rollback_on_failure(
         # When: deleting policy and commit fails
         app.dependency_overrides[get_async_db] = mock_db_for_delete_policy
         try:
-            resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
+            resp = client.delete(f"/api/v1/agents/{agent_name}/policy")
         finally:
             app.dependency_overrides.clear()
 
@@ -121,10 +121,10 @@ def test_init_agent_rollback_on_update_failure(
     """Test that init_agent rolls back transaction when commit fails on update."""
     # Given: an existing agent
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     payload = {
         "agent": {
-            "agent_id": agent_id,
+            "agent_name": agent_name,
             "agent_name": agent_name,
             "agent_description": "test",
             "agent_version": "1.0",
@@ -221,10 +221,10 @@ def test_patch_agent_rollback_on_failure(
     """Test that patch_agent rolls back when commit fails."""
     # Given: an existing agent with a step to remove
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     payload = {
         "agent": {
-            "agent_id": agent_id,
+            "agent_name": agent_name,
             "agent_name": agent_name,
             "agent_description": "test",
             "agent_version": "1.0",
@@ -248,7 +248,7 @@ def test_patch_agent_rollback_on_failure(
 
     with Session(db_engine) as session:
         existing_agent = (
-            session.query(Agent).filter(Agent.name == agent_id).first()
+            session.query(Agent).filter(Agent.name == agent_name).first()
         )
         assert existing_agent is not None
 
@@ -266,7 +266,7 @@ def test_patch_agent_rollback_on_failure(
         app.dependency_overrides[get_async_db] = mock_db_for_patch_agent
         try:
             resp = client.patch(
-                f"/api/v1/agents/{agent_id}",
+                f"/api/v1/agents/{agent_name}",
                 json={"remove_steps": [{"type": "tool", "name": "tool_a"}]},
             )
         finally:
@@ -349,7 +349,7 @@ def test_set_agent_policy_rollback_on_failure(
     # Given: an existing agent and policy
     agent_payload = {
         "agent": {
-            "agent_id": str(uuid.uuid4()),
+            "agent_name": str(uuid.uuid4()),
             "agent_name": f"test-agent-{uuid.uuid4()}",
             "agent_description": "test",
             "agent_version": "1.0",
@@ -359,7 +359,7 @@ def test_set_agent_policy_rollback_on_failure(
     }
     r1 = client.post("/api/v1/agents/initAgent", json=agent_payload)
     assert r1.status_code == 200
-    agent_id = agent_payload["agent"]["agent_name"]
+    agent_name = agent_payload["agent"]["agent_name"]
 
     policy_name = f"test-policy-{uuid.uuid4()}"
     r2 = client.put("/api/v1/policies", json={"name": policy_name})
@@ -373,7 +373,7 @@ def test_set_agent_policy_rollback_on_failure(
     with Session(db_engine) as session:
         existing_agent = (
             session.query(Agent)
-            .filter(Agent.name == agent_id)
+            .filter(Agent.name == agent_name)
             .first()
         )
         existing_policy = (
@@ -406,17 +406,27 @@ def test_set_agent_policy_rollback_on_failure(
             mock_controls_result = MagicMock()
             mock_controls_result.scalars.return_value.unique.return_value.all.return_value = []
 
+            # Mock existing policy associations query
+            mock_existing_policy_assoc_result = MagicMock()
+            mock_existing_policy_assoc_result.all.return_value = []
+
+            # Mock delete/insert association statements
+            mock_mutation_result = MagicMock()
+
             # Return different results for different queries
             mock_session.execute = AsyncMock(side_effect=[
                 mock_agent_result,
                 mock_policy_result,
                 mock_controls_result,
+                mock_existing_policy_assoc_result,
+                mock_mutation_result,
+                mock_mutation_result,
             ])
             yield mock_session
 
         app.dependency_overrides[get_async_db] = mock_db_for_policy_assignment
         try:
-            resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+            resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
             # Then: rollback is called and 500 error is returned
             assert resp.status_code == 500

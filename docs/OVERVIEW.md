@@ -2,7 +2,7 @@
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
-Agent Control provides a policy-based control layer that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules, blocking harmful content, prompt injections, PII leakage, and other risks — all without changing your agent's code.
+Agent Control provides a control-based runtime layer that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules, blocking harmful content, prompt injections, PII leakage, and other risks — all without changing your agent's code.
 
 ---
 
@@ -57,15 +57,12 @@ A **Control Set** is a named group of related controls. Use them to organize con
 | `compliance-controls` | block-pii, block-phi, audit-logging |
 | `quality-controls` | check-hallucination, verify-sources |
 
-### 📜 Policies
+### 🔗 Control Associations
 
-A **Policy** combines one or more Control Sets and is assigned to agents. Policies let you:
-- Reuse control sets across multiple agents
-- Version and audit your safety rules
-- Apply different policies to different environments (dev/staging/prod)
+Controls can be linked directly to agents and reused across multiple agents. This keeps rollout and tuning fast without redeploying application code.
 
 ```
-Policy → Control Sets → Controls → Agents
+Controls → Agents
 ```
 
 ### 🎯 Selectors
@@ -335,14 +332,14 @@ async def chat(message: str) -> str:
 Update controls without redeploying your application. Critical for:
 - Responding to emerging threats
 - Tuning thresholds based on real-world data
-- A/B testing different safety policies
+- A/B testing different safety controls
 
-### 🎯 Centralized Policy Management
-Define controls once, apply them to multiple agents. Security teams can manage policies independently from development teams.
+### 🎯 Centralized Control Management
+Define controls once, apply them to multiple agents. Security teams can manage controls independently from development teams.
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Policy                           │
+│             Control Collection                      │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
 │  │ Control Set │  │ Control Set │  │ Control Set │ │
 │  │  (Safety)   │  │ (Compliance)│  │  (Quality)  │ │
@@ -398,7 +395,7 @@ Choose how to handle failures:
 ┌──────────────────────────────────────────────────────────────────┐
 │                      Agent Control Server                         │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
+│  │  Controls  │  │Control Link│  │ Evaluators │  │   Agents   │  │
 │  │    API     │  │    API     │  │  Registry  │  │    API     │  │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
 └──────────────────────────────────────────────────────────────────┘

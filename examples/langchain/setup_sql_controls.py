@@ -1,7 +1,7 @@
 """
 Setup script for SQL agent controls.
 
-This script creates the SQL control and policy on the server.
+This script creates the SQL control and associates it directly to the agent.
 Run this once before running sql_agent_protection.py.
 
 NOTE: This script is designed to run once. If resources already exist,
@@ -16,7 +16,7 @@ import pathlib
 
 import requests
 
-from agent_control import Agent, AgentControlClient, agents, controls, policies
+from agent_control import Agent, AgentControlClient, agents, controls
 
 AGENT_ID = "edf66504-0db5-4ee8-9e09-3ef37bbb8faa"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
@@ -48,7 +48,7 @@ def setup_database():
 
 
 async def setup_sql_controls():
-    """Create SQL control, policy, and assign to agent."""
+    """Create SQL control and associate it directly with the agent."""
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # 1. Register Agent
         agent_name = AGENT_ID
@@ -128,55 +128,15 @@ async def setup_sql_controls():
             await controls.set_control_data(client, control_id, sql_control_data)
             print("✓ Control configuration updated")
         
-        # 3. Create Policy
+        # 3. Associate control directly with agent
         try:
-            policy_result = await policies.create_policy(
-                client, name="sql-protection-policy"
-            )
-            policy_id = policy_result["policy_id"]
-            print(f"✓ Policy created (ID: {policy_id})")
-        except Exception as e:
-            if "409" in str(e):
-                print("ℹ️  Policy 'sql-protection-policy' already exists, checking agent...")
-                try:
-                    policy_info = await agents.get_agent_policy(client, str(agent_name))
-                    policy_id = policy_info.get("policy_id")
-                    if policy_id is None:
-                        raise ValueError("No policy assigned to agent.")
-                    print(f"ℹ️  Using agent's existing policy (ID: {policy_id})")
-                except Exception:
-                    # Create a new policy name to avoid conflicts and keep script idempotent.
-                    unique_name = f"sql-protection-policy-{uuid.uuid4().hex[:8]}"
-                    print("⚠️  Policy exists but could not resolve its ID.")
-                    print(f"    Creating a new policy '{unique_name}' instead.")
-                    policy_result = await policies.create_policy(
-                        client, name=unique_name
-                    )
-                    policy_id = policy_result["policy_id"]
-                    print(f"✓ Policy created (ID: {policy_id})")
-            else:
-                raise
-        
-        # 4. Add Control to Policy
-        try:
-            await policies.add_control_to_policy(client, policy_id, control_id)
-            print(f"✓ Added control to policy")
+            await agents.add_agent_control(client, agent_name, control_id)
+            print("✓ Associated control directly with agent")
         except Exception as e:
             if "409" in str(e) or "already" in str(e).lower():
-                print(f"ℹ️  Control already in policy (OK)")
+                print("ℹ️  Control already associated with agent (OK)")
             else:
-                print(f"❌ Failed to add control to policy: {e}")
-                raise
-        
-        # 5. Assign Policy to Agent
-        try:
-            await policies.assign_policy_to_agent(client, agent_name, policy_id)
-            print(f"✓ Assigned policy to agent")
-        except Exception as e:
-            if "409" in str(e) or "already" in str(e).lower():
-                print(f"ℹ️  Policy already assigned to agent (OK)")
-            else:
-                print(f"❌ Failed to assign policy: {e}")
+                print(f"❌ Failed to associate control with agent: {e}")
                 raise
         
         print("\n✅ Setup complete! You can now run sql_agent_protection.py")
@@ -192,5 +152,5 @@ if __name__ == "__main__":
     setup_database()
     print()
     
-    # Step 2: Setup controls and policies
+    # Step 2: Setup controls and direct agent associations
     asyncio.run(setup_sql_controls())

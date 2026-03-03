@@ -1,12 +1,12 @@
 """
 Control decorator for server-side protection of agent functions.
 
-This module provides a decorator that applies server-defined policies to agent functions.
-Policies contain multiple controls (regex, list, Luna2, etc.) that are managed server-side.
+This module provides a decorator that applies server-defined controls to agent functions.
+Controls can be associated via policies and direct agent-control links.
 
 Architecture:
     SERVER defines: Policies -> Controls (stage, selector, evaluator, action)
-    SDK decorator: just marks WHERE the policy applies
+    SDK decorator: just marks WHERE controls are evaluated
 
 Usage:
     import agent_control
@@ -15,12 +15,12 @@ Usage:
         agent_name="my-agent-identity",
     )
 
-    # Apply the agent's assigned policy
+    # Apply controls associated with the agent
     @agent_control.control()
     async def chat(message: str) -> str:
         return await assistant.respond(message)
 
-    # The server's policy contains controls that define:
+    # Server-side controls define:
     # - stage: "pre" or "post"
     # - selector.path: "input" or "output"
     # - evaluator: regex, list, Luna2 evaluator, etc.
@@ -726,15 +726,14 @@ async def _execute_with_control(
 
 def control(policy: str | None = None, step_name: str | None = None) -> Callable[[F], F]:
     """
-    Decorator to apply server-defined policy at this code location.
+    Decorator to apply server-defined controls at this code location.
 
-    The policy's controls (stage, selector, evaluator, action) are defined
-    on the SERVER. This decorator just marks WHERE to apply the policy.
+    Controls (stage, selector, evaluator, action) are defined on the SERVER.
+    This decorator marks WHERE to evaluate controls for the current agent.
 
     Args:
-        policy: Optional policy name for documentation. The agent's assigned
-                policy is automatically used. This parameter is for clarity
-                in code when multiple policies exist.
+        policy: Optional policy name for documentation. This parameter is for
+                clarity in code when multiple policies exist.
         step_name: Optional custom name for this step. If not provided, uses
                    the function name.
 
@@ -746,20 +745,20 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
 
     How it works:
         1. Before function execution: Calls server with stage="pre"
-           - Server evaluates all "pre" controls in the agent's policy
+           - Server evaluates all matching "pre" controls for the agent
         2. Function executes
         3. After function execution: Calls server with stage="post"
-           - Server evaluates all "post" controls in the agent's policy
+           - Server evaluates all matching "post" controls for the agent
 
     Example:
         import agent_control
 
-        # Initialize agent (connects to server, loads policy)
+        # Initialize agent (connects to server, loads control associations)
         agent_control.init(
             agent_name="my-bot-identity",
         )
 
-        # Apply the agent's policy (all controls)
+        # Apply controls associated with the agent
         @agent_control.control()
         async def chat(message: str) -> str:
             return await assistant.respond(message)
@@ -783,11 +782,12 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
            PUT /api/v1/policies {"name": "safety-policy"}
            POST /api/v1/policies/{policy_id}/controls/{control_id}
 
-        3. Assign policy to agent:
-           POST /api/v1/agents/{agent_name}/policy/{policy_id}
+        3. Associate policy and/or controls with an agent:
+           POST /api/v1/agents/{agent_name}/policies/{policy_id}
+           POST /api/v1/agents/{agent_name}/controls/{control_id}
     """
-    # The policy parameter is for documentation only - the server uses
-    # the agent's assigned policy automatically
+    # The policy parameter is for documentation only - the server evaluates
+    # controls associated with the agent via policy and direct links.
     _ = policy
 
     def decorator(func: F) -> F:

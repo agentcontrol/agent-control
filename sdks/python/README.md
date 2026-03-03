@@ -17,8 +17,8 @@ import agent_control
 
 # Initialize at the base of your agent
 agent_control.init(
-    agent_name="My Customer Service Bot",
-    agent_name="550e8400-e29b-41d4-a716-446655440000"
+    agent_name="550e8400-e29b-41d4-a716-446655440000",
+    agent_description="My Customer Service Bot",
 )
 
 # Use the control decorator
@@ -35,7 +35,6 @@ async def handle_message(message: str):
 import agent_control
 
 agent_control.init(
-    agent_name="Customer Service Bot",
     agent_name="550e8400-e29b-41d4-a716-446655440000",
     agent_description="Handles customer inquiries and support",
     agent_version="2.1.0",
@@ -54,8 +53,8 @@ One line to set up your agent with full protection:
 
 ```python
 agent_control.init(
-    agent_name="...",
     agent_name="550e8400-e29b-41d4-a716-446655440000",
+    agent_description="...",
 )
 ```
 
@@ -103,7 +102,7 @@ Access your agent information:
 ```python
 agent = agent_control.current_agent()
 print(f"Agent: {agent.agent_name}")
-print(f"ID: {agent.agent_name}")
+print(f"Name: {agent.agent_name}")
 print(f"Version: {agent.agent_version}")
 ```
 
@@ -116,8 +115,8 @@ from agent_control import control, ControlViolationError
 
 # Initialize
 agent_control.init(
-    agent_name="Customer Support Bot",
     agent_name="550e8400-e29b-41d4-a716-446655440000",
+    agent_description="Customer Support Bot",
     agent_version="1.0.0"
 )
 
@@ -158,11 +157,15 @@ asyncio.run(main())
 ```python
 def init(
     agent_name: str,
-    agent_name: str | UUID,
     agent_description: Optional[str] = None,
     agent_version: Optional[str] = None,
     server_url: Optional[str] = None,
+    api_key: Optional[str] = None,
     controls_file: Optional[str] = None,
+    steps: Optional[list[dict]] = None,
+    conflict_mode: Literal["strict", "overwrite"] = "overwrite",
+    observability_enabled: Optional[bool] = None,
+    log_config: Optional[dict[str, Any]] = None,
     policy_refresh_interval_seconds: int = 60,
     **kwargs
 ) -> Agent:
@@ -171,12 +174,16 @@ def init(
 Initialize Agent Control with your agent's information.
 
 **Parameters:**
-- `agent_name`: Human-readable name
-- `agent_name`: UUID string (or UUID instance)
+- `agent_name`: Unique identifier for the agent
 - `agent_description`: Optional description
 - `agent_version`: Optional version string
 - `server_url`: Optional server URL (defaults to `AGENT_CONTROL_URL` env var)
+- `api_key`: Optional API key (defaults to `AGENT_CONTROL_API_KEY` env var)
 - `controls_file`: Optional controls file path (auto-discovered if not provided)
+- `steps`: Optional step schemas to register with initAgent
+- `conflict_mode`: initAgent registration conflict mode (`"strict"` or `"overwrite"`)
+- `observability_enabled`: Optional observability toggle
+- `log_config`: Optional SDK logging config
 - `policy_refresh_interval_seconds`: Background cache refresh interval in seconds.
   Default `60`; set to `0` to disable background refresh.
 - `**kwargs`: Additional metadata
@@ -184,7 +191,7 @@ Initialize Agent Control with your agent's information.
 **Returns:** `Agent` instance
 
 When background refresh is enabled, the SDK refreshes cache snapshots via
-`GET /agents/{agent_id}/controls`. On refresh failures, it keeps the previous
+`GET /agents/{agent_name}/controls`. On refresh failures, it keeps the previous
 snapshot (fail-open behavior).
 
 ### Decorator
@@ -198,7 +205,7 @@ def control(policy: Optional[str] = None):
 Decorator to protect a function with server-defined controls.
 
 **Parameters:**
-- `policy`: Optional policy name to use (defaults to agent's assigned policy)
+- `policy`: Optional policy label for code readability when multiple policies exist
 
 **Example:**
 ```python
@@ -290,8 +297,8 @@ import agent_control
 from agent_control import control, ControlViolationError
 
 agent_control.init(
-    agent_name="...",
     agent_name="550e8400-e29b-41d4-a716-446655440000",
+    agent_description="...",
 )
 
 @control()

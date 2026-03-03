@@ -77,12 +77,12 @@ def simulate_database_query(sql: str) -> str:
 # AGENT FUNCTIONS WITH CONTROLS
 # =============================================================================
 
-@control(policy="demo-policy")
+@control()
 async def chat(message: str) -> str:
     """
-    Chat function protected by the demo policy.
-    
-    The policy's 'block-ssn-output' control checks OUTPUT for SSN patterns.
+    Chat function protected by agent-associated controls.
+
+    The 'block-ssn-output' control checks OUTPUT for SSN patterns.
     This prevents PII leakage in responses.
     """
     print(f"  [Agent] Processing message: {message}")
@@ -91,12 +91,12 @@ async def chat(message: str) -> str:
     return response
 
 
-@control(policy="demo-policy")
+@control()
 async def execute_query(query: str) -> str:
     """
-    Database query function protected by the demo policy.
-    
-    The policy's 'block-dangerous-sql' control checks INPUT for dangerous
+    Database query function protected by agent-associated controls.
+
+    The 'block-dangerous-sql' control checks INPUT for dangerous
     SQL keywords and blocks before execution.
     """
     print(f"  [Agent] Executing query: {query}")
@@ -105,12 +105,12 @@ async def execute_query(query: str) -> str:
     return result
 
 
-@control()  # Apply agent's assigned policy
+@control()  # Apply agent-associated controls
 async def process_request(input: str) -> str:
     """
-    General processing function with the agent's policy applied.
-    
-    All controls in the policy are evaluated (both pre and post stage).
+    General processing function with agent-associated controls applied.
+
+    Controls directly associated to the agent are evaluated.
     """
     print(f"  [Agent] Processing request: {input}")
     response = simulate_llm_response(input)
@@ -162,8 +162,8 @@ async def run_demo():
         logger.info(f"Initializing agent: {AGENT_NAME}")
         agent_control.init(
             agent_name=AGENT_ID,
+            agent_description=AGENT_NAME,
             server_url=SERVER_URL,
-            agent_description="Demo chatbot for testing controls"
         )
         logger.info("Agent initialized successfully")
     except Exception as e:

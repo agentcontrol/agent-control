@@ -109,8 +109,7 @@ This creates:
 - Unauthorized access control (blocks requests for other users' data - PRE-execution)
 - PII detection control for tool outputs (blocks SSN, credit cards, emails, phones - POST-execution)
 - Final output validation control (catches agent-generated PII - POST-execution)
-- Policy with all three controls
-- Assigns policy to the customer support crew agent
+- Direct association of all three controls with the customer support crew agent
 
 ## Running the Example
 
@@ -157,7 +156,7 @@ uv run content_agent_protection.py
 🚫 [LAYER 2: Agent Control POST] BLOCKED
    Reason: Control 'pii-detection-output' matched
    Tool executed but output contained violations
-   LLM generated content that violated policies
+   LLM generated content that violated controls
 
 🚫 SECURITY VIOLATION (POST-execution): [Details...]
 ```
@@ -390,7 +389,7 @@ This control catches PII in the final crew output, protecting against orchestrat
 Agent Control works seamlessly **with** CrewAI's agent orchestration:
 
 1. **CrewAI Agent Layer**: Plans tasks, selects tools, manages conversation flow
-2. **Agent Control Layer**: Enforces policies and business rules at tool boundaries
+2. **Agent Control Layer**: Enforces controls and business rules at tool boundaries
 
 ```
 User Request
@@ -475,7 +474,7 @@ Return result or raise ControlViolationError
 ## Files
 
 - `content_agent_protection.py` - Main CrewAI crew with @control()
-- `setup_content_controls.py` - One-time setup for controls/policy
+- `setup_content_controls.py` - One-time setup for controls/direct associations
 - `pyproject.toml` - Dependencies
 - `README.md` - This file
 

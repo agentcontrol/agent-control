@@ -13,7 +13,6 @@ from .utils import VALID_CONTROL_PAYLOAD
 
 def _init_payload(
     *,
-    agent_id: str,
     agent_name: str,
     agent_description: str = "desc",
     agent_version: str = "1.0",
@@ -24,7 +23,6 @@ def _init_payload(
     canonical_name = agent_name.lower()
     payload: dict[str, Any] = {
         "agent": {
-            "agent_id": canonical_name,
             "agent_name": canonical_name,
             "agent_description": agent_description,
             "agent_version": agent_version,
@@ -73,10 +71,8 @@ def _create_policy_with_agent_evaluator_control(
 def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) -> None:
     # Given: an existing agent registration with baseline steps and evaluators.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
 
     create_payload = _init_payload(
-        agent_id=agent_id,
         agent_name=agent_name,
         steps=[
             {
@@ -104,7 +100,6 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
 
     # When: initAgent is called in overwrite mode with an updated registration payload.
     overwrite_payload = _init_payload(
-        agent_id=agent_id,
         agent_name=agent_name,
         agent_description="updated desc",
         agent_version="2.0",
@@ -154,7 +149,7 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
         }
     ]
 
-    get_resp = client.get(f"/api/v1/agents/{agent_id}")
+    get_resp = client.get(f"/api/v1/agents/{agent_name}")
     assert get_resp.status_code == 200
     get_data = get_resp.json()
     assert get_data["agent"]["agent_description"] == "updated desc"
@@ -165,13 +160,11 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
 def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: TestClient) -> None:
     # Given: an agent whose assigned policy contains a control referencing an agent evaluator.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
     evaluator_name = "custom-eval"
 
     init_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(
-            agent_id=agent_id,
             agent_name=agent_name,
             evaluators=[{"name": evaluator_name, "config_schema": {"type": "object"}}],
         ),
@@ -181,14 +174,13 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
     policy_id, control_id, control_name = _create_policy_with_agent_evaluator_control(
         client, agent_name=agent_name, evaluator_name=evaluator_name
     )
-    assign_resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    assign_resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
     assert assign_resp.status_code == 200
 
     # When: overwrite mode removes the evaluator from the incoming registration payload.
     overwrite_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(
-            agent_id=agent_id,
             agent_name=agent_name,
             evaluators=[],
             conflict_mode="overwrite",
@@ -209,7 +201,7 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
         }
     ]
 
-    get_resp = client.get(f"/api/v1/agents/{agent_id}/evaluators")
+    get_resp = client.get(f"/api/v1/agents/{agent_name}/evaluators")
     assert get_resp.status_code == 200
     assert get_resp.json()["evaluators"] == []
 
@@ -217,9 +209,7 @@ def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: Test
 def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> None:
     # Given: an existing agent registration and an equivalent overwrite payload.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
     payload = _init_payload(
-        agent_id=agent_id,
         agent_name=agent_name,
         steps=[{"type": "tool", "name": "tool-a", "input_schema": {}, "output_schema": {}}],
         evaluators=[{"name": "eval-a", "description": "x", "config_schema": {"type": "object"}}],

@@ -9,13 +9,16 @@ import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
+/**
+ * Compatibility response for singular policy assignment endpoint.
+ */
 export type SetPolicyResponse = {
   /**
-   * Previous policy id if one was replaced
+   * Previously associated policy ID, if any
    */
   oldPolicyId?: number | null | undefined;
   /**
-   * Whether the policy was successfully assigned
+   * Whether the request succeeded
    */
   success: boolean;
 };

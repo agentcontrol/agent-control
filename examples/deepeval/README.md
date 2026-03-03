@@ -380,7 +380,7 @@ python -m build      # Creates dist/*.whl
    - Deploy your own agent-control server instance
    - Install custom evaluator packages (wheel, source, or private PyPI)
    - Your agents connect to this server via the SDK
-   - Complete control over evaluators and policies
+   - Complete control over evaluators and controls
 
 2. **Managed Service (If Available)**
    - Use a hosted agent-control service
@@ -455,7 +455,7 @@ You can create specialized evaluators for specific use cases:
 2. **Extensibility**: The `Evaluator` base class makes it easy to integrate any evaluation library
 3. **Configuration**: Pydantic models provide type-safe, validated configuration
 4. **Registration**: The `@register_evaluator` decorator handles registration automatically
-5. **Integration**: Evaluators work seamlessly with agent-control's policy system
+5. **Integration**: Evaluators work seamlessly with agent-control's control system
 6. **Control Logic**: `matched=True` triggers the action (deny/allow), so invert when quality passes
 
 ## Troubleshooting

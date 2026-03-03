@@ -6,7 +6,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { useMemo } from 'react';
 
 import type { Control } from '@/core/api/types';
-import type { useDeleteControl } from '@/core/hooks/query-hooks/use-delete-control';
+import type { useRemoveControlFromAgent } from '@/core/hooks/query-hooks/use-remove-control-from-agent';
 import type { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 
 import { getStepTypeLabelAndColor } from './utils';
@@ -14,7 +14,7 @@ import { getStepTypeLabelAndColor } from './utils';
 type UseControlsTableColumnsParams = {
   agentId: string;
   updateControl: ReturnType<typeof useUpdateControl>;
-  deleteControl: ReturnType<typeof useDeleteControl>;
+  removeControlFromAgent: ReturnType<typeof useRemoveControlFromAgent>;
   onEditControl: (control: Control) => void;
   onDeleteControl: (control: Control) => void;
 };
@@ -22,7 +22,7 @@ type UseControlsTableColumnsParams = {
 export function useControlsTableColumns({
   agentId,
   updateControl,
-  deleteControl,
+  removeControlFromAgent,
   onEditControl,
   onDeleteControl,
 }: UseControlsTableColumnsParams): ColumnDef<Control>[] {
@@ -190,8 +190,8 @@ export function useControlsTableColumns({
         cell: ({ row }: { row: { original: Control } }) => {
           const control = row.original;
           const isDeleting =
-            deleteControl.isPending &&
-            deleteControl.variables?.controlId === control.id;
+            removeControlFromAgent.isPending &&
+            removeControlFromAgent.variables?.controlId === control.id;
           return (
             <Box style={{ display: 'flex', justifyContent: 'center' }}>
               <ActionIcon
@@ -199,7 +199,7 @@ export function useControlsTableColumns({
                 color="red"
                 size="sm"
                 onClick={() => onDeleteControl(control)}
-                aria-label="Delete control"
+                aria-label="Remove control from agent"
                 disabled={isDeleting}
               >
                 <IconTrash size={16} />
@@ -212,8 +212,8 @@ export function useControlsTableColumns({
     [
       agentId,
       updateControl,
-      deleteControl.isPending,
-      deleteControl.variables?.controlId,
+      removeControlFromAgent.isPending,
+      removeControlFromAgent.variables?.controlId,
       onEditControl,
       onDeleteControl,
     ]

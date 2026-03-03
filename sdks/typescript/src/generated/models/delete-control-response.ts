@@ -14,9 +14,17 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type DeleteControlResponse = {
   /**
-   * Policy IDs the control was removed from before deletion
+   * Deprecated: policy IDs the control was removed from before deletion
    */
   dissociatedFrom?: Array<number> | undefined;
+  /**
+   * Agent names the control was removed from before deletion
+   */
+  dissociatedFromAgents?: Array<string> | undefined;
+  /**
+   * Policy IDs the control was removed from before deletion
+   */
+  dissociatedFromPolicies?: Array<number> | undefined;
   /**
    * Whether the control was deleted
    */
@@ -30,11 +38,15 @@ export const DeleteControlResponse$inboundSchema: z.ZodMiniType<
 > = z.pipe(
   z.object({
     dissociated_from: types.optional(z.array(types.number())),
+    dissociated_from_agents: types.optional(z.array(types.string())),
+    dissociated_from_policies: types.optional(z.array(types.number())),
     success: types.boolean(),
   }),
   z.transform((v) => {
     return remap$(v, {
       "dissociated_from": "dissociatedFrom",
+      "dissociated_from_agents": "dissociatedFromAgents",
+      "dissociated_from_policies": "dissociatedFromPolicies",
     });
   }),
 );

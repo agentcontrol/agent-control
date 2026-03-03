@@ -5,15 +5,14 @@ Setup script that creates demo controls for the Customer Support Agent.
 This script:
 1. Registers the agent with the server
 2. Creates demo controls (PII detection, prompt injection)
-3. Creates a policy and attaches controls
-4. Assigns the policy to the agent
+3. Directly associates controls to the agent
 
 Run this after starting the server to have a working demo out of the box.
 """
 
 import asyncio
 import os
-from agent_control import Agent, AgentControlClient, agents, controls, policies
+from agent_control import Agent, AgentControlClient, agents, controls
 
 # Same agent ID as in support_agent.py
 AGENT_ID = "646d5dea-c2e6-4453-b446-7035482b38e4"
@@ -252,41 +251,7 @@ async def setup_demo(quiet: bool = False):
             print(f"  Error registering agent: {e}")
             return False
 
-        # Get or create a policy for the agent
-        policy_name = f"policy-{AGENT_ID}"
-        policy_id = None
-
-        # Check if agent already has a policy
-        try:
-            policy_info = await agents.get_agent_policy(client, agent_name)
-            policy_id = policy_info.get("policy_id")
-        except Exception:
-            policy_id = None  # No policy yet
-
-        # Create policy if needed
-        if not policy_id:
-            try:
-                policy_result = await policies.create_policy(client, policy_name)
-                policy_id = policy_result["policy_id"]
-                print(f"  Created policy: {policy_name}")
-            except Exception as e:
-                if "409" in str(e):
-                    import time
-                    policy_name = f"policy-{AGENT_ID}-{int(time.time())}"
-                    policy_result = await policies.create_policy(client, policy_name)
-                    policy_id = policy_result["policy_id"]
-                    print(f"  Created policy: {policy_name}")
-                else:
-                    print(f"  Error setting up policy: {e}")
-                    return False
-
-            try:
-                await policies.assign_policy_to_agent(client, agent_name, policy_id)
-            except Exception as e:
-                print(f"  Error assigning policy: {e}")
-                return False
-
-        # Create controls and add to policy
+        # Create controls and directly associate them to the agent
         controls_created = 0
         for control_spec in DEMO_CONTROLS:
             control_name = control_spec["name"]
@@ -312,9 +277,11 @@ async def setup_demo(quiet: bool = False):
                     continue
 
             try:
-                await policies.add_control_to_policy(client, policy_id, control_id)
+                await agents.add_agent_control(client, agent_name, control_id)
             except Exception as e:
-                print(f"  Error adding control '{control_name}' to policy: {e}")
+                if "409" in str(e) or "already" in str(e).lower():
+                    continue
+                print(f"  Error adding control '{control_name}' to agent: {e}")
                 continue
 
         if controls_created > 0:

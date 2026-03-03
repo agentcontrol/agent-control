@@ -160,7 +160,6 @@ Initialize once at application startup:
 import agent_control
 
 agent_control.init(
-    agent_name="Customer Support Agent",
     agent_name="646d5dea-c2e6-4453-b446-7035482b38e4",
     agent_description="AI-powered customer support assistant",
 )
@@ -168,7 +167,7 @@ agent_control.init(
 
 This:
 - Registers the agent with the server
-- Fetches the assigned policy and controls
+- Fetches controls associated with the agent
 - Enables the `@control()` decorator
 
 ### 2. Protecting Functions
@@ -209,10 +208,10 @@ except ControlViolationError as e:
 **Important**: Controls are defined on the server via the UI, not in code.
 
 This design provides:
-- **Centralized management**: Security team controls policies without code changes
+- **Centralized management**: Security team controls safeguards without code changes
 - **Instant updates**: Change controls without redeploying agents
 - **Audit trail**: Server logs all control evaluations
-- **Separation of concerns**: Developers focus on features, security team on policies
+- **Separation of concerns**: Developers focus on features, security team on safeguards
 
 ## Project Structure
 

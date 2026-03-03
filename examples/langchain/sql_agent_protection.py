@@ -5,7 +5,7 @@ This example demonstrates using the @control() decorator to protect SQL queries
 with graceful error handling.
 
 PREREQUISITE:
-    Run setup_sql_controls.py FIRST to create the SQL control and policy:
+    Run setup_sql_controls.py FIRST to create the SQL control and direct agent association:
     
         $ uv run setup_sql_controls.py
     

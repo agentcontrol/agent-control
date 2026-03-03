@@ -47,7 +47,7 @@ uv run python examples/agent_control_demo/update_controls.py --block-ssn
 
 **Files:**
 - `setup_controls.py` - Create and configure controls via SDK
-- `demo_agent.py` - Agent that uses `@control` decorator with server-side policies
+- `demo_agent.py` - Agent that uses `@control` decorator with server-side controls
 - `update_controls.py` - Dynamically update controls without code changes
 - `agent_luna_demo.py` - Luna-2 evaluator integration for AI safety checks
 
@@ -126,13 +126,13 @@ See [steer_action_demo/README.md](steer_action_demo/README.md) for details.
 import agent_control
 from agent_control import control, ControlViolationError
 
-# Initialize agent (connects to server, loads policy)
+# Initialize agent (connects to server, loads control associations)
 agent_control.init(
     agent_name="my-bot",
-    agent_name="550e8400-e29b-41d4-a716-446655440000",
+    agent_description="My Bot",
 )
 
-# Apply the agent's assigned policy
+# Apply controls associated with the agent
 @control()
 async def chat(message: str) -> str:
     return await assistant.respond(message)
@@ -150,7 +150,7 @@ except ControlViolationError as e:
 import agent_control
 from agent_control import control, ControlSteerError, ControlViolationError
 
-agent_control.init(agent_name="my-bot", agent_id="...")
+agent_control.init(agent_name="my-bot", agent_description="My Bot")
 
 @control()
 async def generate_content(prompt: str) -> str:

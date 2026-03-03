@@ -65,20 +65,41 @@ export const api = {
       apiClient.GET('/api/v1/agents/{agent_name}/controls', {
         params: { path: { agent_name: agentName } },
       }),
-    setPolicy: (
+    getPolicies: (agentName: GetAgentPathParams['agent_name']) =>
+      apiClient.GET('/api/v1/agents/{agent_name}/policies', {
+        params: { path: { agent_name: agentName } },
+      }),
+    addPolicy: (
       agentName: GetAgentPathParams['agent_name'],
       policyId: number
     ) =>
-      apiClient.POST('/api/v1/agents/{agent_name}/policy/{policy_id}', {
+      apiClient.POST('/api/v1/agents/{agent_name}/policies/{policy_id}', {
         params: { path: { agent_name: agentName, policy_id: policyId } },
       }),
-    getPolicy: (agentName: GetAgentPathParams['agent_name']) =>
-      apiClient.GET('/api/v1/agents/{agent_name}/policy', {
+    removePolicy: (
+      agentName: GetAgentPathParams['agent_name'],
+      policyId: number
+    ) =>
+      apiClient.DELETE('/api/v1/agents/{agent_name}/policies/{policy_id}', {
+        params: { path: { agent_name: agentName, policy_id: policyId } },
+      }),
+    clearPolicies: (agentName: GetAgentPathParams['agent_name']) =>
+      apiClient.DELETE('/api/v1/agents/{agent_name}/policies', {
         params: { path: { agent_name: agentName } },
       }),
-    deletePolicy: (agentName: GetAgentPathParams['agent_name']) =>
-      apiClient.DELETE('/api/v1/agents/{agent_name}/policy', {
-        params: { path: { agent_name: agentName } },
+    addControl: (
+      agentName: GetAgentPathParams['agent_name'],
+      controlId: number
+    ) =>
+      apiClient.POST('/api/v1/agents/{agent_name}/controls/{control_id}', {
+        params: { path: { agent_name: agentName, control_id: controlId } },
+      }),
+    removeControl: (
+      agentName: GetAgentPathParams['agent_name'],
+      controlId: number
+    ) =>
+      apiClient.DELETE('/api/v1/agents/{agent_name}/controls/{control_id}', {
+        params: { path: { agent_name: agentName, control_id: controlId } },
       }),
   },
   evaluators: {
@@ -141,6 +162,10 @@ export const api = {
       apiClient.PUT('/api/v1/policies', { body: { name } }),
     addControl: (policyId: number, controlId: number) =>
       apiClient.POST('/api/v1/policies/{policy_id}/controls/{control_id}', {
+        params: { path: { policy_id: policyId, control_id: controlId } },
+      }),
+    removeControl: (policyId: number, controlId: number) =>
+      apiClient.DELETE('/api/v1/policies/{policy_id}/controls/{control_id}', {
         params: { path: { policy_id: policyId, control_id: controlId } },
       }),
   },
