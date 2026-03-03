@@ -34,7 +34,12 @@ overlay-test:
 	cd ../.. && uv run --package agent-control-server pytest sdks/typescript/tests/test_generate_method_names_overlay.py
 
 name-check:
-	@if rg -n --no-heading 'async\\s+[A-Za-z0-9]+(ApiV[0-9]+|Get|Post|Put|Patch|Delete)\\b' src/generated/sdk; then \
+	@if command -v rg >/dev/null 2>&1; then \
+		MATCH_CMD="rg -n --no-heading"; \
+	else \
+		MATCH_CMD="grep -REn"; \
+	fi; \
+	if eval "$$MATCH_CMD 'async\\s+[A-Za-z0-9]+(ApiV[0-9]+|Get|Post|Put|Patch|Delete)\\b' src/generated/sdk"; then \
 		echo "Found verbose generated method names. Update generate-method-names-overlay.py rules."; \
 		exit 1; \
 	fi

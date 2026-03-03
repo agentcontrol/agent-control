@@ -72,7 +72,7 @@ export class Agents extends ClientSDK {
    *     db: Database session (injected)
    *
    * Returns:
-   *     InitAgentResponse with created flag and active controls (if policy assigned)
+   *     InitAgentResponse with created flag and active controls (policy-derived + direct)
    */
   async init(
     request: models.InitAgentRequest,
