@@ -208,10 +208,10 @@ except ControlViolationError as e:
 **Important**: Controls are defined on the server via the UI, not in code.
 
 This design provides:
-- **Centralized management**: Security team controls policies without code changes
+- **Centralized management**: Security team controls safeguards without code changes
 - **Instant updates**: Change controls without redeploying agents
 - **Audit trail**: Server logs all control evaluations
-- **Separation of concerns**: Developers focus on features, security team on policies
+- **Separation of concerns**: Developers focus on features, security team on safeguards
 
 ## Project Structure
 

@@ -264,7 +264,7 @@ async def main() -> None:
             final_message = result["messages"][-1]
             print(f"Assistant: {final_message.content}")
         except ControlViolationError as exc:
-            print(f"Assistant: Request blocked by control policy: {exc.message}")
+            print(f"Assistant: Request blocked by control rules: {exc.message}")
         except RuntimeError as exc:
             print(
                 "Assistant: Control evaluation is unavailable. "

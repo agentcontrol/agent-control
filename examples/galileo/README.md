@@ -41,7 +41,7 @@ The demo tests various inputs against a pre-configured toxicity detection stage:
 
 ### Central vs Local Stages
 
-- **Central Stage** (used in this demo): Rulesets and policies are pre-configured on the Galileo server. Simply reference the stage by name.
+- **Central Stage** (used in this demo): Rulesets are pre-configured on the Galileo server. Simply reference the stage by name.
 - **Local Stage**: Define rulesets at runtime in your code (see evaluator documentation).
 
 ### Expected Output
@@ -85,4 +85,3 @@ Testing toxicity detection with Central Stage...
 - [Galileo Protect Overview](https://v2docs.galileo.ai/concepts/protect/overview)
 - [Luna-2 Python API Reference](https://v2docs.galileo.ai/sdk-api/python/reference/protect)
 - [Agent Control Luna-2 Evaluator](../../evaluators/extra/galileo/)
-

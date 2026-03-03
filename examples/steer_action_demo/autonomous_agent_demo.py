@@ -134,7 +134,7 @@ def check_fraud_score(amount: float, destination: str) -> float:
     """Check fraud risk based on destination.
 
     Note: Amount thresholds are handled by steer controls, not here.
-    Controls are the source of truth for policy decisions.
+    Controls are the source of truth for transfer decisions.
     """
     agent_think("Running fraud detection...")
     if "north korea" in destination.lower() or "iran" in destination.lower():
@@ -311,7 +311,7 @@ async def process_transfer_node(state: AgentState) -> AgentState:
     else:
         fraud_score = state["fraud_score"]
 
-    agent_think("Checking compliance and policy controls...")
+    agent_think("Checking compliance controls...")
     log_trace("agent-control", "Initiating pre-execution control evaluation")
     agent_reason("All transfers must pass control checks before execution")
 
@@ -341,7 +341,7 @@ async def process_transfer_node(state: AgentState) -> AgentState:
         # Success!
         log_trace("agent-control", "All control checks passed ✓")
         log_trace("execution", "Wire transfer executed successfully")
-        agent_reason("Transfer complies with all policies - proceeding with execution")
+        agent_reason("Transfer complies with all controls - proceeding with execution")
 
         # Show if this was a successful retry after steer correction
         if state.get("verified_2fa") or state.get("manager_approved"):
@@ -372,8 +372,8 @@ async def process_transfer_node(state: AgentState) -> AgentState:
     except ControlViolationError as e:
         # DENY - Hard block
         log_trace("agent-control", f"DENY control triggered: {e.control_name}")
-        log_trace("compliance", "Transaction blocked by compliance policy")
-        agent_reason("This transaction violates a hard policy rule - cannot proceed")
+        log_trace("compliance", "Transaction blocked by compliance control")
+        agent_reason("This transaction violates a hard control rule - cannot proceed")
         agent_say(f"❌ I cannot process this transfer.")
 
         # Control Evaluation Summary
@@ -393,7 +393,7 @@ async def process_transfer_node(state: AgentState) -> AgentState:
             print(f"   \033[90m{e.metadata}\033[0m")
 
         log_trace("audit", f"Blocked transaction: Control={e.control_name}, Amount=${request['amount']:,.2f}")
-        agent_say("This transaction violates compliance policies and cannot be approved under any circumstances.")
+        agent_say("This transaction violates compliance controls and cannot be approved under any circumstances.")
 
         return {
             **state,
@@ -407,7 +407,7 @@ async def process_transfer_node(state: AgentState) -> AgentState:
 
         log_trace("control", f"Steer action triggered by control '{e.control_name}'")
         log_trace("decision", "Transfer cannot proceed without additional approvals")
-        agent_reason("Control policy requires verification before large transactions")
+        agent_reason("Control rules require verification before large transactions")
 
         # Parse structured steering context (deterministic, no LLM needed)
         agent_think("Parsing steering context...")
@@ -492,7 +492,7 @@ async def process_transfer_node(state: AgentState) -> AgentState:
         elif action == "approval" and not state.get("manager_approved"):
             log_escalation("ESCALATING TO: Manager Approval System")
             agent_reason(f"Control requires manager approval for this ${request['amount']:,.2f} transfer")
-            log_trace("compliance", "Manager approval required per control policy")
+            log_trace("compliance", "Manager approval required per control rules")
 
             # Get justification
             if not state.get("justification"):
@@ -544,7 +544,7 @@ Only output the justification, nothing else."""
             if approval.lower() in ['yes', 'y']:
                 log_trace("approval-system", "Manager approved the transfer")
                 log_trace("audit", f"Approval logged: Manager ID: MGR-001, Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-                agent_reason("Manager authorization received - transfer now complies with policy")
+                agent_reason("Manager authorization received - transfer now complies with controls")
                 agent_say("✅ Manager approved!")
 
                 print(f"\n   🔄 \033[1mSTEER CORRECTION COMPLETE - RETRYING TRANSFER\033[0m")

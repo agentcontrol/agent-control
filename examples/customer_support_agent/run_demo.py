@@ -7,7 +7,7 @@ Interactive demo showing the agent-control SDK integration.
 Usage:
     python run_demo.py              # Interactive chat mode (default)
     python run_demo.py --automated  # Run automated test scenarios
-    python run_demo.py --reset      # Reset agent (remove policy/controls) and exit
+    python run_demo.py --reset      # Reset agent (remove control associations) and exit
 
 Test Commands (in interactive mode):
     /test-safe          Run safe message tests
@@ -59,7 +59,7 @@ AGENT_ID = "646d5dea-c2e6-4453-b446-7035482b38e4"
 
 
 async def reset_agent():
-    """Reset the agent by removing policy and direct control associations."""
+    """Reset the agent by removing direct control associations."""
     agent_name = AGENT_ID
     server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
@@ -79,20 +79,6 @@ async def reset_agent():
                 return
             logger.error(f"Error checking agent: {e}")
             print(f"Error checking agent: {e}")
-            return
-
-        # Remove all policies from agent (disconnects policy-derived controls)
-        try:
-            await agents.remove_all_agent_policies(client, agent_name)
-            logger.info("Successfully removed all policies from agent")
-            print("Removed all policies from agent.")
-        except Exception as e:
-            if "404" in str(e):
-                logger.info("Agent not found while removing policies")
-                print("Agent not found - nothing to reset.")
-                return
-            logger.error(f"Error removing policies: {e}")
-            print(f"Error removing policies: {e}")
             return
 
         # Remove direct control associations (idempotent per control ID).
@@ -135,7 +121,7 @@ async def reset_agent():
         )
 
     print()
-    print("Reset complete. The agent now has no policy or direct control associations.")
+    print("Reset complete. The agent now has no direct control associations.")
     print("Run the demo again and add controls via the UI to test.")
 
 
@@ -614,7 +600,7 @@ def main():
     parser.add_argument(
         "--reset",
         action="store_true",
-        help="Reset the agent (remove policy/controls) and exit"
+        help="Reset the agent (remove control associations) and exit"
     )
 
     args = parser.parse_args()

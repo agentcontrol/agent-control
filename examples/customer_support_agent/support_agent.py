@@ -10,7 +10,7 @@ an existing customer support application. It shows:
 4. Realistic enterprise patterns (mock services, multiple tools)
 
 NOTE: Controls are defined on the server via the UI, not in code.
-This keeps security policies centrally managed and separate from code.
+This keeps security controls centrally managed and separate from code.
 """
 
 import asyncio
@@ -49,7 +49,7 @@ class MockLLM:
     RESPONSES = {
         "greeting": "Hello! I'm your customer support assistant. How can I help you today?",
         "refund": "I understand you'd like a refund. Let me look into your order. "
-                  "Our refund policy allows returns within 30 days of purchase.",
+                  "Our refund guidelines allow returns within 30 days of purchase.",
         "technical": "I can help with technical issues. Could you describe the problem "
                      "you're experiencing in more detail?",
         "status": "I'll check the status of your order right away. "

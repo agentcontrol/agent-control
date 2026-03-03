@@ -13,7 +13,7 @@ This example shows all three AgentControl action types in a real-world banking s
 
 ## Understanding Steer Actions
 
-**Steer is a non-fatal control signal** - unlike DENY which blocks execution, STEER provides corrective guidance to help agents satisfy policy requirements:
+**Steer is a non-fatal control signal** - unlike DENY which blocks execution, STEER provides corrective guidance to help agents satisfy control requirements:
 
 - **Philosophy**: Agents are expected to correct the issue and retry
 - **Behavior**: Raises `ControlSteerError` with structured guidance
