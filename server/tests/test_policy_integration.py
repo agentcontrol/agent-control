@@ -294,6 +294,61 @@ def test_control_shared_between_policies(client: TestClient) -> None:
     assert control_id in {c["id"] for c in resp_b.json()["controls"]}
 
 
+def test_agent_controls_union_across_multiple_policies_with_dedupe(client: TestClient) -> None:
+    """Agent controls should be additive across policies and deduplicated by control id."""
+    agent_name, _ = _create_agent(client)
+    policy_a_id = _create_policy(client, "policy-a")
+    policy_b_id = _create_policy(client, "policy-b")
+
+    shared_control_id = _create_control(client)
+    policy_a_only_control_id = _create_control(client)
+    policy_b_only_control_id = _create_control(client)
+
+    # Policy A: shared + A-only
+    resp = client.post(f"/api/v1/policies/{policy_a_id}/controls/{shared_control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/policies/{policy_a_id}/controls/{policy_a_only_control_id}")
+    assert resp.status_code == 200
+
+    # Policy B: shared + B-only
+    resp = client.post(f"/api/v1/policies/{policy_b_id}/controls/{shared_control_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/policies/{policy_b_id}/controls/{policy_b_only_control_id}")
+    assert resp.status_code == 200
+
+    # Associate both policies with the same agent (plural additive endpoint).
+    resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_a_id}")
+    assert resp.status_code == 200
+    resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_b_id}")
+    assert resp.status_code == 200
+
+    # Agent should have both policy associations.
+    policies_resp = client.get(f"/api/v1/agents/{agent_name}/policies")
+    assert policies_resp.status_code == 200
+    assert policies_resp.json()["policy_ids"] == [policy_a_id, policy_b_id]
+
+    # Active controls should be union(policy A, policy B) with shared deduped.
+    controls_resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert controls_resp.status_code == 200
+    controls = controls_resp.json()["controls"]
+    received_control_ids = {control["id"] for control in controls}
+    assert received_control_ids == {
+        shared_control_id,
+        policy_a_only_control_id,
+        policy_b_only_control_id,
+    }
+    assert len(controls) == 3
+
+    # list_agents count should match the deduplicated union.
+    agents_resp = client.get("/api/v1/agents", params={"name": agent_name})
+    assert agents_resp.status_code == 200
+    matching_agents = [
+        agent for agent in agents_resp.json()["agents"] if agent["agent_name"] == agent_name
+    ]
+    assert len(matching_agents) == 1
+    assert matching_agents[0]["active_controls_count"] == 3
+
+
 def test_agent_gets_controls_from_direct_associations(client: TestClient) -> None:
     """Agent should see controls directly associated with it."""
     agent_name, _ = _create_agent(client)

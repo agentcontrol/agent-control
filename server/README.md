@@ -157,7 +157,7 @@ GET /api/v1/evaluators
 
 ```bash
 # Register or update agent
-POST /api/v1/agents/init
+POST /api/v1/agents/initAgent
 Body: { "agent": {...}, "tools": [...], "force_replace": false }
 
 # Get agent

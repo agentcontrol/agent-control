@@ -426,7 +426,7 @@ async def init_agent(
         db: Database session (injected)
 
     Returns:
-        InitAgentResponse with created flag and active controls (if policy assigned)
+        InitAgentResponse with created flag and active controls (policy-derived + direct)
     """
     # Check for evaluator name collisions with built-in evaluators
     builtin_names = _get_builtin_evaluator_names()
