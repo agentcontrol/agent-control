@@ -125,6 +125,24 @@ class AgentControlHook(HookProvider):
     # Helper Methods
     # ============================================================================
 
+    def _invoke_callback(self, control_name: str, stage: str, result: EvaluationResult) -> None:
+        """Helper to invoke violation callback if configured."""
+        if self.on_violation_callback:
+            self.on_violation_callback(
+                {
+                    "agent": self.agent_name,
+                    "control_name": control_name,
+                    "stage": stage,
+                },
+                result,
+            )
+
+    def _raise_error(self, error: Exception, use_runtime_error: bool) -> None:
+        """Helper to raise error (RuntimeError wrapper if requested)."""
+        if use_runtime_error:
+            raise RuntimeError(str(error))
+        raise error
+
     async def _evaluate_and_enforce(
         self,
         step_name: str,
@@ -146,56 +164,44 @@ class AgentControlHook(HookProvider):
             agent_name=self.agent_name,
         )
 
+        # Check for explicit deny/steer actions
         action = _action_error(result)
         if action:
             _, err = action
             if isinstance(err, ControlSteerError):
                 print(f"\n🎯 STEER - {violation_type} needs correction")
                 print(f"   Reason: {err}")
-            if self.on_violation_callback:
-                self.on_violation_callback(
-                    {
-                        "agent": self.agent_name,
-                        "control_name": getattr(err, "control_name", "unknown"),
-                        "stage": stage,
-                    },
-                    result,
-                )
-            if use_runtime_error:
-                raise RuntimeError(str(err))
-            raise err
+
+            control_name = getattr(err, "control_name", "unknown")
+            self._invoke_callback(control_name, stage, result)
+            self._raise_error(err, use_runtime_error)
 
         # Fail closed if unsafe without explicit deny/steer match
         if not result.is_safe:
             control_name = "unknown"
             reason = result.reason
 
-            if result.matches and len(result.matches) > 0:
+            if result.matches:
                 first_match = result.matches[0]
                 control_name = first_match.control_name
 
                 if not reason:
-                    msg = getattr(getattr(first_match, "result", None), "message", None)
+                    # Extract message from first match result
+                    match_result = getattr(first_match, "result", None)
+                    msg = getattr(match_result, "message", None) if match_result else None
                     reason = msg or f"Control '{control_name}' triggered"
 
             print(f"\n🚫 CONTROL VIOLATION - {violation_type} blocked")
             print(f"   Control: {control_name}")
             print(f"   Reason: {reason}")
 
-            if self.on_violation_callback:
-                self.on_violation_callback(
-                    {
-                        "agent": self.agent_name,
-                        "control_name": control_name,
-                        "stage": stage,
-                    },
-                    result,
-                )
+            self._invoke_callback(control_name, stage, result)
 
             error_msg = f"Policy violation [{control_name}]: {reason}"
-            if use_runtime_error:
-                raise RuntimeError(error_msg)
-            raise agent_control.ControlViolationError(message=error_msg)
+            self._raise_error(
+                agent_control.ControlViolationError(message=error_msg),
+                use_runtime_error
+            )
     # ============================================================================
     # Hook Registration
     # ============================================================================
@@ -318,7 +324,7 @@ class AgentControlHook(HookProvider):
         print(f"{'='*70}")
 
         # Extract tool name and input from event
-        tool_name, tool_input = self._extract_tool_data(event, event_phase="pre")
+        tool_name, tool_input = self._extract_tool_data(event)
 
         print(f"🔧 Tool name: {tool_name}")
         # Format tool_input for display (might be dict or string)
@@ -360,7 +366,7 @@ class AgentControlHook(HookProvider):
             print(f"{'='*60}")
 
         # Extract tool name and output from event
-        tool_name, tool_output = self._extract_tool_data(event, event_phase="post")
+        tool_name, tool_output = self._extract_tool_data(event)
 
         if self.enable_logging:
             print(f"🔧 Tool name: {tool_name}")
@@ -378,7 +384,7 @@ class AgentControlHook(HookProvider):
     async def check_before_node(self, event: BeforeNodeCallEvent):
         """Check controls before node call (multi-agent graphs)."""
         input_text, _ = self._extract_messages(event)
-        node_id = event.node_id if hasattr(event, "node_id") else "unknown"
+        node_id = getattr(event, "node_id", "unknown")
 
         await self._evaluate_and_enforce(
             step_name=node_id,
@@ -391,7 +397,7 @@ class AgentControlHook(HookProvider):
     async def check_after_node(self, event: AfterNodeCallEvent):
         """Check controls after node call (multi-agent graphs)."""
         _, output_text = self._extract_messages(event)
-        node_id = event.node_id if hasattr(event, "node_id") else "unknown"
+        node_id = getattr(event, "node_id", "unknown")
 
         await self._evaluate_and_enforce(
             step_name=node_id,
@@ -405,13 +411,27 @@ class AgentControlHook(HookProvider):
     # Message Extraction Utilities
     # ============================================================================
 
+    def _extract_user_message_from_list(self, messages: list | None, reverse: bool = False) -> str:
+        """Extract user message content from Strands message list (TypedDict with role and content)."""
+        if not messages:
+            return ""
+
+        msg_iter = reversed(messages) if reverse else messages
+        for msg in msg_iter:
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                return self._extract_content_text(msg.get("content", ""))
+        return ""
+
     def _extract_messages(self, event: Any) -> tuple[str, str]:
         """
         Extract input and output messages from event.
 
-        Handles different event types:
-        - BeforeInvocationEvent: has event.messages (user input)
-        - AfterModelCallEvent: has event.stop_response.message (model output)
+        Handles all Strands event types based on actual structure:
+        - BeforeInvocationEvent: messages (Optional[list[Message]])
+        - BeforeModelCallEvent: invocation_state (dict, has default_factory)
+        - AfterModelCallEvent: stop_response.message (Optional[ModelStopResponse])
+        - BeforeNodeCallEvent: invocation_state (Optional[dict], defaults to None)
+        - AfterNodeCallEvent: invocation_state (Optional[dict], defaults to None)
 
         Returns:
             Tuple of (input_text, output_text)
@@ -419,138 +439,181 @@ class AgentControlHook(HookProvider):
         input_text = ""
         output_text = ""
 
-        # BeforeInvocationEvent - has messages attribute with user input
-        if hasattr(event, "messages") and event.messages:
+        # BeforeInvocationEvent - messages is Optional (list[Message] | None)
+        if isinstance(event, BeforeInvocationEvent):
             if self.enable_logging:
                 print(f"📥 Extracting from BeforeInvocationEvent.messages")
-            for msg in event.messages:
-                if isinstance(msg, dict) and msg.get("role") == "user":
-                    content = msg.get("content", "")
-                    input_text = self._extract_content_text(content)
-                    break
-                elif hasattr(msg, "role") and msg.role == "user":
-                    content = msg.content if hasattr(msg, "content") else ""
-                    input_text = self._extract_content_text(content)
-                    break
+            input_text = self._extract_user_message_from_list(event.messages)
 
-        # AfterModelCallEvent - has stop_response.message with model output
-        if hasattr(event, "stop_response") and event.stop_response:
+        # BeforeModelCallEvent - invocation_state has default_factory=dict (always present)
+        elif isinstance(event, BeforeModelCallEvent):
+            if self.enable_logging:
+                print(f"📥 Extracting from BeforeModelCallEvent.invocation_state")
+            if "messages" in event.invocation_state:
+                input_text = self._extract_user_message_from_list(
+                    event.invocation_state["messages"], reverse=True
+                )
+            elif "input" in event.invocation_state:
+                input_text = self._extract_content_text(event.invocation_state["input"])
+
+        # AfterModelCallEvent - stop_response is Optional (ModelStopResponse | None)
+        # ModelStopResponse.message is required Message TypedDict (always present if stop_response exists)
+        elif isinstance(event, AfterModelCallEvent):
             if self.enable_logging:
                 print(f"📤 Extracting from AfterModelCallEvent.stop_response.message")
-            if hasattr(event.stop_response, "message"):
-                output_text = self._extract_content_text(event.stop_response.message)
+            if event.stop_response:
+                # Extract content list directly from Message TypedDict
+                message_content = event.stop_response.message.get("content", [])
+                output_text = self._extract_content_text(message_content)
+
+        # BeforeNodeCallEvent - invocation_state is Optional (dict | None, defaults to None)
+        elif isinstance(event, BeforeNodeCallEvent):
+            if self.enable_logging:
+                print(f"📥 Extracting from BeforeNodeCallEvent.invocation_state")
+            state = event.invocation_state or {}
+            if "messages" in state:
+                input_text = self._extract_user_message_from_list(state["messages"], reverse=True)
+            elif "input" in state:
+                input_text = self._extract_content_text(state["input"])
+
+        # AfterNodeCallEvent - invocation_state is Optional (dict | None, defaults to None)
+        elif isinstance(event, AfterNodeCallEvent):
+            if self.enable_logging:
+                print(f"📤 Extracting from AfterNodeCallEvent.invocation_state")
+            state = event.invocation_state or {}
+            for key in ("output", "result", "response", "messages"):
+                if key in state:
+                    output_text = self._extract_content_text(state[key])
+                    break
 
         if self.enable_logging:
             print(f"📊 Extraction result: input={len(input_text)} chars, output={len(output_text)} chars")
 
         return input_text, output_text
 
-    def _extract_tool_data(self, event: Any, event_phase: str) -> tuple[str, str]:
+    def _extract_tool_data(self, event: BeforeToolCallEvent | AfterToolCallEvent) -> tuple[str, str]:
         """
         Extract tool name and input/output from tool call events.
 
         Handles BeforeToolCallEvent and AfterToolCallEvent from Strands.
 
+        Actual Strands structure:
+        - Both events have: selected_tool (AgentTool | None), tool_use (ToolUse TypedDict)
+        - BeforeToolCallEvent: extract from tool_use["input"]
+        - AfterToolCallEvent: extract from result (ToolResult TypedDict) or exception
+        - ToolUse TypedDict has: name (str), toolUseId (str), input (Any)
+        - ToolResult TypedDict has: content (list[ToolResultContent]), status, toolUseId
+        - AgentTool ABC has: tool_name property
+
         Args:
             event: BeforeToolCallEvent or AfterToolCallEvent
-            event_phase: "pre" tool execution or "post" tool execution to determine what to extract
 
         Returns:
             Tuple of (tool_name, tool_data)
             - tool_name: Name of the tool being called
-            - tool_data: Input parameters (pre) or output result (post)
+            - tool_data: Input parameters (Before) or output result (After)
         """
-        import json
-
-        tool_name = "unknown-tool"
-        tool_data = ""
-
-        # Extract tool name from selected_tool or tool_use
-        if hasattr(event, "selected_tool") and event.selected_tool:
-            # selected_tool is an AgentTool object with name attribute
-            if hasattr(event.selected_tool, "name"):
-                tool_name = event.selected_tool.name
-            elif hasattr(event.selected_tool, "__name__"):
-                tool_name = event.selected_tool.__name__
-        elif hasattr(event, "tool_use") and event.tool_use:
-            # tool_use is a dict with toolName key
-            if isinstance(event.tool_use, dict):
-                tool_name = event.tool_use.get("toolName", "unknown-tool")
-            elif hasattr(event.tool_use, "get"):
-                tool_name = event.tool_use.get("toolName", "unknown-tool")
+        # Extract tool name (both events have selected_tool and tool_use)
+        # Prefer selected_tool.tool_name (AgentTool has tool_name property)
+        if event.selected_tool:
+            tool_name = event.selected_tool.tool_name
+        else:
+            # Fallback to tool_use["name"] (ToolUse is required TypedDict, always present)
+            tool_name = event.tool_use.get("name", "unknown-tool")
 
         if self.enable_logging:
             print(f"🔍 Extracted tool name: {tool_name}")
 
-        # Extract input (pre-stage) or output (post-stage)
-        if event_phase == "pre":
-            # BeforeToolCallEvent - extract tool parameters from tool_use
-            if hasattr(event, "tool_use") and event.tool_use:
-                if isinstance(event.tool_use, dict):
-                    # Get input from tool_use dict
-                    # For tool steps, Step model requires dict input, not JSON string!
-                    tool_input = event.tool_use.get("input", {})
-                    tool_data = tool_input  # Keep as dict for tool steps
-                elif hasattr(event.tool_use, "get"):
-                    tool_input = event.tool_use.get("input", {})
-                    tool_data = tool_input  # Keep as dict for tool steps
+        # Extract input or output based on event type
+        if isinstance(event, BeforeToolCallEvent):
+            # BeforeToolCallEvent - extract from tool_use["input"] (ToolUse is required, always dict)
+            # Keep as dict for Step model (tool steps require dict input, not JSON string)
+            tool_data = event.tool_use.get("input", {})
 
-        else:  # event_phase == "post"
-            # AfterToolCallEvent - extract result
-            if hasattr(event, "result") and event.result:
-                # result is a ToolResult object or dict
-                if isinstance(event.result, dict):
-                    # Get content from result dict
-                    content = event.result.get("content", "")
-                    tool_data = self._extract_content_text(content)
-                elif hasattr(event.result, "content"):
-                    # ToolResult object with content attribute
-                    tool_data = self._extract_content_text(event.result.content)
-                else:
-                    tool_data = str(event.result)
-
-            # Check for exception
-            if hasattr(event, "exception") and event.exception:
+        else:  # AfterToolCallEvent
+            # Check for exception first
+            if event.exception:
                 tool_data = f"ERROR: {str(event.exception)}"
+            else:
+                # Extract from result (ToolResult is required, always dict)
+                # ToolResult has content: list[ToolResultContent]
+                # ToolResultContent TypedDict has: text, json, image, document
+                tool_data = self._extract_content_text(event.result.get("content", []))
 
         if self.enable_logging:
-            # Convert tool_data to string for safe slicing
             tool_data_str = str(tool_data) if isinstance(tool_data, dict) else tool_data
-            print(f"🔍 Extracted tool data ({event_phase}): {tool_data_str[:100]}...")
+            event_type = "pre" if isinstance(event, BeforeToolCallEvent) else "post"
+            print(f"🔍 Extracted tool data ({event_type}): {tool_data_str[:100]}...")
 
         return tool_name, tool_data
 
     def _extract_content_text(self, content: Any) -> str:
         """
-        Extract text from various content formats.
+        Extract text from Strands content structures for control inspection.
 
-        Handles: string, dict with 'content' key, list of content blocks, objects with 'content' attr
+        Handles ContentBlock and ToolResultContent TypedDict structures:
+        - text: Plain text content
+        - citationsContent: Nested text blocks (unwrapped recursively)
+        - toolUse: Tool name (for control traceability)
+        - toolResult: Tool output text (recursively extracted)
+        - json: Structured data (stringified for inspection)
+        - Media blocks (image/video/document): Skipped (not text-inspectable)
+
+        Args:
+            content: Can be:
+                - list[ContentBlock] from Message.content
+                - list[ToolResultContent] from ToolResult.content
+                - str from invocation_state
+                - dict from invocation_state
+
+        Returns:
+            Extracted text string for control evaluation
         """
         if not content:
             return ""
 
-        # String content
+        # String content (from invocation_state)
         if isinstance(content, str):
             return content
 
-        # Dict with 'content' key
-        if isinstance(content, dict):
-            content = content.get("content", content)
-
-        # Object with 'content' attribute
-        if hasattr(content, "content"):
-            content = content.content
-
-        # List of content blocks
+        # List of content blocks (ContentBlock or ToolResultContent TypedDicts)
         if isinstance(content, list):
             text_parts = []
             for block in content:
-                if isinstance(block, dict) and "text" in block:
-                    text_parts.append(block["text"])
-                elif hasattr(block, "text"):
-                    text_parts.append(block.text)
+                if isinstance(block, dict):
+                    # Extract 'text' field (standard text block)
+                    if "text" in block:
+                        text_parts.append(block["text"])
+                    # Extract from citationsContent (nested text blocks)
+                    elif "citationsContent" in block:
+                        citations_block = block["citationsContent"]
+                        if "content" in citations_block:
+                            for citation_item in citations_block["content"]:
+                                if isinstance(citation_item, dict) and "text" in citation_item:
+                                    text_parts.append(citation_item["text"])
+                    # For toolUse, include name for control traceability
+                    elif "toolUse" in block:
+                        tool_name = block["toolUse"].get("name", "unknown")
+                        text_parts.append(f"[tool_use: {tool_name}]")
+                    # For toolResult, recursively extract text from result content
+                    elif "toolResult" in block:
+                        result_content = block["toolResult"].get("content", [])
+                        result_text = self._extract_content_text(result_content)
+                        if result_text:
+                            text_parts.append(result_text)
+                    # Media blocks (image, video, document) - skip, not text-inspectable
                 else:
                     text_parts.append(str(block))
-            return " ".join(text_parts)
+            return "\n".join(text_parts)
+
+        # Dict - single content block or invocation_state value
+        if isinstance(content, dict):
+            # Single ContentBlock with 'text' field
+            if "text" in content:
+                return content["text"]
+            # ToolResultContent with 'json' field - stringify for inspection
+            if "json" in content:
+                import json
+                return json.dumps(content["json"])
 
         return str(content)
