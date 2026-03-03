@@ -159,12 +159,12 @@ Create controls to protect your agent's operations:
 # setup.py - Run once to configure everything
 import asyncio
 from datetime import datetime, UTC
-from agent_control import AgentControlClient, controls, policies, agents
+from agent_control import AgentControlClient, controls, agents
 from agent_control_models import Agent
 
 async def setup():
     async with AgentControlClient() as client:  # Defaults to localhost:8000
-        # 1. Register agent first (required before assigning policy)
+        # 1. Register agent first
         agent = Agent(
             # Your agent's UUID
             agent_name="550e8400-e29b-41d4-a716-446655440000",
@@ -189,26 +189,15 @@ async def setup():
                 "action": {"decision": "deny"}
             }
         )
-        # 3. Create policy
-        policy = await policies.create_policy(client,   name="production-policy")
-
-        # 4. Add control to policy
-        await policies.add_control_to_policy(
+        # 3. Associate control directly with agent
+        await agents.add_agent_control(
             client,
-            policy_id=policy["policy_id"],
-            control_id=control["control_id"]
-        )
-
-        # 5. Assign policy to agent
-        await policies.assign_policy_to_agent(
-            client,
-            agent_name=AGENT_ID,
-            policy_id=policy["policy_id"]
+            agent_name=agent.agent_name,
+            control_id=control["control_id"],
         )
 
         print("✅ Setup complete!")
         print(f"   Control ID: {control['control_id']}")
-        print(f"   Policy ID: {policy['policy_id']}")
 
 asyncio.run(setup())
 ```
@@ -235,7 +224,7 @@ from agent_control import control, ControlViolationError
 
 # Initialize your agent
 agent_control.init(
-    agent_name="550e8400-e29b-41d4-a716-446655440000",
+    agent_name="550e8400-e29b-41d4-a716-446655440000",  # Agent identifier (UUID recommended)
     agent_description="My Chatbot",
 )
 

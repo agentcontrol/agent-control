@@ -6,8 +6,8 @@ This script demonstrates the full control lifecycle:
 1. Create an agent
 2. Create controls (regex and list)
 3. Associate controls directly with the agent
-5. List controls
-6. Update a control
+4. List controls
+5. Update a control
 
 API Structure:
     Agent → Controls
@@ -52,7 +52,6 @@ async def create_agent(client: AgentControlClient) -> str:
             json={
                 "agent": {
                     "agent_name": str(agent_name),
-                    "agent_name": AGENT_NAME,
                     "agent_description": "Demo chatbot for testing controls",
                 },
                 "steps": []

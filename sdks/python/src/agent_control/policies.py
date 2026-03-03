@@ -2,8 +2,8 @@
 
 from typing import Any, cast
 
-from . import agents
 from .client import AgentControlClient
+from .validation import ensure_agent_name
 
 
 async def create_policy(
@@ -155,9 +155,11 @@ async def assign_policy_to_agent(
     policy_id: int
 ) -> dict[str, Any]:
     """
-    Associate a policy with an agent.
+    Assign a single policy to an agent via compatibility endpoint.
 
-    This operation is additive and idempotent. Agents can have multiple policy associations.
+    This call uses replace semantics for backward compatibility:
+    existing policy associations are removed and replaced with ``policy_id``.
+    For additive behavior, use ``agents.add_agent_policy(...)``.
 
     Args:
         client: AgentControlClient instance
@@ -171,5 +173,9 @@ async def assign_policy_to_agent(
         httpx.HTTPError: If request fails
         HTTPException 404: Agent or policy not found
     """
-    # Keep policy module API while delegating to the canonical agents helper.
-    return await agents.add_agent_policy(client, agent_name, policy_id)
+    normalized_name = ensure_agent_name(agent_name)
+    response = await client.http_client.post(
+        f"/api/v1/agents/{normalized_name}/policy/{policy_id}"
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())

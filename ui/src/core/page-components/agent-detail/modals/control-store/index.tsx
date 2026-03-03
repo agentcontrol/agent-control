@@ -1,4 +1,5 @@
 import {
+  Anchor,
   Box,
   Divider,
   Group,
@@ -15,6 +16,7 @@ import { notifications } from '@mantine/notifications';
 import { Button, Table } from '@rungalileo/jupiter-ds';
 import { IconAlertCircle, IconX } from '@tabler/icons-react';
 import { type ColumnDef } from '@tanstack/react-table';
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -276,9 +278,14 @@ export function ControlStoreModal({
           );
         }
         return (
-          <Text size="sm" c="dimmed">
+          <Anchor
+            component={Link}
+            href={`/agents/${usedByAgent.agent_name}`}
+            size="sm"
+            underline="hover"
+          >
             {usedByAgent.agent_name}
-          </Text>
+          </Anchor>
         );
       },
     },

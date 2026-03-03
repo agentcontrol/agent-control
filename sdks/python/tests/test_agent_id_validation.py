@@ -261,4 +261,4 @@ async def test_assign_policy_normalizes_agent_name() -> None:
 
     await policies.assign_policy_to_agent(client, "Agent-Example_01", policy_id=11)
 
-    client.http_client.post.assert_awaited_once_with("/api/v1/agents/agent-example_01/policies/11")
+    client.http_client.post.assert_awaited_once_with("/api/v1/agents/agent-example_01/policy/11")

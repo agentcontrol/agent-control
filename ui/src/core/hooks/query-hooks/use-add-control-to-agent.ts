@@ -87,10 +87,12 @@ export function useAddControlToAgent() {
     },
     onSuccess: (_data, variables) => {
       // Invalidate relevant queries to refetch data
-      queryClient.invalidateQueries({ queryKey: ['controls'] });
       queryClient.invalidateQueries({ queryKey: ['agent', variables.agentId] });
       queryClient.invalidateQueries({
         queryKey: ['agent', variables.agentId, 'controls'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['controls', 'infinite'],
       });
       // Invalidate agents list query to refresh active controls count
       queryClient.invalidateQueries({

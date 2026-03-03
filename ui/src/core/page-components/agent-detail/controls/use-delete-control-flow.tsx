@@ -46,6 +46,8 @@ export function useDeleteControlFlow({
           },
           {
             onSuccess: (result: RemoveControlFromAgentResult) => {
+              // The controls table shows active controls (direct + policy-derived), so
+              // remove-direct can legitimately no-op for policy-derived entries.
               if (!result.removed_direct_association) {
                 notifications.show({
                   title: 'No direct association found',
