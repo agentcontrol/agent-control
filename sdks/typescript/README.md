@@ -143,3 +143,22 @@ Release:
 
 - Package name: `agent-control`
 - Release runbook: `RELEASING.md`
+
+## Semantic Versioning
+
+TypeScript SDK versioning is independent from server/monorepo tags and is automated with `semantic-release`.
+
+Release-triggering commit prefixes for scope `sdk-ts`:
+
+- `feat(sdk-ts): ...` -> minor bump
+- `fix(sdk-ts): ...` -> patch bump
+- `perf(sdk-ts): ...` -> patch bump
+- `refactor(sdk-ts): ...` -> patch bump
+- `chore(sdk-ts): ...` -> patch bump
+- `BREAKING CHANGE` footer or `!` -> major bump
+
+To preview the next computed release locally:
+
+```bash
+pnpm run release:dry-run
+```

@@ -1,10 +1,12 @@
 name: Release TypeScript SDK
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Run npm publish in dry-run mode
+        description: Run semantic-release in dry-run mode
         required: true
         type: boolean
         default: true
@@ -13,14 +15,20 @@ jobs:
   release-sdk-ts:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
+      issues: write
+      pull-requests: write
     env:
       SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
+      NPM_CONFIG_PROVENANCE: "true"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -36,7 +44,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22.14.0"
           registry-url: "https://registry.npmjs.org"
 
       - name: Install pnpm
@@ -66,24 +74,23 @@ jobs:
       - name: Build TypeScript SDK
         run: make sdk-ts-build
 
-      - name: Publish TypeScript SDK (dry run)
-        if: ${{ inputs.dry_run }}
+      - name: Run semantic-release
         working-directory: ./sdks/typescript
-        run: npm publish --dry-run
-
-      - name: Ensure npm token exists
-        if: ${{ !inputs.dry_run }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [[ -z "${NODE_AUTH_TOKEN}" ]]; then
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.dry_run }}" == "true" ]]; then
+            echo "Running semantic-release dry-run."
+            pnpm run release:dry-run
+            exit 0
+          fi
+
+          if [[ -z "${NPM_TOKEN}" ]]; then
             echo "NPM_TOKEN secret is required for publish runs."
             exit 1
           fi
 
-      - name: Publish TypeScript SDK
-        if: ${{ !inputs.dry_run }}
-        working-directory: ./sdks/typescript
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance
+          pnpm run release

@@ -2,13 +2,24 @@
 
 This package publishes to npm as `agent-control`.
 
+## Release policy
+
+- TypeScript SDK releases are independent from server/monorepo version tags.
+- Releases are commit-driven via `semantic-release`.
+- Expected release-triggering commit scopes use `sdk-ts`:
+  - `feat(sdk-ts): ...` -> minor bump
+  - `fix(sdk-ts): ...`, `perf(sdk-ts): ...`, `refactor(sdk-ts): ...`, `chore(sdk-ts): ...` -> patch bump
+  - `BREAKING CHANGE` or `!` -> major bump
+
 ## One-time setup
 
 1. Ensure npm ownership for `agent-control` is configured.
 2. Add repository secret `NPM_TOKEN` with publish permission.
-3. Ensure GitHub Actions has `id-token: write` permission for provenance.
+3. Ensure workflow `.github/workflows/release-sdk-ts.yml` has:
+   - `contents: write` for release commit/tag
+   - `id-token: write` for npm provenance
 
-## Pre-release checklist
+## Pre-release checks
 
 Run from repo root:
 
@@ -21,36 +32,34 @@ This validates:
 - Generated client is current
 - Lint, typecheck, test, and build all pass
 
-## Local package dry run
+## Local semantic-release preview
 
-Run from repo root:
+Run from `sdks/typescript`:
 
 ```bash
-make sdk-ts-publish-dry-run
+pnpm run release:dry-run
 ```
 
-This runs the publish gate checks and then executes `npm publish --dry-run`.
+This previews the next semantic version and release notes without publishing.
 
 ## GitHub Actions release flow
 
-Use workflow `.github/workflows/release-sdk-ts.yml`:
+Workflow: `.github/workflows/release-sdk-ts.yml`
 
-1. Trigger manually with `dry_run=true` first.
-2. Confirm all checks and packaging output are correct.
-3. Trigger again with `dry_run=false` to publish.
+- Automatic publish: runs on `push` to `main`.
+- Manual preview: `workflow_dispatch` with `dry_run=true`.
+- Manual publish: `workflow_dispatch` with `dry_run=false`.
 
-The publish run performs:
-- `make sdk-ts-generate-check` (this generates OpenAPI from server code, then checks SDK/overlay drift)
-- `make sdk-ts-lint`
-- `make sdk-ts-typecheck`
-- `make sdk-ts-test`
-- `make sdk-ts-build`
-- `npm publish --provenance`
+Release job performs:
+- `make sdk-ts-release-check`
+- `semantic-release` (updates `package.json` + `CHANGELOG.md`, creates Git tag/release, publishes to npm)
 
 ## Post-publish verification
 
-1. Install from npm in a clean temp project:
+1. Confirm npm version/dist-tag:
+   - `npm view agent-control version dist-tags --json`
+2. Install from npm in a clean temp project:
    - `npm i agent-control`
-2. Confirm import works:
+3. Confirm import works:
    - `import { AgentControlClient } from "agent-control";`
-3. Verify package metadata on npm and GitHub release notes.
+4. Verify GitHub release/tag and changelog update.
