@@ -1,8 +1,6 @@
 name: Release TypeScript SDK
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -86,6 +84,11 @@ jobs:
             echo "Running semantic-release dry-run."
             pnpm run release:dry-run
             exit 0
+          fi
+
+          if [[ "${{ github.ref_name }}" != "main" ]]; then
+            echo "Publish runs must be dispatched from main. Current ref: ${{ github.ref_name }}"
+            exit 1
           fi
 
           if [[ -z "${NPM_TOKEN}" ]]; then

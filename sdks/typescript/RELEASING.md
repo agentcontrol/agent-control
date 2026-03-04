@@ -46,9 +46,8 @@ This previews the next semantic version and release notes without publishing.
 
 Workflow: `.github/workflows/release-sdk-ts.yml`
 
-- Automatic publish: runs on `push` to `main`.
 - Manual preview: `workflow_dispatch` with `dry_run=true`.
-- Manual publish: `workflow_dispatch` with `dry_run=false`.
+- Manual publish: `workflow_dispatch` with `dry_run=false` from `main`.
 
 Release job performs:
 - `make sdk-ts-release-check`
