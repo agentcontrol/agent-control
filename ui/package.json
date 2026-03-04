@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "help": "npm-scripts-info",
     "dev": "next dev -p 4000",
     "build": "next build",
     "start": "next start",
@@ -17,6 +18,23 @@
     "test:integration:report": "playwright show-report",
     "prettify": "prettier --write .",
     "prettify:check": "prettier --check ."
+  },
+  "scripts-info": {
+    "help": "Show available UI scripts with human-friendly descriptions",
+    "dev": "Start the Next.js dev server on http://localhost:4000",
+    "build": "Build the UI for production",
+    "start": "Start the production Next.js server",
+    "lint": "Run ESLint checks",
+    "lint:fix": "Run ESLint with automatic fixes",
+    "typecheck": "Run TypeScript checks (no emit)",
+    "fetch-api-types": "Regenerate API types from the server OpenAPI schema at localhost:8000",
+    "test:integration": "Run Playwright integration tests",
+    "test:integration:ui": "Run Playwright integration tests in interactive UI mode",
+    "test:integration:headed": "Run Playwright integration tests in headed browser mode",
+    "test:integration:debug": "Run Playwright integration tests in debug mode",
+    "test:integration:report": "Open the last Playwright HTML report",
+    "prettify": "Format the UI codebase with Prettier",
+    "prettify:check": "Check formatting with Prettier without changing files"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.4.0",
@@ -57,6 +75,7 @@
     "eslint-config-next": "16.1.1",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "eslint-plugin-unused-imports": "^4.3.0",
+    "npm-scripts-info": "^0.3.9",
     "openapi-typescript": "^7.10.1",
     "postcss-preset-mantine": "1.17.0",
     "postcss-simple-vars": "7.0.1",
