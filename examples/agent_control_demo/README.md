@@ -16,7 +16,7 @@ Before running this example:
 
 1. **Start the Agent Control server** from the monorepo root:
    ```bash
-   cd server && make run
+    make server-run
    ```
 
 2. **Verify server is running**:
@@ -27,7 +27,6 @@ Before running this example:
 
 3. **Install dependencies** (if not already done from monorepo root):
    ```bash
-   cd /path/to/agent-control
    make sync
    ```
 
@@ -196,7 +195,6 @@ uv run python examples/agent_control_demo/setup_controls.py
 
 **Fix**: Install dependencies from monorepo root:
 ```bash
-cd /path/to/agent-control
 make sync
 ```
 
