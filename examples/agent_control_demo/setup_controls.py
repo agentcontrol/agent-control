@@ -357,7 +357,7 @@ async def main():
         except Exception as e:
             print(f"\n✗ Server not available: {e}")
             print("\nMake sure the server is running:")
-            print("  cd server && make run")
+            print("  make server-run ")
             return
 
         # If verify-only mode, just run verification
