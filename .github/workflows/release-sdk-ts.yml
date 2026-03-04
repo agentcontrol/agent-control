@@ -19,7 +19,8 @@ jobs:
       pull-requests: write
     env:
       SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
-      NPM_CONFIG_PROVENANCE: "true"
+      # npm provenance publish is rejected for private GitHub repositories (E422).
+      NPM_CONFIG_PROVENANCE: "false"
 
     steps:
       - name: Checkout
