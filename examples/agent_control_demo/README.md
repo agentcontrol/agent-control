@@ -178,7 +178,7 @@ export AGENT_CONTROL_URL=http://your-server:8000
 curl http://localhost:8000/health
 
 # If not running, start it
-cd server && make run
+make server-run
 ```
 
 ### Agent Not Found
