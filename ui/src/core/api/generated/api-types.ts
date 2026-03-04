@@ -15,7 +15,7 @@ export interface paths {
      * List all agents
      * @description List all registered agents with cursor-based pagination.
      *
-     *     Returns a summary of each agent including identifier, policy assignment,
+     *     Returns a summary of each agent including identifier, policy associations,
      *     and counts of registered steps and evaluators.
      *
      *     Args:
@@ -134,15 +134,14 @@ export interface paths {
      * List agent's active controls
      * @description List all protection controls active for an agent.
      *
-     *     Controls are inherited from the agent's assigned policy.
-     *     Returns an empty list if the agent has no policy.
+     *     Controls include the union of policy-derived and directly associated controls.
      *
      *     Args:
      *         agent_name: Agent identifier
      *         db: Database session (injected)
      *
      *     Returns:
-     *         AgentControlsResponse with list of controls (empty if no policy)
+     *         AgentControlsResponse with list of active controls
      *
      *     Raises:
      *         HTTPException 404: Agent not found
@@ -151,6 +150,30 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/agents/{agent_name}/controls/{control_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Associate control directly with agent
+     * @description Associate a control directly with an agent (idempotent).
+     */
+    post: operations['add_agent_control_api_v1_agents__agent_name__controls__control_id__post'];
+    /**
+     * Remove direct control association from agent
+     * @description Remove a direct control association from an agent (idempotent).
+     */
+    delete: operations['remove_agent_control_api_v1_agents__agent_name__controls__control_id__delete'];
     options?: never;
     head?: never;
     patch?: never;
@@ -223,6 +246,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/agents/{agent_name}/policies': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List policies associated with agent
+     * @description List policy IDs associated with an agent.
+     */
+    get: operations['get_agent_policies_api_v1_agents__agent_name__policies_get'];
+    put?: never;
+    post?: never;
+    /**
+     * Remove all policy associations from agent
+     * @description Remove all policy associations from an agent.
+     */
+    delete: operations['remove_all_agent_policies_api_v1_agents__agent_name__policies_delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/agents/{agent_name}/policies/{policy_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Associate policy with agent
+     * @description Associate a policy with an agent (idempotent).
+     */
+    post: operations['add_agent_policy_api_v1_agents__agent_name__policies__policy_id__post'];
+    /**
+     * Remove policy association from agent
+     * @description Remove a policy association from an agent.
+     *
+     *     Idempotent for existing resources: removing a non-associated link is a no-op.
+     *     Missing agent/policy resources still return 404.
+     */
+    delete: operations['remove_agent_policy_api_v1_agents__agent_name__policies__policy_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/agents/{agent_name}/policy': {
     parameters: {
       query?: never;
@@ -231,38 +305,15 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Get agent's assigned policy
-     * @description Retrieve the policy currently assigned to an agent.
-     *
-     *     Args:
-     *         agent_name: Agent identifier
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         GetPolicyResponse with policy ID
-     *
-     *     Raises:
-     *         HTTPException 404: Agent not found or agent has no policy assigned
+     * Get agent's assigned policy (compatibility)
+     * @description Compatibility endpoint that returns the first associated policy.
      */
     get: operations['get_agent_policy_api_v1_agents__agent_name__policy_get'];
     put?: never;
     post?: never;
     /**
-     * Remove agent's policy assignment
-     * @description Remove the policy assignment from an agent.
-     *
-     *     The agent will no longer have any protection controls active.
-     *
-     *     Args:
-     *         agent_name: Agent identifier
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         DeletePolicyResponse with success flag
-     *
-     *     Raises:
-     *         HTTPException 404: Agent not found or agent has no policy assigned
-     *         HTTPException 500: Database error during removal
+     * Remove agent's policy assignment (compatibility)
+     * @description Compatibility endpoint that removes all policy associations.
      */
     delete: operations['delete_agent_policy_api_v1_agents__agent_name__policy_delete'];
     options?: never;
@@ -280,22 +331,8 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Assign policy to agent
-     * @description Assign a policy to an agent, replacing any existing policy assignment.
-     *
-     *     The agent will immediately inherit all controls from the assigned policy.
-     *
-     *     Args:
-     *         agent_name: Agent identifier
-     *         policy_id: ID of the policy to assign
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         SetPolicyResponse with success flag and previous policy ID (if any)
-     *
-     *     Raises:
-     *         HTTPException 404: Agent or policy not found
-     *         HTTPException 500: Database error during assignment
+     * Assign policy to agent (compatibility)
+     * @description Compatibility endpoint that replaces all policy associations with one policy.
      */
     post: operations['set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post'];
     delete?: never;
@@ -416,7 +453,7 @@ export interface paths {
      * Delete a control
      * @description Delete a control by ID.
      *
-     *     By default, deletion fails if the control is associated with any policy.
+     *     By default, deletion fails if the control is associated with any policy or agent.
      *     Use force=true to automatically dissociate and delete.
      *
      *     Args:
@@ -425,7 +462,7 @@ export interface paths {
      *         db: Database session (injected)
      *
      *     Returns:
-     *         DeleteControlResponse with success flag and list of dissociated policies
+     *         DeleteControlResponse with success flag and dissociation details
      *
      *     Raises:
      *         HTTPException 404: Control not found
@@ -658,7 +695,7 @@ export interface paths {
      *     - control_execution_id: Get a specific event
      *     - agent_name: Filter by agent
      *     - control_ids: Filter by controls
-     *     - actions: Filter by actions (allow, deny, steer, warn, log)
+     *     - actions: Filter by actions (allow, deny, warn, log)
      *     - matched: Filter by matched status
      *     - check_stages: Filter by check stage (pre, post)
      *     - applies_to: Filter by call type (llm_call, tool_call)
@@ -967,7 +1004,7 @@ export interface components {
     AgentControlsResponse: {
       /**
        * Controls
-       * @description List of controls associated with the agent via its policy
+       * @description List of active controls associated with the agent
        */
       controls: components['schemas']['Control'][];
     };
@@ -978,7 +1015,7 @@ export interface components {
     AgentRef: {
       /**
        * Agent Name
-       * @description Agent identifier
+       * @description Agent name
        */
       agent_name: string;
     };
@@ -989,7 +1026,7 @@ export interface components {
     AgentSummary: {
       /**
        * Active Controls Count
-       * @description Number of active controls from agent's policy
+       * @description Number of active controls for this agent
        * @default 0
        */
       active_controls_count: number;
@@ -1010,10 +1047,10 @@ export interface components {
        */
       evaluator_count: number;
       /**
-       * Policy Id
-       * @description ID of assigned policy, if any
+       * Policy Ids
+       * @description IDs of policies associated with the agent
        */
-      policy_id?: number | null;
+      policy_ids?: number[];
       /**
        * Step Count
        * @description Number of steps registered with the agent
@@ -1112,28 +1149,11 @@ export interface components {
      *     are returned from API endpoints. Unconfigured controls are filtered out.
      */
     Control: {
-      control: components['schemas']['ControlDefinition'];
+      control: components['schemas']['ControlDefinition-Output'];
       /** Id */
       id: number;
       /** Name */
       name: string;
-    };
-    /**
-     * SteeringContext
-     * @description Steering context for steer actions.
-     *
-     *     This model provides an extensible structure for steering guidance.
-     *     Future fields could include severity, categories, suggested_actions, etc.
-     * @example {
-     *       "message": "This large transfer requires user verification. Request 2FA code from user, verify it, then retry the transaction with verified_2fa=True."
-     *     }
-     */
-    SteeringContext: {
-      /**
-       * Message
-       * @description Guidance message explaining what needs to be corrected and how
-       */
-      message: string;
     };
     /**
      * ControlAction
@@ -1146,10 +1166,7 @@ export interface components {
        * @enum {string}
        */
       decision: 'allow' | 'deny' | 'steer' | 'warn' | 'log';
-      /**
-       * Steering Context
-       * @description Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
-       */
+      /** @description Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback. */
       steering_context?: components['schemas']['SteeringContext'] | null;
     };
     /**
@@ -1188,7 +1205,75 @@ export interface components {
      *       ]
      *     }
      */
-    ControlDefinition: {
+    'ControlDefinition-Input': {
+      /** @description What action to take when control matches */
+      action: components['schemas']['ControlAction'];
+      /**
+       * Description
+       * @description Detailed description of the control
+       */
+      description?: string | null;
+      /**
+       * Enabled
+       * @description Whether this control is active
+       * @default true
+       */
+      enabled: boolean;
+      /** @description How to evaluate the selected data */
+      evaluator: components['schemas']['EvaluatorSpec'];
+      /**
+       * Execution
+       * @description Where this control executes
+       * @enum {string}
+       */
+      execution: 'server' | 'sdk';
+      /** @description Which steps and stages this control applies to */
+      scope?: components['schemas']['ControlScope'];
+      /** @description What data to select from the payload */
+      selector: components['schemas']['ControlSelector'];
+      /**
+       * Tags
+       * @description Tags for categorization
+       */
+      tags?: string[];
+    };
+    /**
+     * ControlDefinition
+     * @description A control definition to evaluate agent interactions.
+     *
+     *     This model contains only the logic and configuration.
+     *     Identity fields (id, name) are managed by the database.
+     * @example {
+     *       "action": {
+     *         "decision": "deny"
+     *       },
+     *       "description": "Block outputs containing US Social Security Numbers",
+     *       "enabled": true,
+     *       "evaluator": {
+     *         "config": {
+     *           "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"
+     *         },
+     *         "name": "regex"
+     *       },
+     *       "execution": "server",
+     *       "scope": {
+     *         "stages": [
+     *           "post"
+     *         ],
+     *         "step_types": [
+     *           "llm"
+     *         ]
+     *       },
+     *       "selector": {
+     *         "path": "output"
+     *       },
+     *       "tags": [
+     *         "pii",
+     *         "compliance"
+     *       ]
+     *     }
+     */
+    'ControlDefinition-Output': {
       /** @description What action to take when control matches */
       action: components['schemas']['ControlAction'];
       /**
@@ -1240,7 +1325,7 @@ export interface components {
      *         control_name: Name of the control (denormalized for queries)
      *         check_stage: "pre" (before execution) or "post" (after execution)
      *         applies_to: "llm_call" or "tool_call"
-     *         action: The action taken (allow, deny, steer, warn, log)
+     *         action: The action taken (allow, deny, warn, log)
      *         matched: Whether the control evaluator matched
      *         confidence: Confidence score from the evaluator (0.0-1.0)
      *         timestamp: When the control was executed (UTC)
@@ -1388,6 +1473,8 @@ export interface components {
       control_name: string;
       /** @description Evaluator result (confidence, message, metadata) */
       result: components['schemas']['EvaluatorResult'];
+      /** @description Steering context for steer actions if configured */
+      steering_context?: components['schemas']['SteeringContext'] | null;
     };
     /**
      * ControlScope
@@ -1485,6 +1572,7 @@ export interface components {
      *         non_match_count: Number of times the control did not match
      *         allow_count: Number of allow actions
      *         deny_count: Number of deny actions
+     *         steer_count: Number of steer actions
      *         warn_count: Number of warn actions
      *         log_count: Number of log actions
      *         error_count: Number of errors during evaluation
@@ -1643,6 +1731,12 @@ export interface components {
       tags?: string[];
       /** @description Agent using this control */
       used_by_agent?: components['schemas']['AgentRef'] | null;
+      /**
+       * Used By Agents Count
+       * @description Number of unique agents using this control
+       * @default 0
+       */
+      used_by_agents_count: number;
     };
     /** CreateControlRequest */
     CreateControlRequest: {
@@ -1711,9 +1805,19 @@ export interface components {
     DeleteControlResponse: {
       /**
        * Dissociated From
-       * @description Policy IDs the control was removed from before deletion
+       * @description Deprecated: policy IDs the control was removed from before deletion
        */
       dissociated_from?: number[];
+      /**
+       * Dissociated From Agents
+       * @description Agent names the control was removed from before deletion
+       */
+      dissociated_from_agents?: string[];
+      /**
+       * Dissociated From Policies
+       * @description Policy IDs the control was removed from before deletion
+       */
+      dissociated_from_policies?: number[];
       /**
        * Success
        * @description Whether the control was deleted
@@ -1731,11 +1835,14 @@ export interface components {
        */
       success: boolean;
     };
-    /** DeletePolicyResponse */
+    /**
+     * DeletePolicyResponse
+     * @description Compatibility response for singular policy deletion endpoint.
+     */
     DeletePolicyResponse: {
       /**
        * Success
-       * @description Whether the policy was successfully removed
+       * @description Whether the request succeeded
        */
       success: boolean;
     };
@@ -2205,6 +2312,14 @@ export interface components {
        */
       total: number;
     };
+    /** GetAgentPoliciesResponse */
+    GetAgentPoliciesResponse: {
+      /**
+       * Policy Ids
+       * @description IDs of policies associated with the agent
+       */
+      policy_ids?: number[];
+    };
     /**
      * GetAgentResponse
      * @description Response containing agent details and registered steps.
@@ -2226,7 +2341,7 @@ export interface components {
     /** GetControlDataResponse */
     GetControlDataResponse: {
       /** @description Control data payload */
-      data: components['schemas']['ControlDefinition'];
+      data: components['schemas']['ControlDefinition-Output'];
     };
     /**
      * GetControlResponse
@@ -2234,7 +2349,7 @@ export interface components {
      */
     GetControlResponse: {
       /** @description Control configuration data (None if not yet configured) */
-      data?: components['schemas']['ControlDefinition'] | null;
+      data?: components['schemas']['ControlDefinition-Output'] | null;
       /**
        * Id
        * @description Control ID
@@ -2257,11 +2372,14 @@ export interface components {
        */
       control_ids: number[];
     };
-    /** GetPolicyResponse */
+    /**
+     * GetPolicyResponse
+     * @description Compatibility response for singular policy retrieval endpoint.
+     */
     GetPolicyResponse: {
       /**
        * Policy Id
-       * @description Identifier of the policy assigned to the agent
+       * @description Associated policy ID
        */
       policy_id: number;
     };
@@ -2431,7 +2549,7 @@ export interface components {
     InitAgentResponse: {
       /**
        * Controls
-       * @description Active protection controls for the agent (if policy assigned)
+       * @description Active protection controls for the agent
        */
       controls?: components['schemas']['Control'][];
       /**
@@ -2597,12 +2715,33 @@ export interface components {
       success: boolean;
     };
     /**
+     * RemoveAgentControlResponse
+     * @description Response for removing a direct agent-control association.
+     */
+    RemoveAgentControlResponse: {
+      /**
+       * Control Still Active
+       * @description True if the control remains active via policy association(s)
+       */
+      control_still_active: boolean;
+      /**
+       * Removed Direct Association
+       * @description True if a direct agent-control link was removed
+       */
+      removed_direct_association: boolean;
+      /**
+       * Success
+       * @description Whether the request succeeded
+       */
+      success: boolean;
+    };
+    /**
      * SetControlDataRequest
      * @description Request to update control configuration data.
      */
     SetControlDataRequest: {
       /** @description Control configuration data (replaces existing) */
-      data: components['schemas']['ControlDefinition'];
+      data: components['schemas']['ControlDefinition-Input'];
     };
     /** SetControlDataResponse */
     SetControlDataResponse: {
@@ -2612,16 +2751,19 @@ export interface components {
        */
       success: boolean;
     };
-    /** SetPolicyResponse */
+    /**
+     * SetPolicyResponse
+     * @description Compatibility response for singular policy assignment endpoint.
+     */
     SetPolicyResponse: {
       /**
        * Old Policy Id
-       * @description Previous policy id if one was replaced
+       * @description Previously associated policy ID, if any
        */
       old_policy_id?: number | null;
       /**
        * Success
-       * @description Whether the policy was successfully assigned
+       * @description Whether the request succeeded
        */
       success: boolean;
     };
@@ -2709,6 +2851,26 @@ export interface components {
        * @description Time-series data points (only when include_timeseries=true)
        */
       timeseries?: components['schemas']['TimeseriesBucket'][] | null;
+    };
+    /**
+     * SteeringContext
+     * @description Steering context for steer actions.
+     *
+     *     This model provides an extensible structure for steering guidance.
+     *     Future fields could include severity, categories, suggested_actions, etc.
+     * @example {
+     *       "message": "This large transfer requires user verification. Request 2FA code from user, verify it, then retry the transaction with verified_2fa=True."
+     *     }
+     * @example {
+     *       "message": "Transfer exceeds daily limit. Steps: 1) Ask user for business justification, 2) Request manager approval with amount and justification, 3) If approved, retry with manager_approved=True and justification filled in."
+     *     }
+     */
+    SteeringContext: {
+      /**
+       * Message
+       * @description Guidance message explaining what needs to be corrected and how
+       */
+      message: string;
     };
     /**
      * Step
@@ -2922,7 +3084,7 @@ export interface components {
      */
     ValidateControlDataRequest: {
       /** @description Control configuration data to validate */
-      data: components['schemas']['ControlDefinition'];
+      data: components['schemas']['ControlDefinition-Input'];
     };
     /** ValidateControlDataResponse */
     ValidateControlDataResponse: {
@@ -3097,13 +3259,77 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description List of controls from agent's policy */
+      /** @description List of controls from agent policy and direct associations */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           'application/json': components['schemas']['AgentControlsResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  add_agent_control_api_v1_agents__agent_name__controls__control_id__post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_name: string;
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssocResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  remove_agent_control_api_v1_agents__agent_name__controls__control_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_name: string;
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RemoveAgentControlResponse'];
         };
       };
       /** @description Validation Error */
@@ -3170,6 +3396,132 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['EvaluatorSchemaItem'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_agent_policies_api_v1_agents__agent_name__policies_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of policy IDs */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GetAgentPoliciesResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  remove_all_agent_policies_api_v1_agents__agent_name__policies_delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssocResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  add_agent_policy_api_v1_agents__agent_name__policies__policy_id__post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_name: string;
+        policy_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssocResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  remove_agent_policy_api_v1_agents__agent_name__policies__policy_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_name: string;
+        policy_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssocResponse'];
         };
       };
       /** @description Validation Error */
@@ -3422,7 +3774,7 @@ export interface operations {
   delete_control_api_v1_controls__control_id__delete: {
     parameters: {
       query?: {
-        /** @description If true, dissociate from all policies before deleting. If false, fail if control is associated with any policy. */
+        /** @description If true, dissociate from all policy/agent links before deleting. If false, fail if control is associated with any policy or agent. */
         force?: boolean;
       };
       header?: never;

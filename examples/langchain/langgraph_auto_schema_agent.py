@@ -22,7 +22,6 @@ import json
 import os
 import re
 from typing import Annotated, Literal, TypedDict
-from uuid import UUID
 
 import agent_control
 from agent_control import ControlViolationError, control, get_registered_steps
@@ -33,7 +32,6 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
-AGENT_ID = UUID("736dc6fa-6f6d-4464-a655-c3fe2f5d2e6e")
 AGENT_NAME = "LangGraph Auto Schema Demo"
 AGENT_DESCRIPTION = "LangGraph tool routing with @control auto step schema derivation"
 
@@ -241,7 +239,7 @@ async def main() -> None:
     """Run the demo end-to-end."""
     print("Initializing Agent Control (no explicit steps passed)...")
     agent_control.init(
-        agent_name=AGENT_ID,
+        agent_name=AGENT_NAME,
         agent_description=AGENT_DESCRIPTION,
         server_url=os.getenv("AGENT_CONTROL_URL"),
     )
@@ -264,7 +262,7 @@ async def main() -> None:
             final_message = result["messages"][-1]
             print(f"Assistant: {final_message.content}")
         except ControlViolationError as exc:
-            print(f"Assistant: Request blocked by control policy: {exc.message}")
+            print(f"Assistant: Request blocked by control rules: {exc.message}")
         except RuntimeError as exc:
             print(
                 "Assistant: Control evaluation is unavailable. "

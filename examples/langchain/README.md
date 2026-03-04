@@ -41,8 +41,7 @@ uv run setup_sql_controls.py
 
 This creates:
 - SQL safety control (blocks DROP, DELETE, TRUNCATE, ALTER, GRANT)
-- Policy with the control
-- Assigns policy to the SQL agent
+- Direct association of the control with the SQL agent
 
 > For local execution, create the control with `execution: "sdk"` in
 > `setup_sql_controls.py` (see `sql_control_data_sdk`) and enable
@@ -145,17 +144,17 @@ pkill -f "uvicorn agent_control_server"
 cd server && make run
 ```
 
-### "Policy 'sql-protection-policy' already exists"
+### "Control already associated with agent"
 
-**Cause:** Setup script was run multiple times.
+**Cause:** Setup script was run multiple times and the direct association already exists.
 
-**Fix:** Either delete the policy via the API or use a different name in `setup_sql_controls.py`.
+**Fix:** This is expected/idempotent; you can ignore and continue.
 
 ### DROP TABLE still executes
 
 **Causes:**
 1. Server not running or evaluators not loaded (remote mode)
-2. Control not assigned to agent's policy
+2. Control not associated directly with the agent
 3. Control data missing/invalid (control not returned to agent)
 4. Local mode enabled but control is still `execution: "server"`
 
@@ -192,7 +191,7 @@ Raise ControlViolationError (DENY) or Execute (ALLOW)
 ## Files
 
 - `sql_agent_protection.py` - Main SQL agent with `@control()` decorator
-- `setup_sql_controls.py` - One-time setup script for controls/policy
+- `setup_sql_controls.py` - One-time setup script for controls/direct associations
 - `pyproject.toml` - Dependencies and configuration
 - `README.md` - This file
 

@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 
 import { expect, mockData, test } from './fixtures';
 
-const agentUrl = '/agents/customer-support-bot/controls';
+const agentUrl = '/agents/agent-1/controls';
 
 async function openControlStoreModal(page: Page) {
   await page.goto(agentUrl);
@@ -48,7 +48,7 @@ test.describe('Control Store Modal', () => {
     ).toBeVisible();
     // Status dot column has no header text, so we skip checking for it
     await expect(
-      modal.getByRole('columnheader', { name: 'Agent' })
+      modal.getByRole('columnheader', { name: 'Used by' })
     ).toBeVisible();
 
     for (const control of mockData.listControls.controls) {
@@ -58,18 +58,24 @@ test.describe('Control Store Modal', () => {
     }
   });
 
-  test('displays agent links in Agent column', async ({ mockedPage }) => {
+  test('displays usage attribution in Used by column', async ({
+    mockedPage,
+  }) => {
     const modal = await openControlStoreModal(mockedPage);
 
-    // PII Detection is used by customer-support-bot
-    const agentLink = modal
-      .getByRole('link', { name: 'customer-support-bot' })
-      .first();
-    await expect(agentLink).toBeVisible();
-    // Link includes query param to filter by control name
-    await expect(agentLink).toHaveAttribute(
+    // Two controls show direct agent-name attribution in fixture data.
+    await expect(modal.getByText('customer-support-bot')).toBeVisible();
+    await expect(modal.getByText('data-analysis-agent')).toBeVisible();
+    // One control has no usage and renders as an em dash
+    await expect(modal.getByText('—')).toBeVisible();
+    // Agent attribution renders as navigation links.
+    const customerSupportLink = modal.getByRole('link', {
+      name: 'customer-support-bot',
+    });
+    await expect(customerSupportLink).toHaveCount(1);
+    await expect(customerSupportLink).toHaveAttribute(
       'href',
-      '/agents/customer-support-bot/controls?q=PII%20Detection'
+      '/agents/customer-support-bot'
     );
   });
 
@@ -478,22 +484,15 @@ test.describe('Modal Routing', () => {
     });
     await expect(createModal).toBeVisible();
 
-    // Mock successful API response for control creation
-    // Agent already has a policy (return 200 with policy_id)
+    // Mock successful API response for direct agent-control association
     await mockedPage.route(
-      '**/api/v1/agents/*/policy',
+      '**/api/v1/agents/*/controls/*',
       async (route, request) => {
-        if (request.method() === 'GET') {
+        if (request.method() === 'POST') {
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({ policy_id: 1 }),
-          });
-        } else if (request.method() === 'POST') {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({}),
+            body: JSON.stringify({ success: true }),
           });
         } else {
           await route.continue();
@@ -517,21 +516,6 @@ test.describe('Modal Routing', () => {
       '**/api/v1/controls/*/data',
       async (route, request) => {
         if (request.method() === 'PUT') {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({}),
-          });
-        } else {
-          await route.continue();
-        }
-      }
-    );
-
-    await mockedPage.route(
-      '**/api/v1/policies/*/controls/*',
-      async (route, request) => {
-        if (request.method() === 'POST') {
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
@@ -568,7 +552,7 @@ test.describe('Modal Routing', () => {
 
     // Start waiting for API response before clicking (must be set up before the action)
     const responsePromise = mockedPage.waitForResponse(
-      '**/api/v1/policies/*/controls/*',
+      '**/api/v1/agents/*/controls/*',
       { timeout: 10000 }
     );
     await confirmButton.click();
@@ -611,13 +595,20 @@ test.describe('Modal Routing', () => {
     await expect(controlNameInput).toHaveValue(/.*-copy$/, { timeout: 5000 });
 
     // Set up mock routes for control creation flow (copying creates a new control)
-    await mockedPage.route('**/api/v1/agents/*/policy', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ policy_id: 1 }),
-      });
-    });
+    await mockedPage.route(
+      '**/api/v1/agents/*/controls/*',
+      async (route, request) => {
+        if (request.method() === 'POST') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true }),
+          });
+        } else {
+          await route.continue();
+        }
+      }
+    );
 
     await mockedPage.route('**/api/v1/controls', async (route, request) => {
       if (request.method() === 'PUT') {
@@ -646,21 +637,6 @@ test.describe('Modal Routing', () => {
       }
     );
 
-    await mockedPage.route(
-      '**/api/v1/policies/*/controls/*',
-      async (route, request) => {
-        if (request.method() === 'POST') {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({}),
-          });
-        } else {
-          await route.continue();
-        }
-      }
-    );
-
     // Submit the form
     const saveButton = editModal.getByRole('button', { name: /Save|Create/i });
     await saveButton.click();
@@ -674,7 +650,7 @@ test.describe('Modal Routing', () => {
 
     // Start waiting for API response before clicking (must be set up before the action)
     const responsePromise = mockedPage.waitForResponse(
-      '**/api/v1/policies/*/controls/*',
+      '**/api/v1/agents/*/controls/*',
       { timeout: 10000 }
     );
     await confirmButton.click();
@@ -688,6 +664,119 @@ test.describe('Modal Routing', () => {
 
     // URL should not contain any modal parameters
     await expect(mockedPage).not.toHaveURL(/.*\?modal=/);
+  });
+
+  test('cleans up created control when agent association fails', async ({
+    mockedPage,
+  }) => {
+    await mockedPage.goto(
+      `${agentUrl}?modal=control-store&submodal=create&evaluator=list`
+    );
+
+    const createModal = mockedPage.getByRole('dialog', {
+      name: 'Create Control',
+    });
+    await expect(createModal).toBeVisible();
+
+    let cleanupDeleteCalls = 0;
+
+    await mockedPage.route(
+      '**/api/v1/agents/*/controls/*',
+      async (route, request) => {
+        if (request.method() === 'POST') {
+          await route.fulfill({
+            status: 400,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              detail: 'Control is incompatible with this agent',
+              error_code: 'POLICY_CONTROL_INCOMPATIBLE',
+            }),
+          });
+        } else {
+          await route.continue();
+        }
+      }
+    );
+
+    await mockedPage.route('**/api/v1/controls', async (route, request) => {
+      if (request.method() === 'PUT') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ control_id: 100 }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await mockedPage.route(
+      '**/api/v1/controls/*/data',
+      async (route, request) => {
+        if (request.method() === 'PUT') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true }),
+          });
+        } else {
+          await route.continue();
+        }
+      }
+    );
+
+    await mockedPage.route('**/api/v1/controls/*', async (route, request) => {
+      if (request.method() === 'DELETE') {
+        cleanupDeleteCalls += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            dissociated_from_policies: [],
+            dissociated_from_agents: [],
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    const controlNameInput = createModal.getByPlaceholder('Enter control name');
+    await controlNameInput.fill('Cleanup Test Control');
+    const valuesTextarea = createModal.getByPlaceholder(
+      'Enter values (one per line)'
+    );
+    await valuesTextarea.fill('value-1');
+
+    const saveButton = createModal.getByRole('button', {
+      name: /Save|Create/i,
+    });
+    await saveButton.click();
+
+    const confirmButton = mockedPage.locator("button:has-text('Confirm')");
+    await expect(confirmButton).toBeVisible({ timeout: 5000 });
+
+    const failedAssociationPromise = mockedPage.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        /\/api\/v1\/agents\/[^/]+\/controls\/\d+/.test(response.url()) &&
+        response.status() === 400,
+      { timeout: 10000 }
+    );
+    const cleanupDeletePromise = mockedPage.waitForResponse(
+      (response) =>
+        response.request().method() === 'DELETE' &&
+        /\/api\/v1\/controls\/\d+\?force=true/.test(response.url()) &&
+        response.status() === 200,
+      { timeout: 10000 }
+    );
+
+    await confirmButton.click();
+    await failedAssociationPromise;
+    await cleanupDeletePromise;
+
+    expect(cleanupDeleteCalls).toBe(1);
   });
 });
 
@@ -720,7 +809,7 @@ test.describe('Control Store - Loading States', () => {
       });
     });
 
-    await page.goto('/agents/customer-support-bot/controls');
+    await page.goto('/agents/agent-1/controls');
 
     // Open the control store modal
     await page.getByTestId('add-control-button').first().click();

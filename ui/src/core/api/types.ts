@@ -69,14 +69,20 @@ export type GetAgentResponse = components['schemas']['GetAgentResponse'];
 export type ControlActionDecision =
   components['schemas']['ControlAction']['decision'];
 export type ControlExecution =
-  components['schemas']['ControlDefinition']['execution'];
+  components['schemas']['ControlDefinition-Input']['execution'];
 export type ControlStage = NonNullable<
   components['schemas']['ControlScope']['stages']
 >[number];
 export type ControlScope = components['schemas']['ControlScope'];
 export type ControlSelector = components['schemas']['ControlSelector'];
 export type ControlAction = components['schemas']['ControlAction'];
-export type ControlDefinition = components['schemas']['ControlDefinition'];
+export type ControlDefinitionInput =
+  components['schemas']['ControlDefinition-Input'];
+export type ControlDefinitionOutput =
+  components['schemas']['ControlDefinition-Output'];
+export type ControlDefinition =
+  | ControlDefinitionInput
+  | ControlDefinitionOutput;
 export type Control = components['schemas']['Control'];
 export type AgentControlsResponse =
   components['schemas']['AgentControlsResponse'];
@@ -93,19 +99,14 @@ export type SetControlDataResponse =
 export type GetControlDataResponse =
   components['schemas']['GetControlDataResponse'];
 
-// Validate control data types (not yet in generated schemas)
-// TODO: replace these with generated types after running pnpm fetch-api-types
-export type ValidateControlDataRequest = {
-  data: ControlDefinition;
-};
-export type ValidateControlDataResponse = {
-  success: boolean;
-};
+export type ValidateControlDataRequest =
+  components['schemas']['ValidateControlDataRequest'];
+export type ValidateControlDataResponse =
+  components['schemas']['ValidateControlDataResponse'];
 export type ControlSummary = components['schemas']['ControlSummary'];
 export type ListControlsResponse =
   components['schemas']['ListControlsResponse'];
 
-// AgentRef - reference to an agent (for used_by_agents)
 export type AgentRef = components['schemas']['AgentRef'];
 
 // Helper type to extract query parameters from operations

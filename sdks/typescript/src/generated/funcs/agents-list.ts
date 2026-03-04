@@ -33,7 +33,7 @@ import { Result } from "../types/fp.js";
  * @remarks
  * List all registered agents with cursor-based pagination.
  *
- * Returns a summary of each agent including identifier, policy assignment,
+ * Returns a summary of each agent including identifier, policy associations,
  * and counts of registered steps and evaluators.
  *
  * Args:

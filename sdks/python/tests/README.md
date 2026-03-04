@@ -152,7 +152,7 @@ PASSED
 ### Function-Scoped Fixtures
 - `client`: Authenticated AgentProtectClient instance
 - `unique_name`: Unique name generator for test resources
-- `test_agent_id`: Unique agent UUID for testing
+- `test_agent_name`: Unique agent UUID for testing
 - `test_agent`: Registered test agent
 - `test_policy`: Created test policy
 - `test_control`: Created test control

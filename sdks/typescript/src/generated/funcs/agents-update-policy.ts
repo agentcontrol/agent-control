@@ -28,24 +28,10 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Assign policy to agent
+ * Assign policy to agent (compatibility)
  *
  * @remarks
- * Assign a policy to an agent, replacing any existing policy assignment.
- *
- * The agent will immediately inherit all controls from the assigned policy.
- *
- * Args:
- *     agent_name: Agent identifier
- *     policy_id: ID of the policy to assign
- *     db: Database session (injected)
- *
- * Returns:
- *     SetPolicyResponse with success flag and previous policy ID (if any)
- *
- * Raises:
- *     HTTPException 404: Agent or policy not found
- *     HTTPException 500: Database error during assignment
+ * Compatibility endpoint that replaces all policy associations with one policy.
  */
 export function agentsUpdatePolicy(
   client: AgentControlSDKCore,

@@ -28,23 +28,10 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Remove agent's policy assignment
+ * Remove agent's policy assignment (compatibility)
  *
  * @remarks
- * Remove the policy assignment from an agent.
- *
- * The agent will no longer have any protection controls active.
- *
- * Args:
- *     agent_name: Agent identifier
- *     db: Database session (injected)
- *
- * Returns:
- *     DeletePolicyResponse with success flag
- *
- * Raises:
- *     HTTPException 404: Agent not found or agent has no policy assigned
- *     HTTPException 500: Database error during removal
+ * Compatibility endpoint that removes all policy associations.
  */
 export function agentsDeletePolicy(
   client: AgentControlSDKCore,

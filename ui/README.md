@@ -1,6 +1,6 @@
 # Agent Control UI
 
-Next.js dashboard for managing [Agent Control](https://github.com/agentcontrol/agent-control) agents, controls, and policies. Runs on port 4000.
+Next.js dashboard for managing [Agent Control](https://github.com/agentcontrol/agent-control) agents and controls. Runs on port 4000.
 
 ## Prerequisites
 

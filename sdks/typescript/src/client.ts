@@ -9,6 +9,7 @@ export type APIKeyProvider = string | (() => Promise<string>);
 
 export interface AgentControlInitOptions {
   agentName: string;
+  agentId?: string;
   serverUrl: string;
   apiKey?: APIKeyProvider;
   steps?: StepSchema[];

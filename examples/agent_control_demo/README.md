@@ -96,7 +96,7 @@ Controls are defined on the server with:
 - **Scope**: When to check (step types, stages: pre/post)
 - **Selector**: What to check (input, output, specific fields)
 - **Evaluator**: How to check (regex patterns, list matching, AI-based)
-- **Action**: What to do (allow, deny, warn, log)
+- **Action**: What to do (allow, deny, steer, warn, log)
 
 Example from `setup_controls.py`:
 ```python
@@ -130,7 +130,6 @@ from agent_control import control, ControlViolationError
 # Initialize and connect to server
 agent_control.init(
     agent_name="demo-chatbot",
-    agent_id="672e50df-af4c-429f-965a-3d7f8262302f",
 )
 
 # Apply server-side controls
@@ -159,7 +158,6 @@ All scripts use the same agent configuration:
 
 ```python
 AGENT_NAME = "demo-chatbot"
-AGENT_ID = "672e50df-af4c-429f-965a-3d7f8262302f"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 ```
 

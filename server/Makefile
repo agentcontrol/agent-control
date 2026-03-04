@@ -56,6 +56,11 @@ alembic-stamp:
 
 start-dependencies:
 	docker compose -f ../docker-compose.dev.yml up -d
+	@echo "Waiting for PostgreSQL to be ready..."
+	@until docker compose -f ../docker-compose.dev.yml exec -T postgres pg_isready -U agent_control -d agent_control > /dev/null 2>&1; do \
+		sleep 1; \
+	done
+	@echo "PostgreSQL is ready!"
 
 test:
 	DB_DATABASE=$(TEST_DB) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q

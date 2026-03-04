@@ -5,8 +5,7 @@ Setup script that creates DeepEval-based controls for the Q&A Agent.
 This script:
 1. Registers the agent with the server
 2. Creates DeepEval GEval evaluator controls for quality checks
-3. Creates a policy and attaches controls
-4. Assigns the policy to the agent
+3. Directly associates controls to the agent
 
 The controls demonstrate using DeepEval's LLM-as-a-judge to enforce:
 - Response coherence
@@ -19,7 +18,6 @@ Run this after starting the server to have a working demo.
 import asyncio
 import os
 import sys
-
 import httpx
 
 # Add the current directory to the path so we can import the evaluator
@@ -43,8 +41,7 @@ except ImportError as e:
     sys.exit(1)
 
 # Agent configuration
-AGENT_ID = "7d3e8f9a-2b1c-4a5e-9f8d-6c7b5a4e3d2f"
-AGENT_NAME = "Q&A Agent with DeepEval"
+AGENT_NAME = "qa-agent-with-deepeval"
 AGENT_DESCRIPTION = "Question answering agent with DeepEval quality controls"
 
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
@@ -58,7 +55,7 @@ DEEPEVAL_CONTROLS = [
             "description": "Ensures LLM responses are coherent and logically consistent",
             "enabled": True,
             "execution": "server",
-            "scope": {"stages": ["post"]},
+            "scope": {"step_types": ["llm"], "stages": ["post"]},
             "selector": {},
             "evaluator": {
                 "name": "deepeval-geval",
@@ -89,7 +86,7 @@ DEEPEVAL_CONTROLS = [
             "description": "Ensures responses are relevant to the user's question",
             "enabled": True,
             "execution": "server",
-            "scope": {"stages": ["post"]},
+            "scope": {"step_types": ["llm"], "stages": ["post"]},
             "selector": {},
             "evaluator": {
                 "name": "deepeval-geval",
@@ -119,7 +116,7 @@ DEEPEVAL_CONTROLS = [
             "description": "Validates factual correctness against expected answers (when available)",
             "enabled": False,  # Disabled by default - enable when you have expected outputs
             "execution": "server",
-            "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+            "scope": {"step_types": ["llm"], "stages": ["post"]},
             "selector": {"path": "*"},
             "evaluator": {
                 "name": "deepeval-geval",
@@ -147,11 +144,10 @@ DEEPEVAL_CONTROLS = [
 
 async def setup_demo(quiet: bool = False):
     """Set up the demo agent with DeepEval controls."""
-    # Generate the same UUID5 that the SDK generates
-    agent_name = str(uuid.uuid5(uuid.NAMESPACE_DNS, AGENT_ID))
+    agent_name = AGENT_NAME
 
-    print(f"Setting up agent: {AGENT_NAME}")
-    print(f"Agent UUID: {agent_name}")
+    print(f"Setting up agent: {AGENT_DESCRIPTION}")
+    print(f"Agent name: {agent_name}")
     print(f"Server URL: {SERVER_URL}")
     print()
 
@@ -174,62 +170,21 @@ async def setup_demo(quiet: bool = False):
                 json={
                     "agent": {
                         "agent_name": agent_name,
-                        "agent_name": AGENT_NAME,
                         "agent_description": AGENT_DESCRIPTION,
+                        "agent_version": "1.0.0",
                     },
-                    "tools": [],
+                    "steps": [],
                 },
             )
             resp.raise_for_status()
             result = resp.json()
             status = "Created" if result.get("created") else "Updated"
-            print(f"✓ {status} agent: {AGENT_NAME}")
+            print(f"✓ {status} agent: {agent_name}")
         except httpx.HTTPError as e:
             print(f"❌ Error registering agent: {e}")
             return False
 
-        # Get or create a policy for the agent
-        policy_name = f"policy-{AGENT_ID}"
-        policy_id = None
-
-        # Check if agent already has a policy
-        try:
-            resp = await client.get(f"/api/v1/agents/{agent_name}/policy")
-            if resp.status_code == 200:
-                policy_id = resp.json().get("policy_id")
-                print(f"✓ Found existing policy: {policy_id}")
-        except httpx.HTTPError:
-            pass  # No policy yet
-
-        # Create policy if needed
-        if not policy_id:
-            try:
-                resp = await client.put(
-                    "/api/v1/policies",
-                    json={"name": policy_name},
-                )
-                if resp.status_code == 409:
-                    # Policy name exists but not assigned - create with unique name
-                    import time
-
-                    policy_name = f"policy-{AGENT_ID}-{int(time.time())}"
-                    resp = await client.put(
-                        "/api/v1/policies",
-                        json={"name": policy_name},
-                    )
-                resp.raise_for_status()
-                policy_id = resp.json()["policy_id"]
-                print(f"✓ Created policy: {policy_name}")
-
-                # Assign policy to agent
-                resp = await client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
-                resp.raise_for_status()
-                print(f"✓ Assigned policy to agent")
-            except httpx.HTTPError as e:
-                print(f"❌ Error setting up policy: {e}")
-                return False
-
-        # Create controls and add to policy
+        # Create controls and associate them directly with the agent
         print()
         print("Creating DeepEval controls...")
         controls_created = 0
@@ -268,9 +223,10 @@ async def setup_demo(quiet: bool = False):
                 )
                 resp.raise_for_status()
 
-                # Add control to policy
-                resp = await client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-                resp.raise_for_status()
+                # Associate control directly with the agent
+                resp = await client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+                if resp.status_code not in (200, 409):
+                    resp.raise_for_status()
 
                 status = "✓" if definition.get("enabled") else "○"
                 enabled_text = "enabled" if definition.get("enabled") else "disabled"

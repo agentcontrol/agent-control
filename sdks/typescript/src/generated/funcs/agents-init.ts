@@ -45,7 +45,7 @@ import { Result } from "../types/fp.js";
  *     db: Database session (injected)
  *
  * Returns:
- *     InitAgentResponse with created flag and active controls (if policy assigned)
+ *     InitAgentResponse with created flag and active controls (policy-derived + direct)
  */
 export function agentsInit(
   client: AgentControlSDKCore,

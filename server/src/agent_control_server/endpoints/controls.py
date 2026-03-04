@@ -21,7 +21,8 @@ from agent_control_models.server import (
 from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import ValidationError
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import Integer, String, delete, func, literal, or_, select, union_all
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
@@ -32,11 +33,12 @@ from ..errors import (
     NotFoundError,
 )
 from ..logging_utils import get_logger
-from ..models import Agent, AgentData, Control, Policy, policy_controls
+from ..models import Agent, AgentData, Control, agent_controls, agent_policies, policy_controls
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
 )
+from ..services.query_utils import escape_like_pattern
 
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
@@ -235,6 +237,15 @@ async def create_control(
     try:
         await db.commit()
         await db.refresh(control)
+    except IntegrityError:
+        await db.rollback()
+        raise ConflictError(
+            error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+            detail=f"Control with name '{request.name}' already exists",
+            resource="Control",
+            resource_id=request.name,
+            hint="Choose a different name or update the existing control.",
+        )
     except Exception:
         await db.rollback()
         _logger.error(
@@ -496,18 +507,15 @@ async def list_controls(
     Example:
         GET /controls?limit=10&enabled=true&step_type=tool
     """
-    # Get total count (with filters applied)
-    count_query = select(func.count()).select_from(Control)
     query = select(Control).order_by(Control.id.desc())
 
     # Apply cursor
     if cursor is not None:
         query = query.where(Control.id < cursor)
-        count_query = count_query.where(Control.id < cursor)
 
     # Apply name filter (case-insensitive partial match)
     if name is not None:
-        query = query.where(Control.name.ilike(f"%{name}%"))
+        query = query.where(Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\"))
         # Don't apply to count_query - total should be pre-filter
 
     # Apply JSONB filters at database level
@@ -554,7 +562,9 @@ async def list_controls(
     # Get total count (with same filters, but without cursor/limit)
     total_query = select(func.count()).select_from(Control)
     if name is not None:
-        total_query = total_query.where(Control.name.ilike(f"%{name}%"))
+        total_query = total_query.where(
+            Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
+        )
     if enabled is not None:
         if enabled:
             total_query = total_query.where(
@@ -593,27 +603,45 @@ async def list_controls(
     if has_more:
         controls = controls[:-1]
 
-    # Build mapping of control_id -> agent that uses it
-    # Traversal: Control -> policy_controls -> Policy -> Agent
+    # Build mapping of control_id -> usage attribution
+    # Traversal includes both:
+    # - Control -> policy_controls -> agent_policies -> Agent
+    # - Control -> agent_controls -> Agent
     control_agent_map: dict[int, AgentRef | None] = {ctrl.id: None for ctrl in controls}
+    control_agent_names_map: dict[int, set[str]] = {ctrl.id: set() for ctrl in controls}
+    control_agent_repr_map: dict[int, str | None] = {ctrl.id: None for ctrl in controls}
     if controls:
         control_ids = [ctrl.id for ctrl in controls]
-        agents_query = (
+        policy_agents_query = (
             select(
                 policy_controls.c.control_id,
-                Agent.name,
+                agent_policies.c.agent_name,
             )
             .select_from(policy_controls)
-            .join(Policy, policy_controls.c.policy_id == Policy.id)
-            .join(Agent, Agent.policy_id == Policy.id)
+            .join(agent_policies, policy_controls.c.policy_id == agent_policies.c.policy_id)
             .where(policy_controls.c.control_id.in_(control_ids))
         )
+        direct_agents_query = (
+            select(
+                agent_controls.c.control_id,
+                agent_controls.c.agent_name,
+            )
+            .select_from(agent_controls)
+            .where(agent_controls.c.control_id.in_(control_ids))
+        )
+        agents_query = union_all(policy_agents_query, direct_agents_query)
         agents_result = await db.execute(agents_query)
         for row in agents_result.all():
             control_id, agent_name = row
-            # Take the first agent found (1 control = 1 agent)
-            if control_agent_map[control_id] is None:
-                control_agent_map[control_id] = AgentRef(agent_name=agent_name)
+            control_agent_names_map[control_id].add(agent_name)
+
+            # Keep a deterministic representative agent for backwards compatibility.
+            current_repr = control_agent_repr_map[control_id]
+            if current_repr is None or agent_name < current_repr:
+                control_agent_repr_map[control_id] = agent_name
+                control_agent_map[control_id] = AgentRef(
+                    agent_name=agent_name
+                )
 
     # Build summaries (filtering already done at DB level)
     summaries: list[ControlSummary] = []
@@ -632,6 +660,7 @@ async def list_controls(
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
                 used_by_agent=control_agent_map.get(ctrl.id),
+                used_by_agents_count=len(control_agent_names_map.get(ctrl.id, set())),
             )
         )
 
@@ -661,15 +690,15 @@ async def delete_control(
     control_id: int,
     force: bool = Query(
         False,
-        description="If true, dissociate from all policies before deleting. "
-        "If false, fail if control is associated with any policy.",
+        description="If true, dissociate from all policy/agent links before deleting. "
+        "If false, fail if control is associated with any policy or agent.",
     ),
     db: AsyncSession = Depends(get_async_db),
 ) -> DeleteControlResponse:
     """
     Delete a control by ID.
 
-    By default, deletion fails if the control is associated with any policy.
+    By default, deletion fails if the control is associated with any policy or agent.
     Use force=true to automatically dissociate and delete.
 
     Args:
@@ -678,7 +707,7 @@ async def delete_control(
         db: Database session (injected)
 
     Returns:
-        DeleteControlResponse with success flag and list of dissociated policies
+        DeleteControlResponse with success flag and dissociation details
 
     Raises:
         HTTPException 404: Control not found
@@ -697,48 +726,74 @@ async def delete_control(
             hint="Verify the control ID is correct and the control has been created.",
         )
 
-    # Check for associations with policies
-    assoc_result = await db.execute(
-        select(policy_controls.c.policy_id).where(
-            policy_controls.c.control_id == control_id
-        )
-    )
-    associated_policy_ids = [row[0] for row in assoc_result.all()]
+    # Check for associations with policies and direct agent links.
+    policy_assoc_query = select(
+        policy_controls.c.policy_id.label("policy_id"),
+        literal(None, type_=String).label("agent_name"),
+    ).where(policy_controls.c.control_id == control_id)
+    agent_assoc_query = select(
+        literal(None, type_=Integer).label("policy_id"),
+        agent_controls.c.agent_name.label("agent_name"),
+    ).where(agent_controls.c.control_id == control_id)
+    assoc_result = await db.execute(union_all(policy_assoc_query, agent_assoc_query))
 
-    if associated_policy_ids and not force:
+    associated_policy_ids: list[int] = []
+    associated_agent_names: list[str] = []
+    for policy_id, agent_name in assoc_result.all():
+        if policy_id is not None:
+            associated_policy_ids.append(policy_id)
+        if agent_name is not None:
+            associated_agent_names.append(agent_name)
+
+    if (associated_policy_ids or associated_agent_names) and not force:
+        errors = [
+            ValidationErrorItem(
+                resource="Policy",
+                field="controls",
+                code="control_in_use",
+                message=f"Control is associated with policy ID {pid}",
+                value=pid,
+            )
+            for pid in associated_policy_ids
+        ] + [
+            ValidationErrorItem(
+                resource="Agent",
+                field="controls",
+                code="control_in_use",
+                message=f"Control is directly associated with agent '{agent_name}'",
+                value=agent_name,
+            )
+            for agent_name in associated_agent_names
+        ]
         raise ConflictError(
             error_code=ErrorCode.CONTROL_IN_USE,
             detail=(
                 f"Control '{control.name}' is associated with "
-                f"{len(associated_policy_ids)} policy/policies"
+                f"{len(associated_policy_ids)} policy/policies and "
+                f"{len(associated_agent_names)} agent(s)"
             ),
             resource="Control",
             resource_id=control.name,
             hint="Use force=true to dissociate and delete, or remove associations manually first.",
-            errors=[
-                ValidationErrorItem(
-                    resource="Policy",
-                    field="controls",
-                    code="control_in_use",
-                    message=f"Control is associated with policy ID {pid}",
-                    value=pid,
-                )
-                for pid in associated_policy_ids
-            ],
+            errors=errors,
         )
 
-    # Remove associations if force=true
-    dissociated_from: list[int] = []
+    # Remove associations if force=true.
+    dissociated_from_policies: list[int] = []
+    dissociated_from_agents: list[str] = []
     if associated_policy_ids:
-        await db.execute(
-            delete(policy_controls).where(
-                policy_controls.c.control_id == control_id
-            )
-        )
-        dissociated_from = associated_policy_ids
+        await db.execute(delete(policy_controls).where(policy_controls.c.control_id == control_id))
+        dissociated_from_policies = associated_policy_ids
+    if associated_agent_names:
+        await db.execute(delete(agent_controls).where(agent_controls.c.control_id == control_id))
+        dissociated_from_agents = associated_agent_names
+    if dissociated_from_policies or dissociated_from_agents:
         _logger.info(
-            f"Dissociated control '{control.name}' ({control_id}) "
-            f"from {len(dissociated_from)} policy/policies"
+            "Dissociated control '%s' (%s) from %s policy/policies and %s agent(s)",
+            control.name,
+            control_id,
+            len(dissociated_from_policies),
+            len(dissociated_from_agents),
         )
 
     # Delete the control
@@ -758,7 +813,12 @@ async def delete_control(
             operation="delete",
         )
 
-    return DeleteControlResponse(success=True, dissociated_from=dissociated_from)
+    return DeleteControlResponse(
+        success=True,
+        dissociated_from=dissociated_from_policies,
+        dissociated_from_policies=dissociated_from_policies,
+        dissociated_from_agents=dissociated_from_agents,
+    )
 
 
 @router.patch(
@@ -890,6 +950,16 @@ async def patch_control(
         try:
             await db.commit()
             _logger.info(f"Updated control '{control.name}' ({control_id})")
+        except IntegrityError:
+            await db.rollback()
+            conflicting_name = request.name or control.name
+            raise ConflictError(
+                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                detail=f"Control with name '{conflicting_name}' already exists",
+                resource="Control",
+                resource_id=conflicting_name,
+                hint="Choose a different name or update the existing control.",
+            )
         except Exception:
             await db.rollback()
             _logger.error(

@@ -2,7 +2,7 @@
 Setup script for Banking Transaction Agent controls.
 
 Demonstrates all AgentControl action types in a realistic banking scenario:
-- ALLOW: Simple transfers within policy
+- ALLOW: Simple transfers that satisfy controls
 - DENY: Compliance violations (sanctioned countries, fraud)
 - STEER: Large transfers requiring verification and approval
 
@@ -12,7 +12,7 @@ Run this once before running the autonomous agent demo.
 import asyncio
 import os
 
-from agent_control import Agent, AgentControlClient, agents, controls, policies
+from agent_control import Agent, AgentControlClient, agents, controls
 
 AGENT_ID = "f8e5d3c2-4b1a-4e7f-9c8d-2a3b4c5d6e7f"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
@@ -238,58 +238,17 @@ async def setup_banking_controls():
                             print(f"  Response: {e.response.text if hasattr(e.response, 'text') else e.response}")
                     raise
 
-        # 3. Create Policy
-        print("\n📋 Creating policy...")
-        try:
-            policy_result = await policies.create_policy(
-                client,
-                name="banking-transaction-policy"
-            )
-            policy_id = policy_result["policy_id"]
-            print(f"  ✓ Created policy: banking-transaction-policy (ID: {policy_id})")
-        except Exception as e:
-            if "409" in str(e):
-                print(f"  ℹ️  Policy 'banking-transaction-policy' already exists")
-                try:
-                    policy_info = await agents.get_agent_policy(client, agent.agent_name)
-                    policy_id = policy_info.get("policy_id")
-                    if policy_id:
-                        print(f"  ℹ️  Using agent's existing policy (ID: {policy_id})")
-                    else:
-                        raise ValueError("No policy assigned")
-                except Exception:
-                    import uuid as uuid_module
-                    unique_name = f"banking-policy-{uuid_module.uuid4().hex[:8]}"
-                    print(f"  ⚠️  Creating new policy '{unique_name}' instead")
-                    policy_result = await policies.create_policy(client, name=unique_name)
-                    policy_id = policy_result["policy_id"]
-                    print(f"  ✓ Created policy (ID: {policy_id})")
-            else:
-                print(f"  ❌ Error creating policy: {e}")
-                raise
-
-        # 4. Add Controls to Policy
-        print("\n📋 Adding controls to policy...")
+        # 3. Associate controls directly with the agent
+        print("\n📋 Associating controls directly with agent...")
         for control_id in control_ids:
             try:
-                await policies.add_control_to_policy(client, policy_id, control_id)
-                print(f"  ✓ Added control {control_id} to policy")
+                await agents.add_agent_control(client, agent.agent_name, control_id)
+                print(f"  ✓ Added control {control_id} to agent")
             except Exception as e:
                 if "409" in str(e) or "already" in str(e).lower():
-                    print(f"  ℹ️  Control {control_id} already in policy (OK)")
+                    print(f"  ℹ️  Control {control_id} already associated with agent (OK)")
                 else:
                     print(f"  ⚠️  Failed to add control: {e}")
-
-        # 5. Assign Policy to Agent
-        print("\n📋 Assigning policy to agent...")
-        try:
-            await policies.assign_policy_to_agent(client, agent.agent_name, policy_id)
-            print(f"  ✓ Assigned policy {policy_id} to agent {agent.agent_name}")
-        except Exception as e:
-            if "409" in str(e) or "already" in str(e).lower():
-                print(f"  ℹ️  Policy already assigned to agent (OK)")
-            else:
-                print(f"  ⚠️  Failed to assign policy: {e}")
 
         print("\n✅ Setup complete!")
         print(f"\nAgent ID: {AGENT_ID}")

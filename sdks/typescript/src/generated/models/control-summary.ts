@@ -50,6 +50,10 @@ export type ControlSummary = {
    * Agent using this control
    */
   usedByAgent?: AgentRef | null | undefined;
+  /**
+   * Number of unique agents using this control
+   */
+  usedByAgentsCount: number;
 };
 
 /** @internal */
@@ -67,11 +71,13 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
     step_types: z.optional(z.nullable(z.array(types.string()))),
     tags: types.optional(z.array(types.string())),
     used_by_agent: z.optional(z.nullable(AgentRef$inboundSchema)),
+    used_by_agents_count: z._default(types.number(), 0),
   }),
   z.transform((v) => {
     return remap$(v, {
       "step_types": "stepTypes",
       "used_by_agent": "usedByAgent",
+      "used_by_agents_count": "usedByAgentsCount",
     });
   }),
 );

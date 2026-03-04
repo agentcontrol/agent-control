@@ -5,7 +5,7 @@ This example demonstrates using the @control() decorator to protect SQL queries
 with graceful error handling.
 
 PREREQUISITE:
-    Run setup_sql_controls.py FIRST to create the SQL control and policy:
+    Run setup_sql_controls.py FIRST to create the SQL control and direct agent association:
     
         $ uv run setup_sql_controls.py
     
@@ -50,8 +50,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 # --- Configuration ---
-AGENT_ID = "edf66504-0db5-4ee8-9e09-3ef37bbb8faa"
-AGENT_NAME = "SQL Demo Agent"
+AGENT_NAME = "langchain-sql-example"
 AGENT_DESCRIPTION = "SQL agent with server-side controls"
 USE_LOCAL_CONTROLS = os.getenv("AGENT_CONTROL_LOCAL_EVAL", "false").lower() == "true"
 # When enabled, controls must be configured with execution="sdk".
@@ -210,7 +209,7 @@ async def main():
     print("Initializing SQL Agent...")
 
     agent_control.init(
-        agent_name=AGENT_ID,
+        agent_name=AGENT_NAME,
         agent_description=AGENT_DESCRIPTION,
         server_url=os.getenv("AGENT_CONTROL_URL"),
     )

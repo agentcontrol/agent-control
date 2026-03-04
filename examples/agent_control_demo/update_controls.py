@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../sdks/python/sr
 from agent_control import AgentControlClient
 
 # Configuration
-AGENT_ID = "672e50df-af4c-429f-965a-3d7f8262302f"
+AGENT_NAME = "demo-chatbot"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
@@ -154,14 +154,11 @@ async def main():
     parser.add_argument("--status", action="store_true", help="Show current status")
     args = parser.parse_args()
 
-    # Use the provided UUID
-    agent_name = AGENT_ID
-
     print("\n" + "=" * 60)
     print("AGENT CONTROL DEMO: Update Controls")
     print("=" * 60)
     print(f"\nServer URL: {SERVER_URL}")
-    print(f"Agent UUID: {agent_name}")
+    print(f"Agent Name: {AGENT_NAME}")
 
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # Check server health
@@ -174,7 +171,7 @@ async def main():
             return
 
         # Find the SSN control
-        ctrl = await get_control_by_name(client, agent_name, "block-ssn-output")
+        ctrl = await get_control_by_name(client, AGENT_NAME, "block-ssn-output")
         if not ctrl:
             print("\n✗ SSN control not found!")
             print("  Run setup_controls.py first:")
@@ -184,16 +181,16 @@ async def main():
         control_id = ctrl.get("id")
 
         if args.status:
-            await show_current_status(client, agent_name)
+            await show_current_status(client, AGENT_NAME)
         elif args.allow_ssn:
             await allow_ssn(client, control_id)
-            await show_current_status(client, agent_name)
+            await show_current_status(client, AGENT_NAME)
         elif args.block_ssn:
             await block_ssn(client, control_id)
-            await show_current_status(client, agent_name)
+            await show_current_status(client, AGENT_NAME)
         else:
             # Default: show status and usage
-            await show_current_status(client, agent_name)
+            await show_current_status(client, AGENT_NAME)
             print("\n" + "=" * 60)
             print("Usage")
             print("=" * 60)

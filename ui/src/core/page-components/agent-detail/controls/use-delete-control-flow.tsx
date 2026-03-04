@@ -3,7 +3,10 @@ import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 
 import type { Control } from '@/core/api/types';
-import { useDeleteControl } from '@/core/hooks/query-hooks/use-delete-control';
+import {
+  type RemoveControlFromAgentResult,
+  useRemoveControlFromAgent,
+} from '@/core/hooks/query-hooks/use-remove-control-from-agent';
 
 type UseDeleteControlFlowParams = {
   agentId: string;
@@ -16,18 +19,19 @@ export function useDeleteControlFlow({
   selectedControl,
   onCloseEditModal,
 }: UseDeleteControlFlowParams) {
-  const deleteControl = useDeleteControl();
+  const removeControlFromAgent = useRemoveControlFromAgent();
 
   const handleDeleteControl = (control: Control) => {
     modals.openConfirmModal({
-      title: 'Delete control?',
+      title: 'Remove control from agent?',
       children: (
         <Text size="sm" c="dimmed">
-          Delete &quot;{control.name}&quot;? This will remove the control from
-          this agent and delete it. This action cannot be undone.
+          Remove &quot;{control.name}&quot; from this agent? This only removes
+          the direct association from this agent and does not delete the control
+          globally.
         </Text>
       ),
-      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      labels: { confirm: 'Remove', cancel: 'Cancel' },
       confirmProps: {
         variant: 'filled',
         color: 'red.7',
@@ -35,17 +39,31 @@ export function useDeleteControlFlow({
       },
       cancelProps: { variant: 'default', size: 'sm' },
       onConfirm: () =>
-        deleteControl.mutate(
+        removeControlFromAgent.mutate(
           {
             agentId,
             controlId: control.id,
-            force: true,
           },
           {
-            onSuccess: () => {
+            onSuccess: (result: RemoveControlFromAgentResult) => {
+              // The controls table shows active controls (direct + policy-derived), so
+              // remove-direct can legitimately no-op for policy-derived entries.
+              if (!result.removed_direct_association) {
+                notifications.show({
+                  title: 'No direct association found',
+                  message: result.control_still_active
+                    ? `"${control.name}" is still active for this agent through policy associations.`
+                    : `"${control.name}" was not directly associated with this agent.`,
+                  color: result.control_still_active ? 'yellow' : 'blue',
+                });
+                return;
+              }
+
               notifications.show({
-                title: 'Control deleted',
-                message: `"${control.name}" has been removed.`,
+                title: 'Control removed',
+                message: result.control_still_active
+                  ? `"${control.name}" was removed from direct associations, but remains active via policy associations.`
+                  : `"${control.name}" has been removed from this agent.`,
                 color: 'green',
               });
               if (selectedControl?.id === control.id) {
@@ -54,7 +72,7 @@ export function useDeleteControlFlow({
             },
             onError: (error) => {
               notifications.show({
-                title: 'Failed to delete control',
+                title: 'Failed to remove control',
                 message:
                   error instanceof Error
                     ? error.message
@@ -67,5 +85,5 @@ export function useDeleteControlFlow({
     });
   };
 
-  return { handleDeleteControl, deleteControl };
+  return { handleDeleteControl, removeControlFromAgent };
 }

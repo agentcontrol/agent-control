@@ -33,15 +33,14 @@ import { Result } from "../types/fp.js";
  * @remarks
  * List all protection controls active for an agent.
  *
- * Controls are inherited from the agent's assigned policy.
- * Returns an empty list if the agent has no policy.
+ * Controls include the union of policy-derived and directly associated controls.
  *
  * Args:
  *     agent_name: Agent identifier
  *     db: Database session (injected)
  *
  * Returns:
- *     AgentControlsResponse with list of controls (empty if no policy)
+ *     AgentControlsResponse with list of active controls
  *
  * Raises:
  *     HTTPException 404: Agent not found

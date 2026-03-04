@@ -8,7 +8,7 @@ import { remap as remap$ } from "../../lib/primitives.js";
 export type DeleteControlApiV1ControlsControlIdDeleteRequest = {
   controlId: number;
   /**
-   * If true, dissociate from all policies before deleting. If false, fail if control is associated with any policy.
+   * If true, dissociate from all policy/agent links before deleting. If false, fail if control is associated with any policy or agent.
    */
   force?: boolean | undefined;
 };

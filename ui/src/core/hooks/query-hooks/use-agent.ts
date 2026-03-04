@@ -5,13 +5,13 @@ import { api } from '@/core/api/client';
 import type { GetAgentPathParams, GetAgentResponse } from '@/core/api/types';
 
 /**
- * Query hook to fetch a single agent by identifier.
+ * Query hook to fetch a single agent by ID
  *
- * @param agentName - Immutable agent name (required)
+ * @param agentId - UUID of the agent (required)
  *
  */
 export function useAgent(
-  agentName: GetAgentPathParams['agent_name'],
+  agentId: GetAgentPathParams['agent_name'],
   options?: Omit<
     UseQueryOptions<
       GetAgentResponse,
@@ -23,12 +23,12 @@ export function useAgent(
   >
 ): UseQueryResult<GetAgentResponse, Error> {
   const { enabled, ...rest } = options ?? {};
-  const isEnabled = enabled ?? Boolean(agentName);
+  const isEnabled = enabled ?? Boolean(agentId);
 
   return useQuery({
-    queryKey: ['agent', agentName],
+    queryKey: ['agent', agentId],
     queryFn: async () => {
-      const { data, error } = await api.agents.get(agentName);
+      const { data, error } = await api.agents.get(agentId);
       if (error) throw error;
       return data;
     },
