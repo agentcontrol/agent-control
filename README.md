@@ -84,10 +84,10 @@ cd agent-control
 **What the script does:**
 - ✓ Check Python 3.12+ is installed
 - ✓ Create a virtual environment
-- ✓ Pull and start PostgreSQL + Agent Control Server via Docker
+- ✓ Pull and start PostgreSQL + Agent Control Server + UI via Docker
 - ✓ Install the Agent Control SDK
 
-**Server will be running at `http://localhost:8000` — ready to use!**
+**Server will be running at `http://localhost:8000` and UI at `http://localhost:4000` — ready to use!**
 
 
 ---
