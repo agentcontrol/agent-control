@@ -1,4 +1,4 @@
-export type ControlAction = "allow" | "deny";
+export type ControlAction = "allow" | "deny" | "steer" | "warn" | "log";
 
 export interface EvaluationResult {
   isSafe: boolean;
@@ -24,5 +24,24 @@ export class ControlViolationError extends Error {
     this.controlId = params.controlId;
     this.action = params.action;
     this.evaluationResult = params.evaluationResult;
+  }
+}
+
+export class ControlSteerError extends Error {
+  readonly controlName: string;
+  readonly controlId: string;
+  readonly steeringContext: string;
+
+  constructor(params: {
+    controlName: string;
+    controlId: string;
+    steeringContext?: string;
+    message?: string;
+  }) {
+    super(params.message ?? `Control steering required: ${params.controlName}`);
+    this.name = "ControlSteerError";
+    this.controlName = params.controlName;
+    this.controlId = params.controlId;
+    this.steeringContext = params.steeringContext ?? "No steering context provided";
   }
 }

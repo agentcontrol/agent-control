@@ -1,9 +1,7 @@
 import { AgentControlSDK } from "./generated/sdk/sdk";
+import { mergeRegisteredSteps, type RegisteredStep } from "./step-registry";
 
-export interface StepSchema {
-  name: string;
-  schema: Record<string, unknown>;
-}
+export type StepSchema = RegisteredStep;
 
 export type APIKeyProvider = string | (() => Promise<string>);
 
@@ -13,6 +11,10 @@ export interface AgentControlInitOptions {
   serverUrl: string;
   apiKey?: APIKeyProvider;
   steps?: StepSchema[];
+  agentDescription?: string;
+  agentVersion?: string;
+  agentMetadata?: Record<string, unknown>;
+  registerAgent?: boolean;
   timeoutMs?: number;
   userAgent?: string;
 }
@@ -30,7 +32,7 @@ export class AgentControlClient {
   private options: AgentControlInitOptions | null = null;
   private sdk: AgentControlSDK | null = null;
 
-  init(options: AgentControlInitOptions): void {
+  async init(options: AgentControlInitOptions): Promise<void> {
     this.options = { ...options };
     this.sdk = new AgentControlSDK({
       serverURL: options.serverUrl,
@@ -38,6 +40,21 @@ export class AgentControlClient {
       timeoutMs: options.timeoutMs,
       userAgent: options.userAgent,
     });
+    if (options.registerAgent ?? true) {
+      const steps = mergeRegisteredSteps(options.steps);
+      await this.sdk.agents.init({
+        agent: {
+          agentName: options.agentName,
+          agentDescription: options.agentDescription,
+          agentVersion: options.agentVersion,
+          agentMetadata: {
+            ...(options.agentMetadata ?? {}),
+            sdk_language: "typescript",
+          },
+        },
+        steps: steps.length > 0 ? steps : undefined,
+      });
+    }
   }
 
   get initialized(): boolean {
