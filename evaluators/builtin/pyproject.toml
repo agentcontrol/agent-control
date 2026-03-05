@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 galileo = ["agent-control-evaluator-galileo>=3.0.0"]
+ai_defense = ["agent-control-evaluator-ai-defense>=0.1.0"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
 
 [project.entry-points."agent_control.evaluators"]
@@ -35,3 +36,5 @@ packages = ["src/agent_control_evaluators"]
 agent-control-models = { workspace = true }
 # For local dev: use local galileo package instead of PyPI
 agent-control-evaluator-galileo = { path = "../contrib/galileo", editable = true }
+# For local dev: use local Cisco AI Defense package instead of PyPI
+agent-control-evaluator-ai-defense = { path = "../contrib/ai_defense", editable = true }
