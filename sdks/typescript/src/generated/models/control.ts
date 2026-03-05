@@ -21,8 +21,6 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  * are returned from API endpoints. Unconfigured controls are filtered out.
  */
 export type Control = {
-  id: number;
-  name: string;
   /**
    * A control definition to evaluate agent interactions.
    *
@@ -32,13 +30,15 @@ export type Control = {
    * Identity fields (id, name) are managed by the database.
    */
   control: ControlDefinitionOutput;
+  id: number;
+  name: string;
 };
 
 /** @internal */
 export const Control$inboundSchema: z.ZodMiniType<Control, unknown> = z.object({
+  control: ControlDefinitionOutput$inboundSchema,
   id: types.number(),
   name: types.string(),
-  control: ControlDefinitionOutput$inboundSchema,
 });
 
 export function controlFromJSON(

@@ -12,16 +12,21 @@ import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 /**
- * Check stage: 'pre' or 'post'
+ * Action taken by the control
  */
-export const CheckStage = {
-  Pre: "pre",
-  Post: "post",
+export const ControlExecutionEventAction = {
+  Allow: "allow",
+  Deny: "deny",
+  Steer: "steer",
+  Warn: "warn",
+  Log: "log",
 } as const;
 /**
- * Check stage: 'pre' or 'post'
+ * Action taken by the control
  */
-export type CheckStage = OpenEnum<typeof CheckStage>;
+export type ControlExecutionEventAction = OpenEnum<
+  typeof ControlExecutionEventAction
+>;
 
 /**
  * Type of call: 'llm_call' or 'tool_call'
@@ -38,21 +43,16 @@ export type ControlExecutionEventAppliesTo = OpenEnum<
 >;
 
 /**
- * Action taken by the control
+ * Check stage: 'pre' or 'post'
  */
-export const ControlExecutionEventAction = {
-  Allow: "allow",
-  Deny: "deny",
-  Steer: "steer",
-  Warn: "warn",
-  Log: "log",
+export const CheckStage = {
+  Pre: "pre",
+  Post: "post",
 } as const;
 /**
- * Action taken by the control
+ * Check stage: 'pre' or 'post'
  */
-export type ControlExecutionEventAction = OpenEnum<
-  typeof ControlExecutionEventAction
->;
+export type CheckStage = OpenEnum<typeof CheckStage>;
 
 /**
  * Represents a single control execution event.
@@ -87,21 +87,29 @@ export type ControlExecutionEventAction = OpenEnum<
  */
 export type ControlExecutionEvent = {
   /**
-   * Unique ID for this control execution
+   * Action taken by the control
    */
-  controlExecutionId?: string | undefined;
-  /**
-   * Trace ID for distributed tracing (SDK generates OTEL-compatible 32-char hex)
-   */
-  traceId: string;
-  /**
-   * Span ID for distributed tracing (SDK generates OTEL-compatible 16-char hex)
-   */
-  spanId: string;
+  action: ControlExecutionEventAction;
   /**
    * Identifier of the agent
    */
   agentName: string;
+  /**
+   * Type of call: 'llm_call' or 'tool_call'
+   */
+  appliesTo: ControlExecutionEventAppliesTo;
+  /**
+   * Check stage: 'pre' or 'post'
+   */
+  checkStage: CheckStage;
+  /**
+   * Confidence score (0.0 to 1.0)
+   */
+  confidence: number;
+  /**
+   * Unique ID for this control execution
+   */
+  controlExecutionId?: string | undefined;
   /**
    * Database ID of the control
    */
@@ -111,68 +119,42 @@ export type ControlExecutionEvent = {
    */
   controlName: string;
   /**
-   * Check stage: 'pre' or 'post'
+   * Error message if evaluation failed
    */
-  checkStage: CheckStage;
-  /**
-   * Type of call: 'llm_call' or 'tool_call'
-   */
-  appliesTo: ControlExecutionEventAppliesTo;
-  /**
-   * Action taken by the control
-   */
-  action: ControlExecutionEventAction;
-  /**
-   * Whether the evaluator matched (True) or not (False)
-   */
-  matched: boolean;
-  /**
-   * Confidence score (0.0 to 1.0)
-   */
-  confidence: number;
-  /**
-   * When the control was executed (UTC)
-   */
-  timestamp?: Date | undefined;
-  /**
-   * Execution duration in milliseconds
-   */
-  executionDurationMs?: number | null | undefined;
+  errorMessage?: string | null | undefined;
   /**
    * Name of the evaluator used
    */
   evaluatorName?: string | null | undefined;
   /**
-   * Selector path used to extract data
+   * Execution duration in milliseconds
    */
-  selectorPath?: string | null | undefined;
+  executionDurationMs?: number | null | undefined;
   /**
-   * Error message if evaluation failed
+   * Whether the evaluator matched (True) or not (False)
    */
-  errorMessage?: string | null | undefined;
+  matched: boolean;
   /**
    * Additional metadata
    */
   metadata?: { [k: string]: any } | undefined;
+  /**
+   * Selector path used to extract data
+   */
+  selectorPath?: string | null | undefined;
+  /**
+   * Span ID for distributed tracing (SDK generates OTEL-compatible 16-char hex)
+   */
+  spanId: string;
+  /**
+   * When the control was executed (UTC)
+   */
+  timestamp?: Date | undefined;
+  /**
+   * Trace ID for distributed tracing (SDK generates OTEL-compatible 32-char hex)
+   */
+  traceId: string;
 };
-
-/** @internal */
-export const CheckStage$inboundSchema: z.ZodMiniType<CheckStage, unknown> =
-  openEnums.inboundSchema(CheckStage);
-/** @internal */
-export const CheckStage$outboundSchema: z.ZodMiniType<string, CheckStage> =
-  openEnums.outboundSchema(CheckStage);
-
-/** @internal */
-export const ControlExecutionEventAppliesTo$inboundSchema: z.ZodMiniType<
-  ControlExecutionEventAppliesTo,
-  unknown
-> = openEnums.inboundSchema(ControlExecutionEventAppliesTo);
-/** @internal */
-export const ControlExecutionEventAppliesTo$outboundSchema: z.ZodMiniType<
-  string,
-  ControlExecutionEventAppliesTo
-> = openEnums.outboundSchema(ControlExecutionEventAppliesTo);
 
 /** @internal */
 export const ControlExecutionEventAction$inboundSchema: z.ZodMiniType<
@@ -186,65 +168,83 @@ export const ControlExecutionEventAction$outboundSchema: z.ZodMiniType<
 > = openEnums.outboundSchema(ControlExecutionEventAction);
 
 /** @internal */
+export const ControlExecutionEventAppliesTo$inboundSchema: z.ZodMiniType<
+  ControlExecutionEventAppliesTo,
+  unknown
+> = openEnums.inboundSchema(ControlExecutionEventAppliesTo);
+/** @internal */
+export const ControlExecutionEventAppliesTo$outboundSchema: z.ZodMiniType<
+  string,
+  ControlExecutionEventAppliesTo
+> = openEnums.outboundSchema(ControlExecutionEventAppliesTo);
+
+/** @internal */
+export const CheckStage$inboundSchema: z.ZodMiniType<CheckStage, unknown> =
+  openEnums.inboundSchema(CheckStage);
+/** @internal */
+export const CheckStage$outboundSchema: z.ZodMiniType<string, CheckStage> =
+  openEnums.outboundSchema(CheckStage);
+
+/** @internal */
 export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
   ControlExecutionEvent,
   unknown
 > = z.pipe(
   z.object({
-    control_execution_id: types.optional(types.string()),
-    trace_id: types.string(),
-    span_id: types.string(),
+    action: ControlExecutionEventAction$inboundSchema,
     agent_name: types.string(),
+    applies_to: ControlExecutionEventAppliesTo$inboundSchema,
+    check_stage: CheckStage$inboundSchema,
+    confidence: types.number(),
+    control_execution_id: types.optional(types.string()),
     control_id: types.number(),
     control_name: types.string(),
-    check_stage: CheckStage$inboundSchema,
-    applies_to: ControlExecutionEventAppliesTo$inboundSchema,
-    action: ControlExecutionEventAction$inboundSchema,
-    matched: types.boolean(),
-    confidence: types.number(),
-    timestamp: types.optional(types.date()),
-    execution_duration_ms: z.optional(z.nullable(types.number())),
-    evaluator_name: z.optional(z.nullable(types.string())),
-    selector_path: z.optional(z.nullable(types.string())),
     error_message: z.optional(z.nullable(types.string())),
+    evaluator_name: z.optional(z.nullable(types.string())),
+    execution_duration_ms: z.optional(z.nullable(types.number())),
+    matched: types.boolean(),
     metadata: types.optional(z.record(z.string(), z.any())),
+    selector_path: z.optional(z.nullable(types.string())),
+    span_id: types.string(),
+    timestamp: types.optional(types.date()),
+    trace_id: types.string(),
   }),
   z.transform((v) => {
     return remap$(v, {
-      "control_execution_id": "controlExecutionId",
-      "trace_id": "traceId",
-      "span_id": "spanId",
       "agent_name": "agentName",
+      "applies_to": "appliesTo",
+      "check_stage": "checkStage",
+      "control_execution_id": "controlExecutionId",
       "control_id": "controlId",
       "control_name": "controlName",
-      "check_stage": "checkStage",
-      "applies_to": "appliesTo",
-      "execution_duration_ms": "executionDurationMs",
-      "evaluator_name": "evaluatorName",
-      "selector_path": "selectorPath",
       "error_message": "errorMessage",
+      "evaluator_name": "evaluatorName",
+      "execution_duration_ms": "executionDurationMs",
+      "selector_path": "selectorPath",
+      "span_id": "spanId",
+      "trace_id": "traceId",
     });
   }),
 );
 /** @internal */
 export type ControlExecutionEvent$Outbound = {
-  control_execution_id?: string | undefined;
-  trace_id: string;
-  span_id: string;
+  action: string;
   agent_name: string;
+  applies_to: string;
+  check_stage: string;
+  confidence: number;
+  control_execution_id?: string | undefined;
   control_id: number;
   control_name: string;
-  check_stage: string;
-  applies_to: string;
-  action: string;
-  matched: boolean;
-  confidence: number;
-  timestamp?: string | undefined;
-  execution_duration_ms?: number | null | undefined;
-  evaluator_name?: string | null | undefined;
-  selector_path?: string | null | undefined;
   error_message?: string | null | undefined;
+  evaluator_name?: string | null | undefined;
+  execution_duration_ms?: number | null | undefined;
+  matched: boolean;
   metadata?: { [k: string]: any } | undefined;
+  selector_path?: string | null | undefined;
+  span_id: string;
+  timestamp?: string | undefined;
+  trace_id: string;
 };
 
 /** @internal */
@@ -253,38 +253,38 @@ export const ControlExecutionEvent$outboundSchema: z.ZodMiniType<
   ControlExecutionEvent
 > = z.pipe(
   z.object({
-    controlExecutionId: z.optional(z.string()),
-    traceId: z.string(),
-    spanId: z.string(),
+    action: ControlExecutionEventAction$outboundSchema,
     agentName: z.string(),
+    appliesTo: ControlExecutionEventAppliesTo$outboundSchema,
+    checkStage: CheckStage$outboundSchema,
+    confidence: z.number(),
+    controlExecutionId: z.optional(z.string()),
     controlId: z.int(),
     controlName: z.string(),
-    checkStage: CheckStage$outboundSchema,
-    appliesTo: ControlExecutionEventAppliesTo$outboundSchema,
-    action: ControlExecutionEventAction$outboundSchema,
-    matched: z.boolean(),
-    confidence: z.number(),
-    timestamp: z.optional(z.pipe(z.date(), z.transform(v => v.toISOString()))),
-    executionDurationMs: z.optional(z.nullable(z.number())),
-    evaluatorName: z.optional(z.nullable(z.string())),
-    selectorPath: z.optional(z.nullable(z.string())),
     errorMessage: z.optional(z.nullable(z.string())),
+    evaluatorName: z.optional(z.nullable(z.string())),
+    executionDurationMs: z.optional(z.nullable(z.number())),
+    matched: z.boolean(),
     metadata: z.optional(z.record(z.string(), z.any())),
+    selectorPath: z.optional(z.nullable(z.string())),
+    spanId: z.string(),
+    timestamp: z.optional(z.pipe(z.date(), z.transform(v => v.toISOString()))),
+    traceId: z.string(),
   }),
   z.transform((v) => {
     return remap$(v, {
-      controlExecutionId: "control_execution_id",
-      traceId: "trace_id",
-      spanId: "span_id",
       agentName: "agent_name",
+      appliesTo: "applies_to",
+      checkStage: "check_stage",
+      controlExecutionId: "control_execution_id",
       controlId: "control_id",
       controlName: "control_name",
-      checkStage: "check_stage",
-      appliesTo: "applies_to",
-      executionDurationMs: "execution_duration_ms",
-      evaluatorName: "evaluator_name",
-      selectorPath: "selector_path",
       errorMessage: "error_message",
+      evaluatorName: "evaluator_name",
+      executionDurationMs: "execution_duration_ms",
+      selectorPath: "selector_path",
+      spanId: "span_id",
+      traceId: "trace_id",
     });
   }),
 );

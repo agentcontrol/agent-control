@@ -14,17 +14,17 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type EvaluatorInfo = {
   /**
-   * Evaluator name
+   * JSON Schema for config
    */
-  name: string;
-  /**
-   * Evaluator version
-   */
-  version: string;
+  configSchema: { [k: string]: any };
   /**
    * Evaluator description
    */
   description: string;
+  /**
+   * Evaluator name
+   */
+  name: string;
   /**
    * Whether evaluator requires API key
    */
@@ -34,9 +34,9 @@ export type EvaluatorInfo = {
    */
   timeoutMs: number;
   /**
-   * JSON Schema for config
+   * Evaluator version
    */
-  configSchema: { [k: string]: any };
+  version: string;
 };
 
 /** @internal */
@@ -45,18 +45,18 @@ export const EvaluatorInfo$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    name: types.string(),
-    version: types.string(),
+    config_schema: z.record(z.string(), z.any()),
     description: types.string(),
+    name: types.string(),
     requires_api_key: types.boolean(),
     timeout_ms: types.number(),
-    config_schema: z.record(z.string(), z.any()),
+    version: types.string(),
   }),
   z.transform((v) => {
     return remap$(v, {
+      "config_schema": "configSchema",
       "requires_api_key": "requiresApiKey",
       "timeout_ms": "timeoutMs",
-      "config_schema": "configSchema",
     });
   }),
 );

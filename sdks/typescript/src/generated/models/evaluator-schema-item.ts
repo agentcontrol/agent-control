@@ -13,9 +13,9 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  * Evaluator schema summary for list response.
  */
 export type EvaluatorSchemaItem = {
-  name: string;
-  description: string | null;
   configSchema: { [k: string]: any };
+  description: string | null;
+  name: string;
 };
 
 /** @internal */
@@ -24,9 +24,9 @@ export const EvaluatorSchemaItem$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    name: types.string(),
-    description: types.nullable(types.string()),
     config_schema: z.record(z.string(), z.any()),
+    description: types.nullable(types.string()),
+    name: types.string(),
   }),
   z.transform((v) => {
     return remap$(v, {

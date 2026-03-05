@@ -22,21 +22,21 @@ export type Stages = OpenEnum<typeof Stages>;
  */
 export type ControlScope = {
   /**
-   * Step types this control applies to (omit to apply to all types). Built-in types are 'tool' and 'llm'.
+   * Evaluation stages this control applies to
    */
-  stepTypes?: Array<string> | null | undefined;
-  /**
-   * Exact step names this control applies to
-   */
-  stepNames?: Array<string> | null | undefined;
+  stages?: Array<Stages> | null | undefined;
   /**
    * RE2 pattern matched with search() against step name
    */
   stepNameRegex?: string | null | undefined;
   /**
-   * Evaluation stages this control applies to
+   * Exact step names this control applies to
    */
-  stages?: Array<Stages> | null | undefined;
+  stepNames?: Array<string> | null | undefined;
+  /**
+   * Step types this control applies to (omit to apply to all types). Built-in types are 'tool' and 'llm'.
+   */
+  stepTypes?: Array<string> | null | undefined;
 };
 
 /** @internal */
@@ -50,25 +50,25 @@ export const Stages$outboundSchema: z.ZodMiniType<string, Stages> = openEnums
 export const ControlScope$inboundSchema: z.ZodMiniType<ControlScope, unknown> =
   z.pipe(
     z.object({
-      step_types: z.optional(z.nullable(z.array(types.string()))),
-      step_names: z.optional(z.nullable(z.array(types.string()))),
-      step_name_regex: z.optional(z.nullable(types.string())),
       stages: z.optional(z.nullable(z.array(Stages$inboundSchema))),
+      step_name_regex: z.optional(z.nullable(types.string())),
+      step_names: z.optional(z.nullable(z.array(types.string()))),
+      step_types: z.optional(z.nullable(z.array(types.string()))),
     }),
     z.transform((v) => {
       return remap$(v, {
-        "step_types": "stepTypes",
-        "step_names": "stepNames",
         "step_name_regex": "stepNameRegex",
+        "step_names": "stepNames",
+        "step_types": "stepTypes",
       });
     }),
   );
 /** @internal */
 export type ControlScope$Outbound = {
-  step_types?: Array<string> | null | undefined;
-  step_names?: Array<string> | null | undefined;
-  step_name_regex?: string | null | undefined;
   stages?: Array<string> | null | undefined;
+  step_name_regex?: string | null | undefined;
+  step_names?: Array<string> | null | undefined;
+  step_types?: Array<string> | null | undefined;
 };
 
 /** @internal */
@@ -77,16 +77,16 @@ export const ControlScope$outboundSchema: z.ZodMiniType<
   ControlScope
 > = z.pipe(
   z.object({
-    stepTypes: z.optional(z.nullable(z.array(z.string()))),
-    stepNames: z.optional(z.nullable(z.array(z.string()))),
-    stepNameRegex: z.optional(z.nullable(z.string())),
     stages: z.optional(z.nullable(z.array(Stages$outboundSchema))),
+    stepNameRegex: z.optional(z.nullable(z.string())),
+    stepNames: z.optional(z.nullable(z.array(z.string()))),
+    stepTypes: z.optional(z.nullable(z.array(z.string()))),
   }),
   z.transform((v) => {
     return remap$(v, {
-      stepTypes: "step_types",
-      stepNames: "step_names",
       stepNameRegex: "step_name_regex",
+      stepNames: "step_names",
+      stepTypes: "step_types",
     });
   }),
 );

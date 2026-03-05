@@ -29,10 +29,6 @@ export type EventQueryResponse = {
    */
   events: Array<ControlExecutionEvent>;
   /**
-   * Total matching events
-   */
-  total: number;
-  /**
    * Limit used in query
    */
   limit: number;
@@ -40,6 +36,10 @@ export type EventQueryResponse = {
    * Offset used in query
    */
   offset: number;
+  /**
+   * Total matching events
+   */
+  total: number;
 };
 
 /** @internal */
@@ -48,9 +48,9 @@ export const EventQueryResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.object({
   events: z.array(ControlExecutionEvent$inboundSchema),
-  total: types.number(),
   limit: types.number(),
   offset: types.number(),
+  total: types.number(),
 });
 
 export function eventQueryResponseFromJSON(

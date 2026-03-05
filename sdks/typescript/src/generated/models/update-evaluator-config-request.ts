@@ -9,9 +9,9 @@ import * as z from "zod/v4-mini";
  */
 export type UpdateEvaluatorConfigRequest = {
   /**
-   * Unique evaluator config name (letters, numbers, hyphens, underscores)
+   * Evaluator-specific configuration
    */
-  name: string;
+  config: { [k: string]: any };
   /**
    * Optional description
    */
@@ -21,17 +21,17 @@ export type UpdateEvaluatorConfigRequest = {
    */
   evaluator: string;
   /**
-   * Evaluator-specific configuration
+   * Unique evaluator config name (letters, numbers, hyphens, underscores)
    */
-  config: { [k: string]: any };
+  name: string;
 };
 
 /** @internal */
 export type UpdateEvaluatorConfigRequest$Outbound = {
-  name: string;
+  config: { [k: string]: any };
   description?: string | null | undefined;
   evaluator: string;
-  config: { [k: string]: any };
+  name: string;
 };
 
 /** @internal */
@@ -39,10 +39,10 @@ export const UpdateEvaluatorConfigRequest$outboundSchema: z.ZodMiniType<
   UpdateEvaluatorConfigRequest$Outbound,
   UpdateEvaluatorConfigRequest
 > = z.object({
-  name: z.string(),
+  config: z.record(z.string(), z.any()),
   description: z.optional(z.nullable(z.string())),
   evaluator: z.string(),
-  config: z.record(z.string(), z.any()),
+  name: z.string(),
 });
 
 export function updateEvaluatorConfigRequestToJSON(

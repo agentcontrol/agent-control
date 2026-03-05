@@ -18,24 +18,19 @@ export class AgentControlSDK extends ClientSDK {
     return (this._agents ??= new Agents(this._options));
   }
 
-  private _policies?: Policies;
-  get policies(): Policies {
-    return (this._policies ??= new Policies(this._options));
-  }
-
   private _controls?: Controls;
   get controls(): Controls {
     return (this._controls ??= new Controls(this._options));
   }
 
-  private _evaluatorConfigs?: EvaluatorConfigs;
-  get evaluatorConfigs(): EvaluatorConfigs {
-    return (this._evaluatorConfigs ??= new EvaluatorConfigs(this._options));
-  }
-
   private _evaluation?: Evaluation;
   get evaluation(): Evaluation {
     return (this._evaluation ??= new Evaluation(this._options));
+  }
+
+  private _evaluatorConfigs?: EvaluatorConfigs;
+  get evaluatorConfigs(): EvaluatorConfigs {
+    return (this._evaluatorConfigs ??= new EvaluatorConfigs(this._options));
   }
 
   private _evaluators?: Evaluators;
@@ -46,6 +41,11 @@ export class AgentControlSDK extends ClientSDK {
   private _observability?: Observability;
   get observability(): Observability {
     return (this._observability ??= new Observability(this._options));
+  }
+
+  private _policies?: Policies;
+  get policies(): Policies {
+    return (this._policies ??= new Policies(this._options));
   }
 
   private _system?: System;

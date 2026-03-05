@@ -13,31 +13,31 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type StepKey = {
   /**
-   * Step type
-   */
-  type: string;
-  /**
    * Registered step name
    */
   name: string;
+  /**
+   * Step type
+   */
+  type: string;
 };
 
 /** @internal */
 export const StepKey$inboundSchema: z.ZodMiniType<StepKey, unknown> = z.object({
-  type: types.string(),
   name: types.string(),
+  type: types.string(),
 });
 /** @internal */
 export type StepKey$Outbound = {
-  type: string;
   name: string;
+  type: string;
 };
 
 /** @internal */
 export const StepKey$outboundSchema: z.ZodMiniType<StepKey$Outbound, StepKey> =
   z.object({
-    type: z.string(),
     name: z.string(),
+    type: z.string(),
   });
 
 export function stepKeyToJSON(stepKey: StepKey): string {

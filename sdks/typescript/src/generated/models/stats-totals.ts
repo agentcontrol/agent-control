@@ -33,6 +33,14 @@ import {
  */
 export type StatsTotals = {
   /**
+   * Action breakdown for matches: {allow, deny, steer, warn, log}
+   */
+  actionCounts?: { [k: string]: number } | undefined;
+  /**
+   * Total errors
+   */
+  errorCount: number;
+  /**
    * Total executions
    */
   executionCount: number;
@@ -45,14 +53,6 @@ export type StatsTotals = {
    */
   nonMatchCount: number;
   /**
-   * Total errors
-   */
-  errorCount: number;
-  /**
-   * Action breakdown for matches: {allow, deny, steer, warn, log}
-   */
-  actionCounts?: { [k: string]: number } | undefined;
-  /**
    * Time-series data points (only when include_timeseries=true)
    */
   timeseries?: Array<TimeseriesBucket> | null | undefined;
@@ -62,22 +62,22 @@ export type StatsTotals = {
 export const StatsTotals$inboundSchema: z.ZodMiniType<StatsTotals, unknown> = z
   .pipe(
     z.object({
+      action_counts: types.optional(z.record(z.string(), types.number())),
+      error_count: z._default(types.number(), 0),
       execution_count: types.number(),
       match_count: z._default(types.number(), 0),
       non_match_count: z._default(types.number(), 0),
-      error_count: z._default(types.number(), 0),
-      action_counts: types.optional(z.record(z.string(), types.number())),
       timeseries: z.optional(
         z.nullable(z.array(TimeseriesBucket$inboundSchema)),
       ),
     }),
     z.transform((v) => {
       return remap$(v, {
+        "action_counts": "actionCounts",
+        "error_count": "errorCount",
         "execution_count": "executionCount",
         "match_count": "matchCount",
         "non_match_count": "nonMatchCount",
-        "error_count": "errorCount",
-        "action_counts": "actionCounts",
       });
     }),
   );

@@ -38,13 +38,13 @@ export type EvaluationRequest = {
    */
   agentName: string;
   /**
-   * Runtime payload for an agent step invocation.
-   */
-  step: Step;
-  /**
    * Evaluation stage: 'pre' or 'post'
    */
   stage: Stage;
+  /**
+   * Runtime payload for an agent step invocation.
+   */
+  step: Step;
 };
 
 /** @internal */
@@ -53,8 +53,8 @@ export const Stage$outboundSchema: z.ZodMiniEnum<typeof Stage> = z.enum(Stage);
 /** @internal */
 export type EvaluationRequest$Outbound = {
   agent_name: string;
-  step: Step$Outbound;
   stage: string;
+  step: Step$Outbound;
 };
 
 /** @internal */
@@ -64,8 +64,8 @@ export const EvaluationRequest$outboundSchema: z.ZodMiniType<
 > = z.pipe(
   z.object({
     agentName: z.string(),
-    step: Step$outboundSchema,
     stage: Stage$outboundSchema,
+    step: Step$outboundSchema,
   }),
   z.transform((v) => {
     return remap$(v, {

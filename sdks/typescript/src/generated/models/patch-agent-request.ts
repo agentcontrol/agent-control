@@ -15,19 +15,19 @@ import {
  */
 export type PatchAgentRequest = {
   /**
-   * Step identifiers to remove from the agent
-   */
-  removeSteps?: Array<StepKey> | undefined;
-  /**
    * Evaluator names to remove from the agent
    */
   removeEvaluators?: Array<string> | undefined;
+  /**
+   * Step identifiers to remove from the agent
+   */
+  removeSteps?: Array<StepKey> | undefined;
 };
 
 /** @internal */
 export type PatchAgentRequest$Outbound = {
-  remove_steps?: Array<StepKey$Outbound> | undefined;
   remove_evaluators?: Array<string> | undefined;
+  remove_steps?: Array<StepKey$Outbound> | undefined;
 };
 
 /** @internal */
@@ -36,13 +36,13 @@ export const PatchAgentRequest$outboundSchema: z.ZodMiniType<
   PatchAgentRequest
 > = z.pipe(
   z.object({
-    removeSteps: z.optional(z.array(StepKey$outboundSchema)),
     removeEvaluators: z.optional(z.array(z.string())),
+    removeSteps: z.optional(z.array(StepKey$outboundSchema)),
   }),
   z.transform((v) => {
     return remap$(v, {
-      removeSteps: "remove_steps",
       removeEvaluators: "remove_evaluators",
+      removeSteps: "remove_steps",
     });
   }),
 );

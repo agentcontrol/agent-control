@@ -15,14 +15,6 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type ControlSummary = {
   /**
-   * Control ID
-   */
-  id: number;
-  /**
-   * Control name
-   */
-  name: string;
-  /**
    * Control description
    */
   description?: string | null | undefined;
@@ -35,13 +27,21 @@ export type ControlSummary = {
    */
   execution?: string | null | undefined;
   /**
-   * Step types in scope
+   * Control ID
    */
-  stepTypes?: Array<string> | null | undefined;
+  id: number;
+  /**
+   * Control name
+   */
+  name: string;
   /**
    * Evaluation stages in scope
    */
   stages?: Array<string> | null | undefined;
+  /**
+   * Step types in scope
+   */
+  stepTypes?: Array<string> | null | undefined;
   /**
    * Control tags
    */
@@ -62,13 +62,13 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    id: types.number(),
-    name: types.string(),
     description: z.optional(z.nullable(types.string())),
     enabled: z._default(types.boolean(), true),
     execution: z.optional(z.nullable(types.string())),
-    step_types: z.optional(z.nullable(z.array(types.string()))),
+    id: types.number(),
+    name: types.string(),
     stages: z.optional(z.nullable(z.array(types.string()))),
+    step_types: z.optional(z.nullable(z.array(types.string()))),
     tags: types.optional(z.array(types.string())),
     used_by_agent: z.optional(z.nullable(AgentRef$inboundSchema)),
     used_by_agents_count: z._default(types.number(), 0),

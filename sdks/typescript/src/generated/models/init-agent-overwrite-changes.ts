@@ -19,6 +19,22 @@ import { StepKey, StepKey$inboundSchema } from "./step-key.js";
  */
 export type InitAgentOverwriteChanges = {
   /**
+   * Per-evaluator removal details, including active control references
+   */
+  evaluatorRemovals?: Array<InitAgentEvaluatorRemoval> | undefined;
+  /**
+   * Evaluator names added by overwrite
+   */
+  evaluatorsAdded?: Array<string> | undefined;
+  /**
+   * Evaluator names removed by overwrite
+   */
+  evaluatorsRemoved?: Array<string> | undefined;
+  /**
+   * Existing evaluator names updated by overwrite
+   */
+  evaluatorsUpdated?: Array<string> | undefined;
+  /**
    * Whether agent metadata changed
    */
   metadataChanged: boolean;
@@ -27,29 +43,13 @@ export type InitAgentOverwriteChanges = {
    */
   stepsAdded?: Array<StepKey> | undefined;
   /**
-   * Existing steps updated by overwrite
-   */
-  stepsUpdated?: Array<StepKey> | undefined;
-  /**
    * Steps removed by overwrite
    */
   stepsRemoved?: Array<StepKey> | undefined;
   /**
-   * Evaluator names added by overwrite
+   * Existing steps updated by overwrite
    */
-  evaluatorsAdded?: Array<string> | undefined;
-  /**
-   * Existing evaluator names updated by overwrite
-   */
-  evaluatorsUpdated?: Array<string> | undefined;
-  /**
-   * Evaluator names removed by overwrite
-   */
-  evaluatorsRemoved?: Array<string> | undefined;
-  /**
-   * Per-evaluator removal details, including active control references
-   */
-  evaluatorRemovals?: Array<InitAgentEvaluatorRemoval> | undefined;
+  stepsUpdated?: Array<StepKey> | undefined;
 };
 
 /** @internal */
@@ -58,27 +58,27 @@ export const InitAgentOverwriteChanges$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    metadata_changed: z._default(types.boolean(), false),
-    steps_added: types.optional(z.array(StepKey$inboundSchema)),
-    steps_updated: types.optional(z.array(StepKey$inboundSchema)),
-    steps_removed: types.optional(z.array(StepKey$inboundSchema)),
-    evaluators_added: types.optional(z.array(types.string())),
-    evaluators_updated: types.optional(z.array(types.string())),
-    evaluators_removed: types.optional(z.array(types.string())),
     evaluator_removals: types.optional(
       z.array(InitAgentEvaluatorRemoval$inboundSchema),
     ),
+    evaluators_added: types.optional(z.array(types.string())),
+    evaluators_removed: types.optional(z.array(types.string())),
+    evaluators_updated: types.optional(z.array(types.string())),
+    metadata_changed: z._default(types.boolean(), false),
+    steps_added: types.optional(z.array(StepKey$inboundSchema)),
+    steps_removed: types.optional(z.array(StepKey$inboundSchema)),
+    steps_updated: types.optional(z.array(StepKey$inboundSchema)),
   }),
   z.transform((v) => {
     return remap$(v, {
+      "evaluator_removals": "evaluatorRemovals",
+      "evaluators_added": "evaluatorsAdded",
+      "evaluators_removed": "evaluatorsRemoved",
+      "evaluators_updated": "evaluatorsUpdated",
       "metadata_changed": "metadataChanged",
       "steps_added": "stepsAdded",
-      "steps_updated": "stepsUpdated",
       "steps_removed": "stepsRemoved",
-      "evaluators_added": "evaluatorsAdded",
-      "evaluators_updated": "evaluatorsUpdated",
-      "evaluators_removed": "evaluatorsRemoved",
-      "evaluator_removals": "evaluatorRemovals",
+      "steps_updated": "stepsUpdated",
     });
   }),
 );

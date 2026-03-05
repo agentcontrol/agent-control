@@ -14,21 +14,21 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type PaginationInfo = {
   /**
+   * Whether there are more pages available
+   */
+  hasMore: boolean;
+  /**
    * Number of items per page
    */
   limit: number;
-  /**
-   * Total number of items
-   */
-  total: number;
   /**
    * Cursor for fetching the next page (null if no more pages)
    */
   nextCursor?: string | null | undefined;
   /**
-   * Whether there are more pages available
+   * Total number of items
    */
-  hasMore: boolean;
+  total: number;
 };
 
 /** @internal */
@@ -37,15 +37,15 @@ export const PaginationInfo$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    limit: types.number(),
-    total: types.number(),
-    next_cursor: z.optional(z.nullable(types.string())),
     has_more: types.boolean(),
+    limit: types.number(),
+    next_cursor: z.optional(z.nullable(types.string())),
+    total: types.number(),
   }),
   z.transform((v) => {
     return remap$(v, {
-      "next_cursor": "nextCursor",
       "has_more": "hasMore",
+      "next_cursor": "nextCursor",
     });
   }),
 );

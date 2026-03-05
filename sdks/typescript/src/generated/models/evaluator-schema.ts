@@ -19,10 +19,6 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type EvaluatorSchema = {
   /**
-   * Unique evaluator name
-   */
-  name: string;
-  /**
    * JSON Schema for evaluator config validation
    */
   configSchema?: { [k: string]: any } | undefined;
@@ -30,6 +26,10 @@ export type EvaluatorSchema = {
    * Optional description
    */
   description?: string | null | undefined;
+  /**
+   * Unique evaluator name
+   */
+  name: string;
 };
 
 /** @internal */
@@ -38,9 +38,9 @@ export const EvaluatorSchema$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    name: types.string(),
     config_schema: types.optional(z.record(z.string(), z.any())),
     description: z.optional(z.nullable(types.string())),
+    name: types.string(),
   }),
   z.transform((v) => {
     return remap$(v, {
@@ -50,9 +50,9 @@ export const EvaluatorSchema$inboundSchema: z.ZodMiniType<
 );
 /** @internal */
 export type EvaluatorSchema$Outbound = {
-  name: string;
   config_schema?: { [k: string]: any } | undefined;
   description?: string | null | undefined;
+  name: string;
 };
 
 /** @internal */
@@ -61,9 +61,9 @@ export const EvaluatorSchema$outboundSchema: z.ZodMiniType<
   EvaluatorSchema
 > = z.pipe(
   z.object({
-    name: z.string(),
     configSchema: z.optional(z.record(z.string(), z.any())),
     description: z.optional(z.nullable(z.string())),
+    name: z.string(),
   }),
   z.transform((v) => {
     return remap$(v, {

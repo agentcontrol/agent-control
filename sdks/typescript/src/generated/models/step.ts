@@ -9,44 +9,44 @@ import * as z from "zod/v4-mini";
  */
 export type Step = {
   /**
-   * Step type (e.g., 'tool', 'llm')
+   * Optional context (conversation history, metadata, etc.)
    */
-  type: string;
-  /**
-   * Step name (tool name or model/chain id)
-   */
-  name: string;
+  context?: { [k: string]: any } | null | undefined;
   /**
    * Any JSON value
    */
   input: any;
   /**
+   * Step name (tool name or model/chain id)
+   */
+  name: string;
+  /**
    * Output content for this step (None for pre-checks)
    */
   output?: any | null | undefined;
   /**
-   * Optional context (conversation history, metadata, etc.)
+   * Step type (e.g., 'tool', 'llm')
    */
-  context?: { [k: string]: any } | null | undefined;
+  type: string;
 };
 
 /** @internal */
 export type Step$Outbound = {
-  type: string;
-  name: string;
-  input: any;
-  output?: any | null | undefined;
   context?: { [k: string]: any } | null | undefined;
+  input: any;
+  name: string;
+  output?: any | null | undefined;
+  type: string;
 };
 
 /** @internal */
 export const Step$outboundSchema: z.ZodMiniType<Step$Outbound, Step> = z.object(
   {
-    type: z.string(),
-    name: z.string(),
-    input: z.any(),
-    output: z.optional(z.nullable(z.any())),
     context: z.optional(z.nullable(z.record(z.string(), z.any()))),
+    input: z.any(),
+    name: z.string(),
+    output: z.optional(z.nullable(z.any())),
+    type: z.string(),
   },
 );
 

@@ -31,6 +31,18 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type ControlStats = {
   /**
+   * Allow actions
+   */
+  allowCount: number;
+  /**
+   * Average confidence
+   */
+  avgConfidence: number;
+  /**
+   * Average duration (ms)
+   */
+  avgDurationMs?: number | null | undefined;
+  /**
    * Control ID
    */
   controlId: number;
@@ -39,9 +51,21 @@ export type ControlStats = {
    */
   controlName: string;
   /**
+   * Deny actions
+   */
+  denyCount: number;
+  /**
+   * Evaluation errors
+   */
+  errorCount: number;
+  /**
    * Total executions
    */
   executionCount: number;
+  /**
+   * Log actions
+   */
+  logCount: number;
   /**
    * Total matches
    */
@@ -51,14 +75,6 @@ export type ControlStats = {
    */
   nonMatchCount: number;
   /**
-   * Allow actions
-   */
-  allowCount: number;
-  /**
-   * Deny actions
-   */
-  denyCount: number;
-  /**
    * Steer actions
    */
   steerCount: number;
@@ -66,57 +82,41 @@ export type ControlStats = {
    * Warn actions
    */
   warnCount: number;
-  /**
-   * Log actions
-   */
-  logCount: number;
-  /**
-   * Evaluation errors
-   */
-  errorCount: number;
-  /**
-   * Average confidence
-   */
-  avgConfidence: number;
-  /**
-   * Average duration (ms)
-   */
-  avgDurationMs?: number | null | undefined;
 };
 
 /** @internal */
 export const ControlStats$inboundSchema: z.ZodMiniType<ControlStats, unknown> =
   z.pipe(
     z.object({
-      control_id: types.number(),
-      control_name: types.string(),
-      execution_count: types.number(),
-      match_count: types.number(),
-      non_match_count: types.number(),
       allow_count: types.number(),
-      deny_count: types.number(),
-      steer_count: types.number(),
-      warn_count: types.number(),
-      log_count: types.number(),
-      error_count: types.number(),
       avg_confidence: types.number(),
       avg_duration_ms: z.optional(z.nullable(types.number())),
+      control_id: types.number(),
+      control_name: types.string(),
+      deny_count: types.number(),
+      error_count: types.number(),
+      execution_count: types.number(),
+      log_count: types.number(),
+      match_count: types.number(),
+      non_match_count: types.number(),
+      steer_count: types.number(),
+      warn_count: types.number(),
     }),
     z.transform((v) => {
       return remap$(v, {
-        "control_id": "controlId",
-        "control_name": "controlName",
-        "execution_count": "executionCount",
-        "match_count": "matchCount",
-        "non_match_count": "nonMatchCount",
         "allow_count": "allowCount",
-        "deny_count": "denyCount",
-        "steer_count": "steerCount",
-        "warn_count": "warnCount",
-        "log_count": "logCount",
-        "error_count": "errorCount",
         "avg_confidence": "avgConfidence",
         "avg_duration_ms": "avgDurationMs",
+        "control_id": "controlId",
+        "control_name": "controlName",
+        "deny_count": "denyCount",
+        "error_count": "errorCount",
+        "execution_count": "executionCount",
+        "log_count": "logCount",
+        "match_count": "matchCount",
+        "non_match_count": "nonMatchCount",
+        "steer_count": "steerCount",
+        "warn_count": "warnCount",
       });
     }),
   );

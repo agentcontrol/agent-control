@@ -9,19 +9,19 @@ import * as z from "zod/v4-mini";
  */
 export type PatchControlRequest = {
   /**
-   * New name for the control
-   */
-  name?: string | null | undefined;
-  /**
    * Enable or disable the control
    */
   enabled?: boolean | null | undefined;
+  /**
+   * New name for the control
+   */
+  name?: string | null | undefined;
 };
 
 /** @internal */
 export type PatchControlRequest$Outbound = {
-  name?: string | null | undefined;
   enabled?: boolean | null | undefined;
+  name?: string | null | undefined;
 };
 
 /** @internal */
@@ -29,8 +29,8 @@ export const PatchControlRequest$outboundSchema: z.ZodMiniType<
   PatchControlRequest$Outbound,
   PatchControlRequest
 > = z.object({
-  name: z.optional(z.nullable(z.string())),
   enabled: z.optional(z.nullable(z.boolean())),
+  name: z.optional(z.nullable(z.string())),
 });
 
 export function patchControlRequestToJSON(

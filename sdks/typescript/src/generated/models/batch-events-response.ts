@@ -36,17 +36,17 @@ export type Status = OpenEnum<typeof Status>;
  */
 export type BatchEventsResponse = {
   /**
-   * Number of events received
+   * Number of events dropped
    */
-  received: number;
+  dropped: number;
   /**
    * Number of events enqueued
    */
   enqueued: number;
   /**
-   * Number of events dropped
+   * Number of events received
    */
-  dropped: number;
+  received: number;
   /**
    * Overall ingestion status
    */
@@ -62,9 +62,9 @@ export const BatchEventsResponse$inboundSchema: z.ZodMiniType<
   BatchEventsResponse,
   unknown
 > = z.object({
-  received: types.number(),
-  enqueued: types.number(),
   dropped: types.number(),
+  enqueued: types.number(),
+  received: types.number(),
   status: Status$inboundSchema,
 });
 

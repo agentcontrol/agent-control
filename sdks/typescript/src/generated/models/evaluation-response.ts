@@ -28,29 +28,29 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type EvaluationResponse = {
   /**
-   * Whether content is safe
-   */
-  isSafe: boolean;
-  /**
    * Confidence score (0.0 to 1.0)
    */
   confidence: number;
-  /**
-   * Explanation for the decision
-   */
-  reason?: string | null | undefined;
-  /**
-   * List of controls that matched/triggered (if any)
-   */
-  matches?: Array<ControlMatch> | null | undefined;
   /**
    * List of controls that failed during evaluation (if any)
    */
   errors?: Array<ControlMatch> | null | undefined;
   /**
+   * Whether content is safe
+   */
+  isSafe: boolean;
+  /**
+   * List of controls that matched/triggered (if any)
+   */
+  matches?: Array<ControlMatch> | null | undefined;
+  /**
    * List of controls that were evaluated but did not match (if any)
    */
   nonMatches?: Array<ControlMatch> | null | undefined;
+  /**
+   * Explanation for the decision
+   */
+  reason?: string | null | undefined;
 };
 
 /** @internal */
@@ -59,12 +59,12 @@ export const EvaluationResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    is_safe: types.boolean(),
     confidence: types.number(),
-    reason: z.optional(z.nullable(types.string())),
-    matches: z.optional(z.nullable(z.array(ControlMatch$inboundSchema))),
     errors: z.optional(z.nullable(z.array(ControlMatch$inboundSchema))),
+    is_safe: types.boolean(),
+    matches: z.optional(z.nullable(z.array(ControlMatch$inboundSchema))),
     non_matches: z.optional(z.nullable(z.array(ControlMatch$inboundSchema))),
+    reason: z.optional(z.nullable(types.string())),
   }),
   z.transform((v) => {
     return remap$(v, {

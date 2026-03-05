@@ -15,17 +15,17 @@ export const Actions = {
 } as const;
 export type Actions = ClosedEnum<typeof Actions>;
 
-export const CheckStages = {
-  Pre: "pre",
-  Post: "post",
-} as const;
-export type CheckStages = ClosedEnum<typeof CheckStages>;
-
 export const AppliesTo = {
   LlmCall: "llm_call",
   ToolCall: "tool_call",
 } as const;
 export type AppliesTo = ClosedEnum<typeof AppliesTo>;
+
+export const CheckStages = {
+  Pre: "pre",
+  Post: "post",
+} as const;
+export type CheckStages = ClosedEnum<typeof CheckStages>;
 
 /**
  * Request model for querying raw events.
@@ -51,45 +51,29 @@ export type AppliesTo = ClosedEnum<typeof AppliesTo>;
  */
 export type EventQueryRequest = {
   /**
-   * Filter by trace ID (all events for a request)
+   * Filter by actions
    */
-  traceId?: string | null | undefined;
-  /**
-   * Filter by span ID (all events for a function)
-   */
-  spanId?: string | null | undefined;
-  /**
-   * Filter by specific event ID
-   */
-  controlExecutionId?: string | null | undefined;
+  actions?: Array<Actions> | null | undefined;
   /**
    * Filter by agent identifier
    */
   agentName?: string | null | undefined;
   /**
-   * Filter by control IDs
+   * Filter by call types
    */
-  controlIds?: Array<number> | null | undefined;
-  /**
-   * Filter by actions
-   */
-  actions?: Array<Actions> | null | undefined;
-  /**
-   * Filter by matched status
-   */
-  matched?: boolean | null | undefined;
+  appliesTo?: Array<AppliesTo> | null | undefined;
   /**
    * Filter by check stages
    */
   checkStages?: Array<CheckStages> | null | undefined;
   /**
-   * Filter by call types
+   * Filter by specific event ID
    */
-  appliesTo?: Array<AppliesTo> | null | undefined;
+  controlExecutionId?: string | null | undefined;
   /**
-   * Filter events after this time
+   * Filter by control IDs
    */
-  startTime?: Date | null | undefined;
+  controlIds?: Array<number> | null | undefined;
   /**
    * Filter events before this time
    */
@@ -99,9 +83,25 @@ export type EventQueryRequest = {
    */
   limit?: number | undefined;
   /**
+   * Filter by matched status
+   */
+  matched?: boolean | null | undefined;
+  /**
    * Pagination offset
    */
   offset?: number | undefined;
+  /**
+   * Filter by span ID (all events for a function)
+   */
+  spanId?: string | null | undefined;
+  /**
+   * Filter events after this time
+   */
+  startTime?: Date | null | undefined;
+  /**
+   * Filter by trace ID (all events for a request)
+   */
+  traceId?: string | null | undefined;
 };
 
 /** @internal */
@@ -110,29 +110,29 @@ export const Actions$outboundSchema: z.ZodMiniEnum<typeof Actions> = z.enum(
 );
 
 /** @internal */
-export const CheckStages$outboundSchema: z.ZodMiniEnum<typeof CheckStages> = z
-  .enum(CheckStages);
-
-/** @internal */
 export const AppliesTo$outboundSchema: z.ZodMiniEnum<typeof AppliesTo> = z.enum(
   AppliesTo,
 );
 
 /** @internal */
+export const CheckStages$outboundSchema: z.ZodMiniEnum<typeof CheckStages> = z
+  .enum(CheckStages);
+
+/** @internal */
 export type EventQueryRequest$Outbound = {
-  trace_id?: string | null | undefined;
-  span_id?: string | null | undefined;
-  control_execution_id?: string | null | undefined;
-  agent_name?: string | null | undefined;
-  control_ids?: Array<number> | null | undefined;
   actions?: Array<string> | null | undefined;
-  matched?: boolean | null | undefined;
-  check_stages?: Array<string> | null | undefined;
+  agent_name?: string | null | undefined;
   applies_to?: Array<string> | null | undefined;
-  start_time?: string | null | undefined;
+  check_stages?: Array<string> | null | undefined;
+  control_execution_id?: string | null | undefined;
+  control_ids?: Array<number> | null | undefined;
   end_time?: string | null | undefined;
   limit: number;
+  matched?: boolean | null | undefined;
   offset: number;
+  span_id?: string | null | undefined;
+  start_time?: string | null | undefined;
+  trace_id?: string | null | undefined;
 };
 
 /** @internal */
@@ -141,35 +141,35 @@ export const EventQueryRequest$outboundSchema: z.ZodMiniType<
   EventQueryRequest
 > = z.pipe(
   z.object({
-    traceId: z.optional(z.nullable(z.string())),
-    spanId: z.optional(z.nullable(z.string())),
-    controlExecutionId: z.optional(z.nullable(z.string())),
-    agentName: z.optional(z.nullable(z.string())),
-    controlIds: z.optional(z.nullable(z.array(z.int()))),
     actions: z.optional(z.nullable(z.array(Actions$outboundSchema))),
-    matched: z.optional(z.nullable(z.boolean())),
-    checkStages: z.optional(z.nullable(z.array(CheckStages$outboundSchema))),
+    agentName: z.optional(z.nullable(z.string())),
     appliesTo: z.optional(z.nullable(z.array(AppliesTo$outboundSchema))),
-    startTime: z.optional(
-      z.nullable(z.pipe(z.date(), z.transform(v => v.toISOString()))),
-    ),
+    checkStages: z.optional(z.nullable(z.array(CheckStages$outboundSchema))),
+    controlExecutionId: z.optional(z.nullable(z.string())),
+    controlIds: z.optional(z.nullable(z.array(z.int()))),
     endTime: z.optional(
       z.nullable(z.pipe(z.date(), z.transform(v => v.toISOString()))),
     ),
     limit: z._default(z.int(), 100),
+    matched: z.optional(z.nullable(z.boolean())),
     offset: z._default(z.int(), 0),
+    spanId: z.optional(z.nullable(z.string())),
+    startTime: z.optional(
+      z.nullable(z.pipe(z.date(), z.transform(v => v.toISOString()))),
+    ),
+    traceId: z.optional(z.nullable(z.string())),
   }),
   z.transform((v) => {
     return remap$(v, {
-      traceId: "trace_id",
-      spanId: "span_id",
-      controlExecutionId: "control_execution_id",
       agentName: "agent_name",
-      controlIds: "control_ids",
-      checkStages: "check_stages",
       appliesTo: "applies_to",
-      startTime: "start_time",
+      checkStages: "check_stages",
+      controlExecutionId: "control_execution_id",
+      controlIds: "control_ids",
       endTime: "end_time",
+      spanId: "span_id",
+      startTime: "start_time",
+      traceId: "trace_id",
     });
   }),
 );

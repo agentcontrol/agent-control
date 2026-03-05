@@ -14,13 +14,13 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type EvaluatorConfigItem = {
   /**
-   * Evaluator config ID
+   * Evaluator-specific configuration
    */
-  id: number;
+  config: { [k: string]: any };
   /**
-   * Unique evaluator config name (letters, numbers, hyphens, underscores)
+   * ISO 8601 created timestamp
    */
-  name: string;
+  createdAt?: string | null | undefined;
   /**
    * Optional description
    */
@@ -30,13 +30,13 @@ export type EvaluatorConfigItem = {
    */
   evaluator: string;
   /**
-   * Evaluator-specific configuration
+   * Evaluator config ID
    */
-  config: { [k: string]: any };
+  id: number;
   /**
-   * ISO 8601 created timestamp
+   * Unique evaluator config name (letters, numbers, hyphens, underscores)
    */
-  createdAt?: string | null | undefined;
+  name: string;
   /**
    * ISO 8601 updated timestamp
    */
@@ -49,12 +49,12 @@ export const EvaluatorConfigItem$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    id: types.number(),
-    name: types.string(),
-    description: z.optional(z.nullable(types.string())),
-    evaluator: types.string(),
     config: z.record(z.string(), z.any()),
     created_at: z.optional(z.nullable(types.string())),
+    description: z.optional(z.nullable(types.string())),
+    evaluator: types.string(),
+    id: types.number(),
+    name: types.string(),
     updated_at: z.optional(z.nullable(types.string())),
   }),
   z.transform((v) => {

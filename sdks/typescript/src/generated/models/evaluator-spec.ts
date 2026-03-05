@@ -20,13 +20,13 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type EvaluatorSpec = {
   /**
-   * Evaluator name or agent-scoped reference (agent:evaluator)
-   */
-  name: string;
-  /**
    * Evaluator-specific configuration
    */
   config: { [k: string]: any };
+  /**
+   * Evaluator name or agent-scoped reference (agent:evaluator)
+   */
+  name: string;
 };
 
 /** @internal */
@@ -34,13 +34,13 @@ export const EvaluatorSpec$inboundSchema: z.ZodMiniType<
   EvaluatorSpec,
   unknown
 > = z.object({
-  name: types.string(),
   config: z.record(z.string(), z.any()),
+  name: types.string(),
 });
 /** @internal */
 export type EvaluatorSpec$Outbound = {
-  name: string;
   config: { [k: string]: any };
+  name: string;
 };
 
 /** @internal */
@@ -48,8 +48,8 @@ export const EvaluatorSpec$outboundSchema: z.ZodMiniType<
   EvaluatorSpec$Outbound,
   EvaluatorSpec
 > = z.object({
-  name: z.string(),
   config: z.record(z.string(), z.any()),
+  name: z.string(),
 });
 
 export function evaluatorSpecToJSON(evaluatorSpec: EvaluatorSpec): string {

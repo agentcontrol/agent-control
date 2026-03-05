@@ -30,10 +30,6 @@ export type ControlStatsResponse = {
    */
   agentName: string;
   /**
-   * Time range used
-   */
-  timeRange: string;
-  /**
    * Control ID
    */
   controlId: number;
@@ -60,6 +56,10 @@ export type ControlStatsResponse = {
    *     timeseries: Time-series data points (only when include_timeseries=true)
    */
   stats: StatsTotals;
+  /**
+   * Time range used
+   */
+  timeRange: string;
 };
 
 /** @internal */
@@ -69,17 +69,17 @@ export const ControlStatsResponse$inboundSchema: z.ZodMiniType<
 > = z.pipe(
   z.object({
     agent_name: types.string(),
-    time_range: types.string(),
     control_id: types.number(),
     control_name: types.string(),
     stats: StatsTotals$inboundSchema,
+    time_range: types.string(),
   }),
   z.transform((v) => {
     return remap$(v, {
       "agent_name": "agentName",
-      "time_range": "timeRange",
       "control_id": "controlId",
       "control_name": "controlName",
+      "time_range": "timeRange",
     });
   }),
 );

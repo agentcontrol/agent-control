@@ -28,9 +28,21 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type TimeseriesBucket = {
   /**
-   * Start time of the bucket (UTC)
+   * Action breakdown: {allow, deny, steer, warn, log}
    */
-  timestamp: Date;
+  actionCounts?: { [k: string]: number } | undefined;
+  /**
+   * Average confidence score
+   */
+  avgConfidence?: number | null | undefined;
+  /**
+   * Average duration (ms)
+   */
+  avgDurationMs?: number | null | undefined;
+  /**
+   * Errors in bucket
+   */
+  errorCount: number;
   /**
    * Total executions in bucket
    */
@@ -44,21 +56,9 @@ export type TimeseriesBucket = {
    */
   nonMatchCount: number;
   /**
-   * Errors in bucket
+   * Start time of the bucket (UTC)
    */
-  errorCount: number;
-  /**
-   * Action breakdown: {allow, deny, steer, warn, log}
-   */
-  actionCounts?: { [k: string]: number } | undefined;
-  /**
-   * Average confidence score
-   */
-  avgConfidence?: number | null | undefined;
-  /**
-   * Average duration (ms)
-   */
-  avgDurationMs?: number | null | undefined;
+  timestamp: Date;
 };
 
 /** @internal */
@@ -67,24 +67,24 @@ export const TimeseriesBucket$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    timestamp: types.date(),
-    execution_count: types.number(),
-    match_count: types.number(),
-    non_match_count: types.number(),
-    error_count: types.number(),
     action_counts: types.optional(z.record(z.string(), types.number())),
     avg_confidence: z.optional(z.nullable(types.number())),
     avg_duration_ms: z.optional(z.nullable(types.number())),
+    error_count: types.number(),
+    execution_count: types.number(),
+    match_count: types.number(),
+    non_match_count: types.number(),
+    timestamp: types.date(),
   }),
   z.transform((v) => {
     return remap$(v, {
-      "execution_count": "executionCount",
-      "match_count": "matchCount",
-      "non_match_count": "nonMatchCount",
-      "error_count": "errorCount",
       "action_counts": "actionCounts",
       "avg_confidence": "avgConfidence",
       "avg_duration_ms": "avgDurationMs",
+      "error_count": "errorCount",
+      "execution_count": "executionCount",
+      "match_count": "matchCount",
+      "non_match_count": "nonMatchCount",
     });
   }),
 );
