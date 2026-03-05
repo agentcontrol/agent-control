@@ -1,0 +1,43 @@
+[project]
+name = "agent-control-strands-examples"
+version = "1.0.0"
+description = "AgentControl + AWS Strands integration examples"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-control-sdk[strands-agents]>=6.3.0",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.24.0",
+    "streamlit>=1.30.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+dev-mode-dirs = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["."]
+python_files = ["*_test.py", "test_*.py"]
+
+[tool.uv.sources]
+agent-control-sdk = { path = "../../sdks/python", editable = true }

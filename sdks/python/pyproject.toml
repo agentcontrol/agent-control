@@ -35,6 +35,7 @@ Documentation = "https://github.com/yourusername/agent-control#readme"
 Repository = "https://github.com/yourusername/agent-control"
 
 [project.optional-dependencies]
+strands-agents = ["strands-agents>=1.26.0"]
 galileo = ["agent-control-evaluator-galileo>=3.0.0"]
 
 [dependency-groups]
