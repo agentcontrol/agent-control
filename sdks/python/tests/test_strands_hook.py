@@ -1,0 +1,434 @@
+"""Unit tests for Strands hook integration."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+from agent_control_models import EvaluationResult
+
+
+@pytest.fixture
+def mock_strands_modules():
+    """Mock the strands modules to avoid import errors."""
+    with patch.dict(
+        "sys.modules",
+        {
+            "strands": MagicMock(),
+            "strands.hooks": MagicMock(),
+        },
+    ):
+        yield
+
+
+@pytest.fixture
+def mock_event_classes():
+    """Create mock event classes."""
+    BeforeInvocationEvent = type("BeforeInvocationEvent", (), {})  # noqa: N806
+    BeforeModelCallEvent = type("BeforeModelCallEvent", (), {})  # noqa: N806
+    AfterModelCallEvent = type("AfterModelCallEvent", (), {})  # noqa: N806
+    BeforeToolCallEvent = type("BeforeToolCallEvent", (), {})  # noqa: N806
+    AfterToolCallEvent = type("AfterToolCallEvent", (), {})  # noqa: N806
+    BeforeNodeCallEvent = type("BeforeNodeCallEvent", (), {})  # noqa: N806
+    AfterNodeCallEvent = type("AfterNodeCallEvent", (), {})  # noqa: N806
+    HookProvider = type("HookProvider", (), {"__init__": lambda self: None})  # noqa: N806
+    HookRegistry = type("HookRegistry", (), {})  # noqa: N806
+
+    return {
+        "BeforeInvocationEvent": BeforeInvocationEvent,
+        "BeforeModelCallEvent": BeforeModelCallEvent,
+        "AfterModelCallEvent": AfterModelCallEvent,
+        "BeforeToolCallEvent": BeforeToolCallEvent,
+        "AfterToolCallEvent": AfterToolCallEvent,
+        "BeforeNodeCallEvent": BeforeNodeCallEvent,
+        "AfterNodeCallEvent": AfterNodeCallEvent,
+        "HookProvider": HookProvider,
+        "HookRegistry": HookRegistry,
+    }
+
+
+@pytest.fixture
+def agent_control_hook(mock_strands_modules, mock_event_classes):
+    """Create an AgentControlHook instance with mocked dependencies."""
+    with patch("agent_control.integrations.strands.hook.BeforeInvocationEvent", mock_event_classes["BeforeInvocationEvent"]):  # noqa: E501
+        with patch("agent_control.integrations.strands.hook.BeforeModelCallEvent", mock_event_classes["BeforeModelCallEvent"]):  # noqa: E501
+            with patch("agent_control.integrations.strands.hook.AfterModelCallEvent", mock_event_classes["AfterModelCallEvent"]):  # noqa: E501
+                with patch("agent_control.integrations.strands.hook.BeforeToolCallEvent", mock_event_classes["BeforeToolCallEvent"]):  # noqa: E501
+                    with patch("agent_control.integrations.strands.hook.AfterToolCallEvent", mock_event_classes["AfterToolCallEvent"]):  # noqa: E501
+                        with patch("agent_control.integrations.strands.hook.BeforeNodeCallEvent", mock_event_classes["BeforeNodeCallEvent"]):  # noqa: E501
+                            with patch("agent_control.integrations.strands.hook.AfterNodeCallEvent", mock_event_classes["AfterNodeCallEvent"]):  # noqa: E501
+                                with patch("agent_control.integrations.strands.hook.HookProvider", mock_event_classes["HookProvider"]):  # noqa: E501
+                                    from agent_control.integrations.strands.hook import (
+                                        AgentControlHook,
+                                    )
+
+                                    return AgentControlHook(agent_name="test-agent")
+
+
+def test_action_error_with_deny_match():
+    """Test _action_error returns deny error for deny action."""
+    from agent_control.integrations.strands.hook import _action_error
+
+    # Create a mock match with deny action
+    mock_match = MagicMock()
+    mock_match.action = "deny"
+    mock_match.control_name = "test_control"
+    mock_match.result.message = "Access denied"
+
+    # Create a mock result
+    result = MagicMock(spec=EvaluationResult)
+    result.matches = [mock_match]
+    result.reason = None
+
+    action_type, error = _action_error(result)
+
+    assert action_type == "deny"
+    assert "Policy violation [test_control]" in str(error)
+    assert "Access denied" in str(error)
+
+
+def test_action_error_with_steer_match():
+    """Test _action_error returns steer error for steer action."""
+    from agent_control.integrations.strands.hook import _action_error
+
+    # Create a mock match with steer action
+    mock_match = MagicMock()
+    mock_match.action = "steer"
+    mock_match.control_name = "test_control"
+    mock_match.result.message = "Steering required"
+    mock_match.steering_context.message = "Context message"
+
+    # Create a mock result
+    result = MagicMock(spec=EvaluationResult)
+    result.matches = [mock_match]
+    result.reason = None
+
+    action_type, error = _action_error(result)
+
+    assert action_type == "steer"
+    assert "Steering required [test_control]" in str(error)
+
+
+def test_action_error_with_no_blocking_match():
+    """Test _action_error returns None when no blocking matches."""
+    from agent_control.integrations.strands.hook import _action_error
+
+    # Create a mock match with allow action
+    mock_match = MagicMock()
+    mock_match.action = "allow"
+
+    # Create a mock result
+    result = MagicMock(spec=EvaluationResult)
+    result.matches = [mock_match]
+
+    assert _action_error(result) is None
+
+
+def test_action_error_with_empty_matches():
+    """Test _action_error returns None with empty matches."""
+    from agent_control.integrations.strands.hook import _action_error
+
+    result = MagicMock(spec=EvaluationResult)
+    result.matches = []
+
+    assert _action_error(result) is None
+
+
+def test_action_error_with_none_matches():
+    """Test _action_error returns None with None matches."""
+    from agent_control.integrations.strands.hook import _action_error
+
+    result = MagicMock(spec=EvaluationResult)
+    result.matches = None
+
+    assert _action_error(result) is None
+
+
+@pytest.mark.asyncio
+async def test_evaluate_and_enforce_safe_result(agent_control_hook):
+    """Test _evaluate_and_enforce with safe result."""
+    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        # Mock a safe result
+        mock_result = MagicMock(spec=EvaluationResult)
+        mock_result.is_safe = True
+        mock_result.matches = []
+        mock_evaluate.return_value = mock_result
+
+        # Should not raise
+        await agent_control_hook._evaluate_and_enforce(
+            step_name="test_step",
+            input="test input",
+            step_type="llm",
+            stage="pre"
+        )
+
+
+@pytest.mark.asyncio
+async def test_evaluate_and_enforce_with_deny(agent_control_hook):
+    """Test _evaluate_and_enforce raises error on deny action."""
+    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control import ControlViolationError
+
+        # Mock a deny result
+        mock_match = MagicMock()
+        mock_match.action = "deny"
+        mock_match.control_name = "test_control"
+        mock_match.result.message = "Denied"
+
+        mock_result = MagicMock(spec=EvaluationResult)
+        mock_result.is_safe = True
+        mock_result.matches = [mock_match]
+        mock_evaluate.return_value = mock_result
+
+        with pytest.raises(ControlViolationError):
+            await agent_control_hook._evaluate_and_enforce(
+                step_name="test_step",
+                input="test input",
+                step_type="llm",
+                stage="pre"
+            )
+
+
+@pytest.mark.asyncio
+async def test_evaluate_and_enforce_with_steer(agent_control_hook):
+    """Test _evaluate_and_enforce raises error on steer action."""
+    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control import ControlSteerError
+
+        # Mock a steer result
+        mock_match = MagicMock()
+        mock_match.action = "steer"
+        mock_match.control_name = "test_control"
+        mock_match.result.message = "Steer required"
+        mock_match.steering_context.message = "Context"
+
+        mock_result = MagicMock(spec=EvaluationResult)
+        mock_result.is_safe = True
+        mock_result.matches = [mock_match]
+        mock_evaluate.return_value = mock_result
+
+        with pytest.raises(ControlSteerError):
+            await agent_control_hook._evaluate_and_enforce(
+                step_name="test_step",
+                input="test input",
+                step_type="llm",
+                stage="pre"
+            )
+
+
+@pytest.mark.asyncio
+async def test_evaluate_and_enforce_unsafe_result(agent_control_hook):
+    """Test _evaluate_and_enforce raises error on unsafe result."""
+    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control import ControlViolationError
+
+        # Mock an unsafe result
+        mock_match = MagicMock()
+        mock_match.action = "log"
+        mock_match.control_name = "test_control"
+        mock_match.result.message = "Unsafe"
+
+        mock_result = MagicMock(spec=EvaluationResult)
+        mock_result.is_safe = False
+        mock_result.matches = [mock_match]
+        mock_result.reason = "Test reason"
+        mock_evaluate.return_value = mock_result
+
+        with pytest.raises(ControlViolationError) as exc_info:
+            await agent_control_hook._evaluate_and_enforce(
+                step_name="test_step",
+                input="test input",
+                step_type="llm",
+                stage="pre"
+            )
+
+        assert "test_control" in str(exc_info.value)
+
+
+def test_extract_content_text_with_string(agent_control_hook):
+    """Test _extract_content_text with string input."""
+    result = agent_control_hook._extract_content_text("test string")
+    assert result == "test string"
+
+
+def test_extract_content_text_with_dict_text(agent_control_hook):
+    """Test _extract_content_text with dict containing text."""
+    result = agent_control_hook._extract_content_text({"text": "test text"})
+    assert result == "test text"
+
+
+def test_extract_content_text_with_dict_json(agent_control_hook):
+    """Test _extract_content_text with dict containing json."""
+    result = agent_control_hook._extract_content_text({"json": {"key": "value"}})
+    assert "key" in result
+    assert "value" in result
+
+
+def test_extract_content_text_with_list(agent_control_hook):
+    """Test _extract_content_text with list of content blocks."""
+    content = [
+        {"text": "First text"},
+        {"text": "Second text"},
+    ]
+    result = agent_control_hook._extract_content_text(content)
+    assert "First text" in result
+    assert "Second text" in result
+
+
+def test_extract_content_text_with_tool_use(agent_control_hook):
+    """Test _extract_content_text with tool use block."""
+    content = [
+        {"toolUse": {"name": "test_tool"}},
+    ]
+    result = agent_control_hook._extract_content_text(content)
+    assert "[tool_use: test_tool]" in result
+
+
+def test_extract_content_text_with_empty_content(agent_control_hook):
+    """Test _extract_content_text with empty content."""
+    assert agent_control_hook._extract_content_text("") == ""
+    assert agent_control_hook._extract_content_text(None) == ""
+    assert agent_control_hook._extract_content_text([]) == ""
+
+
+def test_extract_tool_data_before_tool(agent_control_hook):
+    """Test _extract_tool_data with BeforeToolCallEvent."""
+    from agent_control.integrations.strands.hook import BeforeToolCallEvent
+
+    # Create a mock with the right spec so isinstance works
+    event = MagicMock(spec=BeforeToolCallEvent)
+    event.selected_tool = MagicMock()
+    event.selected_tool.tool_name = "test_tool"
+    event.tool_use = {"name": "test_tool", "input": {"param": "value"}}
+
+    tool_name, tool_data = agent_control_hook._extract_tool_data(event)
+
+    assert tool_name == "test_tool"
+    assert tool_data == {"param": "value"}
+
+
+def test_extract_tool_data_after_tool_success(agent_control_hook):
+    """Test _extract_tool_data with AfterToolCallEvent (success)."""
+    from agent_control.integrations.strands.hook import AfterToolCallEvent
+
+    # Create a mock with the right spec so isinstance works
+    event = MagicMock(spec=AfterToolCallEvent)
+    event.selected_tool = MagicMock()
+    event.selected_tool.tool_name = "test_tool"
+    event.tool_use = {"name": "test_tool"}
+    event.exception = None
+    event.result = {"content": [{"text": "result text"}]}
+
+    tool_name, tool_data = agent_control_hook._extract_tool_data(event)
+
+    assert tool_name == "test_tool"
+    assert "result text" in tool_data
+
+
+def test_extract_tool_data_after_tool_error(agent_control_hook):
+    """Test _extract_tool_data with AfterToolCallEvent (error)."""
+    from agent_control.integrations.strands.hook import AfterToolCallEvent
+
+    # Create a mock with the right spec so isinstance works
+    event = MagicMock(spec=AfterToolCallEvent)
+    event.selected_tool = MagicMock()
+    event.selected_tool.tool_name = "test_tool"
+    event.tool_use = {"name": "test_tool"}
+    event.exception = Exception("Tool failed")
+    event.result = {}
+
+    tool_name, tool_data = agent_control_hook._extract_tool_data(event)
+
+    assert tool_name == "test_tool"
+    assert "ERROR" in tool_data
+    assert "Tool failed" in tool_data
+
+
+def test_hook_initialization():
+    """Test AgentControlHook initialization."""
+    from agent_control.integrations.strands.hook import AgentControlHook
+
+    hook = AgentControlHook(
+        agent_name="test-agent",
+        event_control_list=None,
+        on_violation_callback=None,
+        enable_logging=False
+    )
+
+    assert hook.agent_name == "test-agent"
+    assert hook.event_control_list is None
+    assert hook.on_violation_callback is None
+    assert hook.enable_logging is False
+
+
+def test_hook_with_callback():
+    """Test AgentControlHook with violation callback."""
+    from agent_control.integrations.strands.hook import AgentControlHook
+
+    callback = MagicMock()
+    hook = AgentControlHook(
+        agent_name="test-agent",
+        on_violation_callback=callback
+    )
+
+    # Test callback invocation
+    mock_result = MagicMock(spec=EvaluationResult)
+    hook._invoke_callback("test_control", "pre", mock_result)
+
+    callback.assert_called_once()
+    call_args = callback.call_args[0]
+    assert call_args[0]["agent"] == "test-agent"
+    assert call_args[0]["control_name"] == "test_control"
+    assert call_args[0]["stage"] == "pre"
+
+
+def test_raise_error_with_runtime_error(agent_control_hook):
+    """Test _raise_error with use_runtime_error=True."""
+    from agent_control import ControlViolationError
+
+    error = ControlViolationError(message="Test error")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        agent_control_hook._raise_error(error, use_runtime_error=True)
+
+    assert "Test error" in str(exc_info.value)
+
+
+def test_raise_error_without_runtime_error(agent_control_hook):
+    """Test _raise_error with use_runtime_error=False."""
+    from agent_control import ControlViolationError
+
+    error = ControlViolationError(message="Test error")
+
+    with pytest.raises(ControlViolationError):
+        agent_control_hook._raise_error(error, use_runtime_error=False)
+
+
+def test_extract_user_message_from_list(agent_control_hook):
+    """Test _extract_user_message_from_list."""
+    messages = [
+        {"role": "system", "content": "System message"},
+        {"role": "user", "content": "User message"},
+        {"role": "assistant", "content": "Assistant message"},
+    ]
+
+    result = agent_control_hook._extract_user_message_from_list(messages)
+    assert result == "User message"
+
+
+def test_extract_user_message_from_list_reverse(agent_control_hook):
+    """Test _extract_user_message_from_list with reverse=True."""
+    messages = [
+        {"role": "user", "content": "First user message"},
+        {"role": "assistant", "content": "Assistant message"},
+        {"role": "user", "content": "Last user message"},
+    ]
+
+    result = agent_control_hook._extract_user_message_from_list(messages, reverse=True)
+    assert result == "Last user message"
+
+
+def test_extract_user_message_from_list_empty(agent_control_hook):
+    """Test _extract_user_message_from_list with empty list."""
+    assert agent_control_hook._extract_user_message_from_list([]) == ""
+    assert agent_control_hook._extract_user_message_from_list(None) == ""
