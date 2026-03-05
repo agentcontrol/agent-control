@@ -369,3 +369,76 @@ def test_extract_output_none_content(steering_handler):
     message = {"content": None}
     result = steering_handler._extract_output(message)
     assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_steer_after_model_steer_match_with_logging(mock_strands_steering_modules):
+    """Test steer_after_model with steer match and logging enabled."""
+    from agent_control.integrations.strands.steering import AgentControlSteeringHandler
+
+    handler = AgentControlSteeringHandler(agent_name="test-agent", enable_logging=True)
+
+    with patch("agent_control.integrations.strands.steering.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        with patch("agent_control.integrations.strands.steering.logger") as mock_logger:
+            # Mock a steer match
+            mock_match = MagicMock()
+            mock_match.action = "steer"
+            mock_match.control_name = "test_control"
+            mock_match.result.message = "Steer message"
+            mock_match.steering_context.message = "Steering context"
+
+            mock_result = MagicMock(spec=EvaluationResult)
+            mock_result.matches = [mock_match]
+            mock_result.reason = None
+            mock_evaluate.return_value = mock_result
+
+            # Create mock message
+            message = {"content": [{"text": "test output"}]}
+
+            result = await handler.steer_after_model(
+                agent=MagicMock(),
+                message=message,
+                stop_reason="end_turn"
+            )
+
+            # Verify Guide was returned
+            assert result.__class__.__name__ == "Guide"
+            # Verify logging was called for steer match
+            debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
+            assert any("returning guide" in str(call) for call in debug_calls)
+
+
+@pytest.mark.asyncio
+async def test_steer_after_model_deny_match_with_logging(mock_strands_steering_modules):
+    """Test steer_after_model with deny match and logging enabled."""
+    from agent_control.integrations.strands.steering import AgentControlSteeringHandler
+    from agent_control import ControlViolationError
+
+    handler = AgentControlSteeringHandler(agent_name="test-agent", enable_logging=True)
+
+    with patch("agent_control.integrations.strands.steering.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        with patch("agent_control.integrations.strands.steering.logger") as mock_logger:
+            # Mock a deny match
+            mock_match = MagicMock()
+            mock_match.action = "deny"
+            mock_match.control_name = "test_control"
+            mock_match.result.message = "Access denied"
+
+            mock_result = MagicMock(spec=EvaluationResult)
+            mock_result.matches = [mock_match]
+            mock_result.reason = None
+            mock_evaluate.return_value = mock_result
+
+            # Create mock message
+            message = {"content": [{"text": "test output"}]}
+
+            with pytest.raises(ControlViolationError):
+                await handler.steer_after_model(
+                    agent=MagicMock(),
+                    message=message,
+                    stop_reason="end_turn"
+                )
+
+            # Verify logging was called for deny match
+            debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
+            assert any("deny raised" in str(call) for call in debug_calls)

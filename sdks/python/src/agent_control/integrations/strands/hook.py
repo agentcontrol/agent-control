@@ -99,7 +99,6 @@ class AgentControlHook(HookProvider):
         output: Any | None = None,
         step_type: Literal["tool", "llm"] = "llm",
         stage: Literal["pre", "post"] = "pre",
-        violation_type: str = "Step",
         use_runtime_error: bool = False,
     ) -> None:
         result = await agent_control.evaluate_controls(
@@ -179,7 +178,6 @@ class AgentControlHook(HookProvider):
             input=input_text,
             step_type="llm",
             stage="pre",
-            violation_type="Invocation",
         )
 
     async def check_before_model(self, event: BeforeModelCallEvent) -> None:
@@ -189,7 +187,6 @@ class AgentControlHook(HookProvider):
             input=input_text,
             step_type="llm",
             stage="pre",
-            violation_type="Model call",
         )
 
     async def check_after_model(self, event: AfterModelCallEvent) -> None:
@@ -199,7 +196,6 @@ class AgentControlHook(HookProvider):
             output=output_text,
             step_type="llm",
             stage="post",
-            violation_type="Model call",
         )
 
     async def check_before_tool(self, event: BeforeToolCallEvent) -> None:
@@ -209,7 +205,6 @@ class AgentControlHook(HookProvider):
             input=tool_input,
             step_type="tool",
             stage="pre",
-            violation_type="Tool execution",
             use_runtime_error=True,
         )
 
@@ -220,7 +215,6 @@ class AgentControlHook(HookProvider):
             output=tool_output,
             step_type="tool",
             stage="post",
-            violation_type="Tool result",
             use_runtime_error=True,
         )
 
@@ -232,7 +226,6 @@ class AgentControlHook(HookProvider):
             input=input_text,
             step_type="llm",
             stage="pre",
-            violation_type=f"Node call ({node_id})",
         )
 
     async def check_after_node(self, event: AfterNodeCallEvent) -> None:
@@ -243,7 +236,6 @@ class AgentControlHook(HookProvider):
             output=output_text,
             step_type="llm",
             stage="post",
-            violation_type=f"Node result ({node_id})",
         )
 
     def _extract_user_message_from_list(self, messages: list | None, reverse: bool = False) -> str:
