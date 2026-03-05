@@ -7,7 +7,9 @@
 [![CI](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/agentcontrol/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/agentcontrol/agent-control)
 
-**Runtime guardrails for AI agents—configurable, extensible, and production-ready.**
+> **💡 Pro Tip:** Checkout [docs](https://docs.agentcontrol.dev/) for complete reference
+
+**Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
 AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, control-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
 
@@ -25,8 +27,6 @@ Traditional guardrails embedded inside your agent code have critical limitations
 - **For non-technical teams:** Intuitive UI to configure and monitor agent safety without touching code
 - **For organizations:** Reusable controls across agents with comprehensive audit trails
 
----
-
 ## Key Features
 
 - **Safety Without Code Changes** — Add guardrails with a `@control()` decorator
@@ -36,23 +36,6 @@ Traditional guardrails embedded inside your agent code have critical limitations
 - **Pluggable Evaluators** — Built-in (regex, list matching, Luna-2 AI) or custom evaluators
 - **Fail-Safe Defaults** — Deny controls fail closed on error with configurable error handling
 - **API Key Authentication** — Secure your control server in production
-
----
-
-## How It Works (30s)
-
-- Your agent wraps functions with `@control()` and sends inputs/outputs to the Agent Control server
-- The server evaluates those payloads against policies and controls you configured
-- Evaluators run (regex, list, or AI) and return allow/deny decisions with reasons
-- The SDK blocks unsafe operations, raising `ControlViolationError` when a control denies or `ControlSteerError` when a control steers the output
-- You update rules centrally in the UI/API without redeploying agent code
-
----
-
-## Core Concepts
-See the [Concepts guide](https://docs.agentcontrol.dev/concepts) to familiarize yourself with Agent Control's core concepts and terminology—essential for designing effective controls and evaluators for your application.
-
----
 
 ### Examples
 
@@ -66,122 +49,92 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 - **[CrewAI Integration](examples/crewai/)** — Using Agent Control with third-party agent frameworks
 - **[DeepEval Integration](examples/deepeval/)** — Building custom evaluators
 
----
+## Quick start
 
-## Quick Start
+### Installation
 
-### Step 1: Setup AgentControl Server
+**Prerequisites**: 
+* Python 3.12+ 
+* Docker 
 
-The server stores controls and evaluates agent operations for safety.
+#### SDK only 
+Install our SDK in your project - `pip install agent-control-sdk` 
+> **📝 Note:** Depending on your setup the command maybe different such as `uv add agent-control-sdk` if you're using uv.
 
-**Choose your path:**
-**Dev (default)** runs a pre-built server in Docker using `./setup.sh`. **OR**
-**Server dev** runs the server from source with hot reload for contributor work.
-
-#### Dev (default): Quick Setup
-
-Get up and running with Agent Control in **one command**:
-
-**Prerequisites**:
-- Python 3.12+
-- Docker must be installed.
-
-```bash
-curl -fsSL -H "Authorization: token YOUR_GITHUB_TOKEN" https://raw.githubusercontent.com/agentcontrol/agent-control/main/setup.sh | sh
+Run the Agent Control server and Postgres database via docker compose:
+```commandline
+curl "https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml" | docker compose -f - up -d
 ```
 
-**OR clone first** (recommended if you want to review the script):
+Server will be running at `http://localhost:8000`
+
+#### Local development
+
+**Prerequisites:** 
+* uv: Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+* Node.js 18+: For the web dashboard (optional)
 
 ```bash
-git clone https://github.com/agentcontrol/agent-control.git
-cd agent-control
-./setup.sh
-```
-
-**What the script does:**
-- ✓ Check Python 3.12+ is installed
-- ✓ Create a virtual environment
-- ✓ Pull and start PostgreSQL + Agent Control Server + UI via Docker
-- ✓ Install the Agent Control SDK
-
-**Server will be running at `http://localhost:8000` and UI at `http://localhost:4000` — ready to use!**
-
-> ✅ **This setup works great for development!** You can build agents, integrate with your apps, and develop using the SDK. The server runs in Docker for convenience and isolation.
-
----
-
-#### Server Dev: Run from Source
-
-**Only use this if you need to modify and debug the Agent Control server code itself** (e.g., adding server features, custom endpoints, or working on the core engine with hot reload).
-
-**Prerequisites:**
-- **Python 3.12+**
-- **uv** — Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- **Docker** — For running PostgreSQL
-- **Node.js 18+** — For the web dashboard (optional)
-
-```bash
-# Clone the repository
+# Clone the repo
 git clone https://github.com/agentcontrol/agent-control.git
 cd agent-control
 
 # Install all workspace dependencies
 make sync
 
-# Start PostgreSQL database
-cd server && docker-compose up -d && cd ..
-
-# Run database migrations
-make server-alembic-upgrade
-
-# Start the Agent Control server
+# Start the Agent Control server.  This will also boot Postgres and run alembic migrations
 make server-run
+
+# Start the UI (in a separate shell)
+make ui-install
+make ui-dev
+```
+* Server will run on `http://localhost:8000`
+* UI will run on `http://localhost:4000`
+
+### Onboarding your agent
+
+#### Register your agent with server
+
+Agent must be registered with teh server.  You should also add `@control` decorator around tools and llm call functions.
+
+Here is a contrived example.  Reference our [examples](/examples) for real world examples for specific frameworks.
+```python
+# my_agent.py
+import asyncio
+import agent_control
+from agent_control import control, ControlViolationError
+
+# Protect any function (like LLM calls)
+@control()
+async def chat(message: str) -> str:
+    # In production: response = await llm.ainvoke(message)
+    # For demo: simulate LLM that might leak sensitive data
+    if "test" in message.lower():
+        return "Your SSN is 123-45-6789"  # Will be blocked!
+    return f"Echo: {message}"
+
+# Initialize your agent
+agent_control.init(
+    agent_name="awesome_bot_3000", # This should be a unique name 
+    agent_description="My Chatbot",
+)
+
+# Test it
+async def main():
+    try:
+        print(await chat("test"))  # ❌ Blocked
+    except ControlViolationError as e:
+        print(f"❌ Blocked: {e.control_name}")
+
+asyncio.run(main())
 ```
 
-**Server is now running at `http://localhost:8000`** ✅
+#### Add some controls
 
----
+Easiest way to add controls is to use the UI.  
 
-Confirm the server is up:
-
-```bash
-curl -s http://localhost:8000/health
-```
-
----
-
-### Step 2: (Optional) Start the Web Dashboard
-
-The dashboard provides a UI for managing agents, controls, and viewing analytics. Everything can be done via API/SDK, but the UI is more convenient.
-
-In a separate terminal:
-```bash
-cd ui
-pnpm install
-pnpm dev
-```
-
-**Dashboard is now running at `http://localhost:4000`** ✅
-
----
-
-### Step 3: Create Controls (Setup Script)
-
-> **Note:** If you used `./setup.sh`, the SDK is already installed—skip to creating controls.
-
-#### Install SDK (if using source setup)
-
-If you used the **source setup** (`make server-run`), install the SDK first:
-
-```bash
-# In your agent application directory (not inside agent-control repo)
-uv venv
-source .venv/bin/activate
-uv pip install agent-control-sdk
-```
-
-#### Creating Controls
-Create a setup script to configure your agent's controls:
+You can also use SDK or directly call api:
 
 ```python
 # setup.py - Run once to configure agent controls
@@ -229,69 +182,7 @@ async def setup():
 
 asyncio.run(setup())
 ```
-
-Run the setup script:
-
-```bash
-uv run setup.py
-```
-
----
-
-### Step 4: Use `@control()` (Agent Code)
-
-Protect any function with the `@control()` decorator:
-
-```python
-# my_agent.py
-import asyncio
-import agent_control
-from agent_control import control, ControlViolationError
-
-# Initialize your agent
-agent_control.init(
-    agent_name="550e8400-e29b-41d4-a716-446655440000",  # Agent identifier (UUID recommended)
-    agent_description="My Chatbot",
-)
-
-# Protect any function with @control()
-@control()
-async def chat(message: str) -> str:
-    # Your LLM call goes here: response = await llm.ainvoke(message)
-    # For demo, we'll simulate a response that leaks data
-    if "test" in message.lower():
-        return "Your SSN is 123-45-6789"  # Will be blocked!
-    return f"Echo: {message}"
-
-async def main():
-    try:
-        result = await chat("test")
-        print(result)
-    except ControlViolationError as e:
-        print(f"❌ Control violation: {e.control_name}")
-
-asyncio.run(main())
-```
-
----
-
-### Step 5: Run It (Expected Output)
-
-```bash
-uv run my_agent.py
-```
-
-Expected output:
-
-```
-❌ Control violation: block-ssn
-```
-
-**🎉 Done!** Your agent now blocks SSN patterns in outputs automatically.
-
----
-
-### What's Happening Under the Hood?
+#### What's Happening Under the Hood?
 
 1. Your app calls `chat("test")`
 2. Function executes and returns `"Your SSN is 123-45-6789"`
@@ -300,47 +191,6 @@ Expected output:
 5. `block-ssn` control finds SSN pattern → matches!
 6. Server returns `is_safe=False` with the matched control
 7. SDK raises `ControlViolationError` and blocks the response
-
-**Key Benefits:**
-- ✅ Controls are managed **separately** from your code
-- ✅ Update controls **without redeploying** your agent
-- ✅ Same controls can protect **multiple agents**
-- ✅ View analytics and control execution in the dashboard
-
----
-
-### Next Steps
-
-- **Add more controls:** See [Controls](https://docs.agentcontrol.dev/concepts/controls#defining-controls) for examples and guidance
-- **Explore evaluators:** Try AI-powered evaluators like [Luna-2](https://docs.agentcontrol.dev/concepts/controls#example-block-toxic-input-luna-2-ai) or create custom evaluators. See [examples/deepeval](examples/deepeval) for custom evaluator examples
-- **Production setup:** Enable authentication - see [docs/REFERENCE.md](docs/REFERENCE.md#authentication)
-- **Check examples:** See [examples/](examples/) for real-world patterns
-
-> **💡 Pro Tip:** Start with simple regex controls, then graduate to AI-powered evaluators for complex safety checks!
-
-### 5. Assign Controls
-
-Controls can be associated directly with agents. An agent's **active controls** are the controls currently linked to that agent.
-
-**Direct controls** — attach individual controls to an agent:
-
-```bash
-# Add a control directly to an agent
-curl -X POST http://localhost:8000/api/v1/agents/support-agent-v1/controls/3
-
-# Remove a direct control
-curl -X DELETE http://localhost:8000/api/v1/agents/support-agent-v1/controls/3
-```
-
-**List all active controls**:
-
-```bash
-curl http://localhost:8000/api/v1/agents/support-agent-v1/controls
-```
-
-> Controls are optional. An agent can operate with no controls configured.
-
----
 
 ## Configuration
 
