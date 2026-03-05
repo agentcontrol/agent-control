@@ -59,7 +59,7 @@ def main() -> int:
         agent_control.init(
             agent_name=args.agent_name,
             agent_id=agent_id,
-            url=url,
+            server_url=url,
             api_key=api_key,
         )
         print(f"✅ Registered agent: {agent_id}")
@@ -77,4 +77,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

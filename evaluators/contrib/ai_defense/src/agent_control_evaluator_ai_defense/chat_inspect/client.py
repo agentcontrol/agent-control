@@ -9,7 +9,7 @@ try:
     import httpx
 
     AI_DEFENSE_HTTPX_AVAILABLE = True
-except Exception:  # noqa: BLE001
+except ImportError:  # Narrow to import error only
     httpx = None  # type: ignore
     AI_DEFENSE_HTTPX_AVAILABLE = False
 

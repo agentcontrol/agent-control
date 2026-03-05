@@ -95,30 +95,14 @@ async def _ensure_policy(client: AgentControlClient, name: str, *, agent_name: s
     """
     resp = await client.http_client.put("/api/v1/policies", json={"name": name}, headers=_headers())
     if resp.status_code == 409:
-        # Policy with this name exists. Try to reuse the agent's assigned policy.
-        assigned = await client.http_client.get(
-            f"/api/v1/agents/{agent_name}/policy", headers=_headers()
-        )
-        if assigned.status_code == 200:
-            return int(assigned.json()["policy_id"])  # type: ignore[index]
-
-        # No assignment to infer the policy ID from. Create a new unique policy name
-        # derived from the requested name and the agent name suffix.
-        suffix = agent_name.replace(" ", "-")[-6:]
-        alt_name = f"{name}-{suffix}"
-        alt_resp = await client.http_client.put(
-            "/api/v1/policies", json={"name": alt_name}, headers=_headers()
-        )
-        if alt_resp.status_code == 409:
-            # Extremely unlikely double collision – append a timestamp-based suffix
-            import time
-
-            alt_name = f"{name}-{int(time.time())}"
-            alt_resp = await client.http_client.put(
-                "/api/v1/policies", json={"name": alt_name}, headers=_headers()
+        # Name conflict: do NOT reuse an arbitrary existing policy, as it may be unrelated.
+        # Bail out with guidance to pick a different POLICY_NAME.
+        raise RuntimeError(
+            (
+                f"Policy name conflict for '{name}'. Choose a different POLICY_NAME to avoid "
+                "mutating an existing policy."
             )
-        alt_resp.raise_for_status()
-        return int(alt_resp.json()["policy_id"])  # type: ignore[index]
+        )
     resp.raise_for_status()
     return int(resp.json()["policy_id"])  # type: ignore[index]
 

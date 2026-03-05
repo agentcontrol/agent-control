@@ -71,6 +71,9 @@ class ChatInspectEvaluator(Evaluator[ChatInspectEvaluatorConfig]):
     def __init__(self, config: ChatInspectEvaluatorConfig) -> None:
         self.config = config
         self._client: AIDefenseClient | None = None
+        self._current_api_key: str | None = None
+        self._current_endpoint_url: str | None = None
+        self._current_timeout_s: float | None = None
 
     async def evaluate(self, data: Any) -> EvaluatorResult:  # noqa: D401
         # Null input: do not call external service; treat as no data
@@ -89,11 +92,20 @@ class ChatInspectEvaluator(Evaluator[ChatInspectEvaluatorConfig]):
         try:
             api_key = _load_api_key(self.config.api_key_env)
         except Exception as e:  # noqa: BLE001
+            # Respect on_error behavior for missing API key
+            fallback = self.config.on_error
+            matched = fallback == "deny"
             return EvaluatorResult(
-                matched=False,
+                matched=matched,
                 confidence=0.0,
                 message=str(e),
-                error=str(e),
+                metadata={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "fallback_action": fallback,
+                },
+                # On fail-closed, expose details via metadata only
+                error=None if matched else str(e),
             )
 
         # Derive endpoint from region or explicit api_url
@@ -105,16 +117,33 @@ class ChatInspectEvaluator(Evaluator[ChatInspectEvaluatorConfig]):
 
         # Prepare or reuse client
         timeout_s = max(0.001, float(self.config.timeout_ms) / 1000.0)
-        if self._client is None:
+        needs_new_client = (
+            self._client is None
+            or self._current_api_key != api_key
+            or self._current_endpoint_url != endpoint_url
+            or self._current_timeout_s != timeout_s
+        )
+        if needs_new_client:
+            # Close any prior client
+            if self._client is not None:
+                try:
+                    await self._client.aclose()
+                except Exception:
+                    pass
             self._client = AIDefenseClient(
                 api_key=api_key,
                 endpoint_url=endpoint_url,
                 timeout_s=timeout_s,
             )
+            self._current_api_key = api_key
+            self._current_endpoint_url = endpoint_url
+            self._current_timeout_s = timeout_s
 
         # Call REST API for Chat Inspection
         try:
-            response: dict[str, Any] = await self._client.chat_inspect(
+            client = self._client
+            assert client is not None
+            response: dict[str, Any] = await client.chat_inspect(
                 messages=messages,
                 metadata=self.config.metadata,
                 inspect_config=self.config.inspect_config,

@@ -49,7 +49,7 @@ async def main() -> int:
         agent_control.init(
             agent_name=args.agent_name,
             agent_id=args.agent_id,
-            url=url,
+            server_url=url,
             api_key=api_key,
         )
     except httpx.HTTPStatusError as e:
