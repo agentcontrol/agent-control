@@ -1,7 +1,7 @@
 import type { AgentControlClient } from "./client";
 import type { EvaluationResponse } from "./generated/models/evaluation-response";
 import { ControlSteerError, ControlViolationError } from "./errors";
-import { registerStep } from "./step-registry";
+import { registerStep } from "./_control_registry";
 
 // ---------------------------------------------------------------------------
 // Internal state: holds a reference to the singleton (set by index.ts)

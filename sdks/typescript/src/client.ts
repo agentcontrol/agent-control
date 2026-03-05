@@ -1,5 +1,5 @@
 import { AgentControlSDK } from "./generated/sdk/sdk";
-import { mergeRegisteredSteps, type RegisteredStep } from "./step-registry";
+import { mergeRegisteredSteps, type RegisteredStep } from "./_control_registry";
 
 export type StepSchema = RegisteredStep;
 
