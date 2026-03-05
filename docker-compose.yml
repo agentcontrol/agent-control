@@ -51,8 +51,8 @@ services:
       PORT: 8000
       # API authentication defaults (override via environment variables)
       AGENT_CONTROL_API_KEY_ENABLED: ${AGENT_CONTROL_API_KEY_ENABLED:-true}
-      AGENT_CONTROL_API_KEYS: ${AGENT_CONTROL_API_KEYS:-agent-control-non-admin-dev-key}
-      AGENT_CONTROL_ADMIN_API_KEYS: ${AGENT_CONTROL_ADMIN_API_KEYS:-agent-control-admin-dev-key}
+      AGENT_CONTROL_API_KEYS: ${AGENT_CONTROL_API_KEYS:-420c6b90-714b-45be-aa99-2c3f05cf2baf}
+      AGENT_CONTROL_ADMIN_API_KEYS: ${AGENT_CONTROL_ADMIN_API_KEYS:-29af8554-a1fe-4311-977b-7ce360b20cc3}
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,7 +65,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_AGENT_CONTROL_API_KEY: ${NEXT_PUBLIC_AGENT_CONTROL_API_KEY:-agent-control-admin-dev-key}
+        NEXT_PUBLIC_AGENT_CONTROL_API_KEY: ${NEXT_PUBLIC_AGENT_CONTROL_API_KEY:-29af8554-a1fe-4311-977b-7ce360b20cc3}
     container_name: agent_control_ui
     ports:
       - "4000:4000"
