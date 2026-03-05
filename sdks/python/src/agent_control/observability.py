@@ -353,6 +353,8 @@ class EventBatcher:
         try:
             loop.call_soon_threadsafe(signal.set)
         except RuntimeError:
+            # Expected during shutdown races: worker teardown can close/swap
+            # loop state between our check and call_soon_threadsafe().
             pass
 
     def _stop_worker(self, *, graceful: bool, join_timeout: float) -> None:
@@ -453,10 +455,13 @@ class EventBatcher:
         try:
             if self._graceful_shutdown:
                 await self.flush_all()
-            else:
-                await self.close()
         except Exception as e:
             logger.error(f"Error during flush loop shutdown: {e}")
+        finally:
+            try:
+                await self.close()
+            except Exception as e:
+                logger.error(f"Error closing observability client: {e}")
 
     async def _flush(self) -> None:
         """Flush current batch to server."""
