@@ -936,6 +936,7 @@ Agent Control supports multiple API keys for zero-downtime rotation:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend API URL |
+| `NEXT_PUBLIC_AGENT_CONTROL_API_KEY` | — | API key sent as `X-API-Key` by the UI client (use an admin key for control-plane mutations) |
 
 ### Database Setup
 
