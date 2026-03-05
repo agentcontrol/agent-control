@@ -2,6 +2,47 @@
 
 <!-- version list -->
 
+## v6.4.0 (2026-03-05)
+
+### Bug Fixes
+
+- **ci**: Disable npm provenance for private TS SDK release
+  ([#56](https://github.com/agentcontrol/agent-control/pull/56),
+  [`ccb809f`](https://github.com/agentcontrol/agent-control/commit/ccb809f5f0f43ae10f7cc2c76b770352c49a4377))
+
+- **docs**: Test all examples ([#16](https://github.com/agentcontrol/agent-control/pull/16),
+  [`39e95c2`](https://github.com/agentcontrol/agent-control/commit/39e95c20dff4275fae9a44f305b0d1b354b3f24e))
+
+- **sdk-ts**: Add conventional commits preset dependency
+  ([#55](https://github.com/agentcontrol/agent-control/pull/55),
+  [`540fe9d`](https://github.com/agentcontrol/agent-control/commit/540fe9df8fc69f223218ef2defbcc662ab3a902a))
+
+- **sdk-ts**: Export npm token for semantic-release npm auth
+  ([#54](https://github.com/agentcontrol/agent-control/pull/54),
+  [`1b6b993`](https://github.com/agentcontrol/agent-control/commit/1b6b993eaed8c63ea4e61b21bc4fb27accaa2a49))
+
+### Chores
+
+- **docs**: Add npm badge ([#50](https://github.com/agentcontrol/agent-control/pull/50),
+  [`b02b012`](https://github.com/agentcontrol/agent-control/commit/b02b01219f9079da420d75a1aee32262b150c76c))
+
+- **release**: Ts sdk v1.0.0 [skip ci]
+  ([`dfcc688`](https://github.com/agentcontrol/agent-control/commit/dfcc6888fd95c1743eb6f21a818945d19fba256f))
+
+- **release**: Ts sdk v1.0.1 [skip ci]
+  ([`f2a8497`](https://github.com/agentcontrol/agent-control/commit/f2a8497d42af12dcae7438e3b5a35914be600bec))
+
+- **sdk-ts**: Make semantic-release workflow manual-only
+  ([#53](https://github.com/agentcontrol/agent-control/pull/53),
+  [`fe33556`](https://github.com/agentcontrol/agent-control/commit/fe33556c1b964cfc8204d0b6a5470a47a7bb8119))
+
+### Features
+
+- **infra**: Publish UI image and add compose UI service
+  ([#57](https://github.com/agentcontrol/agent-control/pull/57),
+  [`207c1af`](https://github.com/agentcontrol/agent-control/commit/207c1af3dec13b931abd1d9d2fcaa66ecbb2dc72))
+
+
 ## v6.3.0 (2026-03-04)
 
 ### Bug Fixes

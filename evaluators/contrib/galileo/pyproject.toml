@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-evaluator-galileo"
-version = "6.3.0"
+version = "6.4.0"
 description = "Galileo Luna2 evaluator for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"

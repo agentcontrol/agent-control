@@ -6,9 +6,11 @@
 # Services:
 #   - PostgreSQL database (port 5432)
 #   - Agent Control Server API (port 8000)
+#   - Agent Control UI Dashboard (port 4000)
 #
-# The server image is published to Docker Hub at:
+# The images are published to Docker Hub at:
 #   galileoai/agent-control-server:latest
+#   galileoai/agent-control-ui:latest
 #
 # For local development (run server with uvicorn), use:
 #   docker compose -f docker-compose.dev.yml up -d
@@ -47,6 +49,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+
+  ui:
+    image: galileoai/agent-control-ui:latest
+    platform: linux/amd64
+    container_name: agent_control_ui
+    ports:
+      - "4000:4000"
+    depends_on:
+      - server
     restart: unless-stopped
 
 volumes:
