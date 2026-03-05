@@ -17,6 +17,37 @@ import { unwrapAsync } from "../types/fp.js";
 
 export class Controls extends ClientSDK {
   /**
+   * Create a new control
+   *
+   * @remarks
+   * Create a new control with a unique name and empty data.
+   *
+   * Controls define protection logic and can be added to policies.
+   * Use the PUT /{control_id}/data endpoint to set control configuration.
+   *
+   * Args:
+   *     request: Control creation request with unique name
+   *     db: Database session (injected)
+   *
+   * Returns:
+   *     CreateControlResponse with the new control's ID
+   *
+   * Raises:
+   *     HTTPException 409: Control with this name already exists
+   *     HTTPException 500: Database error during creation
+   */
+  async create(
+    request: models.CreateControlRequest,
+    options?: RequestOptions,
+  ): Promise<models.CreateControlResponse> {
+    return unwrapAsync(controlsCreate(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
    * List all controls
    *
    * @remarks
@@ -53,54 +84,26 @@ export class Controls extends ClientSDK {
   }
 
   /**
-   * Create a new control
+   * Get control details
    *
    * @remarks
-   * Create a new control with a unique name and empty data.
-   *
-   * Controls define protection logic and can be added to policies.
-   * Use the PUT /{control_id}/data endpoint to set control configuration.
+   * Retrieve a control by ID including its name and configuration data.
    *
    * Args:
-   *     request: Control creation request with unique name
+   *     control_id: ID of the control
    *     db: Database session (injected)
    *
    * Returns:
-   *     CreateControlResponse with the new control's ID
+   *     GetControlResponse with control id, name, and data
    *
    * Raises:
-   *     HTTPException 409: Control with this name already exists
-   *     HTTPException 500: Database error during creation
+   *     HTTPException 404: Control not found
    */
-  async create(
-    request: models.CreateControlRequest,
+  async get(
+    request: operations.GetControlApiV1ControlsControlIdGetRequest,
     options?: RequestOptions,
-  ): Promise<models.CreateControlResponse> {
-    return unwrapAsync(controlsCreate(
-      this,
-      request,
-      options,
-    ));
-  }
-
-  /**
-   * Validate control configuration
-   *
-   * @remarks
-   * Validate control configuration data without saving it.
-   *
-   * Args:
-   *     request: Control configuration data to validate
-   *     db: Database session (injected)
-   *
-   * Returns:
-   *     ValidateControlDataResponse with success=True if valid
-   */
-  async validateData(
-    request: models.ValidateControlDataRequest,
-    options?: RequestOptions,
-  ): Promise<models.ValidateControlDataResponse> {
-    return unwrapAsync(controlsValidateData(
+  ): Promise<models.GetControlResponse> {
+    return unwrapAsync(controlsGet(
       this,
       request,
       options,
@@ -134,33 +137,6 @@ export class Controls extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.DeleteControlResponse> {
     return unwrapAsync(controlsDelete(
-      this,
-      request,
-      options,
-    ));
-  }
-
-  /**
-   * Get control details
-   *
-   * @remarks
-   * Retrieve a control by ID including its name and configuration data.
-   *
-   * Args:
-   *     control_id: ID of the control
-   *     db: Database session (injected)
-   *
-   * Returns:
-   *     GetControlResponse with control id, name, and data
-   *
-   * Raises:
-   *     HTTPException 404: Control not found
-   */
-  async get(
-    request: operations.GetControlApiV1ControlsControlIdGetRequest,
-    options?: RequestOptions,
-  ): Promise<models.GetControlResponse> {
-    return unwrapAsync(controlsGet(
       this,
       request,
       options,
@@ -258,6 +234,30 @@ export class Controls extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.SetControlDataResponse> {
     return unwrapAsync(controlsUpdateData(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * Validate control configuration
+   *
+   * @remarks
+   * Validate control configuration data without saving it.
+   *
+   * Args:
+   *     request: Control configuration data to validate
+   *     db: Database session (injected)
+   *
+   * Returns:
+   *     ValidateControlDataResponse with success=True if valid
+   */
+  async validateData(
+    request: models.ValidateControlDataRequest,
+    options?: RequestOptions,
+  ): Promise<models.ValidateControlDataResponse> {
+    return unwrapAsync(controlsValidateData(
       this,
       request,
       options,

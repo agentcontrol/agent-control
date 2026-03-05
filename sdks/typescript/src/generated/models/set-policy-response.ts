@@ -14,13 +14,13 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type SetPolicyResponse = {
   /**
-   * Previously associated policy ID, if any
-   */
-  oldPolicyId?: number | null | undefined;
-  /**
    * Whether the request succeeded
    */
   success: boolean;
+  /**
+   * Previously associated policy ID, if any
+   */
+  oldPolicyId?: number | null | undefined;
 };
 
 /** @internal */
@@ -29,8 +29,8 @@ export const SetPolicyResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    old_policy_id: z.optional(z.nullable(types.number())),
     success: types.boolean(),
+    old_policy_id: z.optional(z.nullable(types.number())),
   }),
   z.transform((v) => {
     return remap$(v, {

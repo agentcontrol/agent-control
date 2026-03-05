@@ -13,17 +13,17 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type PatchControlResponse = {
   /**
-   * Current enabled status (if control has data configured)
+   * Whether the update succeeded
    */
-  enabled?: boolean | null | undefined;
+  success: boolean;
   /**
    * Current control name (may have changed)
    */
   name: string;
   /**
-   * Whether the update succeeded
+   * Current enabled status (if control has data configured)
    */
-  success: boolean;
+  enabled?: boolean | null | undefined;
 };
 
 /** @internal */
@@ -31,9 +31,9 @@ export const PatchControlResponse$inboundSchema: z.ZodMiniType<
   PatchControlResponse,
   unknown
 > = z.object({
-  enabled: z.optional(z.nullable(types.boolean())),
-  name: types.string(),
   success: types.boolean(),
+  name: types.string(),
+  enabled: z.optional(z.nullable(types.boolean())),
 });
 
 export function patchControlResponseFromJSON(

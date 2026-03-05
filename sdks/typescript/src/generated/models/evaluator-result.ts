@@ -26,17 +26,13 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type EvaluatorResult = {
   /**
-   * Confidence in the evaluation
-   */
-  confidence: number;
-  /**
-   * Error message if evaluation failed internally. When set, matched=False is due to error, not actual evaluation.
-   */
-  error?: string | null | undefined;
-  /**
    * Whether the pattern matched
    */
   matched: boolean;
+  /**
+   * Confidence in the evaluation
+   */
+  confidence: number;
   /**
    * Explanation of the result
    */
@@ -45,6 +41,10 @@ export type EvaluatorResult = {
    * Additional result metadata
    */
   metadata?: { [k: string]: any } | null | undefined;
+  /**
+   * Error message if evaluation failed internally. When set, matched=False is due to error, not actual evaluation.
+   */
+  error?: string | null | undefined;
 };
 
 /** @internal */
@@ -52,11 +52,11 @@ export const EvaluatorResult$inboundSchema: z.ZodMiniType<
   EvaluatorResult,
   unknown
 > = z.object({
-  confidence: types.number(),
-  error: z.optional(z.nullable(types.string())),
   matched: types.boolean(),
+  confidence: types.number(),
   message: z.optional(z.nullable(types.string())),
   metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
+  error: z.optional(z.nullable(types.string())),
 });
 
 export function evaluatorResultFromJSON(

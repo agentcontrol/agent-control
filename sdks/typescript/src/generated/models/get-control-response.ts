@@ -17,10 +17,6 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type GetControlResponse = {
   /**
-   * Control configuration data (None if not yet configured)
-   */
-  data?: ControlDefinitionOutput | null | undefined;
-  /**
    * Control ID
    */
   id: number;
@@ -28,6 +24,10 @@ export type GetControlResponse = {
    * Control name
    */
   name: string;
+  /**
+   * Control configuration data (None if not yet configured)
+   */
+  data?: ControlDefinitionOutput | null | undefined;
 };
 
 /** @internal */
@@ -35,9 +35,9 @@ export const GetControlResponse$inboundSchema: z.ZodMiniType<
   GetControlResponse,
   unknown
 > = z.object({
-  data: z.optional(z.nullable(ControlDefinitionOutput$inboundSchema)),
   id: types.number(),
   name: types.string(),
+  data: z.optional(z.nullable(ControlDefinitionOutput$inboundSchema)),
 });
 
 export function getControlResponseFromJSON(

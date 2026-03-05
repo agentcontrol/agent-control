@@ -28,13 +28,13 @@ export type GetAgentResponse = {
    */
   agent: Agent;
   /**
-   * Custom evaluators registered with this agent
-   */
-  evaluators?: Array<EvaluatorSchema> | undefined;
-  /**
    * Steps registered with this agent
    */
   steps: Array<StepSchema>;
+  /**
+   * Custom evaluators registered with this agent
+   */
+  evaluators?: Array<EvaluatorSchema> | undefined;
 };
 
 /** @internal */
@@ -43,8 +43,8 @@ export const GetAgentResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.object({
   agent: Agent$inboundSchema,
-  evaluators: types.optional(z.array(EvaluatorSchema$inboundSchema)),
   steps: z.array(StepSchema$inboundSchema),
+  evaluators: types.optional(z.array(EvaluatorSchema$inboundSchema)),
 });
 
 export function getAgentResponseFromJSON(

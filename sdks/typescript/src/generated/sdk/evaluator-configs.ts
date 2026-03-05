@@ -14,22 +14,6 @@ import { unwrapAsync } from "../types/fp.js";
 
 export class EvaluatorConfigs extends ClientSDK {
   /**
-   * List evaluator configs
-   */
-  async list(
-    request?:
-      | operations.ListEvaluatorConfigsApiV1EvaluatorConfigsGetRequest
-      | undefined,
-    options?: RequestOptions,
-  ): Promise<models.ListEvaluatorConfigsResponse> {
-    return unwrapAsync(evaluatorConfigsList(
-      this,
-      request,
-      options,
-    ));
-  }
-
-  /**
    * Create evaluator config
    */
   async create(
@@ -44,14 +28,15 @@ export class EvaluatorConfigs extends ClientSDK {
   }
 
   /**
-   * Delete evaluator config
+   * List evaluator configs
    */
-  async delete(
-    request:
-      operations.DeleteEvaluatorConfigApiV1EvaluatorConfigsConfigIdDeleteRequest,
+  async list(
+    request?:
+      | operations.ListEvaluatorConfigsApiV1EvaluatorConfigsGetRequest
+      | undefined,
     options?: RequestOptions,
-  ): Promise<models.DeleteEvaluatorConfigResponse> {
-    return unwrapAsync(evaluatorConfigsDelete(
+  ): Promise<models.ListEvaluatorConfigsResponse> {
+    return unwrapAsync(evaluatorConfigsList(
       this,
       request,
       options,
@@ -82,6 +67,21 @@ export class EvaluatorConfigs extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.EvaluatorConfigItem> {
     return unwrapAsync(evaluatorConfigsUpdate(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * Delete evaluator config
+   */
+  async delete(
+    request:
+      operations.DeleteEvaluatorConfigApiV1EvaluatorConfigsConfigIdDeleteRequest,
+    options?: RequestOptions,
+  ): Promise<models.DeleteEvaluatorConfigResponse> {
+    return unwrapAsync(evaluatorConfigsDelete(
       this,
       request,
       options,

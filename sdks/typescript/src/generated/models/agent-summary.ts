@@ -14,50 +14,50 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type AgentSummary = {
   /**
-   * Number of active controls for this agent
-   */
-  activeControlsCount: number;
-  /**
    * Unique identifier of the agent
    */
   agentName: string;
-  /**
-   * ISO 8601 timestamp when agent was created
-   */
-  createdAt?: string | null | undefined;
-  /**
-   * Number of evaluators registered with the agent
-   */
-  evaluatorCount: number;
   /**
    * IDs of policies associated with the agent
    */
   policyIds?: Array<number> | undefined;
   /**
+   * ISO 8601 timestamp when agent was created
+   */
+  createdAt?: string | null | undefined;
+  /**
    * Number of steps registered with the agent
    */
   stepCount: number;
+  /**
+   * Number of evaluators registered with the agent
+   */
+  evaluatorCount: number;
+  /**
+   * Number of active controls for this agent
+   */
+  activeControlsCount: number;
 };
 
 /** @internal */
 export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
   z.pipe(
     z.object({
-      active_controls_count: z._default(types.number(), 0),
       agent_name: types.string(),
-      created_at: z.optional(z.nullable(types.string())),
-      evaluator_count: z._default(types.number(), 0),
       policy_ids: types.optional(z.array(types.number())),
+      created_at: z.optional(z.nullable(types.string())),
       step_count: z._default(types.number(), 0),
+      evaluator_count: z._default(types.number(), 0),
+      active_controls_count: z._default(types.number(), 0),
     }),
     z.transform((v) => {
       return remap$(v, {
-        "active_controls_count": "activeControlsCount",
         "agent_name": "agentName",
-        "created_at": "createdAt",
-        "evaluator_count": "evaluatorCount",
         "policy_ids": "policyIds",
+        "created_at": "createdAt",
         "step_count": "stepCount",
+        "evaluator_count": "evaluatorCount",
+        "active_controls_count": "activeControlsCount",
       });
     }),
   );

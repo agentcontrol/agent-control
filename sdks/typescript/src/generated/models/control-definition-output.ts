@@ -45,10 +45,6 @@ export type Execution = OpenEnum<typeof Execution>;
  */
 export type ControlDefinitionOutput = {
   /**
-   * What to do when control matches.
-   */
-  action: ControlAction;
-  /**
    * Detailed description of the control
    */
   description?: string | null | undefined;
@@ -56,17 +52,6 @@ export type ControlDefinitionOutput = {
    * Whether this control is active
    */
   enabled: boolean;
-  /**
-   * Evaluator specification. See GET /evaluators for available evaluators and schemas.
-   *
-   * @remarks
-   *
-   * Evaluator reference formats:
-   * - Built-in: "regex", "list", "json", "sql"
-   * - External: "galileo.luna2" (requires agent-control-evaluators[galileo])
-   * - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
-   */
-  evaluator: EvaluatorSpec;
   /**
    * Where this control executes
    */
@@ -85,6 +70,21 @@ export type ControlDefinitionOutput = {
    */
   selector: ControlSelector;
   /**
+   * Evaluator specification. See GET /evaluators for available evaluators and schemas.
+   *
+   * @remarks
+   *
+   * Evaluator reference formats:
+   * - Built-in: "regex", "list", "json", "sql"
+   * - External: "galileo.luna2" (requires agent-control-evaluators[galileo])
+   * - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
+   */
+  evaluator: EvaluatorSpec;
+  /**
+   * What to do when control matches.
+   */
+  action: ControlAction;
+  /**
    * Tags for categorization
    */
   tags?: Array<string> | undefined;
@@ -99,13 +99,13 @@ export const ControlDefinitionOutput$inboundSchema: z.ZodMiniType<
   ControlDefinitionOutput,
   unknown
 > = z.object({
-  action: ControlAction$inboundSchema,
   description: z.optional(z.nullable(types.string())),
   enabled: z._default(types.boolean(), true),
-  evaluator: EvaluatorSpec$inboundSchema,
   execution: Execution$inboundSchema,
   scope: types.optional(ControlScope$inboundSchema),
   selector: ControlSelector$inboundSchema,
+  evaluator: EvaluatorSpec$inboundSchema,
+  action: ControlAction$inboundSchema,
   tags: types.optional(z.array(types.string())),
 });
 

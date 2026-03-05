@@ -15,13 +15,13 @@ import { StepKey, StepKey$inboundSchema } from "./step-key.js";
  */
 export type PatchAgentResponse = {
   /**
-   * Evaluator names that were removed
-   */
-  evaluatorsRemoved?: Array<string> | undefined;
-  /**
    * Step identifiers that were removed
    */
   stepsRemoved?: Array<StepKey> | undefined;
+  /**
+   * Evaluator names that were removed
+   */
+  evaluatorsRemoved?: Array<string> | undefined;
 };
 
 /** @internal */
@@ -30,13 +30,13 @@ export const PatchAgentResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    evaluators_removed: types.optional(z.array(types.string())),
     steps_removed: types.optional(z.array(StepKey$inboundSchema)),
+    evaluators_removed: types.optional(z.array(types.string())),
   }),
   z.transform((v) => {
     return remap$(v, {
-      "evaluators_removed": "evaluatorsRemoved",
       "steps_removed": "stepsRemoved",
+      "evaluators_removed": "evaluatorsRemoved",
     });
   }),
 );

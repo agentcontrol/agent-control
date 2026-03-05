@@ -14,17 +14,17 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type RemoveAgentControlResponse = {
   /**
-   * True if the control remains active via policy association(s)
+   * Whether the request succeeded
    */
-  controlStillActive: boolean;
+  success: boolean;
   /**
    * True if a direct agent-control link was removed
    */
   removedDirectAssociation: boolean;
   /**
-   * Whether the request succeeded
+   * True if the control remains active via policy association(s)
    */
-  success: boolean;
+  controlStillActive: boolean;
 };
 
 /** @internal */
@@ -33,14 +33,14 @@ export const RemoveAgentControlResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    control_still_active: types.boolean(),
-    removed_direct_association: types.boolean(),
     success: types.boolean(),
+    removed_direct_association: types.boolean(),
+    control_still_active: types.boolean(),
   }),
   z.transform((v) => {
     return remap$(v, {
-      "control_still_active": "controlStillActive",
       "removed_direct_association": "removedDirectAssociation",
+      "control_still_active": "controlStillActive",
     });
   }),
 );

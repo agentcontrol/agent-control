@@ -14,6 +14,14 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type StepSchema = {
   /**
+   * Step type for this schema (e.g., 'tool', 'llm')
+   */
+  type: string;
+  /**
+   * Unique name for the step
+   */
+  name: string;
+  /**
    * Optional description of the step
    */
   description?: string | null | undefined;
@@ -22,33 +30,25 @@ export type StepSchema = {
    */
   inputSchema?: { [k: string]: any } | null | undefined;
   /**
-   * Additional metadata for the step
-   */
-  metadata?: { [k: string]: any } | null | undefined;
-  /**
-   * Unique name for the step
-   */
-  name: string;
-  /**
    * JSON schema describing step output
    */
   outputSchema?: { [k: string]: any } | null | undefined;
   /**
-   * Step type for this schema (e.g., 'tool', 'llm')
+   * Additional metadata for the step
    */
-  type: string;
+  metadata?: { [k: string]: any } | null | undefined;
 };
 
 /** @internal */
 export const StepSchema$inboundSchema: z.ZodMiniType<StepSchema, unknown> = z
   .pipe(
     z.object({
+      type: types.string(),
+      name: types.string(),
       description: z.optional(z.nullable(types.string())),
       input_schema: z.optional(z.nullable(z.record(z.string(), z.any()))),
-      metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
-      name: types.string(),
       output_schema: z.optional(z.nullable(z.record(z.string(), z.any()))),
-      type: types.string(),
+      metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
     }),
     z.transform((v) => {
       return remap$(v, {
@@ -59,12 +59,12 @@ export const StepSchema$inboundSchema: z.ZodMiniType<StepSchema, unknown> = z
   );
 /** @internal */
 export type StepSchema$Outbound = {
+  type: string;
+  name: string;
   description?: string | null | undefined;
   input_schema?: { [k: string]: any } | null | undefined;
-  metadata?: { [k: string]: any } | null | undefined;
-  name: string;
   output_schema?: { [k: string]: any } | null | undefined;
-  type: string;
+  metadata?: { [k: string]: any } | null | undefined;
 };
 
 /** @internal */
@@ -73,12 +73,12 @@ export const StepSchema$outboundSchema: z.ZodMiniType<
   StepSchema
 > = z.pipe(
   z.object({
+    type: z.string(),
+    name: z.string(),
     description: z.optional(z.nullable(z.string())),
     inputSchema: z.optional(z.nullable(z.record(z.string(), z.any()))),
-    metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
-    name: z.string(),
     outputSchema: z.optional(z.nullable(z.record(z.string(), z.any()))),
-    type: z.string(),
+    metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
   }),
   z.transform((v) => {
     return remap$(v, {

@@ -31,14 +31,9 @@ export type InitAgentRequest = {
    */
   agent: Agent;
   /**
-   * Conflict handling mode for initAgent registration updates.
-   *
-   * @remarks
-   *
-   * STRICT preserves compatibility checks and raises conflicts on incompatible changes.
-   * OVERWRITE applies latest-init-wins replacement for steps and evaluators.
+   * List of steps available to the agent
    */
-  conflictMode?: ConflictMode | undefined;
+  steps?: Array<StepSchema> | undefined;
   /**
    * Custom evaluator schemas for config validation
    */
@@ -48,18 +43,23 @@ export type InitAgentRequest = {
    */
   forceReplace?: boolean | undefined;
   /**
-   * List of steps available to the agent
+   * Conflict handling mode for initAgent registration updates.
+   *
+   * @remarks
+   *
+   * STRICT preserves compatibility checks and raises conflicts on incompatible changes.
+   * OVERWRITE applies latest-init-wins replacement for steps and evaluators.
    */
-  steps?: Array<StepSchema> | undefined;
+  conflictMode?: ConflictMode | undefined;
 };
 
 /** @internal */
 export type InitAgentRequest$Outbound = {
   agent: Agent$Outbound;
-  conflict_mode?: string | undefined;
+  steps?: Array<StepSchema$Outbound> | undefined;
   evaluators?: Array<EvaluatorSchema$Outbound> | undefined;
   force_replace: boolean;
-  steps?: Array<StepSchema$Outbound> | undefined;
+  conflict_mode?: string | undefined;
 };
 
 /** @internal */
@@ -69,15 +69,15 @@ export const InitAgentRequest$outboundSchema: z.ZodMiniType<
 > = z.pipe(
   z.object({
     agent: Agent$outboundSchema,
-    conflictMode: z._default(z.optional(ConflictMode$outboundSchema), "overwrite"),
+    steps: z.optional(z.array(StepSchema$outboundSchema)),
     evaluators: z.optional(z.array(EvaluatorSchema$outboundSchema)),
     forceReplace: z._default(z.boolean(), false),
-    steps: z.optional(z.array(StepSchema$outboundSchema)),
+    conflictMode: z._default(z.optional(ConflictMode$outboundSchema), "overwrite"),
   }),
   z.transform((v) => {
     return remap$(v, {
-      conflictMode: "conflict_mode",
       forceReplace: "force_replace",
+      conflictMode: "conflict_mode",
     });
   }),
 );

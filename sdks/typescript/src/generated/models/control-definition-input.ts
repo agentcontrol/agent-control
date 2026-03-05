@@ -49,10 +49,6 @@ export type ControlDefinitionInputExecution = ClosedEnum<
  */
 export type ControlDefinitionInput = {
   /**
-   * What to do when control matches.
-   */
-  action: ControlAction;
-  /**
    * Detailed description of the control
    */
   description?: string | null | undefined;
@@ -60,17 +56,6 @@ export type ControlDefinitionInput = {
    * Whether this control is active
    */
   enabled?: boolean | undefined;
-  /**
-   * Evaluator specification. See GET /evaluators for available evaluators and schemas.
-   *
-   * @remarks
-   *
-   * Evaluator reference formats:
-   * - Built-in: "regex", "list", "json", "sql"
-   * - External: "galileo.luna2" (requires agent-control-evaluators[galileo])
-   * - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
-   */
-  evaluator: EvaluatorSpec;
   /**
    * Where this control executes
    */
@@ -89,6 +74,21 @@ export type ControlDefinitionInput = {
    */
   selector: ControlSelector;
   /**
+   * Evaluator specification. See GET /evaluators for available evaluators and schemas.
+   *
+   * @remarks
+   *
+   * Evaluator reference formats:
+   * - Built-in: "regex", "list", "json", "sql"
+   * - External: "galileo.luna2" (requires agent-control-evaluators[galileo])
+   * - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
+   */
+  evaluator: EvaluatorSpec;
+  /**
+   * What to do when control matches.
+   */
+  action: ControlAction;
+  /**
    * Tags for categorization
    */
   tags?: Array<string> | undefined;
@@ -101,13 +101,13 @@ export const ControlDefinitionInputExecution$outboundSchema: z.ZodMiniEnum<
 
 /** @internal */
 export type ControlDefinitionInput$Outbound = {
-  action: ControlAction$Outbound;
   description?: string | null | undefined;
   enabled: boolean;
-  evaluator: EvaluatorSpec$Outbound;
   execution: string;
   scope?: ControlScope$Outbound | undefined;
   selector: ControlSelector$Outbound;
+  evaluator: EvaluatorSpec$Outbound;
+  action: ControlAction$Outbound;
   tags?: Array<string> | undefined;
 };
 
@@ -116,13 +116,13 @@ export const ControlDefinitionInput$outboundSchema: z.ZodMiniType<
   ControlDefinitionInput$Outbound,
   ControlDefinitionInput
 > = z.object({
-  action: ControlAction$outboundSchema,
   description: z.optional(z.nullable(z.string())),
   enabled: z._default(z.boolean(), true),
-  evaluator: EvaluatorSpec$outboundSchema,
   execution: ControlDefinitionInputExecution$outboundSchema,
   scope: z.optional(ControlScope$outboundSchema),
   selector: ControlSelector$outboundSchema,
+  evaluator: EvaluatorSpec$outboundSchema,
+  action: ControlAction$outboundSchema,
   tags: z.optional(z.array(z.string())),
 });
 

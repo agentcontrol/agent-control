@@ -19,13 +19,13 @@ import {
  */
 export type InitAgentResponse = {
   /**
-   * Active protection controls for the agent
-   */
-  controls?: Array<Control> | undefined;
-  /**
    * True if agent was newly created, False if updated
    */
   created: boolean;
+  /**
+   * Active protection controls for the agent
+   */
+  controls?: Array<Control> | undefined;
   /**
    * True if overwrite mode changed registration data on an existing agent
    */
@@ -42,8 +42,8 @@ export const InitAgentResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    controls: types.optional(z.array(Control$inboundSchema)),
     created: types.boolean(),
+    controls: types.optional(z.array(Control$inboundSchema)),
     overwrite_applied: z._default(types.boolean(), false),
     overwrite_changes: types.optional(InitAgentOverwriteChanges$inboundSchema),
   }),

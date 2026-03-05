@@ -44,27 +44,32 @@ export class Policies extends ClientSDK {
   }
 
   /**
-   * List policy's controls
+   * Add control to policy
    *
    * @remarks
-   * List all controls associated with a policy.
+   * Associate a control with a policy.
+   *
+   * This operation is idempotent - adding the same control multiple times has no effect.
+   * Agents with this policy will immediately see the added control.
    *
    * Args:
    *     policy_id: ID of the policy
+   *     control_id: ID of the control to add
    *     db: Database session (injected)
    *
    * Returns:
-   *     GetPolicyControlsResponse with list of control IDs
+   *     AssocResponse with success flag
    *
    * Raises:
-   *     HTTPException 404: Policy not found
+   *     HTTPException 404: Policy or control not found
+   *     HTTPException 500: Database error
    */
-  async listControls(
+  async addControl(
     request:
-      operations.ListPolicyControlsApiV1PoliciesPolicyIdControlsGetRequest,
+      operations.AddControlToPolicyApiV1PoliciesPolicyIdControlsControlIdPostRequest,
     options?: RequestOptions,
-  ): Promise<models.GetPolicyControlsResponse> {
-    return unwrapAsync(policiesListControls(
+  ): Promise<models.AssocResponse> {
+    return unwrapAsync(policiesAddControl(
       this,
       request,
       options,
@@ -105,32 +110,27 @@ export class Policies extends ClientSDK {
   }
 
   /**
-   * Add control to policy
+   * List policy's controls
    *
    * @remarks
-   * Associate a control with a policy.
-   *
-   * This operation is idempotent - adding the same control multiple times has no effect.
-   * Agents with this policy will immediately see the added control.
+   * List all controls associated with a policy.
    *
    * Args:
    *     policy_id: ID of the policy
-   *     control_id: ID of the control to add
    *     db: Database session (injected)
    *
    * Returns:
-   *     AssocResponse with success flag
+   *     GetPolicyControlsResponse with list of control IDs
    *
    * Raises:
-   *     HTTPException 404: Policy or control not found
-   *     HTTPException 500: Database error
+   *     HTTPException 404: Policy not found
    */
-  async addControl(
+  async listControls(
     request:
-      operations.AddControlToPolicyApiV1PoliciesPolicyIdControlsControlIdPostRequest,
+      operations.ListPolicyControlsApiV1PoliciesPolicyIdControlsGetRequest,
     options?: RequestOptions,
-  ): Promise<models.AssocResponse> {
-    return unwrapAsync(policiesAddControl(
+  ): Promise<models.GetPolicyControlsResponse> {
+    return unwrapAsync(policiesListControls(
       this,
       request,
       options,

@@ -19,21 +19,17 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type Agent = {
   /**
-   * ISO 8601 timestamp when agent was created
+   * Unique immutable identifier for the agent
    */
-  agentCreatedAt?: string | null | undefined;
+  agentName: string;
   /**
    * Optional description of the agent's purpose
    */
   agentDescription?: string | null | undefined;
   /**
-   * Free-form metadata dictionary for custom properties
+   * ISO 8601 timestamp when agent was created
    */
-  agentMetadata?: { [k: string]: any } | null | undefined;
-  /**
-   * Unique immutable identifier for the agent
-   */
-  agentName: string;
+  agentCreatedAt?: string | null | undefined;
   /**
    * ISO 8601 timestamp when agent was last updated
    */
@@ -42,58 +38,62 @@ export type Agent = {
    * Semantic version string (e.g. '1.0.0')
    */
   agentVersion?: string | null | undefined;
+  /**
+   * Free-form metadata dictionary for custom properties
+   */
+  agentMetadata?: { [k: string]: any } | null | undefined;
 };
 
 /** @internal */
 export const Agent$inboundSchema: z.ZodMiniType<Agent, unknown> = z.pipe(
   z.object({
-    agent_created_at: z.optional(z.nullable(types.string())),
-    agent_description: z.optional(z.nullable(types.string())),
-    agent_metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
     agent_name: types.string(),
+    agent_description: z.optional(z.nullable(types.string())),
+    agent_created_at: z.optional(z.nullable(types.string())),
     agent_updated_at: z.optional(z.nullable(types.string())),
     agent_version: z.optional(z.nullable(types.string())),
+    agent_metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
   }),
   z.transform((v) => {
     return remap$(v, {
-      "agent_created_at": "agentCreatedAt",
-      "agent_description": "agentDescription",
-      "agent_metadata": "agentMetadata",
       "agent_name": "agentName",
+      "agent_description": "agentDescription",
+      "agent_created_at": "agentCreatedAt",
       "agent_updated_at": "agentUpdatedAt",
       "agent_version": "agentVersion",
+      "agent_metadata": "agentMetadata",
     });
   }),
 );
 /** @internal */
 export type Agent$Outbound = {
-  agent_created_at?: string | null | undefined;
-  agent_description?: string | null | undefined;
-  agent_metadata?: { [k: string]: any } | null | undefined;
   agent_name: string;
+  agent_description?: string | null | undefined;
+  agent_created_at?: string | null | undefined;
   agent_updated_at?: string | null | undefined;
   agent_version?: string | null | undefined;
+  agent_metadata?: { [k: string]: any } | null | undefined;
 };
 
 /** @internal */
 export const Agent$outboundSchema: z.ZodMiniType<Agent$Outbound, Agent> = z
   .pipe(
     z.object({
-      agentCreatedAt: z.optional(z.nullable(z.string())),
-      agentDescription: z.optional(z.nullable(z.string())),
-      agentMetadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
       agentName: z.string(),
+      agentDescription: z.optional(z.nullable(z.string())),
+      agentCreatedAt: z.optional(z.nullable(z.string())),
       agentUpdatedAt: z.optional(z.nullable(z.string())),
       agentVersion: z.optional(z.nullable(z.string())),
+      agentMetadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
     }),
     z.transform((v) => {
       return remap$(v, {
-        agentCreatedAt: "agent_created_at",
-        agentDescription: "agent_description",
-        agentMetadata: "agent_metadata",
         agentName: "agent_name",
+        agentDescription: "agent_description",
+        agentCreatedAt: "agent_created_at",
         agentUpdatedAt: "agent_updated_at",
         agentVersion: "agent_version",
+        agentMetadata: "agent_metadata",
       });
     }),
   );

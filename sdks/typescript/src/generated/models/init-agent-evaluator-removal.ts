@@ -14,14 +14,6 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type InitAgentEvaluatorRemoval = {
   /**
-   * IDs of active controls referencing this evaluator
-   */
-  controlIds?: Array<number> | undefined;
-  /**
-   * Names of active controls referencing this evaluator
-   */
-  controlNames?: Array<string> | undefined;
-  /**
    * Evaluator name removed by overwrite
    */
   name: string;
@@ -29,6 +21,14 @@ export type InitAgentEvaluatorRemoval = {
    * Whether this evaluator is still referenced by active controls
    */
   referencedByActiveControls: boolean;
+  /**
+   * IDs of active controls referencing this evaluator
+   */
+  controlIds?: Array<number> | undefined;
+  /**
+   * Names of active controls referencing this evaluator
+   */
+  controlNames?: Array<string> | undefined;
 };
 
 /** @internal */
@@ -37,16 +37,16 @@ export const InitAgentEvaluatorRemoval$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    control_ids: types.optional(z.array(types.number())),
-    control_names: types.optional(z.array(types.string())),
     name: types.string(),
     referenced_by_active_controls: z._default(types.boolean(), false),
+    control_ids: types.optional(z.array(types.number())),
+    control_names: types.optional(z.array(types.string())),
   }),
   z.transform((v) => {
     return remap$(v, {
+      "referenced_by_active_controls": "referencedByActiveControls",
       "control_ids": "controlIds",
       "control_names": "controlNames",
-      "referenced_by_active_controls": "referencedByActiveControls",
     });
   }),
 );
