@@ -15,4 +15,5 @@ def is_typescript_agent_metadata(agent_metadata: dict[str, Any]) -> bool:
 
 def is_local_execution_control(control_data: dict[str, Any]) -> bool:
     """Return True when a control is configured for SDK-local execution."""
-    return control_data.get("execution", "server") == "sdk"
+    execution = control_data.get("execution", "server")
+    return isinstance(execution, str) and execution == "sdk"
