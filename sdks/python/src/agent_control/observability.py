@@ -356,8 +356,8 @@ class EventBatcher:
             # loop state between our check and call_soon_threadsafe().
             pass
 
-    def _stop_worker(self, *, graceful: bool, join_timeout: float) -> None:
-        """Stop the worker thread, optionally flushing pending events first."""
+    def _stop_worker(self, *, graceful: bool, join_timeout: float) -> bool:
+        """Stop the worker thread and return whether it fully stopped."""
         self._graceful_shutdown = graceful
         self._running = False
         self._signal_flush()
@@ -376,9 +376,35 @@ class EventBatcher:
             self._thread.join(timeout=1.0)
 
         thread_alive = self._thread.is_alive() if self._thread else False
-        self._thread = None
         if thread_alive:
             logger.warning("EventBatcher worker thread did not stop cleanly")
+            return False
+        self._thread = None
+        return True
+
+    def _flush_all_without_worker(self, *, timeout: float) -> None:
+        """Flush remaining events in a helper thread when no worker loop is available."""
+        flush_error: Exception | None = None
+
+        def run_flush() -> None:
+            nonlocal flush_error
+            try:
+                asyncio.run(self.flush_all())
+            except Exception as e:
+                flush_error = e
+
+        helper_thread = threading.Thread(
+            target=run_flush,
+            name="agent-control-event-batcher-shutdown-flush",
+            daemon=True,
+        )
+        helper_thread.start()
+        helper_thread.join(timeout=timeout)
+        if helper_thread.is_alive():
+            logger.warning("Fallback shutdown flush timed out after %.1f seconds", timeout)
+            return
+        if flush_error is not None:
+            logger.error("Error during fallback shutdown flush: %s", flush_error)
 
     def stop(self) -> None:
         """Stop the worker thread. Does not flush remaining events."""
@@ -404,6 +430,7 @@ class EventBatcher:
         Returns:
             True if event was added, False if dropped (e.g., queue full)
         """
+        should_flush = False
         with self._lock:
             if len(self._events) >= self.batch_size * 10:
                 self._events_dropped += 1
@@ -411,12 +438,12 @@ class EventBatcher:
                 return False
 
             self._events.append(event)
+            should_flush = len(self._events) >= self.batch_size
 
-            # Trigger flush if batch is full
-            if len(self._events) >= self.batch_size:
-                self._schedule_flush()
+        if should_flush:
+            self._schedule_flush()
 
-            return True
+        return True
 
     def _schedule_flush(self) -> None:
         """Schedule an immediate flush on the worker loop (non-blocking)."""
@@ -453,7 +480,7 @@ class EventBatcher:
 
         try:
             if self._graceful_shutdown:
-                await self.flush_all()
+                await self.flush_all(close_client=False)
         except Exception as e:
             logger.error(f"Error during flush loop shutdown: {e}")
         finally:
@@ -476,11 +503,13 @@ class EventBatcher:
         success = await self._send_batch(events_to_send)
 
         if success:
-            self._events_sent += len(events_to_send)
-            self._flush_count += 1
+            with self._lock:
+                self._events_sent += len(events_to_send)
+                self._flush_count += 1
+                total_sent = self._events_sent
             logger.debug(
                 f"Flushed {len(events_to_send)} events "
-                f"(total sent: {self._events_sent})"
+                f"(total sent: {total_sent})"
             )
         else:
             with self._lock:
@@ -540,14 +569,15 @@ class EventBatcher:
 
         return False
 
-    async def flush_all(self) -> None:
-        """Flush all remaining events and close the client."""
+    async def flush_all(self, *, close_client: bool = True) -> None:
+        """Flush all remaining events."""
         while True:
             with self._lock:
                 if not self._events:
                     break
             await self._flush()
-        await self.close()
+        if close_client:
+            await self.close()
 
     def shutdown(self) -> None:
         """
@@ -560,7 +590,19 @@ class EventBatcher:
         if initial_remaining > 0:
             logger.info(f"Flushing {initial_remaining} remaining events on shutdown...")
 
-        self._stop_worker(graceful=True, join_timeout=30.0)
+        worker_stopped = self._stop_worker(graceful=True, join_timeout=30.0)
+
+        with self._lock:
+            needs_fallback_flush = bool(self._events)
+        if self._client is not None:
+            needs_fallback_flush = True
+        if needs_fallback_flush:
+            if worker_stopped:
+                self._flush_all_without_worker(timeout=30.0)
+            else:
+                logger.warning(
+                    "Skipping fallback shutdown flush because worker thread is still running"
+                )
 
         with self._lock:
             remaining = len(self._events)
@@ -568,22 +610,29 @@ class EventBatcher:
                 self._events_dropped += remaining
                 self._events.clear()
                 logger.warning("Dropped %d unsent events during shutdown", remaining)
+            events_sent = self._events_sent
+            events_dropped = self._events_dropped
+            flush_count = self._flush_count
 
         logger.info(
-            f"EventBatcher shutdown: sent={self._events_sent}, "
-            f"dropped={self._events_dropped}, flushes={self._flush_count}"
+            f"EventBatcher shutdown: sent={events_sent}, "
+            f"dropped={events_dropped}, flushes={flush_count}"
         )
 
     def get_stats(self) -> dict:
         """Get batcher statistics."""
         with self._lock:
             pending = len(self._events)
+            events_sent = self._events_sent
+            events_dropped = self._events_dropped
+            flush_count = self._flush_count
+            running = self._running
         return {
-            "events_sent": self._events_sent,
-            "events_dropped": self._events_dropped,
+            "events_sent": events_sent,
+            "events_dropped": events_dropped,
             "events_pending": pending,
-            "flush_count": self._flush_count,
-            "running": self._running,
+            "flush_count": flush_count,
+            "running": running,
         }
 
 
@@ -666,6 +715,7 @@ async def shutdown_observability() -> None:
     """
     global _batcher
     if _batcher is not None:
+        # shutdown() performs blocking joins; keep caller event loops responsive.
         await asyncio.to_thread(_batcher.shutdown)
         _batcher = None
 

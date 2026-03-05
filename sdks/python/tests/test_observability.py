@@ -201,6 +201,21 @@ class TestEventBatcherWorkerThread:
         assert not batcher._running
         assert batcher._thread is None
 
+    def test_shutdown_flushes_when_worker_not_running(self):
+        """Test that shutdown() still flushes when the worker thread is not running."""
+        batcher = EventBatcher(batch_size=100, flush_interval=60.0)
+        batcher._send_batch = AsyncMock(return_value=True)
+
+        for _ in range(5):
+            batcher.add_event(create_mock_event())
+
+        batcher.shutdown()
+
+        assert batcher._events_sent == 5
+        assert len(batcher._events) == 0
+        assert batcher._events_dropped == 0
+        assert batcher._thread is None
+
     def test_shutdown_drains_inflight_flush_without_data_loss(self):
         """Test that shutdown waits for in-flight flushes and sends all events."""
         import time
