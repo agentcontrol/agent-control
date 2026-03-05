@@ -52,7 +52,8 @@ services:
     restart: unless-stopped
 
   ui:
-    image: galileoai/agent-control-ui:latest
+    image: galileoai/agent-control-ui:feature-sc-57541-ui-compose-and-publish
+    platform: linux/amd64
     container_name: agent_control_ui
     ports:
       - "4000:4000"
