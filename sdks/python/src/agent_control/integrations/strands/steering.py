@@ -11,7 +11,7 @@ import agent_control
 from agent_control import ControlViolationError
 
 try:
-    from strands.experimental.steering import Guide, Proceed, SteeringHandler
+    from strands.experimental.steering import Guide, Proceed, SteeringHandler  # type: ignore[import-not-found]
 except Exception as exc:  # pragma: no cover - optional dependency
     raise RuntimeError(
         "Strands integration requires strands-agents. "

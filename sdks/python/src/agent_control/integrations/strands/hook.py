@@ -12,7 +12,7 @@ import agent_control
 from agent_control import ControlSteerError, ControlViolationError
 
 try:
-    from strands.hooks import (
+    from strands.hooks import (  # type: ignore[import-not-found]
         AfterModelCallEvent,
         AfterNodeCallEvent,
         AfterToolCallEvent,
