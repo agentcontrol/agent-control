@@ -80,6 +80,21 @@ class SDKSettings(BaseSettings):
         gt=0,
         description="Base delay between retries (seconds)",
     )
+    shutdown_join_timeout: float = Field(
+        default=5.0,
+        gt=0,
+        description="Seconds to wait for worker thread shutdown",
+    )
+    shutdown_flush_timeout: float = Field(
+        default=5.0,
+        gt=0,
+        description="Seconds to wait for fallback shutdown flush",
+    )
+    shutdown_max_failed_flushes: int = Field(
+        default=1,
+        ge=1,
+        description="Maximum consecutive failed flushes before giving up",
+    )
 
     # Logging configuration
     log_enabled: bool = Field(

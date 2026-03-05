@@ -30,6 +30,9 @@ Configuration (Environment Variables):
     AGENT_CONTROL_OBSERVABILITY_ENABLED: Enable observability (default: true)
     AGENT_CONTROL_BATCH_SIZE: Max events per batch (default: 100)
     AGENT_CONTROL_FLUSH_INTERVAL: Seconds between flushes (default: 5.0)
+    AGENT_CONTROL_SHUTDOWN_JOIN_TIMEOUT: Seconds to wait for worker shutdown (default: 5.0)
+    AGENT_CONTROL_SHUTDOWN_FLUSH_TIMEOUT: Seconds to wait for fallback flush (default: 5.0)
+    AGENT_CONTROL_SHUTDOWN_MAX_FAILED_FLUSHES: Consecutive failed flushes before stop (default: 1)
 
     # SDK Logging Behavior (what logs to emit)
     AGENT_CONTROL_LOG_ENABLED: Master switch for SDK logging (default: true)
@@ -282,6 +285,9 @@ class EventBatcher:
             self.flush_interval = flush_interval
         else:
             self.flush_interval = get_settings().flush_interval
+        self.shutdown_join_timeout = get_settings().shutdown_join_timeout
+        self.shutdown_flush_timeout = get_settings().shutdown_flush_timeout
+        self.shutdown_max_failed_flushes = get_settings().shutdown_max_failed_flushes
 
         # Thread-safe event storage
         self._events: list[ControlExecutionEvent] = []
@@ -480,7 +486,10 @@ class EventBatcher:
 
         try:
             if self._graceful_shutdown:
-                await self.flush_all(close_client=False)
+                await self.flush_all(
+                    close_client=False,
+                    max_failed_flushes=self.shutdown_max_failed_flushes,
+                )
         except Exception as e:
             logger.error(f"Error during flush loop shutdown: {e}")
         finally:
@@ -489,16 +498,16 @@ class EventBatcher:
             except Exception as e:
                 logger.error(f"Error closing observability client: {e}")
 
-    async def _flush(self) -> None:
+    async def _flush(self) -> bool:
         """Flush current batch to server."""
         with self._lock:
             if not self._events:
-                return
+                return True
             events_to_send = self._events[:self.batch_size]
             self._events = self._events[self.batch_size:]
 
         if not events_to_send:
-            return
+            return True
 
         success = await self._send_batch(events_to_send)
 
@@ -511,10 +520,12 @@ class EventBatcher:
                 f"Flushed {len(events_to_send)} events "
                 f"(total sent: {total_sent})"
             )
+            return True
         else:
             with self._lock:
                 self._events = events_to_send + self._events
             logger.warning(f"Failed to send batch, re-queued {len(events_to_send)} events")
+            return False
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client for connection pooling."""
@@ -569,13 +580,48 @@ class EventBatcher:
 
         return False
 
-    async def flush_all(self, *, close_client: bool = True) -> None:
-        """Flush all remaining events."""
+    async def flush_all(
+        self,
+        *,
+        close_client: bool = True,
+        max_failed_flushes: int | None = None,
+    ) -> None:
+        """
+        Flush all remaining events.
+
+        Stops retrying after max_failed_flushes consecutive flush failures to
+        avoid infinite shutdown loops when the server is unavailable.
+        """
+        failure_limit = (
+            max_failed_flushes
+            if max_failed_flushes is not None
+            else self.shutdown_max_failed_flushes
+        )
+        if failure_limit < 1:
+            raise ValueError("max_failed_flushes must be >= 1")
+        consecutive_failures = 0
+
         while True:
             with self._lock:
                 if not self._events:
                     break
-            await self._flush()
+
+            flushed = await self._flush()
+            if flushed:
+                consecutive_failures = 0
+                continue
+
+            consecutive_failures += 1
+            if consecutive_failures >= failure_limit:
+                with self._lock:
+                    pending = len(self._events)
+                logger.warning(
+                    "Stopping flush_all after %d consecutive failed flushes; %d event(s) pending",
+                    consecutive_failures,
+                    pending,
+                )
+                break
+
         if close_client:
             await self.close()
 
@@ -590,7 +636,10 @@ class EventBatcher:
         if initial_remaining > 0:
             logger.info(f"Flushing {initial_remaining} remaining events on shutdown...")
 
-        worker_stopped = self._stop_worker(graceful=True, join_timeout=30.0)
+        worker_stopped = self._stop_worker(
+            graceful=True,
+            join_timeout=self.shutdown_join_timeout,
+        )
 
         with self._lock:
             needs_fallback_flush = bool(self._events)
@@ -598,7 +647,7 @@ class EventBatcher:
             needs_fallback_flush = True
         if needs_fallback_flush:
             if worker_stopped:
-                self._flush_all_without_worker(timeout=30.0)
+                self._flush_all_without_worker(timeout=self.shutdown_flush_timeout)
             else:
                 logger.warning(
                     "Skipping fallback shutdown flush because worker thread is still running"

@@ -49,6 +49,9 @@ class TestEventBatcherInit:
         batcher = EventBatcher()
         assert batcher.batch_size == get_settings().batch_size
         assert batcher.flush_interval == get_settings().flush_interval
+        assert batcher.shutdown_join_timeout == get_settings().shutdown_join_timeout
+        assert batcher.shutdown_flush_timeout == get_settings().shutdown_flush_timeout
+        assert batcher.shutdown_max_failed_flushes == get_settings().shutdown_max_failed_flushes
         assert batcher._running is False
         assert batcher._events == []
 
@@ -388,6 +391,27 @@ class TestEventBatcherFlush:
         assert len(batcher._events) == 0
         assert batcher._events_sent == 5
 
+    @pytest.mark.asyncio
+    async def test_flush_all_stops_after_failed_flush_limit(self):
+        """Test that flush_all exits after configured consecutive flush failures."""
+        batcher = EventBatcher(batch_size=2)
+        for _ in range(3):
+            batcher.add_event(create_mock_event())
+
+        batcher._send_batch = AsyncMock(return_value=False)
+
+        await batcher.flush_all(max_failed_flushes=2)
+
+        assert batcher._send_batch.await_count == 2
+        assert len(batcher._events) == 3
+
+    @pytest.mark.asyncio
+    async def test_flush_all_rejects_invalid_failed_flush_limit(self):
+        """Test that flush_all validates max_failed_flushes."""
+        batcher = EventBatcher()
+        with pytest.raises(ValueError, match="max_failed_flushes must be >= 1"):
+            await batcher.flush_all(max_failed_flushes=0)
+
 
 class TestEventBatcherSendBatch:
     """Tests for EventBatcher HTTP batch sending."""
@@ -533,6 +557,32 @@ class TestShutdownObservability:
             await shutdown_observability()  # Should not raise
         finally:
             obs._batcher = old_batcher
+
+
+class TestEventBatcherShutdownConfig:
+    """Tests for shutdown timeout configuration."""
+
+    def test_shutdown_uses_settings_timeouts(self):
+        """Test that shutdown uses configurable join/flush timeouts."""
+        from agent_control.settings import configure_settings
+
+        original = get_settings().model_dump()
+        configure_settings(shutdown_join_timeout=6.5, shutdown_flush_timeout=4.5)
+        batcher = EventBatcher()
+
+        try:
+            with (
+                patch.object(batcher, "_stop_worker", return_value=True) as stop_worker,
+                patch.object(batcher, "_flush_all_without_worker") as fallback_flush,
+            ):
+                # Force fallback path without invoking real network/client cleanup.
+                batcher._events = [create_mock_event()]
+                batcher.shutdown()
+
+                stop_worker.assert_called_once_with(graceful=True, join_timeout=6.5)
+                fallback_flush.assert_called_once_with(timeout=4.5)
+        finally:
+            configure_settings(**original)
 
 
 class TestSpanLogging:
