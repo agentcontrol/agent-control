@@ -27,9 +27,9 @@ Event Batching Usage:
 
 Configuration (Environment Variables):
     # Observability (event batching)
-    AGENT_CONTROL_OBSERVABILITY_ENABLED: Enable observability (default: false)
+    AGENT_CONTROL_OBSERVABILITY_ENABLED: Enable observability (default: true)
     AGENT_CONTROL_BATCH_SIZE: Max events per batch (default: 100)
-    AGENT_CONTROL_FLUSH_INTERVAL: Seconds between flushes (default: 10.0)
+    AGENT_CONTROL_FLUSH_INTERVAL: Seconds between flushes (default: 5.0)
 
     # SDK Logging Behavior (what logs to emit)
     AGENT_CONTROL_LOG_ENABLED: Master switch for SDK logging (default: true)
@@ -242,7 +242,7 @@ class EventBatcher:
 
     Events are batched by either:
     - Reaching batch_size events (default: 100)
-    - Flush interval timeout (default: 10 seconds)
+    - Flush interval timeout (default: 5 seconds)
 
     Thread-safe and async-safe.
 
@@ -301,12 +301,12 @@ class EventBatcher:
 
         self._running = True
 
-        # Try to get current event loop, create new if needed
+        # Try to get current event loop
         try:
             self._loop = asyncio.get_running_loop()
             self._flush_task = self._loop.create_task(self._flush_loop())
         except RuntimeError:
-            # No running loop - will start when first event is added in async context
+            # No running loop - _try_attach_loop() in add_event() will retry
             pass
 
         logger.debug("EventBatcher started")
@@ -325,6 +325,21 @@ class EventBatcher:
             await self._client.aclose()
             self._client = None
 
+    def _try_attach_loop(self) -> None:
+        """Try to attach to a running event loop and start the flush task.
+
+        Called lazily from add_event() when start() was unable to find a
+        running loop (e.g. init() was called from synchronous setup code).
+        """
+        if self._loop is not None:
+            return
+        try:
+            self._loop = asyncio.get_running_loop()
+            self._flush_task = self._loop.create_task(self._flush_loop())
+            logger.debug("EventBatcher attached to event loop (lazy start)")
+        except RuntimeError:
+            pass
+
     def add_event(self, event: ControlExecutionEvent) -> bool:
         """
         Add an event to the batch.
@@ -337,6 +352,10 @@ class EventBatcher:
         Returns:
             True if event was added, False if dropped (e.g., queue full)
         """
+        # Lazy-start: attach to the event loop if start() couldn't find one
+        if self._running and self._loop is None:
+            self._try_attach_loop()
+
         with self._lock:
             # Limit queue size to prevent memory issues
             if len(self._events) >= self.batch_size * 10:

@@ -116,6 +116,49 @@ class TestEventBatcherStartStop:
         assert batcher._running is False
 
 
+class TestEventBatcherLazyStart:
+    """Tests for EventBatcher lazy loop attachment."""
+
+    def test_start_without_loop_sets_running_but_no_loop(self):
+        """Test that start() in sync context sets _running but leaves _loop as None."""
+        batcher = EventBatcher()
+        batcher.start()
+        assert batcher._running is True
+        assert batcher._loop is None
+        batcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_add_event_attaches_to_loop(self):
+        """Test that add_event() lazily attaches to a running event loop."""
+        batcher = EventBatcher()
+        # Simulate start() called from sync context: _running=True but _loop=None
+        batcher._running = True
+        assert batcher._loop is None
+
+        # Now add_event in async context should attach to the loop
+        event = create_mock_event()
+        result = batcher.add_event(event)
+
+        assert result is True
+        assert batcher._loop is not None
+        assert batcher._flush_task is not None
+
+        batcher.stop()
+
+    def test_add_event_no_loop_still_queues(self):
+        """Test that add_event still queues events when no loop is available."""
+        batcher = EventBatcher()
+        batcher._running = True
+        # _loop stays None in sync context
+
+        event = create_mock_event()
+        result = batcher.add_event(event)
+
+        assert result is True
+        assert len(batcher._events) == 1
+        batcher.stop()
+
+
 class TestEventBatcherAddEvent:
     """Tests for adding events to the batcher."""
 
@@ -323,17 +366,15 @@ class TestGlobalBatcher:
 class TestInitObservability:
     """Tests for init_observability function."""
 
-    def test_init_disabled_by_default(self):
-        """Test that init_observability returns None when disabled."""
+    def test_init_disabled_when_explicitly_off(self):
+        """Test that init_observability returns None when explicitly disabled."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
         obs._batcher = None
 
         try:
-            # Default is disabled
-            with patch.dict(os.environ, {"AGENT_CONTROL_OBSERVABILITY_ENABLED": "false"}):
-                result = init_observability(enabled=False)
-                assert result is None
+            result = init_observability(enabled=False)
+            assert result is None
         finally:
             obs._batcher = old_batcher
 

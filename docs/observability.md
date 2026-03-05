@@ -188,7 +188,7 @@ The SDK batches events before sending to reduce network overhead:
 ```python
 # Configuration (environment variables)
 AGENT_CONTROL_BATCH_SIZE=100        # Max events per batch
-AGENT_CONTROL_FLUSH_INTERVAL=10.0   # Seconds between flushes
+AGENT_CONTROL_FLUSH_INTERVAL=5.0   # Seconds between flushes
 ```
 
 Events are sent when **either** condition is met (whichever comes first).
@@ -660,7 +660,7 @@ curl -X POST "http://localhost:8000/api/v1/observability/events/query" \
 # SDK Configuration
 AGENT_CONTROL_OBSERVABILITY_ENABLED=true   # Enable observability
 AGENT_CONTROL_BATCH_SIZE=100               # Events per batch
-AGENT_CONTROL_FLUSH_INTERVAL=10.0          # Seconds between flushes
+AGENT_CONTROL_FLUSH_INTERVAL=5.0          # Seconds between flushes
 
 # Logging Configuration
 AGENT_CONTROL_LOG_ENABLED=true             # Master switch
