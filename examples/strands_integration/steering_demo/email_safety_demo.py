@@ -44,6 +44,7 @@ try:
     from strands.hooks import BeforeToolCallEvent, AfterToolCallEvent
     import agent_control
     from agent_control.integrations.strands import AgentControlHook, AgentControlSteeringHandler
+    from agent_control.control_decorators import ControlViolationError
 except ImportError as e:
     st.error(f"Missing dependency: {e}")
     st.stop()
