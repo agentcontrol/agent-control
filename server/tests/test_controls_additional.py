@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from agent_control_evaluators import RegexEvaluatorConfig
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -15,11 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from agent_control_server.db import get_async_db
-from agent_control_server.models import Control
-
-from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_server.endpoints import controls as controls_module
 from agent_control_server.main import app
+from agent_control_server.models import Control
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -35,6 +34,27 @@ def _create_control(client: TestClient, name: str | None = None) -> tuple[int, s
 def _set_control_data(client: TestClient, control_id: int, data: dict) -> None:
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": data})
     assert resp.status_code == 200, resp.text
+
+
+def _create_typescript_agent(client: TestClient, name: str | None = None) -> str:
+    agent_name = (name or f"agent-{uuid.uuid4().hex[:12]}").lower()
+    if len(agent_name) < 10:
+        agent_name = f"{agent_name}-agent".replace("--", "-")
+    resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {
+                "agent_name": agent_name,
+                "agent_description": "test",
+                "agent_version": "1.0",
+                "agent_metadata": {"sdk_language": "typescript"},
+            },
+            "steps": [],
+            "evaluators": [],
+        },
+    )
+    assert resp.status_code == 200
+    return agent_name
 
 
 def test_create_control_integrity_error_returns_conflict(client: TestClient) -> None:
@@ -309,7 +329,9 @@ def test_list_controls_enabled_true_includes_missing_enabled(client: TestClient)
     # Given: controls with enabled true, enabled false, and missing enabled
     control_true_id, control_true_name = _create_control(client, name=f"Enabled-{uuid.uuid4()}")
     control_false_id, control_false_name = _create_control(client, name=f"Disabled-{uuid.uuid4()}")
-    control_missing_id, control_missing_name = _create_control(client, name=f"Missing-{uuid.uuid4()}")
+    control_missing_id, control_missing_name = _create_control(
+        client, name=f"Missing-{uuid.uuid4()}"
+    )
 
     data_true = deepcopy(VALID_CONTROL_PAYLOAD)
     data_true["enabled"] = True
@@ -599,7 +621,7 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_name": agent_name, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name},
             "steps": [],
             "evaluators": [],
         },
@@ -627,7 +649,7 @@ def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> Non
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_name": agent_name, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name},
             "steps": [],
             "evaluators": [
                 {
@@ -717,7 +739,7 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_name": agent_name, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name},
             "steps": [],
             "evaluators": [{"name": "custom", "config_schema": {"type": "object"}}],
         },
@@ -817,6 +839,55 @@ def test_set_control_data_builtin_evaluator_invalid_parameters(
         for err in body.get("errors", [])
     )
     assert "unexpected parameter" not in resp.text
+
+
+def test_set_control_data_rejects_sdk_execution_when_directly_used_by_typescript_agent(
+    client: TestClient,
+) -> None:
+    # Given: a control directly associated with a TypeScript agent
+    control_id, _ = _create_control(client)
+    ts_agent_name = _create_typescript_agent(client)
+    assoc_resp = client.post(f"/api/v1/agents/{ts_agent_name}/controls/{control_id}")
+    assert assoc_resp.status_code == 200
+
+    # When: updating control execution to sdk
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["execution"] = "sdk"
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    # Then: request is rejected due to TypeScript compatibility
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert any("typescript" in err.get("message", "").lower() for err in body.get("errors", []))
+
+
+def test_set_control_data_rejects_sdk_execution_when_policy_used_by_typescript_agent(
+    client: TestClient,
+) -> None:
+    # Given: a control linked to a policy assigned to a TypeScript agent
+    control_id, _ = _create_control(client)
+    policy_resp = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
+    assert policy_resp.status_code == 200
+    policy_id = policy_resp.json()["policy_id"]
+
+    add_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert add_resp.status_code == 200
+
+    ts_agent_name = _create_typescript_agent(client)
+    assign_resp = client.post(f"/api/v1/agents/{ts_agent_name}/policies/{policy_id}")
+    assert assign_resp.status_code == 200
+
+    # When: updating control execution to sdk
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["execution"] = "sdk"
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    # Then: request is rejected due to TypeScript compatibility
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert any("typescript" in err.get("message", "").lower() for err in body.get("errors", []))
 
 
 @pytest.mark.asyncio

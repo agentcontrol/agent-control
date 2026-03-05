@@ -62,6 +62,7 @@ from ..services.schema_compat import (
     check_schema_compatibility,
     format_compatibility_error,
 )
+from ..services.sdk_compat import is_local_execution_control, is_typescript_agent_metadata
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -102,10 +103,17 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
     except ValidationError:
         return [f"Agent '{agent.name}' has corrupted data"]
 
+    is_ts_agent = is_typescript_agent_metadata(agent_data.agent_metadata)
     agent_evaluators = {e.name: e for e in (agent_data.evaluators or [])}
 
     for control in controls:
         if not control.data:
+            continue
+        if is_ts_agent and is_local_execution_control(control.data):
+            errors.append(
+                f"Control '{control.name}' uses execution='sdk' but TypeScript SDK agents "
+                "support only execution='server'."
+            )
             continue
 
         evaluator_cfg = control.data.get("evaluator", {})

@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
+    BadRequestError,
     ConflictError,
     DatabaseError,
     NotFoundError,
@@ -39,6 +40,7 @@ from ..services.evaluator_utils import (
     validate_config_against_schema,
 )
 from ..services.query_utils import escape_like_pattern
+from ..services.sdk_compat import is_local_execution_control, is_typescript_agent_metadata
 
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
@@ -193,6 +195,69 @@ async def _validate_control_definition(
                     ],
                 )
         # If evaluator not found, allow it - might be a server-side registered evaluator
+
+
+async def _validate_control_execution_compatibility(
+    control_id: int, control_def: ControlDefinition, db: AsyncSession
+) -> None:
+    """Reject sdk-local execution when control is active on TypeScript agents."""
+    control_data = control_def.model_dump(mode="json", exclude_none=True)
+    if not is_local_execution_control(control_data):
+        return
+
+    policy_agents_query = (
+        select(agent_policies.c.agent_name.label("agent_name"))
+        .select_from(
+            policy_controls.join(
+                agent_policies, policy_controls.c.policy_id == agent_policies.c.policy_id
+            )
+        )
+        .where(policy_controls.c.control_id == control_id)
+    )
+    direct_agents_query = select(agent_controls.c.agent_name.label("agent_name")).where(
+        agent_controls.c.control_id == control_id
+    )
+    associated_agents_result = await db.execute(union_all(policy_agents_query, direct_agents_query))
+    associated_agent_names = sorted(
+        {agent_name for (agent_name,) in associated_agents_result.all() if agent_name is not None}
+    )
+    if not associated_agent_names:
+        return
+
+    agents_result = await db.execute(select(Agent).where(Agent.name.in_(associated_agent_names)))
+    ts_agents: list[str] = []
+    for agent in agents_result.scalars().all():
+        try:
+            agent_data = AgentData.model_validate(agent.data)
+        except ValidationError:
+            continue
+        if is_typescript_agent_metadata(agent_data.agent_metadata):
+            ts_agents.append(agent.name)
+
+    if ts_agents:
+        raise BadRequestError(
+            error_code=ErrorCode.POLICY_CONTROL_INCOMPATIBLE,
+            detail=(
+                "Control uses execution='sdk' which is incompatible with TypeScript SDK "
+                "agents currently associated with this control"
+            ),
+            hint=(
+                "Use execution='server' for controls attached to TypeScript SDK agents, "
+                "or remove those associations first."
+            ),
+            errors=[
+                ValidationErrorItem(
+                    resource="Control",
+                    field="data.execution",
+                    code="incompatible",
+                    message=(
+                        f"Control is active on TypeScript agent '{agent_name}', "
+                        "which does not support execution='sdk'"
+                    ),
+                )
+                for agent_name in sorted(set(ts_agents))
+            ],
+        )
 
 
 @router.put(
@@ -414,6 +479,7 @@ async def set_control_data(
 
     # Validate evaluator config using shared logic
     await _validate_control_definition(request.data, db)
+    await _validate_control_execution_compatibility(control_id, request.data, db)
 
     data_json = request.data.model_dump(mode="json", exclude_none=True, exclude_unset=True)
     # Pydantic's exclude_none doesn't propagate into nested model dicts after

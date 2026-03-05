@@ -1,8 +1,11 @@
 """Integration tests for the full policy → control chain."""
 
 import uuid
+from copy import deepcopy
 
 from fastapi.testclient import TestClient
+
+from .utils import VALID_CONTROL_PAYLOAD
 
 
 def _create_agent(client: TestClient, name: str | None = None) -> tuple[str, str]:
@@ -24,15 +27,31 @@ def _create_agent(client: TestClient, name: str | None = None) -> tuple[str, str
     return agent_name, agent_name
 
 
+def _create_typescript_agent(client: TestClient, name: str | None = None) -> tuple[str, str]:
+    """Helper: Create a TypeScript SDK agent and return (agent_name, agent_name)."""
+    agent_name = (name or f"agent-{uuid.uuid4().hex[:12]}").lower()
+    if len(agent_name) < 10:
+        agent_name = f"{agent_name}-agent".replace("--", "-")
+    payload = {
+        "agent": {
+            "agent_name": agent_name,
+            "agent_description": "test",
+            "agent_version": "1.0",
+            "agent_metadata": {"sdk_language": "typescript"},
+        },
+        "steps": [],
+    }
+    resp = client.post("/api/v1/agents/initAgent", json=payload)
+    assert resp.status_code == 200
+    return agent_name, agent_name
+
+
 def _create_policy(client: TestClient, name: str | None = None) -> int:
     """Helper: Create a policy and return policy_id."""
     policy_name = name or f"policy-{uuid.uuid4()}"
     resp = client.put("/api/v1/policies", json={"name": policy_name})
     assert resp.status_code == 200
     return resp.json()["policy_id"]
-
-
-from .utils import VALID_CONTROL_PAYLOAD
 
 
 def _create_control(client: TestClient, name: str | None = None, data: dict | None = None) -> int:
@@ -449,6 +468,67 @@ def test_add_agent_control_is_idempotent(client: TestClient) -> None:
     assert len(controls) == 1
 
 
+def test_add_agent_control_rejects_sdk_execution_for_typescript_agent(client: TestClient) -> None:
+    """TypeScript agents should reject directly associated sdk-execution controls."""
+    agent_name, _ = _create_typescript_agent(client)
+    control_id = _create_control(client)
+
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["execution"] = "sdk"
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+    assert resp.status_code == 200
+
+    assoc_resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert assoc_resp.status_code == 400
+    body = assoc_resp.json()
+    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert any("typescript" in err.get("message", "").lower() for err in body.get("errors", []))
+
+
+def test_set_agent_policy_rejects_sdk_execution_for_typescript_agent(client: TestClient) -> None:
+    """TypeScript agents should reject policy assignment with sdk-execution controls."""
+    agent_name, _ = _create_typescript_agent(client)
+    policy_id = _create_policy(client)
+    control_id = _create_control(client)
+
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["execution"] = "sdk"
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+    assert resp.status_code == 200
+
+    add_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert add_resp.status_code == 200
+
+    assign_resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+    assert assign_resp.status_code == 400
+    body = assign_resp.json()
+    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert any("typescript" in err.get("message", "").lower() for err in body.get("errors", []))
+
+
+def test_add_control_to_policy_rejects_when_policy_has_typescript_agents(
+    client: TestClient,
+) -> None:
+    """Adding sdk-execution control to an in-use policy should fail for TS agents."""
+    agent_name, _ = _create_typescript_agent(client)
+    policy_id = _create_policy(client)
+    control_id = _create_control(client)
+
+    assign_resp = client.post(f"/api/v1/agents/{agent_name}/policies/{policy_id}")
+    assert assign_resp.status_code == 200
+
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["execution"] = "sdk"
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+    assert resp.status_code == 200
+
+    add_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert add_resp.status_code == 400
+    body = add_resp.json()
+    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert "typescript" in body["detail"].lower()
+
+
 def test_agent_policy_endpoints_return_404_for_missing_resources(client: TestClient) -> None:
     """Plural policy endpoints should return consistent 404s for missing agent/policy."""
     existing_agent_name, _ = _create_agent(client)
@@ -556,7 +636,11 @@ def test_agent_controls_are_union_of_policy_and_direct_with_dedupe(client: TestC
     assert resp.status_code == 200
     controls = resp.json()["controls"]
     received_control_ids = {control["id"] for control in controls}
-    assert received_control_ids == {shared_control_id, policy_only_control_id, direct_only_control_id}
+    assert received_control_ids == {
+        shared_control_id,
+        policy_only_control_id,
+        direct_only_control_id,
+    }
     assert len(controls) == 3
 
     # list_agents active_controls_count should reflect deduplicated union as well.

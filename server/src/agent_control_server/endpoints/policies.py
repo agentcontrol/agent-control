@@ -1,4 +1,4 @@
-from agent_control_models.errors import ErrorCode
+from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AssocResponse,
     CreatePolicyRequest,
@@ -6,13 +6,15 @@ from agent_control_models.server import (
     GetPolicyControlsResponse,
 )
 from fastapi import APIRouter, Depends
+from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_async_db
-from ..errors import ConflictError, DatabaseError, NotFoundError
+from ..errors import BadRequestError, ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
-from ..models import Control, Policy, policy_controls
+from ..models import Agent, AgentData, Control, Policy, agent_policies, policy_controls
+from ..services.sdk_compat import is_local_execution_control, is_typescript_agent_metadata
 
 router = APIRouter(prefix="/policies", tags=["policies"])
 
@@ -124,6 +126,45 @@ async def add_control_to_policy(
             resource_id=str(control_id),
             hint="Verify the control ID is correct and the control has been created.",
         )
+
+    # Reject sdk-local controls for policies currently assigned to TypeScript agents.
+    if control.data and is_local_execution_control(control.data):
+        assigned_agents_result = await db.execute(
+            select(Agent)
+            .join(agent_policies, agent_policies.c.agent_name == Agent.name)
+            .where(agent_policies.c.policy_id == policy_id)
+        )
+        assigned_agents = assigned_agents_result.scalars().all()
+        ts_agents: list[str] = []
+        for agent in assigned_agents:
+            try:
+                agent_data = AgentData.model_validate(agent.data)
+            except ValidationError:
+                continue
+            if is_typescript_agent_metadata(agent_data.agent_metadata):
+                ts_agents.append(agent.name)
+
+        if ts_agents:
+            raise BadRequestError(
+                error_code=ErrorCode.POLICY_CONTROL_INCOMPATIBLE,
+                detail=(
+                    "Control uses execution='sdk' which is incompatible with TypeScript SDK "
+                    "agents assigned to this policy"
+                ),
+                hint="Use execution='server' for controls used by TypeScript SDK agents.",
+                errors=[
+                    ValidationErrorItem(
+                        resource="Control",
+                        field="execution",
+                        code="incompatible",
+                        message=(
+                            f"Policy is assigned to TypeScript agent '{agent_name}', "
+                            "which does not support execution='sdk'"
+                        ),
+                    )
+                    for agent_name in sorted(set(ts_agents))
+                ],
+            )
 
     # Add association using INSERT ... ON CONFLICT DO NOTHING for idempotency
     try:
