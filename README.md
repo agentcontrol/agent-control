@@ -50,7 +50,7 @@ Traditional guardrails embedded inside your agent code have critical limitations
 ---
 
 ## Core Concepts
-See the [Concepts guide](CONCEPTS.md) to familiarize yourself with Agent Control's core concepts and terminology—essential for designing effective controls and evaluators for your application.
+See the [Concepts guide](https://docs.agentcontrol.dev/concepts) to familiarize yourself with Agent Control's core concepts and terminology—essential for designing effective controls and evaluators for your application.
 
 ---
 
@@ -311,8 +311,8 @@ Expected output:
 
 ### Next Steps
 
-- **Add more controls:** See [CONCEPTS.md](CONCEPTS.md#defining-controls) for examples and guidance
-- **Explore evaluators:** Try AI-powered evaluators like [Luna-2](CONCEPTS.md#example-block-toxic-input-luna-2-ai) or create custom evaluators. See [examples/deepeval](examples/deepeval) for custom evaluator examples
+- **Add more controls:** See [Controls](https://docs.agentcontrol.dev/concepts/controls#defining-controls) for examples and guidance
+- **Explore evaluators:** Try AI-powered evaluators like [Luna-2](https://docs.agentcontrol.dev/concepts/controls#example-block-toxic-input-luna-2-ai) or create custom evaluators. See [examples/deepeval](examples/deepeval) for custom evaluator examples
 - **Production setup:** Enable authentication - see [docs/REFERENCE.md](docs/REFERENCE.md#authentication)
 - **Check examples:** See [examples/](examples/) for real-world patterns
 
