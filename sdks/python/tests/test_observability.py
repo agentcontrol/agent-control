@@ -1,5 +1,6 @@
 """Tests for the observability module (EventBatcher)."""
 
+import asyncio
 import os
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -156,6 +157,89 @@ class TestEventBatcherLazyStart:
 
         assert result is True
         assert len(batcher._events) == 1
+        batcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_reattaches_after_loop_closes_between_asyncio_run_calls(self):
+        """Test that batcher reattaches when a previous loop has been closed.
+
+        Reproduces the sync @control flow: sync_wrapper calls asyncio.run()
+        per invocation, creating and closing a loop each time. The batcher
+        must detect the closed loop and reattach to the new one.
+        """
+        batcher = EventBatcher()
+        batcher._running = True
+
+        # Simulate first asyncio.run(): attach to a loop, then close it
+        first_loop = asyncio.new_event_loop()
+        batcher._loop = first_loop
+        first_loop.close()
+
+        # _loop is non-None but closed - the old bug would skip reattach
+        assert batcher._loop is not None
+        assert batcher._loop.is_closed()
+
+        # Now add_event in a new async context should reattach
+        event = create_mock_event()
+        result = batcher.add_event(event)
+
+        assert result is True
+        assert batcher._loop is not None
+        assert not batcher._loop.is_closed()
+        assert batcher._flush_task is not None
+
+        batcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_second_sync_like_call_still_flushes_when_batch_full(self):
+        """Test that events flush correctly after loop reattachment.
+
+        Simulates two sync_wrapper-style calls: first loop closes, second
+        loop must pick up and flush the accumulated events.
+        """
+        import warnings
+
+        batcher = EventBatcher(batch_size=2)
+        batcher._running = True
+        batcher._send_batch = AsyncMock(return_value=True)
+
+        # Simulate first call leaving a closed loop with queued events
+        first_loop = asyncio.new_event_loop()
+        batcher._loop = first_loop
+        batcher.add_event(create_mock_event())
+        # Suppress the expected warning when the stale flush task is discarded
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            first_loop.close()
+
+            # Second call in new async context - add enough to trigger flush
+            batcher.add_event(create_mock_event())
+            batcher.add_event(create_mock_event())
+
+        # Allow the scheduled flush task to run
+        await asyncio.sleep(0)
+        await batcher._flush()
+
+        assert batcher._events_sent >= 2
+        batcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_try_attach_loop_idempotent(self):
+        """Test that repeated add_event calls don't create multiple flush tasks."""
+        batcher = EventBatcher()
+        batcher._running = True
+
+        # First add_event attaches to the loop
+        batcher.add_event(create_mock_event())
+        first_task = batcher._flush_task
+
+        # Subsequent calls should not create new tasks
+        for _ in range(5):
+            batcher.add_event(create_mock_event())
+
+        assert batcher._flush_task is first_task
+        assert len(batcher._events) == 6
+
         batcher.stop()
 
 

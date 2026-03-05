@@ -328,15 +328,27 @@ class EventBatcher:
     def _try_attach_loop(self) -> None:
         """Try to attach to a running event loop and start the flush task.
 
-        Called lazily from add_event() when start() was unable to find a
-        running loop (e.g. init() was called from synchronous setup code).
+        Called lazily from add_event() and _schedule_flush() when the batcher
+        has no usable loop - either because start() was called from sync
+        context, or because a previous loop was closed (e.g. sync_wrapper
+        uses asyncio.run() which creates and closes a loop each call).
+
+        Must be called with self._lock held.
         """
-        if self._loop is not None:
+        if self._loop is not None and not self._loop.is_closed():
+            # Already attached to a healthy loop
+            if self._flush_task is not None and not self._flush_task.done():
+                return
+            # Loop is alive but flush task is missing/done - recreate it
+            self._flush_task = self._loop.create_task(self._flush_loop())
             return
+        # Stale or missing loop - clear and try to reattach
+        self._loop = None
+        self._flush_task = None
         try:
             self._loop = asyncio.get_running_loop()
             self._flush_task = self._loop.create_task(self._flush_loop())
-            logger.debug("EventBatcher attached to event loop (lazy start)")
+            logger.debug("EventBatcher attached to event loop")
         except RuntimeError:
             pass
 
@@ -352,11 +364,12 @@ class EventBatcher:
         Returns:
             True if event was added, False if dropped (e.g., queue full)
         """
-        # Lazy-start: attach to the event loop if start() couldn't find one
-        if self._running and self._loop is None:
-            self._try_attach_loop()
-
         with self._lock:
+            # Lazy-start: attach/reattach to a running event loop.
+            # Handles both initial sync-context start and closed-loop recovery
+            # (e.g. after sync_wrapper's asyncio.run() closes a loop).
+            if self._running:
+                self._try_attach_loop()
             # Limit queue size to prevent memory issues
             if len(self._events) >= self.batch_size * 10:
                 self._events_dropped += 1
@@ -372,14 +385,24 @@ class EventBatcher:
             return True
 
     def _schedule_flush(self) -> None:
-        """Schedule an immediate flush (non-blocking)."""
-        if self._loop and self._running:
-            try:
-                self._loop.call_soon_threadsafe(
-                    lambda: asyncio.create_task(self._flush())
-                )
-            except RuntimeError:
-                pass
+        """Schedule an immediate flush (non-blocking).
+
+        Must be called with self._lock held.
+        """
+        if not self._running:
+            return
+        self._try_attach_loop()
+        if self._loop is None or self._loop.is_closed():
+            return
+        try:
+            self._loop.call_soon_threadsafe(
+                lambda: asyncio.create_task(self._flush())
+            )
+        except RuntimeError:
+            # Loop closed between our check and the call - clear stale state
+            # so the next add_event() can reattach.
+            self._loop = None
+            self._flush_task = None
 
     async def _flush_loop(self) -> None:
         """Background task that flushes events periodically."""
