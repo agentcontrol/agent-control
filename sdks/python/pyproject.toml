@@ -48,6 +48,7 @@ dev = [
     "agent-control-models",
     "agent-control-engine",
     "agent-control-evaluators",
+    "strands-agents>=1.26.0",  # For strands integration tests
 ]
 
 [build-system]
