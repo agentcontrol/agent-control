@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Literal
+from collections.abc import Callable
+from typing import Any, Literal
+
+from agent_control_models import EvaluationResult
 
 import agent_control
 from agent_control import ControlSteerError, ControlViolationError
-from agent_control_models import EvaluationResult
 
 try:
     from strands.hooks import (
@@ -32,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 def _action_error(result: EvaluationResult) -> tuple[str, Exception] | None:
     """Return the first blocking action as an exception."""
+
     match = next((m for m in (result.matches or []) if m.action in ("deny", "steer")), None)
     if not match:
         return None
@@ -40,17 +43,17 @@ def _action_error(result: EvaluationResult) -> tuple[str, Exception] | None:
     msg = msg or f"Control '{match.control_name}' triggered"
 
     if match.action == "deny":
-        err = ControlViolationError(message=f"Policy violation [{match.control_name}]: {msg}")
-        return "deny", err
+        deny_err = ControlViolationError(message=f"Policy violation [{match.control_name}]: {msg}")
+        return "deny", deny_err
 
     ctx = getattr(match, "steering_context", None)
     ctx_msg = getattr(ctx, "message", None) if ctx else None
-    err = ControlSteerError(
+    steer_err = ControlSteerError(
         control_name=match.control_name,
         message=f"Steering required [{match.control_name}]: {msg}",
         steering_context=ctx_msg or msg,
     )
-    return "steer", err
+    return "steer", steer_err
 
 
 class AgentControlHook(HookProvider):
@@ -154,7 +157,9 @@ class AgentControlHook(HookProvider):
             AfterNodeCallEvent: self.check_after_node,
         }
 
-        events_to_register = self.event_control_list if self.event_control_list else event_map.keys()
+        events_to_register = (
+            self.event_control_list if self.event_control_list else event_map.keys()
+        )
 
         if self.enable_logging:
             logger.debug(
@@ -165,7 +170,7 @@ class AgentControlHook(HookProvider):
 
         for event_type in events_to_register:
             if event_type in event_map:
-                registry.add_callback(event_type, event_map[event_type])
+                registry.add_callback(event_type, event_map[event_type])  # type: ignore[arg-type]
 
     async def check_before_invocation(self, event: BeforeInvocationEvent) -> None:
         input_text, _ = self._extract_messages(event)
@@ -282,7 +287,10 @@ class AgentControlHook(HookProvider):
 
         return input_text, output_text
 
-    def _extract_tool_data(self, event: BeforeToolCallEvent | AfterToolCallEvent) -> tuple[str, Any]:
+    def _extract_tool_data(
+        self,
+        event: BeforeToolCallEvent | AfterToolCallEvent,
+    ) -> tuple[str, Any]:
         if event.selected_tool:
             tool_name = event.selected_tool.tool_name
         else:
@@ -331,7 +339,7 @@ class AgentControlHook(HookProvider):
 
         if isinstance(content, dict):
             if "text" in content:
-                return content["text"]
+                return str(content["text"])
             if "json" in content:
                 import json
 

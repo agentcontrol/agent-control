@@ -656,6 +656,81 @@ async def list_agents(
 
 
 # ============================================================================
+# Agent Policy/Control Convenience Functions
+# ============================================================================
+
+
+async def add_agent_policy(
+    agent_name: str,
+    policy_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Associate a policy with an agent (idempotent)."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.add_agent_policy(client, agent_name, policy_id)
+
+
+async def get_agent_policies(
+    agent_name: str,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """List policy IDs associated with an agent."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.get_agent_policies(client, agent_name)
+
+
+async def remove_agent_policy_association(
+    agent_name: str,
+    policy_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Remove one policy association from an agent (idempotent)."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.remove_agent_policy_association(client, agent_name, policy_id)
+
+
+async def remove_all_agent_policies(
+    agent_name: str,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Remove all policy associations from an agent."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.remove_agent_policy(client, agent_name)
+
+
+async def add_agent_control(
+    agent_name: str,
+    control_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Associate a control with an agent (idempotent)."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.add_agent_control(client, agent_name, control_id)
+
+
+async def remove_agent_control(
+    agent_name: str,
+    control_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Remove a direct control association from an agent (idempotent)."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.remove_agent_control(client, agent_name, control_id)
+
+
+# ============================================================================
 # Control Management Convenience Functions
 # ============================================================================
 
@@ -1065,6 +1140,12 @@ __all__ = [
     # Agent management
     "get_agent",
     "list_agents",
+    "add_agent_policy",
+    "get_agent_policies",
+    "remove_agent_policy_association",
+    "remove_all_agent_policies",
+    "add_agent_control",
+    "remove_agent_control",
     # Control management
     "create_control",
     "list_controls",

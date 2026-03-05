@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from agent_control_models.controls import ControlMatch
+
 import agent_control
 from agent_control import ControlViolationError
-from agent_control_models.controls import ControlMatch
 
 try:
     from strands.experimental.steering import Guide, Proceed, SteeringHandler
@@ -34,14 +35,20 @@ class AgentControlSteeringHandler(SteeringHandler):
         self.steers_applied = 0
         self.last_steer_info: dict[str, Any] | None = None
 
-    async def steer_after_model(self, *, agent, message, stop_reason, **kwargs):
+    async def steer_after_model(
+        self, *, agent: Any, message: Any, stop_reason: Any, **kwargs: Any
+    ) -> Guide | Proceed:
         if self.enable_logging:
             logger.debug("agent=<%s> | steering evaluation started", self.agent_name)
 
         output_text = self._extract_output(message)
 
         if self.enable_logging:
-            logger.debug("agent=<%s>, output_len=<%d> | checking output", self.agent_name, len(output_text))
+            logger.debug(
+                "agent=<%s>, output_len=<%d> | checking output",
+                self.agent_name,
+                len(output_text),
+            )
 
         try:
             result = await agent_control.evaluate_controls(
@@ -84,7 +91,11 @@ class AgentControlSteeringHandler(SteeringHandler):
         except ControlViolationError:
             raise
         except Exception as exc:
-            logger.debug("agent=<%s>, error=<%s> | steering evaluation failed", self.agent_name, exc)
+            logger.debug(
+                "agent=<%s>, error=<%s> | steering evaluation failed",
+                self.agent_name,
+                exc,
+            )
 
         self.last_steer_info = None
         return Proceed(reason="No Agent Control steer detected")
@@ -93,12 +104,15 @@ class AgentControlSteeringHandler(SteeringHandler):
         ctx = getattr(match, "steering_context", None)
         steering_message = getattr(ctx, "message", None) if ctx else None
         if not steering_message:
-            steering_message = getattr(getattr(match, "result", None), "message", None) or fallback_reason
+            steering_message = (
+                getattr(getattr(match, "result", None), "message", None)
+                or fallback_reason
+            )
         if not steering_message:
             steering_message = f"Control '{match.control_name}' requires steering"
         return steering_message
 
-    def _extract_output(self, message) -> str:
+    def _extract_output(self, message: Any) -> str:
         if not message:
             return ""
 
