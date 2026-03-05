@@ -1,0 +1,21 @@
+{
+  "name": "customer-support-agent-ts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "setup": "tsx src/setup-controls.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "agent-control": "^1.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
