@@ -31,6 +31,11 @@ describe("AgentControlClient API wiring", () => {
     const fetchMock = vi.mocked(globalThis.fetch);
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
+        created: true,
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
         agents: [],
         pagination: {
           has_more: false,
@@ -42,7 +47,7 @@ describe("AgentControlClient API wiring", () => {
     );
 
     const client = new AgentControlClient();
-    client.init({
+    await client.init({
       agentName: "test-agent",
       serverUrl: "https://api.example.com",
       apiKey: "test-api-key",
@@ -53,11 +58,13 @@ describe("AgentControlClient API wiring", () => {
       name: "support",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const request = fetchMock.mock.calls[0]?.[0] as Request;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const request = fetchMock.mock.calls[1]?.[0] as Request;
 
     expect(request.method).toBe("GET");
-    expect(request.url).toBe("https://api.example.com/api/v1/agents?limit=5&name=support");
+    expect(request.url).toBe(
+      "https://api.example.com/api/v1/agents?limit=5&name=support",
+    );
     expect(request.headers.get("X-API-Key")).toBe("test-api-key");
   });
 
@@ -65,12 +72,17 @@ describe("AgentControlClient API wiring", () => {
     const fetchMock = vi.mocked(globalThis.fetch);
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
+        created: true,
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
         control_id: 101,
       }),
     );
 
     const client = new AgentControlClient();
-    client.init({
+    await client.init({
       agentName: "test-agent",
       serverUrl: "https://api.example.com",
     });
@@ -79,8 +91,8 @@ describe("AgentControlClient API wiring", () => {
       name: "deny-pii",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const request = fetchMock.mock.calls[0]?.[0] as Request;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const request = fetchMock.mock.calls[1]?.[0] as Request;
 
     expect(request.method).toBe("PUT");
     expect(request.url).toBe("https://api.example.com/api/v1/controls");
@@ -99,16 +111,10 @@ describe("AgentControlClient API wiring", () => {
     );
 
     const client = new AgentControlClient();
-    client.init({
+
+    await client.init({
       agentName: "test-agent",
       serverUrl: "https://api.example.com",
-    });
-
-    await client.agents.init({
-      agent: {
-        agentId: "550e8400-e29b-41d4-a716-446655440000",
-        agentName: "test-agent",
-      },
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
