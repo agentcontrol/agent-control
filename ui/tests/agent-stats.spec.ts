@@ -3,7 +3,7 @@ import { expect, mockData, mockRoutes, test } from './fixtures';
 test.describe('Agent Monitor Tab', () => {
   test.beforeEach(async ({ mockedPage }) => {
     // Navigate to agent detail page
-    await mockedPage.goto('/agents/customer-support-bot/monitor');
+    await mockedPage.goto('/agents/agent-1/monitor');
     // Wait for the page to load
     await expect(
       mockedPage.getByRole('heading', { name: 'customer-support-bot' })
@@ -148,7 +148,7 @@ test.describe('Agent Monitor Tab - Empty State', () => {
     await mockRoutes.stats(page, { data: mockData.emptyStats });
 
     // Navigate to agent detail page
-    await page.goto('/agents/customer-support-bot/monitor');
+    await page.goto('/agents/agent-1/monitor');
     await expect(
       page.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();
@@ -237,7 +237,7 @@ test.describe('Agent Monitor Tab - Refetch Flow', () => {
     });
 
     // Navigate to agent detail page
-    await page.goto('/agents/customer-support-bot/monitor');
+    await page.goto('/agents/agent-1/monitor');
     await expect(
       page.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();
@@ -274,7 +274,7 @@ test.describe('Agent Monitor Tab - Error State', () => {
     });
 
     // Navigate to agent detail page
-    await page.goto('/agents/customer-support-bot/monitor');
+    await page.goto('/agents/agent-1/monitor');
     await expect(
       page.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();

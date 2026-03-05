@@ -15,7 +15,7 @@ SDK_DIR    := sdks/python
 TS_SDK_DIR := sdks/typescript
 ENGINE_DIR := engine
 EVALUATORS_DIR := evaluators/builtin
-GALILEO_DIR := evaluators/extra/galileo
+GALILEO_DIR := evaluators/contrib/galileo
 
 help:
 	@echo "Agent Control - Makefile commands"
@@ -30,7 +30,7 @@ help:
 	@echo ""
 	@echo "Test:"
 	@echo "  make test            - run tests for core packages (server, engine, sdk, evaluators)"
-	@echo "  make test-extras     - run tests for extra evaluators (galileo, etc.)"
+	@echo "  make test-extras     - run tests for contrib evaluators (galileo, etc.)"
 	@echo "  make test-all        - run all tests (core + extras)"
 	@echo "  make sdk-ts-test     - run TypeScript SDK tests"
 	@echo ""
@@ -81,7 +81,7 @@ openapi-spec-check: openapi-spec
 
 test: server-test engine-test sdk-test evaluators-test
 
-# Run tests for extra evaluators (not included in default test target)
+# Run tests for contrib evaluators (not included in default test target)
 test-extras: galileo-test
 
 # Run all tests (core + extras)
@@ -215,7 +215,7 @@ server-%:
 	$(MAKE) -C $(SERVER_DIR) $(patsubst server-%,%,$@)
 
 # ---------------------------
-# Extra Evaluators (Galileo)
+# Contrib Evaluators (Galileo)
 # ---------------------------
 
 galileo-test:

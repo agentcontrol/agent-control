@@ -45,15 +45,14 @@ from crewai.tools import tool
 # It's a dependency of agent_control so should be available
 
 # --- Configuration ---
-AGENT_ID = "989d84f0-9afe-4fb2-9e9e-e9d076271e29"
-AGENT_NAME = "Customer Support Crew"
+AGENT_NAME = "crew-ai-customer-support"
 AGENT_DESCRIPTION = "Customer support crew with PII protection and access controls"
 
 # Initialize Agent Control
 server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 agent_control.init(
-    agent_name=AGENT_ID,
+    agent_name=AGENT_NAME,
     agent_description=AGENT_DESCRIPTION,
     server_url=server_url,
 )
@@ -298,7 +297,7 @@ Keep the response under 150 words and be friendly."""
                 print("\n🚫 [LAYER 2: Agent Control POST] BLOCKED")
                 print(f"   Reason: {e.message}")
                 print("   Tool executed but output contained violations")
-                print("   LLM generated content that violated policies")
+                print("   LLM generated content that violated controls")
                 stage = "POST-execution"
 
             error_msg = f"🚫 SECURITY VIOLATION ({stage}): {e.message}\n\nThis request has been logged for security review."
@@ -377,7 +376,7 @@ def create_support_crew():
         goal="Provide helpful customer support while protecting user privacy and data security",
         backstory=(
             "You are an experienced customer support agent who helps customers with their questions. "
-            "You are friendly, professional, and always respect customer privacy and data security policies."
+            "You are friendly, professional, and always respect customer privacy and data security controls."
         ),
         tools=[ticket_handler_tool],
         verbose=True

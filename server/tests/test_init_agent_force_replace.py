@@ -19,12 +19,12 @@ def test_init_agent_force_replace_default_false_works_normally(client: TestClien
     """
     # Given: New agent
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
 
     # When: Create without force_replace (default)
     resp = client.post("/api/v1/agents/initAgent", json={
         "agent": {
-            "agent_id": agent_id,
+            "agent_name": agent_name,
             "agent_name": agent_name,
             "agent_description": "Test",
             "agent_version": "1.0"
@@ -46,12 +46,12 @@ def test_init_agent_force_replace_false_explicit_works_normally(client: TestClie
     """
     # Given: New agent
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
 
     # When: Create with force_replace=false
     resp = client.post("/api/v1/agents/initAgent", json={
         "agent": {
-            "agent_id": agent_id,
+            "agent_name": agent_name,
             "agent_name": agent_name,
             "agent_description": "Test",
             "agent_version": "1.0"
@@ -74,11 +74,11 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
     """
     # Given: Create agent with steps
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     
     resp = client.post("/api/v1/agents/initAgent", json={
         "agent": {
-            "agent_id": agent_id,
+            "agent_name": agent_name,
             "agent_name": agent_name,
             "agent_description": "Test",
             "agent_version": "1.0"
@@ -93,7 +93,7 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
     # When: Update with force_replace=true and add a new step
     resp = client.post("/api/v1/agents/initAgent", json={
         "agent": {
-            "agent_id": agent_id,
+            "agent_name": agent_name,
             "agent_name": agent_name,
             "agent_description": "Updated",
             "agent_version": "2.0"
@@ -108,7 +108,7 @@ def test_init_agent_force_replace_true_on_valid_data_works_normally(client: Test
 
     # Then: Should succeed and all steps should be present
     assert resp.status_code == 200
-    get_resp = client.get(f"/api/v1/agents/{agent_id}")
+    get_resp = client.get(f"/api/v1/agents/{agent_name}")
     steps = [s["name"] for s in get_resp.json()["steps"]]
     assert set(steps) == {"tool1", "tool2", "tool3"}
 
@@ -131,12 +131,12 @@ def test_init_agent_force_replace_recovers_from_corrupted_data(client: TestClien
     """Test that force_replace=true replaces corrupted stored data."""
     # Given: an existing agent with corrupted data in the DB
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_id = agent_name
+    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
             "agent": {
-                "agent_id": agent_id,
+                "agent_name": agent_name,
                 "agent_name": agent_name,
                 "agent_description": "Test",
                 "agent_version": "1.0",
@@ -156,7 +156,7 @@ def test_init_agent_force_replace_recovers_from_corrupted_data(client: TestClien
         "/api/v1/agents/initAgent",
         json={
             "agent": {
-                "agent_id": agent_id,
+                "agent_name": agent_name,
                 "agent_name": agent_name,
                 "agent_description": "Replaced",
                 "agent_version": "2.0",
@@ -170,7 +170,7 @@ def test_init_agent_force_replace_recovers_from_corrupted_data(client: TestClien
 
     # Then: request succeeds and stored data is replaced
     assert resp.status_code == 200
-    get_resp = client.get(f"/api/v1/agents/{agent_id}")
+    get_resp = client.get(f"/api/v1/agents/{agent_name}")
     assert get_resp.status_code == 200
     data = get_resp.json()
     assert data["agent"]["agent_description"] == "Replaced"

@@ -6,7 +6,7 @@ A practical guide for configuring SQL validation controls in your AI agent.
 
 ## What is the SQL Evaluator?
 
-The SQL Evaluator validates SQL query strings (e.g., from LLM responses) before they execute against your database. It acts as a security and safety layer, preventing dangerous operations, enforcing access policies, and ensuring data isolation.
+The SQL Evaluator validates SQL query strings (e.g., from LLM responses) before they execute against your database. It acts as a security and safety layer, preventing dangerous operations, enforcing access rules, and ensuring data isolation.
 
 **Technical Foundation**: Uses [sqlglot](https://github.com/tobymao/sqlglot) with the Rust-accelerated parser (`sqlglot[rs]`) for high-performance SQL parsing and AST-based validation.
 
@@ -36,7 +36,7 @@ The SQL Evaluator validates SQL query strings (e.g., from LLM responses) before 
 
 > **⚠️ Important Security Note**
 >
-> This evaluator validates query structure and enforces access rules, but **it is not a complete defense against SQL injection**. The primary defense against SQL injection is using **prepared statements** (parameterized queries) at the database layer. This evaluator provides an additional security layer by validating query syntax and enforcing policies, but should not be relied upon as the sole protection mechanism.
+> This evaluator validates query structure and enforces access rules, but **it is not a complete defense against SQL injection**. The primary defense against SQL injection is using **prepared statements** (parameterized queries) at the database layer. This evaluator provides an additional security layer by validating query syntax and enforcing controls, but should not be relied upon as the sole protection mechanism.
 >
 > **Best Practice**: Always use prepared statements/parameterized queries when executing SQL from untrusted sources. This evaluator complements, but does not replace, proper database security practices.
 

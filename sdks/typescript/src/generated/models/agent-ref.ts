@@ -14,7 +14,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type AgentRef = {
   /**
-   * Agent identifier
+   * Agent name
    */
   agentName: string;
 };

@@ -1,0 +1,10 @@
+node_modules
+.next
+out
+playwright-report
+test-results
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store

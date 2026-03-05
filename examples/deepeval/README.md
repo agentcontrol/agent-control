@@ -100,15 +100,6 @@ class DeepEvalEvaluator(Evaluator[DeepEvalEvaluatorConfig]):
 The evaluator is registered via `pyproject.toml`:
 
 ```toml
-[project]
-dependencies = [
-    "agent-control-evaluators>=5.0.0",
-    "agent-control-models>=5.0.0",
-    "agent-control-sdk>=5.0.0",
-    "deepeval>=1.0.0",
-    # ... other dependencies
-]
-
 [project.entry-points."agent_control.evaluators"]
 deepeval-geval = "evaluator:DeepEvalEvaluator"
 ```
@@ -216,11 +207,8 @@ The server will be running at `http://localhost:8000`.
 # Navigate to the DeepEval example directory
 cd examples/deepeval
 
-# Install dependencies
-uv sync
-
 # Install the evaluator package itself in editable mode
-uv pip install -e .
+uv pip install -e . --upgrade
 ```
 
 This installs:
@@ -230,10 +218,12 @@ This installs:
 
 The entry point `deepeval-geval = "evaluator:DeepEvalEvaluator"` makes the evaluator discoverable by the server.
 
-### 4. Set Environment Variables
+### 4. Set Environment Variables 
+**NOTE**: You need to setup OPENAI_API_KEY in server as well as your app folder
 
 ```bash
 # Required for DeepEval GEval (uses OpenAI models)
+
 export OPENAI_API_KEY="your-openai-api-key"
 
 # Optional: Disable DeepEval telemetry
@@ -380,7 +370,7 @@ python -m build      # Creates dist/*.whl
    - Deploy your own agent-control server instance
    - Install custom evaluator packages (wheel, source, or private PyPI)
    - Your agents connect to this server via the SDK
-   - Complete control over evaluators and policies
+   - Complete control over evaluators and controls
 
 2. **Managed Service (If Available)**
    - Use a hosted agent-control service
@@ -455,7 +445,7 @@ You can create specialized evaluators for specific use cases:
 2. **Extensibility**: The `Evaluator` base class makes it easy to integrate any evaluation library
 3. **Configuration**: Pydantic models provide type-safe, validated configuration
 4. **Registration**: The `@register_evaluator` decorator handles registration automatically
-5. **Integration**: Evaluators work seamlessly with agent-control's policy system
+5. **Integration**: Evaluators work seamlessly with agent-control's control system
 6. **Control Logic**: `matched=True` triggers the action (deny/allow), so invert when quality passes
 
 ## Troubleshooting

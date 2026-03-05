@@ -74,7 +74,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     // the close animation; the effect syncs selectedControl when the modal opens.
   };
 
-  const { handleDeleteControl, deleteControl } = useDeleteControlFlow({
+  const { handleDeleteControl, removeControlFromAgent } = useDeleteControlFlow({
     agentId,
     selectedControl,
     onCloseEditModal: handleCloseEditModal,
@@ -133,7 +133,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   const columns = useControlsTableColumns({
     agentId,
     updateControl,
-    deleteControl,
+    removeControlFromAgent,
     onEditControl: handleEditControl,
     onDeleteControl: handleDeleteControl,
   });

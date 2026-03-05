@@ -27,7 +27,7 @@ Forwarded targets:
 - `server/`: FastAPI server (`server/src/agent_control_server/`)
 - `sdks/python/`: Python SDK — uses engine for evaluation (`sdks/python/src/agent_control/`)
 - `evaluators/builtin/`: builtin evaluator implementations (`evaluators/builtin/src/agent_control_evaluators/`)
-- `evaluators/extra/`: optional evaluator packages (e.g., `evaluators/extra/galileo/`)
+- `evaluators/contrib/`: optional evaluator packages (e.g., `evaluators/contrib/galileo/`)
 - `ui/`: Nextjs based web app to manage agent controls 
 - `examples/`: runnable examples (ruff has relaxed import rules here)
 
@@ -75,7 +75,7 @@ All testing guidance (including “behavior changes require tests”) lives in `
   5) evaluator is automatically available to server and SDK via `discover_evaluators()`
 
 - Add an external evaluator package:
-  1) copy `evaluators/extra/template/` as a starting point
+  1) copy `evaluators/contrib/template/` as a starting point
   2) implement evaluator class extending `Evaluator` from `agent_control_evaluators`
   3) add entry point using `org.name` format (e.g., `galileo.luna2`)
   4) package is discovered automatically when installed alongside agent-control

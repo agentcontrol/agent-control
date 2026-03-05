@@ -9,9 +9,12 @@ import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
+/**
+ * Compatibility response for singular policy retrieval endpoint.
+ */
 export type GetPolicyResponse = {
   /**
-   * Identifier of the policy assigned to the agent
+   * Associated policy ID
    */
   policyId: number;
 };

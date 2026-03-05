@@ -113,7 +113,7 @@ export class Controls extends ClientSDK {
    * @remarks
    * Delete a control by ID.
    *
-   * By default, deletion fails if the control is associated with any policy.
+   * By default, deletion fails if the control is associated with any policy or agent.
    * Use force=true to automatically dissociate and delete.
    *
    * Args:
@@ -122,7 +122,7 @@ export class Controls extends ClientSDK {
    *     db: Database session (injected)
    *
    * Returns:
-   *     DeleteControlResponse with success flag and list of dissociated policies
+   *     DeleteControlResponse with success flag and dissociation details
    *
    * Raises:
    *     HTTPException 404: Control not found

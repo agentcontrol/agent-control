@@ -3,12 +3,13 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI version](https://img.shields.io/pypi/v/agent-control-sdk.svg)](https://pypi.org/project/agent-control-sdk/)
+[![npm version](https://img.shields.io/npm/v/agent-control.svg)](https://www.npmjs.com/package/agent-control)
 [![CI](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/agentcontrol/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/agentcontrol/agent-control)
 
 **Runtime guardrails for AI agents—configurable, extensible, and production-ready.**
 
-AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides a policy-based runtime layer that evaluates inputs and outputs against configurable rules—blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
+AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, control-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
 
 ![Agent Control Architecture](docs/images/Architecture.png)
 
@@ -22,7 +23,7 @@ Traditional guardrails embedded inside your agent code have critical limitations
 **Agent Control gives you runtime control over what your agents can and cannot do:**
 - **For developers:** Centralize safety logic and adapt to emerging threats instantly without redeployment
 - **For non-technical teams:** Intuitive UI to configure and monitor agent safety without touching code
-- **For organizations:** Reusable policies across agents with comprehensive audit trails
+- **For organizations:** Reusable controls across agents with comprehensive audit trails
 
 ---
 
@@ -98,12 +99,12 @@ cd agent-control
 ```
 
 **What the script does:**
-- ✓ Checks Python 3.12+ is installed
-- ✓ Creates a virtual environment
-- ✓ Pulls and starts PostgreSQL + Agent Control Server via Docker
-- ✓ Installs the Agent Control SDK
+- ✓ Check Python 3.12+ is installed
+- ✓ Create a virtual environment
+- ✓ Pull and start PostgreSQL + Agent Control Server + UI via Docker
+- ✓ Install the Agent Control SDK
 
-**Server will be running at `http://localhost:8000` — ready to use!**
+**Server will be running at `http://localhost:8000` and UI at `http://localhost:4000` — ready to use!**
 
 > ✅ **This setup works great for development!** You can build agents, integrate with your apps, and develop using the SDK. The server runs in Docker for convenience and isolation.
 
@@ -127,13 +128,17 @@ cd agent-control
 # Install all workspace dependencies
 make sync
 
-# Start server from source (Postgres in Docker, server runs locally with hot reload)
+# Start PostgreSQL database
+cd server && docker-compose up -d && cd ..
+
+# Run database migrations
+make server-alembic-upgrade
+
+# Start the Agent Control server
 make server-run
 ```
 
-**Server is now running at `http://localhost:8000` with hot reload** ✅
-
-> 💡 **What's the difference?** This method runs the server locally from source with auto-reload when you change server code. The quick setup method runs a pre-built server in Docker—faster to start, but no hot reload for server changes.
+**Server is now running at `http://localhost:8000`** ✅
 
 ---
 
@@ -151,7 +156,6 @@ The dashboard provides a UI for managing agents, controls, and viewing analytics
 
 In a separate terminal:
 ```bash
-cd ~/path_to_agent-control/
 cd ui
 pnpm install
 pnpm dev
@@ -183,14 +187,16 @@ Create a setup script to configure your agent's controls:
 # setup.py - Run once to configure agent controls
 import asyncio
 from datetime import datetime, UTC
-from agent_control import AgentControlClient, controls, policies, agents
+from agent_control import AgentControlClient, controls, agents
 from agent_control_models import Agent
 
 async def setup():
     async with AgentControlClient() as client:  # Defaults to localhost:8000
-        # 1. Register agent
+        # 1. Register agent first
         agent = Agent(
-            agent_name="My-Support-Chatbot",
+            # Your agent's name
+            agent_name="550e8400-e29b-41d4-a716-446655440000",
+            agent_description="My Chatbot",
             agent_created_at=datetime.now(UTC).isoformat()
         )
         await agents.register_agent(client, agent, steps=[])
@@ -211,25 +217,15 @@ async def setup():
                 "action": {"decision": "deny"}
             }
         )
-
-        # 3. Create policy and add control
-        policy = await policies.create_policy(client, name="production-policy")
-        await policies.add_control_to_policy(
+        # 3. Associate control directly with agent
+        await agents.add_agent_control(
             client,
-            policy_id=policy["policy_id"],
-            control_id=control["control_id"]
-        )
-
-        # 4. Assign policy to agent
-        await policies.assign_policy_to_agent(
-            client,
-            agent_name="My-Support-Chatbot",
-            policy_id=policy["policy_id"]
+            agent_name=agent.agent_name,
+            control_id=control["control_id"],
         )
 
         print("✅ Setup complete!")
         print(f"   Control ID: {control['control_id']}")
-        print(f"   Policy ID: {policy['policy_id']}")
 
 asyncio.run(setup())
 ```
@@ -253,7 +249,10 @@ import agent_control
 from agent_control import control, ControlViolationError
 
 # Initialize your agent
-agent_control.init(agent_name="My-Support-Chatbot")
+agent_control.init(
+    agent_name="550e8400-e29b-41d4-a716-446655440000",  # Agent identifier (UUID recommended)
+    agent_description="My Chatbot",
+)
 
 # Protect any function with @control()
 @control()
@@ -319,6 +318,28 @@ Expected output:
 
 > **💡 Pro Tip:** Start with simple regex controls, then graduate to AI-powered evaluators for complex safety checks!
 
+### 5. Assign Controls
+
+Controls can be associated directly with agents. An agent's **active controls** are the controls currently linked to that agent.
+
+**Direct controls** — attach individual controls to an agent:
+
+```bash
+# Add a control directly to an agent
+curl -X POST http://localhost:8000/api/v1/agents/support-agent-v1/controls/3
+
+# Remove a direct control
+curl -X DELETE http://localhost:8000/api/v1/agents/support-agent-v1/controls/3
+```
+
+**List all active controls**:
+
+```bash
+curl http://localhost:8000/api/v1/agents/support-agent-v1/controls
+```
+
+> Controls are optional. An agent can operate with no controls configured.
+
 ---
 
 ## Configuration
@@ -329,7 +350,7 @@ Expected output:
 |----------|---------|-------------|
 | `AGENT_CONTROL_URL` | `http://localhost:8000` | Server URL for SDK |
 | `AGENT_CONTROL_API_KEY` | — | API key for authentication (if enabled) |
-| `DATABASE_URL` or `DB_URL` | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (`DATABASE_URL` preferred for Docker, `DB_URL` for local dev. SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
+| `DB_URL` | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
 | `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator |
 
 ### Server Configuration
@@ -364,8 +385,9 @@ Agent Control is built as a monorepo with these components:
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                      Agent Control Server                        │
+│                                                                  │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │  Policies  │  │ Evaluators │  │   Agents   │  │
+│  │  Controls  │  │Control Link│  │ Evaluators │  │   Agents   │  │
 │  │    API     │  │    API     │  │  Registry  │  │    API     │  │
 │  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
@@ -383,6 +405,7 @@ Agent Control is built as a monorepo with these components:
 | Package | Description |
 |:--------|:------------|
 | `agent-control-sdk` | Python SDK with `@control()` decorator |
+| `agent-control` (npm) | TypeScript SDK (generated from OpenAPI) |
 | `agent-control-server` | FastAPI server with Control Management API |
 | `agent-control-engine` | Core evaluation logic and evaluator system |
 | `agent-control-models` | Shared Pydantic v2 models |
@@ -409,15 +432,14 @@ Agent Control is built as a monorepo with these components:
 
 ```
 agent-control/
-├── sdks/
-│   ├── python/       # Python SDK (agent-control-sdk)
-│   └── typescript/   # TypeScript SDK (agent-control)
-├── server/           # FastAPI server (agent-control-server)
-├── engine/           # Evaluation engine (agent-control-engine)
-├── models/           # Shared models (agent-control-models)
-├── evaluators/       # Evaluator implementations (agent-control-evaluators)
-├── ui/               # Next.js web dashboard
-└── examples/         # Usage examples
+├── sdks/python/     # Python SDK (agent-control)
+├── sdks/typescript/ # TypeScript SDK (generated)
+├── server/          # FastAPI server (agent-control-server)
+├── engine/          # Evaluation engine (agent-control-engine)
+├── models/          # Shared models (agent-control-models)
+├── evaluators/      # Evaluator implementations (agent-control-evaluators)
+├── ui/              # Next.js web dashboard
+└── examples/        # Usage examples
 ```
 
 ### Makefile Commands

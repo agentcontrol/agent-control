@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-evaluators"
-version = "6.0.0"
+version = "6.4.0"
 description = "Builtin evaluators for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -34,4 +34,4 @@ packages = ["src/agent_control_evaluators"]
 [tool.uv.sources]
 agent-control-models = { workspace = true }
 # For local dev: use local galileo package instead of PyPI
-agent-control-evaluator-galileo = { path = "../extra/galileo", editable = true }
+agent-control-evaluator-galileo = { path = "../contrib/galileo", editable = true }

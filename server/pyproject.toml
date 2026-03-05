@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-server"
-version = "6.0.0"
+version = "6.4.0"
 description = "Server for Agent Control - manage and evaluate controls for AI agents"
 requires-python = ">=3.12"
 # Note: agent-control-models and agent-control-engine are bundled at build time
@@ -88,4 +88,4 @@ agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
 agent-control-evaluators = { workspace = true }
 # For local dev: use local galileo package instead of PyPI
-agent-control-evaluator-galileo = { path = "../evaluators/extra/galileo", editable = true }
+agent-control-evaluator-galileo = { path = "../evaluators/contrib/galileo", editable = true }

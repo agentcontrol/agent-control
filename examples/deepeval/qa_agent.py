@@ -26,21 +26,38 @@ Requirements:
 """
 
 import asyncio
+import logging
 import os
 import sys
+from uuid import UUID
 
 import agent_control
 from agent_control import ControlViolationError, control
+
+# Enable DEBUG logging for agent_control to see what's happening
+logging.basicConfig(level=logging.DEBUG, format='%(name)s - %(levelname)s - %(message)s')
+logging.getLogger('agent_control').setLevel(logging.DEBUG)
 
 # =============================================================================
 # SDK INITIALIZATION
 # =============================================================================
 
 agent_control.init(
-    agent_name="qa-agent-deepeval",
-    agent_description="Question answering agent with DeepEval quality controls",
+    agent_name="qa-agent-with-deepeval",
+    agent_description="Q&A Agent with DeepEval",
     agent_version="1.0.0",
 )
+
+# Debug: Check if controls were loaded
+controls = agent_control.get_server_controls()
+print(f"DEBUG: Loaded {len(controls) if controls else 0} controls from server")
+if controls:
+    for c in controls:
+        ctrl_def = c.get('control', {})
+        print(f"  - {c['name']}:")
+        print(f"      enabled: {ctrl_def.get('enabled', False)}")
+        print(f"      execution: {ctrl_def.get('execution', 'NOT SET')}")
+        print(f"      scope: {ctrl_def.get('scope', {})}")
 
 
 # =============================================================================
@@ -154,7 +171,9 @@ async def answer_question(question: str) -> str:
 
     If a control fails, ControlViolationError is raised.
     """
+    print(f"DEBUG: answer_question called with question: {question[:50]}...")
     response = MockQASystem.answer_question(question)
+    print(f"DEBUG: Generated response: {response[:50]}...")
     return response
 
 
@@ -182,14 +201,22 @@ class QAAgent:
         """
         self.conversation_history.append({"role": "user", "content": question})
 
+        # Debug: Check if agent is still initialized
+        import agent_control
+        current_agent = agent_control._current_agent if hasattr(agent_control, '_current_agent') else None
+        print(f"DEBUG: Current agent before call: {current_agent.agent_name if current_agent else 'NONE'}")
+
         try:
             # Get answer - protected by DeepEval controls
+            print("DEBUG: About to call answer_question (with @control decorator)")
             answer = await answer_question(question)
+            print("DEBUG: answer_question returned successfully")
 
             self.conversation_history.append({"role": "assistant", "content": answer})
             return answer
 
         except ControlViolationError as e:
+            print(f"DEBUG: ControlViolationError caught: {e}")
             # Control triggered - return helpful feedback
             fallback = (
                 f"I apologize, but my response didn't meet quality standards. "
@@ -200,6 +227,9 @@ class QAAgent:
             print(f"\n⚠️  Quality control triggered: {e.control_name}")
             print(f"    Reason: {e.message}")
             return fallback
+        except Exception as e:
+            print(f"DEBUG: Unexpected exception: {type(e).__name__}: {e}")
+            raise
 
 
 # =============================================================================

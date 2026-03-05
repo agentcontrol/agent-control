@@ -21,11 +21,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
 import { api } from '@/core/api/client';
-import type {
-  AgentRef,
-  ControlDefinition,
-  ControlSummary,
-} from '@/core/api/types';
+import type { ControlDefinition, ControlSummary } from '@/core/api/types';
 import { SearchInput } from '@/core/components/search-input';
 import { MODAL_NAMES, SUBMODAL_NAMES } from '@/core/constants/modal-routes';
 import { useControlsInfinite } from '@/core/hooks/query-hooks/use-controls-infinite';
@@ -36,11 +32,6 @@ import { useQueryParam } from '@/core/hooks/use-query-param';
 import { AddNewControlModal } from '../add-new-control';
 import { EditControlContent } from '../edit-control/edit-control-content';
 import { sanitizeControlNamePart } from '../edit-control/utils';
-
-// Extended ControlSummary with optional used_by_agent
-type ControlSummaryWithAgent = ControlSummary & {
-  used_by_agent?: AgentRef | null;
-};
 
 type ControlStoreModalProps = {
   opened: boolean;
@@ -176,8 +167,7 @@ export function ControlStoreModal({
       };
       loadControl();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editModalOpened, controlId, selectedControl]);
+  }, [editModalOpened, controlId, selectedControl, controls]);
 
   // Clear selectedControl when edit modal closes
   useEffect(() => {
@@ -276,32 +266,25 @@ export function ControlStoreModal({
     },
     {
       id: 'agent',
-      header: 'Agent',
+      header: 'Used by',
       size: 150,
       cell: ({ row }) => {
-        const agent = (row.original as ControlSummaryWithAgent).used_by_agent;
-        const control = row.original;
-        if (!agent) {
+        const usedByAgent = row.original.used_by_agent;
+        if (!usedByAgent) {
           return (
             <Text size="sm" c="dimmed">
               —
             </Text>
           );
         }
-        // Link to agent controls tab with control name filter
-        const href = `/agents/${agent.agent_name}/controls?q=${encodeURIComponent(control.name)}`;
         return (
           <Anchor
             component={Link}
-            href={href}
+            href={`/agents/${usedByAgent.agent_name}`}
             size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              // Close modal when navigating to agent page
-              onClose();
-            }}
+            underline="hover"
           >
-            {agent.agent_name}
+            {usedByAgent.agent_name}
           </Anchor>
         );
       },

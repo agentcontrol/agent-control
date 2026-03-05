@@ -17,11 +17,11 @@ engine = create_engine(db_config.get_url(), echo=False)
 
 
 def make_agent_payload(
-    agent_id: str | None = None,
+    agent_name: str | None = None,
     name: str = "testagent0001",
     steps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    resolved_name = name if name != "testagent0001" else (agent_id or f"agent-{uuid.uuid4().hex[:12]}")
+    resolved_name = name if name != "testagent0001" else (agent_name or f"agent-{uuid.uuid4().hex[:12]}")
     canonical_name = resolved_name.lower().replace(" ", "-")
     if len(canonical_name) < 10:
         canonical_name = f"{canonical_name}-agent".replace("--", "-")
@@ -36,7 +36,7 @@ def make_agent_payload(
         ]
     return {
         "agent": {
-            "agent_id": canonical_name,
+            "agent_name": canonical_name,
             "agent_name": canonical_name,
             "agent_description": "desc",
             "agent_version": "1.0",
@@ -120,7 +120,7 @@ def test_agent_endpoints_normalize_mixed_case_agent_name(client: TestClient) -> 
     assert delete_policy_resp.status_code == 200
 
 
-def test_init_agent_idempotent_same_steps(client: TestClient) -> None:
+def test_init_agent_nameempotent_same_steps(client: TestClient) -> None:
     # Given: an init payload
     payload = make_agent_payload()
     # When: initializing the agent the first time
@@ -183,8 +183,8 @@ def test_init_agent_updates_metadata_on_reinit(client: TestClient) -> None:
 
 def test_init_agent_adds_new_step(client: TestClient) -> None:
     # Given: an agent id and base payload
-    agent_id = str(uuid.uuid4())
-    base = make_agent_payload(agent_id=agent_id)
+    agent_name = str(uuid.uuid4())
+    base = make_agent_payload(agent_name=agent_name)
     # When: initializing the agent
     r1 = client.post("/api/v1/agents/initAgent", json=base)
     assert r1.status_code == 200
@@ -200,14 +200,14 @@ def test_init_agent_adds_new_step(client: TestClient) -> None:
     ]
     r2 = client.post(
         "/api/v1/agents/initAgent",
-        json=make_agent_payload(agent_id=agent_id, steps=steps),
+        json=make_agent_payload(agent_name=agent_name, steps=steps),
     )
     assert r2.status_code == 200
     # Then: the agent is not newly created
     assert r2.json()["created"] is False
 
     # When: fetching the agent
-    g = client.get(f"/api/v1/agents/{agent_id}")
+    g = client.get(f"/api/v1/agents/{agent_name}")
     assert g.status_code == 200
     names = {s["name"] for s in g.json()["steps"]}
     # Then: both steps are present
@@ -216,15 +216,15 @@ def test_init_agent_adds_new_step(client: TestClient) -> None:
 
 def test_init_agent_overwrites_step_on_signature_change(client: TestClient) -> None:
     # Given: a base payload for an agent
-    agent_id = str(uuid.uuid4())
-    base = make_agent_payload(agent_id=agent_id)
+    agent_name = str(uuid.uuid4())
+    base = make_agent_payload(agent_name=agent_name)
     # When: initializing the agent
     r1 = client.post("/api/v1/agents/initAgent", json=base)
     assert r1.status_code == 200
 
     # When: updating tool_a schema
     changed = make_agent_payload(
-        agent_id=agent_id,
+        agent_name=agent_name,
         steps=[
             {
                 "type": "tool",
@@ -245,8 +245,8 @@ def test_init_agent_overwrites_step_on_signature_change(client: TestClient) -> N
 def test_get_agent_returns_evaluators(client: TestClient) -> None:
     """Test that GET /agents/{id} returns evaluators."""
     # Given: an agent with evaluators
-    agent_id = str(uuid.uuid4())
-    payload = make_agent_payload(agent_id=agent_id)
+    agent_name = str(uuid.uuid4())
+    payload = make_agent_payload(agent_name=agent_name)
     payload["evaluators"] = [
         {"name": "eval-a", "description": "First", "config_schema": {}},
         {"name": "eval-b", "description": "Second", "config_schema": {"type": "object"}},
@@ -255,7 +255,7 @@ def test_get_agent_returns_evaluators(client: TestClient) -> None:
     assert resp.status_code == 200
 
     # When: fetching the agent
-    get_resp = client.get(f"/api/v1/agents/{agent_id}")
+    get_resp = client.get(f"/api/v1/agents/{agent_name}")
     # Then: evaluators are included in the response
     assert get_resp.status_code == 200
     data = get_resp.json()
@@ -325,10 +325,10 @@ def test_set_agent_policy_first_time(client: TestClient) -> None:
     payload = make_agent_payload()
     r = client.post("/api/v1/agents/initAgent", json=payload)
     assert r.status_code == 200
-    agent_id = payload["agent"]["agent_id"]
+    agent_name = payload["agent"]["agent_name"]
 
     # When: assigning policy the first time
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
     # Then: success and no old policy
     assert resp.status_code == 200
     body = resp.json()
@@ -341,11 +341,11 @@ def test_get_agent_policy_after_assignment(client: TestClient) -> None:
     policy_id = _create_policy(client)
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
-    agent_id = payload["agent"]["agent_id"]
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    agent_name = payload["agent"]["agent_name"]
+    client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
     # When: retrieving policy
-    resp = client.get(f"/api/v1/agents/{agent_id}/policy")
+    resp = client.get(f"/api/v1/agents/{agent_name}/policy")
     # Then: we see the assigned policy id
     assert resp.status_code == 200
     assert resp.json()["policy_id"] == policy_id
@@ -357,11 +357,11 @@ def test_reassign_agent_policy_returns_old_id(client: TestClient) -> None:
     second = _create_policy(client)
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
-    agent_id = payload["agent"]["agent_id"]
-    client.post(f"/api/v1/agents/{agent_id}/policy/{first}")
+    agent_name = payload["agent"]["agent_name"]
+    client.post(f"/api/v1/agents/{agent_name}/policy/{first}")
 
     # When: reassigning to another policy
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{second}")
+    resp = client.post(f"/api/v1/agents/{agent_name}/policy/{second}")
     # Then: success and old_policy_id equals the first policy id
     assert resp.status_code == 200
     assert resp.json()["success"] is True
@@ -373,17 +373,17 @@ def test_delete_agent_policy_then_get_404(client: TestClient) -> None:
     policy_id = _create_policy(client)
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
-    agent_id = payload["agent"]["agent_id"]
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    agent_name = payload["agent"]["agent_name"]
+    client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
     # When: removing the policy association
-    del_resp = client.delete(f"/api/v1/agents/{agent_id}/policy")
+    del_resp = client.delete(f"/api/v1/agents/{agent_name}/policy")
     # Then: deletion success
     assert del_resp.status_code == 200
     assert del_resp.json()["success"] is True
 
     # When: fetching policy after deletion
-    get_resp = client.get(f"/api/v1/agents/{agent_id}/policy")
+    get_resp = client.get(f"/api/v1/agents/{agent_name}/policy")
     # Then: not found
     assert get_resp.status_code == 404
 
@@ -403,11 +403,11 @@ def test_set_policy_not_found_returns_404(client: TestClient) -> None:
     # Given: an agent and a bogus policy id
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
-    agent_id = payload["agent"]["agent_id"]
+    agent_name = payload["agent"]["agent_name"]
     bogus_policy = "999999999"
 
     # When: assigning a non-existent policy
-    resp = client.post(f"/api/v1/agents/{agent_id}/policy/{bogus_policy}")
+    resp = client.post(f"/api/v1/agents/{agent_name}/policy/{bogus_policy}")
     # Then: 404
     assert resp.status_code == 404
 
@@ -416,10 +416,10 @@ def test_list_agent_controls_no_policy_returns_empty(client: TestClient) -> None
     # Given: an agent without a policy
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
-    agent_id = payload["agent"]["agent_id"]
+    agent_name = payload["agent"]["agent_name"]
 
     # When: listing controls
-    r = client.get(f"/api/v1/agents/{agent_id}/controls")
+    r = client.get(f"/api/v1/agents/{agent_name}/controls")
     # Then: empty list
     assert r.status_code == 200
     assert r.json()["controls"] == []
@@ -429,7 +429,7 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
     # Given: an agent with a policy containing one control set and one control
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
-    agent_id = payload["agent"]["agent_id"]
+    agent_name = payload["agent"]["agent_name"]
 
     # Create policy, control, and wire them
     pol_name = f"pol-{uuid.uuid4()}"
@@ -447,10 +447,10 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
 
     # Associate control -> policy; assign policy to agent
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
     # When: listing controls
-    r = client.get(f"/api/v1/agents/{agent_id}/controls")
+    r = client.get(f"/api/v1/agents/{agent_name}/controls")
     # Then: contains our control serialized via API model
     assert r.status_code == 200
     body = r.json()
@@ -541,43 +541,43 @@ def test_list_agents_returns_created_agents(client: TestClient) -> None:
     assert agent1["agent_name"] == "agent-one-01"
     assert agent1["step_count"] == 1  # from make_agent_payload
     assert agent1["evaluator_count"] == 1
-    assert agent1["policy_id"] is None
+    assert agent1["policy_ids"] == []
 
     assert "agent-two-02" in agent_map
     agent2 = agent_map["agent-two-02"]
     assert agent2["agent_name"] == "agent-two-02"
     assert agent2["step_count"] == 2
     assert agent2["evaluator_count"] == 0
-    assert agent2["policy_id"] is None
+    assert agent2["policy_ids"] == []
 
 
 def test_list_agents_with_policy(client: TestClient) -> None:
-    """Test that list agents shows policy_id when assigned."""
+    """Test that list agents shows policy_ids when assigned."""
     # Given: an agent with a policy assigned
     payload = make_agent_payload()
     client.post("/api/v1/agents/initAgent", json=payload)
-    agent_id = payload["agent"]["agent_id"]
+    agent_name = payload["agent"]["agent_name"]
 
     policy_id = _create_policy(client)
-    client.post(f"/api/v1/agents/{agent_id}/policy/{policy_id}")
+    client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
     # When: listing agents
     resp = client.get("/api/v1/agents")
-    # Then: the agent shows the policy_id
+    # Then: the agent shows policy_ids
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["agents"]) == 1
-    assert body["agents"][0]["policy_id"] == policy_id
+    assert body["agents"][0]["policy_ids"] == [policy_id]
 
 
 def test_list_agents_pagination(client: TestClient) -> None:
     """Test cursor-based pagination works correctly."""
     # Given: 5 agents
-    agent_ids = []
+    agent_names = []
     for i in range(5):
-        agent_id = str(uuid.uuid4())
-        agent_ids.append(agent_id)
-        payload = make_agent_payload(agent_id=agent_id, name=f"Agent {i}")
+        agent_name = str(uuid.uuid4())
+        agent_names.append(agent_name)
+        payload = make_agent_payload(agent_name=agent_name, name=f"Agent {i}")
         r = client.post("/api/v1/agents/initAgent", json=payload)
         assert r.status_code == 200
 

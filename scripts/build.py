@@ -206,7 +206,7 @@ def build_evaluators() -> None:
 def build_evaluator_galileo() -> None:
     """Build agent-control-evaluator-galileo (standalone, no vendoring needed)."""
     version = get_global_version()
-    galileo_dir = ROOT / "evaluators" / "extra" / "galileo"
+    galileo_dir = ROOT / "evaluators" / "contrib" / "galileo"
 
     print(f"Building agent-control-evaluator-galileo v{version}")
 
