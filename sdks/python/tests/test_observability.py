@@ -201,6 +201,30 @@ class TestEventBatcherWorkerThread:
         assert not batcher._running
         assert batcher._thread is None
 
+    def test_shutdown_drains_inflight_flush_without_data_loss(self):
+        """Test that shutdown waits for in-flight flushes and sends all events."""
+        import time
+
+        batcher = EventBatcher(batch_size=100, flush_interval=60.0)
+
+        async def slow_send(events):
+            await asyncio.sleep(0.05)
+            return True
+
+        batcher._send_batch = slow_send
+        batcher.start()
+
+        # Trigger multiple flushes and allow one to start before shutdown.
+        for _ in range(350):
+            batcher.add_event(create_mock_event())
+        time.sleep(0.02)
+
+        batcher.shutdown()
+
+        assert batcher._events_sent == 350
+        assert len(batcher._events) == 0
+        assert batcher._events_dropped == 0
+
 
 class TestEventBatcherAddEvent:
     """Tests for adding events to the batcher."""

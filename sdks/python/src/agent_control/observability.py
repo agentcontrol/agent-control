@@ -290,6 +290,9 @@ class EventBatcher:
         # Dedicated worker loop and thread
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
+        self._flush_signal: asyncio.Event | None = None
+        self._worker_ready = threading.Event()
+        self._graceful_shutdown = False
         self._running = False
 
         # Reusable HTTP client for connection pooling
@@ -306,6 +309,8 @@ class EventBatcher:
             return
 
         self._running = True
+        self._graceful_shutdown = False
+        self._worker_ready.clear()
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
             target=self._run_worker_loop,
@@ -313,6 +318,8 @@ class EventBatcher:
             daemon=True,
         )
         self._thread.start()
+        if not self._worker_ready.wait(timeout=1.0):
+            logger.warning("EventBatcher worker thread did not signal readiness in time")
         logger.debug("EventBatcher started (dedicated worker thread)")
 
     def _run_worker_loop(self) -> None:
@@ -320,10 +327,12 @@ class EventBatcher:
         assert self._loop is not None
         loop = self._loop
         asyncio.set_event_loop(loop)
+        self._flush_signal = asyncio.Event()
+        self._worker_ready.set()
         try:
             loop.run_until_complete(self._flush_loop())
         except RuntimeError:
-            # Expected when stop() calls loop.stop() while flush_loop is sleeping
+            # Can happen if emergency stop is requested while loop is running
             pass
         finally:
             try:
@@ -331,15 +340,48 @@ class EventBatcher:
             except RuntimeError:
                 pass
             loop.close()
+            self._flush_signal = None
+            self._loop = None
+            self._worker_ready.clear()
+
+    def _signal_flush(self) -> None:
+        """Wake the worker loop to perform (or finish) a flush cycle."""
+        loop = self._loop
+        signal = self._flush_signal
+        if loop is None or signal is None or loop.is_closed():
+            return
+        try:
+            loop.call_soon_threadsafe(signal.set)
+        except RuntimeError:
+            pass
+
+    def _stop_worker(self, *, graceful: bool, join_timeout: float) -> None:
+        """Stop the worker thread, optionally flushing pending events first."""
+        self._graceful_shutdown = graceful
+        self._running = False
+        self._signal_flush()
+
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=join_timeout)
+
+        if self._thread and self._thread.is_alive():
+            # Emergency fallback if worker is still hung.
+            loop = self._loop
+            if loop and not loop.is_closed():
+                try:
+                    loop.call_soon_threadsafe(loop.stop)
+                except RuntimeError:
+                    pass
+            self._thread.join(timeout=1.0)
+
+        thread_alive = self._thread.is_alive() if self._thread else False
+        self._thread = None
+        if thread_alive:
+            logger.warning("EventBatcher worker thread did not stop cleanly")
 
     def stop(self) -> None:
         """Stop the worker thread. Does not flush remaining events."""
-        self._running = False
-        if self._loop and not self._loop.is_closed():
-            self._loop.call_soon_threadsafe(self._loop.stop)
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
-        self._thread = None
+        self._stop_worker(graceful=False, join_timeout=2.0)
         logger.debug("EventBatcher stopped")
 
     async def close(self) -> None:
@@ -377,24 +419,44 @@ class EventBatcher:
 
     def _schedule_flush(self) -> None:
         """Schedule an immediate flush on the worker loop (non-blocking)."""
-        loop = self._loop
-        if not self._running or not loop or loop.is_closed():
+        if not self._running:
             return
-        try:
-            loop.call_soon_threadsafe(lambda: loop.create_task(self._flush()))
-        except RuntimeError:
-            pass
+        self._signal_flush()
 
     async def _flush_loop(self) -> None:
         """Background task that flushes events periodically."""
+        signal = self._flush_signal
+        if signal is None:
+            logger.error("Flush loop started without a worker flush signal")
+            return
+
         while self._running:
             try:
-                await asyncio.sleep(self.flush_interval)
-                await self._flush()
+                await asyncio.wait_for(signal.wait(), timeout=self.flush_interval)
+                signal.clear()
+            except TimeoutError:
+                pass
             except asyncio.CancelledError:
                 break
             except Exception as e:
+                logger.error(f"Flush loop wakeup error: {e}")
+                continue
+
+            if not self._running:
+                break
+
+            try:
+                await self._flush()
+            except Exception as e:
                 logger.error(f"Flush loop error: {e}")
+
+        try:
+            if self._graceful_shutdown:
+                await self.flush_all()
+            else:
+                await self.close()
+        except Exception as e:
+            logger.error(f"Error during flush loop shutdown: {e}")
 
     async def _flush(self) -> None:
         """Flush current batch to server."""
@@ -490,18 +552,18 @@ class EventBatcher:
         Called on process exit via atexit.
         """
         with self._lock:
+            initial_remaining = len(self._events)
+        if initial_remaining > 0:
+            logger.info(f"Flushing {initial_remaining} remaining events on shutdown...")
+
+        self._stop_worker(graceful=True, join_timeout=30.0)
+
+        with self._lock:
             remaining = len(self._events)
-
-        if remaining > 0 and self._loop and not self._loop.is_closed():
-            logger.info(f"Flushing {remaining} remaining events on shutdown...")
-            try:
-                future = asyncio.run_coroutine_threadsafe(self.flush_all(), self._loop)
-                future.result(timeout=30.0)
-            except Exception as e:
-                logger.error(f"Error during shutdown flush: {e}")
+            if remaining > 0:
                 self._events_dropped += remaining
-
-        self.stop()
+                self._events.clear()
+                logger.warning("Dropped %d unsent events during shutdown", remaining)
 
         logger.info(
             f"EventBatcher shutdown: sent={self._events_sent}, "
@@ -600,8 +662,7 @@ async def shutdown_observability() -> None:
     """
     global _batcher
     if _batcher is not None:
-        await _batcher.flush_all()
-        _batcher.stop()
+        await asyncio.to_thread(_batcher.shutdown)
         _batcher = None
 
 
