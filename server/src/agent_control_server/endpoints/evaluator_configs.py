@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import require_admin_key
 from ..db import get_async_db
 from ..errors import APIValidationError, ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
@@ -152,6 +153,7 @@ def _raise_name_conflict(name: str) -> None:
 
 @router.post(
     "",
+    dependencies=[Depends(require_admin_key)],
     response_model=EvaluatorConfigItem,
     summary="Create evaluator config",
     response_description="Created evaluator config",
@@ -284,6 +286,7 @@ async def get_evaluator_config(
 
 @router.put(
     "/{config_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=EvaluatorConfigItem,
     summary="Update evaluator config",
     response_description="Updated evaluator config",
@@ -357,6 +360,7 @@ async def update_evaluator_config(
 
 @router.delete(
     "/{config_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=DeleteEvaluatorConfigResponse,
     summary="Delete evaluator config",
     response_description="Deletion confirmation",

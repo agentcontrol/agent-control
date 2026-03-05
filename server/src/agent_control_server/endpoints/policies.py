@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import require_admin_key
 from ..db import get_async_db
 from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
@@ -21,6 +22,7 @@ _logger = get_logger(__name__)
 
 @router.put(
     "",
+    dependencies=[Depends(require_admin_key)],
     response_model=CreatePolicyResponse,
     summary="Create a new policy",
     response_description="Created policy ID",
@@ -77,6 +79,7 @@ async def create_policy(
 
 @router.post(
     "/{policy_id}/controls/{control_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=AssocResponse,
     summary="Add control to policy",
     response_description="Success confirmation",
@@ -160,6 +163,7 @@ async def add_control_to_policy(
 
 @router.delete(
     "/{policy_id}/controls/{control_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=AssocResponse,
     summary="Remove control from policy",
     response_description="Success confirmation",

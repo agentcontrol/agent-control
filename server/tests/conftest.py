@@ -99,7 +99,17 @@ def setup_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture()
 def client(app: object) -> TestClient:
-    """Test client with valid API key header."""
+    """Default test client with admin API key header."""
+    return TestClient(
+        app,
+        raise_server_exceptions=True,
+        headers={"X-API-Key": TEST_ADMIN_API_KEY},
+    )
+
+
+@pytest.fixture()
+def non_admin_client(app: object) -> TestClient:
+    """Test client with non-admin API key header."""
     return TestClient(
         app,
         raise_server_exceptions=True,

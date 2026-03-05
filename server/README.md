@@ -96,8 +96,10 @@ The Agent Control Server supports API key authentication via the `X-API-Key` hea
 
 | Level | Endpoints | Key Type |
 |-------|-----------|----------|
-| Public | `/health` | None required |
-| Protected | All `/api/v1/*` endpoints | Regular or Admin |
+| Public | `/health`, `/metrics` | None required |
+| Runtime + Read | All `GET /api/v1/*` endpoints and `POST /api/v1/agents/initAgent` | Regular or Admin |
+| Runtime refresh | `GET /api/v1/agents/{agent_name}/controls` | Regular or Admin |
+| Control-plane mutations | `POST`/`PATCH`/`PUT`/`DELETE` mutations for agents, controls, policies, evaluator configs | Admin only |
 
 ### Key Rotation
 
@@ -139,6 +141,7 @@ AGENT_CONTROL_API_KEY_ENABLED=false
 ## API Endpoints
 
 All protected endpoints require `X-API-Key` header when authentication is enabled.
+Control-plane mutation endpoints additionally require an admin API key.
 
 ### System Endpoints
 

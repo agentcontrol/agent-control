@@ -25,6 +25,7 @@ from sqlalchemy import Integer, String, delete, func, literal, or_, select, unio
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import require_admin_key
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
@@ -197,6 +198,7 @@ async def _validate_control_definition(
 
 @router.put(
     "",
+    dependencies=[Depends(require_admin_key)],
     response_model=CreateControlResponse,
     summary="Create a new control",
     response_description="Created control ID",
@@ -374,6 +376,7 @@ async def get_control_data(
 
 @router.put(
     "/{control_id}/data",
+    dependencies=[Depends(require_admin_key)],
     response_model=SetControlDataResponse,
     summary="Update control configuration data",
     response_description="Success confirmation",
@@ -682,6 +685,7 @@ async def list_controls(
 
 @router.delete(
     "/{control_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=DeleteControlResponse,
     summary="Delete a control",
     response_description="Deletion confirmation with dissociation info",
@@ -823,6 +827,7 @@ async def delete_control(
 
 @router.patch(
     "/{control_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=PatchControlResponse,
     summary="Update control metadata",
     response_description="Updated control information",

@@ -1,5 +1,7 @@
 """Tests for API key authentication."""
 
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -60,10 +62,10 @@ class TestProtectedEndpoints:
         assert response.status_code == 401
         assert "Invalid API key" in response.json()["detail"]
 
-    def test_valid_api_key_succeeds(self, client: TestClient) -> None:
+    def test_valid_api_key_succeeds(self, non_admin_client: TestClient) -> None:
         """Given valid API key, when requesting protected endpoint, then request is accepted."""
         # When:
-        response = client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000")
+        response = non_admin_client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000")
 
         # Then: (404 expected for non-existent resource, but NOT 401/403)
         assert response.status_code == 404
@@ -80,10 +82,10 @@ class TestProtectedEndpoints:
 class TestEvaluatorsEndpoint:
     """Evaluators endpoint requires valid API key (regular or admin)."""
 
-    def test_regular_key_works_on_evaluators(self, client: TestClient) -> None:
+    def test_regular_key_works_on_evaluators(self, non_admin_client: TestClient) -> None:
         """Given regular API key, when listing evaluators, then returns 200."""
         # When:
-        response = client.get("/api/v1/evaluators")
+        response = non_admin_client.get("/api/v1/evaluators")
 
         # Then:
         assert response.status_code == 200
@@ -136,6 +138,156 @@ class TestAuthDisabled:
 
         # Then:
         assert response.status_code == 200
+
+
+_VALID_CONTROL_DATA = {
+    "description": "Test Control",
+    "enabled": True,
+    "execution": "server",
+    "scope": {"step_types": ["llm"], "stages": ["pre"]},
+    "selector": {"path": "input"},
+    "evaluator": {
+        "name": "regex",
+        "config": {"pattern": "test", "flags": []},
+    },
+    "action": {"decision": "deny"},
+    "tags": ["test"],
+}
+
+
+class TestAdminWriteEndpointAuthorization:
+    """Mutation endpoints require admin API keys."""
+
+    @pytest.mark.parametrize(
+        ("method", "path", "json_body"),
+        [
+            ("PUT", "/api/v1/controls", {"name": "control-authz-blocked"}),
+            ("PUT", "/api/v1/controls/1/data", {"data": _VALID_CONTROL_DATA}),
+            ("PATCH", "/api/v1/controls/1", {"enabled": False}),
+            ("DELETE", "/api/v1/controls/1", None),
+            ("PUT", "/api/v1/policies", {"name": "policy-authz-blocked"}),
+            ("POST", "/api/v1/policies/1/controls/1", None),
+            ("DELETE", "/api/v1/policies/1/controls/1", None),
+            (
+                "POST",
+                "/api/v1/evaluator-configs",
+                {
+                    "name": "cfg-authz-blocked",
+                    "description": None,
+                    "evaluator": "regex",
+                    "config": {"pattern": "blocked"},
+                },
+            ),
+            (
+                "PUT",
+                "/api/v1/evaluator-configs/1",
+                {
+                    "name": "cfg-authz-blocked-update",
+                    "description": None,
+                    "evaluator": "regex",
+                    "config": {"pattern": "blocked"},
+                },
+            ),
+            ("DELETE", "/api/v1/evaluator-configs/1", None),
+            ("POST", "/api/v1/agents/agent-authz-test01/policies/1", None),
+            ("POST", "/api/v1/agents/agent-authz-test01/policy/1", None),
+            ("DELETE", "/api/v1/agents/agent-authz-test01/policies/1", None),
+            ("DELETE", "/api/v1/agents/agent-authz-test01/policies", None),
+            ("DELETE", "/api/v1/agents/agent-authz-test01/policy", None),
+            ("POST", "/api/v1/agents/agent-authz-test01/controls/1", None),
+            ("DELETE", "/api/v1/agents/agent-authz-test01/controls/1", None),
+            (
+                "PATCH",
+                "/api/v1/agents/agent-authz-test01",
+                {"remove_steps": [], "remove_evaluators": []},
+            ),
+        ],
+    )
+    def test_non_admin_key_denied_on_admin_only_mutations(
+        self,
+        non_admin_client: TestClient,
+        method: str,
+        path: str,
+        json_body: dict[str, object] | None,
+    ) -> None:
+        response = non_admin_client.request(method, path, json=json_body)
+
+        assert response.status_code == 403
+        body = response.json()
+        assert body["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
+
+    def test_non_admin_key_can_init_agent_and_fetch_controls(
+        self, non_admin_client: TestClient
+    ) -> None:
+        agent_name = f"runtime-agent-{uuid.uuid4().hex[:8]}"
+        init_payload = {
+            "agent": {
+                "agent_name": agent_name,
+                "agent_description": "Runtime agent",
+                "agent_version": "1.0",
+            },
+            "steps": [
+                {
+                    "type": "tool",
+                    "name": "tool_a",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"},
+                }
+            ],
+            "evaluators": [],
+        }
+
+        init_response = non_admin_client.post("/api/v1/agents/initAgent", json=init_payload)
+        assert init_response.status_code == 200
+
+        controls_response = non_admin_client.get(f"/api/v1/agents/{agent_name}/controls")
+        assert controls_response.status_code == 200
+        assert controls_response.json()["controls"] == []
+
+    def test_admin_key_allowed_on_representative_mutations(self, admin_client: TestClient) -> None:
+        control_name = f"control-authz-{uuid.uuid4().hex[:8]}"
+        control_response = admin_client.put("/api/v1/controls", json={"name": control_name})
+        assert control_response.status_code == 200
+        control_id = control_response.json()["control_id"]
+
+        policy_name = f"policy-authz-{uuid.uuid4().hex[:8]}"
+        policy_response = admin_client.put("/api/v1/policies", json={"name": policy_name})
+        assert policy_response.status_code == 200
+        policy_id = policy_response.json()["policy_id"]
+
+        add_control_response = admin_client.post(
+            f"/api/v1/policies/{policy_id}/controls/{control_id}"
+        )
+        assert add_control_response.status_code == 200
+
+        agent_name = f"admin-agent-{uuid.uuid4().hex[:8]}"
+        init_payload = {
+            "agent": {
+                "agent_name": agent_name,
+                "agent_description": "Admin agent",
+                "agent_version": "1.0",
+            },
+            "steps": [],
+            "evaluators": [],
+        }
+        init_response = admin_client.post("/api/v1/agents/initAgent", json=init_payload)
+        assert init_response.status_code == 200
+
+        set_policy_response = admin_client.post(
+            f"/api/v1/agents/{agent_name}/policy/{policy_id}"
+        )
+        assert set_policy_response.status_code == 200
+
+        evaluator_config_response = admin_client.post(
+            "/api/v1/evaluator-configs",
+            json={
+                "name": f"cfg-authz-{uuid.uuid4().hex[:8]}",
+                "description": None,
+                "evaluator": "regex",
+                "config": {"pattern": "allowed"},
+            },
+        )
+        assert evaluator_config_response.status_code == 201
 
 
 class TestMultipleApiKeys:
