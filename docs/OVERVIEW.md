@@ -656,7 +656,7 @@ docker-compose up
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
+We welcome contributions! See [CONTRIBUTING.md](https://github.com/agentcontrol/agent-control/blob/main/CONTRIBUTING.md) for guidelines.
 
 ### Adding an Evaluator
 
@@ -669,4 +669,4 @@ We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelin
 
 ## License
 
-Apache 2.0 — See [LICENSE](../LICENSE) for details.
+Apache 2.0 — See [LICENSE](https://github.com/agentcontrol/agent-control/blob/main/LICENSE) for details.

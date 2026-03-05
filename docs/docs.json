@@ -1,0 +1,48 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "aspen",
+  "appearance": {
+    "default": "dark",
+    "strict": true
+  },
+  "name": "Agent Control Docs",
+  "colors": {
+    "primary": "#E35454",
+    "light": "#40C2F9",
+    "dark": "#1098F7"
+  },
+  "fonts": {
+    "family": "Geist"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["OVERVIEW"]
+          },
+          {
+            "group": "Reference",
+            "pages": ["REFERENCE", "observability", "testing"]
+          },
+          {
+            "group": "Evaluators",
+            "pages": ["evaluators/json", "evaluators/sql"]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/agentcontrol/agent-control",
+        "icon": "github"
+      }
+    ]
+  }
+}

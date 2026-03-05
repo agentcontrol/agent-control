@@ -418,6 +418,23 @@ For detailed development workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Documentation
 
+### Mintlify docs local preview
+
+Run docs commands from the `docs/` directory:
+
+```bash
+cd docs
+npm install
+npm run dev
+```
+
+For CI-like checks:
+
+```bash
+npm run build
+npm run broken-links
+```
+
 ### Core Documentation
 
 - **[Reference Guide](docs/REFERENCE.md)** — Complete reference for concepts, evaluators, SDK, and API
