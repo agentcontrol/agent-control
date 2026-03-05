@@ -83,7 +83,7 @@ def test_action_error_with_deny_match():
     action_type, error = _action_error(result)
 
     assert action_type == "deny"
-    assert "Policy violation [test_control]" in str(error)
+    assert "Control violation [test_control]" in str(error)
     assert "Access denied" in str(error)
 
 

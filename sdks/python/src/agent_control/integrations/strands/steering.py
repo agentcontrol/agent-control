@@ -83,22 +83,26 @@ class AgentControlSteeringHandler(SteeringHandler):
             deny_match = next((m for m in (result.matches or []) if m.action == "deny"), None)
             if deny_match:
                 msg = getattr(getattr(deny_match, "result", None), "message", None) or result.reason
-                error_msg = f"Policy violation [{deny_match.control_name}]: {msg}"
                 if self.enable_logging:
                     logger.debug(
                         "agent=<%s>, control=<%s> | deny raised",
                         self.agent_name,
                         deny_match.control_name,
                     )
-                raise ControlViolationError(message=error_msg)
+                raise ControlViolationError(
+                    control_id=deny_match.control_id,
+                    control_name=deny_match.control_name,
+                    message=msg or "Control violation",
+                    metadata=getattr(deny_match.result, "metadata", None),
+                )
 
         except ControlViolationError:
             raise
-        except Exception as exc:
-            logger.debug(
-                "agent=<%s>, error=<%s> | steering evaluation failed",
+        except Exception:
+            logger.warning(
+                "agent=<%s> | steering evaluation failed; proceeding without enforcement",
                 self.agent_name,
-                exc,
+                exc_info=True,
             )
 
         self.last_steer_info = None

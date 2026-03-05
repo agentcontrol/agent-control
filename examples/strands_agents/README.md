@@ -114,11 +114,11 @@ hook = AgentControlHook(
 )
 ```
 
-**Steering integration (dual-hook)**:
+**Steering integration**:
 - `AgentControlHook` for tool-stage deny (hard blocks)
 - `AgentControlSteeringHandler` for LLM steer → `Guide()` (corrective guidance)
 
-See `steering_demo/` for complete implementation.
+See `steering_demo/README.md` for complete implementation.
 
 ## Troubleshooting
 

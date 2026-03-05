@@ -43,7 +43,12 @@ def _action_error(result: EvaluationResult) -> tuple[str, Exception] | None:
     msg = msg or f"Control '{match.control_name}' triggered"
 
     if match.action == "deny":
-        deny_err = ControlViolationError(message=f"Policy violation [{match.control_name}]: {msg}")
+        deny_err = ControlViolationError(
+            control_id=match.control_id,
+            control_name=match.control_name,
+            message=msg,
+            metadata=getattr(match.result, "metadata", None),
+        )
         return "deny", deny_err
 
     ctx = getattr(match, "steering_context", None)
@@ -142,8 +147,18 @@ class AgentControlHook(HookProvider):
                 control_name,
             )
             self._invoke_callback(control_name, stage, result)
-            error_msg = f"Policy violation [{control_name}]: {reason}"
-            self._raise_error(ControlViolationError(message=error_msg), use_runtime_error)
+            self._raise_error(
+                ControlViolationError(
+                    control_name=control_name,
+                    message=reason or "Control violation",
+                    metadata=(
+                        getattr(first_match.result, "metadata", None)
+                        if result.matches
+                        else None
+                    ),
+                ),
+                use_runtime_error,
+            )
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         event_map = {
@@ -210,8 +225,10 @@ class AgentControlHook(HookProvider):
 
     async def check_after_tool(self, event: AfterToolCallEvent) -> None:
         tool_name, tool_output = self._extract_tool_data(event)
+        tool_input = event.tool_use.get("input", {}) if event.tool_use else {}
         await self._evaluate_and_enforce(
             step_name=tool_name,
+            input=tool_input,
             output=tool_output,
             step_type="tool",
             stage="post",

@@ -118,7 +118,7 @@ async def test_steer_after_model_with_deny_match(steering_handler, mock_strands_
                 stop_reason="end_turn"
             )
 
-        assert "Policy violation [test_control]" in str(exc_info.value)
+        assert "Control violation [test_control]" in str(exc_info.value)
         assert "Access denied" in str(exc_info.value)
 
 

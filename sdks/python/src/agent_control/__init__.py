@@ -703,7 +703,7 @@ async def remove_all_agent_policies(
     """Remove all policy associations from an agent."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.remove_agent_policy(client, agent_name)
+        return await agents.remove_all_agent_policies(client, agent_name)
 
 
 async def add_agent_control(
