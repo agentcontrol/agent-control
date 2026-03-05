@@ -117,130 +117,89 @@ class TestEventBatcherStartStop:
         assert batcher._running is False
 
 
-class TestEventBatcherLazyStart:
-    """Tests for EventBatcher lazy loop attachment."""
+class TestEventBatcherWorkerThread:
+    """Tests for EventBatcher dedicated worker thread."""
 
-    def test_start_without_loop_sets_running_but_no_loop(self):
-        """Test that start() in sync context sets _running but leaves _loop as None."""
+    def test_start_creates_worker_thread(self):
+        """Test that start() creates a dedicated daemon thread with its own loop."""
         batcher = EventBatcher()
         batcher.start()
         assert batcher._running is True
-        assert batcher._loop is None
-        batcher.stop()
-
-    @pytest.mark.asyncio
-    async def test_add_event_attaches_to_loop(self):
-        """Test that add_event() lazily attaches to a running event loop."""
-        batcher = EventBatcher()
-        # Simulate start() called from sync context: _running=True but _loop=None
-        batcher._running = True
-        assert batcher._loop is None
-
-        # Now add_event in async context should attach to the loop
-        event = create_mock_event()
-        result = batcher.add_event(event)
-
-        assert result is True
-        assert batcher._loop is not None
-        assert batcher._flush_task is not None
-
-        batcher.stop()
-
-    def test_add_event_no_loop_still_queues(self):
-        """Test that add_event still queues events when no loop is available."""
-        batcher = EventBatcher()
-        batcher._running = True
-        # _loop stays None in sync context
-
-        event = create_mock_event()
-        result = batcher.add_event(event)
-
-        assert result is True
-        assert len(batcher._events) == 1
-        batcher.stop()
-
-    @pytest.mark.asyncio
-    async def test_reattaches_after_loop_closes_between_asyncio_run_calls(self):
-        """Test that batcher reattaches when a previous loop has been closed.
-
-        Reproduces the sync @control flow: sync_wrapper calls asyncio.run()
-        per invocation, creating and closing a loop each time. The batcher
-        must detect the closed loop and reattach to the new one.
-        """
-        batcher = EventBatcher()
-        batcher._running = True
-
-        # Simulate first asyncio.run(): attach to a loop, then close it
-        first_loop = asyncio.new_event_loop()
-        batcher._loop = first_loop
-        first_loop.close()
-
-        # _loop is non-None but closed - the old bug would skip reattach
-        assert batcher._loop is not None
-        assert batcher._loop.is_closed()
-
-        # Now add_event in a new async context should reattach
-        event = create_mock_event()
-        result = batcher.add_event(event)
-
-        assert result is True
+        assert batcher._thread is not None
+        assert batcher._thread.is_alive()
+        assert batcher._thread.daemon is True
         assert batcher._loop is not None
         assert not batcher._loop.is_closed()
-        assert batcher._flush_task is not None
-
         batcher.stop()
 
-    @pytest.mark.asyncio
-    async def test_second_sync_like_call_still_flushes_when_batch_full(self):
-        """Test that events flush correctly after loop reattachment.
+    def test_sync_repeated_asyncio_run_still_flushes(self):
+        """Test that events flush even across repeated asyncio.run() calls.
 
-        Simulates two sync_wrapper-style calls: first loop closes, second
-        loop must pick up and flush the accumulated events.
+        Reproduces the sync @control flow: sync_wrapper calls asyncio.run()
+        per invocation, creating and closing a caller loop each time. The
+        batcher's dedicated thread should be unaffected.
         """
-        import warnings
+        import time
 
-        batcher = EventBatcher(batch_size=2)
-        batcher._running = True
+        batcher = EventBatcher(batch_size=100, flush_interval=0.1)
         batcher._send_batch = AsyncMock(return_value=True)
+        batcher.start()
 
-        # Simulate first call leaving a closed loop with queued events
-        first_loop = asyncio.new_event_loop()
-        batcher._loop = first_loop
-        batcher.add_event(create_mock_event())
-        # Suppress the expected warning when the stale flush task is discarded
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            first_loop.close()
-
-            # Second call in new async context - add enough to trigger flush
+        # Simulate three sync_wrapper-style calls, each with its own asyncio.run()
+        for _ in range(3):
             batcher.add_event(create_mock_event())
-            batcher.add_event(create_mock_event())
+            # Each sync_wrapper call creates and closes a caller loop
+            asyncio.run(asyncio.sleep(0))
 
-        # Allow the scheduled flush task to run
-        await asyncio.sleep(0)
-        await batcher._flush()
+        # Wait for the flush interval to fire on the worker thread
+        time.sleep(0.3)
 
-        assert batcher._events_sent >= 2
+        assert batcher._events_sent == 3
+        assert len(batcher._events) == 0
         batcher.stop()
 
-    @pytest.mark.asyncio
-    async def test_try_attach_loop_idempotent(self):
-        """Test that repeated add_event calls don't create multiple flush tasks."""
-        batcher = EventBatcher()
-        batcher._running = True
+    def test_worker_loop_survives_caller_loop_closures(self):
+        """Test that worker loop is unaffected by caller loops being closed."""
+        batcher = EventBatcher(batch_size=100, flush_interval=0.1)
+        batcher._send_batch = AsyncMock(return_value=True)
+        batcher.start()
 
-        # First add_event attaches to the loop
+        worker_loop = batcher._loop
+
+        # Create and close several caller loops - should not affect worker
+        for _ in range(3):
+            loop = asyncio.new_event_loop()
+            loop.close()
+
+        assert batcher._loop is worker_loop
+        assert not batcher._loop.is_closed()
+
         batcher.add_event(create_mock_event())
-        first_task = batcher._flush_task
+        batcher.add_event(create_mock_event())
 
-        # Subsequent calls should not create new tasks
+        import time
+        time.sleep(0.3)
+
+        assert batcher._events_sent == 2
+        batcher.stop()
+
+    def test_shutdown_flushes_and_joins_thread(self):
+        """Test that shutdown() flushes remaining events and joins the worker thread."""
+        batcher = EventBatcher(batch_size=100, flush_interval=60.0)
+        batcher._send_batch = AsyncMock(return_value=True)
+        batcher.start()
+
         for _ in range(5):
             batcher.add_event(create_mock_event())
 
-        assert batcher._flush_task is first_task
-        assert len(batcher._events) == 6
+        assert len(batcher._events) == 5
 
-        batcher.stop()
+        batcher.shutdown()
+
+        assert batcher._events_sent == 5
+        assert len(batcher._events) == 0
+        assert not batcher._running
+        assert batcher._thread is None
 
 
 class TestEventBatcherAddEvent:

@@ -244,7 +244,13 @@ class EventBatcher:
     - Reaching batch_size events (default: 100)
     - Flush interval timeout (default: 5 seconds)
 
-    Thread-safe and async-safe.
+    Uses a dedicated daemon thread with its own event loop for flush
+    scheduling, so it works consistently regardless of caller loop
+    lifecycle (sync callers, repeated asyncio.run(), long-lived async
+    servers, etc.).
+
+    Thread-safe. add_event() is non-blocking and can be called from
+    any thread or async context.
 
     Attributes:
         server_url: Base URL of the Agent Control server
@@ -281,10 +287,10 @@ class EventBatcher:
         self._events: list[ControlExecutionEvent] = []
         self._lock = threading.Lock()
 
-        # Background flush task
-        self._flush_task: asyncio.Task | None = None
-        self._running = False
+        # Dedicated worker loop and thread
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+        self._running = False
 
         # Reusable HTTP client for connection pooling
         self._client: httpx.AsyncClient | None = None
@@ -295,28 +301,45 @@ class EventBatcher:
         self._flush_count = 0
 
     def start(self) -> None:
-        """Start the background flush task."""
+        """Start the dedicated worker thread and flush loop."""
         if self._running:
             return
 
         self._running = True
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(
+            target=self._run_worker_loop,
+            name="agent-control-event-batcher",
+            daemon=True,
+        )
+        self._thread.start()
+        logger.debug("EventBatcher started (dedicated worker thread)")
 
-        # Try to get current event loop
+    def _run_worker_loop(self) -> None:
+        """Entry point for the worker thread. Runs the event loop."""
+        assert self._loop is not None
+        loop = self._loop
+        asyncio.set_event_loop(loop)
         try:
-            self._loop = asyncio.get_running_loop()
-            self._flush_task = self._loop.create_task(self._flush_loop())
+            loop.run_until_complete(self._flush_loop())
         except RuntimeError:
-            # No running loop - _try_attach_loop() in add_event() will retry
+            # Expected when stop() calls loop.stop() while flush_loop is sleeping
             pass
-
-        logger.debug("EventBatcher started")
+        finally:
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except RuntimeError:
+                pass
+            loop.close()
 
     def stop(self) -> None:
-        """Stop the background flush task."""
+        """Stop the worker thread. Does not flush remaining events."""
         self._running = False
-        if self._flush_task:
-            self._flush_task.cancel()
-            self._flush_task = None
+        if self._loop and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+        self._thread = None
         logger.debug("EventBatcher stopped")
 
     async def close(self) -> None:
@@ -325,38 +348,12 @@ class EventBatcher:
             await self._client.aclose()
             self._client = None
 
-    def _try_attach_loop(self) -> None:
-        """Try to attach to a running event loop and start the flush task.
-
-        Called lazily from add_event() and _schedule_flush() when the batcher
-        has no usable loop - either because start() was called from sync
-        context, or because a previous loop was closed (e.g. sync_wrapper
-        uses asyncio.run() which creates and closes a loop each call).
-
-        Must be called with self._lock held.
-        """
-        if self._loop is not None and not self._loop.is_closed():
-            # Already attached to a healthy loop
-            if self._flush_task is not None and not self._flush_task.done():
-                return
-            # Loop is alive but flush task is missing/done - recreate it
-            self._flush_task = self._loop.create_task(self._flush_loop())
-            return
-        # Stale or missing loop - clear and try to reattach
-        self._loop = None
-        self._flush_task = None
-        try:
-            self._loop = asyncio.get_running_loop()
-            self._flush_task = self._loop.create_task(self._flush_loop())
-            logger.debug("EventBatcher attached to event loop")
-        except RuntimeError:
-            pass
-
     def add_event(self, event: ControlExecutionEvent) -> bool:
         """
         Add an event to the batch.
 
-        Thread-safe and non-blocking.
+        Thread-safe and non-blocking. Can be called from any thread or
+        async context.
 
         Args:
             event: Control execution event to add
@@ -365,12 +362,6 @@ class EventBatcher:
             True if event was added, False if dropped (e.g., queue full)
         """
         with self._lock:
-            # Lazy-start: attach/reattach to a running event loop.
-            # Handles both initial sync-context start and closed-loop recovery
-            # (e.g. after sync_wrapper's asyncio.run() closes a loop).
-            if self._running:
-                self._try_attach_loop()
-            # Limit queue size to prevent memory issues
             if len(self._events) >= self.batch_size * 10:
                 self._events_dropped += 1
                 logger.warning("Event dropped: queue full")
@@ -385,24 +376,14 @@ class EventBatcher:
             return True
 
     def _schedule_flush(self) -> None:
-        """Schedule an immediate flush (non-blocking).
-
-        Must be called with self._lock held.
-        """
-        if not self._running:
-            return
-        self._try_attach_loop()
-        if self._loop is None or self._loop.is_closed():
+        """Schedule an immediate flush on the worker loop (non-blocking)."""
+        loop = self._loop
+        if not self._running or not loop or loop.is_closed():
             return
         try:
-            self._loop.call_soon_threadsafe(
-                lambda: asyncio.create_task(self._flush())
-            )
+            loop.call_soon_threadsafe(lambda: loop.create_task(self._flush()))
         except RuntimeError:
-            # Loop closed between our check and the call - clear stale state
-            # so the next add_event() can reattach.
-            self._loop = None
-            self._flush_task = None
+            pass
 
     async def _flush_loop(self) -> None:
         """Background task that flushes events periodically."""
@@ -417,7 +398,6 @@ class EventBatcher:
 
     async def _flush(self) -> None:
         """Flush current batch to server."""
-        # Get events to send
         with self._lock:
             if not self._events:
                 return
@@ -427,7 +407,6 @@ class EventBatcher:
         if not events_to_send:
             return
 
-        # Send to server
         success = await self._send_batch(events_to_send)
 
         if success:
@@ -438,7 +417,6 @@ class EventBatcher:
                 f"(total sent: {self._events_sent})"
             )
         else:
-            # Re-queue events on failure (at front for retry)
             with self._lock:
                 self._events = events_to_send + self._events
             logger.warning(f"Failed to send batch, re-queued {len(events_to_send)} events")
@@ -464,7 +442,6 @@ class EventBatcher:
         if self.api_key:
             headers["X-API-Key"] = self.api_key
 
-        # Serialize events
         payload = {
             "events": [event.model_dump(mode="json") for event in events]
         }
@@ -492,7 +469,6 @@ class EventBatcher:
             except Exception as e:
                 logger.error(f"Error sending events: {e}")
 
-            # Wait before retry
             if attempt < get_settings().max_retries - 1:
                 await asyncio.sleep(get_settings().retry_delay * (attempt + 1))
 
@@ -505,29 +481,27 @@ class EventBatcher:
                 if not self._events:
                     break
             await self._flush()
-        # Close the HTTP client after flushing
         await self.close()
 
     def shutdown(self) -> None:
         """
-        Synchronous shutdown - flush remaining events.
+        Synchronous shutdown - flush remaining events and join worker thread.
 
         Called on process exit via atexit.
         """
-        self.stop()
-
         with self._lock:
             remaining = len(self._events)
 
-        if remaining > 0:
+        if remaining > 0 and self._loop and not self._loop.is_closed():
             logger.info(f"Flushing {remaining} remaining events on shutdown...")
-
-            # Try to flush synchronously using asyncio.run() for robust lifecycle handling
             try:
-                asyncio.run(self.flush_all())
+                future = asyncio.run_coroutine_threadsafe(self.flush_all(), self._loop)
+                future.result(timeout=30.0)
             except Exception as e:
                 logger.error(f"Error during shutdown flush: {e}")
                 self._events_dropped += remaining
+
+        self.stop()
 
         logger.info(
             f"EventBatcher shutdown: sent={self._events_sent}, "
