@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentControlClient } from "../src/client";
-import { control, guard, check, _registerDefaultClient } from "../src/control";
+import { control, _registerDefaultClient } from "../src/control";
 import { ControlViolationError, ControlSteerError } from "../src/errors";
 
 async function mockClient(evaluateResult: Record<string, unknown>) {
@@ -128,63 +128,5 @@ describe("control", () => {
     await wrapped(5);
 
     expect(evaluateMock.mock.calls[0][0].body.step.name).toBe("my-step");
-  });
-});
-
-describe("guard", () => {
-  it("passes through when evaluation is safe", async () => {
-    await mockClient(SAFE_RESULT);
-
-    const result = await guard({ name: "inline-check", input: "hello" }, async () => "guarded");
-
-    expect(result).toBe("guarded");
-  });
-
-  it("throws ControlViolationError on deny", async () => {
-    await mockClient({
-      isSafe: false,
-      confidence: 1.0,
-      matches: [
-        {
-          controlId: 1,
-          controlName: "guard-block",
-          action: "deny",
-          result: { matched: true, confidence: 1.0, message: "Denied" },
-        },
-      ],
-    });
-
-    await expect(
-      guard({ name: "inline-check", input: "bad" }, async () => "nope"),
-    ).rejects.toThrow(ControlViolationError);
-  });
-});
-
-describe("check", () => {
-  it("returns evaluation response on safe check", async () => {
-    await mockClient(SAFE_RESULT);
-
-    const result = await check("pre", { name: "manual", input: "data" });
-
-    expect(result.isSafe).toBe(true);
-  });
-
-  it("throws on deny", async () => {
-    await mockClient({
-      isSafe: false,
-      confidence: 1.0,
-      matches: [
-        {
-          controlId: 1,
-          controlName: "manual-block",
-          action: "deny",
-          result: { matched: true, confidence: 1.0, message: "Blocked" },
-        },
-      ],
-    });
-
-    await expect(check("pre", { name: "manual", input: "bad" })).rejects.toThrow(
-      ControlViolationError,
-    );
   });
 });

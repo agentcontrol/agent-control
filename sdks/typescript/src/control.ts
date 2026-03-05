@@ -46,19 +46,6 @@ export interface ControlOptions {
 
 export type AsyncFn<TArgs extends unknown[], TResult> = (...args: TArgs) => Promise<TResult>;
 
-export interface GuardContext {
-  name: string;
-  type?: "llm" | "tool";
-  input: unknown;
-}
-
-export interface CheckStep {
-  name: string;
-  type?: "llm" | "tool";
-  input: unknown;
-  output?: unknown;
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -271,57 +258,5 @@ export function control<TArgs extends unknown[], TResult>(
   return wrapped;
 }
 
-// ---------------------------------------------------------------------------
-// guard()  — Inline one-off protection
-// ---------------------------------------------------------------------------
-
-/**
- * Guard a single async expression with pre/post evaluation checks.
- *
- * ```ts
- * const result = await guard(
- *   { name: "chat", input: userMessage },
- *   async () => assistant.respond(userMessage),
- * );
- * ```
- */
-export async function guard<T>(context: GuardContext, fn: () => Promise<T>): Promise<T> {
-  const client = requireClient();
-  const { agentName } = client.config!;
-
-  return withChecks(
-    client,
-    agentName,
-    { name: context.name, type: context.type ?? "llm", input: context.input },
-    fn,
-  );
-}
-
-// ---------------------------------------------------------------------------
-// check()  — Explicit pre/post check (escape hatch)
-// ---------------------------------------------------------------------------
-
-/**
- * Run an explicit evaluation check without wrapping a function.
- *
- * ```ts
- * await check("pre",  { name: "chat", input: userMessage });
- * const result = await assistant.respond(userMessage);
- * await check("post", { name: "chat", input: userMessage, output: result });
- * ```
- *
- * Throws ControlViolationError / ControlSteerError on deny/steer.
- */
-export async function check(stage: "pre" | "post", step: CheckStep): Promise<EvaluationResponse> {
-  const client = requireClient();
-  const { agentName } = client.config!;
-
-  const result = await callEvaluate(client, agentName, stage, {
-    name: step.name,
-    type: step.type ?? "llm",
-    input: step.input,
-    output: step.output,
-  });
-  handleResult(result);
-  return result;
-}
+// NOTE: `guard()` and `check()` are temporarily disabled from the public API
+// while we evaluate long-term API surface decisions. Revisit later if needed.
