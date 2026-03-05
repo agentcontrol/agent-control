@@ -311,7 +311,6 @@ class EventBatcher:
         self._running = True
         self._graceful_shutdown = False
         self._worker_ready.clear()
-        self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
             target=self._run_worker_loop,
             name="agent-control-event-batcher",
@@ -324,8 +323,8 @@ class EventBatcher:
 
     def _run_worker_loop(self) -> None:
         """Entry point for the worker thread. Runs the event loop."""
-        assert self._loop is not None
-        loop = self._loop
+        loop = asyncio.new_event_loop()
+        self._loop = loop
         asyncio.set_event_loop(loop)
         self._flush_signal = asyncio.Event()
         self._worker_ready.set()
