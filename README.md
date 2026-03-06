@@ -38,6 +38,26 @@ Traditional guardrails embedded inside your agent code have critical limitations
 - **Fail-Safe Defaults** — Deny controls fail closed on error with configurable error handling
 - **API Key Authentication** — Secure your control server in production
 
+## Performance
+
+Benchmarks were run locally on a MacBook (Apple M5, 16 GB RAM) using Docker Compose (`postgres:16` + `agent-control`).
+
+| Endpoint | Scenario | RPS | Error rate | p50 | p99 |
+|----------|----------|-----|------------|-----|-----|
+| Agent init | Create / Update | 509 | 0% | 19 ms | 54 ms |
+| Evaluation | Built-in evaluators (regex, list, JSON, SQL) | ~400 | 0% | 44-46 ms | 61-77 ms |
+| Evaluation | 1 control | 437 | 0% | 36 ms | 61 ms |
+| Evaluation | 10 controls | ~300 | 0% | 35 ms | 66 ms |
+| Evaluation | 50 controls | 199 | 0% | 63 ms | 91 ms |
+| Controls refresh | 5-50 controls | 392 | 0% | 20-27 ms | 27-61 ms |
+
+Observed in this setup: moving from 1 to 50 controls increased evaluation p50 by about 27 ms.
+
+Run profile: 2 minutes per scenario, 5 users for latency; 10-20 users for throughput.
+Reporting: `p50`/`p99` latency plus throughput (`RPS`) and error rate from Locust summary outputs.
+
+Local laptop benchmarks are directional and intended for developer reference. They are not production sizing guidance.
+
 ### Examples
 
 Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start) for hands-on setup. 
