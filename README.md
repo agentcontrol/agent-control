@@ -45,9 +45,9 @@ Benchmarks were run locally on a MacBook (Apple M5, 16 GB RAM) using Docker Comp
 | Endpoint | Scenario | RPS | Error rate | p50 | p99 |
 |----------|----------|-----|------------|-----|-----|
 | Agent init | Create / Update | 509 | 0% | 19 ms | 54 ms |
-| Evaluation | Built-in evaluators (regex, list, JSON, SQL) | ~400 | 0% | 44-46 ms | 61-77 ms |
+| Evaluation | Built-in evaluators (regex, list, JSON, SQL) | 345-437 | 0% | 44-46 ms | 61-77 ms |
 | Evaluation | 1 control | 437 | 0% | 36 ms | 61 ms |
-| Evaluation | 10 controls | ~300 | 0% | 35 ms | 66 ms |
+| Evaluation | 10 controls | 349 | 0% | 35 ms | 66 ms |
 | Evaluation | 50 controls | 199 | 0% | 63 ms | 91 ms |
 | Controls refresh | 5-50 controls | 392 | 0% | 20-27 ms | 27-61 ms |
 
