@@ -39,7 +39,7 @@ export GOOGLE_API_KEY="your-key-here"
 
 ```bash
 export AGENT_CONTROL_URL=http://localhost:8000
-export GOOGLE_MODEL=gemini-2.0-flash
+export GOOGLE_MODEL=gemini-2.5-flash
 ```
 
 ## Setup

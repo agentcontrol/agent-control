@@ -23,7 +23,7 @@ load_dotenv()
 
 AGENT_NAME = "google-adk-callbacks"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
-MODEL_NAME = os.getenv("GOOGLE_MODEL", "gemini-2.0-flash")
+MODEL_NAME = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
 
 CITY_DATA = {
     "new york": {
