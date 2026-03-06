@@ -94,6 +94,31 @@ def _get_builtin_evaluator_names() -> set[str]:
     return _BUILTIN_EVALUATOR_NAMES
 
 
+async def _list_db_controls_for_agent(agent_name: str, db: AsyncSession) -> list[Control]:
+    """Return DB Control rows for all controls (direct + policy-derived) on the agent."""
+    policy_control_ids = (
+        select(policy_controls.c.control_id.label("control_id"))
+        .select_from(
+            policy_controls.join(
+                agent_policies,
+                policy_controls.c.policy_id == agent_policies.c.policy_id,
+            )
+        )
+        .where(agent_policies.c.agent_name == agent_name)
+    )
+    direct_control_ids = select(agent_controls.c.control_id.label("control_id")).where(
+        agent_controls.c.agent_name == agent_name
+    )
+    control_ids_subquery = union_all(policy_control_ids, direct_control_ids).subquery()
+
+    stmt = select(Control).join(
+        control_ids_subquery,
+        Control.id == control_ids_subquery.c.control_id,
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().unique().all())
+
+
 def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[str]:
     """Validate controls can run on this agent."""
     errors: list[str] = []
@@ -744,6 +769,39 @@ async def init_agent(
                 evaluators_changed = True
 
         data_model.evaluators = new_evaluators
+
+    # If agent metadata changed, ensure all existing controls are still compatible with the
+    # updated agent configuration (e.g., TypeScript SDK agents cannot use execution='sdk').
+    if metadata_changed:
+        existing_controls = await _list_db_controls_for_agent(existing.name, db)
+        if existing_controls:
+            # Use an Agent instance reflecting the updated metadata for validation without
+            # persisting it yet.
+            agent_for_validation = Agent(
+                name=existing.name,
+                data=data_model.model_dump(mode="json"),
+            )
+            validation_errors = _validate_controls_for_agent(
+                agent_for_validation, existing_controls
+            )
+            if validation_errors:
+                raise BadRequestError(
+                    error_code=ErrorCode.POLICY_CONTROL_INCOMPATIBLE,
+                    detail="Existing controls are incompatible with updated agent configuration",
+                    hint=(
+                        "Detach or update incompatible controls before changing the agent "
+                        "to use the TypeScript SDK."
+                    ),
+                    errors=[
+                        ValidationErrorItem(
+                            resource="Control",
+                            field="evaluator",
+                            code="incompatible",
+                            message=err,
+                        )
+                        for err in validation_errors
+                    ],
+                )
 
     if steps_changed or evaluators_changed or metadata_changed or force_write:
         existing.data = data_model.model_dump(mode="json")
