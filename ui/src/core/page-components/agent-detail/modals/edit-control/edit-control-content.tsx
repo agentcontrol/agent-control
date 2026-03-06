@@ -138,17 +138,17 @@ export const EditControlContent = ({
       const stepNameRegex = values.step_name_regex.trim();
       const isRegexMode = values.step_name_mode === 'regex';
 
+      const scope: Record<string, unknown> = {};
+      if (stepTypes.length > 0) scope.step_types = stepTypes;
+      if (!isRegexMode && stepNames.length > 0) scope.step_names = stepNames;
+      if (isRegexMode && stepNameRegex) scope.step_name_regex = stepNameRegex;
+      if (values.stages.length > 0) scope.stages = values.stages;
+
       return {
         ...control.control,
         enabled: values.enabled,
         execution: values.execution,
-        scope: {
-          step_types: stepTypes.length > 0 ? stepTypes : undefined,
-          step_names:
-            !isRegexMode && stepNames.length > 0 ? stepNames : undefined,
-          step_name_regex: isRegexMode ? stepNameRegex || undefined : undefined,
-          stages: values.stages.length > 0 ? values.stages : undefined,
-        },
+        scope: Object.keys(scope).length > 0 ? scope : undefined,
         selector: { ...control.control.selector, path: values.selector_path },
         action: {
           decision: values.action_decision,

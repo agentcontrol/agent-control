@@ -66,7 +66,10 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
       // When no steps exist, avoid showing "All steps" alongside "No steps available"
       return steps.length > 0 ? 'All steps' : '';
     }
-    if (selectedStepNames.length === 1) return selectedStepNames[0];
+    if (selectedStepNames.length === 1) {
+      return selectedStepNames[0];
+    }
+    // Two or more: "firstStep +n" so the format stays short (avoids ellipsis)
     return `${selectedStepNames[0]} +${selectedStepNames.length - 1}`;
   }, [selectedStepNames, steps.length]);
 
@@ -229,8 +232,7 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
                 transform: 'translateY(-50%)',
                 pointerEvents: 'none',
                 maxWidth: 'calc(100% - 72px)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                overflow: 'visible',
                 whiteSpace: 'nowrap',
               }}
             >

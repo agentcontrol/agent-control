@@ -14,10 +14,19 @@ import asyncio
 import os
 from agent_control import Agent, AgentControlClient, agents, controls
 
-AGENT_NAME = "customer-support-agent"
+AGENT_NAME = "customer-support-agent-2"
 AGENT_DESCRIPTION = "AI-powered customer support assistant"
 
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
+
+# Steps registered by support_agent.py (@control decorators). Registering them here
+# ensures the UI steps dropdown is populated even if setup runs before the agent app.
+DEMO_STEPS = [
+    {"type": "llm", "name": "respond_to_customer"},
+    {"type": "tool", "name": "lookup_customer"},
+    {"type": "tool", "name": "search_knowledge_base"},
+    {"type": "tool", "name": "create_ticket"},
+]
 
 # Demo controls to create
 # Demonstrates various ControlSelector options: path, tool_names, tool_name_regex
@@ -241,7 +250,7 @@ async def setup_demo(quiet: bool = False):
                 agent_name=agent_name,
                 agent_description=AGENT_DESCRIPTION,
             )
-            result = await agents.register_agent(client, agent, steps=[])
+            result = await agents.register_agent(client, agent, steps=DEMO_STEPS)
             status = "Created" if result.get("created") else "Updated"
             print(f"  {status} agent: {AGENT_NAME}")
         except Exception as e:
