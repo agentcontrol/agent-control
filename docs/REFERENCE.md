@@ -860,8 +860,11 @@ async with AgentControlClient() as client:
 
 | Endpoint | Required Level |
 |----------|----------------|
-| `/health` | Public (no auth) |
-| All `/api/v1/*` | API key required |
+| `/health`, `/metrics` | Public (no auth) |
+| All `GET /api/v1/*` endpoints | API key required (regular or admin) |
+| `POST /api/v1/agents/initAgent` | API key required (regular or admin) |
+| `GET /api/v1/agents/{agent_name}/controls` | API key required (regular or admin) |
+| Control-plane mutation endpoints (`POST`/`PATCH`/`PUT`/`DELETE` on agents/controls/policies/evaluator-configs) | Admin API key required |
 
 ### Key Rotation
 
@@ -933,6 +936,7 @@ Agent Control supports multiple API keys for zero-downtime rotation:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend API URL |
+| `NEXT_PUBLIC_AGENT_CONTROL_API_KEY` | — | API key sent as `X-API-Key` by the UI client (use an admin key for control-plane mutations) |
 
 ### Database Setup
 

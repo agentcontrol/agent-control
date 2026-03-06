@@ -17,10 +17,14 @@ Use an `agent-control` npm version compatible with your server version (this exa
    ```bash
    make server-run
    ```
-3. Optional API key (if server auth is enabled):
+3. Optional API key (if server auth is enabled). This example creates, updates, and deletes
+   controls, so it must be an admin key:
    ```bash
-   export AGENT_CONTROL_API_KEY=your-api-key
+   export AGENT_CONTROL_API_KEY=your-admin-api-key
    ```
+
+If you started the full local stack with the repo-root `docker-compose.yml`, the default
+admin key is `29af8554a1fe4311977b7ce360b20cc3`.
 
 ## Run
 
@@ -33,14 +37,14 @@ AGENT_CONTROL_URL=http://localhost:8000 npm run start
 If your server requires auth:
 
 ```bash
-AGENT_CONTROL_URL=http://localhost:8000 AGENT_CONTROL_API_KEY=your-api-key npm run start
+AGENT_CONTROL_URL=http://localhost:8000 AGENT_CONTROL_API_KEY=your-admin-api-key npm run start
 ```
 
 ## What It Does
 
 The script in `src/quickstart.ts` performs:
 
-1. SDK init with server URL and optional API key
+1. SDK init with server URL and optional admin API key
 2. health check request
 3. list controls request
 4. create control request

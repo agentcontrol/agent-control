@@ -16,6 +16,7 @@ TS_SDK_DIR := sdks/typescript
 ENGINE_DIR := engine
 EVALUATORS_DIR := evaluators/builtin
 GALILEO_DIR := evaluators/contrib/galileo
+UI_DIR := ui
 
 help:
 	@echo "Agent Control - Makefile commands"
@@ -25,6 +26,7 @@ help:
 	@echo ""
 	@echo "Run:"
 	@echo "  make server-<target> - forward to server targets (e.g., server-help, server-alembic-upgrade)"
+	@echo "  make ui-<target>     - forward to UI targets (e.g., ui-help, ui-dev, ui-lint, ui-lint--fix)"
 	@echo "  make openapi-spec    - generate runtime OpenAPI spec at $(OPENAPI_SPEC_PATH)"
 	@echo "  make openapi-spec-check - verify OpenAPI generation succeeds"
 	@echo ""
@@ -213,6 +215,10 @@ evaluators-build:
 .PHONY: server-%
 server-%:
 	$(MAKE) -C $(SERVER_DIR) $(patsubst server-%,%,$@)
+
+.PHONY: ui-%
+ui-%:
+	$(MAKE) -C $(UI_DIR) $(patsubst ui-%,%,$@)
 
 # ---------------------------
 # Contrib Evaluators (Galileo)

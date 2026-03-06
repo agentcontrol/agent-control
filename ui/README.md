@@ -29,6 +29,12 @@ To regenerate API types from a running server:
 pnpm fetch-api-types  # fetches from http://localhost:8000/openapi.json
 ```
 
+If server auth is enabled, set an API key before starting the UI:
+
+```bash
+export NEXT_PUBLIC_AGENT_CONTROL_API_KEY=your-admin-api-key
+```
+
 ## Folder Structure
 
 ```

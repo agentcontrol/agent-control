@@ -13,6 +13,7 @@ import type {
 } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_KEY = process.env.NEXT_PUBLIC_AGENT_CONTROL_API_KEY?.trim() || null;
 
 export const apiClient = createClient<paths>({
   baseUrl: API_URL,
@@ -24,7 +25,11 @@ export const apiClient = createClient<paths>({
 // Add request/response interceptors if needed
 apiClient.use({
   async onRequest({ request }) {
-    // Add authentication token if available
+    if (API_KEY) {
+      request.headers.set('X-API-Key', API_KEY);
+    }
+
+    // Add auth token if available (for future auth modes)
     const token = getAuthToken();
     if (token) {
       request.headers.set('Authorization', `Bearer ${token}`);
