@@ -91,8 +91,17 @@ agent_control.init(
 )
 
 
+_RUN_SYNC_TIMEOUT = 30  # seconds
+
+
 def _run_sync(coro: Any) -> Any:
-    """Run async evaluation safely from sync ADK callbacks."""
+    """Run async evaluation safely from sync ADK callbacks.
+
+    ADK callbacks are synchronous, but the Agent Control SDK is async.
+    When no event loop is running we can use ``asyncio.run`` directly.
+    Otherwise we spawn a short-lived daemon thread with its own loop so
+    that we never nest ``run`` calls inside an existing loop.
+    """
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -108,7 +117,12 @@ def _run_sync(coro: Any) -> Any:
 
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()
-    thread.join()
+    thread.join(timeout=_RUN_SYNC_TIMEOUT)
+
+    if thread.is_alive():
+        raise RuntimeError(
+            f"Agent Control evaluation timed out after {_RUN_SYNC_TIMEOUT}s"
+        )
 
     if "error" in result_box:
         raise result_box["error"]
@@ -196,6 +210,13 @@ def _handle_result(result: Any) -> None:
                 steering_context=steering_context,
             )
 
+        # Defensive: if is_safe is False but no deny/steer match was found,
+        # fail closed rather than silently allowing execution.
+        raise RuntimeError(
+            f"Evaluation returned is_safe=False with no deny/steer match: "
+            f"{result.reason or 'unknown reason'}"
+        )
+
     for match in matches:
         if match.action == "warn":
             print(f"Agent Control warning [{match.control_name}]: {match.result.message}")
@@ -272,7 +293,9 @@ def before_model_callback(
         return _build_blocked_llm_response(
             f"Request blocked by Agent Control: {exc.message}"
         )
-    except RuntimeError as exc:
+    except ControlSteerError as exc:
+        return _build_blocked_llm_response(exc.steering_context or exc.message)
+    except Exception as exc:
         return _build_blocked_llm_response(
             f"Agent Control could not evaluate the request safely: {exc}"
         )
@@ -295,7 +318,9 @@ def before_tool_callback(
         return _build_blocked_tool_response(
             f"Tool call blocked by Agent Control: {exc.message}"
         )
-    except RuntimeError as exc:
+    except ControlSteerError as exc:
+        return _build_blocked_tool_response(exc.steering_context or exc.message)
+    except Exception as exc:
         return _build_blocked_tool_response(
             f"Tool call blocked because Agent Control could not evaluate safely: {exc}"
         )
@@ -319,7 +344,9 @@ def after_tool_callback(
         return _build_blocked_tool_response(
             f"Tool output blocked by Agent Control: {exc.message}"
         )
-    except RuntimeError as exc:
+    except ControlSteerError as exc:
+        return _build_blocked_tool_response(exc.steering_context or exc.message)
+    except Exception as exc:
         return _build_blocked_tool_response(
             f"Tool output blocked because Agent Control could not evaluate safely: {exc}"
         )

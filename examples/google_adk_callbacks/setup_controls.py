@@ -7,6 +7,7 @@ import asyncio
 import os
 from typing import Any
 
+import httpx
 from agent_control import Agent, AgentControlClient, agents, controls
 
 AGENT_NAME = "google-adk-callbacks"
@@ -100,8 +101,8 @@ async def _ensure_control(
     try:
         result = await controls.create_control(client, name=name, data=data)
         return int(result["control_id"])
-    except Exception as exc:  # noqa: BLE001
-        if "409" not in str(exc):
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 409:
             raise
 
     control_list = await controls.list_controls(client, name=name, limit=1)
@@ -134,8 +135,8 @@ async def main() -> None:
         for control_id in control_ids:
             try:
                 await agents.add_agent_control(client, AGENT_NAME, control_id)
-            except Exception as exc:  # noqa: BLE001
-                if "409" not in str(exc) and "already" not in str(exc).lower():
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 409:
                     raise
 
         print()
