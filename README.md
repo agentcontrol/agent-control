@@ -49,7 +49,7 @@ Benchmarks were run locally on a MacBook (Apple M5, 16 GB RAM) using Docker Comp
 | Evaluation | 1 control | 437 | 0% | 36 ms | 61 ms |
 | Evaluation | 10 controls | 349 | 0% | 35 ms | 66 ms |
 | Evaluation | 50 controls | 199 | 0% | 63 ms | 91 ms |
-| Controls refresh | 5-50 controls | 392 | 0% | 20-27 ms | 27-61 ms |
+| Controls refresh | 5-50 controls | 273-392 | 0% | 20-27 ms | 27-61 ms |
 
 Observed in this setup: moving from 1 to 50 controls increased evaluation p50 by about 27 ms.
 
