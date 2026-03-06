@@ -72,6 +72,7 @@ async def test_steer_after_model_with_steer_match(steering_handler, mock_strands
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.matches = [mock_match]
         mock_result.reason = None
+        mock_result.errors = []
         mock_evaluate.return_value = mock_result
 
         # Create mock message
@@ -106,6 +107,7 @@ async def test_steer_after_model_with_deny_match(steering_handler, mock_strands_
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.matches = [mock_match]
         mock_result.reason = None
+        mock_result.errors = []
         mock_evaluate.return_value = mock_result
 
         # Create mock message
@@ -123,12 +125,73 @@ async def test_steer_after_model_with_deny_match(steering_handler, mock_strands_
 
 
 @pytest.mark.asyncio
+async def test_steer_after_model_deny_takes_precedence(steering_handler, mock_strands_steering_modules):
+    """Test deny is enforced even if steer is also present."""
+    with patch("agent_control.integrations.strands.steering.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control import ControlViolationError
+
+        deny_match = MagicMock()
+        deny_match.action = "deny"
+        deny_match.control_name = "deny_control"
+        deny_match.control_id = 1
+        deny_match.result.message = "Access denied"
+
+        steer_match = MagicMock()
+        steer_match.action = "steer"
+        steer_match.control_name = "steer_control"
+        steer_match.control_id = 2
+        steer_match.result.message = "Steer required"
+        steer_match.steering_context.message = "Context"
+
+        mock_result = MagicMock(spec=EvaluationResult)
+        # Steer first to ensure deny-first logic
+        mock_result.matches = [steer_match, deny_match]
+        mock_result.reason = None
+        mock_result.errors = []
+        mock_evaluate.return_value = mock_result
+
+        message = {"content": [{"text": "test output"}]}
+
+        with pytest.raises(ControlViolationError) as exc_info:
+            await steering_handler.steer_after_model(
+                agent=MagicMock(),
+                message=message,
+                stop_reason="end_turn"
+            )
+
+        assert "deny_control" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_steer_after_model_with_result_errors(steering_handler, mock_strands_steering_modules):
+    """Test steer_after_model fails closed on evaluation errors."""
+    with patch("agent_control.integrations.strands.steering.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        mock_error = MagicMock()
+        mock_error.control_name = "error-control"
+
+        mock_result = MagicMock(spec=EvaluationResult)
+        mock_result.errors = [mock_error]
+        mock_result.matches = []
+        mock_evaluate.return_value = mock_result
+
+        message = {"content": [{"text": "test output"}]}
+
+        with pytest.raises(RuntimeError):
+            await steering_handler.steer_after_model(
+                agent=MagicMock(),
+                message=message,
+                stop_reason="end_turn"
+            )
+
+
+@pytest.mark.asyncio
 async def test_steer_after_model_no_matches(steering_handler, mock_strands_steering_modules):
     """Test steer_after_model returns Proceed when no matches."""
     with patch("agent_control.integrations.strands.steering.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
         # Mock no matches
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.matches = []
+        mock_result.errors = []
         mock_evaluate.return_value = mock_result
 
         # Create mock message
@@ -157,6 +220,7 @@ async def test_steer_after_model_allow_match(steering_handler, mock_strands_stee
 
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.matches = [mock_match]
+        mock_result.errors = []
         mock_evaluate.return_value = mock_result
 
         # Create mock message
@@ -183,15 +247,12 @@ async def test_steer_after_model_evaluation_error(steering_handler, mock_strands
         # Create mock message
         message = {"content": [{"text": "test output"}]}
 
-        result = await steering_handler.steer_after_model(
-            agent=MagicMock(),
-            message=message,
-            stop_reason="end_turn"
-        )
-
-        # Should return Proceed on error
-        assert result.__class__.__name__ == "Proceed"
-        assert steering_handler.last_steer_info is None
+        with pytest.raises(RuntimeError):
+            await steering_handler.steer_after_model(
+                agent=MagicMock(),
+                message=message,
+                stop_reason="end_turn"
+            )
 
 
 def test_build_steering_message_with_context(steering_handler):
@@ -279,6 +340,35 @@ def test_extract_output_with_text_attribute(steering_handler):
     assert "block text" in result
 
 
+def test_extract_input_with_input_kwarg(steering_handler):
+    """Test _extract_input from kwargs input."""
+    kwargs = {"input": {"text": "user input"}}
+    assert steering_handler._extract_input(kwargs) == "user input"
+
+
+def test_extract_input_with_messages(steering_handler):
+    """Test _extract_input from messages list."""
+    kwargs = {
+        "messages": [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "user input"},
+        ]
+    }
+    assert steering_handler._extract_input(kwargs) == "user input"
+
+
+def test_extract_input_with_invocation_state(steering_handler):
+    """Test _extract_input from invocation_state."""
+    kwargs = {"invocation_state": {"input": "invocation input"}}
+    assert steering_handler._extract_input(kwargs) == "invocation input"
+
+
+def test_extract_context_from_invocation_state(steering_handler):
+    """Test _extract_context from invocation_state."""
+    kwargs = {"invocation_state": {"context": {"request_id": "ctx-1"}}}
+    assert steering_handler._extract_context(kwargs) == {"request_id": "ctx-1"}
+
+
 def test_extract_output_with_empty_message(steering_handler):
     """Test _extract_output with empty message."""
     assert steering_handler._extract_output(None) == ""
@@ -307,6 +397,48 @@ def test_extract_output_with_mixed_blocks(steering_handler):
     assert "string block" in result
 
 
+def test_extract_output_with_citations(steering_handler):
+    """Test _extract_output with citations content."""
+    message = {
+        "content": [
+            {
+                "citationsContent": {
+                    "content": [
+                        {"text": "citation 1"},
+                        {"text": "citation 2"},
+                    ]
+                }
+            }
+        ]
+    }
+    result = steering_handler._extract_output(message)
+    assert "citation 1" in result
+    assert "citation 2" in result
+
+
+def test_extract_output_with_tool_result(steering_handler):
+    """Test _extract_output with tool result block."""
+    message = {
+        "content": [
+            {
+                "toolResult": {
+                    "content": [{"text": "tool result text"}]
+                }
+            }
+        ]
+    }
+    result = steering_handler._extract_output(message)
+    assert "tool result text" in result
+
+
+def test_extract_output_with_json(steering_handler):
+    """Test _extract_output with json block."""
+    message = {"content": [{"json": {"key": "value"}}]}
+    result = steering_handler._extract_output(message)
+    assert "key" in result
+    assert "value" in result
+
+
 @pytest.mark.asyncio
 async def test_steer_after_model_with_logging(mock_strands_steering_modules):
     """Test steer_after_model with logging enabled."""
@@ -319,6 +451,7 @@ async def test_steer_after_model_with_logging(mock_strands_steering_modules):
             # Mock no matches
             mock_result = MagicMock(spec=EvaluationResult)
             mock_result.matches = []
+            mock_result.errors = []
             mock_evaluate.return_value = mock_result
 
             # Create mock message
@@ -350,6 +483,7 @@ async def test_steer_after_model_updates_last_steer_info(
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.matches = [mock_match]
         mock_result.reason = None
+        mock_result.errors = []
         mock_evaluate.return_value = mock_result
 
         message = {"content": [{"text": "test"}]}
@@ -390,6 +524,7 @@ async def test_steer_after_model_steer_match_with_logging(mock_strands_steering_
             mock_result = MagicMock(spec=EvaluationResult)
             mock_result.matches = [mock_match]
             mock_result.reason = None
+            mock_result.errors = []
             mock_evaluate.return_value = mock_result
 
             # Create mock message
@@ -427,6 +562,7 @@ async def test_steer_after_model_deny_match_with_logging(mock_strands_steering_m
             mock_result = MagicMock(spec=EvaluationResult)
             mock_result.matches = [mock_match]
             mock_result.reason = None
+            mock_result.errors = []
             mock_evaluate.return_value = mock_result
 
             # Create mock message

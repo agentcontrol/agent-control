@@ -45,6 +45,8 @@ class AgentControlSteeringHandler(SteeringHandler):
         if self.enable_logging:
             logger.debug("agent=<%s> | steering evaluation started", self.agent_name)
 
+        input_text = self._extract_input(kwargs)
+        context = self._extract_context(kwargs)
         output_text = self._extract_output(message)
 
         if self.enable_logging:
@@ -57,11 +59,42 @@ class AgentControlSteeringHandler(SteeringHandler):
         try:
             result = await agent_control.evaluate_controls(
                 step_name="check_after_model",
+                input=input_text,
                 output=output_text,
+                context=context,
                 step_type="llm",
                 stage="post",
                 agent_name=self.agent_name,
             )
+
+            if result.errors:
+                error_names = ", ".join(
+                    e.control_name for e in result.errors if getattr(e, "control_name", None)
+                )
+                logger.error(
+                    "agent=<%s> | steering evaluation failed; blocking execution",
+                    self.agent_name,
+                )
+                raise RuntimeError(
+                    "Steering evaluation failed; execution blocked for safety. "
+                    f"Errors: {error_names or 'unknown'}"
+                )
+
+            deny_match = next((m for m in (result.matches or []) if m.action == "deny"), None)
+            if deny_match:
+                msg = getattr(getattr(deny_match, "result", None), "message", None) or result.reason
+                if self.enable_logging:
+                    logger.debug(
+                        "agent=<%s>, control=<%s> | deny raised",
+                        self.agent_name,
+                        deny_match.control_name,
+                    )
+                raise ControlViolationError(
+                    control_id=deny_match.control_id,
+                    control_name=deny_match.control_name,
+                    message=msg or "Control violation",
+                    metadata=getattr(deny_match.result, "metadata", None),
+                )
 
             steer_match = next((m for m in (result.matches or []) if m.action == "steer"), None)
             if steer_match:
@@ -80,30 +113,19 @@ class AgentControlSteeringHandler(SteeringHandler):
                     )
                 return Guide(reason=steering_message)
 
-            deny_match = next((m for m in (result.matches or []) if m.action == "deny"), None)
-            if deny_match:
-                msg = getattr(getattr(deny_match, "result", None), "message", None) or result.reason
-                if self.enable_logging:
-                    logger.debug(
-                        "agent=<%s>, control=<%s> | deny raised",
-                        self.agent_name,
-                        deny_match.control_name,
-                    )
-                raise ControlViolationError(
-                    control_id=deny_match.control_id,
-                    control_name=deny_match.control_name,
-                    message=msg or "Control violation",
-                    metadata=getattr(deny_match.result, "metadata", None),
-                )
-
         except ControlViolationError:
             raise
-        except Exception:
-            logger.warning(
-                "agent=<%s> | steering evaluation failed; proceeding without enforcement",
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "agent=<%s> | steering evaluation failed; blocking execution",
                 self.agent_name,
                 exc_info=True,
             )
+            raise RuntimeError(
+                "Steering evaluation failed; execution blocked for safety."
+            ) from exc
 
         self.last_steer_info = None
         return Proceed(reason="No Agent Control steer detected")
@@ -120,6 +142,39 @@ class AgentControlSteeringHandler(SteeringHandler):
             steering_message = f"Control '{match.control_name}' requires steering"
         return steering_message
 
+    def _extract_input(self, kwargs: dict[str, Any]) -> str:
+        if "input" in kwargs:
+            return self._extract_content_text(kwargs["input"])
+
+        messages = kwargs.get("messages")
+        if isinstance(messages, list):
+            return self._extract_user_message_from_list(messages)
+
+        invocation_state = kwargs.get("invocation_state") or {}
+        if isinstance(invocation_state, dict):
+            if "messages" in invocation_state:
+                return self._extract_user_message_from_list(invocation_state["messages"])
+            if "input" in invocation_state:
+                return self._extract_content_text(invocation_state["input"])
+
+        return ""
+
+    def _extract_context(self, kwargs: dict[str, Any]) -> dict[str, Any] | None:
+        invocation_state = kwargs.get("invocation_state")
+        if isinstance(invocation_state, dict):
+            ctx = invocation_state.get("context")
+            if isinstance(ctx, dict):
+                return ctx
+        return None
+
+    def _extract_user_message_from_list(self, messages: list | None) -> str:
+        if not messages:
+            return ""
+        for msg in reversed(messages):
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                return self._extract_content_text(msg.get("content", ""))
+        return ""
+
     def _extract_output(self, message: Any) -> str:
         if not message:
             return ""
@@ -129,17 +184,59 @@ class AgentControlSteeringHandler(SteeringHandler):
         elif hasattr(message, "content"):
             content = message.content
         else:
-            content = str(message)
+            content = message
+
+        return self._extract_content_text(content)
+
+    def _extract_content_text(self, content: Any) -> str:
+        if not content:
+            return ""
+
+        if isinstance(content, str):
+            return content
 
         if isinstance(content, list):
             text_parts = []
             for block in content:
-                if isinstance(block, dict) and "text" in block:
-                    text_parts.append(block["text"])
+                if isinstance(block, dict):
+                    if "text" in block:
+                        text_parts.append(block["text"])
+                    elif "content" in block:
+                        nested = self._extract_content_text(block["content"])
+                        if nested:
+                            text_parts.append(nested)
+                    elif "citationsContent" in block:
+                        citations_block = block["citationsContent"]
+                        if "content" in citations_block:
+                            for citation_item in citations_block["content"]:
+                                if isinstance(citation_item, dict) and "text" in citation_item:
+                                    text_parts.append(citation_item["text"])
+                    elif "toolUse" in block:
+                        tool_name = block["toolUse"].get("name", "unknown")
+                        text_parts.append(f"[tool_use: {tool_name}]")
+                    elif "toolResult" in block:
+                        result_content = block["toolResult"].get("content", [])
+                        result_text = self._extract_content_text(result_content)
+                        if result_text:
+                            text_parts.append(result_text)
+                    elif "json" in block:
+                        import json
+
+                        text_parts.append(json.dumps(block["json"]))
                 elif hasattr(block, "text"):
-                    text_parts.append(block.text)
+                    text_parts.append(str(block.text))
                 else:
                     text_parts.append(str(block))
-            return " ".join(text_parts)
+            return "\n".join(text_parts)
 
-        return str(content) if content else ""
+        if isinstance(content, dict):
+            if "text" in content:
+                return str(content["text"])
+            if "content" in content:
+                return self._extract_content_text(content["content"])
+            if "json" in content:
+                import json
+
+                return json.dumps(content["json"])
+
+        return str(content)

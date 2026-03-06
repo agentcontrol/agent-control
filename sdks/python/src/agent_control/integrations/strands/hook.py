@@ -35,27 +35,32 @@ logger = logging.getLogger(__name__)
 def _action_error(result: EvaluationResult) -> tuple[str, Exception] | None:
     """Return the first blocking action as an exception."""
 
-    match = next((m for m in (result.matches or []) if m.action in ("deny", "steer")), None)
-    if not match:
-        return None
-
-    msg = getattr(getattr(match, "result", None), "message", None) or result.reason
-    msg = msg or f"Control '{match.control_name}' triggered"
-
-    if match.action == "deny":
+    matches = result.matches or []
+    deny_match = next((m for m in matches if m.action == "deny"), None)
+    if deny_match:
+        msg = getattr(getattr(deny_match, "result", None), "message", None) or result.reason
+        msg = msg or f"Control '{deny_match.control_name}' triggered"
         deny_err = ControlViolationError(
-            control_id=match.control_id,
-            control_name=match.control_name,
+            control_id=deny_match.control_id,
+            control_name=deny_match.control_name,
             message=msg,
-            metadata=getattr(match.result, "metadata", None),
+            metadata=getattr(deny_match.result, "metadata", None),
         )
         return "deny", deny_err
 
-    ctx = getattr(match, "steering_context", None)
+    steer_match = next((m for m in matches if m.action == "steer"), None)
+    if not steer_match:
+        return None
+
+    msg = getattr(getattr(steer_match, "result", None), "message", None) or result.reason
+    msg = msg or f"Control '{steer_match.control_name}' triggered"
+    ctx = getattr(steer_match, "steering_context", None)
     ctx_msg = getattr(ctx, "message", None) if ctx else None
     steer_err = ControlSteerError(
-        control_name=match.control_name,
-        message=f"Steering required [{match.control_name}]: {msg}",
+        control_id=steer_match.control_id,
+        control_name=steer_match.control_name,
+        message=f"Steering required [{steer_match.control_name}]: {msg}",
+        metadata=getattr(steer_match.result, "metadata", None),
         steering_context=ctx_msg or msg,
     )
     return "steer", steer_err
@@ -102,6 +107,7 @@ class AgentControlHook(HookProvider):
         step_name: str,
         input: Any | None = None,
         output: Any | None = None,
+        context: dict[str, Any] | None = None,
         step_type: Literal["tool", "llm"] = "llm",
         stage: Literal["pre", "post"] = "pre",
         use_runtime_error: bool = False,
@@ -110,10 +116,23 @@ class AgentControlHook(HookProvider):
             step_name=step_name,
             input=input,
             output=output,
+            context=context,
             step_type=step_type,
             stage=stage,
             agent_name=self.agent_name,
         )
+
+        if result.errors:
+            error_names = ", ".join(
+                e.control_name for e in result.errors if getattr(e, "control_name", None)
+            )
+            self._raise_error(
+                RuntimeError(
+                    "Control evaluation failed; execution blocked for safety. "
+                    f"Errors: {error_names or 'unknown'}"
+                ),
+                use_runtime_error,
+            )
 
         action = _action_error(result)
         if action:
@@ -205,19 +224,24 @@ class AgentControlHook(HookProvider):
         )
 
     async def check_after_model(self, event: AfterModelCallEvent) -> None:
-        _, output_text = self._extract_messages(event)
+        input_text, output_text = self._extract_messages(event)
+        context = self._extract_context(event)
         await self._evaluate_and_enforce(
             step_name="check_after_model",
+            input=input_text,
             output=output_text,
+            context=context,
             step_type="llm",
             stage="post",
         )
 
     async def check_before_tool(self, event: BeforeToolCallEvent) -> None:
         tool_name, tool_input = self._extract_tool_data(event)
+        context = self._extract_context(event)
         await self._evaluate_and_enforce(
             step_name=tool_name,
             input=tool_input,
+            context=context,
             step_type="tool",
             stage="pre",
             use_runtime_error=True,
@@ -226,10 +250,12 @@ class AgentControlHook(HookProvider):
     async def check_after_tool(self, event: AfterToolCallEvent) -> None:
         tool_name, tool_output = self._extract_tool_data(event)
         tool_input = event.tool_use.get("input", {}) if event.tool_use else {}
+        context = self._extract_context(event)
         await self._evaluate_and_enforce(
             step_name=tool_name,
             input=tool_input,
             output=tool_output,
+            context=context,
             step_type="tool",
             stage="post",
             use_runtime_error=True,
@@ -238,19 +264,24 @@ class AgentControlHook(HookProvider):
     async def check_before_node(self, event: BeforeNodeCallEvent) -> None:
         input_text, _ = self._extract_messages(event)
         node_id = getattr(event, "node_id", "unknown")
+        context = self._extract_context(event)
         await self._evaluate_and_enforce(
             step_name=node_id,
             input=input_text,
+            context=context,
             step_type="llm",
             stage="pre",
         )
 
     async def check_after_node(self, event: AfterNodeCallEvent) -> None:
-        _, output_text = self._extract_messages(event)
+        input_text, output_text = self._extract_messages(event)
         node_id = getattr(event, "node_id", "unknown")
+        context = self._extract_context(event)
         await self._evaluate_and_enforce(
             step_name=node_id,
+            input=input_text,
             output=output_text,
+            context=context,
             step_type="llm",
             stage="post",
         )
@@ -271,13 +302,21 @@ class AgentControlHook(HookProvider):
         if isinstance(event, BeforeInvocationEvent):
             input_text = self._extract_user_message_from_list(event.messages)
         elif isinstance(event, BeforeModelCallEvent):
-            if "messages" in event.invocation_state:
+            state = event.invocation_state or {}
+            if "messages" in state:
                 input_text = self._extract_user_message_from_list(
-                    event.invocation_state["messages"], reverse=True
+                    state["messages"], reverse=True
                 )
-            elif "input" in event.invocation_state:
-                input_text = self._extract_content_text(event.invocation_state["input"])
+            elif "input" in state:
+                input_text = self._extract_content_text(state["input"])
         elif isinstance(event, AfterModelCallEvent):
+            state = event.invocation_state or {}
+            if "messages" in state:
+                input_text = self._extract_user_message_from_list(
+                    state["messages"], reverse=True
+                )
+            elif "input" in state:
+                input_text = self._extract_content_text(state["input"])
             if event.stop_response:
                 message_content = event.stop_response.message.get("content", [])
                 output_text = self._extract_content_text(message_content)
@@ -293,8 +332,20 @@ class AgentControlHook(HookProvider):
                 if key in state:
                     output_text = self._extract_content_text(state[key])
                     break
+            if "messages" in state:
+                input_text = self._extract_user_message_from_list(state["messages"], reverse=True)
+            elif "input" in state:
+                input_text = self._extract_content_text(state["input"])
 
         return input_text, output_text
+
+    def _extract_context(self, event: Any) -> dict[str, Any] | None:
+        state = getattr(event, "invocation_state", None)
+        if isinstance(state, dict):
+            ctx = state.get("context")
+            if isinstance(ctx, dict):
+                return ctx
+        return None
 
     def _extract_tool_data(
         self,
@@ -328,6 +379,10 @@ class AgentControlHook(HookProvider):
                 if isinstance(block, dict):
                     if "text" in block:
                         text_parts.append(block["text"])
+                    elif "content" in block:
+                        nested = self._extract_content_text(block["content"])
+                        if nested:
+                            text_parts.append(nested)
                     elif "citationsContent" in block:
                         citations_block = block["citationsContent"]
                         if "content" in citations_block:
@@ -349,6 +404,8 @@ class AgentControlHook(HookProvider):
         if isinstance(content, dict):
             if "text" in content:
                 return str(content["text"])
+            if "content" in content:
+                return self._extract_content_text(content["content"])
             if "json" in content:
                 import json
 
