@@ -5,8 +5,8 @@ from typing import Any, Literal
 from agent_control_evaluators import EvaluatorConfig
 
 
-class ChatInspectEvaluatorConfig(EvaluatorConfig):
-    """Configuration for Cisco AI Defense Chat Inspection evaluator (REST).
+class CiscoAIDefenseConfig(EvaluatorConfig):
+    """Configuration for Cisco AI Defense evaluator (REST).
 
     Attributes:
         api_key_env: Env var name for API key
@@ -29,3 +29,4 @@ class ChatInspectEvaluatorConfig(EvaluatorConfig):
     messages_strategy: Literal["single", "history"] = "history"
     metadata: dict[str, Any] | None = None
     inspect_config: dict[str, Any] | None = None
+

@@ -29,7 +29,7 @@ import httpx
 def _read_or_create_agent_id(path: str = ".agent_id") -> str:
     try:
         if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 value = f.read().strip()
                 uuid.UUID(value)  # validate
                 return value
@@ -50,7 +50,7 @@ def main() -> int:
     url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
     api_key = os.getenv("AGENT_CONTROL_API_KEY", "")
     if not api_key:
-        print("❌ Missing AGENT_CONTROL_API_KEY")
+        print("Error: Missing AGENT_CONTROL_API_KEY")
         return 2
 
     agent_id = _read_or_create_agent_id()
@@ -62,11 +62,11 @@ def main() -> int:
             server_url=url,
             api_key=api_key,
         )
-        print(f"✅ Registered agent: {agent_id}")
+        print(f"Registered agent: {agent_id}")
     except httpx.HTTPStatusError as e:
         status = getattr(e.response, "status_code", None)
         if status == 409:
-            print(f"ℹ️  Agent already registered: {agent_id}")
+            print(f"Info: Agent already registered: {agent_id}")
         else:
             raise
 

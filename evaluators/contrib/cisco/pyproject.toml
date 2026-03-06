@@ -1,9 +1,11 @@
 [project]
-name = "agent-control-evaluator-ai-defense"
+name = "agent-control-evaluator-cisco"
 version = "0.1.0"
-description = "Cisco AI Defense Chat Inspection evaluator for Agent Control"
+description = "Cisco AI Defense evaluator for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Cisco AI Defense Team" }]
 dependencies = [
     "agent-control-evaluators>=3.0.0",
     "agent-control-models>=3.0.0",
@@ -20,14 +22,14 @@ dev = [
 ]
 
 [project.entry-points."agent_control.evaluators"]
-"ai_defense.chat_inspect" = "agent_control_evaluator_ai_defense.chat_inspect:ChatInspectEvaluator"
+"cisco.ai_defense" = "agent_control_evaluator_cisco.ai_defense:CiscoAIDefenseEvaluator"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent_control_evaluator_ai_defense"]
+packages = ["src/agent_control_evaluator_cisco"]
 
 [tool.ruff]
 line-length = 100
@@ -35,3 +37,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.uv.sources]
+agent-control-evaluators = { path = "../../builtin", editable = true }
+agent-control-models = { path = "../../../models", editable = true }
+

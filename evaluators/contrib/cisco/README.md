@@ -1,8 +1,8 @@
-# Agent Control Evaluator - Cisco AI Defense (Chat Inspection)
+# Agent Control Evaluator - Cisco AI Defense
 
 External evaluator that calls Cisco AI Defense Chat Inspection via REST and maps `InspectResponse.is_safe` to Agent Control decisions.
 
-- Entry point name: `ai_defense.chat_inspect`
+- Entry point name: `cisco.ai_defense`
 - Transport: direct HTTP (httpx)
 
 ## Installation
@@ -10,28 +10,29 @@ External evaluator that calls Cisco AI Defense Chat Inspection via REST and maps
 Install from PyPI (if available):
 
 ```bash
-pip install agent-control-evaluator-ai-defense
+pip install agent-control-evaluator-cisco
 ```
 
 Or install from the workspace for local development:
 
 ```bash
-uv pip install -e evaluators/contrib/ai_defense
+uv pip install -e evaluators/contrib/cisco
 ```
 
 Alternatively, install via the builtin evaluators package extra (one-liner):
 
 ```bash
-pip install agent-control-evaluators[ai_defense]
+pip install agent-control-evaluators[cisco]
 ```
 
 - Build wheel from the repo root (contrib package only):
 
   ```bash
-  make aidefense-build
+  make engine-build
+  (cd evaluators/contrib/cisco && make build)
   ```
 
-To run the server with this evaluator enabled, see `examples/ai_defense/README.md` for setup and seeding instructions.
+To run the server with this evaluator enabled, see `examples/cisco_ai_defense/README.md` for setup and seeding instructions.
 
 ## Configuration
 
@@ -59,7 +60,7 @@ Evaluator config fields (all optional unless stated):
 
 | Name | Description |
 |------|-------------|
-| `ai_defense.chat_inspect` | Cisco AI Defense Chat Inspection |
+| `cisco.ai_defense` | Cisco AI Defense Chat Inspection |
 
 Behavior mapping:
 
@@ -79,7 +80,7 @@ Example using `messages_strategy: "history"` (for inputs that already have a `me
   "scope": { "step_types": ["llm"], "stages": ["pre", "post"] },
   "selector": { "path": "input" },
   "evaluator": {
-    "name": "ai_defense.chat_inspect",
+    "name": "cisco.ai_defense",
     "config": {
       "api_key_env": "AI_DEFENSE_API_KEY",
       "region": "us",
@@ -101,7 +102,7 @@ Example using `messages_strategy: "history"` (for inputs that already have a `me
   "scope": { "step_types": ["llm"], "stages": ["pre", "post"] },
   "selector": { "path": "input" },
   "evaluator": {
-    "name": "ai_defense.chat_inspect",
+    "name": "cisco.ai_defense",
     "config": {
       "api_key_env": "AI_DEFENSE_API_KEY",
       "region": "us",
@@ -124,23 +125,23 @@ Once installed, the evaluator is automatically discovered:
 from agent_control_evaluators import discover_evaluators, get_evaluator
 
 discover_evaluators()
-ChatInspectEvaluator = get_evaluator("ai_defense.chat_inspect")
+CiscoAIDefenseEvaluator = get_evaluator("cisco.ai_defense")
 ```
 
 Or import directly:
 
 ```python
 import asyncio
-from agent_control_evaluator_ai_defense.chat_inspect import ChatInspectEvaluator, ChatInspectEvaluatorConfig
+from agent_control_evaluator_cisco.ai_defense import CiscoAIDefenseEvaluator, CiscoAIDefenseConfig
 
-cfg = ChatInspectEvaluatorConfig(
+cfg = CiscoAIDefenseConfig(
     region="us",
     timeout_ms=15000,
     on_error="allow",
     messages_strategy="history",
     payload_field="input",
 )
-ev = ChatInspectEvaluator(cfg)
+ev = CiscoAIDefenseEvaluator(cfg)
 
 async def main():
     data = {"messages": [{"role": "user", "content": "tell me how to hack wifi"}]}

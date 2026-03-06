@@ -9,7 +9,7 @@ help:
 	@echo "  make build      - build package"
 
 test:
-	uv run --with pytest --with pytest-asyncio --with pytest-cov pytest tests --cov=src --cov-report=xml:../../../coverage-evaluators-ai-defense.xml -q
+	uv run --with pytest --with pytest-asyncio --with pytest-cov pytest tests --cov=src --cov-report=xml:../../../coverage-evaluators-cisco.xml -q
 
 lint:
 	uv run --with ruff ruff check --config ../../../pyproject.toml src/
@@ -22,3 +22,4 @@ typecheck:
 
 build:
 	uv build
+

@@ -1,7 +1,7 @@
 """Seed Cisco AI Defense Chat Inspection controls and assign policy to an agent.
 
 This script creates/updates two controls (pre: input, post: output) that use
-the external evaluator `ai_defense.chat_inspect`, creates/updates a policy,
+the external evaluator `cisco.ai_defense`, creates/updates a policy,
 attaches the controls, and assigns the policy to the specified agent.
 
 Env:
@@ -21,8 +21,7 @@ from typing import Any
 
 from agent_control import AgentControlClient
 
-
-EVALUATOR_NAME = "ai_defense.chat_inspect"
+EVALUATOR_NAME = "cisco.ai_defense"
 
 
 def _headers() -> dict[str, str]:
@@ -32,7 +31,11 @@ def _headers() -> dict[str, str]:
 
 async def _ensure_control(client: AgentControlClient, name: str) -> int:
     # Try to find control by name (case-insensitive contains); then verify exact match
-    resp = await client.http_client.get("/api/v1/controls", params={"name": name}, headers=_headers())
+    resp = await client.http_client.get(
+        "/api/v1/controls",
+        params={"name": name},
+        headers=_headers(),
+    )
     resp.raise_for_status()
     data = resp.json()
     # Server returns list under 'controls' key (not 'items')
@@ -41,12 +44,22 @@ async def _ensure_control(client: AgentControlClient, name: str) -> int:
             return int(item["id"])  # type: ignore[index]
 
     # Create if not found
-    create = await client.http_client.put("/api/v1/controls", json={"name": name}, headers=_headers())
+    create = await client.http_client.put(
+        "/api/v1/controls",
+        json={"name": name},
+        headers=_headers(),
+    )
     create.raise_for_status()
     return int(create.json()["control_id"])  # type: ignore[index]
 
 
-async def _set_control_data(client: AgentControlClient, control_id: int, *, stage: str, selector_path: str) -> None:
+async def _set_control_data(
+    client: AgentControlClient,
+    control_id: int,
+    *,
+    stage: str,
+    selector_path: str,
+) -> None:
     timeout_s = float(os.getenv("AI_DEFENSE_TIMEOUT_S", "15"))
     api_url = os.getenv("AI_DEFENSE_API_URL")
 
@@ -98,10 +111,10 @@ async def _ensure_policy(client: AgentControlClient, name: str, *, agent_name: s
         # Name conflict: do NOT reuse an arbitrary existing policy, as it may be unrelated.
         # Bail out with guidance to pick a different POLICY_NAME.
         raise RuntimeError(
-            (
+
                 f"Policy name conflict for '{name}'. Choose a different POLICY_NAME to avoid "
                 "mutating an existing policy."
-            )
+
         )
     resp.raise_for_status()
     return int(resp.json()["policy_id"])  # type: ignore[index]
@@ -125,7 +138,7 @@ async def main() -> int:
     url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
     agent_name = os.getenv("AGENT_NAME", "ai-defense-demo")
     if not agent_name:
-        print("❌ AGENT_NAME is required")
+        print("Error: AGENT_NAME is required")
         return 2
     policy_name = os.getenv("POLICY_NAME", "ai-defense-policy")
 
@@ -150,10 +163,15 @@ async def main() -> int:
         else:
             names = set()
         if EVALUATOR_NAME not in names:
-            print(
-                f"❌ Evaluator '{EVALUATOR_NAME}' not found on server. Ensure the server environment\n"
-                f"   has the Cisco AI Defense evaluator installed and entry points discovered."
+            msg1 = (
+                "Evaluator '"
+                + EVALUATOR_NAME
+                + "' not found on server. Ensure the server environment\n"
             )
+            msg2 = (
+                "   has the Cisco AI Defense evaluator installed and entry points discovered."
+            )
+            print(msg1 + msg2)
             return 2
 
         # Create or update controls
@@ -168,7 +186,7 @@ async def main() -> int:
         try:
             policy_id = await _ensure_policy(client, policy_name, agent_name=agent_name)
         except RuntimeError as e:
-            print(f"⚠️  {e}")
+            print(f"Warning: {e}")
             return 2
 
         await _attach_control(client, policy_id, pre_id)
@@ -177,7 +195,7 @@ async def main() -> int:
         # Assign policy to agent (by name)
         await _assign_policy(client, agent_name, policy_id)
 
-        print("✅ Seed complete:")
+        print("Seed complete:")
         print(f"   Policy: {policy_name} (id={policy_id})")
         print(f"   Controls: pre={pre_id}, post={post_id}")
         print(f"   Assigned to agent: {agent_name}")

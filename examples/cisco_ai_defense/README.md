@@ -30,7 +30,7 @@ Auth header used: `X-Cisco-AI-Defense-API-Key: <AI_DEFENSE_API_KEY>`
 ## Run (Direct API Demo)
 
 ```
-cd examples/ai_defense
+cd examples/cisco_ai_defense
 uv sync
 uv run chat_inspect_demo.py
 uv run chat_inspect_demo.py --debug  # also prints raw responses for allowed and blocked
@@ -69,7 +69,7 @@ make examples-aidefense-run
    - Preferred: install the evaluator into the workspace venv, then run the server normally:
 
      ```bash
-     uv pip install -e evaluators/contrib/ai_defense
+     uv pip install -e evaluators/contrib/cisco
      make server-run
      ```
 
@@ -77,7 +77,7 @@ make examples-aidefense-run
 
      ```bash
      uv run --package agent-control-server \
-       --with evaluators/contrib/ai_defense \
+       --with evaluators/contrib/cisco \
        uvicorn agent_control_server.main:app --reload
      ```
 
@@ -110,21 +110,21 @@ uv run chat_guarded_all.py --agent-id $AGENT_ID --agent-name ai-defense-demo
 Or using the example Makefile directly from repo root:
 
 ```
-make -C examples/ai_defense seed
-make -C examples/ai_defense decorator-run AGENT_ID=$AGENT_ID
-make -C examples/ai_defense decorator-post-run AGENT_ID=$AGENT_ID
-make -C examples/ai_defense decorator-all-run AGENT_ID=$AGENT_ID
+make -C examples/cisco_ai_defense seed
+make -C examples/cisco_ai_defense decorator-run AGENT_ID=$AGENT_ID
+make -C examples/cisco_ai_defense decorator-post-run AGENT_ID=$AGENT_ID
+make -C examples/cisco_ai_defense decorator-all-run AGENT_ID=$AGENT_ID
 ```
 
 ### What It Does
 
- - Applies server-managed pre and post controls (using `ai_defense.chat_inspect`) around the decorated function.
+- Applies server-managed pre and post controls (using `cisco.ai_defense`) around the decorated function.
  - `chat_guarded.py`: demonstrates both PRE and POST when applicable.
  - `chat_guarded_post.py`: safe prompt that produces a toxic response, which should be blocked by POST checks.
 
 ### Troubleshooting
 
-- Evaluator not found: ensure the server has the evaluator package installed and entry points discovered (`/api/v1/evaluators` lists `ai_defense.chat_inspect`).
+- Evaluator not found: ensure the server has the evaluator package installed and entry points discovered (`/api/v1/evaluators` lists `cisco.ai_defense`).
 - Missing keys: set both `AGENT_CONTROL_API_KEY` (server) and `AI_DEFENSE_API_KEY` (server env for evaluator calls).
 - Policy exists: the seeding script creates policies by name; if a conflict occurs, delete or choose a new `POLICY_NAME`.
 

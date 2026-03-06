@@ -10,7 +10,7 @@ from agent_control_evaluators import (
 from agent_control_models import EvaluatorResult
 
 from .client import REGION_BASE_URLS, AIDefenseClient, build_endpoint
-from .config import ChatInspectEvaluatorConfig
+from .config import CiscoAIDefenseConfig
 
 
 def _load_api_key(env_name: str) -> str:
@@ -52,23 +52,23 @@ def _build_messages(
 
 
 @register_evaluator
-class ChatInspectEvaluator(Evaluator[ChatInspectEvaluatorConfig]):
-    """Cisco AI Defense Chat Inspection evaluator.
+class CiscoAIDefenseEvaluator(Evaluator[CiscoAIDefenseConfig]):
+    """Cisco AI Defense evaluator.
 
     Maps InspectResponse.is_safe to EvaluatorResult.matched.
     """
 
     metadata = EvaluatorMetadata(
-        name="ai_defense.chat_inspect",
+        name="cisco.ai_defense",
         version="0.1.0",
         description="Cisco AI Defense Chat Inspection integration",
         requires_api_key=True,
         timeout_ms=15000,
     )
 
-    config_model = ChatInspectEvaluatorConfig
+    config_model = CiscoAIDefenseConfig
 
-    def __init__(self, config: ChatInspectEvaluatorConfig) -> None:
+    def __init__(self, config: CiscoAIDefenseConfig) -> None:
         self.config = config
         self._client: AIDefenseClient | None = None
         self._current_api_key: str | None = None
@@ -192,3 +192,4 @@ class ChatInspectEvaluator(Evaluator[ChatInspectEvaluatorConfig]):
                 },
                 error=None if matched else str(e),
             )
+

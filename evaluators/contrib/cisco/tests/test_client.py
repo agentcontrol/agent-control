@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from agent_control_evaluator_ai_defense.chat_inspect.client import (
+from agent_control_evaluator_cisco.ai_defense.client import (
     AIDefenseClient,
     build_endpoint,
 )
@@ -40,7 +40,7 @@ async def test_chat_inspect_happy_path_builds_headers_and_payload(monkeypatch: p
             self.is_closed = True
 
     # Patch the constructor used by the module
-    from agent_control_evaluator_ai_defense.chat_inspect import client as client_mod
+    from agent_control_evaluator_cisco.ai_defense import client as client_mod
 
     monkeypatch.setattr(client_mod.httpx, "AsyncClient", FakeAsyncClient, raising=True)
 
@@ -89,7 +89,7 @@ async def test_chat_inspect_non_dict_response_raises(monkeypatch: pytest.MonkeyP
         async def aclose(self) -> None:
             self.is_closed = True
 
-    from agent_control_evaluator_ai_defense.chat_inspect import client as client_mod
+    from agent_control_evaluator_cisco.ai_defense import client as client_mod
 
     monkeypatch.setattr(client_mod.httpx, "AsyncClient", FakeAsyncClient, raising=True)
 
@@ -121,7 +121,7 @@ async def test_chat_inspect_http_error_propagates(monkeypatch: pytest.MonkeyPatc
         async def aclose(self) -> None:
             self.is_closed = True
 
-    from agent_control_evaluator_ai_defense.chat_inspect import client as client_mod
+    from agent_control_evaluator_cisco.ai_defense import client as client_mod
 
     # Patch AsyncClient and also patch the exception class to a stable local one
     monkeypatch.setattr(client_mod, "httpx", SimpleNamespace(AsyncClient=FakeAsyncClient, HTTPStatusError=FakeHTTPError))
@@ -145,7 +145,7 @@ async def test_get_client_lifecycle_create_reuse_recreate(monkeypatch: pytest.Mo
         async def aclose(self) -> None:
             self.is_closed = True
 
-    from agent_control_evaluator_ai_defense.chat_inspect import client as client_mod
+    from agent_control_evaluator_cisco.ai_defense import client as client_mod
 
     monkeypatch.setattr(client_mod.httpx, "AsyncClient", FakeAsyncClient, raising=True)
 
@@ -198,7 +198,7 @@ def test_build_endpoint_trailing_slash() -> None:
 async def test_importerror_path_disables_httpx_and_get_client_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     # Ensure a clean reimport of the client module with ImportError for httpx
     monkeypatch.setitem(sys.modules, "httpx", None)
-
+    
     class ImportBlocker:
         def find_spec(self, fullname, path=None, target=None):  # type: ignore[no-untyped-def]
             if fullname == "httpx":
@@ -207,7 +207,7 @@ async def test_importerror_path_disables_httpx_and_get_client_raises(monkeypatch
 
     sys.meta_path.insert(0, ImportBlocker())
     try:
-        from agent_control_evaluator_ai_defense.chat_inspect import client as client_mod
+        from agent_control_evaluator_cisco.ai_defense import client as client_mod
 
         importlib.reload(client_mod)
 

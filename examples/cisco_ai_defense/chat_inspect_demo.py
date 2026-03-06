@@ -1,5 +1,5 @@
 """
-Cisco AI Defense Chat Inspection Demo 
+Cisco AI Defense Chat Inspection Demo
 
 This script calls Cisco AI Defense Chat Inspection directly and blocks when
 InspectResponse.is_safe is False. It demonstrates evaluating both user
@@ -20,13 +20,11 @@ import argparse
 import asyncio
 import json
 import os
-import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Literal
 
 import httpx
-
 
 DEFAULT_INSPECT_URL = (
     "https://us.api.inspect.aidefense.security.cisco.com/api/v1/inspect/chat"
@@ -118,7 +116,7 @@ class ChatInspectClient:
             await self._client.aclose()
             self._client = None
 
-    async def __aenter__(self) -> "ChatInspectClient":  # noqa: D401
+    async def __aenter__(self) -> ChatInspectClient:  # noqa: D401
         return self
 
     async def __aexit__(self, *_: Any) -> None:  # noqa: D401
@@ -128,7 +126,7 @@ class ChatInspectClient:
 async def run_demo(debug: bool = False) -> int:
     api_key = os.getenv("AI_DEFENSE_API_KEY", "")
     if not api_key:
-        print("❌ Error: AI_DEFENSE_API_KEY environment variable is required")
+        print("Error: AI_DEFENSE_API_KEY environment variable is required")
         return 2
 
     base_url = os.getenv("AI_DEFENSE_API_URL", DEFAULT_INSPECT_URL)
@@ -161,7 +159,7 @@ async def run_demo(debug: bool = False) -> int:
     blocked_count = 0
     async with ChatInspectClient(api_key=api_key, base_url=base_url, timeout_s=timeout_s) as client:
         for idx, (prompt, response) in enumerate(cases, start=1):
-            print(f"📝 Case {idx}")
+            print(f"Case {idx}")
             print(f"   Prompt:   \"{prompt[:70]}{'...' if len(prompt) > 70 else ''}\"")
 
             # PRE: Inspect prompt
@@ -169,7 +167,7 @@ async def run_demo(debug: bool = False) -> int:
             pre_outcome = await client.inspect(pre_payload, debug=debug)
 
             if pre_outcome.error:
-                print(f"   ⚠️  Pre-check error: {pre_outcome.error}")
+                print(f"   Pre-check error: {pre_outcome.error}")
                 if debug and pre_outcome.raw:
                     print("   ↳ Raw:")
                     print(json.dumps(pre_outcome.raw, indent=2)[:1000])
@@ -177,7 +175,7 @@ async def run_demo(debug: bool = False) -> int:
                 continue
 
             if pre_outcome.is_safe is False:
-                print(f"   Result: 🚫 BLOCKED (pre)  [{pre_outcome.duration_ms:.0f} ms]")
+                print(f"   Result: BLOCKED (pre)  [{pre_outcome.duration_ms:.0f} ms]")
                 if debug and pre_outcome.raw:
                     print("   ↳ Raw:")
                     print(json.dumps(pre_outcome.raw, indent=2)[:1000])
@@ -185,7 +183,7 @@ async def run_demo(debug: bool = False) -> int:
                 print()
                 continue
 
-            print(f"   Result: ✅ PASSED (pre)   [{pre_outcome.duration_ms:.0f} ms]")
+            print(f"   Result: PASSED (pre)   [{pre_outcome.duration_ms:.0f} ms]")
             if debug and pre_outcome.raw:
                 print("   ↳ Raw:")
                 print(json.dumps(pre_outcome.raw, indent=2)[:1000])
@@ -196,7 +194,7 @@ async def run_demo(debug: bool = False) -> int:
             post_outcome = await client.inspect(post_payload, debug=debug)
 
             if post_outcome.error:
-                print(f"   ⚠️  Post-check error: {post_outcome.error}")
+                print(f"   Post-check error: {post_outcome.error}")
                 if debug and post_outcome.raw:
                     print("   ↳ Raw:")
                     print(json.dumps(post_outcome.raw, indent=2)[:1000])
@@ -204,13 +202,13 @@ async def run_demo(debug: bool = False) -> int:
                 continue
 
             if post_outcome.is_safe is False:
-                print(f"   Result: 🚫 BLOCKED (post) [{post_outcome.duration_ms:.0f} ms]")
+                print(f"   Result: BLOCKED (post) [{post_outcome.duration_ms:.0f} ms]")
                 if debug and post_outcome.raw:
                     print("   ↳ Raw:")
                     print(json.dumps(post_outcome.raw, indent=2)[:1000])
                 blocked_count += 1
             else:
-                print(f"   Result: ✅ PASSED (post)  [{post_outcome.duration_ms:.0f} ms]")
+                print(f"   Result: PASSED (post)  [{post_outcome.duration_ms:.0f} ms]")
                 if debug and post_outcome.raw:
                     print("   ↳ Raw:")
                     print(json.dumps(post_outcome.raw, indent=2)[:1000])

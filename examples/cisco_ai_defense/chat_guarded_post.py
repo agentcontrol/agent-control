@@ -2,7 +2,7 @@
 
 Prereqs:
   1) Run the server with Cisco AI Defense evaluator available
-  2) Seed controls + policy with examples/ai_defense/seed_policy.py
+  2) Seed controls + policy with examples/cisco_ai_defense/seed_policy.py
   3) Set env: AGENT_CONTROL_URL, AGENT_CONTROL_API_KEY
 
 Run:
@@ -41,7 +41,7 @@ async def main() -> int:
     url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
     api_key = os.getenv("AGENT_CONTROL_API_KEY", "")
     if not api_key:
-        print("❌ Missing AGENT_CONTROL_API_KEY")
+        print("Error: Missing AGENT_CONTROL_API_KEY")
         return 2
 
     try:
@@ -55,7 +55,7 @@ async def main() -> int:
         # Allow already-registered agent IDs to proceed (idempotent runs)
         status = getattr(e.response, "status_code", None)
         if status == 409:
-            print("ℹ️  Agent already registered (409). Continuing…")
+            print("Info: Agent already registered (409). Continuing...")
         else:
             raise
 
@@ -65,14 +65,14 @@ async def main() -> int:
     ]
 
     for i, msg in enumerate(cases, start=1):
-        print(f"\n📝 Case {i}: {msg}")
+        print(f"\nCase {i}: {msg}")
         try:
             resp = await reply_with_potentially_unsafe_output(msg)
-            print(f"   ✅ Response delivered: {resp}")
+            print(f"   Response delivered: {resp}")
         except agent_control.control_decorators.ControlViolationError as e:  # type: ignore[attr-defined]
-            print(f"   🚫 Blocked by POST policy (PII): {e}")
+            print(f"   Blocked by POST policy (PII): {e}")
         except Exception as e:  # noqa: BLE001
-            print(f"   ⚠️  Error: {e}")
+            print(f"   Error: {e}")
 
     return 0
 
