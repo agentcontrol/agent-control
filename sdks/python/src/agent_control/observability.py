@@ -756,17 +756,22 @@ def add_event(event: ControlExecutionEvent) -> bool:
     return _batcher.add_event(event)
 
 
+def sync_shutdown_observability() -> None:
+    """Synchronously shut down observability and flush remaining events."""
+    global _batcher
+    if _batcher is not None:
+        _batcher.shutdown()
+        _batcher = None
+
+
 async def shutdown_observability() -> None:
     """
     Shutdown observability and flush remaining events.
 
     Call this before process exit for clean shutdown.
     """
-    global _batcher
-    if _batcher is not None:
-        # shutdown() performs blocking joins; keep caller event loops responsive.
-        await asyncio.to_thread(_batcher.shutdown)
-        _batcher = None
+    # Delegate to the sync implementation off the event loop thread.
+    await asyncio.to_thread(sync_shutdown_observability)
 
 
 def is_observability_enabled() -> bool:

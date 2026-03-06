@@ -106,11 +106,11 @@ def test_reinit_stops_and_restarts_policy_refresh_loop() -> None:
 
 
 def test_policy_refresh_worker_runs_multiple_iterations() -> None:
-    # Given: a stop event that is set after the second refresh call.
+    # Given: a stop event that is set after the second fetch call.
     stop_event = threading.Event()
     call_count = 0
 
-    async def mock_refresh_controls_async() -> list[dict[str, int]]:
+    async def mock_fetch() -> list[dict[str, int]]:
         nonlocal call_count
         call_count += 1
         if call_count >= 2:
@@ -119,8 +119,8 @@ def test_policy_refresh_worker_runs_multiple_iterations() -> None:
 
     # When: the worker loop runs with zero wait interval for deterministic test speed.
     with patch(
-        "agent_control.refresh_controls_async",
-        new=AsyncMock(side_effect=mock_refresh_controls_async),
+        "agent_control._fetch_controls_async",
+        new=AsyncMock(side_effect=mock_fetch),
     ):
         agent_control._policy_refresh_worker(stop_event, interval_seconds=0)
 
@@ -216,11 +216,11 @@ def test_stop_policy_refresh_loop_logs_warning_if_thread_does_not_stop() -> None
 
 
 def test_policy_refresh_worker_logs_and_continues_after_refresh_error() -> None:
-    # GIVEN: refresh fails once, then succeeds and signals stop.
+    # GIVEN: fetch fails once, then succeeds and signals stop.
     stop_event = threading.Event()
     call_count = 0
 
-    async def flaky_refresh_controls_async() -> list[dict[str, int]]:
+    async def flaky_fetch() -> list[dict[str, int]]:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -230,8 +230,8 @@ def test_policy_refresh_worker_logs_and_continues_after_refresh_error() -> None:
 
     # WHEN: the worker loop runs.
     with patch(
-        "agent_control.refresh_controls_async",
-        new=AsyncMock(side_effect=flaky_refresh_controls_async),
+        "agent_control._fetch_controls_async",
+        new=AsyncMock(side_effect=flaky_fetch),
     ), patch("agent_control.logger.error") as error_log_mock:
         agent_control._policy_refresh_worker(stop_event, interval_seconds=0)
 

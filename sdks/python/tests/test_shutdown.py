@@ -1,6 +1,8 @@
 """Tests for agent_control.shutdown() and agent_control.ashutdown()."""
 
+import asyncio
 import threading
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -112,3 +114,91 @@ class TestAshutdownAsync:
     async def test_ashutdown_idempotent(self):
         await agent_control.ashutdown()
         await agent_control.ashutdown()
+
+
+class TestShutdownRefreshRace:
+    """Regression tests: in-flight refresh must not publish after shutdown.
+
+    These tests run _policy_refresh_worker directly (like the existing
+    worker tests) with a gated _fetch_controls_async, so the actual
+    post-fetch stop_event check in the worker is what prevents the
+    zombie publish.
+    """
+
+    def test_sync_shutdown_prevents_zombie_publish(self):
+        fetch_gate = threading.Event()
+        fetch_entered = threading.Event()
+        stop_event = threading.Event()
+
+        async def slow_fetch() -> list[dict[str, Any]]:
+            fetch_entered.set()
+            await asyncio.to_thread(fetch_gate.wait)
+            return [{"name": "zombie-control", "control": {}}]
+
+        state.current_agent = None
+        state.server_controls = None
+
+        # Wire up module state so shutdown() can signal the stop event.
+        agent_control._refresh_stop_event = stop_event
+
+        with patch(
+            "agent_control._fetch_controls_async",
+            new=AsyncMock(side_effect=slow_fetch),
+        ):
+            # Run the real worker in a thread (interval=1 but the first
+            # wait(1) returns False immediately since stop isn't set).
+            worker_thread = threading.Thread(
+                target=agent_control._policy_refresh_worker,
+                args=(stop_event, 0),
+                daemon=True,
+            )
+            agent_control._refresh_thread = worker_thread
+            worker_thread.start()
+
+            assert fetch_entered.wait(timeout=5), "worker never entered fetch"
+
+            # Shutdown while fetch is in-flight.
+            agent_control.shutdown()
+
+            # Unblock the fetch - worker should see stop_event and discard.
+            fetch_gate.set()
+            worker_thread.join(timeout=5)
+
+        assert state.server_controls is None
+
+    @pytest.mark.asyncio
+    async def test_async_shutdown_prevents_zombie_publish(self):
+        fetch_gate = threading.Event()
+        fetch_entered = threading.Event()
+        stop_event = threading.Event()
+
+        async def slow_fetch() -> list[dict[str, Any]]:
+            fetch_entered.set()
+            await asyncio.to_thread(fetch_gate.wait)
+            return [{"name": "zombie-control", "control": {}}]
+
+        state.current_agent = None
+        state.server_controls = None
+
+        agent_control._refresh_stop_event = stop_event
+
+        with patch(
+            "agent_control._fetch_controls_async",
+            new=AsyncMock(side_effect=slow_fetch),
+        ):
+            worker_thread = threading.Thread(
+                target=agent_control._policy_refresh_worker,
+                args=(stop_event, 0),
+                daemon=True,
+            )
+            agent_control._refresh_thread = worker_thread
+            worker_thread.start()
+
+            assert fetch_entered.wait(timeout=5), "worker never entered fetch"
+
+            await agent_control.ashutdown()
+
+            fetch_gate.set()
+            worker_thread.join(timeout=5)
+
+        assert state.server_controls is None
