@@ -64,7 +64,7 @@ export function AgentsMonitor({
     isLoading,
     error,
   } = useAgentMonitor(agentUuid, apiTimeRange, {
-    refetchInterval: 5000, // Poll every 5 seconds
+    refetchInterval: 2000, // Poll every 2 seconds
     includeTimeseries: true, // Always fetch timeseries for trend chart
   });
 
