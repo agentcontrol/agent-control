@@ -21,7 +21,7 @@ from agent_control_server.main import app
 from agent_control_server.models import Control
 
 from .conftest import engine
-from .utils import VALID_CONTROL_PAYLOAD
+from .utils import VALID_CONTROL_PAYLOAD, create_typescript_agent
 
 
 def _create_control(client: TestClient, name: str | None = None) -> tuple[int, str]:
@@ -34,27 +34,6 @@ def _create_control(client: TestClient, name: str | None = None) -> tuple[int, s
 def _set_control_data(client: TestClient, control_id: int, data: dict) -> None:
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": data})
     assert resp.status_code == 200, resp.text
-
-
-def _create_typescript_agent(client: TestClient, name: str | None = None) -> str:
-    agent_name = (name or f"agent-{uuid.uuid4().hex[:12]}").lower()
-    if len(agent_name) < 10:
-        agent_name = f"{agent_name}-agent".replace("--", "-")
-    resp = client.post(
-        "/api/v1/agents/initAgent",
-        json={
-            "agent": {
-                "agent_name": agent_name,
-                "agent_description": "test",
-                "agent_version": "1.0",
-                "agent_metadata": {"sdk_language": "typescript"},
-            },
-            "steps": [],
-            "evaluators": [],
-        },
-    )
-    assert resp.status_code == 200
-    return agent_name
 
 
 def test_create_control_integrity_error_returns_conflict(client: TestClient) -> None:
@@ -846,7 +825,7 @@ def test_set_control_data_rejects_sdk_execution_when_directly_used_by_typescript
 ) -> None:
     # Given: a control directly associated with a TypeScript agent
     control_id, _ = _create_control(client)
-    ts_agent_name = _create_typescript_agent(client)
+    ts_agent_name = create_typescript_agent(client)
     assoc_resp = client.post(f"/api/v1/agents/{ts_agent_name}/controls/{control_id}")
     assert assoc_resp.status_code == 200
 
@@ -874,7 +853,7 @@ def test_set_control_data_rejects_sdk_execution_when_policy_used_by_typescript_a
     add_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert add_resp.status_code == 200
 
-    ts_agent_name = _create_typescript_agent(client)
+    ts_agent_name = create_typescript_agent(client)
     assign_resp = client.post(f"/api/v1/agents/{ts_agent_name}/policies/{policy_id}")
     assert assign_resp.status_code == 200
 

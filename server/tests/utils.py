@@ -70,3 +70,33 @@ def create_and_assign_policy(
     assert resp.status_code == 200
 
     return normalized_agent_name, control_name
+
+
+def create_typescript_agent(client: TestClient, name: str | None = None) -> str:
+    """Create a TypeScript SDK agent via initAgent and return its name.
+
+    Args:
+        client: Test client.
+        name: Optional agent name; if omitted or too short, a valid name is generated.
+
+    Returns:
+        The agent name (normalized for length constraints).
+    """
+    agent_name = (name or f"agent-{uuid.uuid4().hex[:12]}").lower()
+    if len(agent_name) < 10:
+        agent_name = f"{agent_name}-agent".replace("--", "-")
+    resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {
+                "agent_name": agent_name,
+                "agent_description": "test",
+                "agent_version": "1.0",
+                "agent_metadata": {"sdk_language": "typescript"},
+            },
+            "steps": [],
+            "evaluators": [],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return agent_name

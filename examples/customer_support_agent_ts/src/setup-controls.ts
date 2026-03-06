@@ -9,7 +9,7 @@ import { AgentControlClient, type ControlDefinitionInput } from "agent-control";
 
 const serverUrl = process.env.AGENT_CONTROL_URL ?? "http://localhost:8000";
 const apiKey = process.env.AGENT_CONTROL_API_KEY;
-const agentName = "customer-support-agent-ts-2";
+const agentName = "customer-support-agent-ts";
 const policyName = `policy-${agentName}`;
 
 const client = new AgentControlClient();
@@ -170,7 +170,11 @@ async function main(): Promise<void> {
     const created = await client.policies.create({ name: policyName });
     policyId = created.policyId;
     console.log(`Created policy: ${policyName} (id=${policyId})`);
-  } catch {
+  } catch (err) {
+    console.warn(
+      `Failed to create policy '${policyName}', attempting to reuse existing policy:`,
+      err,
+    );
     const existing = await client.agents.getPolicy({ agentName });
     policyId = existing.policyId;
     console.log(`Reusing existing policy (id=${policyId})`);
@@ -195,7 +199,11 @@ async function main(): Promise<void> {
       await client.policies.addControl({ policyId, controlId });
       created++;
       console.log(`  + ${spec.name} (id=${controlId})`);
-    } catch {
+    } catch (err) {
+      console.warn(
+        `Failed to create control '${spec.name}', attempting to reuse existing control:`,
+        err,
+      );
       const list = await client.controls.list({ name: spec.name, limit: 1 });
       if (list.controls.length > 0) {
         const controlId = list.controls[0].id;
@@ -205,8 +213,11 @@ async function main(): Promise<void> {
         });
         try {
           await client.policies.addControl({ policyId, controlId });
-        } catch {
-          // already in policy
+        } catch (errAdd) {
+          console.warn(
+            `Failed to associate control '${spec.name}' with policy ${policyId} (may already be attached):`,
+            errAdd,
+          );
         }
         console.log(`  ~ ${spec.name} (id=${controlId}, updated)`);
       }

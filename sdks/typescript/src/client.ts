@@ -6,6 +6,7 @@ export type StepSchema = RegisteredStep;
 export type APIKeyProvider = string | (() => Promise<string>);
 
 export interface AgentControlInitOptions {
+  /** Agent name; must be at least 10 characters and match [a-z0-9:_-] (after trim/lower). */
   agentName: string;
   agentId?: string;
   serverUrl: string;
@@ -28,12 +29,32 @@ export type ObservabilityApi = AgentControlSDK["observability"];
 export type PoliciesApi = AgentControlSDK["policies"];
 export type SystemApi = AgentControlSDK["system"];
 
+/** Match server agent name rule (models: AGENT_NAME_MIN_LENGTH, AGENT_NAME_PATTERN). */
+const AGENT_NAME_MIN_LENGTH = 10;
+const AGENT_NAME_PATTERN = /^[a-z0-9:_-]+$/;
+
+function validateAgentName(name: string): string {
+  const normalized = name.trim().toLowerCase();
+  if (normalized.length < AGENT_NAME_MIN_LENGTH) {
+    throw new Error(
+      `agent_name must be at least ${AGENT_NAME_MIN_LENGTH} characters long`,
+    );
+  }
+  if (!AGENT_NAME_PATTERN.test(normalized)) {
+    throw new Error(
+      "agent_name may only contain lowercase letters, digits, ':', '_' or '-'",
+    );
+  }
+  return normalized;
+}
+
 export class AgentControlClient {
   private options: AgentControlInitOptions | null = null;
   private sdk: AgentControlSDK | null = null;
 
   async init(options: AgentControlInitOptions): Promise<void> {
-    this.options = { ...options };
+    const agentName = validateAgentName(options.agentName);
+    this.options = { ...options, agentName };
     this.sdk = new AgentControlSDK({
       serverURL: options.serverUrl,
       apiKeyHeader: options.apiKey,
@@ -44,7 +65,7 @@ export class AgentControlClient {
       const steps = mergeRegisteredSteps(options.steps);
       await this.sdk.agents.init({
         agent: {
-          agentName: options.agentName,
+          agentName,
           agentDescription: options.agentDescription,
           agentVersion: options.agentVersion,
           agentMetadata: {

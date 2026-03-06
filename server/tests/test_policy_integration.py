@@ -5,7 +5,7 @@ from copy import deepcopy
 
 from fastapi.testclient import TestClient
 
-from .utils import VALID_CONTROL_PAYLOAD
+from .utils import VALID_CONTROL_PAYLOAD, create_typescript_agent
 
 
 def _create_agent(client: TestClient, name: str | None = None) -> tuple[str, str]:
@@ -19,25 +19,6 @@ def _create_agent(client: TestClient, name: str | None = None) -> tuple[str, str
             "agent_description": "test",
             "agent_version": "1.0",
             "agent_metadata": {},
-        },
-        "steps": [],
-    }
-    resp = client.post("/api/v1/agents/initAgent", json=payload)
-    assert resp.status_code == 200
-    return agent_name, agent_name
-
-
-def _create_typescript_agent(client: TestClient, name: str | None = None) -> tuple[str, str]:
-    """Helper: Create a TypeScript SDK agent and return (agent_name, agent_name)."""
-    agent_name = (name or f"agent-{uuid.uuid4().hex[:12]}").lower()
-    if len(agent_name) < 10:
-        agent_name = f"{agent_name}-agent".replace("--", "-")
-    payload = {
-        "agent": {
-            "agent_name": agent_name,
-            "agent_description": "test",
-            "agent_version": "1.0",
-            "agent_metadata": {"sdk_language": "typescript"},
         },
         "steps": [],
     }
@@ -470,7 +451,7 @@ def test_add_agent_control_is_idempotent(client: TestClient) -> None:
 
 def test_add_agent_control_rejects_sdk_execution_for_typescript_agent(client: TestClient) -> None:
     """TypeScript agents should reject directly associated sdk-execution controls."""
-    agent_name, _ = _create_typescript_agent(client)
+    agent_name = create_typescript_agent(client)
     control_id = _create_control(client)
 
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
@@ -487,7 +468,7 @@ def test_add_agent_control_rejects_sdk_execution_for_typescript_agent(client: Te
 
 def test_set_agent_policy_rejects_sdk_execution_for_typescript_agent(client: TestClient) -> None:
     """TypeScript agents should reject policy assignment with sdk-execution controls."""
-    agent_name, _ = _create_typescript_agent(client)
+    agent_name = create_typescript_agent(client)
     policy_id = _create_policy(client)
     control_id = _create_control(client)
 
@@ -510,7 +491,7 @@ def test_add_control_to_policy_rejects_when_policy_has_typescript_agents(
     client: TestClient,
 ) -> None:
     """Adding sdk-execution control to an in-use policy should fail for TS agents."""
-    agent_name, _ = _create_typescript_agent(client)
+    agent_name = create_typescript_agent(client)
     policy_id = _create_policy(client)
     control_id = _create_control(client)
 

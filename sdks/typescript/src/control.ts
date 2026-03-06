@@ -1,4 +1,4 @@
-import type { AgentControlClient } from "./client";
+import type { AgentControlClient, AgentControlInitOptions } from "./client";
 import type { EvaluationResponse } from "./generated/models/evaluation-response";
 import { ControlSteerError, ControlViolationError } from "./errors";
 import { registerStep } from "./_control_registry";
@@ -14,13 +14,14 @@ export function _registerDefaultClient(client: AgentControlClient): void {
   _defaultClient = client;
 }
 
-function requireClient(): AgentControlClient {
-  if (!_defaultClient || !_defaultClient.initialized) {
+function requireClient(): { client: AgentControlClient; config: AgentControlInitOptions } {
+  if (!_defaultClient || !_defaultClient.initialized || !_defaultClient.config) {
     throw new Error(
       "AgentControlClient is not initialized. Call agentControl.init() before using control().",
     );
   }
-  return _defaultClient;
+
+  return { client: _defaultClient, config: _defaultClient.config };
 }
 
 // ---------------------------------------------------------------------------
@@ -243,8 +244,8 @@ export function control<TArgs extends unknown[], TResult>(
   });
 
   const wrapped = async (...args: TArgs): Promise<TResult> => {
-    const client = requireClient();
-    const { agentName } = client.config!;
+    const { client, config } = requireClient();
+    const { agentName } = config;
 
     return withChecks(
       client,
@@ -257,6 +258,3 @@ export function control<TArgs extends unknown[], TResult>(
   Object.defineProperty(wrapped, "name", { value: stepName });
   return wrapped;
 }
-
-// NOTE: `guard()` and `check()` are temporarily disabled from the public API
-// while we evaluate long-term API surface decisions. Revisit later if needed.
