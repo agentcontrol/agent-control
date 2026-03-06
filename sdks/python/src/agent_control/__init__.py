@@ -544,6 +544,53 @@ def init(
     return state.current_agent
 
 
+# ============================================================================
+# Shutdown
+# ============================================================================
+
+
+async def ashutdown() -> None:
+    """Shut down the SDK and release all background resources.
+
+    Flushes pending observability events, stops the policy refresh loop,
+    and resets global state.  Idempotent - safe to call multiple times.
+
+    Use this from async code.  For sync code use :func:`shutdown`.
+    """
+    _stop_policy_refresh_loop()
+    await shutdown_observability()
+    state.current_agent = None
+    state.control_engine = None
+    state.server_controls = None
+    state.server_url = None
+    state.api_key = None
+    logger.info("Agent Control SDK shut down")
+
+
+def shutdown() -> None:
+    """Shut down the SDK and release all background resources.
+
+    Flushes pending observability events, stops the policy refresh loop,
+    and resets global state.  Idempotent - safe to call multiple times.
+
+    Use this from sync code.  For async code use :func:`ashutdown`.
+    """
+    _stop_policy_refresh_loop()
+
+    import agent_control.observability as _obs_mod
+
+    if _obs_mod._batcher is not None:
+        _obs_mod._batcher.shutdown()
+        _obs_mod._batcher = None
+
+    state.current_agent = None
+    state.control_engine = None
+    state.server_controls = None
+    state.server_url = None
+    state.api_key = None
+    logger.info("Agent Control SDK shut down")
+
+
 async def get_agent(
     agent_name: str,
     server_url: str | None = None,
@@ -1123,8 +1170,10 @@ async def list_policy_controls(
 
 
 __all__ = [
-    # Initialization
+    # Initialization & lifecycle
     "init",
+    "shutdown",
+    "ashutdown",
     "current_agent",
 
     # Control sync
