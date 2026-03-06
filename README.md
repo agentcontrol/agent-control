@@ -120,8 +120,8 @@ cd agent-control
 # Install dependencies
 make sync
 
-# Start PostgreSQL database
-cd server && docker-compose up -d && cd ..
+# Start PostgreSQL database from the repo root
+docker compose up -d postgres
 
 # Run database migrations
 make server-alembic-upgrade
@@ -156,15 +156,32 @@ pnpm dev
 
 Create controls to protect your agent's operations:
 
+> When authentication is enabled, this setup script needs an admin API key because it
+> creates a control and attaches it to an agent. `agents.register_agent()` itself accepts
+> a regular or admin key, but `controls.create_control()` and
+> `agents.add_agent_control()` are control-plane mutations and require a key listed in
+> `AGENT_CONTROL_ADMIN_API_KEYS`.
+>
+> If you started the full local stack with the repo-root `docker-compose.yml`, it enables
+> auth with these development defaults:
+> - Regular API key: `420c6b90714b45beaa992c3f05cf2baf`
+> - Admin API key: `29af8554a1fe4311977b7ce360b20cc3`
+> - UI default key (`NEXT_PUBLIC_AGENT_CONTROL_API_KEY`): `29af8554a1fe4311977b7ce360b20cc3`
+>
+> Replace these defaults before any shared or production deployment.
+
 ```python
 # setup.py - Run once to configure everything
 import asyncio
+import os
 from datetime import datetime, UTC
 from agent_control import AgentControlClient, controls, agents
 from agent_control_models import Agent
 
 async def setup():
-    async with AgentControlClient() as client:  # Defaults to localhost:8000
+    async with AgentControlClient(
+        api_key=os.getenv("AGENT_CONTROL_API_KEY")
+    ) as client:  # Defaults to localhost:8000
         # 1. Register agent first
         agent = Agent(
             # Your agent's UUID
@@ -208,6 +225,9 @@ asyncio.run(setup())
 uv venv
 uv .venv/bin/activate
 uv pip install agent-control-sdk
+# If auth is enabled, this setup step needs an admin API key.
+# Repo-root docker-compose default:
+# export AGENT_CONTROL_API_KEY=29af8554a1fe4311977b7ce360b20cc3
 uv run setup.py
 ```
 
@@ -323,6 +343,8 @@ curl http://localhost:8000/api/v1/agents/support-agent-v1/controls
 The server supports additional environment variables:
 
 - `AGENT_CONTROL_API_KEY_ENABLED` - Enable API key authentication (default: `false`)
+- `AGENT_CONTROL_API_KEYS` - Valid API keys for runtime/read access when auth is enabled
+- `AGENT_CONTROL_ADMIN_API_KEYS` - Admin API keys required for control-plane mutations
 - `LOG_LEVEL` - Logging level (default: `INFO`)
 
 See [server/README.md](server/README.md) for complete server configuration.

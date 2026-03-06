@@ -68,6 +68,7 @@ DEBUG=false
 # Authentication
 AGENT_CONTROL_API_KEY_ENABLED=true
 AGENT_CONTROL_API_KEYS=your-api-key-here,another-key-here
+AGENT_CONTROL_ADMIN_API_KEYS=your-admin-key-here
 
 # Observability
 OBSERVABILITY_ENABLED=true
@@ -79,6 +80,14 @@ GALILEO_API_KEY=your-galileo-api-key
 # Prometheus metrics
 PROMETHEUS_METRICS_PREFIX=agent_control_server
 ```
+
+If you use the repo-root `docker-compose.yml`, local development defaults are:
+
+- `AGENT_CONTROL_API_KEYS=420c6b90714b45beaa992c3f05cf2baf`
+- `AGENT_CONTROL_ADMIN_API_KEYS=29af8554a1fe4311977b7ce360b20cc3`
+- `NEXT_PUBLIC_AGENT_CONTROL_API_KEY=29af8554a1fe4311977b7ce360b20cc3`
+
+Change these defaults before any shared or production deployment.
 
 ## Authentication
 
@@ -319,6 +328,7 @@ docker run -p 8000:8000 \
   -e DATABASE_URL=postgresql+psycopg://user:password@host:5432/agent_control \
   -e AGENT_CONTROL_API_KEY_ENABLED=true \
   -e AGENT_CONTROL_API_KEYS=your-key-here \
+  -e AGENT_CONTROL_ADMIN_API_KEYS=your-admin-key-here \
   agent-control-server
 ```
 

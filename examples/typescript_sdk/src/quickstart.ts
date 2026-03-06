@@ -1,6 +1,7 @@
 import { AgentControlClient, type ControlDefinition } from "agent-control";
 
 const serverUrl = process.env.AGENT_CONTROL_URL ?? "http://localhost:8000";
+// This example creates, updates, and deletes controls, so use an admin key when auth is enabled.
 const apiKey = process.env.AGENT_CONTROL_API_KEY;
 const controlName = `ts-sdk-example-${Date.now()}`;
 
