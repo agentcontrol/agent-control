@@ -61,12 +61,19 @@ mkdir -p "${GENERATED_DIR}"
 rsync -a --delete "${TMP_OUTPUT_DIR}/src/" "${GENERATED_DIR}/"
 rm -rf "${TMP_OUTPUT_DIR}"
 
-# Speakeasy seeds hooks/registration.ts with @ts-expect-error, which fails
-# strict typecheck when no hook is registered. Normalize to @ts-ignore so
-# committed and regenerated output stay deterministic.
+# The darwin and linux Speakeasy binaries diverge on whether they generate
+# hooks/registration.ts and wire it into hooks/hooks.ts.  Remove both to keep
+# generated output deterministic across platforms.  Custom hooks can still be
+# added directly in hooks/hooks.ts if needed.
 REGISTRATION_FILE="${GENERATED_DIR}/hooks/registration.ts"
-if [[ -f "${REGISTRATION_FILE}" ]]; then
-  perl -0pi -e 's/@ts-expect-error/@ts-ignore/g' "${REGISTRATION_FILE}"
+rm -f "${REGISTRATION_FILE}"
+
+HOOKS_FILE="${GENERATED_DIR}/hooks/hooks.ts"
+if [[ -f "${HOOKS_FILE}" ]]; then
+  # Remove the "import { initHooks } from ./registration.js" line (its leading \n is the blank-line separator, keep that)
+  perl -0pi -e 's/\nimport \{ initHooks \} from "\.\/registration\.js";\n//g' "${HOOKS_FILE}"
+  # Remove the initHooks(this) call in the constructor
+  perl -0pi -e 's/\n    initHooks\(this\);//g' "${HOOKS_FILE}"
 fi
 
 # Default initAgent conflict mode to overwrite for SDK ergonomics while
