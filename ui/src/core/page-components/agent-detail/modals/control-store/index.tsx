@@ -281,7 +281,7 @@ export function ControlStoreModal({
         return (
           <Anchor
             component={Link}
-                          href={getAgentRoute(usedByAgent.agent_name)}
+            href={getAgentRoute(usedByAgent.agent_name)}
             size="sm"
             underline="hover"
           >

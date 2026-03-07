@@ -210,7 +210,9 @@ export function AppLayout({ children }: AppLayoutProps) {
                   />
                 }
                 label="My agents"
-                active={router.pathname === '/' || router.pathname === '/agents'}
+                active={
+                  router.pathname === '/' || router.pathname === '/agents'
+                }
                 onClick={closeNavbar}
               />
 

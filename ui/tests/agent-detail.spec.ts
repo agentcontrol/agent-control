@@ -182,9 +182,9 @@ test.describe('Agent Detail Page', () => {
     ).toBeVisible();
 
     // URL should contain modal parameter
-    await expect(
-      mockedPage
-    ).toHaveURL(getAgentControlsUrl({ modal: 'control-store' }));
+    await expect(mockedPage).toHaveURL(
+      getAgentControlsUrl({ modal: 'control-store' })
+    );
   });
 
   test('closing edit modal removes query parameters', async ({

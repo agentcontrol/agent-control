@@ -276,7 +276,10 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
               );
             } else if (value === 'controls') {
               router.push(
-                getAgentRoute(agentId, { tab: 'controls', query: router.query }),
+                getAgentRoute(agentId, {
+                  tab: 'controls',
+                  query: router.query,
+                }),
                 undefined,
                 {
                   shallow: true,
