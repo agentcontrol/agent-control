@@ -6,13 +6,14 @@ from typing import Any
 def is_typescript_agent_metadata(agent_metadata: dict[str, Any]) -> bool:
     """Return True when agent metadata identifies a TypeScript SDK agent.
 
-    Contract: we store TypeScript SDK agents with a flat metadata shape where
-    `sdk_language` lives at the top level of `agent_metadata`. We do not
-    support nested `agent_metadata.agent_metadata` shapes; new code should
-    always write the flat form.
+    ``AgentData.agent_metadata`` stores the full ``APIAgent.model_dump()`` payload
+    (see ``initAgent`` endpoint), so the user-supplied metadata dict is nested under
+    the ``"agent_metadata"`` key — i.e. ``agent_metadata["agent_metadata"]["sdk_language"]``.
     """
-    sdk_language = agent_metadata.get("sdk_language")
-    return isinstance(sdk_language, str) and sdk_language.lower() == "typescript"
+    nested = agent_metadata.get("agent_metadata")
+    if not isinstance(nested, dict):
+        return False
+    return nested.get("sdk_language", "").lower() == "typescript"
 
 
 def is_local_execution_control(control_data: dict[str, Any]) -> bool:
