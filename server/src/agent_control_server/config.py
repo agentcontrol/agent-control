@@ -150,7 +150,22 @@ class ObservabilitySettings(BaseSettings):
     stdout: bool = False
 
 
+class UISettings(BaseSettings):
+    """Static UI hosting configuration settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        env_prefix="AGENT_CONTROL_UI_",
+        extra="ignore",
+    )
+
+    dist_dir: str | None = None
+
+
 auth_settings = AuthSettings()
 db_config = AgentControlServerDatabaseConfig()
 settings = Settings()
 observability_settings = ObservabilitySettings()
+ui_settings = UISettings()

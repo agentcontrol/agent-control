@@ -1,3 +1,5 @@
+import { getAgentRoute } from '@/core/constants/agent-routes';
+
 import { expect, mockData, test } from './fixtures';
 
 test.describe('SearchInput - Query Param Syncing', () => {
@@ -89,7 +91,7 @@ test.describe('SearchInput - Query Param Syncing', () => {
     // Navigate away
     await mockedPage.getByText('customer-support-bot').click();
     await expect(mockedPage).toHaveURL(
-      /\/agents\/customer-support-bot\/monitor/
+      getAgentRoute('customer-support-bot', { tab: 'monitor' })
     );
 
     // Go back
@@ -113,7 +115,7 @@ test.describe('SearchInput - Query Param Syncing', () => {
 
 test.describe('SearchInput - Agent Detail Page', () => {
   test('syncs search value to URL query param (q)', async ({ mockedPage }) => {
-    await mockedPage.goto('/agents/agent-1/controls');
+    await mockedPage.goto(getAgentRoute('agent-1', { tab: 'controls' }));
 
     const searchInput = mockedPage.getByPlaceholder('Search controls...');
     await searchInput.fill('PII');
@@ -122,11 +124,15 @@ test.describe('SearchInput - Agent Detail Page', () => {
     await mockedPage.waitForTimeout(350);
 
     // Verify URL has the query param (uses 'q' key)
-    await expect(mockedPage).toHaveURL(/.*\?q=PII/);
+    await expect(mockedPage).toHaveURL(
+      getAgentRoute('agent-1', { tab: 'controls', query: { q: 'PII' } })
+    );
   });
 
   test('reads search value from URL on page load', async ({ mockedPage }) => {
-    await mockedPage.goto('/agents/agent-1/controls?q=PII');
+    await mockedPage.goto(
+      getAgentRoute('agent-1', { tab: 'controls', query: { q: 'PII' } })
+    );
 
     // Wait for page to load
     await expect(mockedPage.getByRole('table')).toBeVisible();

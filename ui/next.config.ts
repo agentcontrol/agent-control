@@ -1,8 +1,20 @@
 import type { NextConfig } from 'next';
 
+const isStaticExport = process.env.AGENT_CONTROL_STATIC_EXPORT === 'true';
+const shouldUnoptimizeImages = isStaticExport || Boolean(process.env.CI);
+
 const nextConfig: NextConfig = {
   pageExtensions: ['tsx', 'ts', 'jsx', 'js'],
   reactStrictMode: true,
+  ...(isStaticExport && {
+    output: 'export',
+    trailingSlash: true,
+  }),
+  ...(shouldUnoptimizeImages && {
+    images: {
+      unoptimized: true,
+    },
+  }),
 
   // Transpile Jupiter DS package to handle CSS imports
   transpilePackages: ['@rungalileo/jupiter-ds'],
@@ -35,11 +47,6 @@ const nextConfig: NextConfig = {
   ...(process.env.CI && {
     // Disable source maps in CI (faster builds, not needed for tests)
     productionBrowserSourceMaps: false,
-
-    // Optimize images (if using next/image) - skip optimization in CI
-    images: {
-      unoptimized: true,
-    },
 
     // Use SWC minification (faster than Terser, default in Next.js 15)
     swcMinify: true,

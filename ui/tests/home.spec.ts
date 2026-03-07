@@ -1,4 +1,5 @@
 import type { ListAgentsResponse } from '@/core/api/types';
+import { getAgentRoute } from '@/core/constants/agent-routes';
 
 import { expect, mockData, test } from './fixtures';
 
@@ -129,7 +130,7 @@ test.describe('Home Page - Agents Overview', () => {
     // Verify navigation to agent detail page
     // Since stats mock returns data, it will redirect to monitor tab
     await expect(mockedPage).toHaveURL(
-      `/agents/${firstAgent.agent_name}/monitor`
+      getAgentRoute(firstAgent.agent_name, { tab: 'monitor' })
     );
   });
 

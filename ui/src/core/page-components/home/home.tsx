@@ -19,6 +19,7 @@ import { useMemo } from 'react';
 
 import type { AgentSummary } from '@/core/api/types';
 import { SearchInput } from '@/core/components/search-input';
+import { getAgentRoute } from '@/core/constants/agent-routes';
 import { useAgentsInfinite } from '@/core/hooks/query-hooks/use-agents-infinite';
 import { useInfiniteScroll } from '@/core/hooks/use-infinite-scroll';
 import { useQueryParam } from '@/core/hooks/use-query-param';
@@ -102,7 +103,7 @@ const HomePage = () => {
   }, [data]);
 
   const handleRowClick = (agent: AgentTableRow) => {
-    router.push(`/agents/${agent.agent_name}`);
+    router.push(getAgentRoute(agent.agent_name));
   };
 
   // Define table columns

@@ -34,6 +34,7 @@ from .errors import (
 from .logging_utils import configure_logging
 from .observability.ingest import DirectEventIngestor
 from .observability.store import PostgresEventStore
+from .ui_assets import configure_ui_routes
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ def add_prometheus_metrics(app: FastAPI, metrics_prefix: str) -> None:
         skip_paths=PROMETHEUS_SKIP_PATHS,
     )
     app.add_route(METRICS_PATH, handle_metrics)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -258,8 +260,7 @@ async def health_check() -> HealthResponse:
     return HealthResponse(status="healthy", version="0.1.0")
 
 
-
-
+configure_ui_routes(app)
 
 
 def run() -> None:

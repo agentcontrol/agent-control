@@ -23,6 +23,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { api } from '@/core/api/client';
 import type { ControlDefinition, ControlSummary } from '@/core/api/types';
 import { SearchInput } from '@/core/components/search-input';
+import { getAgentRoute } from '@/core/constants/agent-routes';
 import { MODAL_NAMES, SUBMODAL_NAMES } from '@/core/constants/modal-routes';
 import { useControlsInfinite } from '@/core/hooks/query-hooks/use-controls-infinite';
 import { useInfiniteScroll } from '@/core/hooks/use-infinite-scroll';
@@ -280,7 +281,7 @@ export function ControlStoreModal({
         return (
           <Anchor
             component={Link}
-            href={`/agents/${usedByAgent.agent_name}`}
+                          href={getAgentRoute(usedByAgent.agent_name)}
             size="sm"
             underline="hover"
           >

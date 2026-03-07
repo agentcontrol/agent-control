@@ -12,7 +12,9 @@ import type {
   ValidateControlDataResponse,
 } from './types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === 'true';
+const API_URL = configuredApiUrl ?? (isStaticExport ? '' : 'http://localhost:8000');
 const API_KEY = process.env.NEXT_PUBLIC_AGENT_CONTROL_API_KEY?.trim() || null;
 
 export const apiClient = createClient<paths>({
