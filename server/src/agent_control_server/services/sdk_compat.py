@@ -13,7 +13,7 @@ def is_typescript_agent_metadata(agent_metadata: dict[str, Any]) -> bool:
     nested = agent_metadata.get("agent_metadata")
     if not isinstance(nested, dict):
         return False
-    return nested.get("sdk_language", "").lower() == "typescript"
+    return str(nested.get("sdk_language", "")).lower() == "typescript"
 
 
 def is_local_execution_control(control_data: dict[str, Any]) -> bool:
