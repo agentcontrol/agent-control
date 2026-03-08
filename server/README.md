@@ -183,18 +183,29 @@ GET /api/v1/agents/{agent_name}/controls
 
 ```bash
 # Create control
-POST /api/v1/controls
-Body: { "control": {...} }
+PUT /api/v1/controls
+Body: { "name": "my-control" }
 
 # List controls
-GET /api/v1/controls?skip=0&limit=100
+GET /api/v1/controls?cursor=123&limit=100
 
 # Get control
 GET /api/v1/controls/{control_id}
 
-# Update control
-PUT /api/v1/controls/{control_id}
-Body: { "control": {...} }
+# Get control data
+GET /api/v1/controls/{control_id}/data
+
+# Update control metadata
+PATCH /api/v1/controls/{control_id}
+Body: { "name": "new-name", "enabled": true }
+
+# Update control data
+PUT /api/v1/controls/{control_id}/data
+Body: { "data": {...} }
+
+# Validate control data without saving
+POST /api/v1/controls/validate
+Body: { "data": {...} }
 
 # Delete control
 DELETE /api/v1/controls/{control_id}

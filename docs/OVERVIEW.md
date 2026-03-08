@@ -590,7 +590,7 @@ class ContentModerationEvaluator(Evaluator[ContentModerationEvaluatorConfig]):
 
 ```bash
 # Core SDK
-pip install agent-control
+pip install agent-control-sdk
 
 # Server
 pip install agent-control-server
@@ -598,7 +598,7 @@ pip install agent-control-server
 # With Galileo Luna-2 evaluator support
 pip install agent-control-evaluator-galileo
 # Or via convenience extra:
-pip install agent-control-server[galileo]
+pip install agent-control-evaluators[galileo]
 ```
 
 ### Quick Start
@@ -646,10 +646,10 @@ docker-compose up
 
 ## Roadmap
 
-- [ ] Web UI for control management
+- [x] Web UI for control management
 - [ ] More built-in evaluators (OpenAI Moderation, Perspective API, etc.)
-- [ ] Metrics and analytics dashboard
-- [ ] Multi-language SDK support (TypeScript, Go)
+- [x] Metrics and analytics dashboard
+- [ ] Multi-language SDK support expansion (Go)
 - [ ] Webhook notifications for violations
 
 ---

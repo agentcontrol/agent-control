@@ -49,6 +49,9 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 - **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
 - **[CrewAI SDK Integration](examples/crewai/)** — Working example on integrating with third party Agent SDKs and using Agent Control along side their guardrails
 - **[DeepEval Integration](examples/deepeval/)** — Working Example on How to create custom evaluators to use with your controls
+- **[Agent Control Demo](examples/agent_control_demo/)** — Basic agent control demonstration
+- **[Steer Action Demo](examples/steer_action_demo/)** — Example of using the steer action for correction and retry
+- **[Strands Agents](examples/strands_agents/)** — Integration with Strands Agents framework
 
 ## Quick start
 
@@ -290,12 +293,13 @@ Agent Control is built as a monorepo with these components:
 
 ```
 agent-control/
-├── sdks/python/     # Python SDK (agent-control)
+├── sdks/python/     # Python SDK (agent-control-sdk)
 ├── sdks/typescript/ # TypeScript SDK (generated)
 ├── server/          # FastAPI server (agent-control-server)
 ├── engine/          # Evaluation engine (agent-control-engine)
 ├── models/          # Shared models (agent-control-models)
 ├── evaluators/      # Evaluator implementations (agent-control-evaluators)
+├── scripts/         # Build and utility scripts
 ├── ui/              # Next.js web dashboard
 └── examples/        # Usage examples
 ```
@@ -334,7 +338,7 @@ For detailed development workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 - **[Python SDK](sdks/python/README.md)** — SDK installation, usage, and API reference
 - **[Server](server/README.md)** — Server setup, configuration, and deployment
 - **[UI Dashboard](ui/README.md)** — Web dashboard setup and usage
-- **[Evaluators](evaluators/README.md)** — Available evaluators and custom evaluator development
+- **[Evaluators](evaluators/builtin/README.md)** — Available evaluators and custom evaluator development
 
 ## Contributing
 
