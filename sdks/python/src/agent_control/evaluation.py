@@ -17,6 +17,7 @@ from agent_control_models import (
     Step,
 )
 
+from ._state import state
 from .client import AgentControlClient
 from .observability import add_event, get_logger, is_observability_enabled
 from .validation import ensure_agent_name
@@ -359,3 +360,99 @@ async def check_evaluation_with_local(
         )
 
     return _with_parse_errors(EvaluationResult(is_safe=True, confidence=1.0))
+
+
+async def evaluate_controls(
+    step_name: str,
+    *,
+    input: Any | None = None,
+    output: Any | None = None,
+    context: dict[str, Any] | None = None,
+    step_type: Literal["tool", "llm"] = "llm",
+    stage: Literal["pre", "post"] = "pre",
+    agent_name: str,
+    trace_id: str | None = None,
+    span_id: str | None = None,
+) -> EvaluationResult:
+    """
+    Evaluate controls for a step.
+
+    This convenience function evaluates controls (both local SDK-executed and
+    server-executed) for a given step.
+
+    Args:
+        step_name: Name of the step (e.g., "chat", "search_db")
+        input: Input data for the step (for pre-stage evaluation)
+        output: Output data from the step (for post-stage evaluation)
+        context: Additional context metadata
+        step_type: Type of step - "llm" or "tool" (default: "llm")
+        stage: When to evaluate - "pre" or "post" (default: "pre")
+        agent_name: Agent name (required)
+        trace_id: Optional OpenTelemetry trace ID for observability
+        span_id: Optional OpenTelemetry span ID for observability
+
+    Returns:
+        EvaluationResult with is_safe, confidence, reason, matches, errors
+
+    Raises:
+        httpx.HTTPError: If server request fails
+
+    Example:
+        import agent_control
+
+        # Evaluate controls for an agent
+        result = await agent_control.evaluate_controls(
+            "chat",
+            input="User message here",
+            stage="pre",
+            agent_name="customer-service-bot"
+        )
+
+        # With trace/span IDs for observability
+        result = await agent_control.evaluate_controls(
+            "chat",
+            input="User message",
+            stage="pre",
+            agent_name="customer-service-bot",
+            trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+            span_id="00f067aa0ba902b7"
+        )
+    """
+    # Ensure server_url is set (for mypy type narrowing)
+    if state.server_url is None:
+        raise RuntimeError(
+            "Server URL not configured. Call agent_control.init() first."
+        )
+
+    # Build Step dict (input and output are required by Step model)
+    # Tool steps require dict input/output, LLM steps use strings
+    default_value = {} if step_type == "tool" else ""
+    step_dict: dict[str, Any] = {
+        "type": step_type,
+        "name": step_name,
+        "input": input if input is not None else default_value,
+        "output": output if output is not None else default_value,
+    }
+    if context is not None:
+        step_dict["context"] = context
+
+    # Convert to Step object if models available
+    step_obj = Step(**step_dict)  # type: ignore
+
+    # Get controls from server cache
+    resolved_controls = state.server_controls or []
+
+    # Evaluate using local + server controls
+    async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
+        result = await check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=step_obj,
+            stage=stage,
+            controls=resolved_controls,
+            trace_id=trace_id,
+            span_id=span_id,
+            event_agent_name=agent_name,
+        )
+
+    return result

@@ -7,7 +7,7 @@
 [![CI](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/agentcontrol/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/agentcontrol/agent-control)
 
-> **💡 Pro Tip:** Checkout [docs](https://docs.agentcontrol.dev/) for complete reference
+> **Pro Tip:** See the full docs at https://docs.agentcontrol.dev/
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
@@ -15,14 +15,16 @@ AI agents interact with users, tools, and external systems in unpredictable ways
 
 ![Agent Control Architecture](docs/images/Architecture.png)
 
-## Why Do You Need It?
+## Why Do You Need It
+
 Traditional guardrails embedded inside your agent code have critical limitations:
 
 - **Scattered Logic:** Control code is buried across your agent codebase, making it hard to audit or update
 - **Deployment Overhead:** Changing protection rules requires code changes and redeployment
-- **Limited Adaptability:** Hardcoded checks can't adapt to new attack patterns or production data variations
+- **Limited Adaptability:** Hardcoded checks can’t adapt to new attack patterns or production data variations
 
 **Agent Control gives you runtime control over what your agents can and cannot do:**
+
 - **For developers:** Centralize safety logic and adapt to emerging threats instantly without redeployment
 - **For non-technical teams:** Intuitive UI to configure and monitor agent safety without touching code
 - **For organizations:** Reusable controls across agents with comprehensive audit trails
@@ -30,49 +32,62 @@ Traditional guardrails embedded inside your agent code have critical limitations
 ## Key Features
 
 - **Safety Without Code Changes** — Add guardrails with a `@control()` decorator
-- **Runtime Configuration** — Update controls instantly via API or UI without having to re-deploy your agentic applications
+- **Runtime Configuration** — Update controls instantly via API or UI without redeploying your agentic applications
 - **Centralized Controls** — Define controls once, apply to multiple agents
 - **Web Dashboard** — Visual interface for managing agents, controls, and viewing analytics
 - **Pluggable Evaluators** — Built-in (regex, list matching, Luna-2 AI) or custom evaluators
 - **Fail-Safe Defaults** — Deny controls fail closed on error with configurable error handling
 - **API Key Authentication** — Secure your control server in production
 
-### Examples
+## Examples
 
-Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start) to get started.
+Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start).
 
 - **[Examples Overview](examples/README.md)** — Complete catalog of examples and patterns
-- **[TypeScript SDK](examples/typescript_sdk/)** — Using Agent Control with TypeScript/npm
-- **[Customer Support Agent](examples/customer_support_agent/)** — Full multi-tool agent example
-- **[LangChain SQL Agent](examples/langchain/)** — SQL injection protection
-- **[Galileo Luna-2 Integration](examples/galileo/)** — AI-powered toxicity detection
-- **[CrewAI Integration](examples/crewai/)** — Using Agent Control with third-party agent frameworks
-- **[DeepEval Integration](examples/deepeval/)** — Building custom evaluators
+
+### Core demos
+- **[TypeScript SDK](examples/typescript_sdk/)** — Consumer-style TypeScript example using the published npm package
+- **[Customer Support Agent](examples/customer_support_agent/)** — Enterprise scenario with PII protection, prompt-injection defense, and multiple tools
+- **[Steer Action Demo](examples/steer_action_demo/)** — Banking transfer agent showcasing allow, deny, warn, and steer actions
+
+### Evaluator integrations
+- **[DeepEval Integration](examples/deepeval/)** — Build a custom evaluator using DeepEval GEval metrics
+- **[Galileo Luna-2 Integration](examples/galileo/)** — Toxicity detection and content moderation with Galileo Protect
+
+### Framework integrations
+- **[LangChain](examples/langchain/)** — Protect a SQL agent from dangerous queries with server-side controls
+- **[CrewAI](examples/crewai/)** — Combine Agent Control security controls with CrewAI guardrails for customer support
+- **[AWS Strands](examples/strands_agents/)** — Guardrails for AWS Strands agent workflows and tool calls
 
 ## Quick start
 
-### Installation
+Prerequisites:
 
-**Prerequisites**: 
-* Python 3.12+ 
-* Docker 
+- Python 3.12+
+- Docker
 
-#### SDK only 
-Install our SDK in your project - `pip install agent-control-sdk` 
-> **📝 Note:** Depending on your setup the command maybe different such as `uv add agent-control-sdk` if you're using uv.
+### Option A — SDK only
 
-Run the Agent Control server and Postgres database via docker compose:
-```commandline
-curl "https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml" | docker compose -f - up -d
+Install the SDK in your project:
+
+```bash
+pip install agent-control-sdk
 ```
 
-Server will be running at `http://localhost:8000`
+Run the Agent Control server, PostgreSQL database and UI via Docker Compose:
 
-#### Local development
+```bash
+curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
+```
 
-**Prerequisites:** 
-* uv: Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-* Node.js 18+: For the web dashboard (optional)
+Server will run at `http://localhost:8000` and UI at `http://localhost:4000`.
+
+### Option B — Local development
+
+**Prerequisites:**
+
+- **uv** — Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **Node.js 18+** — For the web dashboard (optional)
 
 ```bash
 # Clone the repo
@@ -82,79 +97,81 @@ cd agent-control
 # Install all workspace dependencies
 make sync
 
-# Start the Agent Control server.  This will also boot Postgres and run alembic migrations
+# Start the Agent Control server (boots Postgres + runs migrations)
 make server-run
 
 # Start the UI (in a separate shell)
 make ui-install
 make ui-dev
 ```
-* Server will run on `http://localhost:8000`
-* UI will run on `http://localhost:4000`
 
-### Onboarding your agent
+Server runs at `http://localhost:8000` and UI at `http://localhost:4000`.
 
-#### Register your agent with server
+Install the SDK in your project:
+```bash
+pip install agent-control-sdk
+```
 
-Agent must be registered with the server. `init` function takes care of this registration.  You should also add `@control` decorator around tools and llm call functions.
+## Minimal agent integration
 
-Here is a contrived example.  Reference our [examples](/examples) for real world examples for specific frameworks.
+### Register your agent with server
+Agent must be registered with the server. You should also add `@control` decorator around tools and llm call functions.
+
+Here is a contrived example. Reference our [examples](examples/) for real world examples for specific frameworks.
+
 ```python
-# my_agent.py
 import asyncio
 import agent_control
 from agent_control import control, ControlViolationError
 
-# Protect any function (like LLM calls)
 @control()
 async def chat(message: str) -> str:
-    # In production: response = await llm.ainvoke(message)
-    # For demo: simulate LLM that might leak sensitive data
     if "test" in message.lower():
-        return "Your SSN is 123-45-6789"  # Will be blocked!
+        return "Your SSN is 123-45-6789"
     return f"Echo: {message}"
 
-# Initialize your agent
 agent_control.init(
-    agent_name="awesome_bot_3000", # This should be a unique name 
+    agent_name="awesome_bot_3000",
     agent_description="My Chatbot",
 )
 
-# Test it
 async def main():
     try:
-        print(await chat("test"))  # ❌ Blocked
+        print(await chat("test"))
     except ControlViolationError as e:
-        print(f"❌ Blocked: {e.control_name}")
+        print(f"Blocked: {e.control_name}")
 
 asyncio.run(main())
 ```
 
-#### Add some controls
+### Add some controls
 
-Easiest way to add controls is to use the UI.  
+**NOTE:** Easiest way to add controls is to use the UI. You can also use SDK or directly call api. 
 
-You can also use SDK or directly call api:
+Run following script to create controls:
 
 ```python
-# setup.py - Run once to configure agent controls
+# setup.py - Run once to configure everything
 import asyncio
+import os
 from datetime import datetime, UTC
 from agent_control import AgentControlClient, controls, agents
 from agent_control_models import Agent
 
 async def setup():
-    async with AgentControlClient() as client:  # Defaults to localhost:8000
+    async with AgentControlClient(
+        api_key=os.getenv("AGENT_CONTROL_API_KEY")
+    ) as client:  # Defaults to localhost:8000
         # 1. Register agent first
         agent = Agent(
             # Your agent's name
-            agent_name="550e8400-e29b-41d4-a716-446655440000",
+            agent_name="awesome_bot_3000",
             agent_description="My Chatbot",
             agent_created_at=datetime.now(UTC).isoformat()
         )
         await agents.register_agent(client, agent, steps=[])
 
-        # 2. Create control (blocks SSN patterns in output)
+        # 2. Create control (blocks SSN patterns)
         control = await controls.create_control(
             client,
             name="block-ssn",
@@ -164,7 +181,7 @@ async def setup():
                 "scope": {"stages": ["post"]},
                 "selector": {"path": "output"},
                 "evaluator": {
-                    "name": "regex", # Inbuilt regex evaluator. See agent-control/evaluators to see all available OOTB evaluators
+                    "name": "regex", # Inbuilt regex evaluator. See evaluators/builtin to see all available OOTB evaluators
                     "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
                 },
                 "action": {"decision": "deny"}
@@ -182,166 +199,50 @@ async def setup():
 
 asyncio.run(setup())
 ```
-#### What's Happening Under the Hood?
 
-1. Your app calls `chat("test")`
-2. Function executes and returns `"Your SSN is 123-45-6789"`
+Now, when you run your agent again, you will see `Blocked: block-ssn`. 
+
+### What's Happening Under the Hood?
+1. Your app calls chat("test")
+2. Function executes and returns "Your SSN is 123-45-6789"
 3. `@control()` decorator sends output to Agent Control server
 4. Server checks the output against all controls
-5. `block-ssn` control finds SSN pattern → matches!
-6. Server returns `is_safe=False` with the matched control
-7. SDK raises `ControlViolationError` and blocks the response
+5. block-ssn control finds SSN pattern → matches!
+6. Server returns is_safe=False with the matched control
+7. SDK raises ControlViolationError and blocks the response
 
-## Configuration
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AGENT_CONTROL_URL` | `http://localhost:8000` | Server URL for SDK |
-| `AGENT_CONTROL_API_KEY` | — | API key for authentication (if enabled) |
-| `DB_URL` | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
-| `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator |
-
-### Server Configuration
-
-The server supports additional environment variables:
-
-- `AGENT_CONTROL_API_KEY_ENABLED` - Enable API key authentication (default: `false`)
-- `LOG_LEVEL` - Logging level (default: `INFO`)
-
-See [server/README.md](server/README.md) for complete server configuration.
-
----
-
-## Agent Control Components
-
-Agent Control is built as a monorepo with these components:
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Your Application                         │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │                     @control() decorator                   │  │
-│  │                            │                               │  │
-│  │                            ▼                               │  │
-│  │  ┌──────────┐    ┌─────────────────┐    ┌──────────────┐   │  │
-│  │  │  Input   │───▶│  Agent Control  │───▶│    Output    │   │  │
-│  │  │          │    │     Engine      │    │              │   │  │
-│  │  └──────────┘    └─────────────────┘    └──────────────┘   │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                      Agent Control Server                        │
-│                                                                  │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │  Controls  │  │Control Link│  │ Evaluators │  │   Agents   │  │
-│  │    API     │  │    API     │  │  Registry  │  │    API     │  │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                       Evaluator Ecosystem                        │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  │
-│  │   Regex    │  │    List    │  │   Luna-2   │  │   Custom   │  │
-│  │ Evaluator  │  │ Evaluator  │  │ Evaluator  │  │ Evaluators │  │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-| Package | Description |
-|:--------|:------------|
-| `agent-control-sdk` | Python SDK with `@control()` decorator |
-| `agent-control` (npm) | TypeScript SDK (generated from OpenAPI) |
-| `agent-control-server` | FastAPI server with Control Management API |
-| `agent-control-engine` | Core evaluation logic and evaluator system |
-| `agent-control-models` | Shared Pydantic v2 models |
-| `agent-control-evaluators` | Built-in evaluators |
-| `ui` | Next.js web dashboard |
-
----
-
-## Development
-
-### Getting Started with Development
-
-**For most developers** (building agents, integrating with apps):
-- Use the [quick setup script](#recommended-one-line-setup-works-for-development-too) (`./setup.sh`)
-- Develop your agent applications against the running server
-- Install SDK in your app: `pip install agent-control-sdk`
-
-**For contributors** (modifying Agent Control itself):
-- Use [`make sync`](#alternative-run-server-from-source-for-server-development) and `make server-run` for server development with hot reload
-- See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed workflows
-- Run quality checks before submitting PRs: `make check`
-
-### Directory Structure
-
-```
-agent-control/
-├── sdks/python/     # Python SDK (agent-control)
-├── sdks/typescript/ # TypeScript SDK (generated)
-├── server/          # FastAPI server (agent-control-server)
-├── engine/          # Evaluation engine (agent-control-engine)
-├── models/          # Shared models (agent-control-models)
-├── evaluators/      # Evaluator implementations (agent-control-evaluators)
-├── ui/              # Next.js web dashboard
-└── examples/        # Usage examples
-```
-
-### Makefile Commands
-
-The project uses a Makefile for common development tasks:
-
-| Command | Description |
-|:--------|:------------|
-| `make sync` | Install all workspace dependencies (requires `uv`) |
-| `make server-run` | Start server from source with hot reload |
-| `make test` | Run tests across all packages |
-| `make lint` | Run ruff linting |
-| `make lint-fix` | Run ruff with auto-fix |
-| `make typecheck` | Run mypy type checking |
-| `make check` | Run all quality checks (test + lint + typecheck) |
-| `make server-<target>` | Forward commands to server (e.g., `make server-test`) |
-| `make sdk-<target>` | Forward commands to SDK (e.g., `make sdk-test`) |
-| `make engine-<target>` | Forward commands to engine (e.g., `make engine-test`) |
-
-For detailed development workflows and contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
----
+For full setup, see https://docs.agentcontrol.dev/quickstart
 
 ## Documentation
 
 ### Core Documentation
 
-- **[Reference Guide](docs/REFERENCE.md)** — Complete reference for concepts, evaluators, SDK, and API
-- **[Contributing Guide](CONTRIBUTING.md)** — Development setup and contribution guidelines
-- **[Testing Guide](docs/testing.md)** — Testing conventions and best practices
+- **Overview:** https://docs.agentcontrol.dev/overview
+- **Quickstart:** https://docs.agentcontrol.dev/quickstart
+- **Reference:** https://docs.agentcontrol.dev/reference
+- **Testing:** https://docs.agentcontrol.dev/testing
+- **Python SDK:** https://docs.agentcontrol.dev/sdk/python-sdk
+- **TypeScript SDK:** https://docs.agentcontrol.dev/sdk/typescript-sdk
 
 ### Component Documentation
-
-- **[Python SDK](sdks/python/README.md)** — SDK installation, usage, and API reference
-- **[Server](server/README.md)** — Server setup, configuration, and deployment
-- **[UI Dashboard](ui/README.md)** — Web dashboard setup and usage
-- **[Evaluators](evaluators/README.md)** — Available evaluators and custom evaluator development
+- **Server:** https://docs.agentcontrol.dev/server
+- **Engine:** https://docs.agentcontrol.dev/engine
+- **Models:** https://docs.agentcontrol.dev/models
+- **Evaluators:** https://docs.agentcontrol.dev/evaluators
+- **UI Quickstart:** https://docs.agentcontrol.dev/ui-quickstart
 
 ## Contributing
 
 We welcome contributions! To get started:
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
+2. Create a feature branch (git checkout -b feature/your-feature)
 3. Make your changes
-4. Run quality checks (`make check`)
-5. Commit using conventional commits (`feat:`, `fix:`, `docs:`, etc.)
+4. Run quality checks (make check)
+5. Commit using conventional commits (feat:, fix:, docs:, etc.)
 6. Submit a Pull Request
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines, code conventions, and development workflow.
-
----
 
 ## License
 

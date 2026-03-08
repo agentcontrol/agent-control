@@ -1,5 +1,6 @@
 """Tests for the observability module (EventBatcher)."""
 
+import asyncio
 import os
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -48,6 +49,9 @@ class TestEventBatcherInit:
         batcher = EventBatcher()
         assert batcher.batch_size == get_settings().batch_size
         assert batcher.flush_interval == get_settings().flush_interval
+        assert batcher.shutdown_join_timeout == get_settings().shutdown_join_timeout
+        assert batcher.shutdown_flush_timeout == get_settings().shutdown_flush_timeout
+        assert batcher.shutdown_max_failed_flushes == get_settings().shutdown_max_failed_flushes
         assert batcher._running is False
         assert batcher._events == []
 
@@ -114,6 +118,130 @@ class TestEventBatcherStartStop:
         batcher = EventBatcher()
         batcher.stop()  # Should not raise
         assert batcher._running is False
+
+
+class TestEventBatcherWorkerThread:
+    """Tests for EventBatcher dedicated worker thread."""
+
+    def test_start_creates_worker_thread(self):
+        """Test that start() creates a dedicated daemon thread with its own loop."""
+        batcher = EventBatcher()
+        batcher.start()
+        assert batcher._running is True
+        assert batcher._thread is not None
+        assert batcher._thread.is_alive()
+        assert batcher._thread.daemon is True
+        assert batcher._loop is not None
+        assert not batcher._loop.is_closed()
+        batcher.stop()
+
+    def test_sync_repeated_asyncio_run_still_flushes(self):
+        """Test that events flush even across repeated asyncio.run() calls.
+
+        Reproduces the sync @control flow: sync_wrapper calls asyncio.run()
+        per invocation, creating and closing a caller loop each time. The
+        batcher's dedicated thread should be unaffected.
+        """
+        import time
+
+        batcher = EventBatcher(batch_size=100, flush_interval=0.1)
+        batcher._send_batch = AsyncMock(return_value=True)
+        batcher.start()
+
+        # Simulate three sync_wrapper-style calls, each with its own asyncio.run()
+        for _ in range(3):
+            batcher.add_event(create_mock_event())
+            # Each sync_wrapper call creates and closes a caller loop
+            asyncio.run(asyncio.sleep(0))
+
+        # Wait for the flush interval to fire on the worker thread
+        time.sleep(0.3)
+
+        assert batcher._events_sent == 3
+        assert len(batcher._events) == 0
+        batcher.stop()
+
+    def test_worker_loop_survives_caller_loop_closures(self):
+        """Test that worker loop is unaffected by caller loops being closed."""
+        batcher = EventBatcher(batch_size=100, flush_interval=0.1)
+        batcher._send_batch = AsyncMock(return_value=True)
+        batcher.start()
+
+        worker_loop = batcher._loop
+
+        # Create and close several caller loops - should not affect worker
+        for _ in range(3):
+            loop = asyncio.new_event_loop()
+            loop.close()
+
+        assert batcher._loop is worker_loop
+        assert not batcher._loop.is_closed()
+
+        batcher.add_event(create_mock_event())
+        batcher.add_event(create_mock_event())
+
+        import time
+        time.sleep(0.3)
+
+        assert batcher._events_sent == 2
+        batcher.stop()
+
+    def test_shutdown_flushes_and_joins_thread(self):
+        """Test that shutdown() flushes remaining events and joins the worker thread."""
+        batcher = EventBatcher(batch_size=100, flush_interval=60.0)
+        batcher._send_batch = AsyncMock(return_value=True)
+        batcher.start()
+
+        for _ in range(5):
+            batcher.add_event(create_mock_event())
+
+        assert len(batcher._events) == 5
+
+        batcher.shutdown()
+
+        assert batcher._events_sent == 5
+        assert len(batcher._events) == 0
+        assert not batcher._running
+        assert batcher._thread is None
+
+    def test_shutdown_flushes_when_worker_not_running(self):
+        """Test that shutdown() still flushes when the worker thread is not running."""
+        batcher = EventBatcher(batch_size=100, flush_interval=60.0)
+        batcher._send_batch = AsyncMock(return_value=True)
+
+        for _ in range(5):
+            batcher.add_event(create_mock_event())
+
+        batcher.shutdown()
+
+        assert batcher._events_sent == 5
+        assert len(batcher._events) == 0
+        assert batcher._events_dropped == 0
+        assert batcher._thread is None
+
+    def test_shutdown_drains_inflight_flush_without_data_loss(self):
+        """Test that shutdown waits for in-flight flushes and sends all events."""
+        import time
+
+        batcher = EventBatcher(batch_size=100, flush_interval=60.0)
+
+        async def slow_send(events):
+            await asyncio.sleep(0.05)
+            return True
+
+        batcher._send_batch = slow_send
+        batcher.start()
+
+        # Trigger multiple flushes and allow one to start before shutdown.
+        for _ in range(350):
+            batcher.add_event(create_mock_event())
+        time.sleep(0.02)
+
+        batcher.shutdown()
+
+        assert batcher._events_sent == 350
+        assert len(batcher._events) == 0
+        assert batcher._events_dropped == 0
 
 
 class TestEventBatcherAddEvent:
@@ -263,6 +391,27 @@ class TestEventBatcherFlush:
         assert len(batcher._events) == 0
         assert batcher._events_sent == 5
 
+    @pytest.mark.asyncio
+    async def test_flush_all_stops_after_failed_flush_limit(self):
+        """Test that flush_all exits after configured consecutive flush failures."""
+        batcher = EventBatcher(batch_size=2)
+        for _ in range(3):
+            batcher.add_event(create_mock_event())
+
+        batcher._send_batch = AsyncMock(return_value=False)
+
+        await batcher.flush_all(max_failed_flushes=2)
+
+        assert batcher._send_batch.await_count == 2
+        assert len(batcher._events) == 3
+
+    @pytest.mark.asyncio
+    async def test_flush_all_rejects_invalid_failed_flush_limit(self):
+        """Test that flush_all validates max_failed_flushes."""
+        batcher = EventBatcher()
+        with pytest.raises(ValueError, match="max_failed_flushes must be >= 1"):
+            await batcher.flush_all(max_failed_flushes=0)
+
 
 class TestEventBatcherSendBatch:
     """Tests for EventBatcher HTTP batch sending."""
@@ -323,17 +472,15 @@ class TestGlobalBatcher:
 class TestInitObservability:
     """Tests for init_observability function."""
 
-    def test_init_disabled_by_default(self):
-        """Test that init_observability returns None when disabled."""
+    def test_init_disabled_when_explicitly_off(self):
+        """Test that init_observability returns None when explicitly disabled."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
         obs._batcher = None
 
         try:
-            # Default is disabled
-            with patch.dict(os.environ, {"AGENT_CONTROL_OBSERVABILITY_ENABLED": "false"}):
-                result = init_observability(enabled=False)
-                assert result is None
+            result = init_observability(enabled=False)
+            assert result is None
         finally:
             obs._batcher = old_batcher
 
@@ -410,6 +557,32 @@ class TestShutdownObservability:
             await shutdown_observability()  # Should not raise
         finally:
             obs._batcher = old_batcher
+
+
+class TestEventBatcherShutdownConfig:
+    """Tests for shutdown timeout configuration."""
+
+    def test_shutdown_uses_settings_timeouts(self):
+        """Test that shutdown uses configurable join/flush timeouts."""
+        from agent_control.settings import configure_settings
+
+        original = get_settings().model_dump()
+        configure_settings(shutdown_join_timeout=6.5, shutdown_flush_timeout=4.5)
+        batcher = EventBatcher()
+
+        try:
+            with (
+                patch.object(batcher, "_stop_worker", return_value=True) as stop_worker,
+                patch.object(batcher, "_flush_all_without_worker") as fallback_flush,
+            ):
+                # Force fallback path without invoking real network/client cleanup.
+                batcher._events = [create_mock_event()]
+                batcher.shutdown()
+
+                stop_worker.assert_called_once_with(graceful=True, join_timeout=6.5)
+                fallback_flush.assert_called_once_with(timeout=4.5)
+        finally:
+            configure_settings(**original)
 
 
 class TestSpanLogging:

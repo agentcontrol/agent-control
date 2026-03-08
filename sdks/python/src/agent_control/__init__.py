@@ -18,8 +18,7 @@ Usage:
     async def chat(message: str) -> str:
         return await assistant.respond(message)
 
-    # Optional policy label for grouping/readability; control selection still follows
-    # the server's active controls (policy + direct associations).
+    # Apply all controls for this agent
     @agent_control.control(policy="safety-policy")
     async def process(input: str) -> str:
         return await pipeline.run(input)
@@ -84,7 +83,7 @@ from .client import AgentControlClient
 
 # Import control decorator
 from .control_decorators import ControlSteerError, ControlViolationError, control
-from .evaluation import check_evaluation_with_local
+from .evaluation import check_evaluation_with_local, evaluate_controls
 from .observability import (
     LogConfig,
     add_event,
@@ -116,19 +115,16 @@ logger = get_logger(__name__)
 # Global State
 # ============================================================================
 
-# Global agent instance
-_current_agent: Agent | None = None
-_control_engine = None
-_client: AgentControlClient | None = None
-_server_controls: list[dict[str, Any]] | None = None
-_server_url: str | None = None
-_api_key: str | None = None
+# Import state container to avoid circular imports
+from ._state import state  # noqa: E402
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+# Policy refresh loop state
+_refresh_lock = threading.Lock()
 _policy_refresh_interval_seconds: int | None = None
 _refresh_thread: threading.Thread | None = None
 _refresh_stop_event: threading.Event | None = None
-_refresh_lock = threading.Lock()
-
-F = TypeVar("F", bound=Callable[..., Any])
 
 
 def get_server_controls() -> list[dict[str, Any]] | None:
@@ -147,22 +143,20 @@ def get_server_controls() -> list[dict[str, Any]] | None:
             for c in controls:
                 print(f"  - {c['name']} (execution: {c['control'].get('execution', 'server')})")
     """
-    return _server_controls
+    return state.server_controls
 
 
 def _publish_server_controls(
     controls: list[dict[str, Any]] | None,
 ) -> list[dict[str, Any]] | None:
     """Publish controls using swap-only snapshot semantics."""
-    global _server_controls
-
     if controls is None:
-        _server_controls = None
+        state.server_controls = None
         return None
 
     # Snapshot copy: publish a new list reference and avoid in-place mutation.
-    _server_controls = list(controls)
-    return _server_controls
+    state.server_controls = list(controls)
+    return state.server_controls
 
 
 def _run_coro_in_new_loop[T](coro: Coroutine[Any, Any, T]) -> T:
@@ -247,26 +241,26 @@ async def refresh_controls_async() -> list[dict[str, Any]] | None:
         controls = await agent_control.refresh_controls_async()
         print(f"Refreshed {len(controls)} controls")
     """
-    if _current_agent is None:
+    if state.current_agent is None:
         raise RuntimeError("Agent not initialized. Call agent_control.init() first.")
 
-    if _server_url is None:
+    if state.server_url is None:
         raise RuntimeError("Server URL not set. Call agent_control.init() first.")
 
     try:
-        async with AgentControlClient(base_url=_server_url, api_key=_api_key) as client:
-            response = await agents.list_agent_controls(client, _current_agent.agent_name)
+        async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
+            response = await agents.list_agent_controls(client, state.current_agent.agent_name)
             refreshed_controls = _publish_server_controls(response.get("controls", []))
             logger.info("Refreshed %d control(s) from server", len(refreshed_controls or []))
             return refreshed_controls
     except Exception as exc:
         logger.error(
             "Failed to refresh controls; keeping previous cache (%d control(s)): %s",
-            len(_server_controls or []),
+            len(state.server_controls or []),
             exc,
             exc_info=True,
         )
-        return _server_controls
+        return state.server_controls
 
 
 def refresh_controls() -> list[dict[str, Any]] | None:
@@ -376,18 +370,16 @@ def init(
             ]
         )
 
-        # Now use @control decorator to apply agent-associated controls
+        # Now use @control decorator to apply the agent's policy
         from agent_control import control
 
-        @control()  # Applies controls associated with the agent
+        @control()  # Applies agent's assigned policy
         async def handle(message: str):
             return message
 
     Environment Variables:
         AGENT_CONTROL_URL: Server URL (default: http://localhost:8000)
     """
-    global _current_agent, _control_engine, _client, _server_url, _api_key
-
     if not agent_name:
         raise ValueError(
             "The 'agent_name' argument is required for initialization.\n"
@@ -408,8 +400,8 @@ def init(
     if log_config:
         configure_logging(log_config)
 
-    # Create agent instance with metadata
-    _current_agent = Agent(
+    # Create agent instance with metadata and store in state
+    state.current_agent = Agent(
         agent_name=_agent_name,
         agent_description=agent_description,
         agent_created_at=datetime.now(UTC).isoformat(),
@@ -419,8 +411,8 @@ def init(
     )
 
     # Get server URL (ensure it's always a string)
-    _server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    _api_key = api_key
+    state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    state.api_key = api_key
 
     # Merge auto-discovered steps from @control() decorators with explicit steps.
     # Explicit steps take precedence when (type, name) collides.
@@ -449,11 +441,17 @@ def init(
     server_controls = None
     try:
         async def register() -> list[dict[str, Any]] | None:
-            async with AgentControlClient(base_url=_server_url, api_key=api_key) as client:
+            # Type assertions for mypy - these values are guaranteed to be set above
+            assert state.server_url is not None
+            assert state.current_agent is not None
+
+            async with AgentControlClient(
+                base_url=state.server_url, api_key=state.api_key
+            ) as client:
                 # Check server health first
                 try:
                     health = await client.health_check()
-                    logger.info("Connected to Agent Control server: %s", _server_url)
+                    logger.info("Connected to Agent Control server: %s", state.server_url)
                     logger.debug("Server status: %s", health.get('status', 'unknown'))
                 except Exception as e:
                     logger.error("Server not available: %s", e, exc_info=True)
@@ -463,7 +461,7 @@ def init(
                 try:
                     response = await agents.register_agent(
                         client,
-                        _current_agent,
+                        state.current_agent,
                         steps=registration_steps,
                         conflict_mode=conflict_mode,
                     )
@@ -531,8 +529,8 @@ def init(
 
     # Initialize observability if enabled
     batcher = init_observability(
-        server_url=_server_url,
-        api_key=api_key,
+        server_url=state.server_url,
+        api_key=state.api_key,
         enabled=observability_enabled,
     )
     if batcher:
@@ -543,7 +541,7 @@ def init(
     else:
         logger.debug("Policy refresh loop disabled (policy_refresh_interval_seconds=0)")
 
-    return _current_agent
+    return state.current_agent
 
 
 async def get_agent(
@@ -607,7 +605,7 @@ def current_agent() -> Agent | None:
         agent = agent_control.current_agent()
         print(agent.agent_name)  # "My Bot"
     """
-    return _current_agent
+    return state.current_agent
 
 
 async def list_agents(
@@ -628,7 +626,7 @@ async def list_agents(
     Returns:
         Dictionary containing:
             - agents: List of agent summaries with agent_name,
-                      policy_ids, created_at, step_count, evaluator_count
+                      policy_id, created_at, step_count, evaluator_count
             - pagination: Object with limit, total, next_cursor, has_more
 
     Raises:
@@ -658,8 +656,20 @@ async def list_agents(
 
 
 # ============================================================================
-# Agent Association Convenience Functions
+# Agent Policy/Control Convenience Functions
 # ============================================================================
+
+
+async def add_agent_policy(
+    agent_name: str,
+    policy_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Associate a policy with an agent (idempotent)."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await agents.add_agent_policy(client, agent_name, policy_id)
 
 
 async def get_agent_policies(
@@ -669,22 +679,8 @@ async def get_agent_policies(
 ) -> dict[str, Any]:
     """List policy IDs associated with an agent."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
         return await agents.get_agent_policies(client, agent_name)
-
-
-async def add_agent_policy(
-    agent_name: str,
-    policy_id: int,
-    server_url: str | None = None,
-    api_key: str | None = None,
-) -> dict[str, Any]:
-    """Associate a policy with an agent (additive, idempotent)."""
-    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
-        return await agents.add_agent_policy(client, agent_name, policy_id)
 
 
 async def remove_agent_policy_association(
@@ -695,7 +691,6 @@ async def remove_agent_policy_association(
 ) -> dict[str, Any]:
     """Remove one policy association from an agent (idempotent)."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
         return await agents.remove_agent_policy_association(client, agent_name, policy_id)
 
@@ -707,7 +702,6 @@ async def remove_all_agent_policies(
 ) -> dict[str, Any]:
     """Remove all policy associations from an agent."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
         return await agents.remove_all_agent_policies(client, agent_name)
 
@@ -718,9 +712,8 @@ async def add_agent_control(
     server_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
-    """Associate a control directly with an agent (idempotent)."""
+    """Associate a control with an agent (idempotent)."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
         return await agents.add_agent_control(client, agent_name, control_id)
 
@@ -733,7 +726,6 @@ async def remove_agent_control(
 ) -> dict[str, Any]:
     """Remove a direct control association from an agent (idempotent)."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
         return await agents.remove_agent_control(client, agent_name, control_id)
 
@@ -918,7 +910,7 @@ async def delete_control(
     """
     Delete a control from the server.
 
-    By default, deletion fails if the control is associated with any policy or agent.
+    By default, deletion fails if the control is associated with any policy.
     Use force=True to automatically dissociate and delete.
 
     Args:
@@ -930,8 +922,7 @@ async def delete_control(
     Returns:
         Dictionary containing:
             - success: True if control was deleted
-            - dissociated_from_policies: List of policy IDs the control was removed from
-            - dissociated_from_agents: List of agent names the control was removed from
+            - dissociated_from: List of policy IDs the control was removed from
 
     Raises:
         httpx.HTTPError: If request fails
@@ -945,11 +936,7 @@ async def delete_control(
         async def main():
             # Force delete
             result = await agent_control.delete_control(5, force=True)
-            print(
-                "Deleted, removed from "
-                f"{len(result['dissociated_from_policies'])} policies and "
-                f"{len(result['dissociated_from_agents'])} agents"
-            )
+            print(f"Deleted, removed from {len(result['dissociated_from'])} policies")
 
         asyncio.run(main())
     """
@@ -1153,8 +1140,8 @@ __all__ = [
     # Agent management
     "get_agent",
     "list_agents",
-    "get_agent_policies",
     "add_agent_policy",
+    "get_agent_policies",
     "remove_agent_policy_association",
     "remove_all_agent_policies",
     "add_agent_control",
@@ -1183,6 +1170,7 @@ __all__ = [
     "list_policy_controls",
     # Local evaluation
     "check_evaluation_with_local",
+    "evaluate_controls",
     # Tracing
     "get_trace_and_span_ids",
     "get_current_trace_id",

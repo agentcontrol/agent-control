@@ -1,11 +1,16 @@
 # Agent Control SDKs
 
-This workspace contains all SDK implementations for Agent Control.
+This workspace contains all SDK implementations for Agent Control. Use these clients to register agents, manage controls, and evaluate requests from your application.
 
 ## Available SDKs
 
-- **Python SDK** (`python/`) - Python client for interacting with Agent Control services
-- **TypeScript SDK** (`typescript/`) - Speakeasy-generated client plus TypeScript wrapper scaffold
+- **Python SDK** (`python/`) — Primary SDK with `@control()` decorator and async client APIs
+- **TypeScript SDK** (`typescript/`) — Generated OpenAPI client plus TypeScript wrappers
+
+## Quick links
+
+- Python SDK docs: https://docs.agentcontrol.dev/sdk/python-sdk
+- TypeScript SDK docs: https://docs.agentcontrol.dev/sdk/typescript-sdk
 
 ## Development
 
@@ -30,7 +35,7 @@ uv run mypy .
 
 ## Adding New SDKs
 
-To add a new SDK (e.g., TypeScript, Go):
+To add a new SDK (e.g., Go):
 1. Create a new directory for the SDK
 2. Add it to the `members` list in `sdks/pyproject.toml`
 3. Ensure it references the models package if needed

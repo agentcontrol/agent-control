@@ -57,8 +57,8 @@ class SDKSettings(BaseSettings):
 
     # Observability (event batching)
     observability_enabled: bool = Field(
-        default=False,
-        description="Enable sending events to server (default: disabled)",
+        default=True,
+        description="Enable sending events to server",
     )
     batch_size: int = Field(
         default=100,
@@ -66,7 +66,7 @@ class SDKSettings(BaseSettings):
         description="Maximum events per batch",
     )
     flush_interval: float = Field(
-        default=10.0,
+        default=5.0,
         gt=0,
         description="Seconds between automatic flushes",
     )
@@ -79,6 +79,21 @@ class SDKSettings(BaseSettings):
         default=1.0,
         gt=0,
         description="Base delay between retries (seconds)",
+    )
+    shutdown_join_timeout: float = Field(
+        default=5.0,
+        gt=0,
+        description="Seconds to wait for worker thread shutdown",
+    )
+    shutdown_flush_timeout: float = Field(
+        default=5.0,
+        gt=0,
+        description="Seconds to wait for fallback shutdown flush",
+    )
+    shutdown_max_failed_flushes: int = Field(
+        default=1,
+        ge=1,
+        description="Maximum consecutive failed flushes before giving up",
     )
 
     # Logging configuration

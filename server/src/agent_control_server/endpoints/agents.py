@@ -33,6 +33,7 @@ from sqlalchemy import delete, func, or_, select, union_all
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import require_admin_key
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
@@ -861,6 +862,7 @@ async def _get_agent_or_404(agent_name: str, db: AsyncSession) -> Agent:
 
 @router.post(
     "/{agent_name}/policies/{policy_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=AssocResponse,
     summary="Associate policy with agent",
     response_description="Success confirmation",
@@ -926,6 +928,7 @@ async def add_agent_policy(
 
 @router.post(
     "/{agent_name}/policy/{policy_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=SetPolicyResponse,
     summary="Assign policy to agent (compatibility)",
     response_description="Success status with previous policy ID",
@@ -1047,6 +1050,7 @@ async def get_agent_policy(
 
 @router.delete(
     "/{agent_name}/policies/{policy_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=AssocResponse,
     summary="Remove policy association from agent",
     response_description="Success confirmation",
@@ -1098,6 +1102,7 @@ async def remove_agent_policy(
 
 @router.delete(
     "/{agent_name}/policies",
+    dependencies=[Depends(require_admin_key)],
     response_model=AssocResponse,
     summary="Remove all policy associations from agent",
     response_description="Success confirmation",
@@ -1132,6 +1137,7 @@ async def remove_all_agent_policies(
 
 @router.delete(
     "/{agent_name}/policy",
+    dependencies=[Depends(require_admin_key)],
     response_model=DeletePolicyResponse,
     summary="Remove agent's policy assignment (compatibility)",
     response_description="Success confirmation",
@@ -1179,6 +1185,7 @@ async def delete_agent_policy(
 
 @router.post(
     "/{agent_name}/controls/{control_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=AssocResponse,
     summary="Associate control directly with agent",
     response_description="Success confirmation",
@@ -1244,6 +1251,7 @@ async def add_agent_control(
 
 @router.delete(
     "/{agent_name}/controls/{control_id}",
+    dependencies=[Depends(require_admin_key)],
     response_model=RemoveAgentControlResponse,
     summary="Remove direct control association from agent",
     response_description="Success confirmation",
@@ -1532,6 +1540,7 @@ async def get_agent_evaluator(
 
 @router.patch(
     "/{agent_name}",
+    dependencies=[Depends(require_admin_key)],
     response_model=PatchAgentResponse,
     summary="Modify agent (remove steps/evaluators)",
     response_description="Lists of removed items",

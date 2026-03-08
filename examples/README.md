@@ -1,6 +1,8 @@
 # Agent Control Examples
 
-Concise summaries for each example are listed here. Full walkthroughs live in the docs.
+This directory contains runnable examples for Agent Control. Each example has its own README with a short quick run section and a link to the full docs walkthrough.
+
+## Example Index
 
 | Example | Summary | Docs |
 |:--------|:--------|:-----|
@@ -13,3 +15,5 @@ Concise summaries for each example are listed here. Full walkthroughs live in th
 | Steer Action Demo | Banking transfer agent showcasing allow, deny, warn, and steer actions. | https://docs.agentcontrol.dev/examples/steer-action-demo |
 | AWS Strands | Guardrails for AWS Strands agent workflows and tool calls. | https://docs.agentcontrol.dev/examples/aws-strands |
 | TypeScript SDK | Consumer-style TypeScript example using the published npm package. | https://docs.agentcontrol.dev/examples/typescript_sdk |
+
+For more details, see the Examples overview in the docs: https://docs.agentcontrol.dev/examples/overview

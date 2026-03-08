@@ -2,6 +2,12 @@
 
 Enterprise support flow with PII protection, prompt-injection defense, and multiple tools.
 
+## What this example shows
+
+- Agent registration and control configuration
+- Tool-specific controls and staged evaluation
+- Interactive support workflow
+
 ## Quick run
 
 ```bash
@@ -13,4 +19,4 @@ uv run python setup_demo_controls.py
 uv run python run_demo.py
 ```
 
-Full walkthrough: [Customer Support Agent](https://docs.agentcontrol.dev/examples/customer-support)
+Full walkthrough: https://docs.agentcontrol.dev/examples/customer-support

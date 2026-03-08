@@ -1,6 +1,12 @@
 # CrewAI Example
 
-Combine Agent Control security controls with CrewAI guardrails for customer support.
+Combine Agent Control security controls with CrewAI guardrails for customer support workflows.
+
+## What this example shows
+
+- Pre/post controls for access and PII protection
+- CrewAI guardrails for quality retries
+- Multi-layer control enforcement
 
 ## Quick run
 
@@ -15,4 +21,4 @@ uv run python setup_content_controls.py
 uv run python content_agent_protection.py
 ```
 
-Full walkthrough: [CrewAI Example](https://docs.agentcontrol.dev/examples/crewai)
+Full walkthrough: https://docs.agentcontrol.dev/examples/crewai

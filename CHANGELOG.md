@@ -2,6 +2,29 @@
 
 <!-- version list -->
 
+## v6.5.0 (2026-03-06)
+
+### Bug Fixes
+
+- **sdk**: Fix observability events not reaching the server
+  ([#63](https://github.com/agentcontrol/agent-control/pull/63),
+  [`70016db`](https://github.com/agentcontrol/agent-control/commit/70016db3089b65a970d81f16b2ef01556857ce2e))
+
+### Documentation
+
+- **docs**: Update Readme ([#58](https://github.com/agentcontrol/agent-control/pull/58),
+  [`2ec07ce`](https://github.com/agentcontrol/agent-control/commit/2ec07ce2b45d18c673aa332661b0c30a3e4812bb))
+
+### Features
+
+- **sdk**: 57143 strands extra ([#59](https://github.com/agentcontrol/agent-control/pull/59),
+  [`97f2518`](https://github.com/agentcontrol/agent-control/commit/97f25181ea4f36486cec4d195d074ccc3e077529))
+
+- **server**: Enforce admin-only control-plane mutations
+  ([#62](https://github.com/agentcontrol/agent-control/pull/62),
+  [`579407f`](https://github.com/agentcontrol/agent-control/commit/579407f3f1cfb5bfcbaef9f2d0496e47634c3c3b))
+
+
 ## v6.4.0 (2026-03-05)
 
 ### Bug Fixes

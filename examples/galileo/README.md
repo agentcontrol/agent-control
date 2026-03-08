@@ -2,14 +2,20 @@
 
 Toxicity detection and content moderation with Galileo Protect.
 
+## What this example shows
+
+- Luna-2 evaluator integration
+- Environment-based configuration
+- End-to-end evaluation flow
+
 ## Quick run
 
 ```bash
 export GALILEO_API_KEY="your-api-key"
 
 cd examples/galileo
-uv run pip install -e . --upgrade
+uv pip install -e . --upgrade
 uv run python luna2_demo.py
 ```
 
-Full walkthrough: [Galileo Luna-2 Example](https://docs.agentcontrol.dev/examples/galileo-luna2)
+Full walkthrough: https://docs.agentcontrol.dev/examples/galileo-luna2

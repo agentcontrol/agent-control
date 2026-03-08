@@ -2,6 +2,12 @@
 
 Protect a SQL agent from dangerous queries with server-side controls.
 
+## What this example shows
+
+- SQL control configuration
+- Safe vs. unsafe query handling
+- LangChain integration
+
 ## Quick run
 
 ```bash
@@ -10,9 +16,9 @@ make server-run
 export OPENAI_API_KEY="your-key-here"
 
 cd examples/langchain
-uv run pip install -e . --upgrade
+uv pip install -e . --upgrade
 uv run python setup_sql_controls.py
 uv run python sql_agent_protection.py
 ```
 
-Full walkthrough: [LangChain SQL Agent](https://docs.agentcontrol.dev/examples/langchain-sql)
+Full walkthrough: https://docs.agentcontrol.dev/examples/langchain-sql

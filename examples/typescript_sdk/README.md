@@ -2,6 +2,12 @@
 
 Consumer-style TypeScript example using the published npm package.
 
+## What this example shows
+
+- Generated client usage
+- Agent and control API calls
+- Basic health check flow
+
 ## Quick run
 
 ```bash
@@ -13,4 +19,4 @@ npm install
 AGENT_CONTROL_URL=http://localhost:8000 npm run start
 ```
 
-Full walkthrough: [TypeScript SDK Example](https://docs.agentcontrol.dev/examples/typescript_sdk)
+Full walkthrough: https://docs.agentcontrol.dev/examples/typescript_sdk
