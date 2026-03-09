@@ -188,7 +188,7 @@ The SDK batches events before sending to reduce network overhead:
 ```python
 # Configuration (environment variables)
 AGENT_CONTROL_BATCH_SIZE=100        # Max events per batch
-AGENT_CONTROL_FLUSH_INTERVAL=10.0   # Seconds between flushes
+AGENT_CONTROL_FLUSH_INTERVAL=5.0   # Seconds between flushes
 ```
 
 Events are sent when **either** condition is met (whichever comes first).
@@ -660,7 +660,10 @@ curl -X POST "http://localhost:8000/api/v1/observability/events/query" \
 # SDK Configuration
 AGENT_CONTROL_OBSERVABILITY_ENABLED=true   # Enable observability
 AGENT_CONTROL_BATCH_SIZE=100               # Events per batch
-AGENT_CONTROL_FLUSH_INTERVAL=10.0          # Seconds between flushes
+AGENT_CONTROL_FLUSH_INTERVAL=5.0          # Seconds between flushes
+AGENT_CONTROL_SHUTDOWN_JOIN_TIMEOUT=5.0    # Seconds to wait for worker shutdown
+AGENT_CONTROL_SHUTDOWN_FLUSH_TIMEOUT=5.0   # Seconds to wait for fallback flush
+AGENT_CONTROL_SHUTDOWN_MAX_FAILED_FLUSHES=1 # Consecutive failed flushes before stop
 
 # Logging Configuration
 AGENT_CONTROL_LOG_ENABLED=true             # Master switch
@@ -710,4 +713,3 @@ If query-time aggregation becomes a bottleneck:
 2. **Create materialized views** for heavy queries
 3. **Switch to Clickhouse** — native JSON + columnar storage = fast aggregation
 4. **Use TimescaleDB** — time-series optimized PostgreSQL extension
-
