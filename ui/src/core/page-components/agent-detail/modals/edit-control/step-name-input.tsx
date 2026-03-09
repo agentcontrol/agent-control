@@ -235,7 +235,9 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
                 }}
               >
                 {selectedStepNames.length === 0
-                  ? (steps.length > 0 ? 'All steps' : '')
+                  ? steps.length > 0
+                    ? 'All steps'
+                    : ''
                   : selectedStepNames[0]}
               </Text>
               {selectedStepNames.length > 1 ? (
