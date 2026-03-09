@@ -24,6 +24,7 @@ from .endpoints.evaluator_configs import router as evaluator_config_router
 from .endpoints.evaluators import router as evaluator_router
 from .endpoints.observability import router as observability_router
 from .endpoints.policies import router as policy_router
+from .endpoints.system import router as system_router
 from .errors import (
     APIError,
     api_error_handler,
@@ -216,6 +217,12 @@ app.include_router(
 app.include_router(
     observability_router,
     prefix=api_v1_prefix,
+)
+
+# System routes (config, login, logout) — no auth required
+app.include_router(
+    system_router,
+    prefix=settings.api_prefix,
 )
 
 # Override OpenAPI to avoid recursive JSONValue schema issues in TS generators.

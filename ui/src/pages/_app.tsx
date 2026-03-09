@@ -20,6 +20,8 @@ import type { AppProps } from 'next/app';
 import Head from 'next/head';
 
 import { ErrorBoundary } from '@/components/error-boundary';
+import { LoginModal } from '@/core/components/login-modal';
+import { AuthProvider, useAuth } from '@/core/providers/auth-provider';
 import { QueryProvider } from '@/core/providers/query-provider';
 import type { NextPageWithLayout } from '@/core/types/page';
 
@@ -28,6 +30,36 @@ type AppPropsWithLayout = AppProps & {
 };
 
 // Custom theme override to use Inter and Fira Mono fonts
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { auth } = useAuth();
+
+  if (auth.status === 'loading') {
+    // Avoid rendering the main UI until we know whether auth is required.
+    return null;
+  }
+
+  if (auth.status === 'error') {
+    return (
+      <div style={{ padding: 24 }}>
+        <p style={{ fontWeight: 500 }}>
+          Unable to connect to Agent Control server.
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--mantine-color-dimmed)' }}>
+          Check that the backend is running and reachable from this browser.
+        </p>
+      </div>
+    );
+  }
+
+  if (auth.status === 'not-required' || auth.status === 'authenticated') {
+    return <>{children}</>;
+  }
+
+  // Auth required but not satisfied: render only the login modal without the
+  // underlying app, so unauthenticated users don't see the UI behind it.
+  return <LoginModal opened />;
+}
 
 export default function App({ Component, pageProps }: AppPropsWithLayout) {
   // Use the layout defined at the page level, or default to no layout
@@ -104,7 +136,11 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
             <DatesProvider settings={{ firstDayOfWeek: 0 }}>
               <JupiterThemeProvider>
                 <ModalsProvider>
-                  {getLayout(<Component {...pageProps} />)}
+                  <AuthProvider>
+                    <AuthGate>
+                      {getLayout(<Component {...pageProps} />)}
+                    </AuthGate>
+                  </AuthProvider>
                 </ModalsProvider>
               </JupiterThemeProvider>
             </DatesProvider>
