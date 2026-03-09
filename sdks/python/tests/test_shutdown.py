@@ -115,6 +115,20 @@ class TestAshutdownAsync:
         await agent_control.ashutdown()
         await agent_control.ashutdown()
 
+    @pytest.mark.asyncio
+    async def test_ashutdown_stops_policy_refresh_off_thread(self):
+        with patch(
+            "agent_control.asyncio.to_thread",
+            new=AsyncMock(return_value=None),
+        ) as to_thread_mock, patch(
+            "agent_control.shutdown_observability",
+            new=AsyncMock(return_value=None),
+        ) as shutdown_observability_mock:
+            await agent_control.ashutdown()
+
+        to_thread_mock.assert_awaited_once_with(agent_control._stop_policy_refresh_loop)
+        shutdown_observability_mock.assert_awaited_once()
+
 
 class TestShutdownRefreshRace:
     """Regression tests: in-flight refresh must not publish after shutdown.
@@ -201,4 +215,47 @@ class TestShutdownRefreshRace:
             fetch_gate.set()
             worker_thread.join(timeout=5)
 
+        assert state.server_controls is None
+
+
+class TestManualRefreshLifecycleRace:
+    """Regression tests for public refresh calls racing with lifecycle changes."""
+
+    @pytest.mark.asyncio
+    async def test_manual_refresh_discards_result_after_shutdown(self):
+        fetch_gate = threading.Event()
+        fetch_entered = threading.Event()
+
+        async def slow_list_agent_controls(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            fetch_entered.set()
+            await asyncio.to_thread(fetch_gate.wait)
+            return {"controls": [{"name": "stale-control", "control": {}}]}
+
+        with patch(
+            "agent_control.__init__.AgentControlClient.health_check",
+            new=AsyncMock(return_value={"status": "healthy"}),
+        ), patch(
+            "agent_control.__init__.agents.register_agent",
+            new=AsyncMock(
+                return_value={"created": True, "controls": [{"name": "initial", "control": {}}]}
+            ),
+        ), patch(
+            "agent_control.__init__.agents.list_agent_controls",
+            new=AsyncMock(side_effect=slow_list_agent_controls),
+        ):
+            agent_control.init(
+                agent_name="manual-refresh-shutdown-agent",
+                policy_refresh_interval_seconds=0,
+            )
+            refresh_task = asyncio.create_task(agent_control.refresh_controls_async())
+
+            assert await asyncio.to_thread(fetch_entered.wait, 5), (
+                "manual refresh never entered fetch"
+            )
+
+            agent_control.shutdown()
+            fetch_gate.set()
+            refreshed_snapshot = await refresh_task
+
+        assert refreshed_snapshot is None
         assert state.server_controls is None
