@@ -72,6 +72,7 @@ export const EditControlContent = ({
   const definitionForm = useForm<ControlDefinitionFormValues>({
     initialValues: {
       name: '',
+      description: '',
       enabled: true,
       step_types: ['llm'],
       stages: ['post'],
@@ -146,6 +147,7 @@ export const EditControlContent = ({
 
       return {
         ...control.control,
+        description: values.description?.trim() || undefined,
         enabled: values.enabled,
         execution: values.execution,
         scope: Object.keys(scope).length > 0 ? scope : undefined,
@@ -221,6 +223,7 @@ export const EditControlContent = ({
         stepRegexValue && !stepNamesValue ? 'regex' : 'names';
       definitionForm.setValues({
         name: control.name,
+        description: control.control.description ?? '',
         enabled: control.control.enabled,
         step_types: scope.step_types ?? [],
         stages: scope.stages ?? [],
@@ -389,14 +392,25 @@ export const EditControlContent = ({
   return (
     <Box>
       <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
-        <TextInput
-          label="Control name"
-          placeholder="Enter control name"
-          mb="lg"
-          size="sm"
-          required
-          {...definitionForm.getInputProps('name')}
-        />
+        <Grid gutter="xl" mb="lg">
+          <Grid.Col span={6}>
+            <TextInput
+              label="Control name"
+              placeholder="Enter control name"
+              size="sm"
+              required
+              {...definitionForm.getInputProps('name')}
+            />
+          </Grid.Col>
+          <Grid.Col span={6}>
+            <TextInput
+              label="Description"
+              placeholder="Optional description of what this control does"
+              size="sm"
+              {...definitionForm.getInputProps('description')}
+            />
+          </Grid.Col>
+        </Grid>
 
         <Grid gutter="xl">
           <Grid.Col span={4}>
