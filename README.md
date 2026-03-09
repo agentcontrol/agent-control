@@ -50,13 +50,13 @@ Benchmarks were run locally on a MacBook (Apple M5, 16 GB RAM) using Docker Comp
 | Evaluation | 50 controls, 500-char content | 199 | 63 ms | 91 ms |
 | Controls refresh | 5-50 controls per agent | 273-392 | 20-27 ms | 27-61 ms |
 
-All four built-in evaluators (regex, list, JSON, SQL) perform within 40-46 ms p50 at 1 control.
-Moving from 1 to 50 controls increased evaluation p50 by about 27 ms.
-
-Run profile: 2 minutes per scenario, 5 concurrent users for latency, 10-20 for throughput.
-RPS = completed requests per second (server throughput). All scenarios completed with 0% errors.
-
-Local laptop benchmarks are directional and intended for developer reference. They are not production sizing guidance.
+- Run profile: 2 minutes per scenario, 5 concurrent users for latency (p50, p99), 10-20 concurrent users for throughput (RPS).
+- RPS = completed requests per second (server throughput).
+- All scenarios completed with 0% errors.
+- Agent create and update paths perform identically (upsert).
+- All four built-in evaluators (regex, list, JSON, SQL) perform within 40-46 ms p50 at 1 control.
+- Moving from 1 to 50 controls increased evaluation p50 by about 27 ms.
+- Local laptop benchmarks are directional and intended for developer reference. They are not production sizing guidance.
 
 ### Examples
 
