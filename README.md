@@ -54,6 +54,8 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 - **[Galileo Luna-2 Integration](examples/galileo/)** — Toxicity detection and content moderation with Galileo Protect
 
 ### Framework integrations
+- **[Google ADK Callbacks](examples/google_adk_callbacks/)** — Model and tool guardrails via ADK's native callback hooks
+- **[Google ADK Decorator](examples/google_adk_decorator/)** — `@control()` decorator pattern for ADK tool protection
 - **[LangChain](examples/langchain/)** — Protect a SQL agent from dangerous queries with server-side controls
 - **[CrewAI](examples/crewai/)** — Combine Agent Control security controls with CrewAI guardrails for customer support
 - **[AWS Strands](examples/strands_agents/)** — Guardrails for AWS Strands agent workflows and tool calls

@@ -8,6 +8,8 @@ This directory contains runnable examples for Agent Control. Each example has it
 |:--------|:--------|:-----|
 | Agent Control Demo | End-to-end workflow: create controls, run a controlled agent, update controls dynamically. | https://docs.agentcontrol.dev/examples/agent-control-demo |
 | CrewAI | Combine Agent Control security controls with CrewAI guardrails for customer support. | https://docs.agentcontrol.dev/examples/crewai |
+| Google ADK Callbacks | Model and tool guardrails via ADK's native callback hooks. | https://docs.agentcontrol.dev/examples/google-adk-callbacks |
+| Google ADK Decorator | `@control()` decorator pattern for ADK tool protection. | https://docs.agentcontrol.dev/examples/google-adk-decorator |
 | Customer Support Agent | Enterprise scenario with PII protection, prompt-injection defense, and multiple tools. | https://docs.agentcontrol.dev/examples/customer-support |
 | DeepEval | Build a custom evaluator using DeepEval GEval metrics. | https://docs.agentcontrol.dev/examples/deepeval |
 | Galileo Luna-2 | Toxicity detection and content moderation with Galileo Protect. | https://docs.agentcontrol.dev/examples/galileo-luna2 |
