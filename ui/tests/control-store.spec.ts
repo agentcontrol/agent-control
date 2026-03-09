@@ -72,15 +72,41 @@ test.describe('Control Store Modal', () => {
     await expect(modal.getByText('data-analysis-agent')).toBeVisible();
     // One control has no usage and renders as an em dash
     await expect(modal.getByText('—')).toBeVisible();
-    // Agent attribution renders as navigation links.
+    // Agent attribution renders as navigation links with pre-filtered search.
     const customerSupportLink = modal.getByRole('link', {
       name: 'customer-support-bot',
     });
     await expect(customerSupportLink).toHaveCount(1);
     await expect(customerSupportLink).toHaveAttribute(
       'href',
-      getAgentRoute('customer-support-bot')
+      getAgentRoute('customer-support-bot', {
+        tab: 'controls',
+        query: { q: 'PII Detection' },
+      })
     );
+  });
+
+  test('Used by link navigates with control name filter applied', async ({
+    mockedPage,
+  }) => {
+    const modal = await openControlStoreModal(mockedPage);
+
+    const customerSupportLink = modal.getByRole('link', {
+      name: 'customer-support-bot',
+    });
+    await customerSupportLink.click();
+
+    // URL should include the agent, controls tab, and q filter with the control name.
+    await expect(mockedPage).toHaveURL(
+      getAgentRoute('customer-support-bot', {
+        tab: 'controls',
+        query: { q: 'PII Detection' },
+      })
+    );
+
+    // Controls search input should be pre-filled with the control name.
+    const searchInput = mockedPage.getByPlaceholder('Search controls...');
+    await expect(searchInput).toHaveValue('PII Detection');
   });
 
   test('can search for controls', async ({ mockedPage }) => {

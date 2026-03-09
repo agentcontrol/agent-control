@@ -278,10 +278,16 @@ export function ControlStoreModal({
             </Text>
           );
         }
+
+        const controlName = row.original.name;
+
         return (
           <Anchor
             component={Link}
-            href={getAgentRoute(usedByAgent.agent_name)}
+            href={getAgentRoute(usedByAgent.agent_name, {
+              tab: 'controls',
+              query: { q: controlName },
+            })}
             size="sm"
             underline="hover"
           >
