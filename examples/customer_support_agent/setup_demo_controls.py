@@ -14,7 +14,7 @@ import asyncio
 import os
 from agent_control import Agent, AgentControlClient, agents, controls
 
-AGENT_NAME = "customer-support-agent-2"
+AGENT_NAME = "customer-support-agent"
 AGENT_DESCRIPTION = "AI-powered customer support assistant"
 
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
