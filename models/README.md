@@ -24,4 +24,4 @@ cd models
 uv run pytest
 ```
 
-Full guide: https://docs.agentcontrol.dev/models
+Full guide: https://docs.agentcontrol.dev/components/models

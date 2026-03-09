@@ -46,7 +46,6 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 - **[Examples Overview](examples/README.md)** — Complete catalog of examples and patterns
 
 ### Core demos
-- **[TypeScript SDK](examples/typescript_sdk/)** — Consumer-style TypeScript example using the published npm package
 - **[Customer Support Agent](examples/customer_support_agent/)** — Enterprise scenario with PII protection, prompt-injection defense, and multiple tools
 - **[Steer Action Demo](examples/steer_action_demo/)** — Banking transfer agent showcasing allow, deny, warn, and steer actions
 
@@ -58,76 +57,94 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 - **[LangChain](examples/langchain/)** — Protect a SQL agent from dangerous queries with server-side controls
 - **[CrewAI](examples/crewai/)** — Combine Agent Control security controls with CrewAI guardrails for customer support
 - **[AWS Strands](examples/strands_agents/)** — Guardrails for AWS Strands agent workflows and tool calls
+- **[TypeScript SDK](examples/typescript_sdk/)** — Consumer-style TypeScript example using the published npm package
+
 
 ## Quick start
 
-Prerequisites:
+Protect your AI agent in 4 simple steps.
+
+> Prefer a full demo walkthrough? See the complete [Agent Control Demo](/examples/agent-control-demo) for an end-to-end, runnable alternative.
+
+### Prerequisites
 
 - Python 3.12+
 - Docker
 
-### Option A — SDK only
+### Step 1: Start the Agent Control server
 
-Install the SDK in your project:
+Choose one of the following setups.
 
-```bash
-pip install agent-control-sdk
-```
+#### Option A — SDK only (fastest)
 
-Run the Agent Control server, PostgreSQL database and UI via Docker Compose:
+Run the Agent Control server and PostgreSQL database via Docker Compose:
 
 ```bash
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
 ```
 
-Server will run at `http://localhost:8000` and UI at `http://localhost:4000`.
+- Server runs at `http://localhost:8000`
+- UI runs at `http://localhost:4000`
 
-### Option B — Local development
+#### Option B — Local development (cloning the repo)
 
-**Prerequisites:**
+Prerequisites:
 
-- **uv** — Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- **Node.js 18+** — For the web dashboard (optional)
+- uv — Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- Node.js 18+ — For the web dashboard (optional)
 
 ```bash
-# Clone the repo
+# Clone the repository
+
 git clone https://github.com/agentcontrol/agent-control.git
 cd agent-control
 
-# Install all workspace dependencies
+# Install dependencies
+
 make sync
 
 # Start the Agent Control server (boots Postgres + runs migrations)
+
 make server-run
 
 # Start the UI (in a separate shell)
+
 make ui-install
 make ui-dev
 ```
 
-Server runs at `http://localhost:8000` and UI at `http://localhost:4000`.
+- Server runs at `http://localhost:8000`
+- UI runs at `http://localhost:4000`
 
-Install the SDK in your project:
+Verify the server by opening `http://localhost:8000/health` — you should see `{"status": "healthy", "version": "..."}`.
+
+### Step 2: Install the SDK
+
+In your agent application project:
+
 ```bash
 pip install agent-control-sdk
 ```
 
-## Minimal agent integration
+### Step 3: Register your agent
 
-### Register your agent with server
-Agent must be registered with the server. You should also add `@control` decorator around tools and llm call functions.
+Agent must be registered with the server. You should also add the `@control` decorator around tools and LLM call functions.
 
-Here is a contrived example. Reference our [examples](examples/) for real world examples for specific frameworks.
+Here is a contrived example. Reference our [Examples](/examples/) for real-world examples for specific frameworks.
 
 ```python
+# my_agent.py
+
 import asyncio
 import agent_control
 from agent_control import control, ControlViolationError
 
 @control()
 async def chat(message: str) -> str:
+    # In production: response = await LLM.ainvoke(message)
+    # For demo: simulate LLM that might leak sensitive data
     if "test" in message.lower():
-        return "Your SSN is 123-45-6789"
+        return "Your SSN is 123-45-6789"  # Will be blocked!
     return f"Echo: {message}"
 
 agent_control.init(
@@ -144,34 +161,31 @@ async def main():
 asyncio.run(main())
 ```
 
-### Add some controls
+### Step 4: Add controls
 
-**NOTE:** Easiest way to add controls is to use the UI. You can also use SDK or directly call api. 
+The easiest way to add controls is through the UI — see the [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart) for a step-by-step guide. Alternatively, use the SDK as shown below or call the API directly.
 
-Run following script to create controls:
+Run the following setup script to create controls to protect your agent.
 
 ```python
-# setup.py - Run once to configure everything
+# setup.py - Run once to configure agent controls
+
 import asyncio
-import os
 from datetime import datetime, UTC
 from agent_control import AgentControlClient, controls, agents
 from agent_control_models import Agent
 
 async def setup():
-    async with AgentControlClient(
-        api_key=os.getenv("AGENT_CONTROL_API_KEY")
-    ) as client:  # Defaults to localhost:8000
+    async with AgentControlClient() as client:  # Defaults to localhost:8000
         # 1. Register agent first
         agent = Agent(
-            # Your agent's name
             agent_name="awesome_bot_3000",
             agent_description="My Chatbot",
-            agent_created_at=datetime.now(UTC).isoformat()
+            agent_created_at=datetime.now(UTC).isoformat(),
         )
         await agents.register_agent(client, agent, steps=[])
 
-        # 2. Create control (blocks SSN patterns)
+        # 2. Create control (blocks SSN patterns in output)
         control = await controls.create_control(
             client,
             name="block-ssn",
@@ -181,12 +195,13 @@ async def setup():
                 "scope": {"stages": ["post"]},
                 "selector": {"path": "output"},
                 "evaluator": {
-                    "name": "regex", # Inbuilt regex evaluator. See evaluators/builtin to see all available OOTB evaluators
-                    "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}
+                    "name": "regex",
+                    "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"},
                 },
-                "action": {"decision": "deny"}
-            }
+                "action": {"decision": "deny"},
+            },
         )
+
         # 3. Associate control directly with agent
         await agents.add_agent_control(
             client,
@@ -200,36 +215,42 @@ async def setup():
 asyncio.run(setup())
 ```
 
-Now, when you run your agent again, you will see `Blocked: block-ssn`. 
+When authentication is enabled, this setup script needs an admin API key because it creates a control and attaches it to an agent. `agents.register_agent()` itself accepts a regular or admin key, but `controls.create_control()` and `agents.add_agent_control()` are control-plane mutations and require a key listed in `AGENT_CONTROL_ADMIN_API_KEYS`.
 
-### What's Happening Under the Hood?
-1. Your app calls chat("test")
-2. Function executes and returns "Your SSN is 123-45-6789"
-3. `@control()` decorator sends output to Agent Control server
-4. Server checks the output against all controls
-5. block-ssn control finds SSN pattern → matches!
-6. Server returns is_safe=False with the matched control
-7. SDK raises ControlViolationError and blocks the response
+If you started the full local stack with the repo-root `docker-compose.yml`, it enables auth with these development defaults:
 
-For full setup, see https://docs.agentcontrol.dev/quickstart
+- Regular API key: `420c6b90714b45beaa992c3f05cf2baf`
+- Admin API key: `29af8554a1fe4311977b7ce360b20cc3`
+- UI default key (`NEXT_PUBLIC_AGENT_CONTROL_API_KEY`): `29af8554a1fe4311977b7ce360b20cc3`
+
+Replace these defaults before any shared or production deployment.
+
+Now, test your agent:
+
+```bash
+uv run my_agent.py
+```
+
+Done. Your agent now blocks SSN patterns automatically.
+
 
 ## Documentation
 
 ### Core Documentation
 
-- **Overview:** https://docs.agentcontrol.dev/overview
-- **Quickstart:** https://docs.agentcontrol.dev/quickstart
-- **Reference:** https://docs.agentcontrol.dev/reference
-- **Testing:** https://docs.agentcontrol.dev/testing
-- **Python SDK:** https://docs.agentcontrol.dev/sdk/python-sdk
-- **TypeScript SDK:** https://docs.agentcontrol.dev/sdk/typescript-sdk
+- **[Overview](https://docs.agentcontrol.dev/core/overview)** — System overview and how the pieces fit together
+- **[Quickstart](https://docs.agentcontrol.dev/core/quickstart)** — Install, start the server, and protect your first agent
+- **[Reference](https://docs.agentcontrol.dev/core/reference)** — SDK and server API reference
+- **[Testing](https://docs.agentcontrol.dev/testing)** — Testing conventions and best practices
+- **[Python SDK](https://docs.agentcontrol.dev/sdk/python-sdk)** — SDK usage, decorators, and client APIs
+- **[TypeScript SDK](https://docs.agentcontrol.dev/sdk/typescript-sdk)** — Generated client and usage patterns
 
 ### Component Documentation
-- **Server:** https://docs.agentcontrol.dev/server
-- **Engine:** https://docs.agentcontrol.dev/engine
-- **Models:** https://docs.agentcontrol.dev/models
-- **Evaluators:** https://docs.agentcontrol.dev/evaluators
-- **UI Quickstart:** https://docs.agentcontrol.dev/ui-quickstart
+- **[Server](https://docs.agentcontrol.dev/components/server)** — Server setup, configuration, and deployment
+- **[Engine](https://docs.agentcontrol.dev/components/engine)** — Evaluation engine behavior and discovery
+- **[Models](https://docs.agentcontrol.dev/components/models)** — Shared Pydantic models and schemas
+- **[Evaluators](https://docs.agentcontrol.dev/components/evaluators)** — Built-in and external evaluators
+- **[UI](https://docs.agentcontrol.dev/core/ui)** — Dashboard setup and usage
 
 ## Contributing
 

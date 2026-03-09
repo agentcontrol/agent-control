@@ -2,4 +2,6 @@
 
 Integration package for Galileo Luna-2 evaluator.
 
-Docs: https://docs.agentcontrol.dev/examples/galileo-luna2
+See full documentation in: https://docs.agentcontrol.dev/concepts/evaluators/contributing-evaluator
+
+Example with usage: https://docs.agentcontrol.dev/examples/galileo-luna2

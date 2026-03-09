@@ -25,4 +25,4 @@ Server runs on http://localhost:8000. The UI expects this base URL by default.
 
 Server configuration is driven by environment variables (database, auth, observability, evaluators). For the full list and examples, see the docs.
 
-Full guide: https://docs.agentcontrol.dev/server
+Full guide: https://docs.agentcontrol.dev/components/server

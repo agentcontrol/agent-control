@@ -21,4 +21,4 @@ pnpm dev
 
 The UI runs on http://localhost:4000 and expects the server on http://localhost:8000 by default.
 
-Full guide: https://docs.agentcontrol.dev/ui-quickstart
+Full guide: https://docs.agentcontrol.dev/components/ui

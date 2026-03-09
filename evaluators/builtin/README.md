@@ -24,4 +24,4 @@ discover_evaluators()
 print(list_evaluators())
 ```
 
-Full guide: https://docs.agentcontrol.dev/evaluators
+Full guide: https://docs.agentcontrol.dev/concepts/evaluators/built-in-evaluators

@@ -18,4 +18,4 @@ discover_evaluators()
 print(list_evaluators())
 ```
 
-Full guide: https://docs.agentcontrol.dev/engine
+Full guide: https://docs.agentcontrol.dev/components/engine

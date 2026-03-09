@@ -8,4 +8,4 @@ This directory contains built-in and contributed evaluators for Agent Control. E
 - `contrib/` — Contributed evaluators and templates
 - `src/` — Shared evaluator interfaces and utilities
 
-Full guide: https://docs.agentcontrol.dev/evaluators
+Full guide: https://docs.agentcontrol.dev/concepts/evaluators/overview
