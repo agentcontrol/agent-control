@@ -6,7 +6,7 @@ This repository keeps documentation concise. The full documentation lives on the
 
 - [Overview](https://docs.agentcontrol.dev/core/overview) — Overview of Agent Control concepts and how the system fits together
 - [Quickstart](https://docs.agentcontrol.dev/core/quickstart) — Install, start the server, and protect your first agent
-- [Concepts](https://docs.agentcontrol.dev/core/concepts) — Controls, scopes, selectors, evaluators, and actions
+- [Concepts](https://docs.agentcontrol.dev/concepts/overview) — Controls, scopes, selectors, evaluators, and actions
 - [Controls](https://docs.agentcontrol.dev/concepts/controls) — Define and configure control rules
 - [Reference](https://docs.agentcontrol.dev/core/reference) — SDK and server API reference
 - [Configuration](https://docs.agentcontrol.dev/core/configuration) — Environment variables, auth, and database settings

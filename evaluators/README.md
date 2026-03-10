@@ -1,11 +1,60 @@
 # Agent Control Evaluators
 
-This directory contains built-in and contributed evaluators for Agent Control. Evaluators define how controls match inputs and outputs.
+Evaluators analyze agent inputs, outputs, and context to determine if controls should trigger. They provide the core logic for policy enforcement.
 
-## Structure
+## What Evaluators Do
 
-- `builtin/` — Built-in evaluators (regex, list, json, sql)
-- `contrib/` — Contributed evaluators and templates
-- `src/` — Shared evaluator interfaces and utilities
+When a control is evaluated:
+1. Selector extracts data (e.g., `input.query`, `output.email`)
+2. Evaluator analyzes the data against configured rules
+3. Returns match/no-match decision
+4. Control action is applied if matched (deny, warn, steer, log)
 
-Full guide: https://docs.agentcontrol.dev/concepts/evaluators/overview
+## Built-in Evaluators
+
+### Regex
+Pattern matching for text (PII, keywords, SQL injection)
+```python
+{"name": "regex", "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}}
+```
+
+### List
+Match against value lists (blocked users, restricted cities)
+```python
+{"name": "list", "config": {"values": ["admin", "root"], "case_sensitive": False}}
+```
+
+### SQL
+SQL query validation and dangerous operation detection
+```python
+{"name": "sql", "config": {"blocked_operations": ["DROP", "DELETE"], "require_limit": True}}
+```
+
+### JSON
+Structured data validation with JSONPath
+```python
+{"name": "json", "config": {"path": "$.user.role", "pattern": "admin"}}
+```
+
+## Directory Structure
+
+- `builtin/` — Core evaluators (regex, list, json, sql)
+- `contrib/` — Community evaluators (PII detection, toxicity, custom)
+- `src/` — Shared interfaces and utilities
+
+## Adding Custom Evaluators
+
+Place custom evaluators in `contrib/` and they'll be loaded automatically:
+
+```python
+from evaluators.src.base import BaseEvaluator
+
+class MyEvaluator(BaseEvaluator):
+    name = "my_evaluator"
+
+    def evaluate(self, data: str, config: dict):
+        # Your logic here
+        return {"matched": True, "message": "Rule triggered"}
+```
+
+Full guide: https://docs.agentcontrol.dev/concepts/evaluators

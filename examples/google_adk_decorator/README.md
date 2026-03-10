@@ -96,17 +96,4 @@ Synthetic unsafe tool output blocked after the tool call:
 What time is it in Testville?
 ```
 
-## Files
-
-- `setup_controls.py` - creates the decorator example controls
-- `my_agent/agent.py` - ADK app that wraps tools with `@control()`
-- `.env.example` - environment variables for local runs
-
-## Notes
-
-- This example focuses on tool-level protection only.
-- The guarded tool implementations are marked with tool metadata before
-  `@control()` runs. That is needed because the current Python SDK infers
-  `tool` vs `llm` from function metadata at decoration time.
-- If you want the ADK-native callback integration pattern, use
-  `examples/google_adk_callbacks/`.
+For more details on this example, see the [Docs](https://docs.agentcontrol.dev/examples/google-adk-decorator).

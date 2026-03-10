@@ -7,7 +7,7 @@
 [![CI](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/agentcontrol/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/agentcontrol/agent-control)
 
-> **Pro Tip:** See the full docs at https://docs.agentcontrol.dev/
+> **Pro Tip:** See the full docs at [Agent Control Docs] (https://docs.agentcontrol.dev/)
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
@@ -39,6 +39,8 @@ Traditional guardrails embedded inside your agent code have critical limitations
 - **Fail-Safe Defaults** — Deny controls fail closed on error with configurable error handling
 - **API Key Authentication** — Secure your control server in production
 
+---
+
 ## Examples
 
 Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start).
@@ -58,7 +60,10 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 - **[LangChain](examples/langchain/)** — Protect a SQL agent from dangerous queries with server-side controls
 - **[CrewAI](examples/crewai/)** — Combine Agent Control security controls with CrewAI guardrails for customer support
 - **[AWS Strands](examples/strands_agents/)** — Guardrails for AWS Strands agent workflows and tool calls
+- **[Google ADK Callbacks](examples/google_adk_callbacks/)** — Model and tool protection using ADK's native callback hooks
+- **[Google ADK Decorator](examples/google_adk_decorator/)** — Tool-level protection using Agent Control's @control() decorator
 
+---
 
 ## Quick start
 
@@ -130,7 +135,7 @@ pip install agent-control-sdk
 
 Agent must be registered with the server. You should also add the `@control` decorator around tools and LLM call functions.
 
-Here is a contrived example. Reference our [Examples](/examples/) for real-world examples for specific frameworks.
+Here is a contrived example. Reference our [Examples](examples/) for real-world examples for specific frameworks.
 
 ```python
 # my_agent.py
@@ -233,6 +238,8 @@ uv run my_agent.py
 
 Done. Your agent now blocks SSN patterns automatically.
 
+For detailed explanations of how controls work under the hood, configuration options, and other development setup, see the complete [Quickstart](https://docs.agentcontrol.dev/core/quickstart) guide.
+
 ## Performance
 
 | Endpoint | Scenario | RPS | p50 | p99 |
@@ -250,23 +257,7 @@ Done. Your agent now blocks SSN patterns automatically.
 
 _Benchmarked on Apple M5 (16 GB RAM), Docker Compose (`postgres:16` + `agent-control`). 2 minutes per scenario, 5 concurrent users for latency (p50, p99), 10-20 for throughput (RPS). RPS = completed requests per second. All scenarios completed with 0% errors._
 
-## Documentation
-
-### Core Documentation
-
-- **[Overview](https://docs.agentcontrol.dev/core/overview)** — System overview and how the pieces fit together
-- **[Quickstart](https://docs.agentcontrol.dev/core/quickstart)** — Install, start the server, and protect your first agent
-- **[Reference](https://docs.agentcontrol.dev/core/reference)** — SDK and server API reference
-- **[Testing](https://docs.agentcontrol.dev/testing)** — Testing conventions and best practices
-- **[Python SDK](https://docs.agentcontrol.dev/sdk/python-sdk)** — SDK usage, decorators, and client APIs
-- **[TypeScript SDK](https://docs.agentcontrol.dev/sdk/typescript-sdk)** — Generated client and usage patterns
-
-### Component Documentation
-- **[Server](https://docs.agentcontrol.dev/components/server)** — Server setup, configuration, and deployment
-- **[Engine](https://docs.agentcontrol.dev/components/engine)** — Evaluation engine behavior and discovery
-- **[Models](https://docs.agentcontrol.dev/components/models)** — Shared Pydantic models and schemas
-- **[Evaluators](https://docs.agentcontrol.dev/components/evaluators)** — Built-in and external evaluators
-- **[UI](https://docs.agentcontrol.dev/core/ui)** — Dashboard setup and usage
+---
 
 ## Contributing
 
@@ -280,6 +271,8 @@ We welcome contributions! To get started:
 6. Submit a Pull Request
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines, code conventions, and development workflow.
+
+---
 
 ## License
 

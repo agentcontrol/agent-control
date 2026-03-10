@@ -18,13 +18,13 @@ cd examples/strands_agents
 uv pip install -e . --upgrade
 
 # interactive demo
-uv run setup_interactive_controls.py
-uv run streamlit run interactive_support_demo.py
+uv run interactive_demo/setup_interactive_controls.py
+uv run streamlit run interactive_demo/interactive_support_demo.py
 
-#OR 
-# steering_demo
-uv run setup_email_controls.py
-uv run streamlit run email_safety_demo.py
+# OR
+# steering demo
+uv run steering_demo/setup_email_controls.py
+uv run streamlit run steering_demo/email_safety_demo.py
 
 ```
 
