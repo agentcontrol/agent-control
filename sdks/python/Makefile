@@ -43,7 +43,8 @@ typecheck:
 	uv run mypy --config-file ../../pyproject.toml src/
 
 build:
-	uv build
+	uv run python ../../scripts/build.py sdk
 
 publish:
+	$(MAKE) build
 	uv publish

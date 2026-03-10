@@ -3,17 +3,16 @@ name = "agent-control-sdk"
 version = "6.6.0"
 description = "Python SDK for Agent Control - protect your AI agents with controls"
 requires-python = ">=3.12"
-# Note: agent-control-models and agent-control-engine are bundled at build time
-# Note: agent-control-evaluators is a runtime dependency (NOT vendored) to avoid
-#       duplicate module conflict when galileo extras are installed
+# Note: agent-control-models, agent-control-engine, and agent-control-evaluators
+# are bundled at build time for self-contained SDK wheels.
 dependencies = [
     "httpx>=0.26.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.0.0",  # For typed configuration via environment variables
     "docstring-parser>=0.15",  # For @tool decorator schema inference
-    "google-re2>=1.1",  # For engine (bundled)
-    "jsonschema>=4.0.0",  # For models/engine (bundled)
-    "agent-control-evaluators>=3.0.0",  # NOT vendored - avoid conflict with galileo
+    "google-re2>=1.1",  # For engine/evaluators (bundled)
+    "jsonschema>=4.0.0",  # For models/engine/evaluators (bundled)
+    "sqlglot[c]>=29.0.0,<29.1.0",  # For bundled SQL evaluator
 ]
 authors = [
     {name = "Agent Control Team"}
@@ -56,8 +55,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# Note: agent_control_models and agent_control_engine are copied by scripts/build.py
-packages = ["src/agent_control", "src/agent_control_models", "src/agent_control_engine"]
+# Note: vendored packages are copied by scripts/build.py before building.
+packages = [
+    "src/agent_control",
+    "src/agent_control_models",
+    "src/agent_control_engine",
+    "src/agent_control_evaluators",
+]
 
 [tool.ruff]
 line-length = 100

@@ -2,8 +2,8 @@
 """Build packages for PyPI distribution.
 
 This script builds all publishable packages. For SDK and server, it copies internal
-packages (models, engine) into the source directories before building, then cleans up
-afterward. This allows the published wheels to be self-contained.
+packages into the source directories before building, then cleans up afterward. This
+allows the published wheels to be self-contained.
 
 Usage:
     python scripts/build.py [models|evaluators|sdk|server|galileo|all]
@@ -81,7 +81,7 @@ def build_sdk() -> None:
     print(f"Building agent-control-sdk v{version}")
 
     # Clean previous builds and vendored code
-    for pkg in ["agent_control_models", "agent_control_engine"]:
+    for pkg in ["agent_control_models", "agent_control_engine", "agent_control_evaluators"]:
         target = sdk_src / pkg
         if target.exists():
             shutil.rmtree(target)
@@ -99,6 +99,10 @@ def build_sdk() -> None:
         ROOT / "engine" / "src" / "agent_control_engine",
         sdk_src / "agent_control_engine",
     )
+    shutil.copytree(
+        ROOT / "evaluators" / "builtin" / "src" / "agent_control_evaluators",
+        sdk_src / "agent_control_evaluators",
+    )
 
     # Inject bundle metadata for conflict detection
     inject_bundle_metadata(
@@ -111,6 +115,11 @@ def build_sdk() -> None:
         "agent-control-sdk",
         version,
     )
+    inject_bundle_metadata(
+        sdk_src / "agent_control_evaluators" / "__init__.py",
+        "agent-control-sdk",
+        version,
+    )
 
     # Set version
     set_package_version(sdk_dir / "pyproject.toml", version)
@@ -120,7 +129,7 @@ def build_sdk() -> None:
         print(f"  Built agent-control-sdk v{version}")
     finally:
         # Clean up vendored code (don't commit it)
-        for pkg in ["agent_control_models", "agent_control_engine"]:
+        for pkg in ["agent_control_models", "agent_control_engine", "agent_control_evaluators"]:
             target = sdk_src / pkg
             if target.exists():
                 shutil.rmtree(target)

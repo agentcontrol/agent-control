@@ -124,7 +124,7 @@ build-server:
 	cd $(SERVER_DIR) && uv build
 
 build-sdk:
-	cd $(SDK_DIR) && uv build
+	uv run python scripts/build.py sdk
 
 publish: publish-models publish-server publish-sdk engine-publish
 
@@ -134,7 +134,7 @@ publish-models:
 publish-server:
 	cd $(SERVER_DIR) && uv publish
 
-publish-sdk:
+publish-sdk: build-sdk
 	cd $(SDK_DIR) && uv publish
 
 # ---------------------------
