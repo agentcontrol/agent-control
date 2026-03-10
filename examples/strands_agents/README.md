@@ -1,6 +1,6 @@
 # AgentControl + Strands Integration
 
-Automatic safety controls for AWS Strands agents using hooks - no decorators needed.
+Automatic safety controls for AWS Strands agents using plugins - no decorators needed.
 
 ## Quick Start
 
@@ -8,7 +8,7 @@ Automatic safety controls for AWS Strands agents using hooks - no decorators nee
 
 ```bash
 # 1. Install
-cd examples/strands_integration
+cd examples/strands_agents
 uv pip install -e .
 
 # 2. Configure
@@ -19,7 +19,7 @@ cp .env.example .env
 curl -fsSL https://raw.githubusercontent.com/agentcontrol/agent-control/docker-compose.yml | docker compose -f - up -d
 
 # 4. Setup controls (Terminal 2)
-cd examples/strands_integration/interactive_demo
+cd examples/strands_agents/interactive_demo
 uv run setup_interactive_controls.py
 
 # 5. Run demo (Terminal 3)
@@ -34,33 +34,33 @@ Open http://localhost:8501 and click test buttons to see safety controls in acti
 Customer support agent with PII blocking and SQL injection prevention. Shows real-time safety checks in Streamlit UI.
 
 ### [Steering Demo](steering_demo/)
-Banking email agent with PII redaction. Combines AgentControl Hook (deny on tool calls) + Strands Steering (steer on LLM draft) for layered governance. Uses a two-phase draft → send flow so steer can guide before tool calls.
+Banking email agent with PII redaction. Combines AgentControlPlugin (deny on tool calls) + Strands Steering (steer on LLM draft) for layered governance. Uses a two-phase draft → send flow so steering can apply guidance before tool calls.
 
 ## How It Works
 
-**AgentControlHook** = Automatic safety without code changes
+**AgentControlPlugin** = Automatic safety without code changes
 
 ```python
-from agent_control.integrations.strands import AgentControlHook
+from agent_control.integrations.strands import AgentControlPlugin
 from strands import Agent
 
 # Initialize
 import agent_control
 agent_control.init(agent_name="my-customer-agent")
 
-# Create hook
-hook = AgentControlHook(agent_name="my-customer-agent")
+# Create plugin
+plugin = AgentControlPlugin(agent_name="my-customer-agent")
 
 # Attach to agent - done!
 agent = Agent(
     model=model,
     system_prompt="...",
     tools=[...],
-    hooks=[hook]  # All safety checks automated
+    plugins=[plugin]  # All safety checks automated
 )
 ```
 
-**Hook intercepts events** → **Server evaluates controls** → **Blocks unsafe actions**
+**Plugin intercepts events** → **Server evaluates controls** → **Blocks unsafe actions**
 
 For steer actions, the steering handler converts AgentControl steer into a Strands `Guide()` retry.
 
@@ -88,7 +88,7 @@ For steer actions, the steering handler converts AgentControl steer into a Stran
 }
 ```
 
-Hook automatically extracts tool names from events - no decorators needed!
+Plugin automatically extracts tool names from events - no decorators needed!
 
 ## Architecture
 
@@ -97,25 +97,25 @@ User Input
   ↓
 Strands fires event (BeforeToolCallEvent, AfterModelCallEvent, etc.)
   ↓
-AgentControlHook intercepts → Creates Step → Calls AgentControl server
+AgentControlPlugin intercepts → Creates Step → Calls AgentControl server
   ↓
 Server evaluates controls → Returns safe/unsafe
   ↓
-Hook enforces decision: Continue ✅ or Block ❌
+Plugin enforces decision: Continue ✅ or Block ❌
 ```
 
 ## Integration Patterns
 
 **Basic setup**:
 ```python
-hook = AgentControlHook(
+plugin = AgentControlPlugin(
     agent_name="my-customer-agent",
     enable_logging=True
 )
 ```
 
 **Steering integration**:
-- `AgentControlHook` for tool-stage deny (hard blocks)
+- `AgentControlPlugin` for tool-stage deny (hard blocks)
 - `AgentControlSteeringHandler` for LLM steer → `Guide()` (corrective guidance)
 
 See `steering_demo/README.md` for complete implementation.
@@ -123,7 +123,7 @@ See `steering_demo/README.md` for complete implementation.
 ## Troubleshooting
 
 **"AgentControl not initialized"**
-- Run `agent_control.init()` before creating hook
+- Run `agent_control.init()` before creating the plugin
 
 **Controls not triggering**
 - Server running? `curl http://localhost:8000/health`

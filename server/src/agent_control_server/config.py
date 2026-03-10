@@ -1,8 +1,12 @@
 """Server configuration settings."""
+import logging
 import os
+import secrets
 from functools import cached_property
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_config_logger = logging.getLogger(__name__)
 
 
 class AuthSettings(BaseSettings):
@@ -27,6 +31,12 @@ class AuthSettings(BaseSettings):
     # Admin API keys (subset with elevated privileges)
     # Env: AGENT_CONTROL_ADMIN_API_KEYS="admin-key1,admin-key2"
     admin_api_keys: str = ""
+
+    # Secret for signing session JWTs.
+    # Env: AGENT_CONTROL_SESSION_SECRET="<random-string>"
+    # If unset, a random secret is generated at startup (sessions won't survive
+    # restarts or work across multiple server instances).
+    session_secret: str = ""
 
     @cached_property
     def _parsed_api_keys(self) -> set[str]:
@@ -62,6 +72,22 @@ class AuthSettings(BaseSettings):
     def is_admin_api_key(self, key: str) -> bool:
         """Check if key is an admin API key. O(1) lookup."""
         return key in self._parsed_admin_api_keys
+
+    @cached_property
+    def _resolved_session_secret(self) -> str:
+        """Resolve session secret, generating an ephemeral one if not configured."""
+        if self.session_secret:
+            return self.session_secret
+        _config_logger.warning(
+            "AGENT_CONTROL_SESSION_SECRET is not set. Using an ephemeral random secret. "
+            "Sessions will not survive server restarts or work across multiple instances. "
+            "Set AGENT_CONTROL_SESSION_SECRET for production deployments."
+        )
+        return secrets.token_urlsafe(32)
+
+    def get_session_secret(self) -> str:
+        """Get the JWT signing secret (cached)."""
+        return self._resolved_session_secret
 
 
 class AgentControlServerDatabaseConfig(BaseSettings):
@@ -150,7 +176,22 @@ class ObservabilitySettings(BaseSettings):
     stdout: bool = False
 
 
+class UISettings(BaseSettings):
+    """Static UI hosting configuration settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        env_prefix="AGENT_CONTROL_UI_",
+        extra="ignore",
+    )
+
+    dist_dir: str | None = None
+
+
 auth_settings = AuthSettings()
 db_config = AgentControlServerDatabaseConfig()
 settings = Settings()
 observability_settings = ObservabilitySettings()
+ui_settings = UISettings()

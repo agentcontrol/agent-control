@@ -44,7 +44,7 @@ class TestProtectedEndpoints:
 
         # Then:
         assert response.status_code == 401
-        assert "Missing API key" in response.json()["detail"]
+        assert "Missing credentials" in response.json()["detail"]
 
     def test_invalid_api_key_returns_401(self, app: object) -> None:
         """Given invalid API key, when requesting protected endpoint, then returns 401."""

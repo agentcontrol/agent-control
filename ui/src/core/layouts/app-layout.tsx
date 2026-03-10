@@ -223,8 +223,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 }
                 label="My agents"
                 active={
-                  router.pathname === '/' ||
-                  router.pathname.startsWith('/agents')
+                  router.pathname === '/' || router.pathname === '/agents'
                 }
                 onClick={closeNavbar}
               />
@@ -287,14 +286,13 @@ const BREADCRUMB_TRANSITION = { duration: 0.2, ease: 'easeOut' as const };
 
 function Header() {
   const router = useRouter();
-  const isAgentPage =
-    router.pathname.startsWith('/agents') && !!router.query.id;
+  const isAgentPage = router.pathname === '/agents' && !!router.query.id;
   const agentId = isAgentPage ? (router.query.id as string) : '';
   const { data: agentData } = useAgent(agentId);
   const agentDisplayName = agentData?.agent?.agent_name ?? agentId ?? null;
 
   const getBreadcrumb = () => {
-    if (router.pathname !== '/' && !router.pathname.startsWith('/agents')) {
+    if (router.pathname !== '/' && router.pathname !== '/agents') {
       return null;
     }
 

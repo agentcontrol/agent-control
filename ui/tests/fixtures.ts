@@ -397,10 +397,67 @@ async function fulfillRoute<T>(
   }
 }
 
+/** Server config response (auth) - used so AuthProvider does not require a real backend in tests */
+export const serverConfigResponse = {
+  requires_api_key: false,
+  auth_mode: 'none' as const,
+  has_active_session: false,
+};
+
+export type ServerConfigMock = {
+  requires_api_key: boolean;
+  auth_mode: 'none' | 'api-key';
+  has_active_session: boolean;
+};
+
 /**
  * Individual route mock helpers - can be used standalone or with custom data
  */
 export const mockRoutes = {
+  /** Mock GET /api/config (auth) - must be hit before app content renders */
+  config: async (
+    page: Page,
+    options: MockResponseOptions<ServerConfigMock> = {
+      data: serverConfigResponse,
+    }
+  ) => {
+    const data = {
+      ...serverConfigResponse,
+      ...('data' in options ? options.data : {}),
+    };
+    await page.route('**/api/config', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(data),
+      });
+    });
+  },
+
+  /** Mock POST /api/login (auth) - optional success/failure for API key flow tests */
+  login: async (
+    page: Page,
+    options: { authenticated: boolean; is_admin?: boolean } = {
+      authenticated: true,
+      is_admin: false,
+    }
+  ) => {
+    await page.route('**/api/login', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          authenticated: options.authenticated,
+          is_admin: options.is_admin ?? false,
+        }),
+      });
+    });
+  },
+
   /** Mock GET /api/v1/agents */
   agents: async (
     page: Page,
@@ -628,6 +685,31 @@ export const mockRoutes = {
  * Helper to set up all API route mocking with defaults
  */
 export async function mockApiRoutes(page: Page) {
+  await mockRoutes.config(page);
+  await mockRoutes.agents(page);
+  await mockRoutes.agent(page);
+  await mockRoutes.evaluators(page);
+  await mockRoutes.controlsList(page);
+  await mockRoutes.controlGetData(page);
+  await mockRoutes.controlValidate(page);
+  await mockRoutes.controlCreate(page);
+  await mockRoutes.controlUpdate(page);
+  await mockRoutes.stats(page);
+}
+
+/**
+ * Set up all API route mocks with auth required (for login flow tests).
+ * Call mockRoutes.login(page, ...) in the test for success/failure.
+ */
+export async function mockApiRoutesWithAuthRequired(page: Page) {
+  await mockRoutes.config(page, {
+    data: {
+      ...serverConfigResponse,
+      requires_api_key: true,
+      auth_mode: 'api-key',
+      has_active_session: false,
+    },
+  });
   await mockRoutes.agents(page);
   await mockRoutes.agent(page);
   await mockRoutes.evaluators(page);

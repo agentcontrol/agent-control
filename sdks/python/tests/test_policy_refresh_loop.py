@@ -2,29 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from collections.abc import Generator
 from unittest.mock import AsyncMock, call, patch
 
-import agent_control
 import pytest
+
+import agent_control
+from agent_control._state import state
 
 
 @pytest.fixture(autouse=True)
 def _reset_policy_refresh_state() -> Generator[None, None, None]:
     """Ensure refresh loop and cache globals do not leak across tests."""
     agent_control._stop_policy_refresh_loop()
-    agent_control._server_controls = None
-    agent_control._current_agent = None
-    agent_control._server_url = None
-    agent_control._api_key = None
+    agent_control._reset_state()
     yield
     agent_control._stop_policy_refresh_loop()
-    agent_control._server_controls = None
-    agent_control._current_agent = None
-    agent_control._server_url = None
-    agent_control._api_key = None
+    agent_control._reset_state()
 
 
 def test_init_starts_policy_refresh_loop_by_default() -> None:
@@ -106,11 +103,11 @@ def test_reinit_stops_and_restarts_policy_refresh_loop() -> None:
 
 
 def test_policy_refresh_worker_runs_multiple_iterations() -> None:
-    # Given: a stop event that is set after the second refresh call.
+    # Given: a stop event that is set after the second fetch call.
     stop_event = threading.Event()
     call_count = 0
 
-    async def mock_refresh_controls_async() -> list[dict[str, int]]:
+    async def mock_fetch() -> list[dict[str, int]]:
         nonlocal call_count
         call_count += 1
         if call_count >= 2:
@@ -119,8 +116,8 @@ def test_policy_refresh_worker_runs_multiple_iterations() -> None:
 
     # When: the worker loop runs with zero wait interval for deterministic test speed.
     with patch(
-        "agent_control.refresh_controls_async",
-        new=AsyncMock(side_effect=mock_refresh_controls_async),
+        "agent_control._fetch_controls_async",
+        new=AsyncMock(side_effect=mock_fetch),
     ):
         agent_control._policy_refresh_worker(stop_event, interval_seconds=0)
 
@@ -130,7 +127,7 @@ def test_policy_refresh_worker_runs_multiple_iterations() -> None:
 
 def test_publish_server_controls_clears_cache_on_none() -> None:
     # GIVEN: an existing cached controls snapshot.
-    agent_control._server_controls = [{"id": 1, "name": "cached"}]
+    state.server_controls = [{"id": 1, "name": "cached"}]
 
     # WHEN: the publisher receives None.
     published = agent_control._publish_server_controls(None)
@@ -216,11 +213,11 @@ def test_stop_policy_refresh_loop_logs_warning_if_thread_does_not_stop() -> None
 
 
 def test_policy_refresh_worker_logs_and_continues_after_refresh_error() -> None:
-    # GIVEN: refresh fails once, then succeeds and signals stop.
+    # GIVEN: fetch fails once, then succeeds and signals stop.
     stop_event = threading.Event()
     call_count = 0
 
-    async def flaky_refresh_controls_async() -> list[dict[str, int]]:
+    async def flaky_fetch() -> list[dict[str, int]]:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -230,14 +227,46 @@ def test_policy_refresh_worker_logs_and_continues_after_refresh_error() -> None:
 
     # WHEN: the worker loop runs.
     with patch(
-        "agent_control.refresh_controls_async",
-        new=AsyncMock(side_effect=flaky_refresh_controls_async),
+        "agent_control._fetch_controls_async",
+        new=AsyncMock(side_effect=flaky_fetch),
     ), patch("agent_control.logger.error") as error_log_mock:
         agent_control._policy_refresh_worker(stop_event, interval_seconds=0)
 
     # THEN: the error is logged and a subsequent iteration still executes.
     assert call_count >= 2
     error_log_mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_refresh_controls_async_without_init_raises_runtime_error() -> None:
+    # GIVEN: no initialized SDK session.
+    agent_control._stop_policy_refresh_loop()
+    agent_control._reset_state()
+
+    # WHEN / THEN: refresh surfaces the lifecycle misuse.
+    with pytest.raises(RuntimeError, match="Agent not initialized"):
+        await agent_control.refresh_controls_async()
+
+
+def test_refresh_controls_after_shutdown_raises_runtime_error() -> None:
+    # GIVEN: an initialized session that is then shut down.
+    with patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=AsyncMock(return_value={"status": "healthy"}),
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=AsyncMock(return_value={"created": True, "controls": []}),
+    ):
+        agent_control.init(
+            agent_name="refresh-after-shutdown-agent",
+            policy_refresh_interval_seconds=0,
+        )
+
+    agent_control.shutdown()
+
+    # WHEN / THEN: sync refresh also surfaces the lifecycle misuse.
+    with pytest.raises(RuntimeError, match="Agent not initialized"):
+        agent_control.refresh_controls()
 
 
 def test_refresh_controls_sync_without_running_loop_uses_refresh_endpoint() -> None:
@@ -369,6 +398,61 @@ async def test_refresh_uses_swap_only_cache_publication() -> None:
     assert old_snapshot[0]["id"] == 1
     assert new_snapshot[0]["id"] == 2
     assert agent_control.get_server_controls() is new_snapshot
+
+
+@pytest.mark.asyncio
+async def test_manual_refresh_does_not_overwrite_reinitialized_session() -> None:
+    # Given: a refresh for the old session is blocked while init() creates a new session.
+    fetch_gate = threading.Event()
+    fetch_entered = threading.Event()
+    initial_controls = [{"id": 1, "name": "old-init", "control": {"execution": "server"}}]
+    new_session_controls = [{"id": 2, "name": "new-init", "control": {"execution": "server"}}]
+    stale_refresh_controls = [
+        {"id": 99, "name": "stale-refresh", "control": {"execution": "server"}}
+    ]
+    register_agent_mock = AsyncMock(
+        side_effect=[
+            {"created": True, "controls": initial_controls},
+            {"created": True, "controls": new_session_controls},
+        ]
+    )
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+
+    async def slow_list_agent_controls(*args: object, **kwargs: object) -> dict[str, object]:
+        fetch_entered.set()
+        await asyncio.to_thread(fetch_gate.wait)
+        return {"controls": stale_refresh_controls}
+
+    with patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=health_check_mock,
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=register_agent_mock,
+    ), patch(
+        "agent_control.__init__.agents.list_agent_controls",
+        new=AsyncMock(side_effect=slow_list_agent_controls),
+    ):
+        agent_control.init(
+            agent_name="old-session-agent",
+            policy_refresh_interval_seconds=0,
+        )
+        refresh_task = asyncio.create_task(agent_control.refresh_controls_async())
+
+        assert await asyncio.to_thread(fetch_entered.wait, 5), (
+            "manual refresh never entered fetch"
+        )
+
+        agent_control.init(
+            agent_name="new-session-agent",
+            policy_refresh_interval_seconds=0,
+        )
+        fetch_gate.set()
+        refreshed_snapshot = await refresh_task
+
+    assert refreshed_snapshot == new_session_controls
+    assert agent_control.get_server_controls() == new_session_controls
+    assert agent_control.get_server_controls() != stale_refresh_controls
 
 
 @pytest.mark.asyncio

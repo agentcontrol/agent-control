@@ -48,6 +48,22 @@ const eslintConfig = defineConfig([
         'error',
         { validStrategies: ['ternary', 'coerce'] },
       ],
+
+      // Security: disallow dangerouslySetInnerHTML to avoid XSS sinks.
+      'react/no-danger': 'error',
+
+      // Security: discourage direct innerHTML assignments. React code should
+      // render via JSX; if raw HTML is truly needed it should go through a
+      // dedicated, reviewed sanitization layer.
+      'no-restricted-properties': [
+        'error',
+        {
+          object: '*',
+          property: 'innerHTML',
+          message:
+            'Avoid setting innerHTML directly. Use React rendering or a reviewed sanitization helper.',
+        },
+      ],
     },
   },
 ]);

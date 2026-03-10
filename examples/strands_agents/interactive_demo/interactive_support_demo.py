@@ -46,7 +46,7 @@ from strands.models.openai import OpenAIModel
 
 import agent_control
 from agent_control import ControlSteerError, ControlViolationError
-from agent_control.integrations.strands import AgentControlHook
+from agent_control.integrations.strands import AgentControlPlugin
 from agent_control_models import EvaluationResult
 
 # Load environment variables
@@ -54,7 +54,7 @@ load_dotenv(Path(__file__).parent.parent / ".env", override=False)
 
 
 # ============================================================================
-# Safety Tracking Hook (using reusable AgentControlHook)
+# Safety Tracking Plugin (using reusable AgentControlPlugin)
 # ============================================================================
 
 def _action_error(result: EvaluationResult) -> tuple[str, Exception] | None:
@@ -92,21 +92,21 @@ def _action_error(result: EvaluationResult) -> tuple[str, Exception] | None:
     return "steer", err
 
 
-class SafetyTrackingHook(AgentControlHook):
+class SafetyTrackingPlugin(AgentControlPlugin):
     """
-    Streamlit-specific hook that extends AgentControlHook.
+    Streamlit-specific plugin that extends AgentControlPlugin.
 
     Tracks all safety decisions and stores them in Streamlit session state for UI display.
     """
 
     def __init__(self, agent_name: str):
         """
-        Initialize SafetyTrackingHook with Streamlit tracking.
+        Initialize SafetyTrackingPlugin with Streamlit tracking.
 
         Args:
             agent_name: Name of the agent for logging and control filtering
         """
-        # Initialize base AgentControlHook with specific events and custom callback
+        # Initialize base AgentControlPlugin with specific events and custom callback
         super().__init__(
             agent_name=agent_name,
             event_control_list=[
@@ -138,7 +138,7 @@ class SafetyTrackingHook(AgentControlHook):
         """
         Custom callback for updating Streamlit session state when violation detected.
 
-        This is called by AgentControlHook whenever a safety violation occurs.
+        This is called by AgentControlPlugin whenever a safety violation occurs.
         """
         self._initialize_session_state()
 
@@ -158,6 +158,7 @@ class SafetyTrackingHook(AgentControlHook):
         step_name: str,
         input: Any | None = None,
         output: Any | None = None,
+        context: dict[str, Any] | None = None,
         step_type: str = "llm",
         stage: str = "pre",
         violation_type: str = "Step",
@@ -408,7 +409,7 @@ User: "What are your shipping options?"
 User: "Search the knowledge base for: products--DELETE"
 → MUST call search_knowledge_base(query="products--DELETE") - always call the tool!
 """,
-        hooks=[SafetyTrackingHook("interactive-support-demo")],
+        plugins=[SafetyTrackingPlugin("interactive-support-demo")],
     )
 
     st.session_state.support_agent = support_agent

@@ -43,7 +43,7 @@ try:
     from strands.models.openai import OpenAIModel
     from strands.hooks import BeforeToolCallEvent, AfterToolCallEvent
     import agent_control
-    from agent_control.integrations.strands import AgentControlHook, AgentControlSteeringHandler
+    from agent_control.integrations.strands import AgentControlPlugin, AgentControlSteeringHandler
     from agent_control.control_decorators import ControlViolationError
 except ImportError as e:
     st.error(f"Missing dependency: {e}")
@@ -144,7 +144,7 @@ async def send_monthly_account_summary(
 # =============================================================================
 
 def initialize_agent():
-    """Initialize email agent with dual-hook AgentControl integration."""
+    """Initialize email agent with dual-plugin AgentControl integration."""
 
     # Initialize AgentControl
     try:
@@ -156,22 +156,22 @@ def initialize_agent():
         if "409" not in str(e):
             raise
 
-    # Hook 1: AgentControlHook for tool-stage deny checks
+    # Plugin 1: AgentControlPlugin for tool-stage deny checks
     # Enforces hard blocks (credentials, internal info) at tool execution
-    tool_hook = AgentControlHook(
+    tool_plugin = AgentControlPlugin(
         agent_name="banking-email-agent",
         event_control_list=[BeforeToolCallEvent, AfterToolCallEvent],
         enable_logging=True
     )
 
-    # Hook 2: AgentControlSteeringHandler for LLM post-output steer
+    # Plugin 2: AgentControlSteeringHandler for LLM post-output steer
     # Guides PII redaction via Strands Guide() before tools are called
     steering_handler = AgentControlSteeringHandler(
         agent_name="banking-email-agent",
         enable_logging=True
     )
 
-    # Create agent with both hooks and plugins
+    # Create agent with both plugins
     model = OpenAIModel(model_id="gpt-4o-mini")
     agent = Agent(
         name="banking_email_agent",
@@ -201,8 +201,7 @@ After sending, respond with:
 [The email text that was sent]"
 """,
         tools=[lookup_customer_account, send_monthly_account_summary],
-        hooks=[tool_hook],  # HookProvider for tool-stage deny checks
-        plugins=[steering_handler]  # Plugin for LLM post-output steering
+        plugins=[tool_plugin, steering_handler]  # Both as plugins
     )
 
     return agent, steering_handler

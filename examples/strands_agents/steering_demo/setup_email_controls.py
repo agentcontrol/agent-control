@@ -260,7 +260,7 @@ async def main():
             print("SETUP COMPLETE!")
             print("=" * 70)
             print(f"""
-✅ Email Safety Demo Ready - Dual-Hook AgentControl Integration
+✅ Email Safety Demo Ready - Dual-Plugin AgentControl Integration
 
 ARCHITECTURE: LLM Steer + Tool Deny (Clean Two-Layer Design)
 
@@ -281,17 +281,17 @@ ARCHITECTURE: LLM Steer + Tool Deny (Clean Two-Layer Design)
     - Scope: Tool input at send_monthly_account_summary
     - Blocks: API keys, passwords, tokens
     - Action: DENY (RuntimeError - hard block)
-    - Handler: AgentControlHook
+    - Handler: AgentControlPlugin
 
   • deny-internal-info
     - Scope: Tool input at send_monthly_account_summary
     - Blocks: Database names, server IPs, internal paths
     - Action: DENY (RuntimeError - hard block)
-    - Handler: AgentControlHook
+    - Handler: AgentControlPlugin
 
-✨ Dual-Hook Integration:
-  Hook 1: AgentControlSteeringHandler (LLM post) → Guide() for PII
-  Hook 2: AgentControlHook (tool pre/post) → RuntimeError for deny
+✨ Dual-Plugin Integration:
+  Plugin 1: AgentControlSteeringHandler (LLM post) → Guide() for PII
+  Plugin 2: AgentControlPlugin (tool pre/post) → RuntimeError for deny
 
 🔄 Flow:
   1. Agent looks up account data
@@ -300,7 +300,7 @@ ARCHITECTURE: LLM Steer + Tool Deny (Clean Two-Layer Design)
      → steer-pii-redaction-llm-output matches → Guide()
   4. Agent retries with redaction guidance
   5. Agent calls send_monthly_account_summary() with redacted text
-  6. 🛡️ AgentControlHook checks tool input
+  6. 🛡️ AgentControlPlugin checks tool input
      → deny-credentials: ✅ pass
      → deny-internal-info: ✅ pass
   7. Email sent successfully!

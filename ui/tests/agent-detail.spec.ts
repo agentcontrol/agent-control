@@ -1,10 +1,15 @@
 import type { AgentControlsResponse, GetAgentResponse } from '@/core/api/types';
+import { getAgentRoute } from '@/core/constants/agent-routes';
 
 import { expect, mockData, mockRoutes, test } from './fixtures';
 
 test.describe('Agent Detail Page', () => {
   const agentId = 'agent-1';
-  const agentUrl = `/agents/${agentId}/controls`;
+  const getAgentControlsUrl = (
+    query?: Record<string, string | number | boolean>
+  ) => getAgentRoute(agentId, { tab: 'controls', query });
+  const agentUrl = getAgentControlsUrl();
+  const agentMonitorUrl = getAgentRoute(agentId, { tab: 'monitor' });
 
   // Type-safe access to mock agent data
   const agentData: GetAgentResponse = mockData.agent;
@@ -45,7 +50,7 @@ test.describe('Agent Detail Page', () => {
     await mockRoutes.agent(mockedPage);
     await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
 
-    await mockedPage.goto(`/agents/${agentId}/controls`);
+    await mockedPage.goto(agentUrl);
 
     // Controls tab should be selected when no stats data exists
     const controlsTab = mockedPage.getByRole('tab', { name: /Controls/i });
@@ -64,7 +69,7 @@ test.describe('Agent Detail Page', () => {
     await mockRoutes.agent(mockedPage);
     await mockRoutes.stats(mockedPage, { data: mockData.stats });
 
-    await mockedPage.goto(`/agents/${agentId}/monitor`);
+    await mockedPage.goto(agentMonitorUrl);
 
     // Wait for stats to load and tab to be set
     await mockedPage.waitForTimeout(100);
@@ -177,7 +182,9 @@ test.describe('Agent Detail Page', () => {
     ).toBeVisible();
 
     // URL should contain modal parameter
-    await expect(mockedPage).toHaveURL(/.*\?modal=control-store/);
+    await expect(mockedPage).toHaveURL(
+      getAgentControlsUrl({ modal: 'control-store' })
+    );
   });
 
   test('closing edit modal removes query parameters', async ({
@@ -187,7 +194,12 @@ test.describe('Agent Detail Page', () => {
     await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
 
     // Open edit modal via URL
-    await mockedPage.goto(`${agentUrl}?modal=edit&controlId=1`);
+    await mockedPage.goto(
+      getAgentRoute(agentId, {
+        tab: 'controls',
+        query: { modal: 'edit', controlId: '1' },
+      })
+    );
 
     const editModal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
     await expect(editModal).toBeVisible();
@@ -209,7 +221,12 @@ test.describe('Agent Detail Page', () => {
     await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
 
     // Open edit modal via URL
-    await mockedPage.goto(`${agentUrl}?modal=edit&controlId=1`);
+    await mockedPage.goto(
+      getAgentRoute(agentId, {
+        tab: 'controls',
+        query: { modal: 'edit', controlId: '1' },
+      })
+    );
 
     const editModal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
     await expect(editModal).toBeVisible();
@@ -247,6 +264,7 @@ test.describe('Agent Detail Page', () => {
   });
 
   test('shows loading state while fetching controls', async ({ page }) => {
+    await mockRoutes.config(page);
     let resolveControls: () => void;
     const controlsPromise = new Promise<void>((resolve) => {
       resolveControls = resolve;
@@ -284,6 +302,7 @@ test.describe('Agent Detail Page', () => {
   });
 
   test('handles agent not found error', async ({ page }) => {
+    await mockRoutes.config(page);
     // Mock controls to return 404
     await page.route('**/api/v1/agents/*/controls', async (route) => {
       await route.fulfill({
@@ -328,14 +347,16 @@ test.describe('Agent Detail Page', () => {
     // Mock empty stats to ensure controls tab is shown
     await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
 
-    await mockedPage.goto(`${agentUrl}?modal=edit&controlId=1`);
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
 
     // Edit modal should be visible
     const editModal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
     await expect(editModal).toBeVisible();
 
     // URL should contain modal and controlId parameters
-    await expect(mockedPage).toHaveURL(/.*\?modal=edit&controlId=1/);
+    await expect(mockedPage).toHaveURL(
+      getAgentControlsUrl({ modal: 'edit', controlId: 1 })
+    );
   });
 
   test('opens edit control modal when edit button is clicked', async ({
@@ -378,7 +399,9 @@ test.describe('Agent Detail Page', () => {
     ).toBeVisible();
 
     // URL should contain modal and controlId parameters
-    await expect(mockedPage).toHaveURL(/.*\?modal=edit&controlId=\d+/);
+    await expect(mockedPage).toHaveURL(
+      /\/agents\?id=agent-1&tab=controls&modal=edit&controlId=\d+/
+    );
   });
 
   test('deletes control when delete is confirmed', async ({ mockedPage }) => {
@@ -625,6 +648,7 @@ test.describe('Agent Detail Page', () => {
 
 test.describe('Agent Detail - Empty State', () => {
   test('shows empty state when no controls exist', async ({ page }) => {
+    await mockRoutes.config(page);
     // Type-safe empty controls response
     const emptyControlsResponse: AgentControlsResponse = { controls: [] };
 
@@ -646,7 +670,7 @@ test.describe('Agent Detail - Empty State', () => {
       });
     });
 
-    await page.goto('/agents/agent-1/controls');
+    await page.goto(getAgentRoute('agent-1', { tab: 'controls' }));
 
     // Check for empty state message
     await expect(page.getByText('No controls configured')).toBeVisible();

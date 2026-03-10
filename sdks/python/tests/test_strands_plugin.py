@@ -16,6 +16,7 @@ def mock_strands_modules():
         {
             "strands": MagicMock(),
             "strands.hooks": MagicMock(),
+            "strands.plugins": MagicMock(),
         },
     ):
         yield
@@ -31,8 +32,7 @@ def mock_event_classes():
     AfterToolCallEvent = type("AfterToolCallEvent", (), {})  # noqa: N806
     BeforeNodeCallEvent = type("BeforeNodeCallEvent", (), {})  # noqa: N806
     AfterNodeCallEvent = type("AfterNodeCallEvent", (), {})  # noqa: N806
-    HookProvider = type("HookProvider", (), {"__init__": lambda self: None})  # noqa: N806
-    HookRegistry = type("HookRegistry", (), {})  # noqa: N806
+    Plugin = type("Plugin", (), {"__init__": lambda self: None})  # noqa: N806
 
     return {
         "BeforeInvocationEvent": BeforeInvocationEvent,
@@ -42,31 +42,32 @@ def mock_event_classes():
         "AfterToolCallEvent": AfterToolCallEvent,
         "BeforeNodeCallEvent": BeforeNodeCallEvent,
         "AfterNodeCallEvent": AfterNodeCallEvent,
-        "HookProvider": HookProvider,
-        "HookRegistry": HookRegistry,
+        "Plugin": Plugin,
     }
 
 
 @pytest.fixture
 def agent_control_hook(mock_strands_modules, mock_event_classes):
-    """Create an AgentControlHook instance with mocked dependencies."""
+    """Create an AgentControlPlugin instance with mocked dependencies."""
     import importlib
     import sys
-    import agent_control.integrations.strands.hook as hook_module
+    import agent_control.integrations.strands.plugin as plugin_module
 
     hooks_mod = sys.modules["strands.hooks"]
     for name, cls in mock_event_classes.items():
         setattr(hooks_mod, name, cls)
 
-    importlib.reload(hook_module)
-    AgentControlHook = hook_module.AgentControlHook
+    plugins_mod = sys.modules["strands.plugins"]
+    plugins_mod.Plugin = mock_event_classes["Plugin"]
 
-    return AgentControlHook(agent_name="test-agent")
+    importlib.reload(plugin_module)
+
+    return plugin_module.AgentControlPlugin(agent_name="test-agent")
 
 
 def test_action_error_with_deny_match():
     """Test _action_error returns deny error for deny action."""
-    from agent_control.integrations.strands.hook import _action_error
+    from agent_control.integrations.strands.plugin import _action_error
 
     # Create a mock match with deny action
     mock_match = MagicMock()
@@ -88,7 +89,7 @@ def test_action_error_with_deny_match():
 
 def test_action_error_with_steer_match():
     """Test _action_error returns steer error for steer action."""
-    from agent_control.integrations.strands.hook import _action_error
+    from agent_control.integrations.strands.plugin import _action_error
 
     # Create a mock match with steer action
     mock_match = MagicMock()
@@ -110,7 +111,7 @@ def test_action_error_with_steer_match():
 
 def test_action_error_with_no_blocking_match():
     """Test _action_error returns None when no blocking matches."""
-    from agent_control.integrations.strands.hook import _action_error
+    from agent_control.integrations.strands.plugin import _action_error
 
     # Create a mock match with allow action
     mock_match = MagicMock()
@@ -125,7 +126,7 @@ def test_action_error_with_no_blocking_match():
 
 def test_action_error_with_empty_matches():
     """Test _action_error returns None with empty matches."""
-    from agent_control.integrations.strands.hook import _action_error
+    from agent_control.integrations.strands.plugin import _action_error
 
     result = MagicMock(spec=EvaluationResult)
     result.matches = []
@@ -135,7 +136,7 @@ def test_action_error_with_empty_matches():
 
 def test_action_error_with_none_matches():
     """Test _action_error returns None with None matches."""
-    from agent_control.integrations.strands.hook import _action_error
+    from agent_control.integrations.strands.plugin import _action_error
 
     result = MagicMock(spec=EvaluationResult)
     result.matches = None
@@ -145,7 +146,7 @@ def test_action_error_with_none_matches():
 
 def test_action_error_deny_takes_precedence():
     """Test deny takes precedence over steer regardless of order."""
-    from agent_control.integrations.strands.hook import _action_error
+    from agent_control.integrations.strands.plugin import _action_error
     from agent_control import ControlViolationError
 
     deny = MagicMock()
@@ -175,7 +176,7 @@ def test_action_error_deny_takes_precedence():
 @pytest.mark.asyncio
 async def test_evaluate_and_enforce_safe_result(agent_control_hook):
     """Test _evaluate_and_enforce with safe result."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
         # Mock a safe result
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.is_safe = True
@@ -195,7 +196,7 @@ async def test_evaluate_and_enforce_safe_result(agent_control_hook):
 @pytest.mark.asyncio
 async def test_evaluate_and_enforce_with_errors(agent_control_hook):
     """Test _evaluate_and_enforce fails closed on evaluation errors."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
         mock_error = MagicMock()
         mock_error.control_name = "error-control"
 
@@ -217,7 +218,7 @@ async def test_evaluate_and_enforce_with_errors(agent_control_hook):
 @pytest.mark.asyncio
 async def test_evaluate_and_enforce_with_deny(agent_control_hook):
     """Test _evaluate_and_enforce raises error on deny action."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
         from agent_control import ControlViolationError
 
         # Mock a deny result
@@ -244,7 +245,7 @@ async def test_evaluate_and_enforce_with_deny(agent_control_hook):
 @pytest.mark.asyncio
 async def test_evaluate_and_enforce_with_steer(agent_control_hook):
     """Test _evaluate_and_enforce raises error on steer action."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
         from agent_control import ControlSteerError
 
         # Mock a steer result
@@ -280,7 +281,7 @@ async def test_evaluate_and_enforce_with_steer(agent_control_hook):
 @pytest.mark.asyncio
 async def test_evaluate_and_enforce_unsafe_result(agent_control_hook):
     """Test _evaluate_and_enforce raises error on unsafe result."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
         from agent_control import ControlViolationError
 
         # Mock an unsafe result
@@ -355,7 +356,7 @@ def test_extract_content_text_with_empty_content(agent_control_hook):
 
 def test_extract_tool_data_before_tool(agent_control_hook):
     """Test _extract_tool_data with BeforeToolCallEvent."""
-    from agent_control.integrations.strands.hook import BeforeToolCallEvent
+    from agent_control.integrations.strands.plugin import BeforeToolCallEvent
 
     # Create a mock with the right spec so isinstance works
     event = MagicMock(spec=BeforeToolCallEvent)
@@ -371,7 +372,7 @@ def test_extract_tool_data_before_tool(agent_control_hook):
 
 def test_extract_tool_data_after_tool_success(agent_control_hook):
     """Test _extract_tool_data with AfterToolCallEvent (success)."""
-    from agent_control.integrations.strands.hook import AfterToolCallEvent
+    from agent_control.integrations.strands.plugin import AfterToolCallEvent
 
     # Create a mock with the right spec so isinstance works
     event = MagicMock(spec=AfterToolCallEvent)
@@ -389,7 +390,7 @@ def test_extract_tool_data_after_tool_success(agent_control_hook):
 
 def test_extract_tool_data_after_tool_error(agent_control_hook):
     """Test _extract_tool_data with AfterToolCallEvent (error)."""
-    from agent_control.integrations.strands.hook import AfterToolCallEvent
+    from agent_control.integrations.strands.plugin import AfterToolCallEvent
 
     # Create a mock with the right spec so isinstance works
     event = MagicMock(spec=AfterToolCallEvent)
@@ -407,10 +408,10 @@ def test_extract_tool_data_after_tool_error(agent_control_hook):
 
 
 def test_hook_initialization():
-    """Test AgentControlHook initialization."""
-    from agent_control.integrations.strands.hook import AgentControlHook
+    """Test AgentControlPlugin initialization."""
+    from agent_control.integrations.strands.plugin import AgentControlPlugin
 
-    hook = AgentControlHook(
+    hook = AgentControlPlugin(
         agent_name="test-agent",
         event_control_list=None,
         on_violation_callback=None,
@@ -424,11 +425,11 @@ def test_hook_initialization():
 
 
 def test_hook_with_callback():
-    """Test AgentControlHook with violation callback."""
-    from agent_control.integrations.strands.hook import AgentControlHook
+    """Test AgentControlPlugin with violation callback."""
+    from agent_control.integrations.strands.plugin import AgentControlPlugin
 
     callback = MagicMock()
-    hook = AgentControlHook(
+    hook = AgentControlPlugin(
         agent_name="test-agent",
         on_violation_callback=callback
     )
@@ -524,7 +525,7 @@ def test_extract_user_message_no_user_role(agent_control_hook):
 @pytest.mark.asyncio
 async def test_evaluate_and_enforce_unsafe_no_reason_with_match(agent_control_hook):
     """Test _evaluate_and_enforce with unsafe result, no reason, but has match."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
         from agent_control import ControlViolationError
 
         # Mock an unsafe result with no reason but with a match that has a message
@@ -553,44 +554,44 @@ async def test_evaluate_and_enforce_unsafe_no_reason_with_match(agent_control_ho
 
 
 def test_register_hooks_with_custom_event_list(mock_strands_modules, mock_event_classes):
-    """Test register_hooks with custom event_control_list."""
-    with patch("agent_control.integrations.strands.hook.BeforeInvocationEvent", mock_event_classes["BeforeInvocationEvent"]):  # noqa: E501
-        with patch("agent_control.integrations.strands.hook.BeforeModelCallEvent", mock_event_classes["BeforeModelCallEvent"]):  # noqa: E501
-            with patch("agent_control.integrations.strands.hook.BeforeToolCallEvent", mock_event_classes["BeforeToolCallEvent"]):  # noqa: E501
-                with patch("agent_control.integrations.strands.hook.AfterToolCallEvent", mock_event_classes["AfterToolCallEvent"]):  # noqa: E501
-                    with patch("agent_control.integrations.strands.hook.AfterModelCallEvent", mock_event_classes["AfterModelCallEvent"]):  # noqa: E501
-                        with patch("agent_control.integrations.strands.hook.BeforeNodeCallEvent", mock_event_classes["BeforeNodeCallEvent"]):  # noqa: E501
-                            with patch("agent_control.integrations.strands.hook.AfterNodeCallEvent", mock_event_classes["AfterNodeCallEvent"]):  # noqa: E501
-                                with patch("agent_control.integrations.strands.hook.HookProvider", mock_event_classes["HookProvider"]):  # noqa: E501
-                                    from agent_control.integrations.strands.hook import (
-                                        AgentControlHook,
+    """Test init_agent with custom event_control_list."""
+    with patch("agent_control.integrations.strands.plugin.BeforeInvocationEvent", mock_event_classes["BeforeInvocationEvent"]):  # noqa: E501
+        with patch("agent_control.integrations.strands.plugin.BeforeModelCallEvent", mock_event_classes["BeforeModelCallEvent"]):  # noqa: E501
+            with patch("agent_control.integrations.strands.plugin.BeforeToolCallEvent", mock_event_classes["BeforeToolCallEvent"]):  # noqa: E501
+                with patch("agent_control.integrations.strands.plugin.AfterToolCallEvent", mock_event_classes["AfterToolCallEvent"]):  # noqa: E501
+                    with patch("agent_control.integrations.strands.plugin.AfterModelCallEvent", mock_event_classes["AfterModelCallEvent"]):  # noqa: E501
+                        with patch("agent_control.integrations.strands.plugin.BeforeNodeCallEvent", mock_event_classes["BeforeNodeCallEvent"]):  # noqa: E501
+                            with patch("agent_control.integrations.strands.plugin.AfterNodeCallEvent", mock_event_classes["AfterNodeCallEvent"]):  # noqa: E501
+                                with patch("agent_control.integrations.strands.plugin.Plugin", mock_event_classes["Plugin"]):  # noqa: E501
+                                    from agent_control.integrations.strands.plugin import (
+                                        AgentControlPlugin,
                                         BeforeModelCallEvent,
                                         AfterModelCallEvent,
                                     )
 
                                     # Create hook with custom event list
-                                    hook = AgentControlHook(
+                                    hook = AgentControlPlugin(
                                         agent_name="test-agent",
                                         event_control_list=[BeforeModelCallEvent, AfterModelCallEvent],
                                         enable_logging=True
                                     )
 
-                                    # Create mock registry with add_callback method
-                                    registry = MagicMock()
-                                    registry.add_callback = MagicMock()
+                                    # Create mock agent with add_hook method
+                                    mock_agent = MagicMock()
+                                    mock_agent.add_hook = MagicMock()
 
-                                    # Register hooks
-                                    hook.register_hooks(registry)
+                                    # Register hooks via init_agent
+                                    hook.init_agent(mock_agent)
 
                                     # Verify only specified events were registered
-                                    assert registry.add_callback.call_count == 2
+                                    assert mock_agent.add_hook.call_count == 2
 
 
 @pytest.mark.asyncio
 async def test_check_before_invocation(agent_control_hook):
     """Test check_before_invocation hook."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
-        from agent_control.integrations.strands.hook import BeforeInvocationEvent
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control.integrations.strands.plugin import BeforeInvocationEvent
 
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.is_safe = True
@@ -609,8 +610,8 @@ async def test_check_before_invocation(agent_control_hook):
 @pytest.mark.asyncio
 async def test_check_before_model(agent_control_hook):
     """Test check_before_model hook."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
-        from agent_control.integrations.strands.hook import BeforeModelCallEvent
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control.integrations.strands.plugin import BeforeModelCallEvent
 
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.is_safe = True
@@ -629,8 +630,8 @@ async def test_check_before_model(agent_control_hook):
 @pytest.mark.asyncio
 async def test_check_after_model(agent_control_hook):
     """Test check_after_model hook."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
-        from agent_control.integrations.strands.hook import AfterModelCallEvent
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control.integrations.strands.plugin import AfterModelCallEvent
 
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.is_safe = True
@@ -656,8 +657,8 @@ async def test_check_after_model(agent_control_hook):
 @pytest.mark.asyncio
 async def test_check_before_tool(agent_control_hook):
     """Test check_before_tool hook."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
-        from agent_control.integrations.strands.hook import BeforeToolCallEvent
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control.integrations.strands.plugin import BeforeToolCallEvent
 
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.is_safe = True
@@ -678,8 +679,8 @@ async def test_check_before_tool(agent_control_hook):
 @pytest.mark.asyncio
 async def test_check_after_tool(agent_control_hook):
     """Test check_after_tool hook."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
-        from agent_control.integrations.strands.hook import AfterToolCallEvent
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control.integrations.strands.plugin import AfterToolCallEvent
 
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.is_safe = True
@@ -702,8 +703,8 @@ async def test_check_after_tool(agent_control_hook):
 @pytest.mark.asyncio
 async def test_check_before_node(agent_control_hook):
     """Test check_before_node hook."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
-        from agent_control.integrations.strands.hook import BeforeNodeCallEvent
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control.integrations.strands.plugin import BeforeNodeCallEvent
 
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.is_safe = True
@@ -723,8 +724,8 @@ async def test_check_before_node(agent_control_hook):
 @pytest.mark.asyncio
 async def test_check_after_node(agent_control_hook):
     """Test check_after_node hook."""
-    with patch("agent_control.integrations.strands.hook.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
-        from agent_control.integrations.strands.hook import AfterNodeCallEvent
+    with patch("agent_control.integrations.strands.plugin.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
+        from agent_control.integrations.strands.plugin import AfterNodeCallEvent
 
         mock_result = MagicMock(spec=EvaluationResult)
         mock_result.is_safe = True
@@ -744,7 +745,7 @@ async def test_check_after_node(agent_control_hook):
 
 def test_extract_tool_data_no_selected_tool(agent_control_hook):
     """Test _extract_tool_data when selected_tool is None."""
-    from agent_control.integrations.strands.hook import BeforeToolCallEvent
+    from agent_control.integrations.strands.plugin import BeforeToolCallEvent
 
     event = MagicMock(spec=BeforeToolCallEvent)
     event.selected_tool = None
@@ -810,7 +811,7 @@ def test_extract_content_text_with_unknown_type(agent_control_hook):
 
 def test_extract_messages_before_model_with_input(agent_control_hook):
     """Test _extract_messages with BeforeModelCallEvent using input field."""
-    from agent_control.integrations.strands.hook import BeforeModelCallEvent
+    from agent_control.integrations.strands.plugin import BeforeModelCallEvent
 
     event = MagicMock(spec=BeforeModelCallEvent)
     event.invocation_state = {"input": "direct input text"}
@@ -823,7 +824,7 @@ def test_extract_messages_before_model_with_input(agent_control_hook):
 
 def test_extract_messages_after_model_no_response(agent_control_hook):
     """Test _extract_messages with AfterModelCallEvent when stop_response is None."""
-    from agent_control.integrations.strands.hook import AfterModelCallEvent
+    from agent_control.integrations.strands.plugin import AfterModelCallEvent
 
     event = MagicMock(spec=AfterModelCallEvent)
     event.stop_response = None
@@ -837,7 +838,7 @@ def test_extract_messages_after_model_no_response(agent_control_hook):
 
 def test_extract_messages_after_model_missing_invocation_state(agent_control_hook):
     """Test _extract_messages handles missing invocation_state."""
-    from agent_control.integrations.strands.hook import AfterModelCallEvent
+    from agent_control.integrations.strands.plugin import AfterModelCallEvent
 
     event = MagicMock(spec=AfterModelCallEvent)
     event.stop_response = None
@@ -851,7 +852,7 @@ def test_extract_messages_after_model_missing_invocation_state(agent_control_hoo
 
 def test_extract_messages_after_model_with_response(agent_control_hook):
     """Test _extract_messages with AfterModelCallEvent when stop_response exists."""
-    from agent_control.integrations.strands.hook import AfterModelCallEvent
+    from agent_control.integrations.strands.plugin import AfterModelCallEvent
 
     event = MagicMock(spec=AfterModelCallEvent)
     event.stop_response = MagicMock()
@@ -866,7 +867,7 @@ def test_extract_messages_after_model_with_response(agent_control_hook):
 
 def test_extract_messages_after_model_with_input_field(agent_control_hook):
     """Test _extract_messages with AfterModelCallEvent using input field."""
-    from agent_control.integrations.strands.hook import AfterModelCallEvent
+    from agent_control.integrations.strands.plugin import AfterModelCallEvent
 
     event = MagicMock(spec=AfterModelCallEvent)
     event.stop_response = MagicMock()
@@ -881,7 +882,7 @@ def test_extract_messages_after_model_with_input_field(agent_control_hook):
 
 def test_extract_messages_before_node_with_input(agent_control_hook):
     """Test _extract_messages with BeforeNodeCallEvent using input field."""
-    from agent_control.integrations.strands.hook import BeforeNodeCallEvent
+    from agent_control.integrations.strands.plugin import BeforeNodeCallEvent
 
     event = MagicMock(spec=BeforeNodeCallEvent)
     event.invocation_state = {"input": "node input"}
@@ -894,7 +895,7 @@ def test_extract_messages_before_node_with_input(agent_control_hook):
 
 def test_extract_messages_after_node_with_result(agent_control_hook):
     """Test _extract_messages with AfterNodeCallEvent using result field."""
-    from agent_control.integrations.strands.hook import AfterNodeCallEvent
+    from agent_control.integrations.strands.plugin import AfterNodeCallEvent
 
     event = MagicMock(spec=AfterNodeCallEvent)
     event.invocation_state = {"result": "node result", "input": "node input"}
@@ -907,7 +908,7 @@ def test_extract_messages_after_node_with_result(agent_control_hook):
 
 def test_extract_messages_after_node_with_response(agent_control_hook):
     """Test _extract_messages with AfterNodeCallEvent using response field."""
-    from agent_control.integrations.strands.hook import AfterNodeCallEvent
+    from agent_control.integrations.strands.plugin import AfterNodeCallEvent
 
     event = MagicMock(spec=AfterNodeCallEvent)
     event.invocation_state = {"response": "node response"}
@@ -920,7 +921,7 @@ def test_extract_messages_after_node_with_response(agent_control_hook):
 
 def test_extract_messages_after_node_with_messages(agent_control_hook):
     """Test _extract_messages with AfterNodeCallEvent using messages field."""
-    from agent_control.integrations.strands.hook import AfterNodeCallEvent
+    from agent_control.integrations.strands.plugin import AfterNodeCallEvent
 
     event = MagicMock(spec=AfterNodeCallEvent)
     # When messages is in the state, it's treated as content to extract
