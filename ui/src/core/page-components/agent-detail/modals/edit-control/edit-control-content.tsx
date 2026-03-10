@@ -11,6 +11,7 @@ import { getEvaluator } from '@/core/evaluators';
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
+import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
 
 import { ApiErrorAlert } from './api-error-alert';
@@ -54,12 +55,13 @@ export const EditControlContent = ({
 
   // Mutation hooks
   const updateControl = useUpdateControl();
+  const updateControlMetadata = useUpdateControlMetadata();
   const addControlToAgent = useAddControlToAgent();
   const { mutateAsync: validateControlDataAsync } = useValidateControlData();
   const isCreating = mode === 'create';
   const isPending = isCreating
     ? addControlToAgent.isPending
-    : updateControl.isPending;
+    : updateControl.isPending || updateControlMetadata.isPending;
 
   // Track which evaluator the evaluator form has been initialized for
   const formInitializedForEvaluator = useRef<string>('');
@@ -284,6 +286,42 @@ export const EditControlContent = ({
             color: 'green',
           });
         } else {
+          const trimmedName = values.name.trim();
+          const nameChanged = trimmedName && trimmedName !== control.name;
+
+          if (nameChanged) {
+            try {
+              await updateControlMetadata.mutateAsync({
+                agentId,
+                controlId: control.id,
+                data: { name: trimmedName },
+              });
+            } catch (renameError) {
+              if (
+                isApiError(renameError) &&
+                (renameError.problemDetail.status === 409 ||
+                  renameError.problemDetail.error_code ===
+                    'CONTROL_NAME_CONFLICT')
+              ) {
+                definitionForm.setFieldError(
+                  'name',
+                  renameError.problemDetail.detail ||
+                    'Control name already exists'
+                );
+              } else {
+                notifications.show({
+                  title: 'Failed to rename control',
+                  message:
+                    renameError instanceof Error
+                      ? renameError.message
+                      : 'An unexpected error occurred while renaming',
+                  color: 'red',
+                });
+              }
+              return;
+            }
+          }
+
           await updateControl.mutateAsync({
             agentId,
             controlId: control.id,
@@ -291,7 +329,7 @@ export const EditControlContent = ({
           });
           notifications.show({
             title: 'Control updated',
-            message: `"${values.name}" has been saved.`,
+            message: `"${trimmedName}" has been saved.`,
             color: 'green',
           });
         }
@@ -306,15 +344,11 @@ export const EditControlContent = ({
         if (isApiError(error)) {
           const problemDetail = error.problemDetail;
 
-          // Check if this is a "name already exists" error (409 Conflict or similar)
+          // Check if this is a "name already exists" error (409 Conflict)
           // and map it to the name field if it's not already in the errors array
           const isNameExistsError =
             (problemDetail.status === 409 ||
-              problemDetail.error_code === 'CONTROL_NAME_EXISTS' ||
-              (problemDetail.detail?.toLowerCase().includes('name') &&
-                problemDetail.detail
-                  ?.toLowerCase()
-                  .includes('already exists'))) &&
+              problemDetail.error_code === 'CONTROL_NAME_CONFLICT') &&
             !problemDetail.errors?.some((e) => e.field === 'name');
 
           if (isNameExistsError) {
