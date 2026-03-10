@@ -1,5 +1,6 @@
-import { getAgentRoute } from '@/core/constants/agent-routes';
 import type { Page } from '@playwright/test';
+
+import { getAgentRoute } from '@/core/constants/agent-routes';
 
 import { expect, mockData, test } from './fixtures';
 
@@ -105,7 +106,7 @@ test.describe('Control Store Modal', () => {
     );
 
     // Controls search input should be pre-filled with the control name.
-    const searchInput = mockedPage.getByPlaceholder('Search controls...');
+    const searchInput = mockedPage.getByTestId('controls-search-input');
     await expect(searchInput).toHaveValue('PII Detection');
   });
 

@@ -313,6 +313,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                       placeholder="Search controls..."
                       w={250}
                       size="sm"
+                      data-testid="controls-search-input"
                     />
                     <Button
                       variant="filled"
