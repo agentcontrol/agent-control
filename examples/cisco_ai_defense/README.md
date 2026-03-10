@@ -4,7 +4,7 @@ This directory contains examples:
 
 - Direct API demo : `chat_inspect_demo.py` — calls Cisco AI Defense Chat Inspection directly and blocks based on `InspectResponse.is_safe`.
 - Combined decorator demo: `chat_guarded_all.py` — safe→safe, unsafe request (pre), safe→unsafe response (post)
-- Decorator + server policy demo (PRE+POST): `chat_guarded.py` — uses @agent_control.control() with server-managed controls/policy to guard prompts and responses automatically.
+- Decorator + server policy demo (PRE+POST): `chat_guarded_all.py` — uses @agent_control.control() with server-managed controls/policy to guard prompts and responses automatically.
 - Decorator POST-only focus: `chat_guarded_post.py` — user asks for someone’s email; the simulated model responds with `jsmith@gmail.com`, demonstrating POST-stage PII blocking.
 
 ## Prerequisites
@@ -34,12 +34,6 @@ cd examples/cisco_ai_defense
 uv sync
 uv run chat_inspect_demo.py
 uv run chat_inspect_demo.py --debug  # also prints raw responses for allowed and blocked
-```
-
-Or from the repo root:
-
-```
-make examples-aidefense-run
 ```
 
 ### What It Does
@@ -73,17 +67,11 @@ make examples-aidefense-run
      make server-run
      ```
 
-   - Alternative (no install): include the evaluator ad-hoc for this session:
-
-     ```bash
-     uv run --package agent-control-server \
-       --with evaluators/contrib/cisco \
-       uvicorn agent_control_server.main:app --reload
-     ```
-
 2) Install the Cisco AI Defense evaluator (this repo package) into the server environment, or run `make sync` at the repo root if developing locally. Provide `AI_DEFENSE_API_KEY` in the server environment.
 
 3) Register an agent once (persists a stable ID in .agent_id):
+
+From examples/cisco_ai_defense/ run:
 
 ```
 make register
@@ -103,15 +91,14 @@ uv run seed_policy.py
 5) Run the guarded examples:
 
 ```
-uv run chat_guarded.py --agent-id $AGENT_ID --agent-name ai-defense-demo
 uv run chat_guarded_all.py --agent-id $AGENT_ID --agent-name ai-defense-demo
+uv run chat_guarded_post.py --agent-id $AGENT_ID --agent-name ai-defense-demo
 ```
 
 Or using the example Makefile directly from repo root:
 
 ```
 make -C examples/cisco_ai_defense seed
-make -C examples/cisco_ai_defense decorator-run AGENT_ID=$AGENT_ID
 make -C examples/cisco_ai_defense decorator-post-run AGENT_ID=$AGENT_ID
 make -C examples/cisco_ai_defense decorator-all-run AGENT_ID=$AGENT_ID
 ```
@@ -119,7 +106,7 @@ make -C examples/cisco_ai_defense decorator-all-run AGENT_ID=$AGENT_ID
 ### What It Does
 
 - Applies server-managed pre and post controls (using `cisco.ai_defense`) around the decorated function.
- - `chat_guarded.py`: demonstrates both PRE and POST when applicable.
+ - `chat_guarded_all.py`: demonstrates both PRE and POST when applicable.
  - `chat_guarded_post.py`: safe prompt that produces a toxic response, which should be blocked by POST checks.
 
 ### Troubleshooting

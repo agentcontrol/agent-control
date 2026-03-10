@@ -5,7 +5,6 @@ help:
 	@echo "  make run                 - run direct Chat Inspection demo"
 	@echo "  make seed                - seed controls/policy on server"
 	@echo "  make register            - register agent and persist .agent_id"
-	@echo "  make decorator-run       - run decorator pre/post example"
 	@echo "  make decorator-post-run  - run decorator POST-only (PII) example"
 	@echo "  make decorator-all-run   - run combined pre + post cases"
 
@@ -14,10 +13,6 @@ run:
 
 seed:
 	uv sync && uv run seed_policy.py
-
-decorator-run:
-	@if [ -z "$$AGENT_ID" ]; then echo "AGENT_ID is required"; exit 2; fi
-	uv sync && uv run chat_guarded.py --agent-id $$AGENT_ID --agent-name ai-defense-demo
 
 decorator-post-run:
 	@if [ -z "$$AGENT_ID" ]; then echo "AGENT_ID is required"; exit 2; fi
