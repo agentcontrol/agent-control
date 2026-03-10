@@ -12,8 +12,8 @@
 #   galileoai/agent-control-server:latest
 #   galileoai/agent-control-ui:latest
 #
-# This compose file builds UI from local source so NEXT_PUBLIC_* variables are
-# baked at build time.
+# This compose file builds UI from local source. Auth is cookie-based; no API
+# key is baked into the UI image.
 #
 # For local development (run server with uvicorn), use:
 #   docker compose -f docker-compose.dev.yml up -d
@@ -49,10 +49,12 @@ services:
       # Server configuration
       HOST: 0.0.0.0
       PORT: 8000
-      # API authentication defaults (override via environment variables)
-      AGENT_CONTROL_API_KEY_ENABLED: ${AGENT_CONTROL_API_KEY_ENABLED:-true}
-      AGENT_CONTROL_API_KEYS: ${AGENT_CONTROL_API_KEYS:-420c6b90714b45beaa992c3f05cf2baf}
-      AGENT_CONTROL_ADMIN_API_KEYS: ${AGENT_CONTROL_ADMIN_API_KEYS:-29af8554a1fe4311977b7ce360b20cc3}
+      # API authentication (override via host env or server/.env; see server/.env.example)
+      AGENT_CONTROL_API_KEY_ENABLED: ${AGENT_CONTROL_API_KEY_ENABLED:-false}
+      AGENT_CONTROL_API_KEYS: ${AGENT_CONTROL_API_KEYS:-}
+      AGENT_CONTROL_ADMIN_API_KEYS: ${AGENT_CONTROL_ADMIN_API_KEYS:-}
+      AGENT_CONTROL_SESSION_SECRET: ${AGENT_CONTROL_SESSION_SECRET:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,9 +66,6 @@ services:
     build:
       context: ./ui
       dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_AGENT_CONTROL_API_KEY: ${NEXT_PUBLIC_AGENT_CONTROL_API_KEY:-29af8554a1fe4311977b7ce360b20cc3}
     container_name: agent_control_ui
     ports:
       - "4000:4000"
