@@ -70,7 +70,9 @@ export const authApi = {
     return res.json() as Promise<ServerConfig>;
   },
 
-  login: async (apiKey: string): Promise<{ status: number; data: LoginResponse }> => {
+  login: async (
+    apiKey: string
+  ): Promise<{ status: number; data: LoginResponse }> => {
     const res = await fetch(`${authBaseUrl}/api/login`, {
       method: 'POST',
       credentials: 'include',

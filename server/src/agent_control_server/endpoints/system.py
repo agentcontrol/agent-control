@@ -17,7 +17,7 @@ from enum import Enum
 from typing import Final
 
 import jwt
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Request, Response, status
 from pydantic import BaseModel
 
 from ..auth import AuthLevel, OptionalAPIKey
