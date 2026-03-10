@@ -12,10 +12,8 @@
 #   galileoai/agent-control-server:latest
 #   galileoai/agent-control-ui:latest
 #
-# This compose file builds UI from local source. Auth is cookie-based; no API
-# key is baked into the UI image.
-#
-# For local development (run server with uvicorn), use:
+# This compose file pulls prebuilt images for both server and UI from Docker Hub.
+# For local development (run server with uvicorn or build UI locally), use:
 #   docker compose -f docker-compose.dev.yml up -d
 
 services:
@@ -61,11 +59,8 @@ services:
     restart: unless-stopped
 
   ui:
-    image: agent-control-ui-local:latest
-    pull_policy: build
-    build:
-      context: ./ui
-      dockerfile: Dockerfile
+    image: galileoai/agent-control-ui:latest
+    platform: linux/amd64
     container_name: agent_control_ui
     ports:
       - "4000:4000"
