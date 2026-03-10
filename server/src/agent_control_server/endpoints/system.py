@@ -13,7 +13,7 @@ the initial login POST.
 from __future__ import annotations
 
 import time
-from enum import Enum
+from enum import StrEnum
 from typing import Final
 
 import jwt
@@ -38,7 +38,7 @@ SESSION_MAX_AGE_SECONDS: Final[int] = 30 * 24 * 60 * 60  # 1 month
 # ---------------------------------------------------------------------------
 
 
-class AuthMode(str, Enum):
+class AuthMode(StrEnum):
     """Authentication mode advertised to the UI."""
 
     NONE = "none"
