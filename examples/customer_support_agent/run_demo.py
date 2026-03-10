@@ -635,7 +635,7 @@ def main():
 
         asyncio.run(run_demo_mode(agent, automated=automated))
     finally:
-        asyncio.run(agent_control.ashutdown())
+        agent_control.shutdown()
 
 
 if __name__ == "__main__":
