@@ -97,7 +97,7 @@ make ui-dev
 
 #### Register your agent with server
 
-Agent must be registered with teh server.  You should also add `@control` decorator around tools and llm call functions.
+Agent must be registered with the server.  You should also add `@control` decorator around tools and llm call functions.
 
 Here is a contrived example.  Reference our [examples](/examples) for real world examples for specific frameworks.
 ```python

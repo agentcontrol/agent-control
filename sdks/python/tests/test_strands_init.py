@@ -13,17 +13,18 @@ def test_strands_init_exports():
         {
             "strands": MagicMock(),
             "strands.hooks": MagicMock(),
+            "strands.plugins": MagicMock(),
             "strands.experimental": MagicMock(),
             "strands.experimental.steering": MagicMock(),
         },
     ):
         from agent_control.integrations.strands import (
-            AgentControlHook,
+            AgentControlPlugin,
             AgentControlSteeringHandler,
         )
 
         # Verify that the classes are importable
-        assert AgentControlHook is not None
+        assert AgentControlPlugin is not None
         assert AgentControlSteeringHandler is not None
 
 
@@ -42,20 +43,20 @@ def test_strands_init_all():
         import agent_control.integrations.strands as strands_module
 
         assert hasattr(strands_module, "__all__")
-        assert "AgentControlHook" in strands_module.__all__
+        assert "AgentControlPlugin" in strands_module.__all__
         assert "AgentControlSteeringHandler" in strands_module.__all__
         assert len(strands_module.__all__) == 2
 
 
 def test_lazy_import_agent_control_hook():
-    """Test lazy import of AgentControlHook via __getattr__."""
+    """Test lazy import of AgentControlPlugin via __getattr__."""
     # The lazy import mechanism should work without explicit mocking
     # since strands-agents is installed in dev dependencies
-    from agent_control.integrations.strands import AgentControlHook
+    from agent_control.integrations.strands import AgentControlPlugin
 
     # Verify it's the correct class
-    assert AgentControlHook.__name__ == "AgentControlHook"
-    assert hasattr(AgentControlHook, "__init__")
+    assert AgentControlPlugin.__name__ == "AgentControlPlugin"
+    assert hasattr(AgentControlPlugin, "__init__")
 
 
 def test_lazy_import_agent_control_steering_handler():
