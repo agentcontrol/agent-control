@@ -78,6 +78,8 @@ async def test_list_controls_for_agent_returns_controls(async_db) -> None:
     assert len(controls) == 2
     names = {control.name for control in controls}
     assert names == {policy_control.name, direct_control.name}
+    ids = [control.id for control in controls]
+    assert ids == sorted(ids, reverse=True)
 
 
 @pytest.mark.asyncio

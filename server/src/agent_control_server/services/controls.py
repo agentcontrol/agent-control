@@ -55,8 +55,10 @@ async def list_controls_for_agent(
     )
     control_ids_subquery = union(policy_control_ids, direct_control_ids).subquery()
 
-    stmt = select(Control).join(
-        control_ids_subquery, Control.id == control_ids_subquery.c.control_id
+    stmt = (
+        select(Control)
+        .join(control_ids_subquery, Control.id == control_ids_subquery.c.control_id)
+        .order_by(Control.id.desc())
     )
 
     result = await db.execute(stmt)
