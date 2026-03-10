@@ -1,4 +1,4 @@
-"""Agent Control hook integration for Strands."""
+"""Agent Control plugin integration for Strands."""
 
 from __future__ import annotations
 
@@ -20,9 +20,8 @@ try:
         BeforeModelCallEvent,
         BeforeNodeCallEvent,
         BeforeToolCallEvent,
-        HookProvider,
-        HookRegistry,
     )
+    from strands.plugins import Plugin  # type: ignore[import-not-found]
 except Exception as exc:  # pragma: no cover - optional dependency
     raise RuntimeError(
         "Strands integration requires strands-agents. "
@@ -66,12 +65,14 @@ def _action_error(result: EvaluationResult) -> tuple[str, Exception] | None:
     return "steer", steer_err
 
 
-class AgentControlHook(HookProvider):
-    """Hook that integrates Agent Control with Strands lifecycle events.
+class AgentControlPlugin(Plugin):
+    """Plugin that integrates Agent Control with Strands lifecycle events.
 
     The Agent Control server is required for control distribution and policy assignment.
     Controls may specify execution="sdk" or execution="server".
     """
+
+    name = "agent-control-plugin"
 
     def __init__(
         self,
@@ -179,7 +180,7 @@ class AgentControlHook(HookProvider):
                 use_runtime_error,
             )
 
-    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+    def init_agent(self, agent: Any) -> None:
         event_map = {
             BeforeInvocationEvent: self.check_before_invocation,
             BeforeModelCallEvent: self.check_before_model,
@@ -203,7 +204,7 @@ class AgentControlHook(HookProvider):
 
         for event_type in events_to_register:
             if event_type in event_map:
-                registry.add_callback(event_type, event_map[event_type])  # type: ignore[arg-type]
+                agent.add_hook(event_map[event_type], event_type)
 
     async def check_before_invocation(self, event: BeforeInvocationEvent) -> None:
         input_text, _ = self._extract_messages(event)

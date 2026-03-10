@@ -1,6 +1,6 @@
 # AWS Strands Example
 
-Guardrails for AWS Strands agent workflows and tool calls.
+Automatic safety controls for AWS Strands agents using plugins - no decorators needed.
 
 ## What this example shows
 

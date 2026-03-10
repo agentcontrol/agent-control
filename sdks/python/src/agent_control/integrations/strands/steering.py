@@ -32,6 +32,8 @@ class AgentControlSteeringHandler(SteeringHandler):
     Deny matches raise ControlViolationError.
     """
 
+    name = "agent-control-steering"
+
     def __init__(self, agent_name: str, enable_logging: bool = True) -> None:
         super().__init__()
         self.agent_name = agent_name
