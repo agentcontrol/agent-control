@@ -24,6 +24,7 @@ from .endpoints.evaluator_configs import router as evaluator_config_router
 from .endpoints.evaluators import router as evaluator_router
 from .endpoints.observability import router as observability_router
 from .endpoints.policies import router as policy_router
+from .endpoints.system import router as system_router
 from .errors import (
     APIError,
     api_error_handler,
@@ -34,6 +35,7 @@ from .errors import (
 from .logging_utils import configure_logging
 from .observability.ingest import DirectEventIngestor
 from .observability.store import PostgresEventStore
+from .ui_assets import configure_ui_routes
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,7 @@ def add_prometheus_metrics(app: FastAPI, metrics_prefix: str) -> None:
         skip_paths=PROMETHEUS_SKIP_PATHS,
     )
     app.add_route(METRICS_PATH, handle_metrics)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -216,6 +219,12 @@ app.include_router(
     prefix=api_v1_prefix,
 )
 
+# System routes (config, login, logout) — no auth required
+app.include_router(
+    system_router,
+    prefix=settings.api_prefix,
+)
+
 # Override OpenAPI to avoid recursive JSONValue schema issues in TS generators.
 def custom_openapi() -> dict[str, Any]:
     if app.openapi_schema:
@@ -258,8 +267,7 @@ async def health_check() -> HealthResponse:
     return HealthResponse(status="healthy", version="0.1.0")
 
 
-
-
+configure_ui_routes(app)
 
 
 def run() -> None:

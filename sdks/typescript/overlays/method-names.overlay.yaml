@@ -5,6 +5,21 @@ info:
   title: TypeScript SDK method naming overrides
   version: 0.0.1
 actions:
+  - target: $["paths"]["/api/config"]["get"]
+    update:
+      x-speakeasy-group: system
+      x-speakeasy-name-override: getConfigApiConfig
+
+  - target: $["paths"]["/api/login"]["post"]
+    update:
+      x-speakeasy-group: system
+      x-speakeasy-name-override: loginApi
+
+  - target: $["paths"]["/api/logout"]["post"]
+    update:
+      x-speakeasy-group: system
+      x-speakeasy-name-override: logoutApi
+
   - target: $["paths"]["/api/v1/agents"]["get"]
     update:
       x-speakeasy-group: agents

@@ -14,6 +14,7 @@ Automatic safety controls for AWS Strands agents using plugins - no decorators n
 # From repo root
 make server-run
 
+# In separate shell
 cd examples/strands_agents
 uv pip install -e . --upgrade
 

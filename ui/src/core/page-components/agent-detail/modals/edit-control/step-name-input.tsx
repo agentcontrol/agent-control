@@ -61,15 +61,6 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
     form.setFieldValue('step_names', values.join(', '));
   };
 
-  const selectedSummary = useMemo(() => {
-    if (selectedStepNames.length === 0) {
-      // When no steps exist, avoid showing "All steps" alongside "No steps available"
-      return steps.length > 0 ? 'All steps' : '';
-    }
-    if (selectedStepNames.length === 1) return selectedStepNames[0];
-    return `${selectedStepNames[0]} +${selectedStepNames.length - 1}`;
-  }, [selectedStepNames, steps.length]);
-
   const regexMatchInfo = useMemo(() => {
     const pattern = form.values.step_name_regex.trim();
     if (!pattern) {
@@ -219,9 +210,9 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
             }}
           />
           {searchValue.trim() === '' ? (
-            <Text
-              size="sm"
-              c={selectedStepNames.length === 0 ? 'dimmed' : undefined}
+            <Group
+              gap={4}
+              wrap="nowrap"
               style={{
                 position: 'absolute',
                 left: 12,
@@ -230,12 +221,31 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
                 pointerEvents: 'none',
                 maxWidth: 'calc(100% - 72px)',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
               }}
             >
-              {selectedSummary}
-            </Text>
+              <Text
+                size="sm"
+                c={selectedStepNames.length === 0 ? 'dimmed' : undefined}
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 1,
+                  minWidth: 0,
+                }}
+              >
+                {selectedStepNames.length === 0
+                  ? steps.length > 0
+                    ? 'All steps'
+                    : ''
+                  : selectedStepNames[0]}
+              </Text>
+              {selectedStepNames.length > 1 ? (
+                <Text size="sm" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  +{selectedStepNames.length - 1}
+                </Text>
+              ) : null}
+            </Group>
           ) : null}
         </Box>
       )}

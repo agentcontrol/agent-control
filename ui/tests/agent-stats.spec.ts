@@ -1,9 +1,11 @@
+import { getAgentRoute } from '@/core/constants/agent-routes';
+
 import { expect, mockData, mockRoutes, test } from './fixtures';
 
 test.describe('Agent Monitor Tab', () => {
   test.beforeEach(async ({ mockedPage }) => {
     // Navigate to agent detail page
-    await mockedPage.goto('/agents/agent-1/monitor');
+    await mockedPage.goto(getAgentRoute('agent-1', { tab: 'monitor' }));
     // Wait for the page to load
     await expect(
       mockedPage.getByRole('heading', { name: 'customer-support-bot' })
@@ -142,13 +144,14 @@ test.describe('Agent Monitor Tab', () => {
 
 test.describe('Agent Monitor Tab - Empty State', () => {
   test('should show empty state when no stats available', async ({ page }) => {
+    await mockRoutes.config(page);
     // Set up mocks with empty stats
     await mockRoutes.agents(page);
     await mockRoutes.agent(page);
     await mockRoutes.stats(page, { data: mockData.emptyStats });
 
     // Navigate to agent detail page
-    await page.goto('/agents/agent-1/monitor');
+    await page.goto(getAgentRoute('agent-1', { tab: 'monitor' }));
     await expect(
       page.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();
@@ -168,6 +171,7 @@ test.describe('Agent Monitor Tab - Empty State', () => {
 
 test.describe('Agent Monitor Tab - Refetch Flow', () => {
   test('should update values when data is refetched', async ({ page }) => {
+    await mockRoutes.config(page);
     let requestCount = 0;
 
     // Initial stats data
@@ -237,7 +241,7 @@ test.describe('Agent Monitor Tab - Refetch Flow', () => {
     });
 
     // Navigate to agent detail page
-    await page.goto('/agents/agent-1/monitor');
+    await page.goto(getAgentRoute('agent-1', { tab: 'monitor' }));
     await expect(
       page.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();
@@ -265,6 +269,7 @@ test.describe('Agent Monitor Tab - Refetch Flow', () => {
 
 test.describe('Agent Monitor Tab - Error State', () => {
   test('should show error state when API fails', async ({ page }) => {
+    await mockRoutes.config(page);
     // Set up mocks with failing stats endpoint
     await mockRoutes.agents(page);
     await mockRoutes.agent(page);
@@ -274,7 +279,7 @@ test.describe('Agent Monitor Tab - Error State', () => {
     });
 
     // Navigate to agent detail page
-    await page.goto('/agents/agent-1/monitor');
+    await page.goto(getAgentRoute('agent-1', { tab: 'monitor' }));
     await expect(
       page.getByRole('heading', { name: 'customer-support-bot' })
     ).toBeVisible();

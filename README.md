@@ -7,7 +7,7 @@
 [![CI](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml/badge.svg)](https://github.com/agentcontrol/agent-control/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/agentcontrol/agent-control/branch/main/graph/badge.svg)](https://codecov.io/gh/agentcontrol/agent-control)
 
-> **Pro Tip:** See the full docs at [Agent Control Docs] (https://docs.agentcontrol.dev/)
+> **Pro Tip:** See the full docs at [Agent Control Docs](https://docs.agentcontrol.dev/)
 
 > **👋 Say hello to us:** Checkout our [Slack](https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA).  Pop in to ask for help, suggest features, or just to say hello!
 
@@ -71,7 +71,6 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 
 Protect your AI agent in 4 simple steps.
 
-> Prefer a full demo walkthrough? See the complete [Agent Control Demo](examples/agent_control_demo) for an end-to-end, runnable alternative.
 
 ### Prerequisites
 
@@ -232,15 +231,21 @@ async def setup():
 asyncio.run(setup())
 ```
 
-When authentication is enabled, this setup script needs an admin API key because it creates a control and attaches it to an agent. `agents.register_agent()` itself accepts a regular or admin key, but `controls.create_control()` and `agents.add_agent_control()` are control-plane mutations and require a key listed in `AGENT_CONTROL_ADMIN_API_KEYS`.
+> [!NOTE]
+> **Authentication Note:** Authentication is disabled by default in the server .env (`AGENT_CONTROL_API_KEY_ENABLED=false`). If you enable it, this setup script needs an admin API key because it creates a control and attaches it to an agent. `agents.register_agent()` accepts a regular or admin key, but `controls.create_control()` and `agents.add_agent_control()` require a key listed in `AGENT_CONTROL_ADMIN_API_KEYS`.
+>
+> In the example .env, the placeholders are:
+> - **Regular API key(s):** `AGENT_CONTROL_API_KEYS` (e.g., "my-ui-key")
+> - **Admin API key(s):** `AGENT_CONTROL_ADMIN_API_KEYS` (e.g., "my-admin-key")
+>
+> **Replace these defaults before any shared or production deployment.**
 
-If you started the full local stack with the repo-root `docker-compose.yml`, it enables auth with these development defaults:
+**With authentication enabled:**
 
-- Regular API key: `420c6b90714b45beaa992c3f05cf2baf`
-- Admin API key: `29af8554a1fe4311977b7ce360b20cc3`
-- UI default key (`NEXT_PUBLIC_AGENT_CONTROL_API_KEY`): `29af8554a1fe4311977b7ce360b20cc3`
+```bash
+curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | AGENT_CONTROL_API_KEY_ENABLED=true AGENT_CONTROL_API_KEYS="my-ui-key" AGENT_CONTROL_ADMIN_API_KEYS="my-admin-key" AGENT_CONTROL_SESSION_SECRET="some-long-random-string" CORS_ORIGINS="http://localhost:4000" docker compose -f - up -d && pip install agent-control-sdk
+```
 
-Replace these defaults before any shared or production deployment.
 
 Now, test your agent:
 
@@ -276,10 +281,10 @@ _Benchmarked on Apple M5 (16 GB RAM), Docker Compose (`postgres:16` + `agent-con
 We welcome contributions! To get started:
 
 1. Fork the repository
-2. Create a feature branch (git checkout -b feature/your-feature)
+2. Create a feature branch (`git checkout -b feature/your-feature`)
 3. Make your changes
-4. Run quality checks (make check)
-5. Commit using conventional commits (feat:, fix:, docs:, etc.)
+4. Run quality checks (`make check`)
+5. Commit using conventional commits (`feat:`, `fix:`, `docs:`, etc.)
 6. Submit a Pull Request
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines, code conventions, and development workflow.

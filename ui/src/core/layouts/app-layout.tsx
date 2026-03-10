@@ -21,7 +21,6 @@ import { useRouter } from 'next/router';
 import { type ReactNode, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
-import { AcIcon } from '@/components/icons/ac-icon';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 
 // import { useAgentsInfinite } from "@/core/hooks/query-hooks/use-agents-infinite";
@@ -177,7 +176,20 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <UnstyledButton component={Link} href="/">
                   <Group gap="xs">
                     <Box className={classes.logoIcon} component="span">
-                      <AcIcon size={32} />
+                      <span className={classes.lightIcon}>
+                        <img
+                          src="/ac-logo-light.svg"
+                          alt="Agent Control"
+                          height={32}
+                        />
+                      </span>
+                      <span className={classes.darkIcon}>
+                        <img
+                          src="/ac-logo-dark.svg"
+                          alt="Agent Control"
+                          height={32}
+                        />
+                      </span>
                     </Box>
                     <Text size="md" fw={600} className={classes.logoText}>
                       Agent Control
@@ -211,8 +223,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 }
                 label="My agents"
                 active={
-                  router.pathname === '/' ||
-                  router.pathname.startsWith('/agents')
+                  router.pathname === '/' || router.pathname === '/agents'
                 }
                 onClick={closeNavbar}
               />
@@ -275,14 +286,13 @@ const BREADCRUMB_TRANSITION = { duration: 0.2, ease: 'easeOut' as const };
 
 function Header() {
   const router = useRouter();
-  const isAgentPage =
-    router.pathname.startsWith('/agents') && !!router.query.id;
+  const isAgentPage = router.pathname === '/agents' && !!router.query.id;
   const agentId = isAgentPage ? (router.query.id as string) : '';
   const { data: agentData } = useAgent(agentId);
   const agentDisplayName = agentData?.agent?.agent_name ?? agentId ?? null;
 
   const getBreadcrumb = () => {
-    if (router.pathname !== '/' && !router.pathname.startsWith('/agents')) {
+    if (router.pathname !== '/' && router.pathname !== '/agents') {
       return null;
     }
 

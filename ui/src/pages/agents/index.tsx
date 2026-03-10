@@ -1,17 +1,22 @@
 import { Box, Center, Loader, Stack, Text } from '@mantine/core';
 import { useRouter } from 'next/router';
-import { type ReactElement } from 'react';
+import { type ReactElement, useEffect } from 'react';
 
 import { AppLayout } from '@/core/layouts/app-layout';
 import AgentDetailPage from '@/core/page-components/agent-detail/agent-detail';
 import type { NextPageWithLayout } from '@/core/types/page';
 
-const AgentControlsPage: NextPageWithLayout = () => {
+const AgentPage: NextPageWithLayout = () => {
   const router = useRouter();
-  const { id } = router.query;
+  const { id, tab } = router.query;
 
-  // Show loading while router is initializing
-  if (!id) {
+  useEffect(() => {
+    if (router.isReady && typeof id !== 'string') {
+      void router.replace('/');
+    }
+  }, [id, router]);
+
+  if (!router.isReady || typeof id !== 'string') {
     return (
       <Box p="xl" maw={1400} mx="auto" my={0}>
         <Center h={400}>
@@ -24,17 +29,13 @@ const AgentControlsPage: NextPageWithLayout = () => {
     );
   }
 
-  // TODO: This is a temporary fix to ensure the agent ID is a string.
-  if (typeof id !== 'string') {
-    throw new Error('Invalid agent ID');
-  }
+  const defaultTab = tab === 'controls' || tab === 'monitor' ? tab : undefined;
 
-  return <AgentDetailPage agentId={id} defaultTab="controls" />;
+  return <AgentDetailPage agentId={id} defaultTab={defaultTab} />;
 };
 
-// Attach layout to page
-AgentControlsPage.getLayout = (page: ReactElement) => {
+AgentPage.getLayout = (page: ReactElement) => {
   return <AppLayout>{page}</AppLayout>;
 };
 
-export default AgentControlsPage;
+export default AgentPage;

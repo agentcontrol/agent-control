@@ -47,14 +47,29 @@ Structured data validation with JSONPath
 Place custom evaluators in `contrib/` and they'll be loaded automatically:
 
 ```python
-from evaluators.src.base import BaseEvaluator
+from agent_control_evaluators import Evaluator, EvaluatorConfig, EvaluatorMetadata, register_evaluator
+from agent_control_models import EvaluatorResult
+from typing import Any
 
-class MyEvaluator(BaseEvaluator):
-    name = "my_evaluator"
+class MyEvaluatorConfig(EvaluatorConfig):
+    threshold: float = 0.5
 
-    def evaluate(self, data: str, config: dict):
+@register_evaluator
+class MyEvaluator(Evaluator[MyEvaluatorConfig]):
+    metadata = EvaluatorMetadata(
+        name="my-evaluator",
+        version="1.0.0",
+        description="My custom evaluator",
+    )
+    config_model = MyEvaluatorConfig
+
+    async def evaluate(self, data: Any) -> EvaluatorResult:
         # Your logic here
-        return {"matched": True, "message": "Rule triggered"}
+        return EvaluatorResult(
+            matched=True,
+            confidence=1.0,
+            message="Rule triggered",
+        )
 ```
 
 Full guide: https://docs.agentcontrol.dev/concepts/evaluators

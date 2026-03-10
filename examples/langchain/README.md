@@ -12,9 +12,11 @@ Protect a SQL agent from dangerous queries with server-side controls.
 
 ```bash
 # From repo root
-make server-run
 export OPENAI_API_KEY="your-key-here"
+make server-run
 
+
+# In separate shell
 cd examples/langchain
 uv pip install -e . --upgrade
 uv run python setup_sql_controls.py

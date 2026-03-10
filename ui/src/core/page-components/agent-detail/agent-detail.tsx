@@ -18,6 +18,7 @@ import React, { useMemo, useState } from 'react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import type { Control } from '@/core/api/types';
 import { SearchInput } from '@/core/components/search-input';
+import { getAgentRoute } from '@/core/constants/agent-routes';
 import { MODAL_NAMES } from '@/core/constants/modal-routes';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useAgentControls } from '@/core/hooks/query-hooks/use-agent-controls';
@@ -92,14 +93,22 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
       hasCheckedInitialTab.current = true;
       if (hasMonitorData) {
         setActiveTab('monitor');
-        router.replace(`/agents/${agentId}/monitor`, undefined, {
-          shallow: true,
-        });
+        router.replace(
+          getAgentRoute(agentId, { tab: 'monitor', query: router.query }),
+          undefined,
+          {
+            shallow: true,
+          }
+        );
       } else {
         setActiveTab('controls');
-        router.replace(`/agents/${agentId}/controls`, undefined, {
-          shallow: true,
-        });
+        router.replace(
+          getAgentRoute(agentId, { tab: 'controls', query: router.query }),
+          undefined,
+          {
+            shallow: true,
+          }
+        );
       }
     }
   }, [defaultTab, checkingMonitorData, hasMonitorData, agentId, router]);
@@ -258,13 +267,24 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           onChange={(value) => {
             setActiveTab(value);
             if (value === 'monitor') {
-              router.push(`/agents/${agentId}/monitor`, undefined, {
-                shallow: true,
-              });
+              router.push(
+                getAgentRoute(agentId, { tab: 'monitor', query: router.query }),
+                undefined,
+                {
+                  shallow: true,
+                }
+              );
             } else if (value === 'controls') {
-              router.push(`/agents/${agentId}/controls`, undefined, {
-                shallow: true,
-              });
+              router.push(
+                getAgentRoute(agentId, {
+                  tab: 'controls',
+                  query: router.query,
+                }),
+                undefined,
+                {
+                  shallow: true,
+                }
+              );
             }
           }}
         >
@@ -293,6 +313,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                       placeholder="Search controls..."
                       w={250}
                       size="sm"
+                      data-testid="controls-search-input"
                     />
                     <Button
                       variant="filled"

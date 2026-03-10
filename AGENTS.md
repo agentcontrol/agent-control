@@ -56,7 +56,7 @@ Server API endpoints, engine evaluation, and SDK evaluation are latency-sensitiv
 
 ## Testing conventions
 
-All testing guidance (including “behavior changes require tests”) lives in `docs/testing.md`.
+All testing guidance (including “behavior changes require tests”) lives in [Agent Control Testing Guide](https://docs.agentcontrol.dev/testing).
 
 ## Common change map
 

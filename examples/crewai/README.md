@@ -15,6 +15,7 @@ Combine Agent Control security controls with CrewAI guardrails for customer supp
 make server-run
 export OPENAI_API_KEY="your-key-here"
 
+# In a separate shell
 cd examples/crewai
 uv pip install -e . --upgrade
 uv run python setup_content_controls.py

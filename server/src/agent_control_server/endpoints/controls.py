@@ -429,6 +429,12 @@ async def set_control_data(
     except AttributeError:
         # Selector doesn't support model_dump, use original serialization
         pass
+    # Ensure scope does not store null/None for step_names or other optional fields,
+    # so round-trip (save then load) preserves step selection in the UI.
+    if "scope" in data_json and isinstance(data_json["scope"], dict):
+        data_json["scope"] = {
+            k: v for k, v in data_json["scope"].items() if v is not None
+        }
     control.data = data_json
     try:
         await db.commit()

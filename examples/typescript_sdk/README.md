@@ -14,6 +14,7 @@ Consumer-style TypeScript example using the published npm package.
 # From repo root
 make server-run
 
+# In separate shell
 cd examples/typescript_sdk
 npm install
 AGENT_CONTROL_URL=http://localhost:8000 npm run start

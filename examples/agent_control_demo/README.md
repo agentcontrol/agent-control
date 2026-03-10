@@ -14,6 +14,8 @@ End-to-end workflow: create controls, run a controlled agent, and update control
 ```bash
 # From repo root
 make server-run
+
+# In a separate shell
 uv run python examples/agent_control_demo/setup_controls.py
 uv run python examples/agent_control_demo/demo_agent.py
 ```

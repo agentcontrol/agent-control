@@ -12,48 +12,89 @@ import type {
   ValidateControlDataResponse,
 } from './types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const API_KEY = process.env.NEXT_PUBLIC_AGENT_CONTROL_API_KEY?.trim() || null;
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === 'true';
+const API_URL =
+  configuredApiUrl ?? (isStaticExport ? '' : 'http://localhost:8000');
 
 export const apiClient = createClient<paths>({
   baseUrl: API_URL,
+  credentials: 'include',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add request/response interceptors if needed
-apiClient.use({
-  async onRequest({ request }) {
-    if (API_KEY) {
-      request.headers.set('X-API-Key', API_KEY);
-    }
+// Global 401 listener — UI components can subscribe to be notified when
+// a request is rejected due to missing/expired credentials.
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
 
-    // Add auth token if available (for future auth modes)
-    const token = getAuthToken();
-    if (token) {
-      request.headers.set('Authorization', `Bearer ${token}`);
-    }
-    return request;
-  },
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
+apiClient.use({
   async onResponse({ response }) {
-    // Handle 401 responses globally
     if (response.status === 401) {
-      // Handle unauthorized - redirect to login or refresh token
-      console.warn('Unauthorized request detected');
+      unauthorizedListeners.forEach((fn) => fn());
     }
     return response;
   },
 });
 
-// Helper to get auth token (implement based on your auth strategy)
-function getAuthToken(): string | null {
-  // For now, return null. Implement token retrieval logic here
-  // e.g., from localStorage, cookies, or session
-  return null;
-}
+// ------------------------------------------------------------------
+// Auth API (not part of the generated OpenAPI types)
+// ------------------------------------------------------------------
 
+export type ServerConfig = {
+  requires_api_key: boolean;
+  auth_mode: 'none' | 'api-key';
+  has_active_session: boolean;
+};
+
+export type LoginResponse = {
+  authenticated: boolean;
+  is_admin: boolean;
+};
+
+const authBaseUrl = API_URL || '';
+
+export const authApi = {
+  getConfig: async (): Promise<ServerConfig> => {
+    const res = await fetch(`${authBaseUrl}/api/config`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Failed to fetch server config');
+    return res.json() as Promise<ServerConfig>;
+  },
+
+  login: async (
+    apiKey: string
+  ): Promise<{ status: number; data: LoginResponse }> => {
+    const res = await fetch(`${authBaseUrl}/api/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+    const data = (await res.json()) as LoginResponse;
+    return { status: res.status, data };
+  },
+
+  logout: async (): Promise<void> => {
+    await fetch(`${authBaseUrl}/api/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  },
+};
+
+// ------------------------------------------------------------------
 // Typed API methods
+// ------------------------------------------------------------------
+
 export const api = {
   agents: {
     list: (params?: ListAgentsQueryParams) =>

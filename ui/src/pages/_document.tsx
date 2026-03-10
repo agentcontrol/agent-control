@@ -8,6 +8,9 @@ export default function Document() {
     <Html lang="en">
       <Head>
         <ColorSchemeScript defaultColorScheme="auto" />
+        <link rel="icon" href="/ac-logo-dark.svg" type="image/svg+xml" />
+        <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#644DF9" />
+        <link rel="manifest" href="/site.webmanifest" />
       </Head>
       <body className={inter.className}>
         <Main />

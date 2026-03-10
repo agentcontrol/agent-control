@@ -1,8 +1,13 @@
 import type { Page } from '@playwright/test';
 
-import { expect, mockData, test } from './fixtures';
+import { getAgentRoute } from '@/core/constants/agent-routes';
 
-const agentUrl = '/agents/agent-1/controls';
+import { expect, mockData, mockRoutes, test } from './fixtures';
+
+const agentUrl = getAgentRoute('agent-1', { tab: 'controls' });
+const getAgentControlsUrl = (
+  query?: Record<string, string | number | boolean>
+) => getAgentRoute('agent-1', { tab: 'controls', query });
 
 async function openControlStoreModal(page: Page) {
   await page.goto(agentUrl);
@@ -68,15 +73,41 @@ test.describe('Control Store Modal', () => {
     await expect(modal.getByText('data-analysis-agent')).toBeVisible();
     // One control has no usage and renders as an em dash
     await expect(modal.getByText('—')).toBeVisible();
-    // Agent attribution renders as navigation links.
+    // Agent attribution renders as navigation links with pre-filtered search.
     const customerSupportLink = modal.getByRole('link', {
       name: 'customer-support-bot',
     });
     await expect(customerSupportLink).toHaveCount(1);
     await expect(customerSupportLink).toHaveAttribute(
       'href',
-      '/agents/customer-support-bot'
+      getAgentRoute('customer-support-bot', {
+        tab: 'controls',
+        query: { q: 'PII Detection' },
+      })
     );
+  });
+
+  test('Used by link navigates with control name filter applied', async ({
+    mockedPage,
+  }) => {
+    const modal = await openControlStoreModal(mockedPage);
+
+    const customerSupportLink = modal.getByRole('link', {
+      name: 'customer-support-bot',
+    });
+    await customerSupportLink.click();
+
+    // URL should include the agent, controls tab, and q filter with the control name.
+    await expect(mockedPage).toHaveURL(
+      getAgentRoute('customer-support-bot', {
+        tab: 'controls',
+        query: { q: 'PII Detection' },
+      })
+    );
+
+    // Controls search input should be pre-filled with the control name.
+    const searchInput = mockedPage.getByTestId('controls-search-input');
+    await expect(searchInput).toHaveValue('PII Detection');
   });
 
   test('can search for controls', async ({ mockedPage }) => {
@@ -243,7 +274,7 @@ test.describe('Modal Routing', () => {
   test('opens control store modal via URL query parameter', async ({
     mockedPage,
   }) => {
-    await mockedPage.goto(`${agentUrl}?modal=control-store`);
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'control-store' }));
 
     const modal = mockedPage
       .getByRole('dialog')
@@ -251,13 +282,17 @@ test.describe('Modal Routing', () => {
     await expect(modal).toBeVisible();
 
     // URL should contain modal parameter
-    await expect(mockedPage).toHaveURL(/.*\?modal=control-store/);
+    await expect(mockedPage).toHaveURL(
+      getAgentControlsUrl({ modal: 'control-store' })
+    );
   });
 
   test('opens add-new-control modal via URL query parameters', async ({
     mockedPage,
   }) => {
-    await mockedPage.goto(`${agentUrl}?modal=control-store&submodal=add-new`);
+    await mockedPage.goto(
+      getAgentControlsUrl({ modal: 'control-store', submodal: 'add-new' })
+    );
 
     // Both modals should be visible
     const controlStoreModal = mockedPage
@@ -272,7 +307,7 @@ test.describe('Modal Routing', () => {
 
     // URL should contain both parameters
     await expect(mockedPage).toHaveURL(
-      /.*\?modal=control-store&submodal=add-new/
+      getAgentControlsUrl({ modal: 'control-store', submodal: 'add-new' })
     );
   });
 
@@ -280,7 +315,11 @@ test.describe('Modal Routing', () => {
     mockedPage,
   }) => {
     await mockedPage.goto(
-      `${agentUrl}?modal=control-store&submodal=create&evaluator=list`
+      getAgentControlsUrl({
+        modal: 'control-store',
+        submodal: 'create',
+        evaluator: 'list',
+      })
     );
 
     // Control store and add-new modals should be visible (create is nested inside add-new)
@@ -302,7 +341,11 @@ test.describe('Modal Routing', () => {
 
     // URL should contain all parameters
     await expect(mockedPage).toHaveURL(
-      /.*\?modal=control-store&submodal=create&evaluator=list/
+      getAgentControlsUrl({
+        modal: 'control-store',
+        submodal: 'create',
+        evaluator: 'list',
+      })
     );
   });
 
@@ -310,7 +353,7 @@ test.describe('Modal Routing', () => {
     mockedPage,
   }) => {
     // First, we need to get a control ID from the list
-    await mockedPage.goto(`${agentUrl}?modal=control-store`);
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'control-store' }));
     const modal = mockedPage
       .getByRole('dialog')
       .filter({ hasText: 'Browse existing controls or create a new one' });
@@ -328,7 +371,7 @@ test.describe('Modal Routing', () => {
 
     // URL should contain edit submodal and controlId
     await expect(mockedPage).toHaveURL(
-      /.*\?modal=control-store&submodal=edit&controlId=\d+/
+      /\/agents\?id=agent-1&tab=controls&modal=control-store&submodal=edit&controlId=\d+/
     );
   });
 
@@ -336,7 +379,11 @@ test.describe('Modal Routing', () => {
     mockedPage,
   }) => {
     await mockedPage.goto(
-      `${agentUrl}?modal=control-store&submodal=create&evaluator=list`
+      getAgentControlsUrl({
+        modal: 'control-store',
+        submodal: 'create',
+        evaluator: 'list',
+      })
     );
 
     // Verify create modal is open
@@ -359,7 +406,7 @@ test.describe('Modal Routing', () => {
 
     // URL should be back to add-new
     await expect(mockedPage).toHaveURL(
-      /.*\?modal=control-store&submodal=add-new/
+      getAgentControlsUrl({ modal: 'control-store', submodal: 'add-new' })
     );
   });
 
@@ -367,7 +414,7 @@ test.describe('Modal Routing', () => {
     mockedPage,
   }) => {
     // Open control store and click Copy
-    await mockedPage.goto(`${agentUrl}?modal=control-store`);
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'control-store' }));
     const modal = mockedPage
       .getByRole('dialog')
       .filter({ hasText: 'Browse existing controls or create a new one' });
@@ -392,12 +439,16 @@ test.describe('Modal Routing', () => {
     await expect(modal).toBeVisible();
 
     // URL should only have modal parameter (no submodal)
-    await expect(mockedPage).toHaveURL(/.*\?modal=control-store(?!.*submodal)/);
+    await expect(mockedPage).toHaveURL(
+      getAgentControlsUrl({ modal: 'control-store' })
+    );
   });
 
   test('modal state persists on page refresh', async ({ mockedPage }) => {
     // Open modals via URL
-    await mockedPage.goto(`${agentUrl}?modal=control-store&submodal=add-new`);
+    await mockedPage.goto(
+      getAgentControlsUrl({ modal: 'control-store', submodal: 'add-new' })
+    );
 
     // Verify modals are open
     const controlStoreModal = mockedPage
@@ -419,7 +470,7 @@ test.describe('Modal Routing', () => {
 
     // URL should still have the parameters
     await expect(mockedPage).toHaveURL(
-      /.*\?modal=control-store&submodal=add-new/
+      getAgentControlsUrl({ modal: 'control-store', submodal: 'add-new' })
     );
   });
 
@@ -427,8 +478,10 @@ test.describe('Modal Routing', () => {
     mockedPage,
   }) => {
     // Start at control store
-    await mockedPage.goto(`${agentUrl}?modal=control-store`);
-    await expect(mockedPage).toHaveURL(/.*\?modal=control-store(?!.*submodal)/);
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'control-store' }));
+    await expect(mockedPage).toHaveURL(
+      getAgentControlsUrl({ modal: 'control-store' })
+    );
 
     // Click "Create Control" button
     const controlStoreModal = mockedPage
@@ -438,7 +491,7 @@ test.describe('Modal Routing', () => {
 
     // URL should update to include submodal=add-new
     await expect(mockedPage).toHaveURL(
-      /.*\?modal=control-store&submodal=add-new/
+      getAgentControlsUrl({ modal: 'control-store', submodal: 'add-new' })
     );
 
     // Click "Use" on an evaluator
@@ -450,7 +503,7 @@ test.describe('Modal Routing', () => {
 
     // URL should update to include submodal=create and evaluator
     await expect(mockedPage).toHaveURL(
-      /.*\?modal=control-store&submodal=create&evaluator=\w+/
+      /\/agents\?id=agent-1&tab=controls&modal=control-store&submodal=create&evaluator=\w+/
     );
 
     // Create modal should be visible
@@ -465,7 +518,11 @@ test.describe('Modal Routing', () => {
   }) => {
     // Navigate to create modal via URL (simulating the full flow)
     await mockedPage.goto(
-      `${agentUrl}?modal=control-store&submodal=create&evaluator=list`
+      getAgentControlsUrl({
+        modal: 'control-store',
+        submodal: 'create',
+        evaluator: 'list',
+      })
     );
 
     // Verify all modals are open
@@ -573,7 +630,7 @@ test.describe('Modal Routing', () => {
     mockedPage,
   }) => {
     // Open control store and click Copy
-    await mockedPage.goto(`${agentUrl}?modal=control-store`);
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'control-store' }));
     const controlStoreModal = mockedPage
       .getByRole('dialog')
       .filter({ hasText: 'Browse existing controls or create a new one' });
@@ -670,7 +727,11 @@ test.describe('Modal Routing', () => {
     mockedPage,
   }) => {
     await mockedPage.goto(
-      `${agentUrl}?modal=control-store&submodal=create&evaluator=list`
+      getAgentControlsUrl({
+        modal: 'control-store',
+        submodal: 'create',
+        evaluator: 'list',
+      })
     );
 
     const createModal = mockedPage.getByRole('dialog', {
@@ -782,6 +843,7 @@ test.describe('Modal Routing', () => {
 
 test.describe('Control Store - Loading States', () => {
   test('shows error state when controls fail to load', async ({ page }) => {
+    await mockRoutes.config(page);
     // Mock agent controls to return normally
     await page.route('**/api/v1/agents/*/controls', async (route) => {
       await route.fulfill({
@@ -809,7 +871,7 @@ test.describe('Control Store - Loading States', () => {
       });
     });
 
-    await page.goto('/agents/agent-1/controls');
+    await page.goto(getAgentRoute('agent-1', { tab: 'controls' }));
 
     // Open the control store modal
     await page.getByTestId('add-control-button').first().click();

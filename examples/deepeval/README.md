@@ -12,9 +12,10 @@ Custom evaluator using DeepEval GEval metrics for quality controls.
 
 ```bash
 # From repo root
-make server-run
 export OPENAI_API_KEY="your-key-here"
+make server-run
 
+# In a separate shell
 cd examples/deepeval
 uv pip install -e . --upgrade
 uv run python setup_controls.py

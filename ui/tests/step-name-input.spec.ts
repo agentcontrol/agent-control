@@ -112,15 +112,21 @@ test.describe('Step Name Input', () => {
       modal.getByRole('paragraph').filter({ hasText: 'search_db' })
     ).toBeVisible();
 
-    // Select another step – summary shows "first +N"
+    // Select another step – summary shows "first" (ellipsized if long) and "+N" badge
     await stepSelect.click();
     await mockedPage.getByText('fetch_user', { exact: true }).click();
-    await expect(modal.getByText('search_db +1')).toBeVisible();
+    await expect(
+      modal.getByRole('paragraph').filter({ hasText: 'search_db' })
+    ).toBeVisible();
+    await expect(modal.getByText('+1')).toBeVisible();
 
     // Add third step
     await stepSelect.click();
     await mockedPage.getByText('database_query', { exact: true }).click();
-    await expect(modal.getByText('search_db +2')).toBeVisible();
+    await expect(
+      modal.getByRole('paragraph').filter({ hasText: 'search_db' })
+    ).toBeVisible();
+    await expect(modal.getByText('+2')).toBeVisible();
 
     // Deselect by opening dropdown and unchecking each selected option
     await stepSelect.click();

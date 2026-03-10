@@ -25,6 +25,7 @@ export type ConfigViewMode = 'form' | 'json';
 // Uses snake_case to match API field names directly
 export type ControlDefinitionFormValues = {
   name: string;
+  description?: string;
   enabled: boolean;
   step_types: string[];
   stages: ControlStage[];

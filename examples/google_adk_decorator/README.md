@@ -19,12 +19,14 @@ Control's decorator model for tool protection.
 1. Start the Agent Control server from the repo root:
 
 ```bash
+# From repo root
 make server-run
 ```
 
 2. Install the example dependencies:
 
 ```bash
+# In separate shell
 cd examples/google_adk_decorator
 uv pip install -e . --upgrade
 ```

@@ -12,9 +12,10 @@ Banking transfer agent showcasing allow, deny, warn, and steer actions.
 
 ```bash
 # From repo root
-make server-run
 export OPENAI_API_KEY="your-key-here"
+make server-run
 
+# In separate shell
 cd examples/steer_action_demo
 uv pip install -e . --upgrade
 uv run python setup_controls.py

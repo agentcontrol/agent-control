@@ -14,6 +14,7 @@ Enterprise support flow with PII protection, prompt-injection defense, and multi
 # From repo root
 make server-run
 
+# In a separate shell
 cd examples/customer_support_agent
 uv run python setup_demo_controls.py
 uv run python run_demo.py
