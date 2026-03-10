@@ -99,3 +99,6 @@ What time is it in Testville?
 ```
 
 For more details on this example, see the [Docs](https://docs.agentcontrol.dev/examples/google-adk-decorator).
+
+> **Tip:** If you want the framework-native, attach-once ADK integration, use
+> [`examples/google_adk_plugin/`](../google_adk_plugin/) instead.
