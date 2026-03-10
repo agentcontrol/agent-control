@@ -11,8 +11,8 @@ import {
 import { Button } from '@rungalileo/jupiter-ds';
 import { IconAlertCircle, IconLock } from '@tabler/icons-react';
 import Image from 'next/image';
-import { useState } from 'react';
 import type { FormEvent } from 'react';
+import { useState } from 'react';
 
 import { useAuth } from '@/core/providers/auth-provider';
 
