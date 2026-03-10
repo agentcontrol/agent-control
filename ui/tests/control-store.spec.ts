@@ -1,7 +1,8 @@
-import { getAgentRoute } from '@/core/constants/agent-routes';
 import type { Page } from '@playwright/test';
 
-import { expect, mockData, test } from './fixtures';
+import { getAgentRoute } from '@/core/constants/agent-routes';
+
+import { expect, mockData, mockRoutes, test } from './fixtures';
 
 const agentUrl = getAgentRoute('agent-1', { tab: 'controls' });
 const getAgentControlsUrl = (
@@ -105,7 +106,7 @@ test.describe('Control Store Modal', () => {
     );
 
     // Controls search input should be pre-filled with the control name.
-    const searchInput = mockedPage.getByPlaceholder('Search controls...');
+    const searchInput = mockedPage.getByTestId('controls-search-input');
     await expect(searchInput).toHaveValue('PII Detection');
   });
 
@@ -842,6 +843,7 @@ test.describe('Modal Routing', () => {
 
 test.describe('Control Store - Loading States', () => {
   test('shows error state when controls fail to load', async ({ page }) => {
+    await mockRoutes.config(page);
     // Mock agent controls to return normally
     await page.route('**/api/v1/agents/*/controls', async (route) => {
       await route.fulfill({

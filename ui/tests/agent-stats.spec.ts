@@ -144,6 +144,7 @@ test.describe('Agent Monitor Tab', () => {
 
 test.describe('Agent Monitor Tab - Empty State', () => {
   test('should show empty state when no stats available', async ({ page }) => {
+    await mockRoutes.config(page);
     // Set up mocks with empty stats
     await mockRoutes.agents(page);
     await mockRoutes.agent(page);
@@ -170,6 +171,7 @@ test.describe('Agent Monitor Tab - Empty State', () => {
 
 test.describe('Agent Monitor Tab - Refetch Flow', () => {
   test('should update values when data is refetched', async ({ page }) => {
+    await mockRoutes.config(page);
     let requestCount = 0;
 
     // Initial stats data
@@ -267,6 +269,7 @@ test.describe('Agent Monitor Tab - Refetch Flow', () => {
 
 test.describe('Agent Monitor Tab - Error State', () => {
   test('should show error state when API fails', async ({ page }) => {
+    await mockRoutes.config(page);
     // Set up mocks with failing stats endpoint
     await mockRoutes.agents(page);
     await mockRoutes.agent(page);

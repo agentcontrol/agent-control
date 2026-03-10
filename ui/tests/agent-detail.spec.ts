@@ -264,6 +264,7 @@ test.describe('Agent Detail Page', () => {
   });
 
   test('shows loading state while fetching controls', async ({ page }) => {
+    await mockRoutes.config(page);
     let resolveControls: () => void;
     const controlsPromise = new Promise<void>((resolve) => {
       resolveControls = resolve;
@@ -301,6 +302,7 @@ test.describe('Agent Detail Page', () => {
   });
 
   test('handles agent not found error', async ({ page }) => {
+    await mockRoutes.config(page);
     // Mock controls to return 404
     await page.route('**/api/v1/agents/*/controls', async (route) => {
       await route.fulfill({
@@ -646,6 +648,7 @@ test.describe('Agent Detail Page', () => {
 
 test.describe('Agent Detail - Empty State', () => {
   test('shows empty state when no controls exist', async ({ page }) => {
+    await mockRoutes.config(page);
     // Type-safe empty controls response
     const emptyControlsResponse: AgentControlsResponse = { controls: [] };
 

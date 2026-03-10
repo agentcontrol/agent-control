@@ -4,6 +4,14 @@ API key authentication for Agent Control Server.
 This module provides flexible authentication dependencies that can be applied
 to individual routers or endpoints with different security requirements.
 
+Two credential sources are supported (checked in this order):
+
+1. **X-API-Key header** — used by SDKs and programmatic clients.
+2. **Session JWT cookie** — used by the browser UI after ``POST /api/login``.
+
+If the header is present it is used exclusively (succeed or fail).  The cookie
+is only checked when no header is provided.
+
 Usage:
     # In a router file:
     from ..auth import require_api_key, require_admin_key
@@ -27,7 +35,7 @@ from enum import Enum
 from typing import Annotated
 
 from agent_control_models.errors import ErrorCode, ErrorReason
-from fastapi import Depends, Security
+from fastapi import Depends, Request, Security
 from fastapi.security import APIKeyHeader
 
 from .config import auth_settings
@@ -85,15 +93,50 @@ async def get_api_key_from_header(
     return api_key
 
 
+def _authenticate_via_cookie(request: Request) -> AuthenticatedClient | None:
+    """Try to authenticate using the session JWT cookie.
+
+    Returns an ``AuthenticatedClient`` on success or ``None`` when no valid
+    cookie is present.  Importing here avoids a circular import with
+    ``endpoints.system`` (both share ``config`` but this module must not
+    import endpoint code at module level).
+    """
+    from .endpoints.system import SESSION_COOKIE_NAME, decode_session_jwt
+
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        return None
+
+    claims = decode_session_jwt(token)
+    if claims is None:
+        _logger.debug("Session cookie present but JWT is invalid or expired")
+        return None
+
+    is_admin: bool = claims.get("is_admin", False)
+    auth_level = AuthLevel.ADMIN if is_admin else AuthLevel.API_KEY
+    _logger.debug("Authenticated request via session cookie (%s)", auth_level.value)
+    return AuthenticatedClient(
+        api_key="",
+        is_admin=is_admin,
+        auth_level=auth_level,
+    )
+
+
 async def _validate_api_key(
     api_key: str | None,
+    request: Request,
     require_admin: bool = False,
 ) -> AuthenticatedClient:
     """
     Internal validation logic for API keys.
 
+    Credential precedence:
+    1. ``X-API-Key`` header (if present, used exclusively — succeed or fail).
+    2. Session JWT cookie (checked only when no header is provided).
+
     Args:
-        api_key: The API key from the request header
+        api_key: The API key from the request header (may be None)
+        request: The incoming request (used to read cookies)
         require_admin: Whether admin privileges are required
 
     Returns:
@@ -125,52 +168,60 @@ async def _validate_api_key(
             hint="Server operator must configure API keys via environment variables.",
         )
 
-    # Check if key was provided
-    if api_key is None:
-        _logger.warning("Request missing API key")
-        raise AuthenticationError(
-            error_code=ErrorCode.AUTH_MISSING_KEY,
-            detail="Missing API key. Provide 'X-API-Key' header.",
-            hint="Include the 'X-API-Key' header with a valid API key in your request.",
-        )
+    # --- Path 1: X-API-Key header (takes strict priority) ---
+    if api_key is not None:
+        if not auth_settings.is_valid_api_key(api_key):
+            key_prefix = api_key[:8] if len(api_key) > 8 else "***"
+            _logger.warning(f"Invalid API key attempted: {key_prefix}...")
+            raise AuthenticationError(
+                error_code=ErrorCode.AUTH_INVALID_KEY,
+                detail="Invalid API key.",
+                hint="Check that your API key is correct and has not expired.",
+            )
 
-    # Validate key
-    if not auth_settings.is_valid_api_key(api_key):
-        # Log only prefix for security
-        key_prefix = api_key[:8] if len(api_key) > 8 else "***"
-        _logger.warning(f"Invalid API key attempted: {key_prefix}...")
-        raise AuthenticationError(
-            error_code=ErrorCode.AUTH_INVALID_KEY,
-            detail="Invalid API key.",
-            hint="Check that your API key is correct and has not expired.",
-        )
+        is_admin = auth_settings.is_admin_api_key(api_key)
+        if require_admin and not is_admin:
+            key_prefix = api_key[:8] if len(api_key) > 8 else "***"
+            _logger.warning(f"Non-admin key attempted admin operation: {key_prefix}...")
+            raise ForbiddenError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail="This operation requires admin privileges.",
+                hint="Use an admin API key for this operation.",
+            )
 
-    # Check admin requirement
-    is_admin = auth_settings.is_admin_api_key(api_key)
-    if require_admin and not is_admin:
-        key_prefix = api_key[:8] if len(api_key) > 8 else "***"
-        _logger.warning(f"Non-admin key attempted admin operation: {key_prefix}...")
-        raise ForbiddenError(
-            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-            detail="This operation requires admin privileges.",
-            hint="Use an admin API key for this operation.",
-        )
+        auth_level = AuthLevel.ADMIN if is_admin else AuthLevel.API_KEY
+        _logger.debug(f"Authenticated request with {auth_level.value} key")
+        return AuthenticatedClient(api_key=api_key, is_admin=is_admin, auth_level=auth_level)
 
-    auth_level = AuthLevel.ADMIN if is_admin else AuthLevel.API_KEY
-    _logger.debug(f"Authenticated request with {auth_level.value} key")
+    # --- Path 2: Session JWT cookie (fallback for browser clients) ---
+    client = _authenticate_via_cookie(request)
+    if client is not None:
+        if require_admin and not client.is_admin:
+            _logger.warning("Non-admin session cookie attempted admin operation")
+            raise ForbiddenError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail="This operation requires admin privileges.",
+                hint="Log in with an admin API key.",
+            )
+        return client
 
-    return AuthenticatedClient(
-        api_key=api_key,
-        is_admin=is_admin,
-        auth_level=auth_level,
+    # --- Neither credential present ---
+    _logger.warning("Request missing API key and session cookie")
+    raise AuthenticationError(
+        error_code=ErrorCode.AUTH_MISSING_KEY,
+        detail="Missing credentials. Provide 'X-API-Key' header or log in via the UI.",
+        hint="Include the 'X-API-Key' header with a valid API key, or log in at /api/login.",
     )
 
 
 async def require_api_key(
+    request: Request,
     api_key: str | None = Security(_api_key_header),
 ) -> AuthenticatedClient:
     """
-    Dependency that requires a valid API key.
+    Dependency that requires a valid API key or session cookie.
+
+    Credential precedence: X-API-Key header first, then session JWT cookie.
 
     Use as a router dependency or endpoint dependency:
 
@@ -182,14 +233,15 @@ async def require_api_key(
         async def get_info(client: AuthenticatedClient = Depends(require_api_key)):
             print(f"Request from: {client.key_id}")
     """
-    return await _validate_api_key(api_key, require_admin=False)
+    return await _validate_api_key(api_key, request, require_admin=False)
 
 
 async def require_admin_key(
+    request: Request,
     api_key: str | None = Security(_api_key_header),
 ) -> AuthenticatedClient:
     """
-    Dependency that requires an admin API key.
+    Dependency that requires an admin API key or admin session cookie.
 
     Use for sensitive operations like evaluator management or configuration:
 
@@ -197,17 +249,18 @@ async def require_admin_key(
         async def dangerous_op():
             ...
     """
-    return await _validate_api_key(api_key, require_admin=True)
+    return await _validate_api_key(api_key, request, require_admin=True)
 
 
 async def optional_api_key(
+    request: Request,
     api_key: str | None = Security(_api_key_header),
 ) -> AuthenticatedClient | None:
     """
     Dependency that accepts optional authentication.
 
-    Returns AuthenticatedClient if valid key provided, None otherwise.
-    Does not raise errors for missing/invalid keys.
+    Returns AuthenticatedClient if valid key or session cookie provided,
+    None otherwise.  Does not raise errors for missing/invalid credentials.
 
     Useful for endpoints that behave differently for authenticated users:
 
@@ -220,18 +273,19 @@ async def optional_api_key(
     if not auth_settings.api_key_enabled:
         return None
 
-    if api_key is None:
-        return None
+    # Header takes priority
+    if api_key is not None:
+        if not auth_settings.is_valid_api_key(api_key):
+            return None
+        is_admin = auth_settings.is_admin_api_key(api_key)
+        return AuthenticatedClient(
+            api_key=api_key,
+            is_admin=is_admin,
+            auth_level=AuthLevel.ADMIN if is_admin else AuthLevel.API_KEY,
+        )
 
-    if not auth_settings.is_valid_api_key(api_key):
-        return None
-
-    is_admin = auth_settings.is_admin_api_key(api_key)
-    return AuthenticatedClient(
-        api_key=api_key,
-        is_admin=is_admin,
-        auth_level=AuthLevel.ADMIN if is_admin else AuthLevel.API_KEY,
-    )
+    # Fallback to cookie
+    return _authenticate_via_cookie(request)
 
 
 # Type aliases for cleaner endpoint signatures

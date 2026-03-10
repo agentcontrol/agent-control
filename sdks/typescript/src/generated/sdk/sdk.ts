@@ -13,6 +13,11 @@ import { Policies } from "./policies.js";
 import { System } from "./system.js";
 
 export class AgentControlSDK extends ClientSDK {
+  private _system?: System;
+  get system(): System {
+    return (this._system ??= new System(this._options));
+  }
+
   private _agents?: Agents;
   get agents(): Agents {
     return (this._agents ??= new Agents(this._options));
@@ -46,10 +51,5 @@ export class AgentControlSDK extends ClientSDK {
   private _policies?: Policies;
   get policies(): Policies {
     return (this._policies ??= new Policies(this._options));
-  }
-
-  private _system?: System;
-  get system(): System {
-    return (this._system ??= new System(this._options));
   }
 }
