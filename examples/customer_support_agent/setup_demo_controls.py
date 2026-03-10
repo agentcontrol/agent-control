@@ -41,7 +41,7 @@ DEMO_CONTROLS = [
             "description": "Blocks responses containing SSN patterns (path: output)",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["llm_inference"], "stages": ["post"]},
+            "scope": {"step_types": ["llm"], "stages": ["post"]},
             "selector": {"path": "output"},
             "evaluator": {
                 "name": "regex",
@@ -60,7 +60,7 @@ DEMO_CONTROLS = [
             "description": "Blocks common prompt injection attempts (path: input)",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {
                 "name": "regex",
@@ -81,7 +81,7 @@ DEMO_CONTROLS = [
             "description": "Blocks messages containing credit card numbers (path: input)",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["llm_inference"], "stages": ["pre"]},
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
             "evaluator": {
                 "name": "regex",

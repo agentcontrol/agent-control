@@ -262,7 +262,7 @@ The demo setup creates three controls automatically. Here are examples of additi
 ```yaml
 name: block-pii-in-output
 scope:
-  step_types: ["llm_inference"]
+  step_types: ["llm"]
   stages: ["post"]
 selector:
   path: output
@@ -279,7 +279,7 @@ action:
 ```yaml
 name: block-prompt-injection
 scope:
-  step_types: ["llm_inference"]
+  step_types: ["llm"]
   stages: ["pre"]
 selector:
   path: input
@@ -296,7 +296,7 @@ action:
 ```yaml
 name: block-toxic-input
 scope:
-  step_types: ["llm_inference"]
+  step_types: ["llm"]
   stages: ["pre"]
 selector:
   path: input

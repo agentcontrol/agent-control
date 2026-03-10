@@ -100,6 +100,29 @@ def test_set_control_data_validates_nested_schema(client: TestClient) -> None:
     assert r.status_code == 404
 
 
+def test_set_control_data_round_trip_preserves_scope_step_names(client: TestClient) -> None:
+    # Given: a control and a payload with step_names set (and other optional scope fields null)
+    control_id = create_control(client)
+    payload: dict[str, Any] = dict(VALID_CONTROL_DATA)
+    payload["scope"] = {
+        "step_names": ["step-a", "step-b"],
+        "step_types": None,
+        "stages": None,
+        "step_name_regex": None,
+    }
+
+    # When: saving then reloading the control data
+    put_resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+    assert put_resp.status_code == 200, put_resp.text
+
+    get_resp = client.get(f"/api/v1/controls/{control_id}/data")
+    assert get_resp.status_code == 200, get_resp.text
+
+    # Then: step_names are preserved across the round-trip
+    data = get_resp.json()["data"]
+    assert data["scope"]["step_names"] == ["step-a", "step-b"]
+
+
 def test_set_control_data_not_found(client: TestClient) -> None:
     # Given: a non-existent control id
     missing = "99999999"
