@@ -9,6 +9,8 @@
 
 > **Pro Tip:** See the full docs at [Agent Control Docs] (https://docs.agentcontrol.dev/)
 
+> **👋 Say hello to us:** Checkout our [Slack](https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA).  Pop in to ask for help, suggest features, or just to say hello!
+
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
 AI agents interact with users, tools, and external systems in unpredictable ways. **Agent Control** provides an extensible, control-based runtime layer that evaluates inputs and outputs against configurable rules — blocking prompt injections, PII leakage, and other risks without modifying your agent's code.
