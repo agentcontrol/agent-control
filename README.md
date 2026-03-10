@@ -9,7 +9,7 @@
 
 > **💡 Pro Tip:** Checkout [docs](https://docs.agentcontrol.dev/) for complete reference
 
-> **Say hello to us:** Checkout our [Slack](https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA).  Pop in to ask for help, suggest features, or just to say hello!
+> **👋 Say hello to us:** Checkout our [Slack](https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA).  Pop in to ask for help, suggest features, or just to say hello!
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
