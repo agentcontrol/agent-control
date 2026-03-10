@@ -6,12 +6,14 @@ import {
   Stack,
   Text,
   Title,
+  useMantineColorScheme,
 } from '@mantine/core';
 import { Button } from '@rungalileo/jupiter-ds';
 import { IconAlertCircle, IconLock } from '@tabler/icons-react';
-import { type FormEvent, useState } from 'react';
+import Image from 'next/image';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
 
-import { AcIcon } from '@/components/icons/ac-icon';
 import { useAuth } from '@/core/providers/auth-provider';
 
 type LoginModalProps = {
@@ -19,6 +21,7 @@ type LoginModalProps = {
 };
 
 export function LoginModal({ opened }: LoginModalProps) {
+  const { colorScheme } = useMantineColorScheme();
   const { login } = useAuth();
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +64,16 @@ export function LoginModal({ opened }: LoginModalProps) {
       <form onSubmit={handleSubmit}>
         <Stack gap="lg" p="md">
           <Center>
-            <AcIcon size={48} />
+            <Image
+              src={
+                colorScheme === 'dark'
+                  ? '/ac-logo-dark.svg'
+                  : '/ac-logo-light.svg'
+              }
+              alt="Agent Control"
+              width={48}
+              height={48}
+            />
           </Center>
 
           <Stack gap={4} ta="center">
