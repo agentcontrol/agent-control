@@ -76,16 +76,24 @@ Protect your AI agent in 4 simple steps.
 - Python 3.12+
 - Docker
 
-> **Quick start for developers:**  
-> Copy this into your terminal or paste this directly into a coding agent to start the Agent Control server, UI, and install the SDK:
+---
+
+### ⚡ Quick Start for Developers
+
+**One-line setup** - Copy this into your terminal or directly paste into your coding agent to start the Agent Control server, UI, and install the SDK:
 
 ```bash
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d && pip install agent-control-sdk
 ```
 
-> Then jump to **Step 3: Register your agent**.  
-> - Server runs at `http://localhost:8000`  
-> - UI runs at `http://localhost:4000`
+**What this does:**
+- ✅ Starts Agent Control server at `http://localhost:8000`
+- ✅ Starts UI dashboard at `http://localhost:4000`
+- ✅ Installs Python SDK (`agent-control-sdk`)
+
+**Next:** Jump to [Step 3: Register your agent](#step-3-register-your-agent)
+
+---
 
 ### Step 1: Start the Agent Control server
 
