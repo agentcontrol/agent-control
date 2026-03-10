@@ -48,12 +48,6 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
           href="https://github.com/agentcontrol/agent-control"
         />
 
-        {/* Favicons */}
-        <link href="/ac-icon.jpg" rel="icon" type="image/jpeg" />
-        <link href="/ac-icon.jpg" rel="apple-touch-icon" sizes="180x180" />
-        <link href="/site.webmanifest" rel="manifest" />
-        <link color="#644DF9" href="/safari-pinned-tab.svg" rel="mask-icon" />
-
         {/* SEO Meta Tags */}
         <title>Agent Control - Runtime Guardrails for AI Agents</title>
         <meta
