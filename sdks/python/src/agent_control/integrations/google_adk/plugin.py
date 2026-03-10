@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import logging
 import threading
+import weakref
 from collections.abc import Callable, Iterable
 from typing import Any, Literal, cast
 from uuid import uuid4
@@ -89,7 +90,11 @@ class AgentControlPlugin(BasePlugin):
         self.context_extractor = context_extractor
         self.on_violation_callback = on_violation_callback
         self.enable_logging = enable_logging
-        self._generated_invocation_ids: dict[object, str] = {}
+        self._generated_invocation_ids: weakref.WeakKeyDictionary[object, str] = (
+            weakref.WeakKeyDictionary()
+        )
+        self._generated_invocation_ids_by_context_id: dict[int, str] = {}
+        self._generated_context_ids_by_invocation_id: dict[str, int] = {}
         self._request_text_by_call_key: dict[tuple[str, str], str] = {}
         self._request_object_ids_by_call_key: dict[tuple[str, str], int] = {}
         self._current_llm_call_ids: dict[str, list[str]] = {}
@@ -116,6 +121,8 @@ class AgentControlPlugin(BasePlugin):
 
         self._step_sync_tasks.clear()
         self._generated_invocation_ids.clear()
+        self._generated_invocation_ids_by_context_id.clear()
+        self._generated_context_ids_by_invocation_id.clear()
         self._request_text_by_call_key.clear()
         self._request_object_ids_by_call_key.clear()
         self._current_llm_call_ids.clear()
@@ -714,13 +721,20 @@ class AgentControlPlugin(BasePlugin):
         if invocation_id is not None:
             return str(invocation_id)
 
-        context_key = self._context_key(callback_context)
-        cached = self._generated_invocation_ids.get(context_key)
+        try:
+            cached = self._generated_invocation_ids.get(callback_context)
+        except TypeError:
+            cached = self._generated_invocation_ids_by_context_id.get(id(callback_context))
         if cached is not None:
             return cached
 
         generated = str(uuid4())
-        self._generated_invocation_ids[context_key] = generated
+        try:
+            self._generated_invocation_ids[callback_context] = generated
+        except TypeError:
+            context_id = id(callback_context)
+            self._generated_invocation_ids_by_context_id[context_id] = generated
+            self._generated_context_ids_by_invocation_id[generated] = context_id
         return generated
 
     def _resolve_llm_call_id(self, obj: Any, invocation_id: str | None = None) -> str:
@@ -798,6 +812,9 @@ class AgentControlPlugin(BasePlugin):
                     break
 
         if not stack:
+            context_id = self._generated_context_ids_by_invocation_id.pop(invocation_id, None)
+            if context_id is not None:
+                self._generated_invocation_ids_by_context_id.pop(context_id, None)
             self._current_llm_call_ids.pop(invocation_id, None)
 
     def _sync_steps_blocking(

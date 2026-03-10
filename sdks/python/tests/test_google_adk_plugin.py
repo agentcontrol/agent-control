@@ -616,9 +616,48 @@ def test_context_key_falls_back_to_id_for_unhashable_callback(plugin_module):
 
 
 @pytest.mark.asyncio
+async def test_after_model_clears_generated_invocation_id_fallback(plugin_module):
+    plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
+
+    class UnhashableCallback:
+        __hash__ = None
+
+        def __init__(self, agent_name: str):
+            self.agent_name = agent_name
+            self.agent = SimpleNamespace(name=agent_name, description=f"{agent_name} desc")
+
+    context = UnhashableCallback("writer")
+    request = MockLlmRequest("hello", request_id="call-1")
+    response = MockLlmResponse(
+        MockContent(role="model", parts=[MockPart("done")]),
+        request_id="call-1",
+    )
+
+    with patch.object(
+        plugin_module,
+        "_evaluate_and_enforce",
+        AsyncMock(return_value=MagicMock()),
+    ):
+        await plugin.before_model_callback(
+            callback_context=context,
+            llm_request=request,
+        )
+        await plugin.after_model_callback(
+            callback_context=context,
+            llm_response=response,
+        )
+
+    assert plugin._generated_invocation_ids_by_context_id == {}
+    assert plugin._generated_context_ids_by_invocation_id == {}
+
+
+@pytest.mark.asyncio
 async def test_close_cancels_tasks_and_clears_request_cache(plugin_module):
     plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
-    plugin._generated_invocation_ids["ctx"] = "inv-1"
+    context = MockCallbackContext("writer")
+    plugin._generated_invocation_ids[context] = "inv-1"
+    plugin._generated_invocation_ids_by_context_id[123] = "inv-2"
+    plugin._generated_context_ids_by_invocation_id["inv-2"] = 123
     plugin._request_text_by_call_key[("inv-1", "call-1")] = "hello"
     plugin._request_object_ids_by_call_key[("inv-1", "call-1")] = 123
     plugin._current_llm_call_ids["inv-1"] = ["call-1"]
@@ -634,7 +673,9 @@ async def test_close_cancels_tasks_and_clears_request_cache(plugin_module):
 
     await plugin.close()
 
-    assert plugin._generated_invocation_ids == {}
+    assert len(plugin._generated_invocation_ids) == 0
+    assert plugin._generated_invocation_ids_by_context_id == {}
+    assert plugin._generated_context_ids_by_invocation_id == {}
     assert plugin._request_text_by_call_key == {}
     assert plugin._request_object_ids_by_call_key == {}
     assert plugin._current_llm_call_ids == {}
