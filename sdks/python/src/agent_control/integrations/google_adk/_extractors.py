@@ -85,6 +85,22 @@ def resolve_tool_name(tool: Any) -> str:
     return "tool"
 
 
+def resolve_tool_agent_name(tool_context: Any) -> str | None:
+    """Resolve the currently executing ADK agent name for a tool callback."""
+
+    callback_context = getattr(tool_context, "callback_context", None)
+    if callback_context is not None:
+        agent_name = resolve_agent_name(callback_context)
+        if agent_name:
+            return agent_name
+
+    fallback = getattr(tool_context, "agent_name", None)
+    if isinstance(fallback, str) and fallback:
+        return fallback
+
+    return None
+
+
 def build_blocked_llm_response(message: str) -> Any:
     """Create a replacement model response when a request is blocked."""
 

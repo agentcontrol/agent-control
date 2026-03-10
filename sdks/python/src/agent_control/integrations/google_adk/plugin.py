@@ -8,6 +8,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterable
 from typing import Any, Literal, cast
+from uuid import uuid4
 
 from agent_control_models.server import GetAgentResponse
 
@@ -37,6 +38,7 @@ from ._extractors import (
     extract_request_text,
     extract_response_text,
     resolve_agent_name,
+    resolve_tool_agent_name,
     resolve_tool_name,
 )
 
@@ -87,7 +89,11 @@ class AgentControlPlugin(BasePlugin):
         self.context_extractor = context_extractor
         self.on_violation_callback = on_violation_callback
         self.enable_logging = enable_logging
-        self._request_text_by_context_key: dict[object, str] = {}
+        self._generated_invocation_ids: dict[object, str] = {}
+        self._request_text_by_call_key: dict[tuple[str, str], str] = {}
+        self._request_object_ids_by_call_key: dict[tuple[str, str], int] = {}
+        self._current_llm_call_ids: dict[str, list[str]] = {}
+        self._stored_llm_call_ids: dict[int, str] = {}
         self._known_steps: dict[tuple[str, str], StepSchemaDict] = {}
         self._synced_step_keys: set[tuple[str, str]] = set()
         self._step_sync_tasks: dict[tuple[str, str], asyncio.Task[None]] = {}
@@ -109,7 +115,11 @@ class AgentControlPlugin(BasePlugin):
             await asyncio.gather(*pending_tasks, return_exceptions=True)
 
         self._step_sync_tasks.clear()
-        self._request_text_by_context_key.clear()
+        self._generated_invocation_ids.clear()
+        self._request_text_by_call_key.clear()
+        self._request_object_ids_by_call_key.clear()
+        self._current_llm_call_ids.clear()
+        self._stored_llm_call_ids.clear()
 
         base_close = getattr(super(), "close", None)
         if callable(base_close):
@@ -130,8 +140,11 @@ class AgentControlPlugin(BasePlugin):
 
         step_name = self._resolve_llm_step_name(callback_context)
         request_text = extract_request_text(llm_request)
-        context_key = self._context_key(callback_context)
-        self._request_text_by_context_key[context_key] = request_text
+        invocation_id: str | None = None
+        call_id: str | None = None
+        if "after_model" in self.enabled_hooks:
+            invocation_id = self._resolve_invocation_id(callback_context)
+            call_id = self._register_llm_request(invocation_id, llm_request, request_text)
         self._ensure_step_known(
             self._build_llm_step_schema(step_name, callback_context=callback_context),
         )
@@ -153,13 +166,16 @@ class AgentControlPlugin(BasePlugin):
                 stage="pre",
             )
         except Exception as exc:
-            return self._handle_llm_exception(
+            response = self._handle_llm_exception(
                 exc,
                 callback_context=callback_context,
                 llm_request=llm_request,
                 step_name=step_name,
                 stage="pre",
             )
+            if response is not None and invocation_id is not None and call_id is not None:
+                self._clear_pending_llm_state(invocation_id, call_id, llm_request=llm_request)
+            return response
         return None
 
     async def after_model_callback(
@@ -174,8 +190,10 @@ class AgentControlPlugin(BasePlugin):
             return None
 
         step_name = self._resolve_llm_step_name(callback_context)
-        context_key = self._context_key(callback_context)
-        input_text = self._request_text_by_context_key.pop(context_key, "")
+        invocation_id = self._resolve_invocation_id(callback_context)
+        call_id = self._resolve_llm_call_id(llm_response, invocation_id)
+        input_text = self._request_text_by_call_key.pop((invocation_id, call_id), "")
+        self._clear_pending_llm_state(invocation_id, call_id, llm_response=llm_response)
         output_text = extract_response_text(llm_response)
         self._ensure_step_known(
             self._build_llm_step_schema(step_name, callback_context=callback_context),
@@ -208,6 +226,21 @@ class AgentControlPlugin(BasePlugin):
             )
         return None
 
+    async def on_model_error_callback(
+        self,
+        *,
+        callback_context: CallbackContext,
+        llm_request: LlmRequest,
+        error: Exception,
+    ) -> LlmResponse | None:
+        """Clean up request correlation when ADK reports a model error."""
+
+        _ = error
+        invocation_id = self._resolve_invocation_id(callback_context)
+        call_id = self._resolve_llm_call_id(llm_request, invocation_id)
+        self._clear_pending_llm_state(invocation_id, call_id, llm_request=llm_request)
+        return None
+
     async def before_tool_callback(
         self,
         *,
@@ -220,7 +253,7 @@ class AgentControlPlugin(BasePlugin):
         if "before_tool" not in self.enabled_hooks:
             return None
 
-        step_name = self._resolve_tool_step_name(tool)
+        step_name = self._resolve_tool_step_name(tool, tool_context=tool_context)
         self._ensure_step_known(self._build_tool_step_schema(tool, step_name))
         context = self._safe_context(
             step_type="tool",
@@ -263,7 +296,7 @@ class AgentControlPlugin(BasePlugin):
         if "after_tool" not in self.enabled_hooks:
             return None
 
-        step_name = self._resolve_tool_step_name(tool)
+        step_name = self._resolve_tool_step_name(tool, tool_context=tool_context)
         self._ensure_step_known(self._build_tool_step_schema(tool, step_name))
         context = self._safe_context(
             step_type="tool",
@@ -303,12 +336,28 @@ class AgentControlPlugin(BasePlugin):
             callback_context=callback_context,
         )
 
-    def _resolve_tool_step_name(self, tool: BaseTool) -> str:
+    def _resolve_tool_step_name(
+        self,
+        tool: BaseTool,
+        *,
+        tool_context: ToolContext | None = None,
+        agent_step_name: str | None = None,
+    ) -> str:
         raw_name = resolve_tool_name(tool)
+        resolved_agent_step_name = agent_step_name
+        if resolved_agent_step_name is None:
+            resolved_agent_step_name = self._resolve_tool_agent_step_name(tool_context)
+        default_name = (
+            f"{resolved_agent_step_name}.{raw_name}" if resolved_agent_step_name else raw_name
+        )
         return self._resolve_step_name(
-            raw_name,
+            default_name,
             step_type="tool",
+            override_keys=(raw_name,),
             tool=tool,
+            tool_context=tool_context,
+            raw_name=raw_name,
+            agent_step_name=resolved_agent_step_name,
         )
 
     def _resolve_step_name(
@@ -316,22 +365,45 @@ class AgentControlPlugin(BasePlugin):
         default_name: str,
         *,
         step_type: Literal["llm", "tool"],
+        override_keys: Iterable[str] = (),
         **kwargs: Any,
     ) -> str:
-        override = self.step_name_overrides.get(default_name)
-        if override:
-            return override
+        candidate_names = [default_name, *override_keys]
+        for candidate_name in candidate_names:
+            override = self.step_name_overrides.get(candidate_name)
+            if override:
+                return override
 
         if self.step_name_resolver is not None:
             resolved = self.step_name_resolver(
                 step_type=step_type,
                 default_name=default_name,
+                override_keys=tuple(candidate_names),
                 **kwargs,
             )
             if isinstance(resolved, str) and resolved:
                 return resolved
 
         return default_name
+
+    def _resolve_tool_agent_step_name(self, tool_context: ToolContext | None) -> str | None:
+        if tool_context is None:
+            return None
+
+        callback_context = getattr(tool_context, "callback_context", None)
+        if callback_context is not None:
+            return self._resolve_llm_step_name(callback_context)
+
+        raw_agent_name = resolve_tool_agent_name(tool_context)
+        if raw_agent_name is None:
+            return None
+
+        return self._resolve_step_name(
+            raw_agent_name,
+            step_type="llm",
+            agent_name=raw_agent_name,
+            tool_context=tool_context,
+        )
 
     def _safe_context(
         self,
@@ -518,20 +590,24 @@ class AgentControlPlugin(BasePlugin):
     def _discover_steps(self, agent: Any) -> list[StepSchemaDict]:
         steps: list[StepSchemaDict] = []
         for current_agent in self._iter_agents(agent):
+            resolved_agent_name: str | None = None
             agent_name = getattr(current_agent, "name", None)
             if isinstance(agent_name, str) and agent_name:
-                resolved_name = self._resolve_step_name(
+                resolved_agent_name = self._resolve_step_name(
                     agent_name,
                     step_type="llm",
                     callback_context=None,
                     agent=current_agent,
                 )
                 steps.append(
-                    self._build_llm_step_schema(resolved_name),
+                    self._build_llm_step_schema(resolved_agent_name),
                 )
 
             for tool in self._iter_tools(current_agent):
-                tool_name = self._resolve_tool_step_name(tool)
+                tool_name = self._resolve_tool_step_name(
+                    tool,
+                    agent_step_name=resolved_agent_name,
+                )
                 steps.append(self._build_tool_step_schema(tool, tool_name))
 
         deduped: dict[tuple[str, str], StepSchemaDict] = {}
@@ -630,6 +706,99 @@ class AgentControlPlugin(BasePlugin):
         except TypeError:
             return id(callback_context)
         return callback_context
+
+    def _resolve_invocation_id(self, callback_context: CallbackContext) -> str:
+        """Resolve the ADK invocation ID used to correlate model lifecycle hooks."""
+
+        invocation_id = getattr(callback_context, "invocation_id", None)
+        if invocation_id is not None:
+            return str(invocation_id)
+
+        context_key = self._context_key(callback_context)
+        cached = self._generated_invocation_ids.get(context_key)
+        if cached is not None:
+            return cached
+
+        generated = str(uuid4())
+        self._generated_invocation_ids[context_key] = generated
+        return generated
+
+    def _resolve_llm_call_id(self, obj: Any, invocation_id: str | None = None) -> str:
+        """Resolve a model call ID across before/after/error callbacks."""
+
+        stored = self._stored_llm_call_ids.get(id(obj))
+        if stored:
+            return stored
+
+        request_id = getattr(obj, "request_id", None)
+        if request_id:
+            return str(request_id)
+
+        if invocation_id is not None:
+            stack = self._current_llm_call_ids.get(invocation_id)
+            if stack:
+                return stack[-1]
+
+        logger.debug("Google ADK LLM correlation fell back to object identity")
+        return f"llm_{id(obj)}"
+
+    def _register_llm_request(
+        self,
+        invocation_id: str,
+        llm_request: LlmRequest,
+        request_text: str,
+    ) -> str:
+        call_id = self._resolve_llm_call_id(llm_request, invocation_id)
+        call_key = (invocation_id, call_id)
+        self._stored_llm_call_ids[id(llm_request)] = call_id
+        self._request_text_by_call_key[call_key] = request_text
+        self._request_object_ids_by_call_key[call_key] = id(llm_request)
+        self._current_llm_call_ids.setdefault(invocation_id, []).append(call_id)
+        return call_id
+
+    def _clear_pending_llm_state(
+        self,
+        invocation_id: str,
+        call_id: str,
+        *,
+        llm_request: LlmRequest | None = None,
+        llm_response: LlmResponse | None = None,
+    ) -> None:
+        call_key = (invocation_id, call_id)
+        self._request_text_by_call_key.pop(call_key, None)
+
+        request_object_id = self._request_object_ids_by_call_key.pop(call_key, None)
+        if request_object_id is not None:
+            self._stored_llm_call_ids.pop(request_object_id, None)
+
+        if llm_request is not None:
+            self._stored_llm_call_ids.pop(id(llm_request), None)
+
+        if llm_response is not None:
+            self._stored_llm_call_ids.pop(id(llm_response), None)
+
+        self._clear_current_llm_call_id(invocation_id, call_id=call_id)
+
+    def _clear_current_llm_call_id(
+        self,
+        invocation_id: str,
+        *,
+        call_id: str | None = None,
+    ) -> None:
+        stack = self._current_llm_call_ids.get(invocation_id)
+        if not stack:
+            return
+
+        if call_id is None:
+            stack.pop()
+        else:
+            for index in range(len(stack) - 1, -1, -1):
+                if stack[index] == call_id:
+                    del stack[index]
+                    break
+
+        if not stack:
+            self._current_llm_call_ids.pop(invocation_id, None)
 
     def _sync_steps_blocking(
         self,

@@ -131,3 +131,21 @@ async def test_evaluate_and_enforce_raises_steer():
     ):
         with pytest.raises(ControlSteerError, match="Try again"):
             await _evaluate_and_enforce("test-agent01", "writer")
+
+
+@pytest.mark.asyncio
+async def test_evaluate_and_enforce_fallback_violation_includes_control_id():
+    result = MagicMock(spec=EvaluationResult)
+    result.is_safe = False
+    result.matches = [_match(action="warn", control_id=42, message="unsafe")]
+    result.errors = []
+    result.reason = None
+
+    with patch(
+        "agent_control.integrations._core.agent_control.evaluate_controls",
+        AsyncMock(return_value=result),
+    ):
+        with pytest.raises(ControlViolationError) as exc_info:
+            await _evaluate_and_enforce("test-agent01", "writer")
+
+    assert exc_info.value.control_id == 42

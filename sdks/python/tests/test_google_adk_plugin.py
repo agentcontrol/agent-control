@@ -36,14 +36,21 @@ class MockConfig:
 
 
 class MockLlmRequest:
-    def __init__(self, text: str = "hello", config: object | None = None):
+    def __init__(
+        self,
+        text: str = "hello",
+        config: object | None = None,
+        request_id: str | None = None,
+    ):
         self.contents = [SimpleNamespace(parts=[MockPart(text)])]
         self.config = config if config is not None else MockConfig()
+        self.request_id = request_id
 
 
 class MockLlmResponse:
-    def __init__(self, content: object):
+    def __init__(self, content: object, request_id: str | None = None):
         self.content = content
+        self.request_id = request_id
 
 
 class MockTool:
@@ -56,13 +63,19 @@ class MockTool:
 
 
 class MockToolContext:
-    def __init__(self, agent_name: str | None = None):
+    def __init__(
+        self,
+        agent_name: str | None = None,
+        callback_context: object | None = None,
+    ):
         self.agent_name = agent_name
+        self.callback_context = callback_context
 
 
 class MockCallbackContext:
-    def __init__(self, agent_name: str):
+    def __init__(self, agent_name: str, invocation_id: str | None = None):
         self.agent_name = agent_name
+        self.invocation_id = invocation_id
         self.agent = SimpleNamespace(name=agent_name, description=f"{agent_name} desc")
 
 
@@ -164,8 +177,8 @@ async def test_before_model_safe(plugin_module):
 @pytest.mark.asyncio
 async def test_before_model_deny_returns_blocked_response(plugin_module):
     plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
-    context = MockCallbackContext("writer")
-    request = MockLlmRequest("hello")
+    context = MockCallbackContext("writer", invocation_id="inv-1")
+    request = MockLlmRequest("hello", request_id="call-1")
 
     with patch.object(
         plugin_module,
@@ -179,13 +192,15 @@ async def test_before_model_deny_returns_blocked_response(plugin_module):
 
     assert isinstance(result, MockLlmResponse)
     assert result.content.parts[0].text == "Denied"
+    assert plugin._request_text_by_call_key == {}
+    assert plugin._current_llm_call_ids == {}
 
 
 @pytest.mark.asyncio
 async def test_before_model_steer_injects_guidance(plugin_module):
     plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
-    context = MockCallbackContext("writer")
-    request = MockLlmRequest("hello", config=MockConfig("Existing"))
+    context = MockCallbackContext("writer", invocation_id="inv-1")
+    request = MockLlmRequest("hello", config=MockConfig("Existing"), request_id="call-1")
 
     with patch.object(
         plugin_module,
@@ -205,6 +220,8 @@ async def test_before_model_steer_injects_guidance(plugin_module):
 
     assert result is None
     assert "Rewrite safely" in request.config.system_instruction
+    assert plugin._request_text_by_call_key == {("inv-1", "call-1"): "hello"}
+    assert plugin._current_llm_call_ids == {"inv-1": ["call-1"]}
 
 
 @pytest.mark.asyncio
@@ -237,21 +254,31 @@ async def test_before_model_steer_falls_back_to_blocked_response(plugin_module):
 @pytest.mark.asyncio
 async def test_after_model_steer_returns_replacement_response(plugin_module):
     plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
-    context = MockCallbackContext("writer")
-    response = MockLlmResponse(MockContent(role="model", parts=[MockPart("unsafe")]))
-    plugin._request_text_by_context_key[plugin._context_key(context)] = "hello"
+    context = MockCallbackContext("writer", invocation_id="inv-1")
+    request = MockLlmRequest("hello", request_id="call-1")
+    response = MockLlmResponse(
+        MockContent(role="model", parts=[MockPart("unsafe")]),
+        request_id="call-1",
+    )
 
     with patch.object(
         plugin_module,
         "_evaluate_and_enforce",
         AsyncMock(
-            side_effect=ControlSteerError(
-                control_name="c1",
-                message="Steer",
-                steering_context="Please rewrite",
-            )
+            side_effect=[
+                MagicMock(),
+                ControlSteerError(
+                    control_name="c1",
+                    message="Steer",
+                    steering_context="Please rewrite",
+                ),
+            ],
         ),
     ):
+        await plugin.before_model_callback(
+            callback_context=context,
+            llm_request=request,
+        )
         result = await plugin.after_model_callback(
             callback_context=context,
             llm_response=response,
@@ -259,6 +286,111 @@ async def test_after_model_steer_returns_replacement_response(plugin_module):
 
     assert isinstance(result, MockLlmResponse)
     assert result.content.parts[0].text == "Please rewrite"
+    assert plugin._request_text_by_call_key == {}
+    assert plugin._current_llm_call_ids == {}
+
+
+@pytest.mark.asyncio
+async def test_after_model_uses_request_id_correlation_for_multiple_inflight_calls(plugin_module):
+    plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
+    context = MockCallbackContext("writer", invocation_id="inv-1")
+    first_request = MockLlmRequest("first", request_id="call-1")
+    second_request = MockLlmRequest("second", request_id="call-2")
+    response = MockLlmResponse(
+        MockContent(role="model", parts=[MockPart("done")]),
+        request_id="call-1",
+    )
+
+    with patch.object(
+        plugin_module,
+        "_evaluate_and_enforce",
+        AsyncMock(return_value=MagicMock()),
+    ) as mock_eval:
+        await plugin.before_model_callback(
+            callback_context=context,
+            llm_request=first_request,
+        )
+        await plugin.before_model_callback(
+            callback_context=context,
+            llm_request=second_request,
+        )
+        await plugin.after_model_callback(
+            callback_context=context,
+            llm_response=response,
+        )
+
+    assert mock_eval.await_args_list[2].kwargs["input"] == "first"
+    assert plugin._request_text_by_call_key == {("inv-1", "call-2"): "second"}
+    assert plugin._current_llm_call_ids == {"inv-1": ["call-2"]}
+
+
+@pytest.mark.asyncio
+async def test_on_model_error_clears_pending_request_state(plugin_module):
+    plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
+    context = MockCallbackContext("writer", invocation_id="inv-1")
+    request = MockLlmRequest("hello", request_id="call-1")
+
+    with patch.object(
+        plugin_module,
+        "_evaluate_and_enforce",
+        AsyncMock(return_value=MagicMock()),
+    ):
+        await plugin.before_model_callback(
+            callback_context=context,
+            llm_request=request,
+        )
+
+    await plugin.on_model_error_callback(
+        callback_context=context,
+        llm_request=request,
+        error=RuntimeError("boom"),
+    )
+
+    assert plugin._request_text_by_call_key == {}
+    assert plugin._current_llm_call_ids == {}
+
+
+@pytest.mark.asyncio
+async def test_tool_callbacks_scope_step_name_by_agent(plugin_module):
+    plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
+    tool = MockTool("get_weather")
+    tool_context = MockToolContext(agent_name="writer")
+
+    with patch.object(
+        plugin_module,
+        "_evaluate_and_enforce",
+        AsyncMock(return_value=MagicMock()),
+    ) as mock_eval:
+        await plugin.before_tool_callback(
+            tool=tool,
+            tool_args={"city": "Rome"},
+            tool_context=tool_context,
+        )
+
+    assert mock_eval.await_args.args[1] == "writer.get_weather"
+
+
+@pytest.mark.asyncio
+async def test_tool_step_name_overrides_can_map_raw_name(plugin_module):
+    plugin = plugin_module.AgentControlPlugin(
+        agent_name="test-agent01",
+        step_name_overrides={"get_weather": "weather-guard"},
+    )
+    tool = MockTool("get_weather")
+    tool_context = MockToolContext(agent_name="writer")
+
+    with patch.object(
+        plugin_module,
+        "_evaluate_and_enforce",
+        AsyncMock(return_value=MagicMock()),
+    ) as mock_eval:
+        await plugin.before_tool_callback(
+            tool=tool,
+            tool_args={"city": "Rome"},
+            tool_context=tool_context,
+        )
+
+    assert mock_eval.await_args.args[1] == "weather-guard"
 
 
 @pytest.mark.asyncio
@@ -323,6 +455,29 @@ async def test_enabled_hooks_skip_evaluation(plugin_module):
 
 
 @pytest.mark.asyncio
+async def test_before_model_without_after_model_does_not_cache_request_state(plugin_module):
+    plugin = plugin_module.AgentControlPlugin(
+        agent_name="test-agent01",
+        enabled_hooks={"before_model"},
+    )
+    context = MockCallbackContext("writer", invocation_id="inv-1")
+    request = MockLlmRequest("hello", request_id="call-1")
+
+    with patch.object(
+        plugin_module,
+        "_evaluate_and_enforce",
+        AsyncMock(return_value=MagicMock()),
+    ):
+        await plugin.before_model_callback(
+            callback_context=context,
+            llm_request=request,
+        )
+
+    assert plugin._request_text_by_call_key == {}
+    assert plugin._current_llm_call_ids == {}
+
+
+@pytest.mark.asyncio
 async def test_step_name_overrides_apply(plugin_module):
     plugin = plugin_module.AgentControlPlugin(
         agent_name="test-agent01",
@@ -379,9 +534,26 @@ def test_bind_discovers_root_sub_agents_and_tools(plugin_module):
 
     assert ("llm", "planner") in plugin._known_steps
     assert ("llm", "writer") in plugin._known_steps
-    assert ("tool", "search_docs") in plugin._known_steps
-    assert ("tool", "save_draft") in plugin._known_steps
+    assert ("tool", "planner.search_docs") in plugin._known_steps
+    assert ("tool", "writer.save_draft") in plugin._known_steps
     mock_sync.assert_called_once()
+
+
+def test_bind_keeps_duplicate_tool_names_distinct_across_sub_agents(plugin_module):
+    plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
+    root = SimpleNamespace(
+        name="planner",
+        sub_agents=[
+            SimpleNamespace(name="researcher", tools=[MockTool("search_docs")]),
+            SimpleNamespace(name="writer", tools=[MockTool("search_docs")]),
+        ],
+    )
+
+    with patch.object(plugin, "_sync_steps_blocking"):
+        plugin.bind(root)
+
+    assert ("tool", "researcher.search_docs") in plugin._known_steps
+    assert ("tool", "writer.search_docs") in plugin._known_steps
 
 
 @pytest.mark.asyncio
@@ -446,7 +618,11 @@ def test_context_key_falls_back_to_id_for_unhashable_callback(plugin_module):
 @pytest.mark.asyncio
 async def test_close_cancels_tasks_and_clears_request_cache(plugin_module):
     plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
-    plugin._request_text_by_context_key["ctx"] = "hello"
+    plugin._generated_invocation_ids["ctx"] = "inv-1"
+    plugin._request_text_by_call_key[("inv-1", "call-1")] = "hello"
+    plugin._request_object_ids_by_call_key[("inv-1", "call-1")] = 123
+    plugin._current_llm_call_ids["inv-1"] = ["call-1"]
+    plugin._stored_llm_call_ids[123] = "call-1"
 
     gate = asyncio.Future()
 
@@ -458,7 +634,11 @@ async def test_close_cancels_tasks_and_clears_request_cache(plugin_module):
 
     await plugin.close()
 
-    assert plugin._request_text_by_context_key == {}
+    assert plugin._generated_invocation_ids == {}
+    assert plugin._request_text_by_call_key == {}
+    assert plugin._request_object_ids_by_call_key == {}
+    assert plugin._current_llm_call_ids == {}
+    assert plugin._stored_llm_call_ids == {}
     assert plugin._step_sync_tasks == {}
     assert task.cancelled()
 
@@ -471,6 +651,7 @@ async def test_on_violation_callback_receives_metadata(plugin_module):
         on_violation_callback=callback,
     )
     tool = MockTool("get_weather")
+    tool_context = MockToolContext(agent_name="writer")
 
     with patch.object(
         plugin_module,
@@ -480,10 +661,10 @@ async def test_on_violation_callback_receives_metadata(plugin_module):
         await plugin.before_tool_callback(
             tool=tool,
             tool_args={"city": "Rome"},
-            tool_context=MockToolContext(),
+            tool_context=tool_context,
         )
 
     metadata, payload = callback.call_args.args
-    assert metadata["step_name"] == "get_weather"
+    assert metadata["step_name"] == "writer.get_weather"
     assert metadata["stage"] == "pre"
     assert payload["action"] == "deny"

@@ -83,6 +83,18 @@ def test_resolve_tool_name(extractor_module):
     assert extractor_module.resolve_tool_name(tool) == "search_docs"
 
 
+def test_resolve_tool_agent_name_prefers_callback_context(extractor_module):
+    tool_context = SimpleNamespace(
+        callback_context=SimpleNamespace(
+            agent=SimpleNamespace(name="writer"),
+            agent_name="fallback",
+        ),
+        agent_name="tool-fallback",
+    )
+
+    assert extractor_module.resolve_tool_agent_name(tool_context) == "writer"
+
+
 def test_build_blocked_llm_response(extractor_module):
     response = extractor_module.build_blocked_llm_response("blocked")
 

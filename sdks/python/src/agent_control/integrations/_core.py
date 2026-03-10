@@ -94,6 +94,7 @@ async def _evaluate_and_enforce(
                 reason = msg or f"Control '{control_name}' triggered"
 
         raise ControlViolationError(
+            control_id=(match.control_id if match is not None else None),
             control_name=control_name,
             message=reason or "Control violation",
             metadata=(getattr(match.result, "metadata", None) if match is not None else None),
