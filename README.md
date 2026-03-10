@@ -44,6 +44,7 @@ Traditional guardrails embedded inside your agent code have critical limitations
 Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start).
 
 - **[Examples Overview](examples/README.md)** — Complete catalog of examples and patterns
+- **[TypeScript SDK](examples/typescript_sdk/)** — Consumer-style TypeScript example using the published npm package
 
 ### Core demos
 - **[Customer Support Agent](examples/customer_support_agent/)** — Enterprise scenario with PII protection, prompt-injection defense, and multiple tools
@@ -57,36 +58,35 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 - **[LangChain](examples/langchain/)** — Protect a SQL agent from dangerous queries with server-side controls
 - **[CrewAI](examples/crewai/)** — Combine Agent Control security controls with CrewAI guardrails for customer support
 - **[AWS Strands](examples/strands_agents/)** — Guardrails for AWS Strands agent workflows and tool calls
-- **[TypeScript SDK](examples/typescript_sdk/)** — Consumer-style TypeScript example using the published npm package
 
 
 ## Quick start
 
 Protect your AI agent in 4 simple steps.
 
-> Prefer a full demo walkthrough? See the complete [Agent Control Demo](/examples/agent-control-demo) for an end-to-end, runnable alternative.
+> Prefer a full demo walkthrough? See the complete [Agent Control Demo](examples/agent_control_demo) for an end-to-end, runnable alternative.
 
 ### Prerequisites
 
 - Python 3.12+
 - Docker
 
-### Step 1: Start the Agent Control server
-
-Choose one of the following setups.
-
-#### Option A — SDK only (fastest)
-
-Run the Agent Control server and PostgreSQL database via Docker Compose:
+> **Quick start for developers:**  
+> Copy this into your terminal or paste this directly into a coding agent to start the Agent Control server, UI, and install the SDK:
 
 ```bash
-curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
+curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d && pip install agent-control-sdk
 ```
 
-- Server runs at `http://localhost:8000`
-- UI runs at `http://localhost:4000`
+> Then jump to **Step 3: Register your agent**.  
+> - Server runs at `http://localhost:8000`  
+> - UI runs at `http://localhost:4000`
 
-#### Option B — Local development (cloning the repo)
+### Step 1: Start the Agent Control server
+
+Startup Agent Control server manually for local development.
+
+#### Local development (cloning the repo)
 
 Prerequisites:
 
@@ -233,6 +233,22 @@ uv run my_agent.py
 
 Done. Your agent now blocks SSN patterns automatically.
 
+## Performance
+
+| Endpoint | Scenario | RPS | p50 | p99 |
+|----------|----------|-----|-----|-----|
+| Agent init | Agent with 3 tool steps | 509 | 19 ms | 54 ms |
+| Evaluation | 1 control, 500-char content | 437 | 36 ms | 61 ms |
+| Evaluation | 10 controls, 500-char content | 349 | 35 ms | 66 ms |
+| Evaluation | 50 controls, 500-char content | 199 | 63 ms | 91 ms |
+| Controls refresh | 5-50 controls per agent | 273-392 | 20-27 ms | 27-61 ms |
+
+- Agent init handles both create and update identically (upsert).
+- All four built-in evaluators (regex, list, JSON, SQL) perform within 40-46 ms p50 at 1 control.
+- Moving from 1 to 50 controls increased evaluation p50 by about 27 ms.
+- Local laptop benchmarks are directional and intended for developer reference. They are not production sizing guidance.
+
+_Benchmarked on Apple M5 (16 GB RAM), Docker Compose (`postgres:16` + `agent-control`). 2 minutes per scenario, 5 concurrent users for latency (p50, p99), 10-20 for throughput (RPS). RPS = completed requests per second. All scenarios completed with 0% errors._
 
 ## Documentation
 
