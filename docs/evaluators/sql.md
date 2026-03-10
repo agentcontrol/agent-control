@@ -8,18 +8,17 @@ A practical guide for configuring SQL validation controls in your AI agent.
 
 The SQL Evaluator validates SQL query strings (e.g., from LLM responses) before they execute against your database. It acts as a security and safety layer, preventing dangerous operations, enforcing access rules, and ensuring data isolation.
 
-**Technical Foundation**: Uses [sqlglot](https://github.com/tobymao/sqlglot) with the Rust-accelerated parser (`sqlglot[rs]`) for high-performance SQL parsing and AST-based validation.
+**Technical Foundation**: Uses [sqlglot](https://github.com/tobymao/sqlglot) with the C-accelerated parser (`sqlglot[c]`) for high-performance SQL parsing and AST-based validation.
 
 > **💡 Performance Note**
 >
-> The Rust-accelerated parser provides significantly faster SQL parsing performance. However, it requires the Rust compiler to be installed on your system during installation. If Rust is not available, `sqlglot[rs]` automatically falls back to the slower Python-based parser—everything will still work correctly, just with reduced performance.
+> The compiled `sqlglot[c]` extra provides faster parsing performance. Upstream distributes prebuilt wheels when available; otherwise it builds the extension from source during installation.
 >
-> **To install Rust**: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-> **To verify Rust tokenizer is active**: `python -c "import sqlglot_rs; print('✓ Rust tokenizer installed')"`
+> If you are experimenting locally with plain `sqlglot` instead of `sqlglot[c]`, the evaluator behavior is the same but parsing will be slower.
 
 > **⚠️ Blocking Behavior & Performance**
 >
-> The `sqlglot.parse()` function is **synchronous** (no async version exists) and is **CPU-bound** (pure Python/Rust). Parsing happens inline during validation.
+> The `sqlglot.parse()` function is **synchronous** (no async version exists) and is **CPU-bound** (pure Python/C extension). Parsing happens inline during validation.
 >
 > **Official benchmark results** (Python 3.9.6):
 > - **Short query**: ~0.4ms

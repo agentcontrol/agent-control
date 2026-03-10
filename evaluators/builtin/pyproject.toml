@@ -11,7 +11,7 @@ dependencies = [
     "pydantic>=2.12.4",
     "google-re2>=1.1",
     "jsonschema>=4.0.0",
-    "sqlglot[rs]>=20.0.0",
+    "sqlglot[c]>=29.0.0,<29.1.0",
 ]
 
 [project.optional-dependencies]
