@@ -237,38 +237,41 @@ def _print_auto_derived_steps() -> None:
 
 async def main() -> None:
     """Run the demo end-to-end."""
-    print("Initializing Agent Control (no explicit steps passed)...")
-    agent_control.init(
-        agent_name=AGENT_NAME,
-        agent_description=AGENT_DESCRIPTION,
-        server_url=os.getenv("AGENT_CONTROL_URL"),
-    )
+    try:
+        print("Initializing Agent Control (no explicit steps passed)...")
+        agent_control.init(
+            agent_name=AGENT_NAME,
+            agent_description=AGENT_DESCRIPTION,
+            server_url=os.getenv("AGENT_CONTROL_URL"),
+        )
 
-    _print_auto_derived_steps()
+        _print_auto_derived_steps()
 
-    app = _build_graph()
+        app = _build_graph()
 
-    scenarios = [
-        "Track order 1001 and include its history",
-        "Issue a refund for order 2048 because it was late (49 dollars)",
-    ]
+        scenarios = [
+            "Track order 1001 and include its history",
+            "Issue a refund for order 2048 because it was late (49 dollars)",
+        ]
 
-    print("\nRunning LangGraph scenarios...")
-    for prompt in scenarios:
-        print("=" * 80)
-        print(f"User: {prompt}")
-        try:
-            result = await app.ainvoke({"messages": [HumanMessage(content=prompt)]})
-            final_message = result["messages"][-1]
-            print(f"Assistant: {final_message.content}")
-        except ControlViolationError as exc:
-            print(f"Assistant: Request blocked by control rules: {exc.message}")
-        except RuntimeError as exc:
-            print(
-                "Assistant: Control evaluation is unavailable. "
-                f"Start the Agent Control server and retry. Details: {exc}"
-            )
-            break
+        print("\nRunning LangGraph scenarios...")
+        for prompt in scenarios:
+            print("=" * 80)
+            print(f"User: {prompt}")
+            try:
+                result = await app.ainvoke({"messages": [HumanMessage(content=prompt)]})
+                final_message = result["messages"][-1]
+                print(f"Assistant: {final_message.content}")
+            except ControlViolationError as exc:
+                print(f"Assistant: Request blocked by control rules: {exc.message}")
+            except RuntimeError as exc:
+                print(
+                    "Assistant: Control evaluation is unavailable. "
+                    f"Start the Agent Control server and retry. Details: {exc}"
+                )
+                break
+    finally:
+        await agent_control.ashutdown()
 
 
 if __name__ == "__main__":

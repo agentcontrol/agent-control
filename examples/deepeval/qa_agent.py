@@ -29,10 +29,12 @@ import asyncio
 import logging
 import os
 import sys
-from uuid import UUID
 
 import agent_control
 from agent_control import ControlViolationError, control
+
+AGENT_NAME = "qa-agent-with-deepeval"
+AGENT_DESCRIPTION = "Q&A Agent with DeepEval"
 
 # Enable DEBUG logging for agent_control to see what's happening
 logging.basicConfig(level=logging.DEBUG, format='%(name)s - %(levelname)s - %(message)s')
@@ -42,22 +44,27 @@ logging.getLogger('agent_control').setLevel(logging.DEBUG)
 # SDK INITIALIZATION
 # =============================================================================
 
-agent_control.init(
-    agent_name="qa-agent-with-deepeval",
-    agent_description="Q&A Agent with DeepEval",
-    agent_version="1.0.0",
-)
+def initialize_agent_control() -> None:
+    """Initialize the SDK once for this example process."""
+    current_agent = agent_control.current_agent()
+    if current_agent is not None and current_agent.agent_name == AGENT_NAME:
+        return
 
-# Debug: Check if controls were loaded
-controls = agent_control.get_server_controls()
-print(f"DEBUG: Loaded {len(controls) if controls else 0} controls from server")
-if controls:
-    for c in controls:
-        ctrl_def = c.get('control', {})
-        print(f"  - {c['name']}:")
-        print(f"      enabled: {ctrl_def.get('enabled', False)}")
-        print(f"      execution: {ctrl_def.get('execution', 'NOT SET')}")
-        print(f"      scope: {ctrl_def.get('scope', {})}")
+    agent_control.init(
+        agent_name=AGENT_NAME,
+        agent_description=AGENT_DESCRIPTION,
+        agent_version="1.0.0",
+    )
+
+    controls = agent_control.get_server_controls()
+    print(f"DEBUG: Loaded {len(controls) if controls else 0} controls from server")
+    if controls:
+        for c in controls:
+            ctrl_def = c.get('control', {})
+            print(f"  - {c['name']}:")
+            print(f"      enabled: {ctrl_def.get('enabled', False)}")
+            print(f"      execution: {ctrl_def.get('execution', 'NOT SET')}")
+            print(f"      scope: {ctrl_def.get('scope', {})}")
 
 
 # =============================================================================
@@ -190,6 +197,7 @@ class QAAgent:
     """
 
     def __init__(self):
+        initialize_agent_control()
         self.conversation_history: list[dict[str, str]] = []
 
     async def ask(self, question: str) -> str:
@@ -202,9 +210,9 @@ class QAAgent:
         self.conversation_history.append({"role": "user", "content": question})
 
         # Debug: Check if agent is still initialized
-        import agent_control
-        current_agent = agent_control._current_agent if hasattr(agent_control, '_current_agent') else None
-        print(f"DEBUG: Current agent before call: {current_agent.agent_name if current_agent else 'NONE'}")
+        current_agent = agent_control.current_agent()
+        current_agent_name = current_agent.agent_name if current_agent else "NONE"
+        print(f"DEBUG: Current agent before call: {current_agent_name}")
 
         try:
             # Get answer - protected by DeepEval controls
@@ -361,37 +369,40 @@ async def run_interactive(agent: QAAgent):
 
 async def main():
     """Run the Q&A agent."""
-    # Check for OPENAI_API_KEY
-    if not os.getenv("OPENAI_API_KEY"):
-        print("\n⚠️  Warning: OPENAI_API_KEY not set!")
-        print("   DeepEval requires OpenAI API access for GEval.")
-        print("   Set it with: export OPENAI_API_KEY='your-key'")
-        print()
-        response = input("Continue anyway? (y/N): ").strip().lower()
-        if response != "y":
-            print("Exiting. Set OPENAI_API_KEY and try again.")
+    try:
+        # Check for OPENAI_API_KEY
+        if not os.getenv("OPENAI_API_KEY"):
+            print("\n⚠️  Warning: OPENAI_API_KEY not set!")
+            print("   DeepEval requires OpenAI API access for GEval.")
+            print("   Set it with: export OPENAI_API_KEY='your-key'")
+            print()
+            response = input("Continue anyway? (y/N): ").strip().lower()
+            if response != "y":
+                print("Exiting. Set OPENAI_API_KEY and try again.")
+                sys.exit(1)
+
+        # Check server connection
+        server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
+        print(f"\nConnecting to agent-control server at {server_url}...")
+
+        import httpx
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{server_url}/health", timeout=5.0)
+                resp.raise_for_status()
+                print("✓ Connected to server")
+        except Exception as e:
+            print(f"\n❌ Cannot connect to server: {e}")
+            print("   Make sure the agent-control server is running.")
+            print("   Run setup_controls.py first to configure the agent.")
             sys.exit(1)
 
-    # Check server connection
-    server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
-    print(f"\nConnecting to agent-control server at {server_url}...")
-
-    import httpx
-
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(f"{server_url}/health", timeout=5.0)
-            resp.raise_for_status()
-            print("✓ Connected to server")
-    except Exception as e:
-        print(f"\n❌ Cannot connect to server: {e}")
-        print("   Make sure the agent-control server is running.")
-        print("   Run setup_controls.py first to configure the agent.")
-        sys.exit(1)
-
-    # Create and run agent
-    agent = QAAgent()
-    await run_interactive(agent)
+        # Create and run agent
+        agent = QAAgent()
+        await run_interactive(agent)
+    finally:
+        await agent_control.ashutdown()
 
 
 if __name__ == "__main__":
