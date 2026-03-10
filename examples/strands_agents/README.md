@@ -29,3 +29,7 @@ uv run streamlit run steering_demo/email_safety_demo.py
 ```
 
 Full walkthrough: https://docs.agentcontrol.dev/examples/aws-strands
+
+Read more about Agent Control integration with Strands at [Integration Docs](https://docs.agentcontrol.dev/integrations/strands)
+
+See integration source code in [sdks/python/src/agent_control/integrations/strands](../../sdks/python/src/agent_control/integrations/strands)
