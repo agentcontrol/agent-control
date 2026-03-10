@@ -80,7 +80,7 @@ Protect your AI agent in 4 simple steps.
 
 ### ⚡ Quick Start for Developers
 
-**One-line setup** - Copy this into your terminal or directly paste into your coding agent to start the Agent Control server, UI, and install the SDK:
+**One-line setup (no repo cloning required)** - Copy this into your terminal or directly paste into your coding agent to start the Agent Control server, UI, and install the SDK:
 
 ```bash
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d && pip install agent-control-sdk
@@ -94,6 +94,8 @@ curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/
 **Next:** Jump to [Step 3: Register your agent](#step-3-register-your-agent)
 
 ---
+
+**Alternatively**, for local development with the Agent Control repository, clone the repo and follow all steps below.
 
 ### Step 1: Start the Agent Control server
 
