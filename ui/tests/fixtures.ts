@@ -417,7 +417,9 @@ export const mockRoutes = {
   /** Mock GET /api/config (auth) - must be hit before app content renders */
   config: async (
     page: Page,
-    options: MockResponseOptions<ServerConfigMock> = { data: serverConfigResponse }
+    options: MockResponseOptions<ServerConfigMock> = {
+      data: serverConfigResponse,
+    }
   ) => {
     const data = {
       ...serverConfigResponse,
