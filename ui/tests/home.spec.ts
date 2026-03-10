@@ -1,7 +1,7 @@
 import type { ListAgentsResponse } from '@/core/api/types';
 import { getAgentRoute } from '@/core/constants/agent-routes';
 
-import { expect, mockData, test } from './fixtures';
+import { expect, mockData, mockRoutes, test } from './fixtures';
 
 test.describe('Home Page - Agents Overview', () => {
   test('displays the page header correctly', async ({ mockedPage }) => {
@@ -94,6 +94,7 @@ test.describe('Home Page - Agents Overview', () => {
   });
 
   test('shows loading state initially', async ({ page }) => {
+    await mockRoutes.config(page);
     // Set up a delayed API response with proper type
     const delayedResponse: ListAgentsResponse = mockData.agents;
 
@@ -153,6 +154,7 @@ test.describe('Home Page - Agents Overview', () => {
   });
 
   test('handles API error gracefully', async ({ page }) => {
+    await mockRoutes.config(page);
     // Mock API to return error
     await page.route('**/api/v1/agents?**', async (route) => {
       await route.fulfill({
@@ -172,6 +174,7 @@ test.describe('Home Page - Agents Overview', () => {
   });
 
   test('shows empty state when no agents are returned', async ({ page }) => {
+    await mockRoutes.config(page);
     const emptyAgents: ListAgentsResponse = {
       agents: [],
       pagination: {
