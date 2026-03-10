@@ -19,12 +19,12 @@ export function useUpdateControlMetadata() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({
-      controlId,
-      data,
-    }: UpdateControlMetadataParams) => {
-      const { data: result, error, response } =
-        await api.controls.updateMetadata(controlId, data);
+    mutationFn: async ({ controlId, data }: UpdateControlMetadataParams) => {
+      const {
+        data: result,
+        error,
+        response,
+      } = await api.controls.updateMetadata(controlId, data);
 
       if (error) {
         throw parseApiError(
@@ -48,4 +48,3 @@ export function useUpdateControlMetadata() {
     },
   });
 }
-
