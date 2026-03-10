@@ -49,6 +49,7 @@ import asyncio
 import os
 import threading
 from collections.abc import Callable, Coroutine
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, TypeVar
 
@@ -95,6 +96,7 @@ from .observability import (
     is_observability_enabled,
     log_control_evaluation,
     shutdown_observability,
+    sync_shutdown_observability,
 )
 
 # Import tracing and observability
@@ -125,6 +127,20 @@ _refresh_lock = threading.Lock()
 _policy_refresh_interval_seconds: int | None = None
 _refresh_thread: threading.Thread | None = None
 _refresh_stop_event: threading.Event | None = None
+
+# Session lifecycle state used to discard stale manual refresh results.
+_session_lock = threading.Lock()
+_session_generation = 0
+
+
+@dataclass(frozen=True)
+class _RefreshContext:
+    """Connection/session snapshot for a single refresh request."""
+
+    session_generation: int
+    agent_name: str
+    server_url: str
+    api_key: str | None
 
 
 def get_server_controls() -> list[dict[str, Any]] | None:
@@ -170,17 +186,74 @@ def _run_coro_in_new_loop[T](coro: Coroutine[Any, Any, T]) -> T:
         asyncio.set_event_loop(None)
 
 
+def _snapshot_refresh_context() -> _RefreshContext:
+    """Capture a consistent session snapshot for a refresh request."""
+    with _session_lock:
+        session_generation = _session_generation
+        agent = state.current_agent
+        server_url = state.server_url
+        api_key = state.api_key
+
+    if agent is None:
+        raise RuntimeError("Agent not initialized. Call agent_control.init() first.")
+    if server_url is None:
+        raise RuntimeError("Server URL not set. Call agent_control.init() first.")
+
+    return _RefreshContext(
+        session_generation=session_generation,
+        agent_name=agent.agent_name,
+        server_url=server_url,
+        api_key=api_key,
+    )
+
+
+async def _fetch_controls_for_context_async(context: _RefreshContext) -> list[dict[str, Any]]:
+    """Fetch controls for a previously snapshotted session context."""
+    async with AgentControlClient(
+        base_url=context.server_url,
+        api_key=context.api_key,
+    ) as client:
+        response = await agents.list_agent_controls(client, context.agent_name)
+        controls: list[dict[str, Any]] = response.get("controls", [])
+        return controls
+
+
+async def _fetch_controls_async() -> list[dict[str, Any]]:
+    """Fetch controls from the server without publishing.
+
+    Snapshots connection state into locals before any I/O so the result
+    is safe to discard if shutdown fires mid-flight.
+
+    Returns:
+        Raw list of control dicts from the server.
+
+    Raises:
+        RuntimeError: If the SDK is not initialized.
+        Exception: On network / server errors (caller decides policy).
+    """
+    context = _snapshot_refresh_context()
+    return await _fetch_controls_for_context_async(context)
+
+
 def _policy_refresh_worker(stop_event: threading.Event, interval_seconds: int) -> None:
     """Background worker that periodically refreshes controls."""
     while not stop_event.wait(interval_seconds):
+        if stop_event.is_set():
+            break
         try:
-            _run_coro_in_new_loop(refresh_controls_async())
+            controls = _run_coro_in_new_loop(_fetch_controls_async())
         except Exception as exc:
             logger.error(
                 "Background policy refresh loop iteration failed: %s",
                 exc,
                 exc_info=True,
             )
+            continue
+        # Do not publish if shutdown was requested during the fetch.
+        if stop_event.is_set():
+            break
+        _publish_server_controls(controls)
+        logger.info("Refreshed %d control(s) from server", len(controls))
 
 
 def _stop_policy_refresh_loop() -> None:
@@ -241,18 +314,9 @@ async def refresh_controls_async() -> list[dict[str, Any]] | None:
         controls = await agent_control.refresh_controls_async()
         print(f"Refreshed {len(controls)} controls")
     """
-    if state.current_agent is None:
-        raise RuntimeError("Agent not initialized. Call agent_control.init() first.")
-
-    if state.server_url is None:
-        raise RuntimeError("Server URL not set. Call agent_control.init() first.")
-
+    context = _snapshot_refresh_context()
     try:
-        async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
-            response = await agents.list_agent_controls(client, state.current_agent.agent_name)
-            refreshed_controls = _publish_server_controls(response.get("controls", []))
-            logger.info("Refreshed %d control(s) from server", len(refreshed_controls or []))
-            return refreshed_controls
+        controls = await _fetch_controls_for_context_async(context)
     except Exception as exc:
         logger.error(
             "Failed to refresh controls; keeping previous cache (%d control(s)): %s",
@@ -261,6 +325,21 @@ async def refresh_controls_async() -> list[dict[str, Any]] | None:
             exc_info=True,
         )
         return state.server_controls
+
+    with _session_lock:
+        if context.session_generation != _session_generation:
+            logger.info(
+                "Discarding stale control refresh result for superseded SDK session"
+            )
+            return state.server_controls
+
+        refreshed_controls = _publish_server_controls(controls)
+
+    if refreshed_controls is not None:
+        logger.info("Refreshed %d control(s) from server", len(refreshed_controls or []))
+    else:
+        logger.info("Refreshed 0 control(s) from server")
+    return refreshed_controls
 
 
 def refresh_controls() -> list[dict[str, Any]] | None:
@@ -401,7 +480,7 @@ def init(
         configure_logging(log_config)
 
     # Create agent instance with metadata and store in state
-    state.current_agent = Agent(
+    next_agent = Agent(
         agent_name=_agent_name,
         agent_description=agent_description,
         agent_created_at=datetime.now(UTC).isoformat(),
@@ -410,9 +489,14 @@ def init(
         agent_metadata=kwargs
     )
 
-    # Get server URL (ensure it's always a string)
-    state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    state.api_key = api_key
+    # Bump the session generation before mutating connection state so any
+    # in-flight manual refresh from a previous session is discarded on return.
+    global _session_generation
+    with _session_lock:
+        _session_generation += 1
+        state.current_agent = next_agent
+        state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+        state.api_key = api_key
 
     # Merge auto-discovered steps from @control() decorators with explicit steps.
     # Explicit steps take precedence when (type, name) collides.
@@ -542,6 +626,52 @@ def init(
         logger.debug("Policy refresh loop disabled (policy_refresh_interval_seconds=0)")
 
     return state.current_agent
+
+
+# ============================================================================
+# Shutdown
+# ============================================================================
+
+
+def _reset_state() -> None:
+    """Clear all global SDK state."""
+    global _session_generation
+
+    with _session_lock:
+        _session_generation += 1
+        state.current_agent = None
+        state.control_engine = None
+        state.server_controls = None
+        state.server_url = None
+        state.api_key = None
+
+
+async def ashutdown() -> None:
+    """Shut down the SDK and release all background resources.
+
+    Flushes pending observability events, stops the policy refresh loop,
+    and resets global state.  Idempotent - safe to call multiple times.
+
+    Use this from async code.  For sync code use :func:`shutdown`.
+    """
+    await asyncio.to_thread(_stop_policy_refresh_loop)
+    await shutdown_observability()
+    _reset_state()
+    logger.info("Agent Control SDK shut down")
+
+
+def shutdown() -> None:
+    """Shut down the SDK and release all background resources.
+
+    Flushes pending observability events, stops the policy refresh loop,
+    and resets global state.  Idempotent - safe to call multiple times.
+
+    Use this from sync code.  For async code use :func:`ashutdown`.
+    """
+    _stop_policy_refresh_loop()
+    sync_shutdown_observability()
+    _reset_state()
+    logger.info("Agent Control SDK shut down")
 
 
 async def get_agent(
@@ -1123,8 +1253,10 @@ async def list_policy_controls(
 
 
 __all__ = [
-    # Initialization
+    # Initialization & lifecycle
     "init",
+    "shutdown",
+    "ashutdown",
     "current_agent",
 
     # Control sync
