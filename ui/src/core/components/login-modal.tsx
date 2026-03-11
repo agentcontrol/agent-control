@@ -13,6 +13,7 @@ import Image from 'next/image';
 import type { FormEvent } from 'react';
 import { useState } from 'react';
 
+import classes from '@/core/components/login-modal.module.css';
 import { useAuth } from '@/core/providers/auth-provider';
 
 type LoginModalProps = {
@@ -62,12 +63,24 @@ export function LoginModal({ opened }: LoginModalProps) {
       <form onSubmit={handleSubmit}>
         <Stack gap="lg" p="md">
           <Center>
-            <Image
-              src="/ac-logo-light.svg"
-              alt="Agent Control"
-              width={48}
-              height={48}
-            />
+            <span className={classes.logoWrapper}>
+              <span className={classes.darkLogo}>
+                <Image
+                  src="/ac-logo-light.svg"
+                  alt="Agent Control"
+                  width={48}
+                  height={48}
+                />
+              </span>
+              <span className={classes.lightLogo}>
+                <Image
+                  src="/ac-logo-dark.svg"
+                  alt="Agent Control"
+                  width={48}
+                  height={48}
+                />
+              </span>
+            </span>
           </Center>
 
           <Stack gap={4} ta="center">
