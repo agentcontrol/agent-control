@@ -11,7 +11,7 @@
   />
 </p>
 
-<h1 align="center">Agent Control</h1>
+<h1 align="center"><a href="https://agentcontrol.dev">Agent Control</a></h1>
 
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" /></a>
@@ -29,12 +29,14 @@
   <a href="https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA">Slack</a>
 </p>
 
-Runtime guardrails for AI agents - configurable, extensible, and production-ready.
+A policy-based control layer that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules - blocking prompt injections, PII leakage, and other risks - without changing your agent's code.
 
-- Minimal integration - add guardrails with a decorator, callback, or a few lines of SDK code
-- Runtime configuration - update controls via API or UI without redeploying
-- Pluggable evaluators - built-in or custom
-- Framework support - works with LangChain, CrewAI, Google ADK, AWS Strands, and more
+- **Centralized safety** - define controls once, apply across agents, update without redeploying
+- **Runtime configuration** - manage controls via API or UI, no code changes needed
+- **Pluggable evaluators** - built-in (regex, list, JSON, SQL) or bring your own
+- **Framework support** - works with LangChain, CrewAI, Google ADK, AWS Strands, and more
+
+![Agent Control Overview](docs/images/AgentControlDiagram.png)
 
 ## Quick Start
 
@@ -80,50 +82,41 @@ TypeScript:
 ### 3. Wrap the part of your agent you want to guard
 
 ```python
+# my_agent.py
+import asyncio
 import agent_control
-from agent_control import control
-
-agent_control.init(
-    agent_name="customer-support-bot",
-    agent_description="Support assistant",
-)
+from agent_control import control, ControlViolationError
 
 @control()
-async def answer(message: str) -> str:
-    # Replace this with your model or tool call.
-    return await llm.ainvoke(message)
+async def chat(message: str) -> str:
+    # Simulates an LLM that might leak sensitive data
+    if "test" in message.lower():
+        return "Your SSN is 123-45-6789"  # Blocked!
+    return f"Echo: {message}"
+
+agent_control.init(
+    agent_name="my-agent",
+    agent_description="My first agent",
+)
+
+async def main():
+    try:
+        print(await chat("test"))
+    except ControlViolationError as e:
+        print(f"Blocked: {e.control_name}")
+
+asyncio.run(main())
 ```
 
 ### 4. Add controls
 
-Choose the path you want:
+Next, create controls that define what to check and how to respond. Follow one of these guides:
 
-- Recommended: follow the [full Quickstart](https://docs.agentcontrol.dev/core/quickstart)
-- Visual setup: follow the [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart)
-- Working code examples: browse [examples/README.md](examples/README.md)
-
-The published `docker-compose.yml` starts the API only. If you also want the local dashboard, use the repo workflow below.
-
-## Local Development
-
-If you want to work on Agent Control itself, clone the repo and use the workspace `make` targets:
-
-```bash
-git clone https://github.com/agentcontrol/agent-control.git
-cd agent-control
-make sync
-make server-run
-```
-
-To run the UI in a second shell, install Node.js 18+ and `pnpm`, then run:
-
-```bash
-make ui-install
-make ui-dev
-```
-
-- API: `http://localhost:8000`
-- UI: `http://localhost:4000`
+- [Quickstart](https://docs.agentcontrol.dev/core/quickstart) - full walkthrough including control creation via SDK
+- [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart) - create controls visually in the dashboard
+- [Controls](https://docs.agentcontrol.dev/concepts/controls) - learn how controls, selectors, and evaluators work
+- [Decorate LLM & tool calls](https://docs.agentcontrol.dev/how-to/decorate-llm-tool-calls) - patterns for wrapping your agent code
+- [Examples](https://docs.agentcontrol.dev/examples/overview) - end-to-end examples with popular frameworks
 
 ## How It Works
 
