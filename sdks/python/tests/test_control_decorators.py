@@ -854,9 +854,10 @@ class TestExceptionHandling:
             assert "Unexpected error" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_other_exceptions_logged_in_post_execution(self, mock_agent, mock_safe_response):
-        """Test that non-control exceptions are logged (not raised) in post-execution."""
+    async def test_other_exceptions_wrapped_in_post_execution(self, mock_agent, mock_safe_response):
+        """Test that non-control exceptions fail closed in post-execution."""
         call_count = [0]
+        executed = {"value": False}
 
         def mock_evaluate_side_effect(*args, **kwargs):
             call_count[0] += 1
@@ -870,12 +871,18 @@ class TestExceptionHandling:
 
             @control()
             async def test_func():
+                executed["value"] = True
                 return "executed successfully"
 
-            # Function should still complete despite post-execution error
-            result = await test_func()
-            assert result == "executed successfully"
+            # Function still executes, but the result is withheld for safety.
+            with pytest.raises(RuntimeError) as exc_info:
+                await test_func()
 
-            # Error should be logged
+            assert executed["value"] is True
+            assert "Control check failed unexpectedly after execution" in str(exc_info.value)
+            assert "Post-execution error" in str(exc_info.value)
+
             mock_logger.error.assert_called_once()
-            assert "Post-execution control check failed" in mock_logger.error.call_args[0][0]
+            assert mock_logger.error.call_args[0][0] == "%s-execution control check failed: %s"
+            assert mock_logger.error.call_args[0][1] == "Post"
+            assert str(mock_logger.error.call_args[0][2]) == "Post-execution error"

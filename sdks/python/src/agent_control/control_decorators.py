@@ -363,6 +363,46 @@ async def _evaluate(
         return result_dict
 
 
+def _unexpected_control_failure_message(stage: str, error: Exception) -> str:
+    """Build a user-facing message for unexpected control evaluation failures."""
+    if stage == "pre":
+        return (
+            "Control check failed unexpectedly before execution. "
+            f"Execution blocked for safety. Error: {error}"
+        )
+    return (
+        "Control check failed unexpectedly after execution. "
+        f"Result blocked for safety. Error: {error}"
+    )
+
+
+async def _run_control_check(
+    ctx: ControlContext,
+    stage: str,
+    payload: dict[str, Any],
+    controls: list[dict[str, Any]] | None,
+) -> None:
+    """Run one control stage and enforce fail-closed behavior on unexpected errors."""
+    try:
+        result = await _evaluate(
+            ctx.agent_name,
+            payload,
+            stage,
+            ctx.server_url,
+            ctx.trace_id,
+            ctx.span_id,
+            controls=controls,
+            event_agent_name=ctx.agent_name,
+        )
+        ctx.process_result(result, stage)
+    except (ControlViolationError, ControlSteerError):
+        raise
+    except Exception as e:
+        stage_name = "Pre" if stage == "pre" else "Post"
+        logger.error("%s-execution control check failed: %s", stage_name, e)
+        raise RuntimeError(_unexpected_control_failure_message(stage, e)) from e
+
+
 def _extract_input_from_args(func: Callable, args: tuple, kwargs: dict) -> str:
     """
     Extract input data from function arguments.
@@ -644,6 +684,8 @@ async def _execute_with_control(
 
     Raises:
         ControlViolationError: If any control triggers with "deny" action
+        ControlSteerError: If any control triggers with "steer" action
+        RuntimeError: If control evaluation fails unexpectedly
     """
     agent = _get_current_agent()
     if agent is None:
@@ -682,22 +724,7 @@ async def _execute_with_control(
 
     try:
         # PRE-EXECUTION: Check controls with check_stage="pre"
-        try:
-            result = await _evaluate(
-                ctx.agent_name, ctx.pre_payload(), "pre",
-                ctx.server_url, ctx.trace_id, ctx.span_id,
-                controls=controls,
-                event_agent_name=ctx.agent_name,
-            )
-            ctx.process_result(result, "pre")
-        except (ControlViolationError, ControlSteerError):
-            raise
-        except Exception as e:
-            # FAIL-SAFE: If control check fails, DO NOT execute the function
-            logger.error(f"Pre-execution control check failed: {e}")
-            raise RuntimeError(
-                f"Control check failed unexpectedly. Execution blocked for safety. Error: {e}"
-            ) from e
+        await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
 
         # Execute the function
         if is_async:
@@ -706,18 +733,7 @@ async def _execute_with_control(
             output = func(*args, **kwargs)
 
         # POST-EXECUTION: Check controls with check_stage="post"
-        try:
-            result = await _evaluate(
-                ctx.agent_name, ctx.post_payload(output), "post",
-                ctx.server_url, ctx.trace_id, ctx.span_id,
-                controls=controls,
-                event_agent_name=ctx.agent_name,
-            )
-            ctx.process_result(result, "post")
-        except (ControlViolationError, ControlSteerError):
-            raise
-        except Exception as e:
-            logger.error(f"Post-execution control check failed: {e}")
+        await _run_control_check(ctx, "post", ctx.post_payload(output), controls)
 
         return output
     finally:
@@ -742,6 +758,8 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
 
     Raises:
         ControlViolationError: If any control triggers with "deny" action
+        ControlSteerError: If any control triggers with "steer" action
+        RuntimeError: If control evaluation fails unexpectedly
 
     How it works:
         1. Before function execution: Calls server with stage="pre"
