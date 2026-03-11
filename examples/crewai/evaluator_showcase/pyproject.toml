@@ -5,7 +5,7 @@ description = "CrewAI agent demonstrating all built-in evaluators: regex, list, 
 requires-python = ">=3.12"
 dependencies = [
     "agent-control-sdk>=6.3.0",
-    "crewai>=0.80.0",
+    "crewai>=1.10.1",
     "crewai-tools>=0.12.0",
     "openai>=1.0.0",
     "python-dotenv>=1.0.0",
