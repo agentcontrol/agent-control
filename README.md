@@ -81,16 +81,19 @@ Protect your AI agent in 4 simple steps.
 
 ### ⚡ Quick Start for Developers
 
-**One-line setup (no repo cloning required)** - Copy this into your terminal or directly paste into your coding agent to start the Agent Control server, UI, and install the SDK:
+**Quick setup (no repo cloning required)** - Copy this into your terminal or directly paste into your coding agent to start the Agent Control server, UI, and install the SDK in a virtual environment:
 
 ```bash
-curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d && pip install agent-control-sdk
+curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
+python3 -m venv .venv
+source .venv/bin/activate
+pip install agent-control-sdk
 ```
 
 **What this does:**
 - ✅ Starts Agent Control server at `http://localhost:8000`
 - ✅ Starts UI dashboard at `http://localhost:8000`
-- ✅ Installs Python SDK (`agent-control-sdk`)
+- ✅ Installs Python SDK (`agent-control-sdk`) in `.venv`
 
 **Next:** Jump to [Step 3: Register your agent](#step-3-register-your-agent)
 
@@ -139,6 +142,8 @@ Verify the server by opening `http://localhost:8000/health` — you should see `
 In your agent application project:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install agent-control-sdk
 ```
 
@@ -152,6 +157,8 @@ Here is a contrived example. Reference our [Examples](examples/) for real-world 
 # my_agent.py
 
 import asyncio
+import os
+
 import agent_control
 from agent_control import control, ControlViolationError
 
@@ -166,6 +173,7 @@ async def chat(message: str) -> str:
 agent_control.init(
     agent_name="awesome_bot_3000",
     agent_description="My Chatbot",
+    api_key=os.getenv("AGENT_CONTROL_API_KEY"),
 )
 
 async def main():
@@ -187,12 +195,15 @@ Run the following setup script to create controls to protect your agent.
 # setup.py - Run once to configure agent controls
 
 import asyncio
+import os
 from datetime import datetime, UTC
 from agent_control import AgentControlClient, controls, agents
 from agent_control_models import Agent
 
 async def setup():
-    async with AgentControlClient() as client:  # Defaults to localhost:8000
+    async with AgentControlClient(
+        api_key=os.getenv("AGENT_CONTROL_API_KEY")
+    ) as client:  # Defaults to localhost:8000
         # 1. Register agent first
         agent = Agent(
             agent_name="awesome_bot_3000",
@@ -243,14 +254,37 @@ asyncio.run(setup())
 **With authentication enabled:**
 
 ```bash
-curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | AGENT_CONTROL_API_KEY_ENABLED=true AGENT_CONTROL_API_KEYS="my-ui-key" AGENT_CONTROL_ADMIN_API_KEYS="my-admin-key" AGENT_CONTROL_SESSION_SECRET="some-long-random-string" CORS_ORIGINS="http://localhost:4000" docker compose -f - up -d && pip install agent-control-sdk
+curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | AGENT_CONTROL_API_KEY_ENABLED=true AGENT_CONTROL_API_KEYS="my-ui-key" AGENT_CONTROL_ADMIN_API_KEYS="my-admin-key" AGENT_CONTROL_SESSION_SECRET="some-long-random-string" CORS_ORIGINS="http://localhost:4000" docker compose -f - up -d
 ```
 
+Before running `setup.py`, set an admin API key if authentication is enabled:
+
+```bash
+# Only needed when AGENT_CONTROL_API_KEY_ENABLED=true
+export AGENT_CONTROL_API_KEY="my-admin-key"
+```
+
+Create the control configuration:
+
+```bash
+python setup.py
+```
+
+If authentication is disabled, you can run the same command without setting
+`AGENT_CONTROL_API_KEY`. If authentication is enabled, `setup.py` needs an
+admin API key because it creates and attaches controls.
+
+For the runtime demo, a regular API key is sufficient:
+
+```bash
+# Optional: switch to a non-admin key for runtime requests
+# export AGENT_CONTROL_API_KEY="my-ui-key"
+```
 
 Now, test your agent:
 
 ```bash
-uv run my_agent.py
+python my_agent.py
 ```
 
 Done. Your agent now blocks SSN patterns automatically.

@@ -26,6 +26,7 @@ Use the plugin to enforce controls before and after model calls, tool calls, nod
 ```python
 from agent_control.integrations.strands import AgentControlPlugin
 from strands import Agent
+from strands.hooks import AfterToolCallEvent, BeforeToolCallEvent
 import agent_control
 
 agent_control.init(agent_name="my-agent")
