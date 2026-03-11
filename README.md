@@ -79,7 +79,7 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 
 - **[LangChain](examples/langchain/)** — Protect a SQL agent from dangerous queries with server-side controls
 - **[CrewAI](examples/crewai/)** — Combine Agent Control security controls with CrewAI guardrails for customer support
-- **[AWS Strands](examples/strands_agents/)** — Guardrails for AWS Strands agent workflows and tool calls
+- **[Strands Agents SDK](examples/strands_agents/)** — Steer and control agent workflows with the Strands Agent SDK
 - **[Google ADK Callbacks](examples/google_adk_callbacks/)** — Model and tool protection using ADK's native callback hooks
 - **[Google ADK Decorator](examples/google_adk_decorator/)** — Tool-level protection using Agent Control's @control() decorator
 
