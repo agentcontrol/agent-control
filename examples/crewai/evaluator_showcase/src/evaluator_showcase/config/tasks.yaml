@@ -1,0 +1,8 @@
+analysis_task:
+  description: >
+    Execute this data request: {request}
+
+    Use the appropriate tool and report the outcome.
+  expected_output: >
+    Query results or analysis, or an explanation if blocked by controls
+  agent: data_analyst

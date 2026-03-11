@@ -103,7 +103,7 @@ This creates 9 controls covering all pipeline stages and associates them with th
 ### 5. Run the Flow
 
 ```bash
-uv run python publishing_flow.py
+uv run python -m content_publishing_flow.main
 ```
 
 ## Controls Reference

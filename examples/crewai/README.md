@@ -70,7 +70,7 @@ Each example has a `setup_controls.py` (one-time, idempotent) and a main script:
 ```bash
 cd examples/crewai/secure_research_crew
 uv run python setup_controls.py
-uv run python research_crew.py
+uv run python -m secure_research_crew.main
 ```
 
 ---
@@ -112,7 +112,7 @@ Demonstrates all three Agent Control action types in a wire-transfer scenario:
 ```bash
 cd examples/crewai/steering_financial_agent
 uv run python setup_controls.py
-uv run python financial_agent.py
+uv run python -m steering_financial_agent.main
 ```
 
 ### 3. [Evaluator Showcase](./evaluator_showcase/) -- All 4 Built-in Evaluators
@@ -129,7 +129,7 @@ Demonstrates every built-in evaluator in a data-analyst scenario:
 ```bash
 cd examples/crewai/evaluator_showcase
 uv run python setup_controls.py
-uv run python data_analyst.py
+uv run python -m evaluator_showcase.main
 ```
 
 ### 4. [Secure Research Crew](./secure_research_crew/) -- Multi-Agent Crew with Per-Role Policies
@@ -162,7 +162,7 @@ A production-quality **3-agent sequential crew** (Researcher, Analyst, Writer) w
 ```bash
 cd examples/crewai/secure_research_crew
 uv run python setup_controls.py
-uv run python research_crew.py
+uv run python -m secure_research_crew.main
 ```
 
 ### 5. [Content Publishing Flow](./content_publishing_flow/) -- CrewAI Flow with Routing & Human-in-the-Loop
@@ -197,7 +197,7 @@ A complete **CrewAI Flow** using `@start`, `@listen`, and `@router` decorators w
 ```bash
 cd examples/crewai/content_publishing_flow
 uv run python setup_controls.py
-uv run python publishing_flow.py
+uv run python -m content_publishing_flow.main
 ```
 
 ---

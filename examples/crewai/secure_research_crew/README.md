@@ -93,7 +93,7 @@ uv run python setup_controls.py
 ### 4. Run the demo
 
 ```bash
-uv run python research_crew.py
+uv run python -m secure_research_crew.main
 ```
 
 Scenarios 1-5 run with direct tool calls (no LLM needed). The optional full crew run at the end requires `OPENAI_API_KEY`.

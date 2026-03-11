@@ -1,0 +1,8 @@
+transfer_task:
+  description: >
+    Process this wire transfer request: {transfer_request}
+
+    Use the process_transfer tool with a JSON string containing
+    the transfer details. Report the outcome.
+  expected_output: "Transfer confirmation or explanation of why it was blocked"
+  agent: financial_operations_agent

@@ -1,5 +1,5 @@
 [project]
-name = "agent-control-crewai-publishing-flow"
+name = "content-publishing-flow"
 version = "0.1.0"
 description = "CrewAI Flow with routing, embedded crews, and Agent Control guardrails"
 requires-python = ">=3.12"
@@ -11,9 +11,17 @@ dependencies = [
     "python-dotenv>=1.0.0",
 ]
 
+[project.scripts]
+content_publishing_flow = "content_publishing_flow.main:main"
+kickoff = "content_publishing_flow.main:kickoff"
+plot = "content_publishing_flow.main:plot"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-include = ["*.py"]
+packages = ["src/content_publishing_flow"]
+
+[tool.crewai]
+type = "flow"

@@ -351,7 +351,7 @@ Controls: {len(all_control_ids)}
   content-safety-policy (Writer -> write_report):
     - writer-pii-blocker            [post, deny]  Block SSN, email, phone in output
 
-You can now run:  uv run python research_crew.py
+You can now run:  uv run python -m secure_research_crew.main
 """)
 
 

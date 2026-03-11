@@ -1,0 +1,24 @@
+research_task:
+  description: >
+    Query the employees and projects tables to gather data about
+    engineering department staffing and active projects.
+    Use the query_database tool with proper SQL SELECT statements
+    that include LIMIT clauses.
+  expected_output: "Raw data from employee and project queries in JSON format"
+
+analysis_task:
+  description: >
+    Take the research data and validate it using the validate_data tool.
+    Submit a JSON string with these fields: dataset, findings,
+    confidence_score (0-1), and methodology. Example:
+    {"dataset": "employees", "findings": "...",
+    "confidence_score": 0.9, "methodology": "..."}
+  expected_output: "Validated analysis with methodology in JSON format"
+
+report_task:
+  description: >
+    Write a professional research report using the write_report tool.
+    The report should summarize the validated analysis findings.
+    Do NOT include any email addresses, phone numbers, or SSNs.
+    Include a 'Sources:' section at the end citing the data tables used.
+  expected_output: "A formatted research report with findings and source citations"
