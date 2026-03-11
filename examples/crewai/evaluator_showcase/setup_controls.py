@@ -276,7 +276,7 @@ async def setup():
         print("  JSON  - Validate request structure and field constraints")
         print("  JSON  - Steer agent to provide analysis purpose")
         print()
-        print("Run the demo:  uv run python data_analyst.py")
+        print("Run the demo:  uv run python -m evaluator_showcase.main")
 
 
 if __name__ == "__main__":

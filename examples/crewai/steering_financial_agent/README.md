@@ -56,7 +56,7 @@ export OPENAI_API_KEY="your-key"
 uv run python setup_controls.py
 
 # Run the demo
-uv run python financial_agent.py
+uv run python -m steering_financial_agent.main
 ```
 
 ## How Steering Works

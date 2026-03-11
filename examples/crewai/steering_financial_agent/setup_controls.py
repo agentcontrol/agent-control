@@ -326,7 +326,7 @@ async def setup():
         print("    - New/unknown recipient (list evaluator)")
         print("    - PII in confirmation output (regex evaluator)")
         print()
-        print("Run the demo:  uv run python financial_agent.py")
+        print("Run the demo:  uv run python -m steering_financial_agent.main")
 
 
 if __name__ == "__main__":

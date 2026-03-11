@@ -417,7 +417,7 @@ async def setup_publishing_controls():
         print("    - flow-human-review-steer (STEER: manager approval)")
         print("  AUTO-PUBLISH (low_risk path):")
         print("    - flow-publish-pii-scan (REGEX: final PII scan)")
-        print("\nRun the flow:  uv run python publishing_flow.py")
+        print("\nRun the flow:  uv run python -m content_publishing_flow.main")
 
 
 if __name__ == "__main__":

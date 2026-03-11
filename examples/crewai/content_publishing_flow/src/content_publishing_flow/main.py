@@ -32,20 +32,30 @@ PREREQUISITE:
         $ uv run python setup_controls.py
 
     Then run this flow:
-        $ uv run python publishing_flow.py
+        $ uv run kickoff
 """
 
 import asyncio
 import json
 import os
 import sys
-import time
 
 from crewai.flow.flow import Flow, listen, router, start
 from pydantic import BaseModel
 
 import agent_control
 from agent_control import ControlSteerError, ControlViolationError, control
+
+from content_publishing_flow.tools import (
+    controlled_validate_request,
+    controlled_research,
+    controlled_fact_check,
+    controlled_write_draft,
+    controlled_legal_review,
+    controlled_edit_content,
+    controlled_publish,
+    controlled_human_review,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -70,212 +80,6 @@ class PublishingState(BaseModel):
     final_content: str = ""
     status: str = "pending"
     error: str = ""
-
-
-# ---------------------------------------------------------------------------
-# Controlled tool wrappers
-#
-# Each wrapper follows the same pattern:
-#   1. Define an async inner function with named parameters (not **kwargs).
-#   2. Set .name and .tool_name for step detection.
-#   3. Apply @control() to get the controlled version.
-#   4. The outer CrewAI @tool calls asyncio.run(controlled_fn(...)).
-# ---------------------------------------------------------------------------
-
-# --- Intake: validate_request ---
-
-async def _validate_request(request: dict) -> str:
-    """Validate that the content request has required fields."""
-    # The JSON evaluator on the server checks for topic, audience, content_type.
-    # If they are present the control passes; if missing it denies.
-    topic = request.get("topic", "")
-    audience = request.get("audience", "")
-    content_type = request.get("content_type", "")
-    return json.dumps({
-        "topic": topic,
-        "audience": audience,
-        "content_type": content_type,
-        "valid": bool(topic and audience and content_type),
-    })
-
-
-_validate_request.name = "validate_request"            # type: ignore[attr-defined]
-_validate_request.tool_name = "validate_request"        # type: ignore[attr-defined]
-_controlled_validate_request = control()(_validate_request)
-
-
-# --- Research: research_topic ---
-
-async def _research_topic(topic: str, audience: str) -> str:
-    """Research a topic. Returns simulated research notes."""
-    # Simulated output - the LIST control checks for banned sources in output.
-    return (
-        f"Research findings on '{topic}' for {audience}:\n\n"
-        f"1. Industry reports from McKinsey and Gartner highlight growing adoption.\n"
-        f"2. Academic papers from MIT and Stanford confirm key trends.\n"
-        f"3. Government statistics (census.gov, bls.gov) provide baseline data.\n"
-        f"4. Recent surveys show 73% of professionals consider this a priority.\n\n"
-        f"Key insight: The intersection of {topic} and modern workflows is driving "
-        f"measurable ROI for early adopters."
-    )
-
-
-_research_topic.name = "research_topic"                # type: ignore[attr-defined]
-_research_topic.tool_name = "research_topic"            # type: ignore[attr-defined]
-_controlled_research = control()(_research_topic)
-
-
-# --- Research: fact_check ---
-
-async def _fact_check(research_text: str) -> str:
-    """Fact-check research output. Returns simulated verification report."""
-    # The REGEX control checks output for unverified-claim markers.
-    return (
-        "Fact-Check Report:\n"
-        "- Claim 1 (industry reports): VERIFIED - matches published data.\n"
-        "- Claim 2 (academic papers): VERIFIED - citations confirmed.\n"
-        "- Claim 3 (government stats): VERIFIED - data matches official sources.\n"
-        "- Claim 4 (survey data): VERIFIED - survey methodology reviewed.\n\n"
-        "Overall assessment: All claims verified. No corrections needed."
-    )
-
-
-_fact_check.name = "fact_check"                        # type: ignore[attr-defined]
-_fact_check.tool_name = "fact_check"                    # type: ignore[attr-defined]
-_controlled_fact_check = control()(_fact_check)
-
-
-# --- Draft: write_draft ---
-
-async def _write_draft(topic: str, audience: str, content_type: str, research: str) -> str:
-    """Write a content draft based on research. Returns simulated draft."""
-    # The REGEX control blocks PII; the LIST control blocks banned topics.
-    if content_type == "blog_post":
-        return (
-            f"# {topic}: What You Need to Know\n\n"
-            f"*Written for {audience}*\n\n"
-            f"## Introduction\n"
-            f"The landscape of {topic} is evolving rapidly. Industry leaders are "
-            f"taking notice, and for good reason.\n\n"
-            f"## Key Findings\n"
-            f"Our research reveals several important trends that professionals "
-            f"should be aware of. Early adopters are seeing measurable returns.\n\n"
-            f"## What This Means For You\n"
-            f"Whether you are a seasoned professional or just getting started, "
-            f"understanding these trends is essential for staying competitive.\n\n"
-            f"## Conclusion\n"
-            f"The data is clear: {topic} represents a significant opportunity. "
-            f"Now is the time to act.\n"
-        )
-    elif content_type == "press_release":
-        return (
-            f"FOR IMMEDIATE RELEASE\n\n"
-            f"{topic}\n\n"
-            f"Company announces major developments in {topic}, "
-            f"targeting {audience}.\n\n"
-            f"Key highlights:\n"
-            f"- New initiatives launched to address industry needs\n"
-            f"- Strategic partnerships formed with leading organizations\n"
-            f"- Measurable impact expected within the first quarter\n\n"
-            f"About the Company:\n"
-            f"We are committed to innovation and excellence in our field.\n"
-        )
-    else:  # internal_memo
-        return (
-            f"INTERNAL MEMO\n\n"
-            f"Subject: {topic}\n"
-            f"Audience: {audience}\n\n"
-            f"Team,\n\n"
-            f"This memo outlines our strategy regarding {topic}. "
-            f"Based on recent research, we recommend the following actions:\n\n"
-            f"1. Allocate resources for pilot program\n"
-            f"2. Form cross-functional task force\n"
-            f"3. Establish KPIs and reporting cadence\n\n"
-            f"Please review and provide feedback by end of week.\n"
-        )
-
-
-_write_draft.name = "write_draft"                      # type: ignore[attr-defined]
-_write_draft.tool_name = "write_draft"                  # type: ignore[attr-defined]
-_controlled_write_draft = control()(_write_draft)
-
-
-# --- Compliance: legal_review ---
-
-async def _legal_review(content: str) -> str:
-    """Legal review of content. Returns JSON with disclaimer and approval."""
-    # The JSON control checks output for required fields: disclaimer, legal_reviewed.
-    return json.dumps({
-        "disclaimer": (
-            "This content has been reviewed for legal compliance. "
-            "Forward-looking statements are subject to change."
-        ),
-        "legal_reviewed": True,
-        "notes": "No legal issues found. Approved for publication.",
-        "reviewed_content": content,
-    })
-
-
-_legal_review.name = "legal_review"                    # type: ignore[attr-defined]
-_legal_review.tool_name = "legal_review"                # type: ignore[attr-defined]
-_controlled_legal_review = control()(_legal_review)
-
-
-# --- Compliance: edit_content ---
-
-async def _edit_content(content: str, include_executive_summary: bool = False) -> str:
-    """Edit content for quality. REGEX blocks PII; STEER requires exec summary."""
-    if include_executive_summary:
-        summary_section = (
-            "## Executive Summary\n\n"
-            "This press release announces key developments that position the company "
-            "for significant growth. Stakeholders should note the strategic partnerships "
-            "and projected impact outlined below.\n\n"
-        )
-        # Insert after the first line (FOR IMMEDIATE RELEASE)
-        lines = content.split("\n", 2)
-        if len(lines) >= 3:
-            return lines[0] + "\n" + summary_section + lines[2]
-        return summary_section + content
-    return content
-
-
-_edit_content.name = "edit_content"                    # type: ignore[attr-defined]
-_edit_content.tool_name = "edit_content"                # type: ignore[attr-defined]
-_controlled_edit_content = control()(_edit_content)
-
-
-# --- Publish: publish_content ---
-
-async def _publish_content(content: str, content_type: str) -> str:
-    """Publish content. Final PII scan happens as a pre-check."""
-    return json.dumps({
-        "status": "published",
-        "content_type": content_type,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "content_preview": content[:200] + "..." if len(content) > 200 else content,
-    })
-
-
-_publish_content.name = "publish_content"              # type: ignore[attr-defined]
-_publish_content.tool_name = "publish_content"          # type: ignore[attr-defined]
-_controlled_publish = control()(_publish_content)
-
-
-# --- Human Review: request_human_review ---
-
-async def _request_human_review(content: str, content_type: str) -> str:
-    """Submit content for human review. STEER control pauses for approval."""
-    return json.dumps({
-        "status": "pending_review",
-        "content_type": content_type,
-        "submitted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    })
-
-
-_request_human_review.name = "request_human_review"    # type: ignore[attr-defined]
-_request_human_review.tool_name = "request_human_review"  # type: ignore[attr-defined]
-_controlled_human_review = control()(_request_human_review)
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +153,7 @@ class ContentPublishingFlow(Flow[PublishingState]):
 
         try:
             result = await run_controlled_async(
-                _controlled_validate_request,
+                controlled_validate_request,
                 "Intake Validation",
                 request=request,
             )
@@ -386,7 +190,7 @@ class ContentPublishingFlow(Flow[PublishingState]):
         # Step 1: Research
         try:
             research_output = await run_controlled_async(
-                _controlled_research,
+                controlled_research,
                 "Research",
                 topic=self.state.topic,
                 audience=self.state.audience,
@@ -399,7 +203,7 @@ class ContentPublishingFlow(Flow[PublishingState]):
         # Step 2: Fact-check
         try:
             fact_check_output = await run_controlled_async(
-                _controlled_fact_check,
+                controlled_fact_check,
                 "Fact-Check",
                 research_text=research_output,
             )
@@ -428,7 +232,7 @@ class ContentPublishingFlow(Flow[PublishingState]):
 
         try:
             draft = await run_controlled_async(
-                _controlled_write_draft,
+                controlled_write_draft,
                 "Draft Writer",
                 topic=self.state.topic,
                 audience=self.state.audience,
@@ -481,7 +285,7 @@ class ContentPublishingFlow(Flow[PublishingState]):
 
         try:
             result = await run_controlled_async(
-                _controlled_publish,
+                controlled_publish,
                 "Publish (PII Scan)",
                 content=self.state.draft,
                 content_type=self.state.content_type,
@@ -511,7 +315,7 @@ class ContentPublishingFlow(Flow[PublishingState]):
         # Step 1: Legal review
         try:
             legal_result = await run_controlled_async(
-                _controlled_legal_review,
+                controlled_legal_review,
                 "Legal Review",
                 content=self.state.draft,
             )
@@ -533,7 +337,7 @@ class ContentPublishingFlow(Flow[PublishingState]):
         for attempt in range(1, max_attempts + 1):
             try:
                 edited = await run_controlled_async(
-                    _controlled_edit_content,
+                    controlled_edit_content,
                     f"Editor (attempt {attempt})",
                     content=self.state.draft,
                     include_executive_summary=include_exec_summary,
@@ -553,7 +357,7 @@ class ContentPublishingFlow(Flow[PublishingState]):
                 # Publish
                 try:
                     result = await run_controlled_async(
-                        _controlled_publish,
+                        controlled_publish,
                         "Publish (after compliance)",
                         content=edited,
                         content_type=self.state.content_type,
@@ -593,7 +397,7 @@ class ContentPublishingFlow(Flow[PublishingState]):
         for attempt in range(1, max_attempts + 1):
             try:
                 result = await run_controlled_async(
-                    _controlled_human_review,
+                    controlled_human_review,
                     f"Human Review (attempt {attempt})",
                     content=self.state.draft,
                     content_type=self.state.content_type,
@@ -836,7 +640,7 @@ def main():
     run_direct_tool_scenario(
         title="SCENARIO 4: Invalid Request (missing fields -> JSON block)",
         tool_label="Intake Validation",
-        controlled_fn=_controlled_validate_request,
+        controlled_fn=controlled_validate_request,
         kwargs={"request": {"topic": "Something"}},
         # Missing audience and content_type
     )
@@ -939,6 +743,17 @@ Scenarios Demonstrated:
     5. Banned topic                -> LIST evaluator blocks at draft
     6. PII in draft                -> REGEX evaluator blocks at draft
 """)
+
+
+def kickoff():
+    """Standard CrewAI flow entry point."""
+    main()
+
+
+def plot():
+    """Plot the flow graph."""
+    flow = ContentPublishingFlow()
+    flow.plot()
 
 
 if __name__ == "__main__":

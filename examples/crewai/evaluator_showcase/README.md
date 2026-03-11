@@ -75,7 +75,7 @@ export OPENAI_API_KEY="your-key"
 uv run python setup_controls.py
 
 # Run the demo
-uv run python data_analyst.py
+uv run python -m evaluator_showcase.main
 ```
 
 ## Key Insight
