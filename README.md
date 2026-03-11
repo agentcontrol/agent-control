@@ -1,11 +1,11 @@
 <p align="center">
   <img
-    src="docs/images/AgentControl-logo-dark.svg#gh-light-mode-only"
+    src="docs/images/AgentControl-logo-light.svg#gh-light-mode-only"
     alt="Agent Control Logo (light)"
     width="120"
   />
   <img
-    src="docs/images/AgentControl-logo-light.svg#gh-dark-mode-only"
+    src="docs/images/AgentControl-logo-dark.svg#gh-dark-mode-only"
     alt="Agent Control Logo (dark)"
     width="120"
   />
