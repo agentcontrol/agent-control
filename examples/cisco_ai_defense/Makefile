@@ -3,8 +3,8 @@
 help:
 	@echo "Cisco AI Defense examples"
 	@echo "  make run                 - run direct Chat Inspection demo"
-	@echo "  make seed                - seed controls/policy on server"
-	@echo "  make register            - register agent and persist .agent_id"
+	@echo "  make seed                - seed controls on the server and attach them to the agent"
+	@echo "  make register            - register the agent by name"
 	@echo "  make decorator-post-run  - run decorator POST-only (PII) example"
 	@echo "  make decorator-all-run   - run combined pre + post cases"
 
