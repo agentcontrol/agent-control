@@ -1,15 +1,24 @@
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import Field, StringConstraints
+from pydantic import BeforeValidator, Field, StringConstraints
 
 from .agent import Agent, StepSchema
 from .base import BaseModel
 from .controls import ControlDefinition
 from .policy import Control
 
+
+def _strip_slug_name(v: str) -> str:
+    """Strip leading/trailing whitespace for slug-style names (control, policy, evaluator config)."""
+    return v.strip() if isinstance(v, str) else v
+
+
+# Canonicalization at the API boundary: all SlugName fields are trimmed before
+# validation. Server and SDKs use these request models; no client need pre-trim.
 SlugName = Annotated[
     str,
+    BeforeValidator(_strip_slug_name),
     StringConstraints(
         min_length=1,
         max_length=255,

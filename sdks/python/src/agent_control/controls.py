@@ -126,6 +126,9 @@ async def create_control(
     If `data` is provided, the control is created and configured in one call.
     Otherwise, use `set_control_data()` to configure it later.
 
+    Control names are canonicalized by the API (leading/trailing whitespace
+    is trimmed); callers may pass trimmed names for consistency.
+
     Args:
         client: AgentControlClient instance
         name: Unique name for the control
@@ -383,6 +386,9 @@ async def update_control(
     Update control metadata (name and/or enabled status).
 
     This endpoint allows partial updates - only provide the fields you want to change.
+
+    Control names are canonicalized by the API (leading/trailing whitespace
+    is trimmed); callers may pass trimmed names for consistency.
 
     Args:
         client: AgentControlClient instance

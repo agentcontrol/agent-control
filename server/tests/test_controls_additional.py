@@ -239,6 +239,63 @@ def test_patch_control_rename_with_spaces_rejected(client: TestClient) -> None:
     assert body["error_code"] == "VALIDATION_ERROR"
 
 
+def test_create_control_trimmed_name_stored(client: TestClient) -> None:
+    """Control names are canonicalized at the API boundary: leading/trailing whitespace is trimmed."""
+    resp = client.put("/api/v1/controls", json={"name": "  trimmed-control  "})
+    assert resp.status_code == 200
+    control_id = resp.json()["control_id"]
+    get_resp = client.get(f"/api/v1/controls/{control_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["name"] == "trimmed-control"
+
+
+def test_patch_control_trimmed_name_stored(client: TestClient) -> None:
+    """PATCH control name is canonicalized at the API boundary: leading/trailing whitespace is trimmed."""
+    control_id, _ = _create_control(client)
+    resp = client.patch(
+        f"/api/v1/controls/{control_id}",
+        json={"name": "  new-trimmed-name  "},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "new-trimmed-name"
+
+
+def test_patch_control_legacy_name_preserved_when_name_omitted(
+    client: TestClient,
+) -> None:
+    """Controls with legacy names (e.g. created before slug validation) remain editable.
+
+    Policy: existing invalid names stay as-is when the client does not send a name
+    update. PATCH with only enabled or other fields must not change or re-validate
+    the stored name.
+    """
+    # Insert a control with a legacy name that would not pass current SlugName validation.
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO controls (name, data) VALUES (:name, CAST(:data AS JSONB))"
+            ),
+            {"name": "legacy control name", "data": json.dumps({})},
+        )
+        row = conn.execute(
+            text("SELECT id FROM controls WHERE name = 'legacy control name'")
+        ).fetchone()
+        assert row is not None
+        control_id = row[0]
+
+    # When: PATCH without sending name (no name update, no enabled change)
+    resp = client.patch(
+        f"/api/v1/controls/{control_id}",
+        json={},
+    )
+    assert resp.status_code == 200
+    # Then: stored name is unchanged
+    assert resp.json()["name"] == "legacy control name"
+    get_resp = client.get(f"/api/v1/controls/{control_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["name"] == "legacy control name"
+
+
 def test_list_controls_filters_stage_and_execution(client: TestClient) -> None:
     # Given: controls with differing stages and execution targets
     control1_id, control1_name = _create_control(client)

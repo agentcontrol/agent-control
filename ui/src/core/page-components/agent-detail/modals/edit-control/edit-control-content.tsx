@@ -22,9 +22,6 @@ import { useEvaluatorConfigState } from './use-evaluator-config-state';
 import { applyApiErrorsToForms } from './utils';
 
 const EVALUATOR_CONFIG_HEIGHT = 450;
-const CONTROL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
-const CONTROL_NAME_RULE_MESSAGE =
-  'Use letters, numbers, hyphens, or underscores (no spaces)';
 
 export type EditControlContentProps = {
   /** The control to edit/create template */
@@ -90,22 +87,8 @@ export const EditControlContent = ({
       execution: 'server',
     },
     validate: {
-      name: (value) => {
-        const trimmedName = value?.trim();
-        if (!trimmedName) {
-          return 'Control name is required';
-        }
-
-        // Keep legacy controls editable when their existing name no longer matches
-        // current validation rules (applies only when name remains unchanged).
-        if (mode === 'edit' && trimmedName === control.name.trim()) {
-          return null;
-        }
-
-        return CONTROL_NAME_PATTERN.test(trimmedName)
-          ? null
-          : CONTROL_NAME_RULE_MESSAGE;
-      },
+      name: (value) =>
+        !value?.trim() ? 'Control name is required' : null,
       selector_path: (value) => {
         if (!value?.trim()) {
           return 'Selector path is required';
@@ -288,14 +271,8 @@ export const EditControlContent = ({
       finalConfig = getEvaluatorConfig();
     }
 
-    const normalizedName = values.name.trim();
-    if (normalizedName !== values.name) {
-      // Keep UI state consistent with what we persist.
-      definitionForm.setFieldValue('name', normalizedName);
-    }
-
     const definition = buildControlDefinition(
-      { ...values, name: normalizedName },
+      { ...values, name: values.name },
       finalConfig
     );
 
@@ -304,38 +281,58 @@ export const EditControlContent = ({
         if (isCreating) {
           await addControlToAgent.mutateAsync({
             agentId,
-            controlName: normalizedName,
+            controlName: values.name,
             definition,
           });
           notifications.show({
             title: 'Control created',
-            message: `"${normalizedName}" has been added to this agent.`,
+            message: `"${values.name.trim()}" has been added to this agent.`,
             color: 'green',
           });
         } else {
-          const existingNormalizedName = control.name.trim();
           const nameChanged =
-            normalizedName && normalizedName !== existingNormalizedName;
+            values.name.trim() !== control.name.trim();
 
           if (nameChanged) {
             try {
               await updateControlMetadata.mutateAsync({
                 agentId,
                 controlId: control.id,
-                data: { name: normalizedName },
+                data: { name: values.name },
               });
             } catch (renameError) {
-              if (
-                isApiError(renameError) &&
-                (renameError.problemDetail.status === 409 ||
-                  renameError.problemDetail.error_code ===
-                    'CONTROL_NAME_CONFLICT')
-              ) {
-                definitionForm.setFieldError(
-                  'name',
-                  renameError.problemDetail.detail ||
-                    'Control name already exists'
-                );
+              if (isApiError(renameError)) {
+                const problemDetail = renameError.problemDetail;
+
+                if (
+                  problemDetail.status === 409 ||
+                  problemDetail.error_code === 'CONTROL_NAME_CONFLICT'
+                ) {
+                  definitionForm.setFieldError(
+                    'name',
+                    problemDetail.detail || 'Control name already exists'
+                  );
+                } else if (problemDetail.status === 422) {
+                  // Mirror the main error-handling behavior so validation errors
+                  // render inline (and in the alert when unmapped).
+                  setApiError(problemDetail);
+                  if (problemDetail.errors) {
+                    const unmapped = applyApiErrorsToForms(
+                      problemDetail.errors,
+                      definitionForm,
+                      evaluatorForm
+                    );
+                    setUnmappedErrors(
+                      unmapped.map((e) => ({ field: e.field, message: e.message }))
+                    );
+                  }
+                } else {
+                  notifications.show({
+                    title: 'Failed to rename control',
+                    message: problemDetail.detail || 'An unexpected error occurred while renaming',
+                    color: 'red',
+                  });
+                }
               } else {
                 notifications.show({
                   title: 'Failed to rename control',
@@ -357,7 +354,7 @@ export const EditControlContent = ({
           });
           notifications.show({
             title: 'Control updated',
-            message: `"${normalizedName}" has been saved.`,
+            message: `"${values.name.trim()}" has been saved.`,
             color: 'green',
           });
         }

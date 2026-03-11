@@ -241,7 +241,7 @@ export function ControlStoreModal({
       id: 'name',
       header: 'Name',
       accessorKey: 'name',
-      size: 150,
+      size: 260,
       cell: ({ row }) => (
         <Text size="sm" fw={500}>
           {row.original.name}
