@@ -22,13 +22,19 @@
   <a href="https://codecov.io/gh/agentcontrol/agent-control"><img src="https://codecov.io/gh/agentcontrol/agent-control/branch/main/graph/badge.svg" alt="codecov" /></a>
 </p>
 
-**Runtime guardrails for AI agents.** Add controls around model calls and tools without rewriting your agent.
+<p align="center">
+  <a href="https://docs.agentcontrol.dev/">Docs</a> |
+  <a href="https://docs.agentcontrol.dev/core/quickstart">Quickstart</a> |
+  <a href="examples/README.md">Examples</a> |
+  <a href="https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA">Slack</a>
+</p>
 
-[Quickstart](https://docs.agentcontrol.dev/core/quickstart) ·
-[UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart) ·
-[Examples](examples/README.md) ·
-[Docs](https://docs.agentcontrol.dev/) ·
-[Slack](https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA)
+Runtime guardrails for AI agents - configurable, extensible, and production-ready.
+
+- Minimal integration - add guardrails with a decorator, callback, or a few lines of SDK code
+- Runtime configuration - update controls via API or UI without redeploying
+- Pluggable evaluators - built-in or custom
+- Framework support - works with LangChain, CrewAI, Google ADK, AWS Strands, and more
 
 ## Quick Start
 
@@ -92,8 +98,8 @@ async def answer(message: str) -> str:
 
 Choose the path you want:
 
+- Recommended: follow the [full Quickstart](https://docs.agentcontrol.dev/core/quickstart)
 - Visual setup: follow the [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart)
-- End-to-end guide: follow the [full Quickstart](https://docs.agentcontrol.dev/core/quickstart)
 - Working code examples: browse [examples/README.md](examples/README.md)
 
 The published `docker-compose.yml` starts the API only. If you also want the local dashboard, use the repo workflow below.
@@ -119,14 +125,9 @@ make ui-dev
 - API: `http://localhost:8000`
 - UI: `http://localhost:4000`
 
-## Why Agent Control
+## How It Works
 
-Guardrails baked into agent code are hard to audit, hard to update, and hard to reuse. Agent Control moves that logic into a runtime layer so teams can change controls without redeploying every agent.
-
-- Centralize safety logic instead of scattering checks across tools and prompts
-- Update controls at runtime through the API or UI
-- Reuse the same controls across multiple agents
-- Plug in built-in or custom evaluators
+Agent Control evaluates agent inputs and outputs against controls you configure at runtime. That keeps guardrail logic out of prompt code and tool code, while still letting teams update protections centrally.
 
 ![Agent Control Architecture](docs/images/Architecture.png)
 
