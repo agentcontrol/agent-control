@@ -1,4 +1,4 @@
-import { AgentControlClient, type ControlDefinition } from "agent-control";
+import { AgentControlClient, type ControlDefinitionInput } from "agent-control";
 
 const serverUrl = process.env.AGENT_CONTROL_URL ?? "http://localhost:8000";
 // This example creates, updates, and deletes controls, so use an admin key when auth is enabled.
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     createdControlId = created.controlId;
     console.log(`Created control: ${controlName} (id=${createdControlId})`);
 
-    const controlData: ControlDefinition = {
+    const controlData: ControlDefinitionInput = {
       action: { decision: "deny" },
       description: "Block SSN-like patterns in post-step output.",
       enabled: true,
