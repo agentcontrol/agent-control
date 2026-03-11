@@ -1,6 +1,5 @@
 import { Box, Divider, Grid, Group, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -13,6 +12,7 @@ import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
+import { openActionConfirmModal } from '@/core/utils/modals';
 
 import { ApiErrorAlert } from './api-error-alert';
 import { ControlDefinitionForm } from './control-definition-form';
@@ -399,7 +399,7 @@ export const EditControlContent = ({
       }
     };
 
-    modals.openConfirmModal({
+    openActionConfirmModal({
       title: isCreating ? 'Create control?' : 'Save changes?',
       children: (
         <Text size="sm" c="dimmed">
@@ -408,14 +408,6 @@ export const EditControlContent = ({
             : 'This will update the control configuration.'}
         </Text>
       ),
-      labels: { confirm: 'Confirm', cancel: 'Cancel' },
-      confirmProps: {
-        variant: 'filled',
-        color: 'violet',
-        size: 'sm',
-        className: 'confirm-modal-confirm-btn',
-      },
-      cancelProps: { variant: 'default', size: 'sm' },
       onConfirm: runSave,
     });
   };
