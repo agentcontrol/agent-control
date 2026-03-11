@@ -122,7 +122,10 @@ def create_sql_tool():
 def create_analysis_tool():
     """Build the analysis tool with JSON validation and steering."""
 
-    llm = LLM(model="gpt-4o-mini", temperature=0.3)
+    # Defer LLM creation -- only needed if OPENAI_API_KEY is set
+    llm = None
+    if os.getenv("OPENAI_API_KEY"):
+        llm = LLM(model="gpt-4o-mini", temperature=0.3)
 
     async def _analyze_data(request: dict) -> str:
         """Run data analysis (protected by JSON validation controls).
@@ -250,7 +253,7 @@ def verify_server():
     import httpx
 
     try:
-        r = httpx.get(f"{SERVER_URL}/api/v1/controls", timeout=5.0)
+        r = httpx.get(f"{SERVER_URL}/api/v1/controls?limit=100", timeout=5.0)
         r.raise_for_status()
         names = [c["name"] for c in r.json().get("controls", [])]
         required = [

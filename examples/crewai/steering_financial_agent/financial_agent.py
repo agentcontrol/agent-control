@@ -245,7 +245,7 @@ def verify_server():
     import httpx
 
     try:
-        r = httpx.get(f"{SERVER_URL}/api/v1/controls", timeout=5.0)
+        r = httpx.get(f"{SERVER_URL}/api/v1/controls?limit=100", timeout=5.0)
         r.raise_for_status()
         data = r.json()
         names = [c["name"] for c in data.get("controls", [])]
