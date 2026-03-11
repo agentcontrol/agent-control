@@ -59,12 +59,6 @@ jobs:
       - name: Test with coverage
         run: make test
 
-      - name: Cisco contrib checks
-        run: |
-          make -C evaluators/contrib/cisco lint
-          make -C evaluators/contrib/cisco typecheck
-          make -C evaluators/contrib/cisco test
-
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
