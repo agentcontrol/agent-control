@@ -87,8 +87,7 @@ export const EditControlContent = ({
       execution: 'server',
     },
     validate: {
-      name: (value) =>
-        !value?.trim() ? 'Control name is required' : null,
+      name: (value) => (!value?.trim() ? 'Control name is required' : null),
       selector_path: (value) => {
         if (!value?.trim()) {
           return 'Selector path is required';
@@ -290,8 +289,7 @@ export const EditControlContent = ({
             color: 'green',
           });
         } else {
-          const nameChanged =
-            values.name.trim() !== control.name.trim();
+          const nameChanged = values.name.trim() !== control.name.trim();
 
           if (nameChanged) {
             try {
@@ -323,13 +321,18 @@ export const EditControlContent = ({
                       evaluatorForm
                     );
                     setUnmappedErrors(
-                      unmapped.map((e) => ({ field: e.field, message: e.message }))
+                      unmapped.map((e) => ({
+                        field: e.field,
+                        message: e.message,
+                      }))
                     );
                   }
                 } else {
                   notifications.show({
                     title: 'Failed to rename control',
-                    message: problemDetail.detail || 'An unexpected error occurred while renaming',
+                    message:
+                      problemDetail.detail ||
+                      'An unexpected error occurred while renaming',
                     color: 'red',
                   });
                 }

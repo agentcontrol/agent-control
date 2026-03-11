@@ -10,7 +10,7 @@ from .policy import Control
 
 
 def _strip_slug_name(v: str) -> str:
-    """Strip leading/trailing whitespace for slug-style names (control, policy, evaluator config)."""
+    """Strip leading/trailing whitespace for slug-style names."""
     return v.strip() if isinstance(v, str) else v
 
 
