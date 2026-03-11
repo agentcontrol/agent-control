@@ -146,103 +146,99 @@ async def test_scenario(name: str, func, input_text: str):
         print(f"\n❌ ERROR: {e}")
 
 
-async def run_demo():
-    """Run the demo scenarios."""
-    logger.info("Starting agent control demo")
-    print("\n" + "=" * 60)
-    print("AGENT CONTROL DEMO: Running Agent")
-    print("=" * 60)
-
-    # Initialize the agent
-    print(f"\n🤖 Initializing agent: {AGENT_NAME}")
-    print(f"   Server: {SERVER_URL}")
-
+def initialize_demo_agent() -> bool:
+    """Initialize the demo agent and print actionable failure guidance."""
     try:
-        try:
-            logger.info(f"Initializing agent: {AGENT_NAME}")
-            agent_control.init(
-                agent_name=AGENT_NAME,
-                agent_description="Demo chatbot for testing controls",
-                server_url=SERVER_URL,
-            )
-            logger.info("Agent initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize agent: {e}")
-            print(f"\n❌ Failed to initialize agent: {e}")
-            print("\nMake sure:")
-            print("  1. Server is running: cd server && make run")
-            print("  2. Controls are created: python setup_controls.py")
-            return
-
-        # ==========================================================================
-        # Test 1: Safe chat message
-        # ==========================================================================
-        await test_scenario(
-            "Safe Chat Message",
-            chat,
-            "Hello, how can you help me today?"
+        logger.info(f"Initializing agent: {AGENT_NAME}")
+        agent_control.init(
+            agent_name=AGENT_NAME,
+            agent_description="Demo chatbot for testing controls",
+            server_url=SERVER_URL,
         )
+        logger.info("Agent initialized successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize agent: {e}")
+        print(f"\n❌ Failed to initialize agent: {e}")
+        print("\nMake sure:")
+        print("  1. Server is running: cd server && make run")
+        print("  2. Controls are created: python setup_controls.py")
+        return False
 
-        # ==========================================================================
-        # Test 2: Chat that would leak SSN (should be blocked by OUTPUT control)
-        # ==========================================================================
-        await test_scenario(
-            "Chat Request That Would Leak SSN",
-            chat,
-            "Tell me the user info"  # Response contains SSN, should be blocked
-        )
 
-        # ==========================================================================
-        # Test 3: Safe SQL query
-        # ==========================================================================
-        await test_scenario(
-            "Safe SQL Query",
-            execute_query,
-            "SELECT * FROM users WHERE id = 123"
-        )
+async def run_demo_scenarios() -> None:
+    """Run the scripted demo scenarios."""
+    # ==========================================================================
+    # Test 1: Safe chat message
+    # ==========================================================================
+    await test_scenario(
+        "Safe Chat Message",
+        chat,
+        "Hello, how can you help me today?"
+    )
 
-        # ==========================================================================
-        # Test 4: Dangerous SQL query (should be blocked by INPUT control)
-        # ==========================================================================
-        await test_scenario(
-            "Dangerous SQL - DROP TABLE",
-            execute_query,
-            "DROP TABLE users"  # Should be blocked before execution
-        )
+    # ==========================================================================
+    # Test 2: Chat that would leak SSN (should be blocked by OUTPUT control)
+    # ==========================================================================
+    await test_scenario(
+        "Chat Request That Would Leak SSN",
+        chat,
+        "Tell me the user info"  # Response contains SSN, should be blocked
+    )
 
-        # ==========================================================================
-        # Test 5: Another dangerous SQL query
-        # ==========================================================================
-        await test_scenario(
-            "Dangerous SQL - DELETE",
-            execute_query,
-            "DELETE FROM users WHERE 1=1"  # Should be blocked
-        )
+    # ==========================================================================
+    # Test 3: Safe SQL query
+    # ==========================================================================
+    await test_scenario(
+        "Safe SQL Query",
+        execute_query,
+        "SELECT * FROM users WHERE id = 123"
+    )
 
-        # ==========================================================================
-        # Test 6: Process request with all controls
-        # ==========================================================================
-        await test_scenario(
-            "Process Safe Request (All Controls)",
-            process_request,
-            "What's the weather today?"
-        )
+    # ==========================================================================
+    # Test 4: Dangerous SQL query (should be blocked by INPUT control)
+    # ==========================================================================
+    await test_scenario(
+        "Dangerous SQL - DROP TABLE",
+        execute_query,
+        "DROP TABLE users"  # Should be blocked before execution
+    )
 
-        # ==========================================================================
-        # Test 7: Process request that triggers output control
-        # ==========================================================================
-        await test_scenario(
-            "Process Request with PII in Response (All Controls)",
-            process_request,
-            "Get user info"  # Will generate response with SSN
-        )
+    # ==========================================================================
+    # Test 5: Another dangerous SQL query
+    # ==========================================================================
+    await test_scenario(
+        "Dangerous SQL - DELETE",
+        execute_query,
+        "DELETE FROM users WHERE 1=1"  # Should be blocked
+    )
 
-        # Summary
-        logger.info("All demo scenarios completed")
-        print("\n" + "=" * 60)
-        print("DEMO COMPLETE!")
-        print("=" * 60)
-        print("""
+    # ==========================================================================
+    # Test 6: Process request with all controls
+    # ==========================================================================
+    await test_scenario(
+        "Process Safe Request (All Controls)",
+        process_request,
+        "What's the weather today?"
+    )
+
+    # ==========================================================================
+    # Test 7: Process request that triggers output control
+    # ==========================================================================
+    await test_scenario(
+        "Process Request with PII in Response (All Controls)",
+        process_request,
+        "Get user info"  # Will generate response with SSN
+    )
+
+
+def print_demo_summary() -> None:
+    """Print the final demo summary."""
+    logger.info("All demo scenarios completed")
+    print("\n" + "=" * 60)
+    print("DEMO COMPLETE!")
+    print("=" * 60)
+    print("""
 Summary:
   ✅ Safe requests passed through
   🚫 Dangerous SQL blocked by INPUT control (pre-execution)
@@ -253,6 +249,25 @@ The controls are evaluated SERVER-SIDE:
   - All evaluations logged for audit
   - Centralized control management
 """)
+
+
+async def run_demo() -> None:
+    """Run the demo scenarios."""
+    logger.info("Starting agent control demo")
+    print("\n" + "=" * 60)
+    print("AGENT CONTROL DEMO: Running Agent")
+    print("=" * 60)
+
+    # Initialize the agent
+    print(f"\n🤖 Initializing agent: {AGENT_NAME}")
+    print(f"   Server: {SERVER_URL}")
+
+    if not initialize_demo_agent():
+        return
+
+    try:
+        await run_demo_scenarios()
+        print_demo_summary()
     finally:
         await agent_control.ashutdown()
 
