@@ -1,11 +1,11 @@
 <p align="center">
   <img
-    src="https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docs/images/AgentControl-logo-light.png#gh-light-mode-only"
+    src="docs/images/AgentControl-logo-light.png#gh-light-mode-only"
     alt="Agent Control Logo (light)"
     width="120"
   />
   <img
-    src="https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docs/images/AgentControl-logo-dark.png#gh-dark-mode-only"
+    src="docs/images/AgentControl-logo-dark.png#gh-dark-mode-only"
     alt="Agent Control Logo (dark)"
     width="120"
   />
@@ -24,7 +24,7 @@
 
 > **💡 Pro Tip:** Checkout [docs](https://docs.agentcontrol.dev/) for complete reference
 
-> **👋 Say hello to us:** Checkout our [Slack](https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA).  Pop in to ask for help, suggest features, or just to say hello!
+> **👋 Say hello to us:** Checkout our [Slack](https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA). Pop in to ask for help, suggest features, or just to say hello!
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
@@ -32,8 +32,8 @@ AI agents interact with users, tools, and external systems in unpredictable ways
 
 ![Agent Control Architecture](docs/images/Architecture.png)
 
-
 ## Why Do You Need It?
+
 Traditional guardrails embedded inside your agent code have critical limitations:
 
 - **Scattered Logic:** Control code is buried across your agent codebase, making it hard to audit or update
@@ -41,6 +41,7 @@ Traditional guardrails embedded inside your agent code have critical limitations
 - **Limited Adaptability:** Hardcoded checks can't adapt to new attack patterns or production data variations
 
 **Agent Control gives you runtime control over what your agents can and cannot do:**
+
 - **For developers:** Centralize safety logic and adapt to emerging threats instantly without redeployment
 - **For non-technical teams:** Intuitive UI to configure and monitor agent safety without touching code
 - **For organizations:** Reusable controls across agents with comprehensive audit trails
@@ -57,13 +58,13 @@ Traditional guardrails embedded inside your agent code have critical limitations
 
 ## Performance
 
-| Endpoint | Scenario | RPS | p50 | p99 |
-|----------|----------|-----|-----|-----|
-| Agent init | Agent with 3 tool steps | 509 | 19 ms | 54 ms |
-| Evaluation | 1 control, 500-char content | 437 | 36 ms | 61 ms |
-| Evaluation | 10 controls, 500-char content | 349 | 35 ms | 66 ms |
-| Evaluation | 50 controls, 500-char content | 199 | 63 ms | 91 ms |
-| Controls refresh | 5-50 controls per agent | 273-392 | 20-27 ms | 27-61 ms |
+| Endpoint         | Scenario                      | RPS     | p50      | p99      |
+| ---------------- | ----------------------------- | ------- | -------- | -------- |
+| Agent init       | Agent with 3 tool steps       | 509     | 19 ms    | 54 ms    |
+| Evaluation       | 1 control, 500-char content   | 437     | 36 ms    | 61 ms    |
+| Evaluation       | 10 controls, 500-char content | 349     | 35 ms    | 66 ms    |
+| Evaluation       | 50 controls, 500-char content | 199     | 63 ms    | 91 ms    |
+| Controls refresh | 5-50 controls per agent       | 273-392 | 20-27 ms | 27-61 ms |
 
 - Agent init handles both create and update identically (upsert).
 - All four built-in evaluators (regex, list, JSON, SQL) perform within 40-46 ms p50 at 1 control.
@@ -74,7 +75,7 @@ _Benchmarked on Apple M5 (16 GB RAM), Docker Compose (`postgres:16` + `agent-con
 
 ### Examples
 
-Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start) for hands-on setup. 
+Explore real-world integrations with popular agent frameworks, or jump to [Quick Start](#quick-start) for hands-on setup.
 
 - **[Examples Overview](examples/README.md)** — Working code examples and integration patterns
 - **[TypeScript SDK (npm consumer)](examples/typescript_sdk/)** — Monorepo example that installs `agent-control` from npm
@@ -88,15 +89,19 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 
 ### Installation
 
-**Prerequisites**: 
-* Python 3.12+ 
-* Docker 
+**Prerequisites**:
 
-#### SDK only 
-Install our SDK in your project - `pip install agent-control-sdk` 
+- Python 3.12+
+- Docker
+
+#### SDK only
+
+Install our SDK in your project - `pip install agent-control-sdk`
+
 > **📝 Note:** Depending on your setup the command maybe different such as `uv add agent-control-sdk` if you're using uv.
 
 Run the Agent Control server and Postgres database via docker compose:
+
 ```commandline
 curl "https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml" | docker compose -f - up -d
 ```
@@ -105,9 +110,10 @@ Server will be running at `http://localhost:8000`
 
 #### Local development
 
-**Prerequisites:** 
-* uv: Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-* Node.js 18+: For the web dashboard (optional)
+**Prerequisites:**
+
+- uv: Fast Python package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- Node.js 18+: For the web dashboard (optional)
 
 ```bash
 # Clone the repo
@@ -124,16 +130,18 @@ make server-run
 make ui-install
 make ui-dev
 ```
-* Server will run on `http://localhost:8000`
-* UI will run on `http://localhost:4000`
+
+- Server will run on `http://localhost:8000`
+- UI will run on `http://localhost:4000`
 
 ### Onboarding your agent
 
 #### Register your agent with server
 
-Agent must be registered with the server.  You should also add `@control` decorator around tools and llm call functions.
+Agent must be registered with the server. You should also add `@control` decorator around tools and llm call functions.
 
-Here is a contrived example.  Reference our [examples](/examples) for real world examples for specific frameworks.
+Here is a contrived example. Reference our [examples](/examples) for real world examples for specific frameworks.
+
 ```python
 # my_agent.py
 import asyncio
@@ -151,7 +159,7 @@ async def chat(message: str) -> str:
 
 # Initialize your agent
 agent_control.init(
-    agent_name="awesome_bot_3000", # This should be a unique name 
+    agent_name="awesome_bot_3000", # This should be a unique name
     agent_description="My Chatbot",
 )
 
@@ -167,7 +175,7 @@ asyncio.run(main())
 
 #### Add some controls
 
-Easiest way to add controls is to use the UI.  
+Easiest way to add controls is to use the UI.
 
 You can also use SDK or directly call api:
 
@@ -179,6 +187,7 @@ You can also use SDK or directly call api:
 >
 > If you started the full local stack with the repo-root `docker-compose.yml`, it enables
 > auth with these development defaults:
+>
 > - Regular API key: `420c6b90714b45beaa992c3f05cf2baf`
 > - Admin API key: `29af8554a1fe4311977b7ce360b20cc3`
 > - UI default key (`NEXT_PUBLIC_AGENT_CONTROL_API_KEY`): `29af8554a1fe4311977b7ce360b20cc3`
@@ -234,6 +243,7 @@ async def setup():
 
 asyncio.run(setup())
 ```
+
 #### What's Happening Under the Hood?
 
 1. Your app calls `chat("test")`
@@ -248,12 +258,12 @@ asyncio.run(setup())
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AGENT_CONTROL_URL` | `http://localhost:8000` | Server URL for SDK |
-| `AGENT_CONTROL_API_KEY` | — | API key for authentication (if enabled) |
-| `DB_URL` | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
-| `GALILEO_API_KEY` | — | Required for Luna-2 AI evaluator |
+| Variable                | Default                                                                         | Description                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `AGENT_CONTROL_URL`     | `http://localhost:8000`                                                         | Server URL for SDK                                                            |
+| `AGENT_CONTROL_API_KEY` | —                                                                               | API key for authentication (if enabled)                                       |
+| `DB_URL`                | `postgresql+psycopg://agent_control:agent_control@localhost:5432/agent_control` | Database connection string (SQLite: `sqlite+aiosqlite:///./agent_control.db`) |
+| `GALILEO_API_KEY`       | —                                                                               | Required for Luna-2 AI evaluator                                              |
 
 ### Server Configuration
 
@@ -306,15 +316,15 @@ Agent Control is built as a monorepo with these components:
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-| Package | Description |
-|:--------|:------------|
-| `agent-control-sdk` | Python SDK with `@control()` decorator |
-| `agent-control` (npm) | TypeScript SDK (generated from OpenAPI) |
-| `agent-control-server` | FastAPI server with Control Management API |
-| `agent-control-engine` | Core evaluation logic and evaluator system |
-| `agent-control-models` | Shared Pydantic v2 models |
-| `agent-control-evaluators` | Built-in evaluators |
-| `ui` | Next.js web dashboard |
+| Package                    | Description                                |
+| :------------------------- | :----------------------------------------- |
+| `agent-control-sdk`        | Python SDK with `@control()` decorator     |
+| `agent-control` (npm)      | TypeScript SDK (generated from OpenAPI)    |
+| `agent-control-server`     | FastAPI server with Control Management API |
+| `agent-control-engine`     | Core evaluation logic and evaluator system |
+| `agent-control-models`     | Shared Pydantic v2 models                  |
+| `agent-control-evaluators` | Built-in evaluators                        |
+| `ui`                       | Next.js web dashboard                      |
 
 ---
 
@@ -338,18 +348,18 @@ agent-control/
 
 The project uses a Makefile for common tasks:
 
-| Command | Description |
-|:--------|:------------|
-| `make sync` | Install dependencies for all workspace packages |
-| `make test` | Run tests across all packages |
-| `make lint` | Run ruff linting |
-| `make lint-fix` | Run ruff with auto-fix |
-| `make typecheck` | Run mypy type checking |
-| `make check` | Run all quality checks (test + lint + typecheck) |
-| `make server-run` | Start the server |
+| Command                | Description                                                      |
+| :--------------------- | :--------------------------------------------------------------- |
+| `make sync`            | Install dependencies for all workspace packages                  |
+| `make test`            | Run tests across all packages                                    |
+| `make lint`            | Run ruff linting                                                 |
+| `make lint-fix`        | Run ruff with auto-fix                                           |
+| `make typecheck`       | Run mypy type checking                                           |
+| `make check`           | Run all quality checks (test + lint + typecheck)                 |
+| `make server-run`      | Start the server                                                 |
 | `make server-<target>` | Forward commands to server (e.g., `make server-alembic-upgrade`) |
-| `make sdk-<target>` | Forward commands to SDK (e.g., `make sdk-test`) |
-| `make engine-<target>` | Forward commands to engine (e.g., `make engine-test`) |
+| `make sdk-<target>`    | Forward commands to SDK (e.g., `make sdk-test`)                  |
+| `make engine-<target>` | Forward commands to engine (e.g., `make engine-test`)            |
 
 For detailed development workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
