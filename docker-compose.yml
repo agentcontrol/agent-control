@@ -58,14 +58,5 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  ui:
-    image: galileoai/agent-control-ui:latest
-    container_name: agent_control_ui
-    ports:
-      - "4000:4000"
-    depends_on:
-      - server
-    restart: unless-stopped
-
 volumes:
   pgdata:
