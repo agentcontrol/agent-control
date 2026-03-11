@@ -89,7 +89,7 @@ curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/
 
 **What this does:**
 - ✅ Starts Agent Control server at `http://localhost:8000`
-- ✅ Starts UI dashboard at `http://localhost:4000`
+- ✅ Starts UI dashboard at `http://localhost:8000`
 - ✅ Installs Python SDK (`agent-control-sdk`)
 
 **Next:** Jump to [Step 3: Register your agent](#step-3-register-your-agent)

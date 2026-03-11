@@ -7,6 +7,7 @@ import type {
   GetAgentPathParams,
   InitAgentRequestBody,
   ListAgentsQueryParams,
+  PatchControlRequest,
   SetControlDataRequest,
   ValidateControlDataRequest,
   ValidateControlDataResponse,
@@ -170,6 +171,11 @@ export const api = {
     getData: (controlId: number) =>
       apiClient.GET('/api/v1/controls/{control_id}/data', {
         params: { path: { control_id: controlId } },
+      }),
+    updateMetadata: (controlId: number, data: PatchControlRequest) =>
+      apiClient.PATCH('/api/v1/controls/{control_id}', {
+        params: { path: { control_id: controlId } },
+        body: data,
       }),
     setData: (controlId: number, data: SetControlDataRequest) =>
       apiClient.PUT('/api/v1/controls/{control_id}/data', {

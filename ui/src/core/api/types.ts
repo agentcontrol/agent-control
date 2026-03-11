@@ -92,6 +92,9 @@ export type CreateControlRequest =
   components['schemas']['CreateControlRequest'];
 export type CreateControlResponse =
   components['schemas']['CreateControlResponse'];
+export type PatchControlRequest = components['schemas']['PatchControlRequest'];
+export type PatchControlResponse =
+  components['schemas']['PatchControlResponse'];
 export type SetControlDataRequest =
   components['schemas']['SetControlDataRequest'];
 export type SetControlDataResponse =
