@@ -1,7 +1,8 @@
-"""Unit tests for LangGraph ToolNode integration."""
+"""Unit tests for LangChain AgentMiddleware integration."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,7 +12,7 @@ from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 from langgraph.prebuilt.tool_node import ToolCallRequest, ToolRuntime
 
-from agent_control.integrations.langgraph.tool_node import create_controlled_tool_node
+from agent_control.integrations.langchain.middleware import AgentControlMiddleware
 
 
 class _DummyClient:
@@ -40,7 +41,12 @@ def other_tool(text: str) -> str:
     return f"other:{text}"
 
 
-def _tool_request(tool_obj: Any, *, text: str = "hello", tool_call_id: str = "call-1") -> ToolCallRequest:
+def _tool_request(
+    tool_obj: Any,
+    *,
+    text: str = "hello",
+    tool_call_id: str = "call-1",
+) -> ToolCallRequest:
     runtime = ToolRuntime(
         state={},
         context=None,
@@ -56,6 +62,10 @@ def _tool_request(tool_obj: Any, *, text: str = "hello", tool_call_id: str = "ca
         "type": "tool_call",
     }
     return ToolCallRequest(tool_call=tool_call, tool=tool_obj, state={}, runtime=runtime)
+
+
+def _model_request(tools: list[Any]) -> Any:
+    return SimpleNamespace(tools=tools)
 
 
 def _safe_result() -> EvaluationResult:
@@ -120,10 +130,9 @@ def _error_result() -> EvaluationResult:
 
 
 @pytest.fixture
-def langgraph_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def langchain_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Patch Agent Control environment and registration dependencies."""
     from agent_control.integrations import _tool_controls as shared
-    from agent_control.integrations.langgraph import tool_node as module
 
     current_agent = Agent(
         agent_name="test-agent-123",
@@ -145,8 +154,6 @@ def langgraph_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(shared.agent_control, "evaluate_controls", evaluate_controls)
 
     return {
-        "module": module,
-        "shared": shared,
         "agent": current_agent,
         "register_agent": register_agent,
         "refresh_controls": refresh_controls,
@@ -155,65 +162,64 @@ def langgraph_env(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     }
 
 
-def test_initial_registration_sends_full_tool_list(langgraph_env: dict[str, Any]) -> None:
-    node = create_controlled_tool_node([echo_tool, other_tool])
+def test_model_wrapper_registers_full_tool_list(langchain_env: dict[str, Any]) -> None:
+    middleware = AgentControlMiddleware()
+    request = _model_request([echo_tool, other_tool])
+    handler = MagicMock(return_value="model-response")
 
-    assert node.tools_by_name.keys() == {"echo_tool", "other_tool"}
-    register_agent = langgraph_env["register_agent"]
+    response = middleware.wrap_model_call(request, handler)
+
+    assert response == "model-response"
+    register_agent = langchain_env["register_agent"]
     assert register_agent.await_count == 1
-
     _, kwargs = register_agent.await_args
     assert kwargs["conflict_mode"] == "overwrite"
     assert {step["name"] for step in kwargs["steps"]} == {"echo_tool", "other_tool"}
-    assert all(step["type"] == "tool" for step in kwargs["steps"])
+    langchain_env["refresh_controls"].assert_called_once_with()
 
 
-def test_successful_registration_triggers_public_refresh(langgraph_env: dict[str, Any]) -> None:
-    create_controlled_tool_node([echo_tool])
-
-    langgraph_env["refresh_controls"].assert_called_once_with()
-
-
-def test_sync_wrapper_allows_tool_output(langgraph_env: dict[str, Any]) -> None:
-    node = create_controlled_tool_node([echo_tool])
-    request = _tool_request(node.tools_by_name["echo_tool"])
+def test_sync_tool_wrapper_allows_tool_output(langchain_env: dict[str, Any]) -> None:
+    middleware = AgentControlMiddleware()
+    middleware.wrap_model_call(_model_request([echo_tool]), MagicMock(return_value="ok"))
+    request = _tool_request(echo_tool)
     handler = MagicMock(
-        return_value=ToolMessage(
-            content="allowed",
-            name="echo_tool",
-            tool_call_id="call-1",
-        )
+        return_value=ToolMessage(content="allowed", name="echo_tool", tool_call_id="call-1")
     )
 
-    response = node._wrap_tool_call(request, handler)
+    response = middleware.wrap_tool_call(request, handler)
 
     assert isinstance(response, ToolMessage)
     assert response.content == "allowed"
-    assert langgraph_env["evaluate_controls"].await_count == 2
+    assert langchain_env["evaluate_controls"].await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_async_wrapper_allows_tool_output(langgraph_env: dict[str, Any]) -> None:
-    node = create_controlled_tool_node([echo_tool])
-    request = _tool_request(node.tools_by_name["echo_tool"])
+async def test_async_tool_wrapper_allows_tool_output(langchain_env: dict[str, Any]) -> None:
+    middleware = AgentControlMiddleware()
+    await middleware.awrap_model_call(
+        _model_request([echo_tool]),
+        AsyncMock(return_value="ok"),
+    )
+    request = _tool_request(echo_tool)
 
     async def handler(_: Any) -> ToolMessage:
         return ToolMessage(content="allowed", name="echo_tool", tool_call_id="call-1")
 
-    response = await node._awrap_tool_call(request, handler)
+    response = await middleware.awrap_tool_call(request, handler)
 
     assert isinstance(response, ToolMessage)
     assert response.content == "allowed"
-    assert langgraph_env["evaluate_controls"].await_count == 2
+    assert langchain_env["evaluate_controls"].await_count == 2
 
 
-def test_deny_returns_error_tool_message(langgraph_env: dict[str, Any]) -> None:
-    langgraph_env["evaluate_controls"].return_value = _deny_result("Query blocked")
-    node = create_controlled_tool_node([echo_tool])
-    request = _tool_request(node.tools_by_name["echo_tool"])
+def test_deny_returns_error_tool_message(langchain_env: dict[str, Any]) -> None:
+    langchain_env["evaluate_controls"].return_value = _deny_result("Query blocked")
+    middleware = AgentControlMiddleware()
+    middleware.wrap_model_call(_model_request([echo_tool]), MagicMock(return_value="ok"))
+    request = _tool_request(echo_tool)
     handler = MagicMock()
 
-    response = node._wrap_tool_call(request, handler)
+    response = middleware.wrap_tool_call(request, handler)
 
     assert isinstance(response, ToolMessage)
     assert response.status == "error"
@@ -225,29 +231,31 @@ def test_deny_returns_error_tool_message(langgraph_env: dict[str, Any]) -> None:
 
 @pytest.mark.asyncio
 async def test_steer_returns_error_tool_message_with_guidance(
-    langgraph_env: dict[str, Any]
+    langchain_env: dict[str, Any]
 ) -> None:
-    langgraph_env["evaluate_controls"].return_value = _steer_result("Try a safer query")
-    node = create_controlled_tool_node([echo_tool])
-    request = _tool_request(node.tools_by_name["echo_tool"])
+    langchain_env["evaluate_controls"].return_value = _steer_result("Try a safer query")
+    middleware = AgentControlMiddleware()
+    await middleware.awrap_model_call(_model_request([echo_tool]), AsyncMock(return_value="ok"))
+    request = _tool_request(echo_tool)
 
     async def handler(_: Any) -> ToolMessage:
         return ToolMessage(content="allowed", name="echo_tool", tool_call_id="call-1")
 
-    response = await node._awrap_tool_call(request, handler)
+    response = await middleware.awrap_tool_call(request, handler)
 
     assert isinstance(response, ToolMessage)
     assert response.status == "error"
     assert "Guidance: Try a safer query" in str(response.content)
 
 
-def test_evaluation_errors_fail_closed(langgraph_env: dict[str, Any]) -> None:
-    langgraph_env["evaluate_controls"].return_value = _error_result()
-    node = create_controlled_tool_node([echo_tool])
-    request = _tool_request(node.tools_by_name["echo_tool"])
+def test_evaluation_errors_fail_closed(langchain_env: dict[str, Any]) -> None:
+    langchain_env["evaluate_controls"].return_value = _error_result()
+    middleware = AgentControlMiddleware()
+    middleware.wrap_model_call(_model_request([echo_tool]), MagicMock(return_value="ok"))
+    request = _tool_request(echo_tool)
     handler = MagicMock()
 
-    response = node._wrap_tool_call(request, handler)
+    response = middleware.wrap_tool_call(request, handler)
 
     assert isinstance(response, ToolMessage)
     assert response.status == "error"
@@ -255,62 +263,29 @@ def test_evaluation_errors_fail_closed(langgraph_env: dict[str, Any]) -> None:
     handler.assert_not_called()
 
 
-def test_evaluation_exception_fails_closed(langgraph_env: dict[str, Any]) -> None:
-    langgraph_env["evaluate_controls"].side_effect = RuntimeError("boom")
-    node = create_controlled_tool_node([echo_tool])
-    request = _tool_request(node.tools_by_name["echo_tool"])
-    handler = MagicMock()
-
-    response = node._wrap_tool_call(request, handler)
-
-    assert isinstance(response, ToolMessage)
-    assert response.status == "error"
-    assert "policy evaluation failed" in str(response.content)
-    handler.assert_not_called()
-
-
-def test_resync_failure_is_fail_open_and_logged(
-    langgraph_env: dict[str, Any],
+def test_model_resync_failure_is_fail_open_and_logged(
+    langchain_env: dict[str, Any],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    register_agent = langgraph_env["register_agent"]
+    register_agent = langchain_env["register_agent"]
     register_agent.side_effect = [{}, RuntimeError("resync failed")]
-    node = create_controlled_tool_node([echo_tool])
-    node.tools_by_name["other_tool"] = other_tool
-    request = _tool_request(node.tools_by_name["echo_tool"])
-    handler = MagicMock(
-        return_value=ToolMessage(content="allowed", name="echo_tool", tool_call_id="call-1")
-    )
+    middleware = AgentControlMiddleware()
+    middleware.wrap_model_call(_model_request([echo_tool]), MagicMock(return_value="ok"))
+    handler = MagicMock(return_value="model-response")
 
-    response = node._wrap_tool_call(request, handler)
+    response = middleware.wrap_model_call(_model_request([echo_tool, other_tool]), handler)
 
-    assert isinstance(response, ToolMessage)
-    assert response.content == "allowed"
+    assert response == "model-response"
     assert register_agent.await_count == 2
     assert "re-registration failed" in caplog.text
 
 
-def test_tool_name_change_causes_full_reregistration(langgraph_env: dict[str, Any]) -> None:
-    node = create_controlled_tool_node([echo_tool])
-    node.tools_by_name["other_tool"] = other_tool
-    request = _tool_request(node.tools_by_name["echo_tool"])
-    handler = MagicMock(
-        return_value=ToolMessage(content="allowed", name="echo_tool", tool_call_id="call-1")
-    )
+def test_omitted_agent_name_resolves_from_current_agent(langchain_env: dict[str, Any]) -> None:
+    middleware = AgentControlMiddleware()
+    middleware.wrap_model_call(_model_request([echo_tool]), MagicMock(return_value="ok"))
 
-    node._wrap_tool_call(request, handler)
-
-    register_agent = langgraph_env["register_agent"]
-    assert register_agent.await_count == 2
-    _, kwargs = register_agent.await_args
-    assert {step["name"] for step in kwargs["steps"]} == {"echo_tool", "other_tool"}
-
-
-def test_omitted_agent_name_resolves_from_current_agent(langgraph_env: dict[str, Any]) -> None:
-    create_controlled_tool_node([echo_tool])
-
-    args, _ = langgraph_env["register_agent"].await_args
-    assert args[1].agent_name == langgraph_env["agent"].agent_name
+    args, _ = langchain_env["register_agent"].await_args
+    assert args[1].agent_name == langchain_env["agent"].agent_name
 
 
 def test_missing_initialized_agent_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -319,4 +294,4 @@ def test_missing_initialized_agent_raises(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(shared.agent_control, "current_agent", lambda: None)
 
     with pytest.raises(RuntimeError, match="Call agent_control.init"):
-        create_controlled_tool_node([echo_tool])
+        AgentControlMiddleware()
