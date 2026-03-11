@@ -84,6 +84,7 @@ async def test_missing_is_safe_uses_on_error(monkeypatch: pytest.MonkeyPatch) ->
     ev = CiscoAIDefenseEvaluator(cfg)
     res = await ev.evaluate("text")
     assert res.matched is False
+    assert res.error == "Cisco AI Defense response missing 'is_safe'"
     assert res.metadata and res.metadata.get("fallback_action") == "allow"
     assert "raw" not in (res.metadata or {})
 
@@ -135,10 +136,8 @@ async def test_api_url_override_used(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["endpoint_url"] == "https://example.com/custom/chat"
 
 
-## Removed: internal client reuse test
-
 @pytest.mark.asyncio
-async def test_on_error_allow_fail_open_no_error_field(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_on_error_allow_fail_open_sets_error_field(monkeypatch: pytest.MonkeyPatch) -> None:
     async def boom(self: AIDefenseClient, **kwargs):
         raise RuntimeError("network down")
 
@@ -148,7 +147,7 @@ async def test_on_error_allow_fail_open_no_error_field(monkeypatch: pytest.Monke
     ev = CiscoAIDefenseEvaluator(cfg)
     res = await ev.evaluate("anything")
     assert res.matched is False
-    assert res.error is None
+    assert res.error == "network down"
     assert res.metadata and res.metadata.get("fallback_action") == "allow"
 
 
@@ -198,6 +197,22 @@ async def test_messages_strategy_single_synthesizes_message(monkeypatch: pytest.
     cfg = CiscoAIDefenseConfig(messages_strategy="single", payload_field="input")
     ev = CiscoAIDefenseEvaluator(cfg)
     _ = await ev.evaluate("hello world")
+    assert captured["messages"] == [{"role": "user", "content": "hello world"}]
+
+
+@pytest.mark.asyncio
+async def test_dict_input_prefers_input_field_over_python_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = {}
+
+    async def capture(self: AIDefenseClient, messages, **_):
+        captured["messages"] = messages
+        return {"is_safe": True}
+
+    monkeypatch.setattr(AIDefenseClient, "chat_inspect", capture, raising=True)
+
+    cfg = CiscoAIDefenseConfig(messages_strategy="single", payload_field="input")
+    ev = CiscoAIDefenseEvaluator(cfg)
+    _ = await ev.evaluate({"input": "hello world", "extra": "ignored"})
     assert captured["messages"] == [{"role": "user", "content": "hello world"}]
 
 

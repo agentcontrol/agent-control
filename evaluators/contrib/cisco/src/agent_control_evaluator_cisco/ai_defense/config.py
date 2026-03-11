@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from typing import Any, Literal
-from pydantic import Field
 
 from agent_control_evaluators import EvaluatorConfig
+from pydantic import Field
 
 
 class CiscoAIDefenseConfig(EvaluatorConfig):

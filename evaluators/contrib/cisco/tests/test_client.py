@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import importlib
 import sys
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
@@ -13,16 +15,16 @@ from agent_control_evaluator_cisco.ai_defense.client import (
 
 @pytest.mark.asyncio
 async def test_chat_inspect_happy_path_builds_headers_and_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: Dict[str, Any] = {}
+    captured: dict[str, Any] = {}
 
     class FakeResponse:
-        def __init__(self, data: Dict[str, Any]):
+        def __init__(self, data: dict[str, Any]):
             self._data = data
 
         def raise_for_status(self) -> None:  # no-op
             return None
 
-        def json(self) -> Dict[str, Any]:
+        def json(self) -> dict[str, Any]:
             return self._data
 
     class FakeAsyncClient:
@@ -30,7 +32,7 @@ async def test_chat_inspect_happy_path_builds_headers_and_payload(monkeypatch: p
             captured["timeout"] = kwargs.get("timeout")
             self.is_closed = False
 
-        async def post(self, url: str, json: Dict[str, Any], headers: Dict[str, str]):
+        async def post(self, url: str, json: dict[str, Any], headers: dict[str, str]):
             captured["url"] = url
             captured["json"] = json
             captured["headers"] = headers
@@ -68,6 +70,7 @@ async def test_chat_inspect_happy_path_builds_headers_and_payload(monkeypatch: p
     assert captured["json"]["messages"][0]["content"] == "hello"
     assert captured["json"]["metadata"] == {"trace_id": "t1"}
     assert captured["json"]["config"] == {"mode": "strict"}
+    assert "api_key='k'" not in repr(c)
 
 
 @pytest.mark.asyncio
@@ -108,7 +111,7 @@ async def test_chat_inspect_http_error_propagates(monkeypatch: pytest.MonkeyPatc
         def raise_for_status(self) -> None:
             raise FakeHTTPError("bad status")
 
-        def json(self) -> Dict[str, Any]:  # never reached
+        def json(self) -> dict[str, Any]:  # never reached
             return {}
 
     class FakeAsyncClient:
@@ -134,7 +137,7 @@ async def test_chat_inspect_http_error_propagates(monkeypatch: pytest.MonkeyPatc
 
 @pytest.mark.asyncio
 async def test_get_client_lifecycle_create_reuse_recreate(monkeypatch: pytest.MonkeyPatch) -> None:
-    instances: List["FakeAsyncClient"] = []
+    instances: list[FakeAsyncClient] = []
 
     class FakeAsyncClient:
         def __init__(self, *_, **kwargs: Any):
@@ -198,7 +201,7 @@ def test_build_endpoint_trailing_slash() -> None:
 async def test_importerror_path_disables_httpx_and_get_client_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     # Ensure a clean reimport of the client module with ImportError for httpx
     monkeypatch.setitem(sys.modules, "httpx", None)
-    
+
     class ImportBlocker:
         def find_spec(self, fullname, path=None, target=None):  # type: ignore[no-untyped-def]
             if fullname == "httpx":
@@ -222,4 +225,3 @@ async def test_importerror_path_disables_httpx_and_get_client_raises(monkeypatch
         # Best effort: if httpx is available, restore it by deleting None placeholder
         if sys.modules.get("httpx") is None:
             del sys.modules["httpx"]
-
