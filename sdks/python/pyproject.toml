@@ -35,6 +35,7 @@ Documentation = "https://github.com/yourusername/agent-control#readme"
 Repository = "https://github.com/yourusername/agent-control"
 
 [project.optional-dependencies]
+langgraph = ["langgraph>=0.2.0"]
 strands-agents = ["strands-agents>=1.26.0"]
 galileo = ["agent-control-evaluator-galileo>=3.0.0"]
 
@@ -48,6 +49,7 @@ dev = [
     "agent-control-models",
     "agent-control-engine",
     "agent-control-evaluators",
+    "langgraph>=0.2.0",  # For langgraph integration tests
     "strands-agents>=1.26.0",  # For strands integration tests
 ]
 
