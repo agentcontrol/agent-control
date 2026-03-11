@@ -24,6 +24,7 @@ from ..errors import APIValidationError, ConflictError, DatabaseError, NotFoundE
 from ..logging_utils import get_logger
 from ..models import EvaluatorConfigDB
 from ..services.evaluator_utils import is_agent_scoped
+from ..services.query_utils import escape_like_pattern
 
 _logger = get_logger(__name__)
 
@@ -224,7 +225,9 @@ async def list_evaluator_configs(
         query = query.where(EvaluatorConfigDB.id < cursor)
 
     if name is not None:
-        query = query.where(EvaluatorConfigDB.name.ilike(f"%{name}%"))
+        query = query.where(
+            EvaluatorConfigDB.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
+        )
 
     if evaluator is not None:
         query = query.where(EvaluatorConfigDB.evaluator == evaluator)
@@ -235,7 +238,9 @@ async def list_evaluator_configs(
 
     total_query = select(func.count()).select_from(EvaluatorConfigDB)
     if name is not None:
-        total_query = total_query.where(EvaluatorConfigDB.name.ilike(f"%{name}%"))
+        total_query = total_query.where(
+            EvaluatorConfigDB.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
+        )
     if evaluator is not None:
         total_query = total_query.where(EvaluatorConfigDB.evaluator == evaluator)
     total_result = await db.execute(total_query)

@@ -638,3 +638,22 @@ def test_create_evaluator_config_empty_config_allowed(client: TestClient) -> Non
     assert resp.status_code == 201
     data = resp.json()
     assert data["config"] == {}
+
+
+def test_list_evaluator_configs_name_filter_escapes_like_wildcards(
+    client: TestClient,
+) -> None:
+    # Given: configs where one name contains a literal underscore
+    base = f"config-{uuid.uuid4().hex}"
+    _create_config(client, name=f"{base}_special")
+    _create_config(client, name=f"{base}Xnomatch")
+
+    # When: searching with "_" which is a LIKE wildcard for "any single character"
+    resp = client.get("/api/v1/evaluator-configs", params={"name": f"{base}_"})
+
+    # Then: only the config with a literal underscore matches, not the one with "X"
+    assert resp.status_code == 200
+    data = resp.json()
+    names = [cfg["name"] for cfg in data["evaluator_configs"]]
+    assert f"{base}_special" in names
+    assert f"{base}Xnomatch" not in names

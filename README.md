@@ -1,11 +1,11 @@
 <p align="center">
   <img
-    src="docs/images/AgentControl-logo-light.png#gh-light-mode-only"
+    src="docs/images/AgentControl-logo-light.svg#gh-light-mode-only"
     alt="Agent Control Logo (light)"
     width="120"
   />
   <img
-    src="docs/images/AgentControl-logo-dark.png#gh-dark-mode-only"
+    src="docs/images/AgentControl-logo-dark.svg#gh-dark-mode-only"
     alt="Agent Control Logo (dark)"
     width="120"
   />
@@ -26,10 +26,10 @@
   <a href="https://docs.agentcontrol.dev/">Docs</a> |
   <a href="https://docs.agentcontrol.dev/core/quickstart">Quickstart</a> |
   <a href="examples/README.md">Examples</a> |
-  <a href="https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA">Slack</a>
+  <a href="https://join.slack.com/t/agentcontrol/shared_invite/zt-3se2g6d68-iGmNdRfGcD31cZ0vELMPxw">Slack</a>
 </p>
 
-A policy-based control layer that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules - blocking prompt injections, PII leakage, and other risks - without changing your agent's code.
+A Control Plane that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules - blocking prompt injections, PII leakage, and other risks - without changing your agent's code.
 
 - **Centralized safety** - define controls once, apply across agents, update without redeploying
 - **Runtime configuration** - manage controls via API or UI, no code changes needed
@@ -42,12 +42,17 @@ A policy-based control layer that sits between your AI agents and the outside wo
 
 Prerequisites: Docker and Python 3.12+.
 
-The fastest way to try Agent Control is:
+Quick setup (flow):
 
-1. Start the server
-2. Install the SDK
-3. Wrap a model or tool call with `@control()`
-4. Create controls from the UI or API
+```
+Start server
+  ↓
+Install SDK
+  ↓
+Wrap model or tool call with @control()
+  ↓
+Create controls (UI or API)
+```
 
 ### 1. Start the server
 
@@ -57,7 +62,7 @@ No repo clone required:
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
 ```
 
-This starts PostgreSQL and the Agent Control API at `http://localhost:8000`.
+This starts PostgreSQL and the Agent Control Server at `http://localhost:8000`.
 
 Verify it is up:
 
@@ -70,9 +75,9 @@ curl http://localhost:8000/health
 Python:
 
 ```bash
-python3 -m venv .venv
+uv venv
 source .venv/bin/activate
-pip install agent-control-sdk
+uv pip install agent-control-sdk
 ```
 
 TypeScript:
@@ -110,13 +115,36 @@ asyncio.run(main())
 
 ### 4. Add controls
 
-Next, create controls that define what to check and how to respond. Follow one of these guides:
+Create your first control using the SDK, or use the UI for a visual flow.
 
-- [Quickstart](https://docs.agentcontrol.dev/core/quickstart) - full walkthrough including control creation via SDK
-- [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart) - create controls visually in the dashboard
-- [Controls](https://docs.agentcontrol.dev/concepts/controls) - learn how controls, selectors, and evaluators work
-- [Decorate LLM & tool calls](https://docs.agentcontrol.dev/how-to/decorate-llm-tool-calls) - patterns for wrapping your agent code
-- [Examples](https://docs.agentcontrol.dev/examples/overview) - end-to-end examples with popular frameworks
+Minimal SDK example:
+
+```python
+from agent_control import AgentControlClient, controls, agents
+
+async with AgentControlClient() as client:
+    control = await controls.create_control(
+        client,
+        name="block-ssn",
+        data={
+            "enabled": True,
+            "execution": "server",
+            "scope": {"stages": ["post"]},
+            "selector": {"path": "output"},
+            "evaluator": {"name": "regex", "config": {"pattern": r"\\b\\d{3}-\\d{2}-\\d{4}\\b"}},
+            "action": {"decision": "deny"},
+        },
+    )
+    await agents.add_agent_control(client, agent_name="my-agent", control_id=control["control_id"])
+```
+
+Guides and References:
+
+- [Quickstart](https://docs.agentcontrol.dev/core/quickstart) — Full walkthrough with SDK setup
+- [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart) — Create controls visually in the dashboard
+- [Controls](https://docs.agentcontrol.dev/concepts/controls) — Learn how controls, selectors, and evaluators work
+- [Decorate LLM & tool calls](https://docs.agentcontrol.dev/how-to/decorate-llm-tool-calls) — Patterns for wrapping your agent code
+- [Examples](https://docs.agentcontrol.dev/examples/overview) — End-to-end examples with popular frameworks
 
 ## How It Works
 
@@ -135,15 +163,16 @@ Start with [Examples Overview](examples/README.md), or jump straight to a few re
 - [AWS Strands](examples/strands_agents/) - protect Strands workflows and tool calls
 - [Google ADK Decorator](examples/google_adk_decorator/) - add controls with `@control()`
 
+
 ## Performance
 
-| Endpoint | Scenario | RPS | p50 | p99 |
-| --- | --- | --- | --- | --- |
-| Agent init | Agent with 3 tool steps | 509 | 19 ms | 54 ms |
-| Evaluation | 1 control, 500-char content | 437 | 36 ms | 61 ms |
-| Evaluation | 10 controls, 500-char content | 349 | 35 ms | 66 ms |
-| Evaluation | 50 controls, 500-char content | 199 | 63 ms | 91 ms |
-| Controls refresh | 5-50 controls per agent | 273-392 | 20-27 ms | 27-61 ms |
+| Endpoint         | Scenario                      | RPS     | p50      | p99      |
+| ---------------- | ----------------------------- | ------- | -------- | -------- |
+| Agent init       | Agent with 3 tool steps       | 509     | 19 ms    | 54 ms    |
+| Evaluation       | 1 control, 500-char content   | 437     | 36 ms    | 61 ms    |
+| Evaluation       | 10 controls, 500-char content | 349     | 35 ms    | 66 ms    |
+| Evaluation       | 50 controls, 500-char content | 199     | 63 ms    | 91 ms    |
+| Controls refresh | 5-50 controls per agent       | 273-392 | 20-27 ms | 27-61 ms |
 
 - Agent init handles create and update as an upsert.
 - Local laptop benchmarks are directional, not production sizing guidance.

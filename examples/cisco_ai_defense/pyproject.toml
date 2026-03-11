@@ -1,0 +1,40 @@
+[project]
+name = "agent-control-aidefense-example"
+version = "0.1.0"
+description = "Cisco AI Defense Chat Inspection demo"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.24.0",
+    # Use the local SDK for decorator-based example
+    "agent-control-sdk>=5.2.0",
+    # When using SDK from path/editable, engine and models are not vendored
+    "agent-control-engine>=5.2.0",
+    "agent-control-models>=5.2.0",
+    "agent-control-evaluators>=5.2.0",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+# Resolve SDK and its internal packages from the workspace locally (no network)
+[tool.uv.sources]
+# Point to local workspace package paths for offline dev
+agent-control-sdk = { path = "../../sdks/python", editable = true }
+agent-control-models = { path = "../../models", editable = true }
+agent-control-engine = { path = "../../engine", editable = true }
+agent-control-evaluators = { path = "../../evaluators/builtin", editable = true }

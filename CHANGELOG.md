@@ -2,6 +2,65 @@
 
 <!-- version list -->
 
+## v6.7.1 (2026-03-11)
+
+### Bug Fixes
+
+- **server**: Escape ILIKE pattern in evaluator-configs list endpoint
+  ([#108](https://github.com/agentcontrol/agent-control/pull/108),
+  [`cb6e89f`](https://github.com/agentcontrol/agent-control/commit/cb6e89f134bd8cea944bbb99419b3d4a26f98d50))
+
+
+## v6.7.0 (2026-03-11)
+
+### Bug Fixes
+
+- **docs**: Add centered logo, header, and badges to README
+  ([#92](https://github.com/agentcontrol/agent-control/pull/92),
+  [`39c3cbf`](https://github.com/agentcontrol/agent-control/commit/39c3cbf02dc84770284463d3e8c755e2b511306c))
+
+- **docs**: Cleanup readme ([#66](https://github.com/agentcontrol/agent-control/pull/66),
+  [`eca0d6b`](https://github.com/agentcontrol/agent-control/commit/eca0d6b621f29f61cb6a87d04aae95f6e51ec454))
+
+- **infra**: Remove UI service from docker-compose.yml
+  ([#91](https://github.com/agentcontrol/agent-control/pull/91),
+  [`330ef55`](https://github.com/agentcontrol/agent-control/commit/330ef55b5e369a647476ead4456b1331c6e683c9))
+
+### Chores
+
+- **docs**: Use dark icon for dark theme and vice versa
+  ([#106](https://github.com/agentcontrol/agent-control/pull/106),
+  [`f2de82a`](https://github.com/agentcontrol/agent-control/commit/f2de82afc7728262a47b30a7e1639003ef573b1b))
+
+- **docs**: Use svg instead of png ([#101](https://github.com/agentcontrol/agent-control/pull/101),
+  [`755ff57`](https://github.com/agentcontrol/agent-control/commit/755ff57adcb2d4f3f52d7f77ad18e3f2d2741176))
+
+- **examples**: Update ts sdk to latest
+  ([#96](https://github.com/agentcontrol/agent-control/pull/96),
+  [`ceb003d`](https://github.com/agentcontrol/agent-control/commit/ceb003d0cbaf23844b67c5532b50e27690f4889a))
+
+- **release**: Ts sdk v1.1.0 [skip ci]
+  ([`8a9b62b`](https://github.com/agentcontrol/agent-control/commit/8a9b62b53b3f17f0bfeffa56423a47a445a1285b))
+
+- **sdk**: Add credits to TypeScript SDK
+  ([#107](https://github.com/agentcontrol/agent-control/pull/107),
+  [`bf4e75d`](https://github.com/agentcontrol/agent-control/commit/bf4e75dcdea98d8de5ed113dd7f24497990f90bf))
+
+### Features
+
+- **docs**: Update README.md to accurately mention Strands Agents SDK
+  ([#105](https://github.com/agentcontrol/agent-control/pull/105),
+  [`84dfa57`](https://github.com/agentcontrol/agent-control/commit/84dfa57edd0020da147942e06bff065384bdcead))
+
+- **evaluators**: Add Cisco AI Defense evaluator and examples
+  ([#60](https://github.com/agentcontrol/agent-control/pull/60),
+  [`52e2416`](https://github.com/agentcontrol/agent-control/commit/52e241657103f90ba4a6a54fefd68836db36fd16))
+
+- **sdk**: Add Google ADK framework integration
+  ([#83](https://github.com/agentcontrol/agent-control/pull/83),
+  [`f2b53ee`](https://github.com/agentcontrol/agent-control/commit/f2b53eeb115bd9f178b00728604ec9f90211e283))
+
+
 ## v6.6.2 (2026-03-11)
 
 ### Bug Fixes
