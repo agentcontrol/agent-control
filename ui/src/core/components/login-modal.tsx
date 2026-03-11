@@ -67,8 +67,8 @@ export function LoginModal({ opened }: LoginModalProps) {
             <Image
               src={
                 colorScheme === 'dark'
-                  ? '/ac-logo-dark.svg'
-                  : '/ac-logo-light.svg'
+                  ? '/ac-logo-light.svg'
+                  : '/ac-logo-dark.svg'
               }
               alt="Agent Control"
               width={48}
