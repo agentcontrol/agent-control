@@ -263,10 +263,10 @@ Done. Your agent now blocks SSN patterns automatically.
 > - **Admin API key(s):** `AGENT_CONTROL_ADMIN_API_KEYS` (e.g., "my-admin-key")
 >
 > **Replace these defaults before any shared or production deployment.**
-
+>
 > **With authentication enabled:**
 
-> ```bash
+```bash
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | AGENT_CONTROL_API_KEY_ENABLED=true AGENT_CONTROL_API_KEYS="my-ui-key" AGENT_CONTROL_ADMIN_API_KEYS="my-admin-key" AGENT_CONTROL_SESSION_SECRET="some-long-random-string" CORS_ORIGINS="http://localhost:4000" docker compose -f - up -d && pip install agent-control-sdk
 ```
 
