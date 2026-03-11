@@ -1,11 +1,11 @@
 <p align="center">
   <img
-    src="https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docs/images/AgentControl-logo-light.png#gh-light-mode-only"
+    src="docs/images/AgentControl-logo-light.png#gh-light-mode-only"
     alt="Agent Control Logo (light)"
     width="120"
   />
   <img
-    src="https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docs/images/AgentControl-logo-dark.png#gh-dark-mode-only"
+    src="docs/images/AgentControl-logo-dark.png#gh-dark-mode-only"
     alt="Agent Control Logo (dark)"
     width="120"
   />
