@@ -246,6 +246,15 @@ async def setup():
 asyncio.run(setup())
 ```
 
+Now, test your agent:
+
+```bash
+uv run my_agent.py
+```
+
+Done. Your agent now blocks SSN patterns automatically.
+
+
 > [!NOTE]
 > **Authentication Note:** Authentication is disabled by default in the server .env (`AGENT_CONTROL_API_KEY_ENABLED=false`). If you enable it, this setup script needs an admin API key because it creates a control and attaches it to an agent. `agents.register_agent()` accepts a regular or admin key, but `controls.create_control()` and `agents.add_agent_control()` require a key listed in `AGENT_CONTROL_ADMIN_API_KEYS`.
 >
@@ -255,20 +264,13 @@ asyncio.run(setup())
 >
 > **Replace these defaults before any shared or production deployment.**
 
-**With authentication enabled:**
+> **With authentication enabled:**
 
-```bash
+> ```bash
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | AGENT_CONTROL_API_KEY_ENABLED=true AGENT_CONTROL_API_KEYS="my-ui-key" AGENT_CONTROL_ADMIN_API_KEYS="my-admin-key" AGENT_CONTROL_SESSION_SECRET="some-long-random-string" CORS_ORIGINS="http://localhost:4000" docker compose -f - up -d && pip install agent-control-sdk
 ```
 
 
-Now, test your agent:
-
-```bash
-uv run my_agent.py
-```
-
-Done. Your agent now blocks SSN patterns automatically.
 
 For detailed explanations of how controls work under the hood, configuration options, and other development setup, see the complete [Quickstart](https://docs.agentcontrol.dev/core/quickstart) guide.
 
