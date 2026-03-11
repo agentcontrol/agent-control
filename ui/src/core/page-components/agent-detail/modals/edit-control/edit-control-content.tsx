@@ -313,7 +313,9 @@ export const EditControlContent = ({
             color: 'green',
           });
         } else {
-          const nameChanged = normalizedName && normalizedName !== control.name;
+          const existingNormalizedName = control.name.trim();
+          const nameChanged =
+            normalizedName && normalizedName !== existingNormalizedName;
 
           if (nameChanged) {
             try {

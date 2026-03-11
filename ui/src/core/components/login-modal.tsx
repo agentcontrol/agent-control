@@ -6,7 +6,6 @@ import {
   Stack,
   Text,
   Title,
-  useMantineColorScheme,
 } from '@mantine/core';
 import { Button } from '@rungalileo/jupiter-ds';
 import { IconAlertCircle, IconLock } from '@tabler/icons-react';
@@ -21,7 +20,6 @@ type LoginModalProps = {
 };
 
 export function LoginModal({ opened }: LoginModalProps) {
-  const { colorScheme } = useMantineColorScheme();
   const { login } = useAuth();
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -65,11 +63,7 @@ export function LoginModal({ opened }: LoginModalProps) {
         <Stack gap="lg" p="md">
           <Center>
             <Image
-              src={
-                colorScheme === 'dark'
-                  ? '/ac-logo-light.svg'
-                  : '/ac-logo-dark.svg'
-              }
+              src="/ac-logo-light.svg"
               alt="Agent Control"
               width={48}
               height={48}
