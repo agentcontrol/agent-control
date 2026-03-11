@@ -8,11 +8,11 @@ Demonstrates three cases with server-managed Cisco AI Defense Chat Inspection:
 Prereqs:
   1) Run the server and assign API keys
   2) Install the Cisco AI Defense evaluator (this repo package) into the server env
-  3) Seed controls + policy with examples/cisco_ai_defense/seed_policy.py
+  3) Seed controls and attach to the agent with examples/cisco_ai_defense/setup_ai_defense_controls.py
   4) Set env: AGENT_CONTROL_URL, AGENT_CONTROL_API_KEY
 
 Run:
-  uv run chat_guarded_all.py --agent-id <UUID> --agent-name demo-bot
+  uv run chat_guarded_all.py --agent-name demo-bot
 """
 
 from __future__ import annotations
@@ -54,7 +54,6 @@ async def guarded_chat(message: str) -> str:
 
 async def main() -> int:
     parser = argparse.ArgumentParser(description="Cisco AI Defense decorator combined example")
-    parser.add_argument("--agent-id", required=True, help="Agent UUID")
     parser.add_argument("--agent-name", default="ai-defense-demo", help="Agent name")
     args = parser.parse_args()
 
@@ -67,7 +66,6 @@ async def main() -> int:
     try:
         agent_control.init(
             agent_name=args.agent_name,
-            agent_id=args.agent_id,
             server_url=url,
             api_key=api_key,
         )

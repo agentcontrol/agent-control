@@ -12,15 +12,13 @@ run:
 	uv sync && uv run chat_inspect_demo.py
 
 seed:
-	uv sync && uv run seed_policy.py
+	uv sync && uv run setup_ai_defense_controls.py
 
 decorator-post-run:
-	@if [ -z "$$AGENT_ID" ]; then echo "AGENT_ID is required"; exit 2; fi
-	uv sync && uv run chat_guarded_post.py --agent-id $$AGENT_ID --agent-name ai-defense-demo
+	uv sync && uv run chat_guarded_post.py --agent-name ai-defense-demo
 
 decorator-all-run:
-	@if [ -z "$$AGENT_ID" ]; then echo "AGENT_ID is required"; exit 2; fi
-	uv sync && uv run chat_guarded_all.py --agent-id $$AGENT_ID --agent-name ai-defense-demo
+	uv sync && uv run chat_guarded_all.py --agent-name ai-defense-demo
 
 register:
 	uv sync && uv run register_agent.py --agent-name ai-defense-demo

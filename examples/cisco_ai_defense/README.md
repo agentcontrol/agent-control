@@ -4,7 +4,7 @@ This directory contains examples:
 
 - Direct API demo : `chat_inspect_demo.py` — calls Cisco AI Defense Chat Inspection directly and blocks based on `InspectResponse.is_safe`.
 - Combined decorator demo: `chat_guarded_all.py` — safe→safe, unsafe request (pre), safe→unsafe response (post)
-- Decorator + server policy demo (PRE+POST): `chat_guarded_all.py` — uses @agent_control.control() with server-managed controls/policy to guard prompts and responses automatically.
+- Decorator + server-managed controls (PRE+POST): `chat_guarded_all.py` — uses @agent_control.control() with server-managed controls to guard prompts and responses automatically.
 - Decorator POST-only focus: `chat_guarded_post.py` — user asks for someone’s email; the simulated model responds with `jsmith@gmail.com`, demonstrating POST-stage PII blocking.
 
 ## Prerequisites
@@ -56,7 +56,7 @@ uv run chat_inspect_demo.py --debug  # also prints raw responses for allowed and
 - Timeouts: increase `AI_DEFENSE_TIMEOUT_S`.
 - Schema mismatches: enable `--debug` to print raw responses (for both allowed and blocked results).
 
-## Run (Decorator + Server Policy Demo)
+## Run (Decorator + Server Controls Demo)
 
 1) Ensure the server is running and you have an API key (X-API-Key)
 
@@ -69,38 +69,28 @@ uv run chat_inspect_demo.py --debug  # also prints raw responses for allowed and
 
 2) Install the Cisco AI Defense evaluator (this repo package) into the server environment, or run `make sync` at the repo root if developing locally. Provide `AI_DEFENSE_API_KEY` in the server environment.
 
-3) Register an agent once (persists a stable ID in .agent_id):
-
-From examples/cisco_ai_defense/ run:
-
-```
-make register
-export AGENT_ID=$(cat .agent_id)
-```
-
-4) Seed controls and policy, then assign to your agent (by name):
+3) Seed controls and attach them to your agent by name:
 
 ```
 export AGENT_CONTROL_URL="http://localhost:8000"
 export AGENT_CONTROL_API_KEY="<server-api-key>"
 export AGENT_NAME="ai-defense-demo"   # or your chosen agent name
-export POLICY_NAME="ai-defense-policy"
-uv run seed_policy.py
+uv run setup_ai_defense_controls.py
 ```
 
-5) Run the guarded examples:
+4) Run the guarded examples:
 
 ```
-uv run chat_guarded_all.py --agent-id $AGENT_ID --agent-name ai-defense-demo
-uv run chat_guarded_post.py --agent-id $AGENT_ID --agent-name ai-defense-demo
+uv run chat_guarded_all.py --agent-name ai-defense-demo
+uv run chat_guarded_post.py --agent-name ai-defense-demo
 ```
 
 Or using the example Makefile directly from repo root:
 
 ```
 make -C examples/cisco_ai_defense seed
-make -C examples/cisco_ai_defense decorator-post-run AGENT_ID=$AGENT_ID
-make -C examples/cisco_ai_defense decorator-all-run AGENT_ID=$AGENT_ID
+make -C examples/cisco_ai_defense decorator-post-run
+make -C examples/cisco_ai_defense decorator-all-run
 ```
 
 ### What It Does
@@ -108,11 +98,12 @@ make -C examples/cisco_ai_defense decorator-all-run AGENT_ID=$AGENT_ID
 - Applies server-managed pre and post controls (using `cisco.ai_defense`) around the decorated function.
  - `chat_guarded_all.py`: demonstrates both PRE and POST when applicable.
  - `chat_guarded_post.py`: safe prompt that produces a toxic response, which should be blocked by POST checks.
+ - Controls are attached directly to the agent by name (no policy assignment), so reruns are idempotent and non-destructive.
 
 ### Troubleshooting
 
 - Evaluator not found: ensure the server has the evaluator package installed and entry points discovered (`/api/v1/evaluators` lists `cisco.ai_defense`).
 - Missing keys: set both `AGENT_CONTROL_API_KEY` (server) and `AI_DEFENSE_API_KEY` (server env for evaluator calls).
-- Policy exists: the seeding script creates policies by name; if a conflict occurs, delete or choose a new `POLICY_NAME`.
+ - If controls with the same names already exist for another agent, this demo uses unique control names derived from your `AGENT_NAME`, so reruns are safe.
 
  

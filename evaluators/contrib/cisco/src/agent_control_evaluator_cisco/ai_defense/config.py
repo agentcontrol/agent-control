@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+from pydantic import Field
 
 from agent_control_evaluators import EvaluatorConfig
 
@@ -23,10 +24,10 @@ class CiscoAIDefenseConfig(EvaluatorConfig):
     api_key_env: str = "AI_DEFENSE_API_KEY"
     region: Literal["us", "ap", "eu"] | None = "us"
     api_url: str | None = None
-    timeout_ms: int = 15_000
+    timeout_ms: int = Field(default=15_000, ge=1)
     on_error: Literal["allow", "deny"] = "allow"
     payload_field: Literal["input", "output"] | None = None
     messages_strategy: Literal["single", "history"] = "history"
     metadata: dict[str, Any] | None = None
     inspect_config: dict[str, Any] | None = None
-
+    include_raw_response: bool = False

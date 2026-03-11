@@ -55,6 +55,7 @@ Evaluator config fields (all optional unless stated):
   - `history` forwards an existing `messages` list in the selected data if present; falls back to single otherwise.
 - `metadata: dict[str, Any] | None = None` (forwarded to API per OpenAPI spec)
 - `inspect_config: dict[str, Any] | None = None` (forwarded to API per OpenAPI spec)
+- `include_raw_response: bool = false` (when true, includes the full provider response under `metadata.raw`)
 
 ## Available Evaluators
 
@@ -66,7 +67,7 @@ Behavior mapping:
 
 - `is_safe == false` → `EvaluatorResult.matched = true` (e.g., a `deny` action will block)
 - `is_safe == true` → `matched = false`
-- Errors or invalid responses → `matched = (on_error == "deny")`; error details in `metadata`; the `error` field is set only when `matched=False` per model invariant
+- Errors or invalid responses → `matched = (on_error == "deny")`; error details in `metadata` (no `error` field is set; engine honors `matched` per `on_error`)
 
 ## Minimal server control configuration
 
@@ -155,6 +156,9 @@ asyncio.run(main())
 - Auth header: `X-Cisco-AI-Defense-API-Key: <AI_DEFENSE_API_KEY>`
 - Regions and endpoint path follow the Cisco AI Defense API spec
 - For custom deployments, set `api_url` to the full Chat Inspection endpoint.
+- The evaluator validates the API key at construction and raises if missing.
+- `is_available()` returns false if `httpx` is not installed; discovery will skip registration.
+- `messages_strategy: "history"` forwards the full message array when present; consider `messages_strategy: "single"` if payload size is a concern.
 
 ## Documentation
 

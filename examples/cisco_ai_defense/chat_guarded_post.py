@@ -2,11 +2,11 @@
 
 Prereqs:
   1) Run the server with Cisco AI Defense evaluator available
-  2) Seed controls + policy with examples/cisco_ai_defense/seed_policy.py
+  2) Seed controls and attach to the agent with examples/cisco_ai_defense/setup_ai_defense_controls.py
   3) Set env: AGENT_CONTROL_URL, AGENT_CONTROL_API_KEY
 
 Run:
-  uv run chat_guarded_post.py --agent-id <UUID> --agent-name ai-defense-demo
+  uv run chat_guarded_post.py --agent-name ai-defense-demo
 
 This example sends a safe input but produces a toxic/unsafe output to
 demonstrate that POST-stage checks (output) will block the response.
@@ -34,7 +34,6 @@ async def reply_with_potentially_unsafe_output(message: str) -> str:
 
 async def main() -> int:
     parser = argparse.ArgumentParser(description="Cisco AI Defense POST-check example")
-    parser.add_argument("--agent-id", required=True, help="Agent UUID")
     parser.add_argument("--agent-name", default="ai-defense-demo", help="Agent name")
     args = parser.parse_args()
 
@@ -47,7 +46,6 @@ async def main() -> int:
     try:
         agent_control.init(
             agent_name=args.agent_name,
-            agent_id=args.agent_id,
             server_url=url,
             api_key=api_key,
         )

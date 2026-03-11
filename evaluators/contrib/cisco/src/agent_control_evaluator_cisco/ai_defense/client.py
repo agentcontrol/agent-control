@@ -68,9 +68,9 @@ class AIDefenseClient:
             req_headers.update(headers)
 
         payload: dict[str, Any] = {"messages": messages}
-        if metadata:
+        if metadata is not None:
             payload["metadata"] = metadata
-        if inspect_config:
+        if inspect_config is not None:
             payload["config"] = inspect_config
 
         resp = await client.post(self.endpoint_url, json=payload, headers=req_headers)
@@ -84,3 +84,14 @@ class AIDefenseClient:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
 
+    async def close(self) -> None:
+        """Close the HTTP client and release resources."""
+        await self.aclose()
+
+    async def __aenter__(self) -> "AIDefenseClient":
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Async context manager exit."""
+        await self.close()

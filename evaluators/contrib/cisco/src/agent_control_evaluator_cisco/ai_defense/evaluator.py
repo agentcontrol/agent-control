@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import os
 
 from agent_control_evaluators import (
     Evaluator,
@@ -9,13 +10,11 @@ from agent_control_evaluators import (
 )
 from agent_control_models import EvaluatorResult
 
-from .client import REGION_BASE_URLS, AIDefenseClient, build_endpoint
+from .client import REGION_BASE_URLS, AIDefenseClient, build_endpoint, AI_DEFENSE_HTTPX_AVAILABLE
 from .config import CiscoAIDefenseConfig
 
 
 def _load_api_key(env_name: str) -> str:
-    import os
-
     key = os.getenv(env_name)
     if not key:
         raise RuntimeError(
@@ -68,12 +67,38 @@ class CiscoAIDefenseEvaluator(Evaluator[CiscoAIDefenseConfig]):
 
     config_model = CiscoAIDefenseConfig
 
+    @classmethod
+    def is_available(cls) -> bool:
+        """Evaluator is available only if httpx dependency exists."""
+        return AI_DEFENSE_HTTPX_AVAILABLE
+
     def __init__(self, config: CiscoAIDefenseConfig) -> None:
         self.config = config
-        self._client: AIDefenseClient | None = None
-        self._current_api_key: str | None = None
-        self._current_endpoint_url: str | None = None
-        self._current_timeout_s: float | None = None
+
+        # Validate and resolve configuration eagerly to avoid per-call work.
+        # API key
+        try:
+            api_key = _load_api_key(self.config.api_key_env)
+        except Exception as e:  # noqa: BLE001
+            # Fail fast during construction so misconfiguration is caught early.
+            raise ValueError(str(e)) from e
+
+        # Endpoint
+        if self.config.api_url:
+            endpoint_url = self.config.api_url
+        else:
+            base_url = REGION_BASE_URLS.get(self.config.region or "us", REGION_BASE_URLS["us"])
+            endpoint_url = build_endpoint(base_url)
+
+        # Timeout
+        timeout_s = float(self.config.timeout_ms) / 1000.0
+
+        # Create a single client instance for reuse.
+        self._client: AIDefenseClient = AIDefenseClient(
+            api_key=api_key,
+            endpoint_url=endpoint_url,
+            timeout_s=timeout_s,
+        )
 
     async def evaluate(self, data: Any) -> EvaluatorResult:  # noqa: D401
         # Null input: do not call external service; treat as no data
@@ -88,62 +113,9 @@ class CiscoAIDefenseEvaluator(Evaluator[CiscoAIDefenseConfig]):
         if not messages:
             return EvaluatorResult(matched=False, confidence=1.0, message="No data to inspect")
 
-        # Resolve API key and endpoint
-        try:
-            api_key = _load_api_key(self.config.api_key_env)
-        except Exception as e:  # noqa: BLE001
-            # Respect on_error behavior for missing API key
-            fallback = self.config.on_error
-            matched = fallback == "deny"
-            return EvaluatorResult(
-                matched=matched,
-                confidence=0.0,
-                message=str(e),
-                metadata={
-                    "error": str(e),
-                    "error_type": type(e).__name__,
-                    "fallback_action": fallback,
-                },
-                # On fail-closed, expose details via metadata only
-                error=None if matched else str(e),
-            )
-
-        # Derive endpoint from region or explicit api_url
-        if self.config.api_url:
-            endpoint_url = self.config.api_url
-        else:
-            base_url = REGION_BASE_URLS.get(self.config.region or "us", REGION_BASE_URLS["us"])
-            endpoint_url = build_endpoint(base_url)
-
-        # Prepare or reuse client
-        timeout_s = max(0.001, float(self.config.timeout_ms) / 1000.0)
-        needs_new_client = (
-            self._client is None
-            or self._current_api_key != api_key
-            or self._current_endpoint_url != endpoint_url
-            or self._current_timeout_s != timeout_s
-        )
-        if needs_new_client:
-            # Close any prior client
-            if self._client is not None:
-                try:
-                    await self._client.aclose()
-                except Exception:
-                    pass
-            self._client = AIDefenseClient(
-                api_key=api_key,
-                endpoint_url=endpoint_url,
-                timeout_s=timeout_s,
-            )
-            self._current_api_key = api_key
-            self._current_endpoint_url = endpoint_url
-            self._current_timeout_s = timeout_s
-
         # Call REST API for Chat Inspection
         try:
-            client = self._client
-            assert client is not None
-            response: dict[str, Any] = await client.chat_inspect(
+            response: dict[str, Any] = await self._client.chat_inspect(
                 messages=messages,
                 metadata=self.config.metadata,
                 inspect_config=self.config.inspect_config,
@@ -154,27 +126,32 @@ class CiscoAIDefenseEvaluator(Evaluator[CiscoAIDefenseConfig]):
             if isinstance(is_safe, bool):
                 matched = not is_safe
                 msg = "Content is unsafe" if matched else "Content is safe"
+                meta: dict[str, Any] = {
+                    "severity": response.get("severity"),
+                    "classifications": response.get("classifications"),
+                    "rules": response.get("rules"),
+                    "attack_technique": response.get("attack_technique"),
+                    "event_id": response.get("event_id"),
+                }
+                if self.config.include_raw_response:
+                    meta["raw"] = response
                 return EvaluatorResult(
                     matched=matched,
                     confidence=1.0,
                     message=msg,
-                    metadata={
-                        "raw": response,
-                        "severity": response.get("severity"),
-                        "classifications": response.get("classifications"),
-                        "rules": response.get("rules"),
-                        "attack_technique": response.get("attack_technique"),
-                        "event_id": response.get("event_id"),
-                    },
+                    metadata=meta,
                 )
 
             # If no boolean is present, consider it an evaluator error
             fallback = self.config.on_error
+            meta2: dict[str, Any] = {"fallback_action": fallback}
+            if self.config.include_raw_response:
+                meta2["raw"] = response
             return EvaluatorResult(
                 matched=(fallback == "deny"),
                 confidence=0.0,
                 message="Cisco AI Defense response missing 'is_safe'",
-                metadata={"raw": response, "fallback_action": fallback},
+                metadata=meta2,
             )
         except Exception as e:  # noqa: BLE001
             fallback = self.config.on_error
@@ -190,6 +167,4 @@ class CiscoAIDefenseEvaluator(Evaluator[CiscoAIDefenseConfig]):
                     "error_type": type(e).__name__,
                     "fallback_action": fallback,
                 },
-                error=None if matched else str(e),
             )
-

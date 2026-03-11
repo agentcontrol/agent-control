@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from agent_control_evaluator_cisco.ai_defense import (
     CiscoAIDefenseEvaluator,
@@ -47,6 +48,7 @@ async def test_is_safe_true_is_not_matched(monkeypatch: pytest.MonkeyPatch) -> N
     res = await ev.evaluate("ok content")
     assert res.matched is False
     assert res.metadata and res.metadata.get("severity") == "LOW"
+    assert "raw" not in (res.metadata or {})
 
 
 @pytest.mark.asyncio
@@ -63,28 +65,12 @@ async def test_on_error_deny_fails_closed(monkeypatch: pytest.MonkeyPatch) -> No
     assert res.metadata and res.metadata.get("fallback_action") == "deny"
 
 
-@pytest.mark.asyncio
-async def test_missing_api_key_respects_on_error_deny(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_api_key_raises_on_init(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AI_DEFENSE_API_KEY", raising=False)
 
-    cfg = CiscoAIDefenseConfig(on_error="deny")
-    ev = CiscoAIDefenseEvaluator(cfg)
-    res = await ev.evaluate("payload")
-    assert res.matched is True
-    assert res.error is None
-    assert res.metadata and res.metadata.get("fallback_action") == "deny"
-
-
-@pytest.mark.asyncio
-async def test_missing_api_key_respects_on_error_allow(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AI_DEFENSE_API_KEY", raising=False)
-
-    cfg = CiscoAIDefenseConfig(on_error="allow")
-    ev = CiscoAIDefenseEvaluator(cfg)
-    res = await ev.evaluate("payload")
-    assert res.matched is False
-    assert isinstance(res.error, str) and res.error
-    assert res.metadata and res.metadata.get("fallback_action") == "allow"
+    cfg = CiscoAIDefenseConfig()
+    with pytest.raises(ValueError, match="Missing Cisco AI Defense API key"):
+        CiscoAIDefenseEvaluator(cfg)
 
 
 @pytest.mark.asyncio
@@ -99,6 +85,38 @@ async def test_missing_is_safe_uses_on_error(monkeypatch: pytest.MonkeyPatch) ->
     res = await ev.evaluate("text")
     assert res.matched is False
     assert res.metadata and res.metadata.get("fallback_action") == "allow"
+    assert "raw" not in (res.metadata or {})
+
+
+@pytest.mark.asyncio
+async def test_include_raw_response_success_and_missing_is_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Success path includes raw when flag is True
+    success_payload = {"is_safe": True, "severity": "LOW", "classifications": {"a": 1}}
+
+    async def success(self: AIDefenseClient, **kwargs):
+        return success_payload
+
+    monkeypatch.setattr(AIDefenseClient, "chat_inspect", success, raising=True)
+
+    cfg = CiscoAIDefenseConfig(include_raw_response=True)
+    ev = CiscoAIDefenseEvaluator(cfg)
+    res = await ev.evaluate("ok")
+    assert res.matched is False
+    assert res.metadata and res.metadata.get("classifications") == {"a": 1}
+    assert res.metadata.get("raw") == success_payload
+
+    # Missing is_safe path includes raw when flag is True
+    async def no_bool(self: AIDefenseClient, **kwargs):
+        return {"severity": "MEDIUM"}
+
+    monkeypatch.setattr(AIDefenseClient, "chat_inspect", no_bool, raising=True)
+
+    cfg2 = CiscoAIDefenseConfig(include_raw_response=True, on_error="allow")
+    ev2 = CiscoAIDefenseEvaluator(cfg2)
+    res2 = await ev2.evaluate("x")
+    assert res2.matched is False
+    assert res2.metadata and res2.metadata.get("fallback_action") == "allow"
+    assert "raw" in res2.metadata
 
 
 @pytest.mark.asyncio
@@ -117,28 +135,21 @@ async def test_api_url_override_used(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["endpoint_url"] == "https://example.com/custom/chat"
 
 
+## Removed: internal client reuse test
+
 @pytest.mark.asyncio
-async def test_client_reuse_and_recreate_on_key_change(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake(self: AIDefenseClient, **_):
-        return {"is_safe": True}
+async def test_on_error_allow_fail_open_no_error_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def boom(self: AIDefenseClient, **kwargs):
+        raise RuntimeError("network down")
 
-    monkeypatch.setattr(AIDefenseClient, "chat_inspect", fake, raising=True)
+    monkeypatch.setattr(AIDefenseClient, "chat_inspect", boom, raising=True)
 
-    monkeypatch.setenv("AI_DEFENSE_API_KEY", "k1")
-    cfg = CiscoAIDefenseConfig()
+    cfg = CiscoAIDefenseConfig(on_error="allow")
     ev = CiscoAIDefenseEvaluator(cfg)
-    _ = await ev.evaluate("text1")
-    assert ev._client is not None
-    first_client = ev._client
-    assert first_client.api_key == "k1"
-
-    _ = await ev.evaluate("text2")
-    assert ev._client is first_client
-
-    monkeypatch.setenv("AI_DEFENSE_API_KEY", "k2")
-    _ = await ev.evaluate("text3")
-    assert ev._client is not first_client
-    assert ev._client is not None and ev._client.api_key == "k2"
+    res = await ev.evaluate("anything")
+    assert res.matched is False
+    assert res.error is None
+    assert res.metadata and res.metadata.get("fallback_action") == "allow"
 
 
 @pytest.mark.asyncio
@@ -189,3 +200,16 @@ async def test_messages_strategy_single_synthesizes_message(monkeypatch: pytest.
     _ = await ev.evaluate("hello world")
     assert captured["messages"] == [{"role": "user", "content": "hello world"}]
 
+
+def test_on_error_validation() -> None:
+    """on_error must be either 'allow' or 'deny'."""
+    # Valid values
+    cfg_allow = CiscoAIDefenseConfig(on_error="allow")
+    assert cfg_allow.on_error == "allow"
+
+    cfg_deny = CiscoAIDefenseConfig(on_error="deny")
+    assert cfg_deny.on_error == "deny"
+
+    # Invalid value should raise ValidationError
+    with pytest.raises(ValidationError):
+        CiscoAIDefenseConfig(on_error="invalid")
