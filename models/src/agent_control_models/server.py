@@ -1,12 +1,21 @@
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import Field, StringConstraints
 
 from .agent import Agent, StepSchema
 from .base import BaseModel
 from .controls import ControlDefinition
 from .policy import Control
+
+SlugName = Annotated[
+    str,
+    StringConstraints(
+        min_length=1,
+        max_length=255,
+        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+    ),
+]
 
 
 class EvaluatorSchema(BaseModel):
@@ -90,21 +99,15 @@ class InitAgentOverwriteChanges(BaseModel):
 
 
 class CreatePolicyRequest(BaseModel):
-    name: str = Field(
+    name: SlugName = Field(
         ...,
-        min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
         description="Unique policy name (letters, numbers, hyphens, underscores)",
     )
 
 
 class CreateControlRequest(BaseModel):
-    name: str = Field(
+    name: SlugName = Field(
         ...,
-        min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
         description="Unique control name (letters, numbers, hyphens, underscores)",
     )
 
@@ -421,7 +424,10 @@ class DeleteControlResponse(BaseModel):
 class PatchControlRequest(BaseModel):
     """Request to update control metadata (name, enabled status)."""
 
-    name: str | None = Field(None, description="New name for the control")
+    name: SlugName | None = Field(
+        None,
+        description="New control name (letters, numbers, hyphens, underscores)",
+    )
     enabled: bool | None = Field(None, description="Enable or disable the control")
 
 
@@ -444,11 +450,8 @@ class EvaluatorConfigItem(BaseModel):
     """Evaluator config template stored in the server."""
 
     id: int = Field(..., description="Evaluator config ID")
-    name: str = Field(
+    name: SlugName = Field(
         ...,
-        min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
         description="Unique evaluator config name (letters, numbers, hyphens, underscores)",
     )
     description: str | None = Field(
@@ -463,11 +466,8 @@ class EvaluatorConfigItem(BaseModel):
 class CreateEvaluatorConfigRequest(BaseModel):
     """Request to create an evaluator config template."""
 
-    name: str = Field(
+    name: SlugName = Field(
         ...,
-        min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
         description="Unique evaluator config name (letters, numbers, hyphens, underscores)",
     )
     description: str | None = Field(
@@ -480,11 +480,8 @@ class CreateEvaluatorConfigRequest(BaseModel):
 class UpdateEvaluatorConfigRequest(BaseModel):
     """Request to replace an evaluator config template."""
 
-    name: str = Field(
+    name: SlugName = Field(
         ...,
-        min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
         description="Unique evaluator config name (letters, numbers, hyphens, underscores)",
     )
     description: str | None = Field(

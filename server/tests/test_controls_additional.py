@@ -223,6 +223,22 @@ def test_patch_control_rename_conflict(client: TestClient) -> None:
     assert resp.json()["error_code"] == "CONTROL_NAME_CONFLICT"
 
 
+def test_patch_control_rename_with_spaces_rejected(client: TestClient) -> None:
+    # Given: an existing control
+    control_id, _ = _create_control(client)
+
+    # When: renaming with spaces in the name
+    resp = client.patch(
+        f"/api/v1/controls/{control_id}",
+        json={"name": "control with spaces"},
+    )
+
+    # Then: request validation rejects the rename
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "VALIDATION_ERROR"
+
+
 def test_list_controls_filters_stage_and_execution(client: TestClient) -> None:
     # Given: controls with differing stages and execution targets
     control1_id, control1_name = _create_control(client)

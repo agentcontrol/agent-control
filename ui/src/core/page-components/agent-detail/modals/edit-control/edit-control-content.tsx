@@ -22,6 +22,9 @@ import { useEvaluatorConfigState } from './use-evaluator-config-state';
 import { applyApiErrorsToForms } from './utils';
 
 const EVALUATOR_CONFIG_HEIGHT = 450;
+const CONTROL_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
+const CONTROL_NAME_RULE_MESSAGE =
+  'Use letters, numbers, hyphens, or underscores (no spaces)';
 
 export type EditControlContentProps = {
   /** The control to edit/create template */
@@ -87,7 +90,22 @@ export const EditControlContent = ({
       execution: 'server',
     },
     validate: {
-      name: (value) => (!value?.trim() ? 'Control name is required' : null),
+      name: (value) => {
+        const trimmedName = value?.trim();
+        if (!trimmedName) {
+          return 'Control name is required';
+        }
+
+        // Keep legacy controls editable when their existing name no longer matches
+        // current validation rules (applies only when name remains unchanged).
+        if (mode === 'edit' && trimmedName === control.name.trim()) {
+          return null;
+        }
+
+        return CONTROL_NAME_PATTERN.test(trimmedName)
+          ? null
+          : CONTROL_NAME_RULE_MESSAGE;
+      },
       selector_path: (value) => {
         if (!value?.trim()) {
           return 'Selector path is required';
@@ -270,31 +288,39 @@ export const EditControlContent = ({
       finalConfig = getEvaluatorConfig();
     }
 
-    const definition = buildControlDefinition(values, finalConfig);
+    const normalizedName = values.name.trim();
+    if (normalizedName !== values.name) {
+      // Keep UI state consistent with what we persist.
+      definitionForm.setFieldValue('name', normalizedName);
+    }
+
+    const definition = buildControlDefinition(
+      { ...values, name: normalizedName },
+      finalConfig
+    );
 
     const runSave = async () => {
       try {
         if (isCreating) {
           await addControlToAgent.mutateAsync({
             agentId,
-            controlName: values.name,
+            controlName: normalizedName,
             definition,
           });
           notifications.show({
             title: 'Control created',
-            message: `"${values.name}" has been added to this agent.`,
+            message: `"${normalizedName}" has been added to this agent.`,
             color: 'green',
           });
         } else {
-          const trimmedName = values.name.trim();
-          const nameChanged = trimmedName && trimmedName !== control.name;
+          const nameChanged = normalizedName && normalizedName !== control.name;
 
           if (nameChanged) {
             try {
               await updateControlMetadata.mutateAsync({
                 agentId,
                 controlId: control.id,
-                data: { name: trimmedName },
+                data: { name: normalizedName },
               });
             } catch (renameError) {
               if (
@@ -329,7 +355,7 @@ export const EditControlContent = ({
           });
           notifications.show({
             title: 'Control updated',
-            message: `"${trimmedName}" has been saved.`,
+            message: `"${normalizedName}" has been saved.`,
             color: 'green',
           });
         }
