@@ -1,11 +1,11 @@
 <p align="center">
   <img
-    src="docs/images/AgentControl-logo-light.png#gh-light-mode-only"
+    src="docs/images/AgentControl-logo-light.svg#gh-light-mode-only"
     alt="Agent Control Logo (light)"
     width="120"
   />
   <img
-    src="docs/images/AgentControl-logo-dark.png#gh-dark-mode-only"
+    src="docs/images/AgentControl-logo-dark.svg#gh-dark-mode-only"
     alt="Agent Control Logo (dark)"
     width="120"
   />
@@ -24,7 +24,7 @@
 
 > **Pro Tip:** See the full docs at [Agent Control Docs](https://docs.agentcontrol.dev/)
 
-> **👋 Say hello to us:** Checkout our [Slack](https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA).  Pop in to ask for help, suggest features, or just to say hello!
+> **👋 Say hello to us:** Checkout our [Slack](https://join.slack.com/t/agentcontrol/shared_invite/zt-3s2pbclup-T4EJ5sA7SOxR6jTeETZljA). Pop in to ask for help, suggest features, or just to say hello!
 
 **Runtime guardrails for AI agents — configurable, extensible, and production-ready.**
 
@@ -66,14 +66,17 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 - **[TypeScript SDK](examples/typescript_sdk/)** — Consumer-style TypeScript example using the published npm package
 
 ### Core demos
+
 - **[Customer Support Agent](examples/customer_support_agent/)** — Enterprise scenario with PII protection, prompt-injection defense, and multiple tools
 - **[Steer Action Demo](examples/steer_action_demo/)** — Banking transfer agent showcasing allow, deny, warn, and steer actions
 
 ### Evaluator integrations
+
 - **[DeepEval Integration](examples/deepeval/)** — Build a custom evaluator using DeepEval GEval metrics
 - **[Galileo Luna-2 Integration](examples/galileo/)** — Toxicity detection and content moderation with Galileo Protect
 
 ### Framework integrations
+
 - **[LangChain](examples/langchain/)** — Protect a SQL agent from dangerous queries with server-side controls
 - **[CrewAI](examples/crewai/)** — Combine Agent Control security controls with CrewAI guardrails for customer support
 - **[AWS Strands](examples/strands_agents/)** — Guardrails for AWS Strands agent workflows and tool calls
@@ -85,7 +88,6 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 ## Quick start
 
 Protect your AI agent in 4 simple steps.
-
 
 ### Prerequisites
 
@@ -103,6 +105,7 @@ curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/
 ```
 
 Then, install the SDK in a virtual environment:
+
 ```bash
 uv venv
 source .venv/bin/activate
@@ -110,6 +113,7 @@ uv pip install agent-control-sdk
 ```
 
 **What this does:**
+
 - ✅ Starts Agent Control server at `http://localhost:8000`
 - ✅ Starts UI dashboard at `http://localhost:8000`
 - ✅ Installs Python SDK (`agent-control-sdk`)
@@ -261,18 +265,17 @@ uv run my_agent.py
 
 Done. Your agent now blocks SSN patterns automatically.
 
-
 For detailed explanations of how controls work under the hood, configuration options, and other development setup, see the complete [Quickstart](https://docs.agentcontrol.dev/core/quickstart) guide.
 
 ## Performance
 
-| Endpoint | Scenario | RPS | p50 | p99 |
-|----------|----------|-----|-----|-----|
-| Agent init | Agent with 3 tool steps | 509 | 19 ms | 54 ms |
-| Evaluation | 1 control, 500-char content | 437 | 36 ms | 61 ms |
-| Evaluation | 10 controls, 500-char content | 349 | 35 ms | 66 ms |
-| Evaluation | 50 controls, 500-char content | 199 | 63 ms | 91 ms |
-| Controls refresh | 5-50 controls per agent | 273-392 | 20-27 ms | 27-61 ms |
+| Endpoint         | Scenario                      | RPS     | p50      | p99      |
+| ---------------- | ----------------------------- | ------- | -------- | -------- |
+| Agent init       | Agent with 3 tool steps       | 509     | 19 ms    | 54 ms    |
+| Evaluation       | 1 control, 500-char content   | 437     | 36 ms    | 61 ms    |
+| Evaluation       | 10 controls, 500-char content | 349     | 35 ms    | 66 ms    |
+| Evaluation       | 50 controls, 500-char content | 199     | 63 ms    | 91 ms    |
+| Controls refresh | 5-50 controls per agent       | 273-392 | 20-27 ms | 27-61 ms |
 
 - Agent init handles both create and update identically (upsert).
 - All four built-in evaluators (regex, list, JSON, SQL) perform within 40-46 ms p50 at 1 control.
