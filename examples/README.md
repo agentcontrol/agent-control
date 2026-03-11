@@ -8,8 +8,9 @@ This directory contains runnable examples for Agent Control. Each example has it
 |:--------|:--------|:-----|
 | Agent Control Demo | End-to-end workflow: create controls, run a controlled agent, update controls dynamically. | https://docs.agentcontrol.dev/examples/agent-control-demo |
 | CrewAI | Combine Agent Control security controls with CrewAI guardrails for customer support. | https://docs.agentcontrol.dev/examples/crewai |
-| Google ADK Callbacks | Model and tool guardrails via ADK's native callback hooks. | https://docs.agentcontrol.dev/examples/google-adk-callbacks |
-| Google ADK Decorator | `@control()` decorator pattern for ADK tool protection. | https://docs.agentcontrol.dev/examples/google-adk-decorator |
+| Google ADK Plugin | Recommended packaged ADK integration using `AgentControlPlugin` for model and tool guardrails. | https://docs.agentcontrol.dev/examples/google-adk-plugin |
+| Google ADK Callbacks | Lower-level ADK lifecycle hook integration for manual model and tool guardrails. | https://docs.agentcontrol.dev/examples/google-adk-callbacks |
+| Google ADK Decorator | Tool-only `@control()` pattern for explicit ADK tool protection. | https://docs.agentcontrol.dev/examples/google-adk-decorator |
 | Customer Support Agent | Enterprise scenario with PII protection, prompt-injection defense, and multiple tools. | https://docs.agentcontrol.dev/examples/customer-support |
 | DeepEval | Build a custom evaluator using DeepEval GEval metrics. | https://docs.agentcontrol.dev/examples/deepeval |
 | Galileo Luna-2 | Toxicity detection and content moderation with Galileo Protect. | https://docs.agentcontrol.dev/examples/galileo-luna2 |

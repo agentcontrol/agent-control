@@ -31,7 +31,7 @@ Traditional guardrails embedded inside your agent code have critical limitations
 
 ## Key Features
 
-- **Safety Without Code Changes** — Add guardrails with a `@control()` decorator
+- **Safety Without Code Changes** — Add guardrails with framework-native integrations or the `@control()` decorator
 - **Runtime Configuration** — Update controls instantly via API or UI without redeploying your agentic applications
 - **Centralized Controls** — Define controls once, apply to multiple agents
 - **Web Dashboard** — Visual interface for managing agents, controls, and viewing analytics
@@ -54,8 +54,9 @@ Explore real-world integrations with popular agent frameworks, or jump to [Quick
 - **[Galileo Luna-2 Integration](examples/galileo/)** — Toxicity detection and content moderation with Galileo Protect
 
 ### Framework integrations
-- **[Google ADK Callbacks](examples/google_adk_callbacks/)** — Model and tool guardrails via ADK's native callback hooks
-- **[Google ADK Decorator](examples/google_adk_decorator/)** — `@control()` decorator pattern for ADK tool protection
+- **[Google ADK Plugin](examples/google_adk_plugin/)** — Recommended packaged ADK integration using `AgentControlPlugin` for model and tool guardrails
+- **[Google ADK Callbacks](examples/google_adk_callbacks/)** — Lower-level ADK lifecycle hook integration for manual model and tool guardrails
+- **[Google ADK Decorator](examples/google_adk_decorator/)** — Tool-only `@control()` pattern for explicit ADK tool protection
 - **[LangChain](examples/langchain/)** — Protect a SQL agent from dangerous queries with server-side controls
 - **[CrewAI](examples/crewai/)** — Combine Agent Control security controls with CrewAI guardrails for customer support
 - **[AWS Strands](examples/strands_agents/)** — Guardrails for AWS Strands agent workflows and tool calls
@@ -130,7 +131,7 @@ pip install agent-control-sdk
 
 ### Step 3: Register your agent
 
-Agent must be registered with the server. You should also add the `@control` decorator around tools and LLM call functions.
+Agent must be registered with the server. You should also add either a framework-native integration or the `@control` decorator around the tools and LLM calls you want to protect.
 
 Here is a contrived example. Reference our [Examples](/examples/) for real-world examples for specific frameworks.
 
