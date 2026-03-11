@@ -60,6 +60,7 @@ test.describe('Luna2 Evaluator', () => {
     // Click the operator select using its placeholder
     const operatorSelect = mockedPage.getByPlaceholder('Select an operator');
     await operatorSelect.click();
+    await operatorSelect.press('ArrowDown');
 
     // Verify operator options
     await expect(

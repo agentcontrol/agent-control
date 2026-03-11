@@ -13,7 +13,7 @@ export type PatchControlRequest = {
    */
   enabled?: boolean | null | undefined;
   /**
-   * New name for the control
+   * New control name (letters, numbers, hyphens, underscores)
    */
   name?: string | null | undefined;
 };
