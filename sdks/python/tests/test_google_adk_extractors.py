@@ -10,8 +10,15 @@ import pytest
 
 
 class MockPart:
-    def __init__(self, text: str | None = None):
+    def __init__(
+        self,
+        text: str | None = None,
+        function_call: object | None = None,
+        function_response: object | None = None,
+    ):
         self.text = text
+        self.function_call = function_call
+        self.function_response = function_response
 
 
 class MockContent:
@@ -23,6 +30,15 @@ class MockContent:
 class MockLlmResponse:
     def __init__(self, content: object):
         self.content = content
+
+
+class MockStructuredValue:
+    def __init__(self, payload: object):
+        self.payload = payload
+
+    def model_dump(self, mode: str = "json") -> object:
+        assert mode == "json"
+        return self.payload
 
 
 def _install_google_modules() -> None:
@@ -66,6 +82,26 @@ def test_extract_response_text(extractor_module):
     response = MockLlmResponse(MockContent(role="model", parts=[MockPart("done")]))
 
     assert extractor_module.extract_response_text(response) == "done"
+
+
+def test_extract_response_text_serializes_structured_parts(extractor_module):
+    response = MockLlmResponse(
+        MockContent(
+            role="model",
+            parts=[
+                MockPart(
+                    function_call=MockStructuredValue(
+                        {"name": "get_weather", "args": {"city": "Rome"}}
+                    )
+                )
+            ],
+        )
+    )
+
+    assert (
+        extractor_module.extract_response_text(response)
+        == '{"args": {"city": "Rome"}, "name": "get_weather"}'
+    )
 
 
 def test_resolve_agent_name_prefers_nested_agent(extractor_module):

@@ -510,15 +510,18 @@ class AgentControlPlugin(BasePlugin):
                 exc.steering_context if isinstance(exc, agent_control.ControlSteerError) else None
             ),
         }
-        self.on_violation_callback(
-            {
-                "agent": self.agent_name,
-                "step_name": step_name,
-                "step_type": step_type,
-                "stage": stage,
-            },
-            result_like,
-        )
+        try:
+            self.on_violation_callback(
+                {
+                    "agent": self.agent_name,
+                    "step_name": step_name,
+                    "step_type": step_type,
+                    "stage": stage,
+                },
+                result_like,
+            )
+        except Exception:
+            logger.warning("Google ADK on_violation_callback failed", exc_info=True)
 
     def _inject_steering_guidance(self, llm_request: LlmRequest, guidance: str | None) -> bool:
         if not guidance:

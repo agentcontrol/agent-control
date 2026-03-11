@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import logging
 import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -709,3 +710,32 @@ async def test_on_violation_callback_receives_metadata(plugin_module):
     assert metadata["step_name"] == "writer.get_weather"
     assert metadata["stage"] == "pre"
     assert payload["action"] == "deny"
+
+
+@pytest.mark.asyncio
+async def test_on_violation_callback_failure_does_not_break_blocking_response(
+    plugin_module,
+    caplog,
+):
+    callback = MagicMock(side_effect=RuntimeError("telemetry down"))
+    plugin = plugin_module.AgentControlPlugin(
+        agent_name="test-agent01",
+        on_violation_callback=callback,
+    )
+    tool = MockTool("get_weather")
+    tool_context = MockToolContext(agent_name="writer")
+    caplog.set_level(logging.WARNING)
+
+    with patch.object(
+        plugin_module,
+        "_evaluate_and_enforce",
+        AsyncMock(side_effect=ControlViolationError(control_name="c1", message="Denied")),
+    ):
+        result = await plugin.before_tool_callback(
+            tool=tool,
+            tool_args={"city": "Rome"},
+            tool_context=tool_context,
+        )
+
+    assert result == {"status": "blocked", "message": "Denied"}
+    assert "Google ADK on_violation_callback failed" in caplog.text

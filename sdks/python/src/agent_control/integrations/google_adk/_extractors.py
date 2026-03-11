@@ -27,6 +27,11 @@ def _extract_text_from_parts(parts: Any) -> str:
             chunks.append(text)
             continue
 
+        structured = _extract_structured_part(part)
+        if structured is not None:
+            chunks.append(structured)
+            continue
+
         if isinstance(part, dict):
             dict_text = part.get("text")
             if isinstance(dict_text, str) and dict_text:
@@ -34,9 +39,49 @@ def _extract_text_from_parts(parts: Any) -> str:
                 continue
             json_value = part.get("json")
             if json_value is not None:
-                chunks.append(json.dumps(json_value))
+                chunks.append(_json_dumps(json_value))
 
     return "\n".join(chunks).strip()
+
+
+def _extract_structured_part(part: Any) -> str | None:
+    """Serialize non-text ADK part payloads that controls may still need to inspect."""
+
+    structured_fields = (
+        "function_call",
+        "function_response",
+        "executable_code",
+        "code_execution_result",
+    )
+    for field_name in structured_fields:
+        value = part.get(field_name) if isinstance(part, dict) else getattr(part, field_name, None)
+        if value is not None:
+            return _json_dumps(_to_jsonable(value))
+
+    return None
+
+
+def _to_jsonable(value: Any) -> Any:
+    """Convert ADK/genai payload objects into JSON-serializable structures."""
+
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        return model_dump(mode="json")
+
+    if isinstance(value, dict | list | str | int | float | bool) or value is None:
+        return value
+
+    value_dict = getattr(value, "__dict__", None)
+    if isinstance(value_dict, dict):
+        return value_dict
+
+    return str(value)
+
+
+def _json_dumps(value: Any) -> str:
+    """Serialize structured content deterministically for evaluator input."""
+
+    return json.dumps(value, sort_keys=True)
 
 
 def extract_request_text(llm_request: Any) -> str:
