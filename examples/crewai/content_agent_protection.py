@@ -467,7 +467,7 @@ def verify_setup():
 
     try:
         print("Verifying Agent Control server connection...")
-        response = httpx.get(f"{server_url}/api/v1/controls", timeout=5.0)
+        response = httpx.get(f"{server_url}/api/v1/controls?limit=100", timeout=5.0)
         response.raise_for_status()
 
         controls_data = response.json()
