@@ -42,16 +42,16 @@ A Control Plane that sits between your AI agents and the outside world. It evalu
 
 Prerequisites: Docker and Python 3.12+.
 
-Quick setup (flow):
+Quick start flow:
 
 ```
 Start server
   ↓
 Install SDK
   ↓
-Wrap model or tool call with @control()
+Wrap a model or tool call with @control() and register your agent
   ↓
-Create controls (UI or API)
+Create controls (UI or SDK/API)
 ```
 
 ### 1. Start the server
@@ -72,6 +72,8 @@ curl http://localhost:8000/health
 
 ### 2. Install the SDK
 
+Run this in your agent project directory.
+
 Python:
 
 ```bash
@@ -84,7 +86,7 @@ TypeScript:
 
 - See the [TypeScript SDK example](examples/typescript_sdk/README.md).
 
-### 3. Wrap the part of your agent you want to guard
+### 3. Wrap a call and register your agent
 
 ```python
 # my_agent.py
@@ -92,6 +94,7 @@ import asyncio
 import agent_control
 from agent_control import control, ControlViolationError
 
+# Indicate which step you want to be guarded
 @control()
 async def chat(message: str) -> str:
     # Simulates an LLM that might leak sensitive data
@@ -99,8 +102,9 @@ async def chat(message: str) -> str:
         return "Your SSN is 123-45-6789"  # Blocked!
     return f"Echo: {message}"
 
+# Register your agent with Agent Control
 agent_control.init(
-    agent_name="my-agent",
+    agent_name="my-first-agent",
     agent_description="My first agent",
 )
 
@@ -113,32 +117,47 @@ async def main():
 asyncio.run(main())
 ```
 
-### 4. Add controls
+Run the script to register your agent:
 
-Create your first control using the SDK, or use the UI for a visual flow.
-
-Minimal SDK example:
-
-```python
-from agent_control import AgentControlClient, controls, agents
-
-async with AgentControlClient() as client:
-    control = await controls.create_control(
-        client,
-        name="block-ssn",
-        data={
-            "enabled": True,
-            "execution": "server",
-            "scope": {"stages": ["post"]},
-            "selector": {"path": "output"},
-            "evaluator": {"name": "regex", "config": {"pattern": r"\\b\\d{3}-\\d{2}-\\d{4}\\b"}},
-            "action": {"decision": "deny"},
-        },
-    )
-    await agents.add_agent_control(client, agent_name="my-agent", control_id=control["control_id"])
+```bash
+uv python my_agent.py
 ```
 
-Guides and References:
+Now, create a control in Step 4 to see blocking in action.
+
+### 4. Add controls
+
+Minimal SDK example (assumes the server is running at `http://localhost:8000`):
+
+```python
+import asyncio
+from agent_control import AgentControlClient, controls, agents
+
+async def main():
+    async with AgentControlClient() as client:
+        # Create a control to see Agent Control block PII leaks in action.
+        control = await controls.create_control(
+            client,
+            name="block-ssn-demo",
+            data={
+                "enabled": True,
+                "execution": "server",
+                "scope": {"stages": ["post"]},
+                "selector": {"path": "output"},
+                "evaluator": {"name": "regex", "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}},
+                "action": {"decision": "deny"},
+            },
+        )
+        await agents.add_agent_control(
+            client, agent_name="my-first-agent", control_id=control["control_id"]
+        )
+
+asyncio.run(main())
+```
+
+Now re-run your agent to see controls take effect.
+
+Guides and references:
 
 - [Quickstart](https://docs.agentcontrol.dev/core/quickstart) — Full walkthrough with SDK setup
 - [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart) — Create controls visually in the dashboard
