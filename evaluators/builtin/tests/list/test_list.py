@@ -1,0 +1,36 @@
+"""Tests for list evaluator."""
+
+import pytest
+from pydantic import ValidationError
+
+from agent_control_evaluators.list import ListEvaluator, ListEvaluatorConfig
+
+
+class TestListEvaluatorConfig:
+    """Tests for list evaluator config validation."""
+
+    def test_empty_string_value_rejected(self) -> None:
+        """Test that empty-string list entries are rejected at config validation time."""
+        with pytest.raises(ValidationError, match="values must not contain empty strings"):
+            ListEvaluatorConfig(values=[""])
+
+
+class TestListEvaluator:
+    """Tests for list evaluator runtime behavior."""
+
+    @pytest.mark.asyncio
+    async def test_legacy_empty_string_value_is_ignored_defensively(self) -> None:
+        """Test that legacy invalid configs do not compile into a match-all regex."""
+        config = ListEvaluatorConfig.model_construct(
+            values=[""],
+            logic="any",
+            match_on="match",
+            match_mode="contains",
+            case_sensitive=False,
+        )
+        evaluator = ListEvaluator(config)
+
+        result = await evaluator.evaluate("Tell me a joke")
+
+        assert result.matched is False
+        assert result.message == "Empty control values - control ignored"

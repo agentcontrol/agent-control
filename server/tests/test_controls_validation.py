@@ -86,6 +86,29 @@ def test_validation_regex_flags_list(client: TestClient):
     assert any("flags" in str(e.get("field", "")) for e in errors)
 
 
+def test_validation_list_values_reject_empty_strings(client: TestClient):
+    """Test that list evaluator config rejects empty-string entries."""
+    control_id = create_control(client)
+    payload = VALID_CONTROL_PAYLOAD.copy()
+    payload["evaluator"] = {
+        "name": "list",
+        "config": {
+            "values": [""],
+            "logic": "any",
+            "match_on": "match",
+            "match_mode": "contains",
+        },
+    }
+
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    assert resp.status_code == 422
+    response_data = resp.json()
+    errors = response_data.get("errors", [])
+    assert any("values" in str(e.get("field", "")) for e in errors)
+    assert any("empty strings" in e.get("message", "") for e in errors)
+
+
 def test_validation_invalid_regex_pattern(client: TestClient):
     """Test validation of regex pattern syntax."""
     # Given: a control and regex config with invalid pattern (unclosed bracket)
