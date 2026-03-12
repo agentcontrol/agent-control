@@ -207,7 +207,7 @@ function ConditionNodeCard({
       radius="md"
       p="md"
       data-condition-path={path}
-      style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}
+      style={{ backgroundColor: 'var(--mantine-color-default)' }}
     >
       <Stack gap="md">
         <Group justify="space-between" align="flex-start">
