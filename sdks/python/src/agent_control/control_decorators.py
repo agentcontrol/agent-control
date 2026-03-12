@@ -399,7 +399,7 @@ async def _run_control_check(
         raise
     except Exception as e:
         stage_name = "Pre" if stage == "pre" else "Post"
-        logger.error("%s-execution control check failed: %s", stage_name, e)
+        logger.error("%s-execution control check failed: %s", stage_name, e, exc_info=True)
         raise RuntimeError(_unexpected_control_failure_message(stage, e)) from e
 
 
