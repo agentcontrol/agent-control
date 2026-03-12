@@ -59,9 +59,8 @@ export const EditControlContent = ({
   const [unmappedErrors, setUnmappedErrors] = useState<
     Array<{ field: string | null; message: string }>
   >([]);
-  const [conditionNode, setConditionNode] = useState<ConditionBuilderNode>(
-    createLeafNode()
-  );
+  const [conditionNode, setConditionNode] =
+    useState<ConditionBuilderNode>(createLeafNode());
   const [conditionErrors, setConditionErrors] = useState<
     ValidationErrorItem[] | ConditionBuilderError[]
   >([]);
@@ -150,8 +149,7 @@ export const EditControlContent = ({
     const scope = control.control.scope ?? {};
     const stepNamesValue = (scope.step_names ?? []).join(', ');
     const stepRegexValue = scope.step_name_regex ?? '';
-    const stepNameMode =
-      stepRegexValue && !stepNamesValue ? 'regex' : 'names';
+    const stepNameMode = stepRegexValue && !stepNamesValue ? 'regex' : 'names';
 
     definitionForm.setValues({
       name: control.name,

@@ -5,7 +5,14 @@ import type {
 } from '@/core/api/types';
 import { getEvaluator } from '@/core/evaluators';
 
-const VALID_SELECTOR_ROOTS = ['input', 'output', 'name', 'type', 'context', '*'];
+const VALID_SELECTOR_ROOTS = [
+  'input',
+  'output',
+  'name',
+  'type',
+  'context',
+  '*',
+];
 
 export type ConditionBuilderLeaf = {
   id: string;
@@ -77,7 +84,9 @@ export function createNotNode(
   };
 }
 
-export function deserializeConditionNode(node: ConditionNode): ConditionBuilderNode {
+export function deserializeConditionNode(
+  node: ConditionNode
+): ConditionBuilderNode {
   if (node.selector && node.evaluator) {
     return createLeafNode(
       node.evaluator.name,
@@ -283,7 +292,11 @@ export function wrapConditionNodeWithNot(
   root: ConditionBuilderNode,
   targetId: string
 ): ConditionBuilderNode {
-  return replaceConditionNode(root, targetId, createNotNode(getNodeById(root, targetId)));
+  return replaceConditionNode(
+    root,
+    targetId,
+    createNotNode(getNodeById(root, targetId))
+  );
 }
 
 export function unwrapNotConditionNode(
@@ -414,6 +427,8 @@ export function getConditionErrorsForPath(
   path: string
 ): string[] {
   return errors
-    .filter((error) => error.field === path || error.field?.startsWith(`${path}.`))
+    .filter(
+      (error) => error.field === path || error.field?.startsWith(`${path}.`)
+    )
     .map((error) => error.message);
 }

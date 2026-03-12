@@ -67,7 +67,10 @@ function LeafEvaluatorForm({
     JSON.stringify(node.config, null, 2)
   );
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const configSignature = useMemo(() => JSON.stringify(node.config), [node.config]);
+  const configSignature = useMemo(
+    () => JSON.stringify(node.config),
+    [node.config]
+  );
 
   const form = useForm({
     initialValues: evaluator?.fromConfig(node.config) ?? {},
@@ -290,7 +293,8 @@ function ConditionNodeCard({
                     ...node,
                     evaluatorName: nextEvaluator,
                     config:
-                      evaluator?.toConfig(evaluator.initialValues) ?? node.config,
+                      evaluator?.toConfig(evaluator.initialValues) ??
+                      node.config,
                   });
                 }}
               />
@@ -302,9 +306,7 @@ function ConditionNodeCard({
                 size="xs"
                 leftSection={<IconPlus size={14} />}
                 onClick={() =>
-                  onChange(
-                    createGroupNode('and', [node, createLeafNode()])
-                  )
+                  onChange(createGroupNode('and', [node, createLeafNode()]))
                 }
               >
                 Replace with AND group
@@ -314,9 +316,7 @@ function ConditionNodeCard({
                 size="xs"
                 leftSection={<IconPlus size={14} />}
                 onClick={() =>
-                  onChange(
-                    createGroupNode('or', [node, createLeafNode()])
-                  )
+                  onChange(createGroupNode('or', [node, createLeafNode()]))
                 }
               >
                 Replace with OR group
@@ -324,7 +324,9 @@ function ConditionNodeCard({
               <Button
                 variant="default"
                 size="xs"
-                onClick={() => onChange(wrapConditionNodeWithNot(node, node.id))}
+                onClick={() =>
+                  onChange(wrapConditionNodeWithNot(node, node.id))
+                }
               >
                 Wrap with NOT
               </Button>
@@ -438,7 +440,9 @@ function ConditionNodeCard({
                   onChange(replaceConditionNode(node, child.id, nextChild))
                 }
                 onDelete={() => onChange(deleteConditionNode(node, child.id))}
-                onMoveUp={() => onChange(moveConditionNode(node, child.id, 'up'))}
+                onMoveUp={() =>
+                  onChange(moveConditionNode(node, child.id, 'up'))
+                }
                 onMoveDown={() =>
                   onChange(moveConditionNode(node, child.id, 'down'))
                 }
