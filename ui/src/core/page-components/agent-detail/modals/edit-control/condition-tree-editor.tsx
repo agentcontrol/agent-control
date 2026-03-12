@@ -25,17 +25,16 @@ import type { ValidationErrorItem } from '@/core/api/types';
 import { evaluators, getEvaluator } from '@/core/evaluators';
 
 import {
-  createGroupNode,
-  createLeafNode,
-  deleteConditionNode,
   type ConditionBuilderError,
   type ConditionBuilderLeaf,
   type ConditionBuilderNode,
+  createGroupNode,
+  createLeafNode,
+  deleteConditionNode,
   getConditionErrorsForPath,
   insertChildNode,
   moveConditionNode,
   replaceConditionNode,
-  updateConditionNode,
   unwrapNotConditionNode,
   wrapConditionNodeWithNot,
 } from './condition-builder';
@@ -78,7 +77,7 @@ function LeafEvaluatorForm({
   useEffect(() => {
     setJsonText(JSON.stringify(node.config, null, 2));
     setJsonError(null);
-  }, [configSignature]);
+  }, [configSignature, node.config]);
 
   useEffect(() => {
     if (!evaluator) {

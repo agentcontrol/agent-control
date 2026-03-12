@@ -35,7 +35,7 @@ test:
 		if [ -f server.pid ]; then kill `cat server.pid` 2>/dev/null || true; rm -f server.pid; fi; \
 	}; \
 	trap cleanup EXIT; \
-	DB_DATABASE=$(TEST_DB) AGENT_CONTROL_TEST_URL=$(TEST_SERVER_URL) uv run pytest --cov=src --cov-report=xml:../../coverage-sdk.xml -q
+	DB_DATABASE=$(TEST_DB) AGENT_CONTROL_TEST_URL=$(TEST_SERVER_URL) AGENT_CONTROL_URL=$(TEST_SERVER_URL) uv run pytest --cov=src --cov-report=xml:../../coverage-sdk.xml -q
 
 lint:
 	uv run ruff check --config ../../pyproject.toml src/

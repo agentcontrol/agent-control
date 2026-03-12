@@ -1,10 +1,9 @@
-import { getEvaluator } from '@/core/evaluators';
-
 import type {
   ConditionNode,
   ConditionNodeInput,
   ValidationErrorItem,
 } from '@/core/api/types';
+import { getEvaluator } from '@/core/evaluators';
 
 const VALID_SELECTOR_ROOTS = ['input', 'output', 'name', 'type', 'context', '*'];
 

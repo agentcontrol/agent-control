@@ -38,10 +38,11 @@ class AgentControlClient:
 
     # Environment variable name for API key
     API_KEY_ENV_VAR = "AGENT_CONTROL_API_KEY"
+    BASE_URL_ENV_VAR = "AGENT_CONTROL_URL"
 
     def __init__(
         self,
-        base_url: str = "http://localhost:8000",
+        base_url: str | None = None,
         timeout: float = 30.0,
         api_key: str | None = None,
     ):
@@ -49,12 +50,16 @@ class AgentControlClient:
         Initialize the client.
 
         Args:
-            base_url: Base URL of the Agent Control server
+            base_url: Base URL of the Agent Control server. If not provided,
+                AGENT_CONTROL_URL is used, falling back to http://localhost:8000.
             timeout: Request timeout in seconds
             api_key: API key for authentication. If not provided, will attempt
                      to read from AGENT_CONTROL_API_KEY environment variable.
         """
-        self.base_url = base_url.rstrip("/")
+        resolved_base_url = base_url or os.environ.get(
+            self.BASE_URL_ENV_VAR, "http://localhost:8000"
+        )
+        self.base_url = resolved_base_url.rstrip("/")
         self.timeout = timeout
         self._api_key = api_key or os.environ.get(self.API_KEY_ENV_VAR)
         self._client: httpx.AsyncClient | None = None

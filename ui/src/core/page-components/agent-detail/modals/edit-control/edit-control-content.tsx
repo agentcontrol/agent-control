@@ -20,11 +20,11 @@ import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-co
 
 import { ApiErrorAlert } from './api-error-alert';
 import {
+  type ConditionBuilderError,
+  type ConditionBuilderNode,
   createLeafNode,
   deserializeConditionNode,
   serializeConditionNode,
-  type ConditionBuilderError,
-  type ConditionBuilderNode,
   validateConditionTree,
 } from './condition-builder';
 import { ConditionTreeEditor } from './condition-tree-editor';
