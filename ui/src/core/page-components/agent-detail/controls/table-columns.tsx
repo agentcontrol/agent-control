@@ -100,6 +100,7 @@ export function useControlsTableColumns({
         id: 'name',
         header: 'Control',
         accessorKey: 'name',
+        size: 280,
         cell: ({ row }: { row: { original: Control } }) => (
           <Text size="sm" fw={500}>
             {row.original.name}

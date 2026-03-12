@@ -586,7 +586,7 @@ test.describe('Modal Routing', () => {
 
     // Fill out the form and submit
     const controlNameInput = createModal.getByPlaceholder('Enter control name');
-    await controlNameInput.fill('Test Control');
+    await controlNameInput.fill('test-control');
 
     // Fill in the required "Values" field for the list evaluator (at least one value required)
     const valuesTextarea = createModal.getByPlaceholder(
@@ -804,7 +804,7 @@ test.describe('Modal Routing', () => {
     });
 
     const controlNameInput = createModal.getByPlaceholder('Enter control name');
-    await controlNameInput.fill('Cleanup Test Control');
+    await controlNameInput.fill('cleanup-test-control');
     const valuesTextarea = createModal.getByPlaceholder(
       'Enter values (one per line)'
     );

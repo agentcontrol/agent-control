@@ -218,32 +218,57 @@ export const EditControlContent = ({
           });
           notifications.show({
             title: 'Control created',
-            message: `"${values.name}" has been added to this agent.`,
+            message: `"${values.name.trim()}" has been added to this agent.`,
             color: 'green',
           });
         } else {
-          const trimmedName = values.name.trim();
-          const nameChanged = trimmedName && trimmedName !== control.name;
+          const nameChanged = values.name.trim() !== control.name.trim();
 
           if (nameChanged) {
             try {
               await updateControlMetadata.mutateAsync({
                 agentId,
                 controlId: control.id,
-                data: { name: trimmedName },
+                data: { name: values.name },
               });
             } catch (renameError) {
-              if (
-                isApiError(renameError) &&
-                (renameError.problemDetail.status === 409 ||
-                  renameError.problemDetail.error_code ===
-                    'CONTROL_NAME_CONFLICT')
-              ) {
-                definitionForm.setFieldError(
-                  'name',
-                  renameError.problemDetail.detail ||
-                    'Control name already exists'
-                );
+              if (isApiError(renameError)) {
+                const problemDetail = renameError.problemDetail;
+
+                if (
+                  problemDetail.status === 409 ||
+                  problemDetail.error_code === 'CONTROL_NAME_CONFLICT'
+                ) {
+                  definitionForm.setFieldError(
+                    'name',
+                    problemDetail.detail || 'Control name already exists'
+                  );
+                } else if (problemDetail.status === 422) {
+                  // Mirror the main error-handling behavior so validation errors
+                  // render inline (and in the alert when unmapped).
+                  setApiError(problemDetail);
+                  if (problemDetail.errors) {
+                    const unmapped = applyApiErrorsToForms(
+                      problemDetail.errors,
+                      definitionForm,
+                      null
+                    );
+                    setUnmappedErrors(
+                      unmapped.map((e) => ({
+                        field: e.field,
+                        message: e.message,
+                      }))
+                    );
+                  }
+                } else {
+                  notifications.show({
+                    title: 'Failed to rename control',
+                    message:
+                      problemDetail.detail ||
+                      'An unexpected error occurred while renaming',
+                    color: 'red',
+                  });
+                }
               } else {
                 notifications.show({
                   title: 'Failed to rename control',
@@ -265,7 +290,7 @@ export const EditControlContent = ({
           });
           notifications.show({
             title: 'Control updated',
-            message: `"${trimmedName}" has been saved.`,
+            message: `"${values.name.trim()}" has been saved.`,
             color: 'green',
           });
         }
