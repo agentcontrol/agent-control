@@ -11,7 +11,7 @@
   />
 </p>
 
-<h1 align="center"><a href="https://agentcontrol.dev">Agent Control</a></h1>
+<h1 align="center">Agent Control</h1>
 
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" /></a>
@@ -23,13 +23,14 @@
 </p>
 
 <p align="center">
+  <a href="https://agentcontrol.dev">Agent Control Website</a> |
   <a href="https://docs.agentcontrol.dev/">Docs</a> |
   <a href="https://docs.agentcontrol.dev/core/quickstart">Quickstart</a> |
   <a href="examples/README.md">Examples</a> |
   <a href="https://join.slack.com/t/agentcontrol/shared_invite/zt-3se2g6d68-iGmNdRfGcD31cZ0vELMPxw">Slack</a>
 </p>
 
-A Control Plane that sits between your AI agents and the outside world. It evaluates inputs and outputs against configurable rules - blocking prompt injections, PII leakage, and other risks - without changing your agent's code.
+Enforce runtime guardrails through a centralized control layer—configure once and apply across all agents. Agent Control evaluates inputs and outputs against configurable rules to block prompt injections, PII leakage, and other risks without changing your agent’s code.
 
 - **Centralized safety** - define controls once, apply across agents, update without redeploying
 - **Runtime configuration** - manage controls via API or UI, no code changes needed
@@ -155,25 +156,13 @@ async def main():
 asyncio.run(main())
 ```
 
+**Tip**: Use the UI to add controls if you prefer a visual flow—see the [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart).
+
 Now re-run your agent to see controls take effect.
 
-Guides and references:
+## Examples:
 
-- [Quickstart](https://docs.agentcontrol.dev/core/quickstart) — Full walkthrough with SDK setup
-- [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart) — Create controls visually in the dashboard
-- [Controls](https://docs.agentcontrol.dev/concepts/controls) — Learn how controls, selectors, and evaluators work
-- [Decorate LLM & tool calls](https://docs.agentcontrol.dev/how-to/decorate-llm-tool-calls) — Patterns for wrapping your agent code
-- [Examples](https://docs.agentcontrol.dev/examples/overview) — End-to-end examples with popular frameworks
-
-## How It Works
-
-Agent Control evaluates agent inputs and outputs against controls you configure at runtime. That keeps guardrail logic out of prompt code and tool code, while still letting teams update protections centrally.
-
-![Agent Control Architecture](docs/images/Architecture.png)
-
-## Examples
-
-Start with [Examples Overview](examples/README.md), or jump straight to a few representative examples:
+Explore working examples for popular frameworks.
 
 - [Customer Support Agent](examples/customer_support_agent/) - PII protection, prompt injection defense, and tool controls
 - [Steer Action Demo](examples/steer_action_demo/) - allow, deny, warn, and steer decisions in one workflow
@@ -182,6 +171,13 @@ Start with [Examples Overview](examples/README.md), or jump straight to a few re
 - [AWS Strands](examples/strands_agents/) - protect Strands workflows and tool calls
 - [Google ADK Decorator](examples/google_adk_decorator/) - add controls with `@control()`
 
+## How It Works
+
+![Agent Control Architecture](docs/images/Architecture.png)
+
+Agent Control evaluates agent inputs and outputs against controls you configure at runtime. That keeps guardrail logic out of prompt code and tool code, while still letting teams update protections centrally.
+
+Read more about [Controls](https://docs.agentcontrol.dev/concepts/controls) and Learn how controls, selectors, and evaluators work
 
 ## Performance
 
