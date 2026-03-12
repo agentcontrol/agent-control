@@ -239,6 +239,8 @@ async def _emit_observability_events(
     if response.matches:
         for match in response.matches:
             ctrl = control_lookup.get(match.control_id)
+            primary_leaf = ctrl.control.primary_leaf() if ctrl else None
+            primary_parts = primary_leaf.leaf_parts() if primary_leaf else None
             events.append(
                 ControlExecutionEvent(
                     control_execution_id=match.control_execution_id,
@@ -253,8 +255,8 @@ async def _emit_observability_events(
                     matched=True,
                     confidence=match.result.confidence,
                     timestamp=now,
-                    evaluator_name=ctrl.control.evaluator.name if ctrl else None,
-                    selector_path=ctrl.control.selector.path if ctrl else None,
+                    evaluator_name=primary_parts[1].name if primary_parts else None,
+                    selector_path=primary_parts[0].path if primary_parts else None,
                     error_message=match.result.error,
                     metadata=match.result.metadata or {},
                 )
@@ -264,6 +266,8 @@ async def _emit_observability_events(
     if response.errors:
         for error in response.errors:
             ctrl = control_lookup.get(error.control_id)
+            primary_leaf = ctrl.control.primary_leaf() if ctrl else None
+            primary_parts = primary_leaf.leaf_parts() if primary_leaf else None
             events.append(
                 ControlExecutionEvent(
                     control_execution_id=error.control_execution_id,
@@ -278,8 +282,8 @@ async def _emit_observability_events(
                     matched=False,
                     confidence=error.result.confidence,
                     timestamp=now,
-                    evaluator_name=ctrl.control.evaluator.name if ctrl else None,
-                    selector_path=ctrl.control.selector.path if ctrl else None,
+                    evaluator_name=primary_parts[1].name if primary_parts else None,
+                    selector_path=primary_parts[0].path if primary_parts else None,
                     error_message=error.result.error,
                     metadata=error.result.metadata or {},
                 )
@@ -289,6 +293,8 @@ async def _emit_observability_events(
     if response.non_matches:
         for non_match in response.non_matches:
             ctrl = control_lookup.get(non_match.control_id)
+            primary_leaf = ctrl.control.primary_leaf() if ctrl else None
+            primary_parts = primary_leaf.leaf_parts() if primary_leaf else None
             events.append(
                 ControlExecutionEvent(
                     control_execution_id=non_match.control_execution_id,
@@ -303,8 +309,8 @@ async def _emit_observability_events(
                     matched=False,
                     confidence=non_match.result.confidence,
                     timestamp=now,
-                    evaluator_name=ctrl.control.evaluator.name if ctrl else None,
-                    selector_path=ctrl.control.selector.path if ctrl else None,
+                    evaluator_name=primary_parts[1].name if primary_parts else None,
+                    selector_path=primary_parts[0].path if primary_parts else None,
                     error_message=None,
                     metadata=non_match.result.metadata or {},
                 )

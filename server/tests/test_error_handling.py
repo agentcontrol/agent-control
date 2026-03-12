@@ -474,8 +474,10 @@ def test_set_control_data_rollback_on_failure(
                 "enabled": True,
                 "execution": "server",
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
-                "selector": {"path": "input"},
-                "evaluator": {"name": "regex", "config": {"pattern": "x"}},
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {"name": "regex", "config": {"pattern": "x"}},
+                },
                 "action": {"decision": "deny"}
             }
             resp = client.put(

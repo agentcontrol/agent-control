@@ -47,7 +47,7 @@ def _create_policy_with_agent_evaluator_control(
     control_id = create_control_resp.json()["control_id"]
 
     control_data = deepcopy(VALID_CONTROL_PAYLOAD)
-    control_data["evaluator"] = {
+    control_data["condition"]["evaluator"] = {
         "name": f"{agent_name}:{evaluator_name}",
         "config": {},
     }

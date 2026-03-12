@@ -5,6 +5,11 @@
 import * as z from "zod/v4-mini";
 import { ClosedEnum } from "../types/enums.js";
 import {
+  ConditionNodeInput,
+  ConditionNodeInput$Outbound,
+  ConditionNodeInput$outboundSchema,
+} from "./condition-node-input.js";
+import {
   ControlAction,
   ControlAction$Outbound,
   ControlAction$outboundSchema,
@@ -14,16 +19,6 @@ import {
   ControlScope$Outbound,
   ControlScope$outboundSchema,
 } from "./control-scope.js";
-import {
-  ControlSelector,
-  ControlSelector$Outbound,
-  ControlSelector$outboundSchema,
-} from "./control-selector.js";
-import {
-  EvaluatorSpec,
-  EvaluatorSpec$Outbound,
-  EvaluatorSpec$outboundSchema,
-} from "./evaluator-spec.js";
 
 /**
  * Where this control executes
@@ -53,6 +48,10 @@ export type ControlDefinitionInput = {
    */
   action: ControlAction;
   /**
+   * Recursive boolean condition tree for control evaluation.
+   */
+  condition: ConditionNodeInput;
+  /**
    * Detailed description of the control
    */
   description?: string | null | undefined;
@@ -61,17 +60,6 @@ export type ControlDefinitionInput = {
    */
   enabled?: boolean | undefined;
   /**
-   * Evaluator specification. See GET /evaluators for available evaluators and schemas.
-   *
-   * @remarks
-   *
-   * Evaluator reference formats:
-   * - Built-in: "regex", "list", "json", "sql"
-   * - External: "galileo.luna2" (requires agent-control-evaluators[galileo])
-   * - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
-   */
-  evaluator: EvaluatorSpec;
-  /**
    * Where this control executes
    */
   execution: ControlDefinitionInputExecution;
@@ -79,15 +67,6 @@ export type ControlDefinitionInput = {
    * Defines when a control applies to a Step.
    */
   scope?: ControlScope | undefined;
-  /**
-   * Selects data from a Step payload.
-   *
-   * @remarks
-   *
-   * - path: which slice of the Step to feed into the evaluator. Optional, defaults to "*"
-   *   meaning the entire Step object.
-   */
-  selector: ControlSelector;
   /**
    * Tags for categorization
    */
@@ -102,12 +81,11 @@ export const ControlDefinitionInputExecution$outboundSchema: z.ZodMiniEnum<
 /** @internal */
 export type ControlDefinitionInput$Outbound = {
   action: ControlAction$Outbound;
+  condition: ConditionNodeInput$Outbound;
   description?: string | null | undefined;
   enabled: boolean;
-  evaluator: EvaluatorSpec$Outbound;
   execution: string;
   scope?: ControlScope$Outbound | undefined;
-  selector: ControlSelector$Outbound;
   tags?: Array<string> | undefined;
 };
 
@@ -117,12 +95,11 @@ export const ControlDefinitionInput$outboundSchema: z.ZodMiniType<
   ControlDefinitionInput
 > = z.object({
   action: ControlAction$outboundSchema,
+  condition: ConditionNodeInput$outboundSchema,
   description: z.optional(z.nullable(z.string())),
   enabled: z._default(z.boolean(), true),
-  evaluator: EvaluatorSpec$outboundSchema,
   execution: ControlDefinitionInputExecution$outboundSchema,
   scope: z.optional(ControlScope$outboundSchema),
-  selector: ControlSelector$outboundSchema,
   tags: z.optional(z.array(z.string())),
 });
 

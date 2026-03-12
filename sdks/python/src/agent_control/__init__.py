@@ -947,7 +947,7 @@ async def create_control(
 
     Args:
         name: Unique name for the control
-        data: Optional control definition with selector, evaluator, action, etc.
+        data: Optional control definition with a condition tree, action, scope, etc.
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
 
@@ -972,10 +972,12 @@ async def create_control(
                 data={
                     "execution": "server",
                     "scope": {"step_types": ["llm"], "stages": ["post"]},
-                    "selector": {"path": "output"},
-                    "evaluator": {
-                        "name": "regex",
-                        "config": {"pattern": r"\\d{3}-\\d{2}-\\d{4}"}
+                    "condition": {
+                        "selector": {"path": "output"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {"pattern": r"\\d{3}-\\d{2}-\\d{4}"}
+                        }
                     },
                     "action": {"decision": "deny"}
                 }

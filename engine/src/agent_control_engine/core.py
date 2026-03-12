@@ -14,6 +14,7 @@ from typing import Any, Literal, Protocol
 import re2
 from agent_control_evaluators import get_evaluator_instance
 from agent_control_models import (
+    ConditionNode,
     ControlDefinition,
     ControlMatch,
     EvaluationRequest,
@@ -54,9 +55,16 @@ class _EvalTask:
     """Internal container for evaluation task context."""
 
     item: ControlWithIdentity
-    data: Any
     task: asyncio.Task[None] | None = None
     result: EvaluatorResult | None = None
+
+
+@dataclass
+class _ConditionEvaluation:
+    """Internal result for recursive condition evaluation."""
+
+    result: EvaluatorResult
+    trace: dict[str, Any]
 
 
 class ControlEngine:
@@ -78,6 +86,256 @@ class ControlEngine:
     ):
         self.controls = controls
         self.context = context
+
+    @staticmethod
+    def _truncated_message(message: str | None) -> str | None:
+        """Truncate long evaluator messages in condition traces."""
+        if not message:
+            return None
+        if len(message) <= 200:
+            return message
+        return f"{message[:197]}..."
+
+    def _skipped_trace(self, node: ConditionNode, reason: str) -> dict[str, Any]:
+        """Build an unevaluated trace subtree for short-circuited branches."""
+        trace: dict[str, Any] = {
+            "type": node.kind(),
+            "evaluated": False,
+            "matched": None,
+            "short_circuit_reason": reason,
+        }
+        if node.is_leaf():
+            selector, evaluator = node.leaf_parts() or (None, None)
+            trace["selector_path"] = selector.path if selector else None
+            trace["evaluator_name"] = evaluator.name if evaluator else None
+            trace["confidence"] = None
+            trace["error"] = None
+            return trace
+
+        trace["children"] = [
+            self._skipped_trace(child, reason) for child in node.children_in_order()
+        ]
+        return trace
+
+    async def _evaluate_leaf(
+        self,
+        item: ControlWithIdentity,
+        node: ConditionNode,
+        request: EvaluationRequest,
+        semaphore: asyncio.Semaphore,
+    ) -> _ConditionEvaluation:
+        """Evaluate a leaf selector/evaluator pair."""
+        selector, evaluator_spec = node.leaf_parts() or (None, None)
+        if selector is None or evaluator_spec is None:
+            raise ValueError("Leaf condition must contain selector and evaluator")
+
+        selector_path = selector.path or "*"
+        data = select_data(request.step, selector_path)
+
+        try:
+            async with semaphore:
+                evaluator = get_evaluator_instance(evaluator_spec)
+                timeout = evaluator.get_timeout_seconds()
+                if timeout <= 0:
+                    timeout = DEFAULT_EVALUATOR_TIMEOUT
+
+                result = await asyncio.wait_for(
+                    evaluator.evaluate(data),
+                    timeout=timeout,
+                )
+        except TimeoutError:
+            error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
+            logger.warning(
+                "Evaluator timeout for control '%s' (evaluator: %s): %s",
+                item.name,
+                evaluator_spec.name,
+                error_msg,
+                exc_info=True,
+            )
+            result = EvaluatorResult(
+                matched=False,
+                confidence=0.0,
+                message=f"Evaluation failed: {error_msg}",
+                error=error_msg,
+            )
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {e}"
+            logger.error(
+                "Evaluator error for control '%s' (evaluator: %s): %s",
+                item.name,
+                evaluator_spec.name,
+                error_msg,
+                exc_info=True,
+            )
+            result = EvaluatorResult(
+                matched=False,
+                confidence=0.0,
+                message=f"Evaluation failed: {error_msg}",
+                error=error_msg,
+            )
+
+        trace = {
+            "type": "leaf",
+            "evaluated": True,
+            "matched": result.matched,
+            "selector_path": selector_path,
+            "evaluator_name": evaluator_spec.name,
+            "confidence": result.confidence,
+            "error": result.error,
+            "message": self._truncated_message(result.message),
+        }
+        metadata = dict(result.metadata or {})
+        metadata["condition_trace"] = trace
+        return _ConditionEvaluation(
+            result=result.model_copy(update={"metadata": metadata}),
+            trace=trace,
+        )
+
+    def _build_composite_result(
+        self,
+        *,
+        matched: bool,
+        confidence: float,
+        trace: dict[str, Any],
+        error: str | None = None,
+    ) -> EvaluatorResult:
+        """Create a composite evaluator result with a condition trace."""
+        if error is not None:
+            return EvaluatorResult(
+                matched=False,
+                confidence=0.0,
+                message=f"Condition evaluation failed: {error}",
+                metadata={"condition_trace": trace},
+                error=error,
+            )
+
+        message = "Condition tree matched" if matched else "Condition tree did not match"
+        return EvaluatorResult(
+            matched=matched,
+            confidence=confidence,
+            message=message,
+            metadata={"condition_trace": trace},
+        )
+
+    async def _evaluate_condition(
+        self,
+        item: ControlWithIdentity,
+        node: ConditionNode,
+        request: EvaluationRequest,
+        semaphore: asyncio.Semaphore,
+    ) -> _ConditionEvaluation:
+        """Evaluate a recursive condition tree."""
+        if node.is_leaf():
+            return await self._evaluate_leaf(item, node, request, semaphore)
+
+        kind = node.kind()
+        children = node.children_in_order()
+        child_evaluations: list[_ConditionEvaluation] = []
+
+        if kind == "not":
+            child_eval = await self._evaluate_condition(item, children[0], request, semaphore)
+            trace = {
+                "type": "not",
+                "evaluated": True,
+                "matched": None if child_eval.result.error else (not child_eval.result.matched),
+                "children": [child_eval.trace],
+            }
+            if child_eval.result.error:
+                return _ConditionEvaluation(
+                    result=self._build_composite_result(
+                        matched=False,
+                        confidence=0.0,
+                        trace=trace,
+                        error=child_eval.result.error,
+                    ),
+                    trace=trace,
+                )
+
+            result = self._build_composite_result(
+                matched=not child_eval.result.matched,
+                confidence=child_eval.result.confidence,
+                trace=trace,
+            )
+            return _ConditionEvaluation(result=result, trace=trace)
+
+        for index, child in enumerate(children):
+            child_eval = await self._evaluate_condition(item, child, request, semaphore)
+            child_evaluations.append(child_eval)
+
+            if child_eval.result.error:
+                remaining = children[index + 1 :]
+                trace = {
+                    "type": kind,
+                    "evaluated": True,
+                    "matched": False,
+                    "children": [
+                        evaluation.trace for evaluation in child_evaluations
+                    ]
+                    + [self._skipped_trace(rest, "error") for rest in remaining],
+                    "short_circuit_reason": "error",
+                }
+                return _ConditionEvaluation(
+                    result=self._build_composite_result(
+                        matched=False,
+                        confidence=0.0,
+                        trace=trace,
+                        error=child_eval.result.error,
+                    ),
+                    trace=trace,
+                )
+
+            should_short_circuit = (
+                kind == "and" and not child_eval.result.matched
+            ) or (kind == "or" and child_eval.result.matched)
+            if should_short_circuit:
+                remaining = children[index + 1 :]
+                matched = child_eval.result.matched if kind == "or" else False
+                trace = {
+                    "type": kind,
+                    "evaluated": True,
+                    "matched": matched,
+                    "children": [
+                        evaluation.trace for evaluation in child_evaluations
+                    ]
+                    + [
+                        self._skipped_trace(
+                            rest,
+                            "or_matched" if kind == "or" else "and_failed",
+                        )
+                        for rest in remaining
+                    ],
+                    "short_circuit_reason": (
+                        "or_matched" if kind == "or" else "and_failed"
+                    ),
+                }
+                confidence = min(
+                    evaluation.result.confidence for evaluation in child_evaluations
+                )
+                result = self._build_composite_result(
+                    matched=matched,
+                    confidence=confidence,
+                    trace=trace,
+                )
+                return _ConditionEvaluation(result=result, trace=trace)
+
+        confidence = min(evaluation.result.confidence for evaluation in child_evaluations)
+        matched = all(
+            evaluation.result.matched for evaluation in child_evaluations
+        ) if kind == "and" else any(
+            evaluation.result.matched for evaluation in child_evaluations
+        )
+        trace = {
+            "type": kind,
+            "evaluated": True,
+            "matched": matched,
+            "children": [evaluation.trace for evaluation in child_evaluations],
+        }
+        result = self._build_composite_result(
+            matched=matched,
+            confidence=confidence,
+            trace=trace,
+        )
+        return _ConditionEvaluation(result=result, trace=trace)
 
     def get_applicable_controls(
         self,
@@ -169,12 +427,7 @@ class ControlEngine:
             )
 
         # Prepare evaluation tasks
-        eval_tasks: list[_EvalTask] = []
-        for item in applicable:
-            control_def = item.control
-            sel_path = control_def.selector.path or "*"
-            data = select_data(request.step, sel_path)
-            eval_tasks.append(_EvalTask(item=item, data=data))
+        eval_tasks: list[_EvalTask] = [_EvalTask(item=item) for item in applicable]
 
         # Run evaluations in parallel with cancel-on-deny
         matches: list[ControlMatch] = []
@@ -184,58 +437,22 @@ class ControlEngine:
 
         async def evaluate_control(eval_task: _EvalTask) -> None:
             """Evaluate a single control, respecting cancellation and timeout."""
-            async with semaphore:
-                try:
-                    evaluator = get_evaluator_instance(eval_task.item.control.evaluator)
-                    # Use evaluator's timeout or fall back to default
-                    timeout = evaluator.get_timeout_seconds()
-                    if timeout <= 0:
-                        timeout = DEFAULT_EVALUATOR_TIMEOUT
+            try:
+                evaluation = await self._evaluate_condition(
+                    eval_task.item,
+                    eval_task.item.control.condition,
+                    request,
+                    semaphore,
+                )
+                eval_task.result = evaluation.result
 
-                    eval_task.result = await asyncio.wait_for(
-                        evaluator.evaluate(eval_task.data),
-                        timeout=timeout,
-                    )
-
-                    # Signal if this is a deny match - only deny should trigger cancellation
-                    # to preserve deny-first semantics
-                    if (
-                        eval_task.result.matched
-                        and eval_task.item.control.action.decision == "deny"
-                    ):
-                        deny_found.set()
-                except asyncio.CancelledError:
-                    # Task was cancelled due to another deny - that's OK
-                    raise
-                except TimeoutError:
-                    # Evaluator timed out
-                    error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
-                    logger.warning(
-                        f"Evaluator timeout for control '{eval_task.item.name}' "
-                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}",
-                        exc_info=True,
-                    )
-                    eval_task.result = EvaluatorResult(
-                        matched=False,
-                        confidence=0.0,
-                        message=f"Evaluation failed: {error_msg}",
-                        error=error_msg,
-                    )
-                except Exception as e:
-                    # Evaluation error - fail open but mark as error
-                    # The error field signals to callers that this was not a real evaluation
-                    error_msg = f"{type(e).__name__}: {e}"
-                    logger.error(
-                        f"Evaluator error for control '{eval_task.item.name}' "
-                        f"(evaluator: {eval_task.item.control.evaluator.name}): {error_msg}",
-                        exc_info=True,
-                    )
-                    eval_task.result = EvaluatorResult(
-                        matched=False,
-                        confidence=0.0,
-                        message=f"Evaluation failed: {error_msg}",
-                        error=error_msg,
-                    )
+                if (
+                    eval_task.result.matched
+                    and eval_task.item.control.action.decision == "deny"
+                ):
+                    deny_found.set()
+            except asyncio.CancelledError:
+                raise
 
         # Create and start all tasks
         for eval_task in eval_tasks:

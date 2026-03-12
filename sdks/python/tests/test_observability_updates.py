@@ -116,8 +116,10 @@ class TestEmitLocalEvents:
 
         control_def = ControlDefinition(
             execution="sdk",
-            evaluator={"name": evaluator_name, "config": {"pattern": "test"}},
-            selector={"path": selector_path},
+            condition={
+                "evaluator": {"name": evaluator_name, "config": {"pattern": "test"}},
+                "selector": {"path": selector_path},
+            },
             action={"decision": "deny"},
         )
         return _ControlAdapter(id=id, name=name, control=control_def)
@@ -307,8 +309,10 @@ class TestCheckEvaluationWithLocal:
             "id": 1,
             "name": "test-ctrl",
             "control": {
-                "evaluator": {"name": "regex", "config": {"pattern": "test"}},
-                "selector": {"path": "input"},
+                "condition": {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
                 "action": {"decision": "allow"},
                 "execution": "sdk",
             },
@@ -359,8 +363,10 @@ class TestCheckEvaluationWithLocal:
             "id": 1,
             "name": "test-ctrl",
             "control": {
-                "evaluator": {"name": "regex", "config": {"pattern": "test"}},
-                "selector": {"path": "input"},
+                "condition": {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
                 "action": {"decision": "allow"},
                 "execution": "sdk",
             },
@@ -396,8 +402,10 @@ class TestCheckEvaluationWithLocal:
             "id": 1,
             "name": "server-ctrl",
             "control": {
-                "evaluator": {"name": "regex", "config": {"pattern": "test"}},
-                "selector": {"path": "input"},
+                "condition": {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
                 "action": {"decision": "deny"},
                 "execution": "server",
             },

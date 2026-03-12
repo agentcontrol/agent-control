@@ -1,8 +1,10 @@
 """End-to-end tests for evaluation flow."""
 import uuid
+
 from fastapi.testclient import TestClient
 from agent_control_models import EvaluationRequest, Step
-from .utils import create_and_assign_policy
+
+from .utils import canonicalize_control_payload, create_and_assign_policy
 
 
 def test_evaluation_flow_deny(client: TestClient):
@@ -236,7 +238,10 @@ def test_evaluation_deny_precedence(client: TestClient):
     }
     resp = client.put("/api/v1/controls", json={"name": f"deny-control-{uuid.uuid4()}"})
     deny_control_id = resp.json()["control_id"]
-    client.put(f"/api/v1/controls/{deny_control_id}/data", json={"data": control_deny})
+    client.put(
+        f"/api/v1/controls/{deny_control_id}/data",
+        json={"data": canonicalize_control_payload(control_deny)},
+    )
 
     # Add Control to Agent's Policy
     client.post(f"/api/v1/policies/{policy_id}/controls/{deny_control_id}")

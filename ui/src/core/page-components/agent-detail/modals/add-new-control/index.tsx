@@ -123,12 +123,14 @@ export function AddNewControlModal({
           step_types: ['llm'],
           stages: ['post'] as ('post' | 'pre')[],
         },
-        selector: {
-          path: '*',
-        },
-        evaluator: {
-          name: selectedEvaluator.id,
-          config: getDefaultConfigForEvaluator(selectedEvaluator.id),
+        condition: {
+          selector: {
+            path: '*',
+          },
+          evaluator: {
+            name: selectedEvaluator.id,
+            config: getDefaultConfigForEvaluator(selectedEvaluator.id),
+          },
         },
         action: { decision: 'deny' as const },
       },

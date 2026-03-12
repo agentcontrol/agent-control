@@ -75,10 +75,12 @@ def make_control_dict(
             "enabled": True,
             "execution": execution,
             "scope": {"step_types": [step_type], "stages": [stage]},
-            "selector": {"path": path},
-            "evaluator": {
-                "name": evaluator,
-                "config": {"pattern": pattern},
+            "condition": {
+                "selector": {"path": path},
+                "evaluator": {
+                    "name": evaluator,
+                    "config": {"pattern": pattern},
+                },
             },
             "action": {"decision": action},
         },
@@ -766,8 +768,10 @@ class TestCheckEvaluationWithLocal:
                     "enabled": True,
                     "execution": "sdk",
                     "scope": {"step_types": ["llm"], "stages": ["pre"]},
-                    "selector": {"path": "input"},
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    },
                     "action": {
                         "decision": "steer",
                         "steering_context": {

@@ -4,6 +4,8 @@ import uuid
 
 from fastapi.testclient import TestClient
 
+from .utils import canonicalize_control_payload
+
 
 def make_agent_payload(
     agent_name: str | None = None,
@@ -269,7 +271,7 @@ def _create_policy_with_control(
     # Set control data
     data_resp = client.put(
         f"/api/v1/controls/{control_id}/data",
-        json={"data": control_data},
+        json={"data": canonicalize_control_payload(control_data)},
     )
     assert data_resp.status_code == 200
 
@@ -357,8 +359,10 @@ def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) 
             "data": {
                 "execution": "server",
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
-                "selector": {"path": "input"},
-                "evaluator": {"name": f"{agent_name}:nonexistent-eval", "config": {}},
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {"name": f"{agent_name}:nonexistent-eval", "config": {}},
+                },
                 "action": {"decision": "deny"},
             }
         },

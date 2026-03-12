@@ -9,19 +9,15 @@ import { OpenEnum } from "../types/enums.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import {
+  ConditionNodeOutput,
+  ConditionNodeOutput$inboundSchema,
+} from "./condition-node-output.js";
+import {
   ControlAction,
   ControlAction$inboundSchema,
 } from "./control-action.js";
 import { ControlScope, ControlScope$inboundSchema } from "./control-scope.js";
-import {
-  ControlSelector,
-  ControlSelector$inboundSchema,
-} from "./control-selector.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
-import {
-  EvaluatorSpec,
-  EvaluatorSpec$inboundSchema,
-} from "./evaluator-spec.js";
 
 /**
  * Where this control executes
@@ -49,6 +45,10 @@ export type ControlDefinitionOutput = {
    */
   action: ControlAction;
   /**
+   * Recursive boolean condition tree for control evaluation.
+   */
+  condition: ConditionNodeOutput;
+  /**
    * Detailed description of the control
    */
   description?: string | null | undefined;
@@ -57,17 +57,6 @@ export type ControlDefinitionOutput = {
    */
   enabled: boolean;
   /**
-   * Evaluator specification. See GET /evaluators for available evaluators and schemas.
-   *
-   * @remarks
-   *
-   * Evaluator reference formats:
-   * - Built-in: "regex", "list", "json", "sql"
-   * - External: "galileo.luna2" (requires agent-control-evaluators[galileo])
-   * - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
-   */
-  evaluator: EvaluatorSpec;
-  /**
    * Where this control executes
    */
   execution: Execution;
@@ -75,15 +64,6 @@ export type ControlDefinitionOutput = {
    * Defines when a control applies to a Step.
    */
   scope?: ControlScope | undefined;
-  /**
-   * Selects data from a Step payload.
-   *
-   * @remarks
-   *
-   * - path: which slice of the Step to feed into the evaluator. Optional, defaults to "*"
-   *   meaning the entire Step object.
-   */
-  selector: ControlSelector;
   /**
    * Tags for categorization
    */
@@ -100,12 +80,11 @@ export const ControlDefinitionOutput$inboundSchema: z.ZodMiniType<
   unknown
 > = z.object({
   action: ControlAction$inboundSchema,
+  condition: ConditionNodeOutput$inboundSchema,
   description: z.optional(z.nullable(types.string())),
   enabled: z._default(types.boolean(), true),
-  evaluator: EvaluatorSpec$inboundSchema,
   execution: Execution$inboundSchema,
   scope: types.optional(ControlScope$inboundSchema),
-  selector: ControlSelector$inboundSchema,
   tags: types.optional(z.array(types.string())),
 });
 

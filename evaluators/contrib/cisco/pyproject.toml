@@ -7,8 +7,8 @@ requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Cisco AI Defense Team" }]
 dependencies = [
-    "agent-control-evaluators>=3.0.0",
-    "agent-control-models>=3.0.0",
+    "agent-control-evaluators>=7.0.0",
+    "agent-control-models>=7.0.0",
     "httpx>=0.24.0",
 ]
 
@@ -41,4 +41,3 @@ select = ["E", "F", "I"]
 [tool.uv.sources]
 agent-control-evaluators = { path = "../../builtin", editable = true }
 agent-control-models = { path = "../../../models", editable = true }
-

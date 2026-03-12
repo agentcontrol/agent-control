@@ -47,6 +47,8 @@ from agent_control_models.errors import (
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from .services.validation_paths import format_field_path
+
 _logger = logging.getLogger(__name__)
 
 _MAX_PUBLIC_TEXT_LENGTH = 500
@@ -575,8 +577,8 @@ async def validation_exception_handler(
         # Build field path from location
         loc = error.get("loc", ())
         # Skip 'body' prefix in location
-        field_parts = [str(p) for p in loc if p != "body"]
-        field = ".".join(field_parts) if field_parts else None
+        field_parts = [p for p in loc if p != "body"]
+        field = format_field_path(field_parts)
 
         # Determine resource from first path component
         resource = "Request"
@@ -589,7 +591,7 @@ async def validation_exception_handler(
                 "data": "Control",
                 "policy": "Policy",
             }
-            first_part = field_parts[0].lower()
+            first_part = str(field_parts[0]).lower()
             resource = prefix_map.get(first_part, resource)
 
         errors.append(

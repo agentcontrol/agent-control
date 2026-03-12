@@ -88,10 +88,12 @@ const controlsList: Control[] = [
       enabled: true,
       execution: 'server',
       scope: { step_types: ['llm'], stages: ['post'] },
-      selector: { path: 'output' },
-      evaluator: {
-        name: 'regex',
-        config: { pattern: '\\b\\d{3}-\\d{2}-\\d{4}\\b' },
+      condition: {
+        selector: { path: 'output' },
+        evaluator: {
+          name: 'regex',
+          config: { pattern: '\\b\\d{3}-\\d{2}-\\d{4}\\b' },
+        },
       },
       action: { decision: 'deny' },
       tags: ['pii', 'compliance'],
@@ -110,10 +112,12 @@ const controlsList: Control[] = [
         step_name_regex: '^db_.*',
         stages: ['pre'],
       },
-      selector: { path: 'input.query' },
-      evaluator: {
-        name: 'sql',
-        config: { mode: 'safe' },
+      condition: {
+        selector: { path: 'input.query' },
+        evaluator: {
+          name: 'sql',
+          config: { mode: 'safe' },
+        },
       },
       action: { decision: 'deny' },
       tags: ['security'],
@@ -127,10 +131,12 @@ const controlsList: Control[] = [
       enabled: false,
       execution: 'server',
       scope: { step_types: ['llm'], stages: ['pre'] },
-      selector: { path: '*' },
-      evaluator: {
-        name: 'list',
-        config: { values: [], logic: 'any', match_on: 'match' },
+      condition: {
+        selector: { path: '*' },
+        evaluator: {
+          name: 'list',
+          config: { values: [], logic: 'any', match_on: 'match' },
+        },
       },
       action: { decision: 'allow' },
       tags: [],

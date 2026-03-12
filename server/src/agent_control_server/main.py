@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from starlette_exporter import PrometheusMiddleware, handle_metrics
 
+from . import __version__ as server_version
 from .auth import require_api_key
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal
@@ -141,7 +142,7 @@ Agent → Policy → Control(s)
 4. Assign the policy to your agent
 5. Query agent's active controls with `/api/v1/agents/{agent_name}/controls`
     """,
-    version="0.1.0",
+    version=server_version,
     lifespan=lifespan,
 )
 
@@ -159,6 +160,14 @@ app.add_middleware(
 # Configure logging
 log_level = "DEBUG" if settings.debug else "INFO"
 configure_logging(level=log_level)
+
+
+@app.middleware("http")
+async def attach_version_header(request, call_next):  # type: ignore[no-untyped-def]
+    """Attach server version metadata to every response."""
+    response = await call_next(request)
+    response.headers["X-Agent-Control-Server-Version"] = server_version
+    return response
 
 
 # =============================================================================
@@ -264,7 +273,7 @@ async def health_check() -> HealthResponse:
     Returns:
         HealthResponse with status and version
     """
-    return HealthResponse(status="healthy", version="0.1.0")
+    return HealthResponse(status="healthy", version=server_version)
 
 
 configure_ui_routes(app)

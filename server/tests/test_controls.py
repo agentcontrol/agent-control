@@ -38,10 +38,12 @@ VALID_CONTROL_DATA = {
     "enabled": True,
     "execution": "server",
     "scope": {"step_types": ["llm"], "stages": ["pre"]},
-    "selector": {"path": "input"},
-    "evaluator": {
-        "name": "regex",
-        "config": {"pattern": "test", "flags": []}
+    "condition": {
+        "selector": {"path": "input"},
+        "evaluator": {
+            "name": "regex",
+            "config": {"pattern": "test", "flags": []}
+        },
     },
     "action": {"decision": "deny"},
     "tags": ["test"]
@@ -67,9 +69,9 @@ def test_set_control_data_replaces_existing(client: TestClient) -> None:
     assert data["enabled"] == payload["enabled"]
     assert data["execution"] == payload["execution"]
     assert data["scope"] == payload["scope"]
-    assert data["evaluator"] == payload["evaluator"]
+    assert data["condition"]["evaluator"] == payload["condition"]["evaluator"]
     assert data["action"] == payload["action"]
-    assert data["selector"]["path"] == payload["selector"]["path"]
+    assert data["condition"]["selector"]["path"] == payload["condition"]["selector"]["path"]
 
 
 def test_set_control_data_with_empty_dict_fails(client: TestClient) -> None:

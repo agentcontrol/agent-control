@@ -5,7 +5,7 @@ This module provides a decorator that applies server-defined controls to agent f
 Controls can be associated via policies and direct agent-control links.
 
 Architecture:
-    SERVER defines: Policies -> Controls (stage, selector, evaluator, action)
+    SERVER defines: Policies -> Controls (stage, condition tree, action)
     SDK decorator: just marks WHERE controls are evaluated
 
 Usage:
@@ -744,7 +744,7 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
     """
     Decorator to apply server-defined controls at this code location.
 
-    Controls (stage, selector, evaluator, action) are defined on the SERVER.
+    Controls (stage, condition tree, action) are defined on the SERVER.
     This decorator marks WHERE to evaluate controls for the current agent.
 
     Args:

@@ -30,6 +30,19 @@ _FALLBACK_TRACE_ID = "0" * 32
 _FALLBACK_SPAN_ID = "0" * 16
 _trace_warning_logged = False
 
+
+def _primary_leaf_details(
+    control_def: ControlDefinition,
+) -> tuple[str | None, str | None]:
+    """Return selector/evaluator identifiers for single-leaf controls only."""
+    primary_leaf = control_def.primary_leaf()
+    primary_parts = primary_leaf.leaf_parts() if primary_leaf else None
+    if primary_parts is None:
+        return None, None
+    selector, evaluator = primary_parts
+    return selector.path, evaluator.name
+
+
 def _map_applies_to(step_type: str) -> Literal["llm_call", "tool_call"]:
     return "tool_call" if step_type == "tool" else "llm_call"
 
@@ -77,6 +90,9 @@ def _emit_local_events(
             return
         for match in matches:
             ctrl = control_lookup.get(match.control_id)
+            selector_path, evaluator_name = (
+                _primary_leaf_details(ctrl.control) if ctrl else (None, None)
+            )
             add_event(
                 ControlExecutionEvent(
                     control_execution_id=match.control_execution_id,
@@ -91,8 +107,8 @@ def _emit_local_events(
                     matched=matched,
                     confidence=match.result.confidence,
                     timestamp=now,
-                    evaluator_name=ctrl.control.evaluator.name if ctrl else None,
-                    selector_path=ctrl.control.selector.path if ctrl else None,
+                    evaluator_name=evaluator_name,
+                    selector_path=selector_path,
                     error_message=match.result.error if not matched else None,
                     metadata=match.result.metadata or {},
                 )
@@ -225,20 +241,24 @@ async def check_evaluation_with_local(
 
         try:
             control_def = ControlDefinition.model_validate(control_data)
-            evaluator_name = control_def.evaluator.name
+            for leaf in control_def.iter_condition_leaves():
+                _, evaluator_spec = leaf.leaf_parts() or (None, None)
+                if evaluator_spec is None:
+                    continue
+                evaluator_name = evaluator_spec.name
 
-            if ":" in evaluator_name:
-                raise RuntimeError(
-                    f"Control '{control['name']}' is marked execution='sdk' but uses "
-                    f"agent-scoped evaluator '{evaluator_name}' which is server-only. "
-                    "Set execution='server' or use a built-in evaluator."
-                )
-            if evaluator_name not in list_evaluators():
-                raise RuntimeError(
-                    f"Control '{control['name']}' is marked execution='sdk' but evaluator "
-                    f"'{evaluator_name}' is not available in the SDK. "
-                    "Install the evaluator or set execution='server'."
-                )
+                if ":" in evaluator_name:
+                    raise RuntimeError(
+                        f"Control '{control['name']}' is marked execution='sdk' but uses "
+                        f"agent-scoped evaluator '{evaluator_name}' which is server-only. "
+                        "Set execution='server' or use a built-in evaluator."
+                    )
+                if evaluator_name not in list_evaluators():
+                    raise RuntimeError(
+                        f"Control '{control['name']}' is marked execution='sdk' but evaluator "
+                        f"'{evaluator_name}' is not available in the SDK. "
+                        "Install the evaluator or set execution='server'."
+                    )
 
             local_controls.append(
                 _ControlAdapter(

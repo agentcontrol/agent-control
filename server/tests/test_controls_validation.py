@@ -1,4 +1,5 @@
 """Tests for control validation and schema enforcement."""
+from copy import deepcopy
 import uuid
 from fastapi.testclient import TestClient
 from .utils import VALID_CONTROL_PAYLOAD
@@ -13,8 +14,8 @@ def test_validation_invalid_logic_enum(client: TestClient):
     """Test that invalid enum values in config are rejected."""
     # Given: a control and a payload with invalid 'logic' value
     control_id = create_control(client)
-    payload = VALID_CONTROL_PAYLOAD.copy()
-    payload["evaluator"] = {
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["evaluator"] = {
         "name": "list",
         "config": {
             "values": ["a", "b"],
@@ -40,8 +41,8 @@ def test_validation_discriminator_mismatch(client: TestClient):
     """Test that config must match the evaluator type."""
     # Given: a control and type='list' but config has 'pattern' (RegexEvaluatorConfig)
     control_id = create_control(client)
-    payload = VALID_CONTROL_PAYLOAD.copy()
-    payload["evaluator"] = {
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["evaluator"] = {
         "name": "list",
         "config": {
             "pattern": "some_regex", # Invalid for ListEvaluatorConfig
@@ -67,8 +68,8 @@ def test_validation_regex_flags_list(client: TestClient):
     """Test validation of regex flags list."""
     # Given: a control and regex config with invalid flags type (string instead of list)
     control_id = create_control(client)
-    payload = VALID_CONTROL_PAYLOAD.copy()
-    payload["evaluator"] = {
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["evaluator"] = {
         "name": "regex",
         "config": {
             "pattern": "abc",
@@ -90,8 +91,8 @@ def test_validation_invalid_regex_pattern(client: TestClient):
     """Test validation of regex pattern syntax."""
     # Given: a control and regex config with invalid pattern (unclosed bracket)
     control_id = create_control(client)
-    payload = VALID_CONTROL_PAYLOAD.copy()
-    payload["evaluator"] = {
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["evaluator"] = {
         "name": "regex",
         "config": {
             "pattern": "[", # Invalid regex
@@ -116,8 +117,8 @@ def test_validation_empty_string_path_rejected(client: TestClient):
     """Test that empty string path is rejected."""
     # Given: a control and payload with empty string path
     control_id = create_control(client)
-    payload = VALID_CONTROL_PAYLOAD.copy()
-    payload["selector"] = {"path": ""}
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["selector"] = {"path": ""}
 
     # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
@@ -136,8 +137,8 @@ def test_validation_none_path_defaults_to_star(client: TestClient):
     """Test that None/missing path defaults to '*'."""
     # Given: a control and payload without path in selector (None)
     control_id = create_control(client)
-    payload = VALID_CONTROL_PAYLOAD.copy()
-    payload["selector"] = {}  # No path specified
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["selector"] = {}  # No path specified
 
     # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
@@ -151,7 +152,7 @@ def test_validation_none_path_defaults_to_star(client: TestClient):
 
     # Then: path should default to '*'
     data = get_resp.json()["data"]
-    assert data["selector"]["path"] == "*"
+    assert data["condition"]["selector"]["path"] == "*"
 
 
 def test_get_control_data_returns_typed_response(client: TestClient):
@@ -171,9 +172,8 @@ def test_get_control_data_returns_typed_response(client: TestClient):
     data = resp_get.json()["data"]
 
     # Should have required ControlDefinition fields
-    assert "evaluator" in data
+    assert "condition" in data
     assert "action" in data
-    assert "selector" in data
     assert "execution" in data
     assert "scope" in data
 
@@ -182,7 +182,7 @@ def test_validation_empty_step_names_rejected(client: TestClient):
     """Test that empty step_names list is rejected."""
     # Given: a control and payload with empty step_names list
     control_id = create_control(client)
-    payload = VALID_CONTROL_PAYLOAD.copy()
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
     payload["scope"] = {"step_names": []}
 
     # When: setting control data

@@ -9,7 +9,7 @@
 
 [project]
 name = "agent-control"
-version = "6.7.2"
+version = "7.0.0"
 description = "Agent Control - protect your AI agents with controls"
 requires-python = ">=3.12"
 
@@ -66,6 +66,7 @@ ignore_missing_imports = true
 version_toml = [
     "pyproject.toml:project.version",
     "models/pyproject.toml:project.version",
+    "engine/pyproject.toml:project.version",
     "sdks/python/pyproject.toml:project.version",
     "server/pyproject.toml:project.version",
     "evaluators/builtin/pyproject.toml:project.version",

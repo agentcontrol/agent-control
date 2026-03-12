@@ -214,10 +214,12 @@ async def test_convenience_agent_association_functions(
         "enabled": True,
         "execution": "server",
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
-        "selector": {"path": "input"},
-        "evaluator": {
-            "name": "regex",
-            "config": {"pattern": ".*"},
+        "condition": {
+            "selector": {"path": "input"},
+            "evaluator": {
+                "name": "regex",
+                "config": {"pattern": ".*"},
+            },
         },
         "action": {"decision": "allow"},
         "tags": ["test"],

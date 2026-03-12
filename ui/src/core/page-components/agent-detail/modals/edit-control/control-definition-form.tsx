@@ -1,5 +1,4 @@
 import {
-  Autocomplete,
   MultiSelect,
   Select,
   Stack,
@@ -67,26 +66,6 @@ export const ControlDefinitionForm = ({
         onChange={(value) =>
           form.setFieldValue('stages', value as ControlStage[])
         }
-      />
-
-      <Autocomplete
-        label={
-          <LabelWithTooltip
-            label="Selector path"
-            tooltip="Path to data. Use * for full step or a root (input, output, name, type, context); subpaths allowed (e.g. input.args.command)."
-          />
-        }
-        labelProps={labelPropsInline}
-        required
-        data={['*', 'input', 'output', 'name', 'type', 'context']}
-        renderOption={({ option, ...others }) => (
-          <div {...others}>
-            {option.value === '*' ? '* (entire payload)' : option.value}
-          </div>
-        )}
-        size="sm"
-        placeholder="e.g., input or input.args.command"
-        {...form.getInputProps('selector_path')}
       />
 
       <Select

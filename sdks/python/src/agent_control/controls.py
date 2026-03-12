@@ -97,7 +97,7 @@ async def get_control(
         Dictionary containing:
             - id: Control ID
             - name: Control name
-            - data: Control definition (selector, evaluator, action) or None if not configured
+            - data: Control definition (condition, action, scope, etc.) or None if not configured
 
     Raises:
         httpx.HTTPError: If request fails
@@ -129,7 +129,7 @@ async def create_control(
     Args:
         client: AgentControlClient instance
         name: Unique name for the control
-        data: Optional control definition (selector, evaluator, action, etc.)
+        data: Optional control definition (condition tree, action, scope, etc.)
 
     Returns:
         Dictionary containing:
@@ -155,10 +155,12 @@ async def create_control(
                 data={
                     "execution": "server",
                     "scope": {"step_types": ["llm"], "stages": ["post"]},
-                    "selector": {"path": "output"},
-                    "evaluator": {
-                        "name": "regex",
-                        "config": {"pattern": r"\\d{3}-\\d{2}-\\d{4}"}
+                    "condition": {
+                        "selector": {"path": "output"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {"pattern": r"\\d{3}-\\d{2}-\\d{4}"}
+                        }
                     },
                     "action": {"decision": "deny"}
                 }
@@ -192,7 +194,7 @@ async def set_control_data(
     """
     Set the configuration data for a control.
 
-    This defines what the control actually does (selector, evaluator, action).
+    This defines what the control actually does (condition tree, action, scope).
 
     Args:
         client: AgentControlClient instance

@@ -3,11 +3,15 @@ import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { isApiError } from '@/core/api/errors';
-import type { Control, ProblemDetail } from '@/core/api/types';
-import { getEvaluator } from '@/core/evaluators';
+import type {
+  Control,
+  ControlDefinition,
+  ProblemDetail,
+  ValidationErrorItem,
+} from '@/core/api/types';
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
@@ -15,13 +19,18 @@ import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-co
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
 
 import { ApiErrorAlert } from './api-error-alert';
+import {
+  createLeafNode,
+  deserializeConditionNode,
+  serializeConditionNode,
+  type ConditionBuilderError,
+  type ConditionBuilderNode,
+  validateConditionTree,
+} from './condition-builder';
+import { ConditionTreeEditor } from './condition-tree-editor';
 import { ControlDefinitionForm } from './control-definition-form';
-import { EvaluatorConfigSection } from './evaluator-config-section';
 import type { ControlDefinitionFormValues, EditControlMode } from './types';
-import { useEvaluatorConfigState } from './use-evaluator-config-state';
 import { applyApiErrorsToForms } from './utils';
-
-const EVALUATOR_CONFIG_HEIGHT = 450;
 
 export type EditControlContentProps = {
   /** The control to edit/create template */
@@ -43,17 +52,20 @@ export const EditControlContent = ({
   onClose,
   onSuccess,
 }: EditControlContentProps) => {
-  // Fetch agent data to get steps - React Query will dedupe requests
   const { data: agentResponse } = useAgent(agentId);
   const steps = agentResponse?.steps ?? [];
-  // API error state
+
   const [apiError, setApiError] = useState<ProblemDetail | null>(null);
-  // Errors that couldn't be mapped to form fields (shown in Alert)
   const [unmappedErrors, setUnmappedErrors] = useState<
     Array<{ field: string | null; message: string }>
   >([]);
+  const [conditionNode, setConditionNode] = useState<ConditionBuilderNode>(
+    createLeafNode()
+  );
+  const [conditionErrors, setConditionErrors] = useState<
+    ValidationErrorItem[] | ConditionBuilderError[]
+  >([]);
 
-  // Mutation hooks
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
   const addControlToAgent = useAddControlToAgent();
@@ -63,14 +75,6 @@ export const EditControlContent = ({
     ? addControlToAgent.isPending
     : updateControl.isPending || updateControlMetadata.isPending;
 
-  // Track which evaluator the evaluator form has been initialized for
-  const formInitializedForEvaluator = useRef<string>('');
-
-  // Get evaluator for this control
-  const evaluatorId = control.control.evaluator.name || '';
-  const evaluator = useMemo(() => getEvaluator(evaluatorId), [evaluatorId]);
-
-  // Control definition form
   const definitionForm = useForm<ControlDefinitionFormValues>({
     initialValues: {
       name: '',
@@ -81,56 +85,17 @@ export const EditControlContent = ({
       step_names: '',
       step_name_regex: '',
       step_name_mode: 'names',
-      selector_path: '*',
       action_decision: 'deny',
       action_steering_context: '',
       execution: 'server',
     },
     validate: {
       name: (value) => (!value?.trim() ? 'Control name is required' : null),
-      selector_path: (value) => {
-        if (!value?.trim()) {
-          return 'Selector path is required';
-        }
-        // Validate root field matches backend validation
-        const validRoots = ['input', 'output', 'name', 'type', 'context', '*'];
-        const root = value.split('.')[0];
-        if (!validRoots.includes(root)) {
-          return `Invalid path root '${root}'. Must be one of: ${validRoots.join(', ')}`;
-        }
-        return null;
-      },
     },
   });
 
-  // Evaluator config form - dynamically configured based on evaluator
-  const evaluatorForm = useForm({
-    initialValues: evaluator?.initialValues ?? {},
-    validate: evaluator?.validate,
-  });
-
-  // Get config from evaluator form
-  // If form hasn't been initialized for current evaluator yet, use initial values to avoid crashes
-  const getEvaluatorConfig = () => {
-    if (!evaluator) return {};
-    if (formInitializedForEvaluator.current !== evaluatorId) {
-      return evaluator.toConfig(evaluator.initialValues);
-    }
-    return evaluator.toConfig(evaluatorForm.values);
-  };
-
-  // Sync JSON to form
-  const syncJsonToForm = (config: Record<string, unknown>) => {
-    if (evaluator) {
-      evaluatorForm.setValues(evaluator.fromConfig(config));
-    }
-  };
-
   const buildControlDefinition = useCallback(
-    (
-      values: ControlDefinitionFormValues,
-      finalConfig: Record<string, unknown>
-    ) => {
+    (values: ControlDefinitionFormValues): ControlDefinition => {
       const stepTypes = values.step_types
         .map((value) => value.trim())
         .filter(Boolean);
@@ -148,12 +113,11 @@ export const EditControlContent = ({
       if (values.stages.length > 0) scope.stages = values.stages;
 
       return {
-        ...control.control,
         description: values.description?.trim() || undefined,
         enabled: values.enabled,
         execution: values.execution,
         scope: Object.keys(scope).length > 0 ? scope : undefined,
-        selector: { ...control.control.selector, path: values.selector_path },
+        condition: serializeConditionNode(conditionNode),
         action: {
           decision: values.action_decision,
           ...(values.action_decision === 'steer' &&
@@ -165,42 +129,12 @@ export const EditControlContent = ({
               }
             : {}),
         },
-        evaluator: { ...control.control.evaluator, config: finalConfig },
+        tags: control.control.tags ?? [],
       };
     },
-    [control.control]
+    [conditionNode, control.control.tags]
   );
 
-  const buildDefinitionForValidation = useCallback(
-    (finalConfig: Record<string, unknown>) => ({
-      ...control.control,
-      evaluator: { ...control.control.evaluator, config: finalConfig },
-    }),
-    [control.control]
-  );
-
-  const validateEvaluatorConfig = useCallback(
-    async (
-      config: Record<string, unknown>,
-      options?: { signal?: AbortSignal }
-    ) => {
-      await validateControlDataAsync({
-        definition: buildDefinitionForValidation(config),
-        signal: options?.signal,
-      });
-    },
-    [buildDefinitionForValidation, validateControlDataAsync]
-  );
-
-  const evaluatorConfig = useEvaluatorConfigState({
-    getConfigFromForm: getEvaluatorConfig,
-    onConfigChange: syncJsonToForm,
-    onValidateConfig: validateEvaluatorConfig,
-  });
-
-  const { isJsonInvalid, reset } = evaluatorConfig;
-
-  // Clear steering_context when switching away from steer action
   useEffect(() => {
     if (definitionForm.values.action_decision !== 'steer') {
       definitionForm.setFieldValue('action_steering_context', '');
@@ -208,72 +142,74 @@ export const EditControlContent = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definitionForm.values.action_decision]);
 
-  // Reset view mode and errors when evaluator changes
   useEffect(() => {
-    reset();
+    if (!control) {
+      return;
+    }
+
+    const scope = control.control.scope ?? {};
+    const stepNamesValue = (scope.step_names ?? []).join(', ');
+    const stepRegexValue = scope.step_name_regex ?? '';
+    const stepNameMode =
+      stepRegexValue && !stepNamesValue ? 'regex' : 'names';
+
+    definitionForm.setValues({
+      name: control.name,
+      description: control.control.description ?? '',
+      enabled: control.control.enabled,
+      step_types: scope.step_types ?? [],
+      stages: scope.stages ?? [],
+      step_names: stepNamesValue,
+      step_name_regex: stepRegexValue,
+      step_name_mode: stepNameMode,
+      action_decision: control.control.action.decision,
+      action_steering_context:
+        control.control.action.decision === 'steer'
+          ? (control.control.action.steering_context?.message ?? '')
+          : '',
+      execution: control.control.execution ?? 'server',
+    });
+    setConditionNode(
+      control.control.condition
+        ? deserializeConditionNode(control.control.condition)
+        : createLeafNode()
+    );
+    setConditionErrors([]);
     setApiError(null);
     setUnmappedErrors([]);
-  }, [reset, evaluatorId]);
-
-  // Load control data into forms
-  useEffect(() => {
-    if (control && evaluator) {
-      const scope = control.control.scope ?? {};
-      const stepNamesValue = (scope.step_names ?? []).join(', ');
-      const stepRegexValue = scope.step_name_regex ?? '';
-      const stepNameMode =
-        stepRegexValue && !stepNamesValue ? 'regex' : 'names';
-      definitionForm.setValues({
-        name: control.name,
-        description: control.control.description ?? '',
-        enabled: control.control.enabled,
-        step_types: scope.step_types ?? [],
-        stages: scope.stages ?? [],
-        step_names: stepNamesValue,
-        step_name_regex: stepRegexValue,
-        step_name_mode: stepNameMode,
-        selector_path: control.control.selector.path ?? '*',
-        action_decision: control.control.action.decision,
-        action_steering_context:
-          control.control.action.decision === 'steer'
-            ? (control.control.action.steering_context?.message ?? '')
-            : '',
-        execution: control.control.execution ?? 'server',
-      });
-      evaluatorForm.setValues(
-        evaluator.fromConfig(control.control.evaluator.config)
-      );
-      // Mark form as initialized for this evaluator
-      formInitializedForEvaluator.current = evaluatorId;
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [control, evaluator, evaluatorId]);
+  }, [control]);
 
-  // Handle form submission
   const handleSubmit = async (values: ControlDefinitionFormValues) => {
-    // Clear previous errors
     setApiError(null);
     setUnmappedErrors([]);
+    setConditionErrors([]);
     definitionForm.clearErrors();
-    evaluatorForm.clearErrors();
 
-    let finalConfig: Record<string, unknown>;
-
-    if (evaluatorConfig.configViewMode === 'json') {
-      const jsonConfig = evaluatorConfig.getJsonConfig();
-      if (!jsonConfig) return;
-      finalConfig = jsonConfig;
-    } else {
-      // Validate evaluator form
-      const validation = evaluatorForm.validate();
-      if (validation.hasErrors) return;
-      finalConfig = getEvaluatorConfig();
+    const localConditionErrors = validateConditionTree(conditionNode);
+    if (localConditionErrors.length > 0) {
+      setConditionErrors(localConditionErrors);
+      return;
     }
 
-    const definition = buildControlDefinition(values, finalConfig);
+    if (
+      values.action_decision === 'steer' &&
+      conditionNode.kind !== 'leaf' &&
+      !values.action_steering_context?.trim()
+    ) {
+      definitionForm.setFieldError(
+        'action_steering_context',
+        'Composite steer controls require steering context'
+      );
+      return;
+    }
+
+    const definition = buildControlDefinition(values);
 
     const runSave = async () => {
       try {
+        await validateControlDataAsync({ definition });
+
         if (isCreating) {
           await addControlToAgent.mutateAsync({
             agentId,
@@ -333,8 +269,7 @@ export const EditControlContent = ({
             color: 'green',
           });
         }
-        // Call onSuccess first (which should close all modals)
-        // Only call onClose if onSuccess is not provided (for backward compatibility)
+
         if (onSuccess) {
           onSuccess();
         } else {
@@ -343,46 +278,46 @@ export const EditControlContent = ({
       } catch (error) {
         if (isApiError(error)) {
           const problemDetail = error.problemDetail;
-
-          // Check if this is a "name already exists" error (409 Conflict)
-          // and map it to the name field if it's not already in the errors array
           const isNameExistsError =
             (problemDetail.status === 409 ||
               problemDetail.error_code === 'CONTROL_NAME_CONFLICT') &&
-            !problemDetail.errors?.some((e) => e.field === 'name');
+            !problemDetail.errors?.some((item) => item.field === 'name');
 
           if (isNameExistsError) {
-            // Set error directly on the name field
             definitionForm.setFieldError(
               'name',
               problemDetail.detail || 'Control name already exists'
             );
-            // Don't show it in the alert since it's now on the field
             setApiError(null);
             setUnmappedErrors([]);
-          } else {
-            setApiError(problemDetail);
-
-            if (problemDetail.errors) {
-              if (evaluatorConfig.configViewMode === 'form') {
-                const unmapped = applyApiErrorsToForms(
-                  problemDetail.errors,
-                  definitionForm,
-                  evaluatorForm
-                );
-                setUnmappedErrors(
-                  unmapped.map((e) => ({ field: e.field, message: e.message }))
-                );
-              } else {
-                setUnmappedErrors(
-                  problemDetail.errors.map((e) => ({
-                    field: e.field,
-                    message: e.message,
-                  }))
-                );
-              }
-            }
+            return;
           }
+
+          setApiError(problemDetail);
+
+          const definitionErrors = problemDetail.errors?.filter(
+            (item) => !item.field?.startsWith('data.condition')
+          );
+          const treeErrors =
+            problemDetail.errors?.filter((item) =>
+              item.field?.startsWith('data.condition')
+            ) ?? [];
+
+          if (treeErrors.length > 0) {
+            setConditionErrors(treeErrors);
+          }
+
+          const unmapped = applyApiErrorsToForms(
+            definitionErrors,
+            definitionForm,
+            null
+          );
+          setUnmappedErrors(
+            unmapped.map((item) => ({
+              field: item.field,
+              message: item.message,
+            }))
+          );
         } else {
           setApiError({
             type: 'about:blank',
@@ -420,9 +355,6 @@ export const EditControlContent = ({
     });
   };
 
-  // Render the evaluator's form component
-  const FormComponent = evaluator?.FormComponent;
-
   return (
     <Box>
       <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
@@ -452,18 +384,14 @@ export const EditControlContent = ({
           </Grid.Col>
 
           <Grid.Col span={8}>
-            <EvaluatorConfigSection
-              config={evaluatorConfig}
-              evaluatorForm={evaluatorForm}
-              formComponent={FormComponent}
-              height={EVALUATOR_CONFIG_HEIGHT}
-              onConfigChange={syncJsonToForm}
-              onValidateConfig={validateEvaluatorConfig}
+            <ConditionTreeEditor
+              rootNode={conditionNode}
+              onChange={setConditionNode}
+              errors={conditionErrors}
             />
           </Grid.Col>
         </Grid>
 
-        {/* API Error Alert */}
         {apiError ? (
           <>
             <Divider mt="xl" mb="md" />
@@ -475,7 +403,6 @@ export const EditControlContent = ({
           </>
         ) : null}
 
-        {/* Buttons */}
         <Divider mt="xl" mb="md" />
         <Group justify="flex-end">
           <Button
@@ -491,7 +418,6 @@ export const EditControlContent = ({
             type="submit"
             data-testid="save-button"
             loading={isPending}
-            disabled={isJsonInvalid}
           >
             Save
           </Button>

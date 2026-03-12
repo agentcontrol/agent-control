@@ -1,13 +1,13 @@
 [project]
 name = "agent-control-evaluators"
-version = "6.7.2"
+version = "7.0.0"
 description = "Builtin evaluators for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Agent Control Team" }]
 dependencies = [
-    "agent-control-models",
+    "agent-control-models>=7.0.0",
     "pydantic>=2.12.4",
     "google-re2>=1.1",
     "jsonschema>=4.0.0",
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-galileo = ["agent-control-evaluator-galileo>=3.0.0"]
+galileo = ["agent-control-evaluator-galileo>=7.0.0"]
 cisco = ["agent-control-evaluator-cisco>=0.1.0"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
 

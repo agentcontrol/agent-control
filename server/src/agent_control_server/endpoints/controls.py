@@ -1,5 +1,7 @@
+from collections.abc import Iterator
+
 from agent_control_engine import list_evaluators
-from agent_control_models import ControlDefinition
+from agent_control_models import ConditionNode, ControlDefinition
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentRef,
@@ -40,6 +42,7 @@ from ..services.evaluator_utils import (
     validate_config_against_schema,
 )
 from ..services.query_utils import escape_like_pattern
+from ..services.validation_paths import format_field_path
 
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
@@ -53,147 +56,178 @@ router = APIRouter(prefix="/controls", tags=["controls"])
 _logger = get_logger(__name__)
 
 
+def _iter_condition_leaves(
+    node: ConditionNode,
+    *,
+    path: str = "data.condition",
+) -> Iterator[tuple[str, ConditionNode]]:
+    """Yield each leaf condition with its dot/bracket field path."""
+    if node.is_leaf():
+        yield path, node
+        return
+
+    if node.and_ is not None:
+        for index, child in enumerate(node.and_):
+            yield from _iter_condition_leaves(child, path=f"{path}.and[{index}]")
+        return
+
+    if node.or_ is not None:
+        for index, child in enumerate(node.or_):
+            yield from _iter_condition_leaves(child, path=f"{path}.or[{index}]")
+        return
+
+    if node.not_ is not None:
+        yield from _iter_condition_leaves(node.not_, path=f"{path}.not")
+
+
 async def _validate_control_definition(
     control_def: ControlDefinition, db: AsyncSession
 ) -> None:
     """Validate evaluator config for a control definition."""
-    evaluator_ref = control_def.evaluator.name
-    parsed = parse_evaluator_ref_full(evaluator_ref)
+    for field_prefix, leaf in _iter_condition_leaves(control_def.condition):
+        _, evaluator_spec = leaf.leaf_parts() or (None, None)
+        if evaluator_spec is None:
+            continue
 
-    if parsed.type == "agent":
-        # Agent-scoped evaluator: validate against agent's registered schema
-        agent_result = await db.execute(
-            select(Agent).where(Agent.name == parsed.namespace)
-        )
-        agent = agent_result.scalars().first()
-        if agent is None:
-            raise NotFoundError(
-                error_code=ErrorCode.AGENT_NOT_FOUND,
-                detail=f"Agent '{parsed.namespace}' not found",
-                resource="Agent",
-                resource_id=parsed.namespace,
-                hint=(
-                    "Ensure the agent exists before creating controls "
-                    "that reference its evaluators."
-                ),
+        evaluator_ref = evaluator_spec.name
+        parsed = parse_evaluator_ref_full(evaluator_ref)
+
+        if parsed.type == "agent":
+            agent_result = await db.execute(
+                select(Agent).where(Agent.name == parsed.namespace)
             )
-
-        try:
-            agent_data = AgentData.model_validate(agent.data)
-        except ValidationError as e:
-            raise APIValidationError(
-                error_code=ErrorCode.CORRUPTED_DATA,
-                detail=f"Agent '{parsed.namespace}' has invalid data",
-                resource="Agent",
-                errors=[
-                    ValidationErrorItem(
-                        resource="Agent",
-                        field=".".join(str(loc) for loc in err.get("loc", [])),
-                        code=err.get("type", "validation_error"),
-                        message=err.get("msg", "Validation failed"),
-                    )
-                    for err in e.errors()
-                ],
-            )
-
-        evaluator = next(
-            (e for e in (agent_data.evaluators or []) if e.name == parsed.local_name),
-            None,
-        )
-        if evaluator is None:
-            available = [e.name for e in (agent_data.evaluators or [])]
-            raise APIValidationError(
-                error_code=ErrorCode.EVALUATOR_NOT_FOUND,
-                detail=(
-                    f"Evaluator '{parsed.local_name}' is not registered "
-                    f"with agent '{parsed.namespace}'"
-                ),
-                resource="Evaluator",
-                hint=(
-                    f"Register it via initAgent first. "
-                    f"Available evaluators: {available or 'none'}."
-                ),
-                errors=[
-                    ValidationErrorItem(
-                        resource="Control",
-                        field="data.evaluator.name",
-                        code="evaluator_not_found",
-                        message=(
-                            f"Evaluator '{parsed.local_name}' not found "
-                            f"on agent '{parsed.namespace}'"
-                        ),
-                        value=evaluator_ref,
-                    )
-                ],
-            )
-
-        # Validate config against evaluator's schema
-        if evaluator.config_schema:
-            try:
-                validate_config_against_schema(
-                    control_def.evaluator.config, evaluator.config_schema
+            agent = agent_result.scalars().first()
+            if agent is None:
+                raise NotFoundError(
+                    error_code=ErrorCode.AGENT_NOT_FOUND,
+                    detail=f"Agent '{parsed.namespace}' not found",
+                    resource="Agent",
+                    resource_id=parsed.namespace,
+                    hint=(
+                        "Ensure the agent exists before creating controls "
+                        "that reference its evaluators."
+                    ),
                 )
-            except JSONSchemaValidationError:
-                raise APIValidationError(
-                    error_code=ErrorCode.INVALID_CONFIG,
-                    detail=f"Config validation failed for evaluator '{evaluator_ref}'",
-                    resource="Control",
-                    hint="Check the evaluator's config schema for required fields and types.",
-                    errors=[
-                        ValidationErrorItem(
-                            resource="Control",
-                            field="data.evaluator.config",
-                            code="schema_validation_error",
-                            message=_SCHEMA_VALIDATION_FAILED_MESSAGE,
-                        )
-                    ],
-                )
-    else:
-        # Built-in or external evaluator: validate if registered
-        evaluator_cls = list_evaluators().get(parsed.name)
-        if evaluator_cls is not None:
+
             try:
-                evaluator_cls.config_model(**control_def.evaluator.config)
+                agent_data = AgentData.model_validate(agent.data)
             except ValidationError as e:
                 raise APIValidationError(
-                    error_code=ErrorCode.INVALID_CONFIG,
-                    detail=f"Config validation failed for evaluator '{parsed.name}'",
-                    resource="Control",
-                    hint="Check the evaluator's config schema for required fields and types.",
+                    error_code=ErrorCode.CORRUPTED_DATA,
+                    detail=f"Agent '{parsed.namespace}' has invalid data",
+                    resource="Agent",
                     errors=[
                         ValidationErrorItem(
-                            resource="Control",
-                            field=(
-                                "data.evaluator.config."
-                                f"{'.'.join(str(loc) for loc in err.get('loc', []))}"
-                            ),
+                            resource="Agent",
+                            field=format_field_path(err.get("loc", ())),
                             code=err.get("type", "validation_error"),
                             message=err.get("msg", "Validation failed"),
                         )
                         for err in e.errors()
                     ],
                 )
-            except TypeError:
-                _logger.warning(
-                    "Config validation raised TypeError for evaluator '%s'",
-                    parsed.name,
-                    exc_info=True,
-                )
+
+            evaluator = next(
+                (e for e in (agent_data.evaluators or []) if e.name == parsed.local_name),
+                None,
+            )
+            if evaluator is None:
+                available = [e.name for e in (agent_data.evaluators or [])]
                 raise APIValidationError(
-                    error_code=ErrorCode.INVALID_CONFIG,
-                    detail=f"Invalid config parameters for evaluator '{parsed.name}'",
-                    resource="Control",
-                    hint="Check the evaluator's config schema for valid parameter names.",
+                    error_code=ErrorCode.EVALUATOR_NOT_FOUND,
+                    detail=(
+                        f"Evaluator '{parsed.local_name}' is not registered "
+                        f"with agent '{parsed.namespace}'"
+                    ),
+                    resource="Evaluator",
+                    hint=(
+                        f"Register it via initAgent first. "
+                        f"Available evaluators: {available or 'none'}."
+                    ),
                     errors=[
                         ValidationErrorItem(
                             resource="Control",
-                            field="data.evaluator.config",
-                            code="invalid_parameters",
-                            message=_INVALID_PARAMETERS_MESSAGE,
+                            field=f"{field_prefix}.evaluator.name",
+                            code="evaluator_not_found",
+                            message=(
+                                f"Evaluator '{parsed.local_name}' not found "
+                                f"on agent '{parsed.namespace}'"
+                            ),
+                            value=evaluator_ref,
                         )
                     ],
                 )
-        # If evaluator not found, allow it - might be a server-side registered evaluator
+
+            if evaluator.config_schema:
+                try:
+                    validate_config_against_schema(
+                        evaluator_spec.config,
+                        evaluator.config_schema,
+                    )
+                except JSONSchemaValidationError:
+                    raise APIValidationError(
+                        error_code=ErrorCode.INVALID_CONFIG,
+                        detail=f"Config validation failed for evaluator '{evaluator_ref}'",
+                        resource="Control",
+                        hint=(
+                            "Check the evaluator's config schema for required fields and types."
+                        ),
+                        errors=[
+                            ValidationErrorItem(
+                                resource="Control",
+                                field=f"{field_prefix}.evaluator.config",
+                                code="schema_validation_error",
+                                message=_SCHEMA_VALIDATION_FAILED_MESSAGE,
+                            )
+                        ],
+                    )
+            continue
+
+        evaluator_cls = list_evaluators().get(parsed.name)
+        if evaluator_cls is None:
+            continue
+
+        try:
+            evaluator_cls.config_model(**evaluator_spec.config)
+        except ValidationError as e:
+            raise APIValidationError(
+                error_code=ErrorCode.INVALID_CONFIG,
+                detail=f"Config validation failed for evaluator '{parsed.name}'",
+                resource="Control",
+                hint="Check the evaluator's config schema for required fields and types.",
+                errors=[
+                    ValidationErrorItem(
+                        resource="Control",
+                        field=(
+                            f"{field_prefix}.evaluator.config."
+                            f"{format_field_path(err.get('loc', ())) or ''}"
+                        ).rstrip("."),
+                        code=err.get("type", "validation_error"),
+                        message=err.get("msg", "Validation failed"),
+                    )
+                    for err in e.errors()
+                ],
+            )
+        except TypeError:
+            _logger.warning(
+                "Config validation raised TypeError for evaluator '%s'",
+                parsed.name,
+                exc_info=True,
+            )
+            raise APIValidationError(
+                error_code=ErrorCode.INVALID_CONFIG,
+                detail=f"Invalid config parameters for evaluator '{parsed.name}'",
+                resource="Control",
+                hint="Check the evaluator's config schema for valid parameter names.",
+                errors=[
+                    ValidationErrorItem(
+                        resource="Control",
+                        field=f"{field_prefix}.evaluator.config",
+                        code="invalid_parameters",
+                        message=_INVALID_PARAMETERS_MESSAGE,
+                    )
+                ],
+            )
 
 
 @router.put(
@@ -364,7 +398,7 @@ async def get_control_data(
             errors=[
                 ValidationErrorItem(
                     resource="Control",
-                    field=".".join(str(loc) for loc in err.get("loc", [])),
+                    field=format_field_path(err.get("loc", ())),
                     code=err.get("type", "validation_error"),
                     message=err.get("msg", "Validation failed"),
                 )
@@ -418,17 +452,12 @@ async def set_control_data(
     # Validate evaluator config using shared logic
     await _validate_control_definition(request.data, db)
 
-    data_json = request.data.model_dump(mode="json", exclude_none=True, exclude_unset=True)
-    # Pydantic's exclude_none doesn't propagate into nested model dicts after
-    # serialization, so we re-dump the selector separately to strip null keys.
-    try:
-        selector_json = request.data.selector.model_dump(exclude_none=True, exclude_unset=True)  # type: ignore[attr-defined]
-        selector_json = {k: v for k, v in selector_json.items() if v is not None}
-        if selector_json:
-            data_json["selector"] = selector_json
-    except AttributeError:
-        # Selector doesn't support model_dump, use original serialization
-        pass
+    data_json = request.data.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
     # Ensure scope does not store null/None for step_names or other optional fields,
     # so round-trip (save then load) preserves step selection in the UI.
     if "scope" in data_json and isinstance(data_json["scope"], dict):

@@ -1,13 +1,13 @@
 [project]
 name = "agent-control-evaluator-{{ORG}}"
-version = "3.0.0"
+version = "7.0.0"
 description = "{{ORG}} evaluators for agent-control"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "{{AUTHOR}}" }]
 dependencies = [
-    "agent-control-evaluators>=3.0.0",
-    "agent-control-models>=3.0.0",
+    "agent-control-evaluators>=7.0.0",
+    "agent-control-models>=7.0.0",
     # Add your package-specific dependencies here
 ]
 

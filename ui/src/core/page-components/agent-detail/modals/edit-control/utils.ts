@@ -23,9 +23,8 @@ type FieldMapping = {
  * API field paths look like:
  * - "name" (control name)
  * - "data.scope.step_types" (definition field)
- * - "data.selector.path" → selector_path (definition field)
- * - "data.evaluator.config.pattern" (evaluator config field)
- * - "data.evaluator.field_types" (evaluator config field without config prefix)
+ * - "data.action.decision" → action_decision (definition field)
+ * - "data.condition.and[0].evaluator.config.pattern" (condition-tree field)
  *
  * Since forms use snake_case, we can directly use the API field names.
  *
@@ -50,32 +49,11 @@ export function mapApiFieldToFormField(
 
   const fieldPath = apiField.slice(dataPrefix.length);
 
-  // Handle evaluator fields - API may return either:
-  // - "evaluator.{field}" (e.g., "evaluator.field_types")
-  // - "evaluator.config.{field}" (e.g., "evaluator.config.pattern")
-  const evalPrefix = 'evaluator.';
-  if (fieldPath.startsWith(evalPrefix)) {
-    let configField = fieldPath.slice(evalPrefix.length);
-
-    // Strip "config." prefix if present
-    const configPrefix = 'config.';
-    if (configField.startsWith(configPrefix)) {
-      configField = configField.slice(configPrefix.length);
-    }
-
-    // For nested paths like "field_types.name", use the first segment
-    const firstDotIndex = configField.indexOf('.');
-    const field =
-      firstDotIndex > 0 ? configField.slice(0, firstDotIndex) : configField;
-
-    return { form: 'evaluator', field };
+  if (fieldPath.startsWith('condition.')) {
+    return null;
   }
 
   // Handle definition fields
-  // Map nested paths like "selector.path" to "selector_path"
-  if (fieldPath === 'selector.path') {
-    return { form: 'definition', field: 'selector_path' };
-  }
   if (fieldPath === 'action.decision') {
     return { form: 'definition', field: 'action_decision' };
   }
@@ -117,7 +95,7 @@ export function mapApiFieldToFormField(
 export function applyApiErrorsToForms(
   errors: ValidationErrorItem[] | undefined,
   definitionForm: UseFormReturnType<any>,
-  evaluatorForm: UseFormReturnType<any>
+  evaluatorForm?: UseFormReturnType<any> | null
 ): ValidationErrorItem[] {
   if (!errors || errors.length === 0) {
     return [];
@@ -131,8 +109,10 @@ export function applyApiErrorsToForms(
     if (mapping) {
       if (mapping.form === 'definition') {
         definitionForm.setFieldError(mapping.field, error.message);
-      } else if (mapping.form === 'evaluator') {
+      } else if (mapping.form === 'evaluator' && evaluatorForm) {
         evaluatorForm.setFieldError(mapping.field, error.message);
+      } else if (mapping.form === 'evaluator') {
+        unmappedErrors.push(error);
       }
     } else {
       unmappedErrors.push(error);

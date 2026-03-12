@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import APIValidationError
 from ..models import Control, agent_controls, agent_policies, policy_controls
+from .validation_paths import format_field_path
 
 _logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ async def list_controls_for_agent(
             error_items = []
             for err in e.errors():
                 loc: Sequence[str | int] = err.get("loc", [])
-                field_suffix = ".".join(str(part) for part in loc) if loc else ""
+                field_suffix = format_field_path(loc) or ""
                 error_items.append(
                     ValidationErrorItem(
                         resource="Control",

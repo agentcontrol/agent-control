@@ -1,10 +1,13 @@
 """Control definition models for agent protection."""
 
+from __future__ import annotations
+
+from collections.abc import Iterator
 from typing import Any, Literal, Self
 from uuid import uuid4
 
 import re2
-from pydantic import Field, ValidationInfo, field_validator, model_validator
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from .base import BaseModel
 
@@ -260,6 +263,159 @@ class ControlAction(BaseModel):
     )
 
 
+MAX_CONDITION_DEPTH = 6
+
+
+class ConditionNode(BaseModel):
+    """Recursive boolean condition tree for control evaluation."""
+
+    selector: ControlSelector | None = Field(
+        default=None,
+        description="Leaf selector. Must be provided together with evaluator.",
+    )
+    evaluator: EvaluatorSpec | None = Field(
+        default=None,
+        description="Leaf evaluator. Must be provided together with selector.",
+    )
+    and_: list[ConditionNode] | None = Field(
+        default=None,
+        alias="and",
+        serialization_alias="and",
+        description="Logical AND over child conditions.",
+    )
+    or_: list[ConditionNode] | None = Field(
+        default=None,
+        alias="or",
+        serialization_alias="or",
+        description="Logical OR over child conditions.",
+    )
+    not_: ConditionNode | None = Field(
+        default=None,
+        alias="not",
+        serialization_alias="not",
+        description="Logical NOT over a single child condition.",
+    )
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        use_enum_values=True,
+        validate_assignment=True,
+        extra="ignore",
+        serialize_by_alias=True,
+    )
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> Self:
+        """Ensure each node is exactly one of leaf/and/or/not."""
+        has_selector = self.selector is not None
+        has_evaluator = self.evaluator is not None
+        has_leaf = has_selector and has_evaluator
+        if has_selector != has_evaluator:
+            raise ValueError("Leaf condition requires both selector and evaluator")
+
+        populated = sum(
+            1
+            for present in (
+                has_leaf,
+                self.and_ is not None,
+                self.or_ is not None,
+                self.not_ is not None,
+            )
+            if present
+        )
+        if populated != 1:
+            raise ValueError("Condition node must contain exactly one of leaf, and, or, not")
+
+        if self.and_ is not None and len(self.and_) == 0:
+            raise ValueError("'and' must contain at least one child condition")
+        if self.or_ is not None and len(self.or_) == 0:
+            raise ValueError("'or' must contain at least one child condition")
+
+        return self
+
+    def kind(self) -> Literal["leaf", "and", "or", "not"]:
+        """Return the logical node type."""
+        if self.is_leaf():
+            return "leaf"
+        if self.and_ is not None:
+            return "and"
+        if self.or_ is not None:
+            return "or"
+        return "not"
+
+    def is_leaf(self) -> bool:
+        """Return True when this node is a leaf selector/evaluator pair."""
+        return self.selector is not None and self.evaluator is not None
+
+    def children_in_order(self) -> list[ConditionNode]:
+        """Return child conditions in evaluation order."""
+        if self.and_ is not None:
+            return self.and_
+        if self.or_ is not None:
+            return self.or_
+        if self.not_ is not None:
+            return [self.not_]
+        return []
+
+    def iter_leaves(self) -> Iterator[ConditionNode]:
+        """Yield leaf nodes in left-to-right traversal order."""
+        if self.is_leaf():
+            yield self
+            return
+
+        for child in self.children_in_order():
+            yield from child.iter_leaves()
+
+    def max_depth(self) -> int:
+        """Return the maximum nesting depth of this condition tree."""
+        children = self.children_in_order()
+        if not children:
+            return 1
+        return 1 + max(child.max_depth() for child in children)
+
+    def leaf_parts(self) -> tuple[ControlSelector, EvaluatorSpec] | None:
+        """Return the selector/evaluator pair for leaf nodes."""
+        if not self.is_leaf():
+            return None
+        selector = self.selector
+        evaluator = self.evaluator
+        if selector is None or evaluator is None:
+            return None
+        return selector, evaluator
+
+    model_config["json_schema_extra"] = {
+        "examples": [
+            {
+                "selector": {"path": "output"},
+                "evaluator": {"name": "regex", "config": {"pattern": r"\d{3}-\d{2}-\d{4}"}},
+            },
+            {
+                "and": [
+                    {
+                        "selector": {"path": "context.risk_level"},
+                        "evaluator": {
+                            "name": "list",
+                            "config": {"values": ["high", "critical"]},
+                        },
+                    },
+                    {
+                        "not": {
+                            "selector": {"path": "context.user_role"},
+                            "evaluator": {
+                                "name": "list",
+                                "config": {"values": ["admin", "security"]},
+                            },
+                        }
+                    },
+                ]
+            },
+        ]
+    }
+
+
+ConditionNode.model_rebuild()
+
+
 class ControlDefinition(BaseModel):
     """A control definition to evaluate agent interactions.
 
@@ -280,16 +436,47 @@ class ControlDefinition(BaseModel):
     )
 
     # What to check
-    selector: ControlSelector = Field(..., description="What data to select from the payload")
-
-    # How to check (unified evaluator-based system)
-    evaluator: EvaluatorSpec = Field(..., description="How to evaluate the selected data")
+    condition: ConditionNode = Field(
+        ...,
+        description=(
+            "Recursive boolean condition tree. Leaf nodes contain selector + evaluator; "
+            "composite nodes contain and/or/not."
+        ),
+    )
 
     # What to do
     action: ControlAction = Field(..., description="What action to take when control matches")
 
     # Metadata
     tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+
+    @model_validator(mode="after")
+    def validate_condition_constraints(self) -> Self:
+        """Validate cross-field control constraints."""
+        if self.condition.max_depth() > MAX_CONDITION_DEPTH:
+            raise ValueError(
+                f"Condition nesting depth exceeds maximum of {MAX_CONDITION_DEPTH}"
+            )
+
+        if (
+            self.action.decision == "steer"
+            and not self.condition.is_leaf()
+            and self.action.steering_context is None
+        ):
+            raise ValueError(
+                "Composite steer controls require action.steering_context"
+            )
+        return self
+
+    def iter_condition_leaves(self) -> Iterator[ConditionNode]:
+        """Yield leaf conditions in evaluation order."""
+        yield from self.condition.iter_leaves()
+
+    def primary_leaf(self) -> ConditionNode | None:
+        """Return the single leaf node when the whole condition is just one leaf."""
+        if self.condition.is_leaf():
+            return self.condition
+        return None
 
     model_config = {
         "json_schema_extra": {
@@ -299,11 +486,13 @@ class ControlDefinition(BaseModel):
                     "enabled": True,
                     "execution": "server",
                     "scope": {"step_types": ["llm"], "stages": ["post"]},
-                    "selector": {"path": "output"},
-                    "evaluator": {
-                        "name": "regex",
-                        "config": {
-                            "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
+                    "condition": {
+                        "selector": {"path": "output"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {
+                                "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
+                            },
                         },
                     },
                     "action": {

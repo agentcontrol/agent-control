@@ -10,7 +10,7 @@ generation:
     parameterOrderingFeb2024: true
     requestResponseComponentNamesFeb2024: true
 typescript:
-  version: 0.1.0
+  version: 2.0.0
   packageName: agent-control
   author: Agent Control
   moduleFormat: esm

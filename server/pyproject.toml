@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-server"
-version = "6.7.2"
+version = "7.0.0"
 description = "Server for Agent Control - manage and evaluate controls for AI agents"
 requires-python = ">=3.12"
 # Note: agent-control-models and agent-control-engine are bundled at build time
@@ -21,7 +21,7 @@ dependencies = [
     "jsonschema-rs>=0.22.0",
     "PyJWT>=2.8.0",
     "google-re2>=1.1",  # For engine (bundled)
-    "agent-control-evaluators>=3.0.0",  # NOT vendored - avoid conflict with galileo
+    "agent-control-evaluators>=7.0.0",  # NOT vendored - avoid conflict with galileo
 ]
 authors = [
     {name = "Agent Control Team"}
@@ -30,7 +30,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 
 [project.optional-dependencies]
-galileo = ["agent-control-evaluator-galileo>=3.0.0"]
+galileo = ["agent-control-evaluator-galileo>=7.0.0"]
 
 [dependency-groups]
 dev = [
@@ -48,6 +48,7 @@ dev = [
 
 [project.scripts]
 agent-control-server = "agent_control_server.main:run"
+agent-control-migrate-controls = "agent_control_server.scripts.migrate_control_conditions:main"
 
 
 

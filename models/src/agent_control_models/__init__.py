@@ -18,6 +18,7 @@ from .agent import (
     StepSchema,
 )
 from .controls import (
+    ConditionNode,
     ControlAction,
     ControlDefinition,
     ControlMatch,
@@ -103,6 +104,7 @@ __all__ = [
     "EvaluationResult",
     # Controls
     "ControlDefinition",
+    "ConditionNode",
     "ControlAction",
     "ControlMatch",
     "ControlScope",

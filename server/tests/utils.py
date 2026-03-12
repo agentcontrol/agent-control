@@ -1,6 +1,8 @@
 """Test utilities for server tests."""
+from copy import deepcopy
 import uuid
 from typing import Any
+
 from fastapi.testclient import TestClient
 
 
@@ -9,10 +11,32 @@ VALID_CONTROL_PAYLOAD = {
     "enabled": True,
     "execution": "server",
     "scope": {"step_types": ["llm"], "stages": ["pre"]},
-    "selector": {"path": "input"},
-    "evaluator": {"name": "regex", "config": {"pattern": "x"}},
+    "condition": {
+        "selector": {"path": "input"},
+        "evaluator": {"name": "regex", "config": {"pattern": "x"}},
+    },
     "action": {"decision": "deny"}
 }
+
+
+def canonicalize_control_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert legacy flat test payloads into canonical condition trees."""
+    canonical = deepcopy(payload)
+    if "condition" in canonical:
+        return canonical
+
+    selector = canonical.pop("selector", None)
+    evaluator = canonical.pop("evaluator", None)
+    if selector is None and evaluator is None:
+        return canonical
+    if selector is None or evaluator is None:
+        raise ValueError("Legacy control payloads must include both selector and evaluator.")
+
+    canonical["condition"] = {
+        "selector": selector,
+        "evaluator": evaluator,
+    }
+    return canonical
 
 
 def create_and_assign_policy(
@@ -31,7 +55,9 @@ def create_and_assign_policy(
         tuple: (agent_name, control_name)
     """
     if control_config is None:
-        control_config = VALID_CONTROL_PAYLOAD.copy()
+        control_config = deepcopy(VALID_CONTROL_PAYLOAD)
+    else:
+        control_config = canonicalize_control_payload(control_config)
 
     # 1. Create Control
     control_name = f"control-{uuid.uuid4()}"

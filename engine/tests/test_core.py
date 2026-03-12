@@ -210,11 +210,13 @@ def make_control(
             enabled=True,
             execution=execution,
             scope=scope,
-            selector=selector or {"path": "*"},
-            evaluator=EvaluatorSpec(
-                name=evaluator,
-                config={"value": config_value},
-            ),
+            condition={
+                "selector": selector or {"path": "*"},
+                "evaluator": EvaluatorSpec(
+                    name=evaluator,
+                    config={"value": config_value},
+                ),
+            },
             action=(
                 ControlAction(decision=action, steering_context=steering_context)
                 if steering_context
@@ -1063,8 +1065,10 @@ class TestSelectorStepScoping:
                 enabled=True,
                 execution="server",
                 scope={"step_types": ["tool"], "stages": ["pre"], "step_name_regex": "("},
-                selector={"path": "input"},
-                evaluator=EvaluatorSpec(name="test-allow", config={"value": "x"}),
+                condition={
+                    "selector": {"path": "input"},
+                    "evaluator": EvaluatorSpec(name="test-allow", config={"value": "x"}),
+                },
                 action={"decision": "log"},
             )
 
@@ -1100,11 +1104,13 @@ class TestTimeoutEnforcement:
                     enabled=True,
                     execution="server",
                     scope={"step_types": ["llm"], "stages": ["pre"]},
-                    selector={"path": "input"},
-                    evaluator=EvaluatorSpec(
-                        name="test-timeout",
-                        config={"value": "t1", "timeout_ms": 100},
-                    ),
+                    condition={
+                        "selector": {"path": "input"},
+                        "evaluator": EvaluatorSpec(
+                            name="test-timeout",
+                            config={"value": "t1", "timeout_ms": 100},
+                        ),
+                    },
                     action={"decision": "deny"},
                 ),
             )
@@ -1158,11 +1164,13 @@ class TestTimeoutEnforcement:
                     enabled=True,
                     execution="server",
                     scope={"step_types": ["llm"], "stages": ["pre"]},
-                    selector={"path": "input"},
-                    evaluator=EvaluatorSpec(
-                        name="test-timeout",
-                        config={"value": "slow", "timeout_ms": 100},
-                    ),
+                    condition={
+                        "selector": {"path": "input"},
+                        "evaluator": EvaluatorSpec(
+                            name="test-timeout",
+                            config={"value": "slow", "timeout_ms": 100},
+                        ),
+                    },
                     action={"decision": "log"},  # Log, not deny - so fails open
                 ),
             ),
@@ -1304,11 +1312,13 @@ def make_control_with_execution(
             enabled=True,
             execution=execution,
             scope=scope,
-            selector={"path": path},
-            evaluator=EvaluatorSpec(
-                name=evaluator,
-                config={"value": config_value},
-            ),
+            condition={
+                "selector": {"path": path},
+                "evaluator": EvaluatorSpec(
+                    name=evaluator,
+                    config={"value": config_value},
+                ),
+            },
             action={"decision": action},
         ),
     )
@@ -1802,10 +1812,12 @@ class TestInvalidRegexHandling:
                 "step_types": ["llm"],
                 "step_name_regex": "[invalid(regex",  # Invalid regex pattern
             },
-            "selector": {"path": "input"},
-            "evaluator": {
-                "name": "test-allow",
-                "config": {"value": "test"},
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "test-allow",
+                    "config": {"value": "test"},
+                },
             },
             "action": {"decision": "deny"},
         }

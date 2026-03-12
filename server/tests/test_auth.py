@@ -145,10 +145,12 @@ _VALID_CONTROL_DATA = {
     "enabled": True,
     "execution": "server",
     "scope": {"step_types": ["llm"], "stages": ["pre"]},
-    "selector": {"path": "input"},
-    "evaluator": {
-        "name": "regex",
-        "config": {"pattern": "test", "flags": []},
+    "condition": {
+        "selector": {"path": "input"},
+        "evaluator": {
+            "name": "regex",
+            "config": {"pattern": "test", "flags": []},
+        },
     },
     "action": {"decision": "deny"},
     "tags": ["test"],

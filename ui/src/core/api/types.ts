@@ -76,6 +76,9 @@ export type ControlStage = NonNullable<
 export type ControlScope = components['schemas']['ControlScope'];
 export type ControlSelector = components['schemas']['ControlSelector'];
 export type ControlAction = components['schemas']['ControlAction'];
+export type ConditionNodeInput = components['schemas']['ConditionNode-Input'];
+export type ConditionNodeOutput = components['schemas']['ConditionNode-Output'];
+export type ConditionNode = ConditionNodeInput | ConditionNodeOutput;
 export type ControlDefinitionInput =
   components['schemas']['ControlDefinition-Input'];
 export type ControlDefinitionOutput =

@@ -7,7 +7,7 @@ from copy import deepcopy
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from .utils import VALID_CONTROL_PAYLOAD
+from .utils import VALID_CONTROL_PAYLOAD, canonicalize_control_payload
 from .conftest import engine
 
 
@@ -39,7 +39,10 @@ def _create_control_with_data(client: TestClient, data: dict) -> int:
     resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
     assert resp.status_code == 200
     control_id = resp.json()["control_id"]
-    set_resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": data})
+    set_resp = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": canonicalize_control_payload(data)},
+    )
     assert set_resp.status_code == 200, set_resp.text
     return control_id
 
@@ -220,7 +223,7 @@ def test_patch_agent_remove_evaluator_in_use_conflict(client: TestClient) -> Non
     agent_name, agent_name = _init_agent(client, evaluators=evaluators)
 
     control_payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    control_payload["evaluator"] = {
+    control_payload["condition"]["evaluator"] = {
         "name": f"{agent_name}:custom",
         "config": {"pattern": "x"},
     }
@@ -255,7 +258,7 @@ def test_set_agent_policy_incompatible_controls(client: TestClient) -> None:
     agent_a_id, agent_a_name = _init_agent(client, evaluators=evaluators)
 
     control_payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    control_payload["evaluator"] = {
+    control_payload["condition"]["evaluator"] = {
         "name": f"{agent_a_name}:custom",
         "config": {},
     }
@@ -347,7 +350,7 @@ def test_list_agent_controls_corrupted_control_data_returns_422(
     # Given: an agent with a policy that includes a control
     agent_name, _ = _init_agent(client)
     control_payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    control_payload["evaluator"] = {"name": "regex", "config": {"pattern": "x"}}
+    control_payload["condition"]["evaluator"] = {"name": "regex", "config": {"pattern": "x"}}
     control_id = _create_control_with_data(client, control_payload)
     policy_id = _create_policy(client)
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
@@ -442,12 +445,15 @@ def test_set_agent_policy_rejects_missing_agent_evaluator(client: TestClient) ->
     assert assoc.status_code == 200
 
     with engine.begin() as conn:
+        corrupted_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+        corrupted_payload["condition"]["evaluator"] = {
+            "name": f"{agent_name}:missing",
+            "config": {},
+        }
         conn.execute(
             text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
             {
-                "data": json.dumps(
-                    {"evaluator": {"name": f"{agent_name}:missing", "config": {}}}
-                ),
+                "data": json.dumps(corrupted_payload),
                 "id": control_id,
             },
         )
@@ -484,12 +490,15 @@ def test_set_agent_policy_rejects_invalid_agent_evaluator_config(client: TestCli
     assert assoc.status_code == 200
 
     with engine.begin() as conn:
+        corrupted_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+        corrupted_payload["condition"]["evaluator"] = {
+            "name": f"{agent_name}:custom",
+            "config": {},
+        }
         conn.execute(
             text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
             {
-                "data": json.dumps(
-                    {"evaluator": {"name": f"{agent_name}:custom", "config": {}}}
-                ),
+                "data": json.dumps(corrupted_payload),
                 "id": control_id,
             },
         )
@@ -666,8 +675,8 @@ def test_set_agent_policy_skips_controls_without_data(client: TestClient) -> Non
     assert resp.json()["success"] is True
 
 
-def test_set_agent_policy_skips_controls_without_evaluator_name(client: TestClient) -> None:
-    # Given: an agent and a policy with a control missing evaluator name
+def test_set_agent_policy_rejects_controls_without_evaluator_name(client: TestClient) -> None:
+    # Given: an agent and a policy with a stored control whose leaf is missing evaluator name
     agent_name, _ = _init_agent(client)
     policy_id = _create_policy(client)
     control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
@@ -675,17 +684,21 @@ def test_set_agent_policy_skips_controls_without_evaluator_name(client: TestClie
     assert assoc.status_code == 200
 
     with engine.begin() as conn:
+        corrupted_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+        corrupted_payload["condition"]["evaluator"] = {"config": {}}
         conn.execute(
             text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
-            {"data": json.dumps({"evaluator": {}}), "id": control_id},
+            {"data": json.dumps(corrupted_payload), "id": control_id},
         )
 
     # When: assigning the policy to the agent
     resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
-    # Then: assignment succeeds because evaluator name is missing
-    assert resp.status_code == 200
-    assert resp.json()["success"] is True
+    # Then: assignment is rejected because the stored control data is corrupted
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert any("corrupted data" in err.get("message", "").lower() for err in body.get("errors", []))
 
 
 def test_list_agents_includes_active_controls_count(client: TestClient) -> None:
