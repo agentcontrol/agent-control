@@ -55,24 +55,20 @@ def migrate_control_payload(data: object) -> ControlMigrationResult:
     status: MigrationStatus = "unchanged"
 
     if not has_condition:
-        if has_selector != has_evaluator:
-            return ControlMigrationResult(
-                status="invalid",
-                reason="Legacy control data must include both selector and evaluator.",
-            )
         if not has_selector:
             return ControlMigrationResult(
                 status="invalid",
                 reason="Stored control data is missing the condition definition.",
             )
-
-        selector = candidate.pop("selector")
-        evaluator = candidate.pop("evaluator")
-        candidate["condition"] = {
-            "selector": selector,
-            "evaluator": evaluator,
-        }
         status = "migrated"
+
+    try:
+        candidate = ControlDefinition.canonicalize_payload(candidate)
+    except ValueError as error:
+        return ControlMigrationResult(
+            status="invalid",
+            reason=str(error),
+        )
 
     try:
         validated = ControlDefinition.model_validate(candidate)

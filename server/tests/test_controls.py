@@ -1,5 +1,6 @@
-from typing import Any
 import uuid
+from copy import deepcopy
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -74,6 +75,25 @@ def test_set_control_data_replaces_existing(client: TestClient) -> None:
     assert data["condition"]["selector"]["path"] == payload["condition"]["selector"]["path"]
 
 
+def test_set_control_data_accepts_legacy_leaf_payload(client: TestClient) -> None:
+    control_id = create_control(client)
+    payload = deepcopy(VALID_CONTROL_DATA)
+    payload["selector"] = payload["condition"]["selector"]
+    payload["evaluator"] = payload["condition"]["evaluator"]
+    payload.pop("condition")
+
+    resp_put = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    assert resp_put.status_code == 200, resp_put.text
+    resp_get = client.get(f"/api/v1/controls/{control_id}/data")
+    assert resp_get.status_code == 200
+    data = resp_get.json()["data"]
+    assert "selector" not in data
+    assert "evaluator" not in data
+    assert data["condition"]["selector"]["path"] == "input"
+    assert data["condition"]["evaluator"]["name"] == "regex"
+
+
 def test_set_control_data_with_empty_dict_fails(client: TestClient) -> None:
     # Given: a control with non-empty data
     control_id = create_control(client)
@@ -86,11 +106,11 @@ def test_set_control_data_with_empty_dict_fails(client: TestClient) -> None:
 def test_set_control_data_validates_nested_schema(client: TestClient) -> None:
     # Given: a control
     control_id = create_control(client)
-    
+
     # When: setting invalid data (missing required fields)
-    invalid_data = {"conditions": "test"} 
+    invalid_data = {"conditions": "test"}
     r = client.put(f"/api/v1/controls/{control_id}/data", json={"data": invalid_data})
-    
+
     # Then: 422 Validation Error
     assert r.status_code == 422
 

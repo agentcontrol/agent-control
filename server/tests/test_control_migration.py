@@ -50,7 +50,7 @@ def test_migrate_control_payload_rejects_partial_legacy_rows() -> None:
     result = migrate_control_payload(partial_payload)
 
     assert result.status == "invalid"
-    assert result.reason == "Legacy control data must include both selector and evaluator."
+    assert result.reason == "Legacy control definition must include both selector and evaluator."
 
 
 def test_migrate_control_payload_rejects_non_object_rows() -> None:

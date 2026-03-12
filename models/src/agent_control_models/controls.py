@@ -450,6 +450,42 @@ class ControlDefinition(BaseModel):
     # Metadata
     tags: list[str] = Field(default_factory=list, description="Tags for categorization")
 
+    @classmethod
+    def canonicalize_payload(cls, data: Any) -> Any:
+        """Rewrite legacy selector/evaluator payloads into canonical condition shape."""
+        if not isinstance(data, dict):
+            return data
+
+        has_condition = "condition" in data
+        has_selector = "selector" in data
+        has_evaluator = "evaluator" in data
+
+        if has_condition and (has_selector or has_evaluator):
+            raise ValueError(
+                "Control definition mixes canonical condition fields "
+                "with legacy selector/evaluator fields."
+            )
+        if has_selector != has_evaluator:
+            raise ValueError(
+                "Legacy control definition must include both selector and evaluator."
+            )
+        if not has_condition and has_selector:
+            canonical = dict(data)
+            selector = canonical.pop("selector")
+            evaluator = canonical.pop("evaluator")
+            canonical["condition"] = {
+                "selector": selector,
+                "evaluator": evaluator,
+            }
+            return canonical
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def canonicalize_legacy_condition_shape(cls, data: Any) -> Any:
+        """Accept legacy flat leaf payloads during condition-tree rollout."""
+        return cls.canonicalize_payload(data)
+
     @model_validator(mode="after")
     def validate_condition_constraints(self) -> Self:
         """Validate cross-field control constraints."""

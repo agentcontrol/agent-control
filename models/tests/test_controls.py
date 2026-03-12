@@ -55,6 +55,42 @@ def test_condition_node_requires_exactly_one_shape() -> None:
         )
 
 
+def test_legacy_leaf_payload_is_canonicalized() -> None:
+    legacy_payload = {
+        "execution": "server",
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
+        "selector": {"path": "input"},
+        "evaluator": {"name": "regex", "config": {"pattern": "ok"}},
+        "action": {"decision": "deny"},
+    }
+
+    control = ControlDefinition.model_validate(legacy_payload)
+
+    dumped = control.model_dump(mode="json", exclude_none=True)
+    assert "selector" not in dumped
+    assert "evaluator" not in dumped
+    assert dumped["condition"]["selector"]["path"] == "input"
+    assert dumped["condition"]["evaluator"]["name"] == "regex"
+
+
+def test_mixed_legacy_and_condition_fields_are_rejected() -> None:
+    payload = {
+        "execution": "server",
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
+        "condition": _leaf("input"),
+        "selector": {"path": "output"},
+        "evaluator": {"name": "regex", "config": {"pattern": "ok"}},
+        "action": {"decision": "deny"},
+    }
+
+    with pytest.raises(
+        ValidationError,
+        match="Control definition mixes canonical condition fields "
+        "with legacy selector/evaluator fields",
+    ):
+        ControlDefinition.model_validate(payload)
+
+
 def test_condition_and_requires_at_least_one_child() -> None:
     with pytest.raises(
         ValidationError,
