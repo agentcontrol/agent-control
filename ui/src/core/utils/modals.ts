@@ -17,6 +17,11 @@ export type ConfirmModalOptions = {
   cancelLabel?: string;
 };
 
+/**
+ * Open a standard (non-destructive) confirmation modal.
+ *
+ * Returns the modal id, which can be used to close it programmatically if needed.
+ */
 export function openActionConfirmModal({
   title,
   children,
@@ -41,6 +46,11 @@ export function openActionConfirmModal({
   });
 }
 
+/**
+ * Open a destructive confirmation modal (e.g. remove/delete).
+ *
+ * Returns the modal id, which can be used to close it programmatically if needed.
+ */
 export function openDestructiveConfirmModal({
   title,
   children,

@@ -145,14 +145,16 @@ class Settings(BaseSettings):
     prometheus_metrics_prefix: str = "agent_control_server"
 
     # CORS settings
-    cors_origins: list[str] | str = "*"
+    # Default allows the local UI (localhost:4000). Use "*" only for non-browser API
+    # clients; browsers block credentialed requests when Allow-Origin is "*".
+    cors_origins: list[str] | str = "http://localhost:4000,http://127.0.0.1:4000"
     allow_methods: list[str] = ["*"]
     allow_headers: list[str] = ["*"]
 
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from string or list."""
         if isinstance(self.cors_origins, str):
-            if self.cors_origins == "*":
+            if self.cors_origins.strip() == "*":
                 return ["*"]
             return [origin.strip() for origin in self.cors_origins.split(",")]
         return self.cors_origins
