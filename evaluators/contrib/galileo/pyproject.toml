@@ -1,14 +1,14 @@
 [project]
 name = "agent-control-evaluator-galileo"
-version = "7.0.0"
+version = "6.7.2"
 description = "Galileo Luna2 evaluator for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Agent Control Team" }]
 dependencies = [
-    "agent-control-evaluators>=7.0.0",
-    "agent-control-models>=7.0.0",
+    "agent-control-evaluators>=3.0.0",
+    "agent-control-models>=3.0.0",
     "httpx>=0.24.0",
     "pydantic>=2.12.4",
 ]
