@@ -366,41 +366,44 @@ async def run_interactive(agent: QAAgent):
 # MAIN
 # =============================================================================
 
+async def run_demo_session() -> None:
+    """Create the agent and enter interactive mode."""
+    agent = QAAgent()
+    await run_interactive(agent)
+
 
 async def main():
     """Run the Q&A agent."""
-    try:
-        # Check for OPENAI_API_KEY
-        if not os.getenv("OPENAI_API_KEY"):
-            print("\n⚠️  Warning: OPENAI_API_KEY not set!")
-            print("   DeepEval requires OpenAI API access for GEval.")
-            print("   Set it with: export OPENAI_API_KEY='your-key'")
-            print()
-            response = input("Continue anyway? (y/N): ").strip().lower()
-            if response != "y":
-                print("Exiting. Set OPENAI_API_KEY and try again.")
-                sys.exit(1)
-
-        # Check server connection
-        server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
-        print(f"\nConnecting to agent-control server at {server_url}...")
-
-        import httpx
-
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(f"{server_url}/health", timeout=5.0)
-                resp.raise_for_status()
-                print("✓ Connected to server")
-        except Exception as e:
-            print(f"\n❌ Cannot connect to server: {e}")
-            print("   Make sure the agent-control server is running.")
-            print("   Run setup_controls.py first to configure the agent.")
+    # Check for OPENAI_API_KEY
+    if not os.getenv("OPENAI_API_KEY"):
+        print("\n⚠️  Warning: OPENAI_API_KEY not set!")
+        print("   DeepEval requires OpenAI API access for GEval.")
+        print("   Set it with: export OPENAI_API_KEY='your-key'")
+        print()
+        response = input("Continue anyway? (y/N): ").strip().lower()
+        if response != "y":
+            print("Exiting. Set OPENAI_API_KEY and try again.")
             sys.exit(1)
 
-        # Create and run agent
-        agent = QAAgent()
-        await run_interactive(agent)
+    # Check server connection
+    server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
+    print(f"\nConnecting to agent-control server at {server_url}...")
+
+    import httpx
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{server_url}/health", timeout=5.0)
+            resp.raise_for_status()
+            print("✓ Connected to server")
+    except Exception as e:
+        print(f"\n❌ Cannot connect to server: {e}")
+        print("   Make sure the agent-control server is running.")
+        print("   Run setup_controls.py first to configure the agent.")
+        sys.exit(1)
+
+    try:
+        await run_demo_session()
     finally:
         await agent_control.ashutdown()
 

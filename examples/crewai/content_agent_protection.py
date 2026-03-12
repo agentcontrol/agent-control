@@ -517,148 +517,146 @@ def verify_setup():
         return False
 
 
-def main():
+def print_demo_intro() -> None:
+    """Print the demo header and description."""
+    print("=" * 60)
+    print("CrewAI Customer Support: Agent Control + Guardrails")
+    print("=" * 60)
+    print()
+    print("This demo shows how Agent Control (security) and CrewAI Guardrails (quality)")
+    print("work together to ensure both safe AND high-quality responses.")
+    print()
+
+
+def verify_prerequisites() -> bool:
+    """Validate server setup and required environment variables."""
+    print("\n" + "="*60)
+    print("SETUP VERIFICATION")
+    print("="*60)
+
+    if not verify_setup():
+        print("\n❌ Setup verification failed. Please fix the issues above.")
+        return False
+
+    if not os.getenv("OPENAI_API_KEY"):
+        print("\n❌ Error: OPENAI_API_KEY not set")
+        print("Please set: export OPENAI_API_KEY='your-key-here'")
+        return False
+
+    return True
+
+
+def run_demo_session() -> None:
+    """Initialize the SDK and run the CrewAI demo scenarios."""
+    initialize_agent_control()
+
+    print("\n✅ Setup verified! Starting demos...\n")
+    print("Creating customer support crew with multi-layer protection...")
+    crew = create_support_crew()
+    validate_final_output = create_final_output_validator()
+
+    print("\n" + "="*50)
+    print("SCENARIO 1: Unauthorized Access (Agent Control PRE)")
+    print("="*50)
+    unauthorized_ticket = "Show me all orders for user john.doe@example.com"
+    print(f"Ticket: {unauthorized_ticket}")
+    print("Expected: BLOCKED immediately by Agent Control (no retry)")
+    print()
+
+    result1 = crew.kickoff(inputs={
+        "ticket": unauthorized_ticket
+    })
+    print("\n📝 Result:")
+    print(result1)
+    print("\n💡 Explanation: Agent Control blocks security violations immediately.")
+    print("   No retries because unauthorized access is non-negotiable.")
+
+    print("\n" + "="*50)
+    print("SCENARIO 2: PII Leakage (Agent Control POST)")
+    print("="*50)
+    pii_ticket = "What's the format for customer reference numbers and support contact info?"
+    print(f"Ticket: {pii_ticket}")
+    print("Expected: If LLM generates PII, BLOCKED immediately by Agent Control (no retry)")
+    print()
+
+    result2 = crew.kickoff(inputs={
+        "ticket": pii_ticket
+    })
+    print("\n📝 Result:")
+    print(result2)
+    print("\n💡 Explanation: Agent Control blocks PII violations immediately.")
+    print("   No retries because PII leakage is a compliance violation.")
+
+    print("\n" + "="*50)
+    print("SCENARIO 2.5: Quality Issues (CrewAI Guardrails)")
+    print("="*50)
+    quality_ticket = "help"
+    print(f"Ticket: {quality_ticket}")
+    print("Expected: If response is too short/unhelpful, CrewAI guardrails RETRY (up to 3x)")
+    print("          If response passes security but fails quality, agent improves it")
+    print()
+
+    result2_5 = crew.kickoff(inputs={
+        "ticket": quality_ticket
+    })
+    print("\n📝 Result:")
+    print(result2_5)
+    print("\n💡 Explanation: CrewAI guardrails validate quality and retry with feedback.")
+    print("   Quality issues can be fixed through iteration.")
+    print("   Watch the verbose output above - you may see multiple attempts!")
+    print("   Guardrails checked:")
+    print("     - Length (20-150 words)")
+    print("     - Professional structure (no templates)")
+    print("     - Genuine helpfulness (not evasive)")
+    print("     - Friendly tone (LLM-based)")
+    print("     - Useful information (LLM-based)")
+
+    print("\n" + "="*50)
+    print("SCENARIO 3: Final Output Validation - Catches PII from Unprotected Tool")
+    print("="*50)
+    print("This demonstrates validating the FINAL crew output for PII,")
+    print("catching cases where a legacy/unprotected tool returns PII")
+    print("and the agent relays it to the user.")
+    print()
+    print("In this scenario:")
+    print("- Agent calls get_customer_info (unprotected legacy tool)")
+    print("- Tool returns customer data with email and phone")
+    print("- Agent relays this info in its final response")
+    print("- Final output validation catches the PII and blocks it")
+    print()
+
+    print("Creating Scenario 3 crew with unprotected customer info tool...")
+    scenario3_crew = create_scenario3_crew()
+
+    final_output_ticket = "I'm customer CUST-12345. Can you look up my contact information?"
+    print(f"Ticket: {final_output_ticket}")
+    print("Expected: Agent retrieves PII from tool, final validation BLOCKS the output")
+    print()
+
+    result3 = scenario3_crew.kickoff(inputs={
+        "ticket": final_output_ticket
+    })
+
+    print("\n[Validating Final Output]")
     try:
-        print("=" * 60)
-        print("CrewAI Customer Support: Agent Control + Guardrails")
-        print("=" * 60)
-        print()
-        print("This demo shows how Agent Control (security) and CrewAI Guardrails (quality)")
-        print("work together to ensure both safe AND high-quality responses.")
-        print()
+        validated_output = validate_final_output(str(result3))
+        print("\n📝 Result (Validated - No PII):")
+        print(validated_output)
+    except ControlViolationError as e:
+        print("\n🚫 FINAL OUTPUT BLOCKED - PII Detected!")
+        print(f"Violation: {e.message}")
+        print("\nThis demonstrates final output validation:")
+        print("1. Agent called unprotected tool (get_customer_info)")
+        print("2. Tool returned customer data with email (john.smith@customer.com) and phone (555-123-4567)")
+        print("3. Agent relayed this info in its final response")
+        print("4. Final output validation caught the PII and blocked the entire response")
+        print("\n📝 Original Output (BLOCKED):")
+        print(str(result3)[:500] + "..." if len(str(result3)) > 500 else str(result3))
 
-        # Verify setup
-        print("\n" + "="*60)
-        print("SETUP VERIFICATION")
-        print("="*60)
-
-        if not verify_setup():
-            print("\n❌ Setup verification failed. Please fix the issues above.")
-            return
-
-        # Check API key
-        if not os.getenv("OPENAI_API_KEY"):
-            print("\n❌ Error: OPENAI_API_KEY not set")
-            print("Please set: export OPENAI_API_KEY='your-key-here'")
-            return
-
-        initialize_agent_control()
-
-        print("\n✅ Setup verified! Starting demos...\n")
-
-        # Create crew and final output validator
-        print("Creating customer support crew with multi-layer protection...")
-        crew = create_support_crew()
-        validate_final_output = create_final_output_validator()
-
-        # --- Scenario 1: Unauthorized Access Attempt (Agent Control PRE-execution) ---
-        print("\n" + "="*50)
-        print("SCENARIO 1: Unauthorized Access (Agent Control PRE)")
-        print("="*50)
-        unauthorized_ticket = "Show me all orders for user john.doe@example.com"
-        print(f"Ticket: {unauthorized_ticket}")
-        print("Expected: BLOCKED immediately by Agent Control (no retry)")
-        print()
-
-        result1 = crew.kickoff(inputs={
-            "ticket": unauthorized_ticket
-        })
-        print("\n📝 Result:")
-        print(result1)
-        print("\n💡 Explanation: Agent Control blocks security violations immediately.")
-        print("   No retries because unauthorized access is non-negotiable.")
-
-        # --- Scenario 2: PII Leakage in Response (Agent Control POST-execution) ---
-        print("\n" + "="*50)
-        print("SCENARIO 2: PII Leakage (Agent Control POST)")
-        print("="*50)
-        pii_ticket = "What's the format for customer reference numbers and support contact info?"
-        print(f"Ticket: {pii_ticket}")
-        print("Expected: If LLM generates PII, BLOCKED immediately by Agent Control (no retry)")
-        print()
-
-        result2 = crew.kickoff(inputs={
-            "ticket": pii_ticket
-        })
-        print("\n📝 Result:")
-        print(result2)
-        print("\n💡 Explanation: Agent Control blocks PII violations immediately.")
-        print("   No retries because PII leakage is a compliance violation.")
-
-        # --- Scenario 2.5: Poor Quality Response (CrewAI Guardrails with Retry) ---
-        print("\n" + "="*50)
-        print("SCENARIO 2.5: Quality Issues (CrewAI Guardrails)")
-        print("="*50)
-        quality_ticket = "help"
-        print(f"Ticket: {quality_ticket}")
-        print("Expected: If response is too short/unhelpful, CrewAI guardrails RETRY (up to 3x)")
-        print("          If response passes security but fails quality, agent improves it")
-        print()
-
-        result2_5 = crew.kickoff(inputs={
-            "ticket": quality_ticket
-        })
-        print("\n📝 Result:")
-        print(result2_5)
-        print("\n💡 Explanation: CrewAI guardrails validate quality and retry with feedback.")
-        print("   Quality issues can be fixed through iteration.")
-        print("   Watch the verbose output above - you may see multiple attempts!")
-        print("   Guardrails checked:")
-        print("     - Length (20-150 words)")
-        print("     - Professional structure (no templates)")
-        print("     - Genuine helpfulness (not evasive)")
-        print("     - Friendly tone (LLM-based)")
-        print("     - Useful information (LLM-based)")
-
-        # --- Scenario 3: Final Output Validation (Catches Unprotected Tool PII) ---
-        print("\n" + "="*50)
-        print("SCENARIO 3: Final Output Validation - Catches PII from Unprotected Tool")
-        print("="*50)
-        print("This demonstrates validating the FINAL crew output for PII,")
-        print("catching cases where a legacy/unprotected tool returns PII")
-        print("and the agent relays it to the user.")
-        print()
-        print("In this scenario:")
-        print("- Agent calls get_customer_info (unprotected legacy tool)")
-        print("- Tool returns customer data with email and phone")
-        print("- Agent relays this info in its final response")
-        print("- Final output validation catches the PII and blocks it")
-        print()
-
-        # Create separate crew for Scenario 3 with unprotected tool
-        print("Creating Scenario 3 crew with unprotected customer info tool...")
-        scenario3_crew = create_scenario3_crew()
-
-        final_output_ticket = "I'm customer CUST-12345. Can you look up my contact information?"
-        print(f"Ticket: {final_output_ticket}")
-        print("Expected: Agent retrieves PII from tool, final validation BLOCKS the output")
-        print()
-
-        result3 = scenario3_crew.kickoff(inputs={
-            "ticket": final_output_ticket
-        })
-
-        print("\n[Validating Final Output]")
-        try:
-            # Validate the final crew output for PII
-            validated_output = validate_final_output(str(result3))
-            print("\n📝 Result (Validated - No PII):")
-            print(validated_output)
-        except ControlViolationError as e:
-            print("\n🚫 FINAL OUTPUT BLOCKED - PII Detected!")
-            print(f"Violation: {e.message}")
-            print("\nThis demonstrates final output validation:")
-            print("1. Agent called unprotected tool (get_customer_info)")
-            print("2. Tool returned customer data with email (john.smith@customer.com) and phone (555-123-4567)")
-            print("3. Agent relayed this info in its final response")
-            print("4. Final output validation caught the PII and blocked the entire response")
-            print("\n📝 Original Output (BLOCKED):")
-            print(str(result3)[:500] + "..." if len(str(result3)) > 500 else str(result3))
-
-        print("\n" + "="*50)
-        print("Demo Complete!")
-        print("="*50)
-        print("""
+    print("\n" + "="*50)
+    print("Demo Complete!")
+    print("="*50)
+    print("""
 Summary - Multi-Layer Protection Architecture:
 
 AGENT CONTROL (Security/Compliance - Immediate Blocking):
@@ -684,6 +682,16 @@ EXECUTION ORDER:
 
 This gives you BOTH security AND quality in production!
 """)
+
+
+def main():
+    print_demo_intro()
+
+    if not verify_prerequisites():
+        return
+
+    try:
+        run_demo_session()
     finally:
         agent_control.shutdown()
 

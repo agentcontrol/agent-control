@@ -305,8 +305,6 @@ async def run_demo_mode(agent: CustomerSupportAgent, automated: bool) -> None:
     else:
         await run_interactive(agent)
 
-        print()
-
 
 async def run_safe_tests(agent: CustomerSupportAgent):
     """Run tests with safe, normal messages."""

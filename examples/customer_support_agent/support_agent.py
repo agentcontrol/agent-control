@@ -424,43 +424,49 @@ class CustomerSupportAgent:
 # DIRECT EXECUTION
 # =============================================================================
 
+async def run_smoke_tests() -> None:
+    """Run the direct-execution smoke tests."""
+    agent = CustomerSupportAgent()
+
+    print("\n--- Test: Normal chat (1 span) ---")
+    response = await agent.chat("Hello, I need help with a refund")
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Customer lookup (1 span) ---")
+    response = await agent.lookup("C001")
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Knowledge base search (1 span) ---")
+    response = await agent.search("refund")
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Create ticket (1 span) ---")
+    response = await agent.create_support_ticket(
+        subject="Refund request",
+        description="I would like to return my order",
+        priority="medium"
+    )
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Comprehensive support (2-3 spans in one trace) ---")
+    response = await agent.handle_comprehensive_support(
+        user_message="I need help with a refund for my recent order",
+        customer_id="C001"
+    )
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Comprehensive support without customer (2 spans) ---")
+    response = await agent.handle_comprehensive_support(
+        user_message="How do I reset my password?"
+    )
+    print(f"Agent: {response}")
+
+
 if __name__ == "__main__":
     # Quick test
     async def main():
-        agent = CustomerSupportAgent()
         try:
-            print("\n--- Test: Normal chat (1 span) ---")
-            response = await agent.chat("Hello, I need help with a refund")
-            print(f"Agent: {response}")
-
-            print("\n--- Test: Customer lookup (1 span) ---")
-            response = await agent.lookup("C001")
-            print(f"Agent: {response}")
-
-            print("\n--- Test: Knowledge base search (1 span) ---")
-            response = await agent.search("refund")
-            print(f"Agent: {response}")
-
-            print("\n--- Test: Create ticket (1 span) ---")
-            response = await agent.create_support_ticket(
-                subject="Refund request",
-                description="I would like to return my order",
-                priority="medium"
-            )
-            print(f"Agent: {response}")
-
-            print("\n--- Test: Comprehensive support (2-3 spans in one trace) ---")
-            response = await agent.handle_comprehensive_support(
-                user_message="I need help with a refund for my recent order",
-                customer_id="C001"
-            )
-            print(f"Agent: {response}")
-
-            print("\n--- Test: Comprehensive support without customer (2 spans) ---")
-            response = await agent.handle_comprehensive_support(
-                user_message="How do I reset my password?"
-            )
-            print(f"Agent: {response}")
+            await run_smoke_tests()
         finally:
             await agent_control.ashutdown()
 

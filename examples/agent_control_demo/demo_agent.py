@@ -251,6 +251,15 @@ The controls are evaluated SERVER-SIDE:
 """)
 
 
+async def run_demo_session() -> None:
+    """Initialize the agent and run the scripted demo."""
+    if not initialize_demo_agent():
+        return
+
+    await run_demo_scenarios()
+    print_demo_summary()
+
+
 async def run_demo() -> None:
     """Run the demo scenarios."""
     logger.info("Starting agent control demo")
@@ -262,12 +271,8 @@ async def run_demo() -> None:
     print(f"\n🤖 Initializing agent: {AGENT_NAME}")
     print(f"   Server: {SERVER_URL}")
 
-    if not initialize_demo_agent():
-        return
-
     try:
-        await run_demo_scenarios()
-        print_demo_summary()
+        await run_demo_session()
     finally:
         await agent_control.ashutdown()
 
