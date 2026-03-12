@@ -63,7 +63,8 @@ No repo clone required:
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
 ```
 
-This starts PostgreSQL and the Agent Control Server at `http://localhost:8000`.
+This starts PostgreSQL and Agent Control at `http://localhost:8000`, including
+the UI/dashboard.
 
 Verify it is up:
 
@@ -100,7 +101,7 @@ from agent_control import control, ControlViolationError
 async def chat(message: str) -> str:
     # Simulates an LLM that might leak sensitive data
     if "test" in message.lower():
-        return "Your SSN is 123-45-6789"  # Blocked!
+        return "Your SSN is 123-45-6789"  # Blocked after Step 4 adds a control
     return f"Echo: {message}"
 
 # Register your agent with Agent Control
@@ -118,19 +119,19 @@ async def main():
 asyncio.run(main())
 ```
 
-Run the script to register your agent:
-
-```bash
-uv python my_agent.py
-```
-
-Now, create a control in Step 4 to see blocking in action.
+Next, create a control in Step 4, then run the setup and agent scripts in
+order to see blocking in action.
 
 ### 4. Add controls
 
-Minimal SDK example (assumes the server is running at `http://localhost:8000`):
+This example adds the control with a small SDK setup script. You can also
+create and attach controls through the UI or direct API calls.
+
+Minimal SDK example (assumes the server is running at `http://localhost:8000`
+and uses the same `agent_name` as Step 3):
 
 ```python
+# setup.py
 import asyncio
 from agent_control import AgentControlClient, controls, agents
 
@@ -156,9 +157,20 @@ async def main():
 asyncio.run(main())
 ```
 
-**Tip**: Use the UI to add controls if you prefer a visual flow—see the [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart).
+**Tip**: If you prefer a visual flow, use the UI instead - see the [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart).
 
-Now re-run your agent to see controls take effect.
+Run both scripts in order:
+
+```bash
+uv run setup.py
+uv run my_agent.py
+```
+
+Expected output:
+
+```text
+Blocked: block-ssn-demo
+```
 
 ## Examples:
 
