@@ -1,7 +1,9 @@
 """Minimal LangGraph smoke test for the Agent Control ToolNode integration.
 
 This example proves the LangGraph ToolNode wrapper path works without using
-``@control()`` on the underlying tool implementation.
+``@control()`` on the underlying tool implementation. It passes a plain
+``@tool``-decorated Python function directly to the Agent Control LangGraph
+integration.
 
 Run:
     cd examples/langchain

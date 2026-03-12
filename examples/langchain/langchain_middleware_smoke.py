@@ -2,6 +2,8 @@
 
 This example proves the LangChain agent-factory middleware path works with
 ``AgentControlMiddleware`` and protects tool calls without using ``@control()``.
+It passes a plain ``@tool``-decorated Python function directly to
+``langchain.create_agent(...)``.
 
 Run:
     cd examples/langchain
