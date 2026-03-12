@@ -626,6 +626,37 @@ test.describe('Modal Routing', () => {
     await expect(mockedPage).not.toHaveURL(/.*\?modal=/);
   });
 
+  test('switching a nested evaluator from regex to list does not crash', async ({
+    mockedPage,
+  }) => {
+    const pageErrors: Error[] = [];
+    mockedPage.on('pageerror', (error) => {
+      pageErrors.push(error);
+    });
+
+    const addNewModal = await openAddNewControlModal(mockedPage);
+    const evaluatorRow = addNewModal.locator('tr', { hasText: 'Regex' });
+    await evaluatorRow.getByRole('button', { name: 'Use' }).click();
+
+    const createModal = mockedPage.getByRole('dialog', {
+      name: 'Create Control',
+    });
+    await expect(createModal).toBeVisible();
+
+    await createModal
+      .getByRole('button', { name: 'Replace with AND group' })
+      .click();
+
+    const evaluatorInputs = createModal.getByLabel('Evaluator');
+    await evaluatorInputs.nth(1).click();
+    await mockedPage.getByRole('option', { name: 'List' }).click();
+
+    await expect(
+      createModal.getByPlaceholder('Enter values (one per line)')
+    ).toBeVisible();
+    expect(pageErrors).toHaveLength(0);
+  });
+
   test('closes all modals when control is successfully copied', async ({
     mockedPage,
   }) => {

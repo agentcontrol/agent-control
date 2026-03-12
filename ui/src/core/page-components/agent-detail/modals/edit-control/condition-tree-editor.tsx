@@ -19,7 +19,7 @@ import {
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ValidationErrorItem } from '@/core/api/types';
 import { evaluators, getEvaluator } from '@/core/evaluators';
@@ -63,6 +63,7 @@ function LeafEvaluatorForm({
   onChange,
 }: LeafEvaluatorFormProps) {
   const evaluator = getEvaluator(node.evaluatorName);
+  const skipConfigSyncRef = useRef(false);
   const [jsonText, setJsonText] = useState(() =>
     JSON.stringify(node.config, null, 2)
   );
@@ -86,6 +87,7 @@ function LeafEvaluatorForm({
     if (!evaluator) {
       return;
     }
+    skipConfigSyncRef.current = true;
     form.setValues(evaluator.fromConfig(node.config));
     form.clearErrors();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,6 +95,10 @@ function LeafEvaluatorForm({
 
   useEffect(() => {
     if (!evaluator) {
+      return;
+    }
+    if (skipConfigSyncRef.current) {
+      skipConfigSyncRef.current = false;
       return;
     }
     const nextConfig = evaluator.toConfig(form.values);
