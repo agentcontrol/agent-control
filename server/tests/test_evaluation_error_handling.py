@@ -1,11 +1,17 @@
 """End-to-end tests for evaluator error handling."""
 import logging
 import uuid
+from unittest.mock import AsyncMock, MagicMock
 
+from agent_control_models import ControlMatch, EvaluationRequest, EvaluatorResult, Step
 from fastapi.testclient import TestClient
 
-from agent_control_models import EvaluationRequest, Step
+from agent_control_server.endpoints.evaluation import (
+    SAFE_EVALUATOR_ERROR,
+    _sanitize_control_match,
+)
 from agent_control_server.observability.ingest.base import IngestResult
+
 from .utils import create_and_assign_policy
 
 
@@ -95,8 +101,6 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     When: Evaluation is requested
     Then: Response has errors field populated and is_safe=False (for deny)
     """
-    from unittest.mock import MagicMock, AsyncMock
-
     # Given: an agent with a working control
     control_data = {
         "description": "Test control",
@@ -154,9 +158,48 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     )
     assert "RuntimeError" not in data["errors"][0]["result"]["error"]
     assert "Simulated evaluator crash" not in data["errors"][0]["result"]["error"]
+    condition_trace = data["errors"][0]["result"]["metadata"]["condition_trace"]
+    assert condition_trace["error"] == SAFE_EVALUATOR_ERROR
+    assert condition_trace["message"] == SAFE_EVALUATOR_ERROR
+    assert "RuntimeError" not in condition_trace["error"]
+    assert "Simulated evaluator crash" not in condition_trace["message"]
 
     # And: no matches are returned because evaluation failed
     assert data["matches"] is None or len(data["matches"]) == 0
+
+
+def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
+    match = ControlMatch(
+        control_id=1,
+        control_name="nested-trace",
+        action="deny",
+        result=EvaluatorResult(
+            matched=False,
+            confidence=0.0,
+            error="RuntimeError: nested boom",
+            message="Condition evaluation failed: RuntimeError: nested boom",
+            metadata={
+                "condition_trace": {
+                    "type": "and",
+                    "children": [
+                        {
+                            "type": "leaf",
+                            "error": "RuntimeError: nested boom",
+                            "message": "Evaluation failed: RuntimeError: nested boom",
+                        }
+                    ],
+                }
+            },
+        ),
+    )
+
+    sanitized = _sanitize_control_match(match)
+    child_trace = sanitized.result.metadata["condition_trace"]["children"][0]
+
+    assert sanitized.result.error == SAFE_EVALUATOR_ERROR
+    assert sanitized.result.message == SAFE_EVALUATOR_ERROR
+    assert child_trace["error"] == SAFE_EVALUATOR_ERROR
+    assert child_trace["message"] == SAFE_EVALUATOR_ERROR
 
 
 def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypatch) -> None:

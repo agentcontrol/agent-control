@@ -58,6 +58,30 @@ def _sanitize_evaluator_error(error_message: str) -> str:
     return SAFE_EVALUATOR_ERROR
 
 
+def _sanitize_condition_trace(trace: object) -> object:
+    """Recursively redact internal evaluator errors from condition traces."""
+    if isinstance(trace, list):
+        return [_sanitize_condition_trace(item) for item in trace]
+
+    if not isinstance(trace, dict):
+        return trace
+
+    sanitized = {
+        key: _sanitize_condition_trace(value)
+        for key, value in trace.items()
+    }
+
+    raw_error = sanitized.get("error")
+    if isinstance(raw_error, str) and raw_error:
+        safe_error = _sanitize_evaluator_error(raw_error)
+        sanitized["error"] = safe_error
+        raw_message = sanitized.get("message")
+        if raw_message is None or isinstance(raw_message, str):
+            sanitized["message"] = safe_error
+
+    return sanitized
+
+
 def _sanitize_control_match(match: ControlMatch) -> ControlMatch:
     """Redact internal evaluator error strings from a control match."""
     if match.result.error is None:
@@ -65,10 +89,15 @@ def _sanitize_control_match(match: ControlMatch) -> ControlMatch:
 
     safe_error = _sanitize_evaluator_error(match.result.error)
     safe_message = safe_error
+    metadata = dict(match.result.metadata or {})
+    condition_trace = metadata.get("condition_trace")
+    if condition_trace is not None:
+        metadata["condition_trace"] = _sanitize_condition_trace(condition_trace)
     sanitized_result = match.result.model_copy(
         update={
             "error": safe_error,
             "message": safe_message,
+            "metadata": metadata or None,
         }
     )
     return match.model_copy(update={"result": sanitized_result})
