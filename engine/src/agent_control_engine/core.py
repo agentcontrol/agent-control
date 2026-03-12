@@ -124,7 +124,14 @@ class ControlEngine:
         request: EvaluationRequest,
         semaphore: asyncio.Semaphore,
     ) -> _ConditionEvaluation:
-        """Evaluate a leaf selector/evaluator pair."""
+        """Evaluate a leaf selector/evaluator pair.
+
+        The shared semaphore limits concurrent leaf evaluator executions across
+        the entire engine run. Composite conditions evaluate serially, so a
+        single control only holds one semaphore slot at a time, but multi-leaf
+        controls may acquire and release that shared slot more than once while
+        traversing their tree.
+        """
         selector, evaluator_spec = node.leaf_parts() or (None, None)
         if selector is None or evaluator_spec is None:
             raise ValueError("Leaf condition must contain selector and evaluator")
@@ -433,6 +440,8 @@ class ControlEngine:
         matches: list[ControlMatch] = []
         is_safe = True
         deny_found = asyncio.Event()
+        # The concurrency cap applies to visited leaf evaluator executions, not
+        # whole top-level controls. Composite trees are still walked serially.
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_EVALUATIONS)
 
         async def evaluate_control(eval_task: _EvalTask) -> None:

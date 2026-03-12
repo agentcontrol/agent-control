@@ -32,6 +32,7 @@ export type ControlDefinitionFormValues = {
   step_names: string;
   step_name_regex: string;
   step_name_mode: 'names' | 'regex';
+  selector_path: string;
   action_decision: ControlActionDecision;
   action_steering_context?: string;
   execution: ControlExecution;
@@ -79,4 +80,5 @@ export type EvaluatorJsonViewProps = {
 
 export type ControlDefinitionFormProps = {
   form: UseFormReturnType<ControlDefinitionFormValues>;
+  disableSelectorPath?: boolean;
 };

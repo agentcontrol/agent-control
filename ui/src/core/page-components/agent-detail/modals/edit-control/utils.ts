@@ -23,8 +23,8 @@ type FieldMapping = {
  * API field paths look like:
  * - "name" (control name)
  * - "data.scope.step_types" (definition field)
- * - "data.action.decision" → action_decision (definition field)
- * - "data.condition.and[0].evaluator.config.pattern" (condition-tree field)
+ * - "data.condition.selector.path" → selector_path (definition field)
+ * - "data.condition.evaluator.config.pattern" (evaluator config field)
  *
  * Since forms use snake_case, we can directly use the API field names.
  *
@@ -49,7 +49,28 @@ export function mapApiFieldToFormField(
 
   const fieldPath = apiField.slice(dataPrefix.length);
 
-  if (fieldPath.startsWith('condition.')) {
+  const leafConditionPrefix = 'condition.';
+  if (fieldPath.startsWith(leafConditionPrefix)) {
+    const conditionField = fieldPath.slice(leafConditionPrefix.length);
+
+    if (conditionField === 'selector.path') {
+      return { form: 'definition', field: 'selector_path' };
+    }
+
+    const evalPrefix = 'evaluator.';
+    if (conditionField.startsWith(evalPrefix)) {
+      let configField = conditionField.slice(evalPrefix.length);
+      if (configField.startsWith('config.')) {
+        configField = configField.slice('config.'.length);
+      }
+
+      const firstDotIndex = configField.indexOf('.');
+      const field =
+        firstDotIndex > 0 ? configField.slice(0, firstDotIndex) : configField;
+
+      return { form: 'evaluator', field };
+    }
+
     return null;
   }
 

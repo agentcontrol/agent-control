@@ -1,17 +1,25 @@
-import { Box, Divider, Grid, Group, Text, TextInput } from '@mantine/core';
+import {
+  Alert,
+  Box,
+  Divider,
+  Grid,
+  Group,
+  Text,
+  TextInput,
+} from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { isApiError } from '@/core/api/errors';
 import type {
   Control,
   ControlDefinition,
   ProblemDetail,
-  ValidationErrorItem,
 } from '@/core/api/types';
+import { getEvaluator } from '@/core/evaluators';
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
@@ -19,18 +27,34 @@ import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-co
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
 
 import { ApiErrorAlert } from './api-error-alert';
-import {
-  type ConditionBuilderError,
-  type ConditionBuilderNode,
-  createLeafNode,
-  deserializeConditionNode,
-  serializeConditionNode,
-  validateConditionTree,
-} from './condition-builder';
-import { ConditionTreeEditor } from './condition-tree-editor';
 import { ControlDefinitionForm } from './control-definition-form';
+import { EvaluatorConfigSection } from './evaluator-config-section';
 import type { ControlDefinitionFormValues, EditControlMode } from './types';
+import { useEvaluatorConfigState } from './use-evaluator-config-state';
 import { applyApiErrorsToForms } from './utils';
+
+const EVALUATOR_CONFIG_HEIGHT = 450;
+
+type LeafConditionDetails = {
+  selectorPath: string;
+  evaluatorName: string;
+  evaluatorConfig: Record<string, unknown>;
+};
+
+function getLeafConditionDetails(
+  definition: ControlDefinition
+): LeafConditionDetails | null {
+  const condition = definition.condition;
+  if (!condition.selector || !condition.evaluator) {
+    return null;
+  }
+
+  return {
+    selectorPath: condition.selector.path ?? '*',
+    evaluatorName: condition.evaluator.name,
+    evaluatorConfig: condition.evaluator.config,
+  };
+}
 
 export type EditControlContentProps = {
   /** The control to edit/create template */
@@ -59,11 +83,6 @@ export const EditControlContent = ({
   const [unmappedErrors, setUnmappedErrors] = useState<
     Array<{ field: string | null; message: string }>
   >([]);
-  const [conditionNode, setConditionNode] =
-    useState<ConditionBuilderNode>(createLeafNode());
-  const [conditionErrors, setConditionErrors] = useState<
-    ValidationErrorItem[] | ConditionBuilderError[]
-  >([]);
 
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
@@ -73,6 +92,20 @@ export const EditControlContent = ({
   const isPending = isCreating
     ? addControlToAgent.isPending
     : updateControl.isPending || updateControlMetadata.isPending;
+
+  const formInitializedForEvaluator = useRef<string>('');
+  const leafCondition = useMemo(
+    () => getLeafConditionDetails(control.control),
+    [control.control]
+  );
+  const evaluatorId = leafCondition?.evaluatorName ?? '';
+  const evaluator = useMemo(() => getEvaluator(evaluatorId), [evaluatorId]);
+  const canEditLeafCondition = Boolean(leafCondition && evaluator);
+  const conditionEditingMessage = leafCondition
+    ? evaluator
+      ? null
+      : `This control uses the "${leafCondition.evaluatorName}" evaluator, which does not have a UI editor here yet. Saving will preserve its current condition.`
+    : 'This control uses a composite condition tree. This PR keeps the old single-condition UI, so saving will preserve the existing tree without editing it.';
 
   const definitionForm = useForm<ControlDefinitionFormValues>({
     initialValues: {
@@ -84,17 +117,84 @@ export const EditControlContent = ({
       step_names: '',
       step_name_regex: '',
       step_name_mode: 'names',
+      selector_path: '*',
       action_decision: 'deny',
       action_steering_context: '',
       execution: 'server',
     },
     validate: {
       name: (value) => (!value?.trim() ? 'Control name is required' : null),
+      selector_path: (value) => {
+        if (!canEditLeafCondition) {
+          return null;
+        }
+        if (!value?.trim()) {
+          return 'Selector path is required';
+        }
+        const validRoots = ['input', 'output', 'name', 'type', 'context', '*'];
+        const root = value.split('.')[0];
+        if (!validRoots.includes(root)) {
+          return `Invalid path root '${root}'. Must be one of: ${validRoots.join(', ')}`;
+        }
+        return null;
+      },
     },
   });
 
+  const evaluatorForm = useForm({
+    initialValues: evaluator?.initialValues ?? {},
+    validate: evaluator?.validate,
+  });
+
+  const getEvaluatorConfig = useCallback(() => {
+    if (!leafCondition) {
+      return {};
+    }
+    if (!evaluator) {
+      return leafCondition.evaluatorConfig;
+    }
+    if (formInitializedForEvaluator.current !== evaluatorId) {
+      return evaluator.toConfig(evaluator.initialValues);
+    }
+    return evaluator.toConfig(evaluatorForm.values);
+  }, [evaluator, evaluatorForm.values, evaluatorId, leafCondition]);
+
+  const syncJsonToForm = useCallback(
+    (config: Record<string, unknown>) => {
+      if (evaluator) {
+        evaluatorForm.setValues(evaluator.fromConfig(config));
+      }
+    },
+    [evaluator, evaluatorForm]
+  );
+
+  const buildCondition = useCallback(
+    (
+      values: ControlDefinitionFormValues,
+      finalConfig: Record<string, unknown>
+    ): ControlDefinition['condition'] => {
+      if (!leafCondition) {
+        return control.control.condition;
+      }
+
+      return {
+        selector: {
+          path: values.selector_path.trim(),
+        },
+        evaluator: {
+          name: leafCondition.evaluatorName,
+          config: finalConfig,
+        },
+      };
+    },
+    [control.control.condition, leafCondition]
+  );
+
   const buildControlDefinition = useCallback(
-    (values: ControlDefinitionFormValues): ControlDefinition => {
+    (
+      values: ControlDefinitionFormValues,
+      finalConfig: Record<string, unknown>
+    ): ControlDefinition => {
       const stepTypes = values.step_types
         .map((value) => value.trim())
         .filter(Boolean);
@@ -116,7 +216,7 @@ export const EditControlContent = ({
         enabled: values.enabled,
         execution: values.execution,
         scope: Object.keys(scope).length > 0 ? scope : undefined,
-        condition: serializeConditionNode(conditionNode),
+        condition: buildCondition(values, finalConfig),
         action: {
           decision: values.action_decision,
           ...(values.action_decision === 'steer' &&
@@ -128,11 +228,40 @@ export const EditControlContent = ({
               }
             : {}),
         },
-        tags: control.control.tags ?? [],
+        tags: control.control.tags,
       };
     },
-    [conditionNode, control.control.tags]
+    [buildCondition, control.control.tags]
   );
+
+  const buildDefinitionForValidation = useCallback(
+    (finalConfig: Record<string, unknown>): ControlDefinition => ({
+      ...control.control,
+      condition: buildCondition(definitionForm.values, finalConfig),
+    }),
+    [buildCondition, control.control, definitionForm.values]
+  );
+
+  const validateEvaluatorConfig = useCallback(
+    async (
+      config: Record<string, unknown>,
+      options?: { signal?: AbortSignal }
+    ) => {
+      await validateControlDataAsync({
+        definition: buildDefinitionForValidation(config),
+        signal: options?.signal,
+      });
+    },
+    [buildDefinitionForValidation, validateControlDataAsync]
+  );
+
+  const evaluatorConfig = useEvaluatorConfigState({
+    getConfigFromForm: getEvaluatorConfig,
+    onConfigChange: syncJsonToForm,
+    onValidateConfig: validateEvaluatorConfig,
+  });
+
+  const { reset } = evaluatorConfig;
 
   useEffect(() => {
     if (definitionForm.values.action_decision !== 'steer') {
@@ -142,10 +271,13 @@ export const EditControlContent = ({
   }, [definitionForm.values.action_decision]);
 
   useEffect(() => {
-    if (!control) {
-      return;
-    }
+    reset();
+    setApiError(null);
+    setUnmappedErrors([]);
+    formInitializedForEvaluator.current = '';
+  }, [reset, evaluatorId, control.id]);
 
+  useEffect(() => {
     const scope = control.control.scope ?? {};
     const stepNamesValue = (scope.step_names ?? []).join(', ');
     const stepRegexValue = scope.step_name_regex ?? '';
@@ -160,6 +292,7 @@ export const EditControlContent = ({
       step_names: stepNamesValue,
       step_name_regex: stepRegexValue,
       step_name_mode: stepNameMode,
+      selector_path: leafCondition?.selectorPath ?? '*',
       action_decision: control.control.action.decision,
       action_steering_context:
         control.control.action.decision === 'steer'
@@ -167,32 +300,25 @@ export const EditControlContent = ({
           : '',
       execution: control.control.execution ?? 'server',
     });
-    setConditionNode(
-      control.control.condition
-        ? deserializeConditionNode(control.control.condition)
-        : createLeafNode()
-    );
-    setConditionErrors([]);
-    setApiError(null);
-    setUnmappedErrors([]);
+
+    if (leafCondition && evaluator) {
+      evaluatorForm.setValues(
+        evaluator.fromConfig(leafCondition.evaluatorConfig)
+      );
+      formInitializedForEvaluator.current = evaluatorId;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [control]);
+  }, [control, evaluator, evaluatorId, leafCondition]);
 
   const handleSubmit = async (values: ControlDefinitionFormValues) => {
     setApiError(null);
     setUnmappedErrors([]);
-    setConditionErrors([]);
     definitionForm.clearErrors();
-
-    const localConditionErrors = validateConditionTree(conditionNode);
-    if (localConditionErrors.length > 0) {
-      setConditionErrors(localConditionErrors);
-      return;
-    }
+    evaluatorForm.clearErrors();
 
     if (
       values.action_decision === 'steer' &&
-      conditionNode.kind !== 'leaf' &&
+      !leafCondition &&
       !values.action_steering_context?.trim()
     ) {
       definitionForm.setFieldError(
@@ -202,7 +328,22 @@ export const EditControlContent = ({
       return;
     }
 
-    const definition = buildControlDefinition(values);
+    let finalConfig: Record<string, unknown> =
+      leafCondition?.evaluatorConfig ?? {};
+
+    if (canEditLeafCondition) {
+      if (evaluatorConfig.configViewMode === 'json') {
+        const jsonConfig = evaluatorConfig.getJsonConfig();
+        if (!jsonConfig) return;
+        finalConfig = jsonConfig;
+      } else {
+        const validation = evaluatorForm.validate();
+        if (validation.hasErrors) return;
+        finalConfig = getEvaluatorConfig();
+      }
+    }
+
+    const definition = buildControlDefinition(values, finalConfig);
 
     const runSave = async () => {
       try {
@@ -242,14 +383,12 @@ export const EditControlContent = ({
                     problemDetail.detail || 'Control name already exists'
                   );
                 } else if (problemDetail.status === 422) {
-                  // Mirror the main error-handling behavior so validation errors
-                  // render inline (and in the alert when unmapped).
                   setApiError(problemDetail);
                   if (problemDetail.errors) {
                     const unmapped = applyApiErrorsToForms(
                       problemDetail.errors,
                       definitionForm,
-                      null
+                      canEditLeafCondition ? evaluatorForm : null
                     );
                     setUnmappedErrors(
                       unmapped.map((e) => ({
@@ -318,29 +457,28 @@ export const EditControlContent = ({
 
           setApiError(problemDetail);
 
-          const definitionErrors = problemDetail.errors?.filter(
-            (item) => !item.field?.startsWith('data.condition')
-          );
-          const treeErrors =
-            problemDetail.errors?.filter((item) =>
-              item.field?.startsWith('data.condition')
-            ) ?? [];
-
-          if (treeErrors.length > 0) {
-            setConditionErrors(treeErrors);
+          if (problemDetail.errors) {
+            if (evaluatorConfig.configViewMode === 'form') {
+              const unmapped = applyApiErrorsToForms(
+                problemDetail.errors,
+                definitionForm,
+                canEditLeafCondition ? evaluatorForm : null
+              );
+              setUnmappedErrors(
+                unmapped.map((e) => ({
+                  field: e.field,
+                  message: e.message,
+                }))
+              );
+            } else {
+              setUnmappedErrors(
+                problemDetail.errors.map((e) => ({
+                  field: e.field,
+                  message: e.message,
+                }))
+              );
+            }
           }
-
-          const unmapped = applyApiErrorsToForms(
-            definitionErrors,
-            definitionForm,
-            null
-          );
-          setUnmappedErrors(
-            unmapped.map((item) => ({
-              field: item.field,
-              message: item.message,
-            }))
-          );
         } else {
           setApiError({
             type: 'about:blank',
@@ -378,6 +516,8 @@ export const EditControlContent = ({
     });
   };
 
+  const formComponent = evaluator?.FormComponent;
+
   return (
     <Box>
       <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
@@ -403,15 +543,32 @@ export const EditControlContent = ({
 
         <Grid gutter="xl">
           <Grid.Col span={4}>
-            <ControlDefinitionForm form={definitionForm} steps={steps} />
+            <ControlDefinitionForm
+              form={definitionForm}
+              steps={steps}
+              disableSelectorPath={!canEditLeafCondition}
+            />
           </Grid.Col>
 
           <Grid.Col span={8}>
-            <ConditionTreeEditor
-              rootNode={conditionNode}
-              onChange={setConditionNode}
-              errors={conditionErrors}
-            />
+            {canEditLeafCondition ? (
+              <EvaluatorConfigSection
+                config={evaluatorConfig}
+                evaluatorForm={evaluatorForm}
+                formComponent={formComponent}
+                height={EVALUATOR_CONFIG_HEIGHT}
+                onConfigChange={syncJsonToForm}
+                onValidateConfig={validateEvaluatorConfig}
+              />
+            ) : (
+              <Alert
+                color="blue"
+                variant="light"
+                title="Condition editing unavailable"
+              >
+                {conditionEditingMessage}
+              </Alert>
+            )}
           </Grid.Col>
         </Grid>
 
