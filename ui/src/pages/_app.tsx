@@ -12,8 +12,6 @@ import '@rungalileo/icons/styles.css';
 import '@/styles/globals.css';
 
 import { MantineProvider } from '@mantine/core';
-
-import { appTheme } from '@/theme';
 import { DatesProvider } from '@mantine/dates';
 import { ModalsProvider } from '@mantine/modals';
 import { Notifications } from '@mantine/notifications';
@@ -26,6 +24,7 @@ import { LoginModal } from '@/core/components/login-modal';
 import { AuthProvider, useAuth } from '@/core/providers/auth-provider';
 import { QueryProvider } from '@/core/providers/query-provider';
 import type { NextPageWithLayout } from '@/core/types/page';
+import { appTheme } from '@/theme';
 
 type AppPropsWithLayout = AppProps & {
   Component: NextPageWithLayout;

@@ -9,7 +9,6 @@ import {
   TextInput,
 } from '@mantine/core';
 
-/** Default vertical gap between label and input for form controls. */
 const LABEL_INPUT_GAP = 8;
 
 const formInputLabelStyles = {
@@ -18,10 +17,6 @@ const formInputLabelStyles = {
   },
 };
 
-/**
- * App theme. Defines default styles for form inputs (label spacing) in one place
- * so all labels have consistent spacing without repeating styles per component.
- */
 export const appTheme = createTheme({
   components: {
     TextInput: TextInput.extend({
