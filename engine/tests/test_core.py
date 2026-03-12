@@ -1291,6 +1291,7 @@ class TestConditionTrees:
     @pytest.mark.asyncio
     async def test_or_short_circuit_records_skipped_trace(self):
         """A matching OR child should short-circuit later children and mark them skipped."""
+        # Given: an OR tree whose first child matches
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1318,6 +1319,7 @@ class TestConditionTrees:
         ]
         engine = ControlEngine(controls)
 
+        # When: processing the request
         request = EvaluationRequest(
             agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
@@ -1325,6 +1327,7 @@ class TestConditionTrees:
         )
         result = await engine.process(request)
 
+        # Then: later children are short-circuited and marked skipped in the trace
         assert result.matches is not None
         assert len(result.matches) == 1
         assert "slow:skip:start" not in _execution_log
@@ -1340,8 +1343,60 @@ class TestConditionTrees:
         assert trace["children"][1]["short_circuit_reason"] == "or_matched"
 
     @pytest.mark.asyncio
+    async def test_and_condition_all_children_match_records_full_trace(self):
+        """A fully-evaluated AND tree should record every child and produce a match."""
+        # Given: an AND tree where every leaf evaluator matches
+        controls = [
+            MockControlWithIdentity(
+                id=1,
+                name="and_all_match",
+                control=ControlDefinition(
+                    description="All AND children match",
+                    enabled=True,
+                    execution="server",
+                    scope={"step_types": ["llm"], "stages": ["pre"]},
+                    condition={
+                        "and": [
+                            {
+                                "selector": {"path": "input"},
+                                "evaluator": {"name": "test-deny", "config": {"value": "first"}},
+                            },
+                            {
+                                "selector": {"path": "input"},
+                                "evaluator": {"name": "test-deny", "config": {"value": "second"}},
+                            },
+                        ]
+                    },
+                    action={"decision": "log"},
+                ),
+            )
+        ]
+        engine = ControlEngine(controls)
+
+        # When: processing the request
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        # Then: the control matches and every child appears as evaluated in the trace
+        assert result.matches is not None
+        assert len(result.matches) == 1
+        trace = result.matches[0].result.metadata["condition_trace"]
+        assert trace["type"] == "and"
+        assert trace["matched"] is True
+        assert "short_circuit_reason" not in trace
+        assert len(trace["children"]) == 2
+        assert all(child["evaluated"] is True for child in trace["children"])
+        assert "deny:first:end" in _execution_log
+        assert "deny:second:end" in _execution_log
+
+    @pytest.mark.asyncio
     async def test_not_condition_inverts_child_result(self):
         """NOT should invert the child match result while preserving trace structure."""
+        # Given: a NOT tree whose child returns non-match
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1363,6 +1418,7 @@ class TestConditionTrees:
         ]
         engine = ControlEngine(controls)
 
+        # When: processing the request
         request = EvaluationRequest(
             agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
@@ -1370,6 +1426,7 @@ class TestConditionTrees:
         )
         result = await engine.process(request)
 
+        # Then: the NOT node inverts the child result and preserves trace structure
         assert result.matches is not None
         trace = result.matches[0].result.metadata["condition_trace"]
         assert trace["type"] == "not"
@@ -1379,8 +1436,103 @@ class TestConditionTrees:
         assert trace["children"][0]["matched"] is False
 
     @pytest.mark.asyncio
+    async def test_not_condition_propagates_child_error_trace(self):
+        """NOT should surface child evaluator failures as composite errors."""
+        # Given: a NOT tree whose child evaluator raises an error
+        controls = [
+            MockControlWithIdentity(
+                id=1,
+                name="not_error",
+                control=ControlDefinition(
+                    description="Invert errored child",
+                    enabled=True,
+                    execution="server",
+                    scope={"step_types": ["llm"], "stages": ["pre"]},
+                    condition={
+                        "not": {
+                            "selector": {"path": "input"},
+                            "evaluator": {"name": "test-error", "config": {"value": "boom"}},
+                        }
+                    },
+                    action={"decision": "log"},
+                ),
+            )
+        ]
+        engine = ControlEngine(controls)
+
+        # When: processing the request
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        # Then: the composite returns an error result and preserves the child trace
+        assert result.errors is not None
+        assert len(result.errors) == 1
+        trace = result.errors[0].result.metadata["condition_trace"]
+        assert trace["type"] == "not"
+        assert trace["matched"] is None
+        assert len(trace["children"]) == 1
+        assert trace["children"][0]["evaluated"] is True
+        assert "Intentional error from boom" in trace["children"][0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_or_condition_all_children_non_match_records_full_trace(self):
+        """A fully-evaluated OR tree should record every child and produce a non-match."""
+        # Given: an OR tree where every leaf evaluator returns non-match
+        controls = [
+            MockControlWithIdentity(
+                id=1,
+                name="or_all_non_match",
+                control=ControlDefinition(
+                    description="All OR children miss",
+                    enabled=True,
+                    execution="server",
+                    scope={"step_types": ["llm"], "stages": ["pre"]},
+                    condition={
+                        "or": [
+                            {
+                                "selector": {"path": "input"},
+                                "evaluator": {"name": "test-allow", "config": {"value": "first"}},
+                            },
+                            {
+                                "selector": {"path": "input"},
+                                "evaluator": {"name": "test-allow", "config": {"value": "second"}},
+                            },
+                        ]
+                    },
+                    action={"decision": "log"},
+                ),
+            )
+        ]
+        engine = ControlEngine(controls)
+
+        # When: processing the request
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        # Then: the control is recorded as a non-match and every child is evaluated
+        assert result.non_matches is not None
+        assert len(result.non_matches) == 1
+        trace = result.non_matches[0].result.metadata["condition_trace"]
+        assert trace["type"] == "or"
+        assert trace["matched"] is False
+        assert "short_circuit_reason" not in trace
+        assert len(trace["children"]) == 2
+        assert all(child["evaluated"] is True for child in trace["children"])
+        assert "allow:first:end" in _execution_log
+        assert "allow:second:end" in _execution_log
+
+    @pytest.mark.asyncio
     async def test_and_error_records_skipped_children_in_trace(self):
         """Errors in composite conditions should preserve trace context for skipped branches."""
+        # Given: an AND tree whose first child evaluator errors
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1408,6 +1560,7 @@ class TestConditionTrees:
         ]
         engine = ControlEngine(controls)
 
+        # When: processing the request
         request = EvaluationRequest(
             agent_name="00000000-0000-0000-0000-000000000001",
             step=Step(type="llm", name="test-step", input="test", output=None),
@@ -1415,6 +1568,7 @@ class TestConditionTrees:
         )
         result = await engine.process(request)
 
+        # Then: the trace preserves the erroring child and marks remaining children skipped
         assert result.errors is not None
         assert len(result.errors) == 1
         assert "slow:skip:start" not in _execution_log

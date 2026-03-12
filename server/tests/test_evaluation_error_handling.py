@@ -169,6 +169,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
 
 
 def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
+    # Given: a control match whose nested condition trace contains raw evaluator errors
     match = ControlMatch(
         control_id=1,
         control_name="nested-trace",
@@ -193,9 +194,11 @@ def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
         ),
     )
 
+    # When: sanitizing the control match for API output
     sanitized = _sanitize_control_match(match)
     child_trace = sanitized.result.metadata["condition_trace"]["children"][0]
 
+    # Then: both the top-level result and nested trace are redacted
     assert sanitized.result.error == SAFE_EVALUATOR_ERROR
     assert sanitized.result.message == SAFE_EVALUATOR_ERROR
     assert child_trace["error"] == SAFE_EVALUATOR_ERROR

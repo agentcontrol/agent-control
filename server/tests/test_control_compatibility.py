@@ -39,7 +39,16 @@ def _create_policy(client: TestClient) -> int:
     return resp.json()["policy_id"]
 
 
+def _legacy_control_payload() -> dict[str, object]:
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["selector"] = payload["condition"]["selector"]
+    payload["evaluator"] = payload["condition"]["evaluator"]
+    payload.pop("condition")
+    return payload
+
+
 def test_set_agent_policy_accepts_legacy_stored_control_payload(client: TestClient) -> None:
+    # Given: an assigned policy whose stored control row has been reverted to the legacy flat shape
     agent_name = _init_agent(client)
     policy_id = _create_policy(client)
 
@@ -56,18 +65,83 @@ def test_set_agent_policy_accepts_legacy_stored_control_payload(client: TestClie
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
 
-    legacy_payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    legacy_payload["selector"] = legacy_payload["condition"]["selector"]
-    legacy_payload["evaluator"] = legacy_payload["condition"]["evaluator"]
-    legacy_payload.pop("condition")
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
+            {"data": json.dumps(_legacy_control_payload()), "id": control_id},
+        )
+
+    # When: assigning the policy to the agent
+    resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+
+    # Then: assignment succeeds because the legacy payload is canonicalized on read
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+
+def test_get_control_data_returns_canonical_shape_for_legacy_stored_payload(
+    client: TestClient,
+) -> None:
+    # Given: a control whose stored row has been reverted to the legacy flat shape
+    control_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    assert control_resp.status_code == 200
+    control_id = control_resp.json()["control_id"]
 
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
-            {"data": json.dumps(legacy_payload), "id": control_id},
+            {"data": json.dumps(_legacy_control_payload()), "id": control_id},
         )
 
-    resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+    # When: fetching control data through the typed API endpoint
+    resp = client.get(f"/api/v1/controls/{control_id}/data")
 
+    # Then: the response is accepted and serialized back in canonical condition form
     assert resp.status_code == 200
-    assert resp.json()["success"] is True
+    data = resp.json()["data"]
+    assert "selector" not in data
+    assert "evaluator" not in data
+    assert data["condition"]["selector"]["path"] == "input"
+    assert data["condition"]["evaluator"]["name"] == "regex"
+
+
+def test_list_agent_controls_returns_canonical_shape_for_legacy_stored_payload(
+    client: TestClient,
+) -> None:
+    # Given: an agent assigned a policy whose control row is stored in legacy flat shape
+    agent_name = _init_agent(client)
+    policy_id = _create_policy(client)
+
+    control_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    assert control_resp.status_code == 200
+    control_id = control_resp.json()["control_id"]
+
+    set_resp = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": VALID_CONTROL_PAYLOAD},
+    )
+    assert set_resp.status_code == 200
+
+    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert assoc.status_code == 200
+    assign = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+    assert assign.status_code == 200
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
+            {"data": json.dumps(_legacy_control_payload()), "id": control_id},
+        )
+
+    # When: listing active controls for the agent
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+
+    # Then: the control is returned and serialized in canonical condition form
+    assert resp.status_code == 200
+    controls = resp.json()["controls"]
+    assert len(controls) == 1
+    control = controls[0]["control"]
+    assert "selector" not in control
+    assert "evaluator" not in control
+    assert control["condition"]["selector"]["path"] == "input"
+    assert control["condition"]["evaluator"]["name"] == "regex"

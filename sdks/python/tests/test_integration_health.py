@@ -43,8 +43,10 @@ async def test_client_context_manager(
     - Client can be created and closed properly
     - Context manager handles cleanup
     """
+    # Given: the SDK client is configured from the test server URL environment variable
     monkeypatch.setenv("AGENT_CONTROL_URL", server_url)
 
+    # When: using AgentControlClient as an async context manager
     async with agent_control.AgentControlClient() as client:
         # Verify client is initialized
         assert client._client is not None
@@ -53,6 +55,7 @@ async def test_client_context_manager(
         health = await client.health_check()
         assert health is not None
 
+    # Then: the client works inside the context manager and exits cleanly
     # After context, client should be closed
     # (we can't easily verify this without accessing internals)
     print("✓ Client context manager works correctly")

@@ -206,6 +206,7 @@ def test_validation_nested_condition_error_uses_bracketed_field_path(
     client: TestClient,
 ):
     """Nested condition leaf errors should report full dot/bracket paths."""
+    # Given: a nested condition whose first leaf has invalid evaluator config
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
     payload["condition"] = {
@@ -231,8 +232,10 @@ def test_validation_nested_condition_error_uses_bracketed_field_path(
         ]
     }
 
+    # When: validating the nested control definition through the API
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
+    # Then: the error points at the exact nested leaf path
     assert resp.status_code == 422
     errors = resp.json().get("errors", [])
     assert any(
@@ -245,6 +248,7 @@ def test_validation_nested_agent_scoped_evaluator_error_uses_bracketed_field_pat
     client: TestClient,
 ):
     """Nested agent-scoped evaluator failures should identify the exact leaf path."""
+    # Given: an agent and a nested condition that references a missing agent evaluator
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     init_resp = client.post(
         "/api/v1/agents/initAgent",
@@ -270,8 +274,10 @@ def test_validation_nested_agent_scoped_evaluator_error_uses_bracketed_field_pat
         ]
     }
 
+    # When: validating the nested control definition through the API
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
+    # Then: the error points at the exact nested evaluator name field
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "EVALUATOR_NOT_FOUND"

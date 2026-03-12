@@ -76,14 +76,17 @@ def test_set_control_data_replaces_existing(client: TestClient) -> None:
 
 
 def test_set_control_data_accepts_legacy_leaf_payload(client: TestClient) -> None:
+    # Given: a legacy flat selector/evaluator payload
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_DATA)
     payload["selector"] = payload["condition"]["selector"]
     payload["evaluator"] = payload["condition"]["evaluator"]
     payload.pop("condition")
 
+    # When: saving and reading back the control data
     resp_put = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
+    # Then: the stored response is canonicalized into condition form
     assert resp_put.status_code == 200, resp_put.text
     resp_get = client.get(f"/api/v1/controls/{control_id}/data")
     assert resp_get.status_code == 200
