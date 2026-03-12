@@ -633,6 +633,41 @@ class TestErrorHandling:
         assert result.errors is not None
 
     @pytest.mark.asyncio
+    async def test_unexpected_condition_error_is_captured_as_control_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Unexpected traversal failures should surface as normal control errors."""
+        # Given: a deny control whose condition traversal raises unexpectedly
+        controls = [
+            make_control(1, "unexpected_error", "test-allow", action="deny", config_value="ok"),
+        ]
+        engine = ControlEngine(controls)
+
+        async def raise_unexpected(*_args: object, **_kwargs: object) -> object:
+            raise RuntimeError("unexpected traversal bug")
+
+        monkeypatch.setattr(engine, "_evaluate_condition", raise_unexpected)
+
+        # When: processing the request
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        # Then: the control is reported as an error instead of being silently dropped
+        assert result.is_safe is False
+        assert result.confidence == 0.0
+        assert result.matches is None
+        assert result.errors is not None
+        assert len(result.errors) == 1
+        assert result.errors[0].control_name == "unexpected_error"
+        assert result.errors[0].result.error is not None
+        assert "unexpected traversal bug" in result.errors[0].result.error
+
+    @pytest.mark.asyncio
     async def test_missing_evaluator_error_sets_error_field(self):
         """Test that missing evaluator error sets error field in result.
 

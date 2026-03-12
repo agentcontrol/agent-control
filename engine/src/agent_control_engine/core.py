@@ -96,6 +96,25 @@ class ControlEngine:
             return message
         return f"{message[:197]}..."
 
+    @staticmethod
+    def _format_exception(error: BaseException) -> str:
+        """Format exceptions consistently for result.error fields."""
+        return f"{type(error).__name__}: {error}"
+
+    @staticmethod
+    def _build_error_result(
+        error: str,
+        *,
+        message_prefix: str = "Evaluation failed",
+    ) -> EvaluatorResult:
+        """Create a failed evaluator result from an internal error string."""
+        return EvaluatorResult(
+            matched=False,
+            confidence=0.0,
+            message=f"{message_prefix}: {error}",
+            error=error,
+        )
+
     def _skipped_trace(self, node: ConditionNode, reason: str) -> dict[str, Any]:
         """Build an unevaluated trace subtree for short-circuited branches."""
         trace: dict[str, Any] = {
@@ -159,14 +178,9 @@ class ControlEngine:
                 error_msg,
                 exc_info=True,
             )
-            result = EvaluatorResult(
-                matched=False,
-                confidence=0.0,
-                message=f"Evaluation failed: {error_msg}",
-                error=error_msg,
-            )
+            result = self._build_error_result(error_msg)
         except Exception as e:
-            error_msg = f"{type(e).__name__}: {e}"
+            error_msg = self._format_exception(e)
             logger.error(
                 "Evaluator error for control '%s' (evaluator: %s): %s",
                 item.name,
@@ -174,12 +188,7 @@ class ControlEngine:
                 error_msg,
                 exc_info=True,
             )
-            result = EvaluatorResult(
-                matched=False,
-                confidence=0.0,
-                message=f"Evaluation failed: {error_msg}",
-                error=error_msg,
-            )
+            result = self._build_error_result(error_msg)
 
         trace = {
             "type": "leaf",
@@ -462,6 +471,17 @@ class ControlEngine:
                     deny_found.set()
             except asyncio.CancelledError:
                 raise
+            except Exception as error:
+                error_msg = self._format_exception(error)
+                logger.exception(
+                    "Unexpected condition evaluation error for control '%s': %s",
+                    eval_task.item.name,
+                    error_msg,
+                )
+                eval_task.result = self._build_error_result(
+                    error_msg,
+                    message_prefix="Condition evaluation failed",
+                )
 
         # Create and start all tasks
         for eval_task in eval_tasks:
