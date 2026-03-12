@@ -79,15 +79,17 @@ Example using `messages_strategy: "history"` (for inputs that already have a `me
   "enabled": true,
   "execution": "server",
   "scope": { "step_types": ["llm"], "stages": ["pre", "post"] },
-  "selector": { "path": "input" },
-  "evaluator": {
-    "name": "cisco.ai_defense",
-    "config": {
-      "api_key_env": "AI_DEFENSE_API_KEY",
-      "region": "us",
-      "timeout_ms": 15000,
-      "on_error": "allow",
-      "messages_strategy": "history"
+  "condition": {
+    "selector": { "path": "input" },
+    "evaluator": {
+      "name": "cisco.ai_defense",
+      "config": {
+        "api_key_env": "AI_DEFENSE_API_KEY",
+        "region": "us",
+        "timeout_ms": 15000,
+        "on_error": "allow",
+        "messages_strategy": "history"
+      }
     }
   },
   "action": { "decision": "deny" },
@@ -101,16 +103,18 @@ Example using `messages_strategy: "history"` (for inputs that already have a `me
   "enabled": true,
   "execution": "server",
   "scope": { "step_types": ["llm"], "stages": ["pre", "post"] },
-  "selector": { "path": "input" },
-  "evaluator": {
-    "name": "cisco.ai_defense",
-    "config": {
-      "api_key_env": "AI_DEFENSE_API_KEY",
-      "region": "us",
-      "timeout_ms": 15000,
-      "on_error": "allow",
-      "messages_strategy": "single",
-      "payload_field": "input"
+  "condition": {
+    "selector": { "path": "input" },
+    "evaluator": {
+      "name": "cisco.ai_defense",
+      "config": {
+        "api_key_env": "AI_DEFENSE_API_KEY",
+        "region": "us",
+        "timeout_ms": 15000,
+        "on_error": "allow",
+        "messages_strategy": "single",
+        "payload_field": "input"
+      }
     }
   },
   "action": { "decision": "deny" },
