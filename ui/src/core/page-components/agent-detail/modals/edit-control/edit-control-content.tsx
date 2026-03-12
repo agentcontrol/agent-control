@@ -19,7 +19,6 @@ import type {
   ControlDefinition,
   ProblemDetail,
 } from '@/core/api/types';
-import { getEvaluator } from '@/core/evaluators';
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
@@ -27,6 +26,10 @@ import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-co
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
 
 import { ApiErrorAlert } from './api-error-alert';
+import {
+  buildEditableCondition,
+  getControlConditionState,
+} from './control-condition';
 import { ControlDefinitionForm } from './control-definition-form';
 import { EvaluatorConfigSection } from './evaluator-config-section';
 import type { ControlDefinitionFormValues, EditControlMode } from './types';
@@ -34,27 +37,6 @@ import { useEvaluatorConfigState } from './use-evaluator-config-state';
 import { applyApiErrorsToForms } from './utils';
 
 const EVALUATOR_CONFIG_HEIGHT = 450;
-
-type LeafConditionDetails = {
-  selectorPath: string;
-  evaluatorName: string;
-  evaluatorConfig: Record<string, unknown>;
-};
-
-function getLeafConditionDetails(
-  definition: ControlDefinition
-): LeafConditionDetails | null {
-  const condition = definition.condition;
-  if (!condition.selector || !condition.evaluator) {
-    return null;
-  }
-
-  return {
-    selectorPath: condition.selector.path ?? '*',
-    evaluatorName: condition.evaluator.name,
-    evaluatorConfig: condition.evaluator.config,
-  };
-}
 
 export type EditControlContentProps = {
   /** The control to edit/create template */
@@ -94,18 +76,16 @@ export const EditControlContent = ({
     : updateControl.isPending || updateControlMetadata.isPending;
 
   const formInitializedForEvaluator = useRef<string>('');
-  const leafCondition = useMemo(
-    () => getLeafConditionDetails(control.control),
+  const {
+    leafCondition,
+    evaluatorId,
+    evaluator,
+    canEditLeafCondition,
+    conditionEditingMessage,
+  } = useMemo(
+    () => getControlConditionState(control.control),
     [control.control]
   );
-  const evaluatorId = leafCondition?.evaluatorName ?? '';
-  const evaluator = useMemo(() => getEvaluator(evaluatorId), [evaluatorId]);
-  const canEditLeafCondition = Boolean(leafCondition && evaluator);
-  const conditionEditingMessage = leafCondition
-    ? evaluator
-      ? null
-      : `This control uses the "${leafCondition.evaluatorName}" evaluator, which does not have a UI editor here yet. Saving will preserve its current condition.`
-    : 'This control uses a composite condition tree. This PR keeps the old single-condition UI, so saving will preserve the existing tree without editing it.';
 
   const definitionForm = useForm<ControlDefinitionFormValues>({
     initialValues: {
@@ -173,21 +153,14 @@ export const EditControlContent = ({
       values: ControlDefinitionFormValues,
       finalConfig: Record<string, unknown>
     ): ControlDefinition['condition'] => {
-      if (!leafCondition) {
-        return control.control.condition;
-      }
-
-      return {
-        selector: {
-          path: values.selector_path.trim(),
-        },
-        evaluator: {
-          name: leafCondition.evaluatorName,
-          config: finalConfig,
-        },
-      };
+      return buildEditableCondition(
+        control.control,
+        leafCondition,
+        values.selector_path.trim(),
+        finalConfig
+      );
     },
-    [control.control.condition, leafCondition]
+    [control.control, leafCondition]
   );
 
   const buildControlDefinition = useCallback(

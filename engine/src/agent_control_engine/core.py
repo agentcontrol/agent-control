@@ -124,9 +124,12 @@ class ControlEngine:
             "short_circuit_reason": reason,
         }
         if node.is_leaf():
-            selector, evaluator = node.leaf_parts() or (None, None)
-            trace["selector_path"] = selector.path if selector else None
-            trace["evaluator_name"] = evaluator.name if evaluator else None
+            leaf_parts = node.leaf_parts()
+            if leaf_parts is None:
+                raise ValueError("Leaf condition must contain selector and evaluator")
+            selector, evaluator = leaf_parts
+            trace["selector_path"] = selector.path
+            trace["evaluator_name"] = evaluator.name
             trace["confidence"] = None
             trace["error"] = None
             return trace
@@ -151,9 +154,10 @@ class ControlEngine:
         controls may acquire and release that shared slot more than once while
         traversing their tree.
         """
-        selector, evaluator_spec = node.leaf_parts() or (None, None)
-        if selector is None or evaluator_spec is None:
+        leaf_parts = node.leaf_parts()
+        if leaf_parts is None:
             raise ValueError("Leaf condition must contain selector and evaluator")
+        selector, evaluator_spec = leaf_parts
 
         selector_path = selector.path or "*"
         data = select_data(request.step, selector_path)

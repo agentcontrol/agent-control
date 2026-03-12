@@ -1,20 +1,13 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
 
-from agent_control_models import ControlDefinition
-from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.policy import Control as APIControl
-from pydantic import ValidationError
 from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..errors import APIValidationError
 from ..models import Control, agent_controls, agent_policies, policy_controls
-from .validation_paths import format_field_path
-
-_logger = logging.getLogger(__name__)
+from .control_definitions import parse_control_definition_or_api_error
 
 
 async def list_controls_for_policy(policy_id: int, db: AsyncSession) -> list[Control]:
@@ -68,37 +61,18 @@ async def list_controls_for_agent(
     # Map DB Control to API Control, raising on invalid definitions
     api_controls: list[APIControl] = []
     for c in db_controls:
-        try:
-            context = (
-                {"allow_invalid_step_name_regex": True}
-                if allow_invalid_step_name_regex
-                else None
-            )
-            control_def = ControlDefinition.model_validate(c.data, context=context)
-            api_controls.append(APIControl(id=c.id, name=c.name, control=control_def))
-        except ValidationError as e:
-            error_items = []
-            for err in e.errors():
-                loc: Sequence[str | int] = err.get("loc", [])
-                field_suffix = format_field_path(loc) or ""
-                error_items.append(
-                    ValidationErrorItem(
-                        resource="Control",
-                        field=f"data.{field_suffix}" if field_suffix else "data",
-                        code=err.get("type", "validation_error"),
-                        message=err.get("msg", "Validation failed"),
-                    )
-                )
-
-            raise APIValidationError(
-                error_code=ErrorCode.CORRUPTED_DATA,
-                detail=f"Control '{c.name}' has corrupted data",
-                resource="Control",
-                resource_id=str(c.id),
-                hint=(
-                    "Update the control data using "
-                    f"PUT /api/v1/controls/{c.id}/data."
-                ),
-                errors=error_items,
-            ) from e
+        context = (
+            {"allow_invalid_step_name_regex": True}
+            if allow_invalid_step_name_regex
+            else None
+        )
+        control_def = parse_control_definition_or_api_error(
+            c.data,
+            detail=f"Control '{c.name}' has corrupted data",
+            resource_id=str(c.id),
+            hint=f"Update the control data using PUT /api/v1/controls/{c.id}/data.",
+            context=context,
+            field_prefix="data",
+        )
+        api_controls.append(APIControl(id=c.id, name=c.name, control=control_def))
     return api_controls

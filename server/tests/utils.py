@@ -1,10 +1,10 @@
 """Test utilities for server tests."""
-from copy import deepcopy
 import uuid
+from copy import deepcopy
 from typing import Any
 
+from agent_control_models import ControlDefinition
 from fastapi.testclient import TestClient
-
 
 VALID_CONTROL_PAYLOAD = {
     "description": "Valid Control",
@@ -21,21 +21,9 @@ VALID_CONTROL_PAYLOAD = {
 
 def canonicalize_control_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Convert legacy flat test payloads into canonical condition trees."""
-    canonical = deepcopy(payload)
-    if "condition" in canonical:
-        return canonical
-
-    selector = canonical.pop("selector", None)
-    evaluator = canonical.pop("evaluator", None)
-    if selector is None and evaluator is None:
-        return canonical
-    if selector is None or evaluator is None:
-        raise ValueError("Legacy control payloads must include both selector and evaluator.")
-
-    canonical["condition"] = {
-        "selector": selector,
-        "evaluator": evaluator,
-    }
+    canonical = ControlDefinition.canonicalize_payload(deepcopy(payload))
+    if not isinstance(canonical, dict):
+        raise TypeError("Control payload canonicalization must return a dict.")
     return canonical
 
 

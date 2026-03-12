@@ -229,6 +229,7 @@ async def check_evaluation_with_local(
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []
     has_server_controls = False
+    available_evaluators = list_evaluators()
 
     for control in controls:
         control_data = control.get("control", {})
@@ -241,10 +242,7 @@ async def check_evaluation_with_local(
 
         try:
             control_def = ControlDefinition.model_validate(control_data)
-            for leaf in control_def.iter_condition_leaves():
-                _, evaluator_spec = leaf.leaf_parts() or (None, None)
-                if evaluator_spec is None:
-                    continue
+            for _, evaluator_spec in control_def.iter_condition_leaf_parts():
                 evaluator_name = evaluator_spec.name
 
                 if ":" in evaluator_name:
@@ -253,7 +251,7 @@ async def check_evaluation_with_local(
                         f"agent-scoped evaluator '{evaluator_name}' which is server-only. "
                         "Set execution='server' or use a built-in evaluator."
                     )
-                if evaluator_name not in list_evaluators():
+                if evaluator_name not in available_evaluators:
                     raise RuntimeError(
                         f"Control '{control['name']}' is marked execution='sdk' but evaluator "
                         f"'{evaluator_name}' is not available in the SDK. "

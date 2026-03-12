@@ -211,6 +211,9 @@ class EvaluatorSpec(BaseModel):
         return self
 
 
+type ConditionLeafParts = tuple[ControlSelector, EvaluatorSpec]
+
+
 class SteeringContext(BaseModel):
     """Steering context for steer actions.
 
@@ -366,6 +369,16 @@ class ConditionNode(BaseModel):
         for child in self.children_in_order():
             yield from child.iter_leaves()
 
+    def iter_leaf_parts(self) -> Iterator[ConditionLeafParts]:
+        """Yield leaf selector/evaluator pairs in left-to-right traversal order."""
+        leaf_parts = self.leaf_parts()
+        if leaf_parts is not None:
+            yield leaf_parts
+            return
+
+        for child in self.children_in_order():
+            yield from child.iter_leaf_parts()
+
     def max_depth(self) -> int:
         """Return the maximum nesting depth of this condition tree."""
         children = self.children_in_order()
@@ -373,7 +386,7 @@ class ConditionNode(BaseModel):
             return 1
         return 1 + max(child.max_depth() for child in children)
 
-    def leaf_parts(self) -> tuple[ControlSelector, EvaluatorSpec] | None:
+    def leaf_parts(self) -> ConditionLeafParts | None:
         """Return the selector/evaluator pair for leaf nodes."""
         if not self.is_leaf():
             return None
@@ -507,6 +520,10 @@ class ControlDefinition(BaseModel):
     def iter_condition_leaves(self) -> Iterator[ConditionNode]:
         """Yield leaf conditions in evaluation order."""
         yield from self.condition.iter_leaves()
+
+    def iter_condition_leaf_parts(self) -> Iterator[ConditionLeafParts]:
+        """Yield leaf selector/evaluator pairs in evaluation order."""
+        yield from self.condition.iter_leaf_parts()
 
     def primary_leaf(self) -> ConditionNode | None:
         """Return the single leaf node when the whole condition is just one leaf."""

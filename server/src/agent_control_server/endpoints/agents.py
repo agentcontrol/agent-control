@@ -116,11 +116,7 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
             errors.append(f"Control '{control.name}' has corrupted data")
             continue
 
-        for leaf in control_definition.iter_condition_leaves():
-            _, evaluator_cfg = leaf.leaf_parts() or (None, None)
-            if evaluator_cfg is None:
-                continue
-
+        for _, evaluator_cfg in control_definition.iter_condition_leaf_parts():
             evaluator_name = evaluator_cfg.name
             parsed = parse_evaluator_ref_full(evaluator_name)
             if parsed.type != "agent":
@@ -210,10 +206,7 @@ async def _build_overwrite_evaluator_removals(
 
     references_by_evaluator: dict[str, list[tuple[int, str]]] = {}
     for control in controls:
-        for leaf in control.control.iter_condition_leaves():
-            _, evaluator_spec = leaf.leaf_parts() or (None, None)
-            if evaluator_spec is None:
-                continue
+        for _, evaluator_spec in control.control.iter_condition_leaf_parts():
             evaluator_ref = evaluator_spec.name
             parsed = parse_evaluator_ref_full(evaluator_ref)
             if parsed.type != "agent":
@@ -1632,10 +1625,7 @@ async def patch_agent(
         referencing_controls: list[tuple[str, str]] = []  # (control_name, evaluator)
 
         for ctrl in controls:
-            for leaf in ctrl.control.iter_condition_leaves():
-                _, evaluator_spec = leaf.leaf_parts() or (None, None)
-                if evaluator_spec is None:
-                    continue
+            for _, evaluator_spec in ctrl.control.iter_condition_leaf_parts():
                 evaluator_ref = evaluator_spec.name
                 if ":" not in evaluator_ref:
                     continue

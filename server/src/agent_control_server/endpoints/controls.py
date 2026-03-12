@@ -37,6 +37,7 @@ from ..errors import (
 )
 from ..logging_utils import get_logger
 from ..models import Agent, AgentData, Control, agent_controls, agent_policies, policy_controls
+from ..services.control_definitions import parse_control_definition_or_api_error
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
@@ -84,48 +85,54 @@ async def _validate_control_definition(
     control_def: ControlDefinition, db: AsyncSession
 ) -> None:
     """Validate evaluator config for a control definition."""
+    available_evaluators = list_evaluators()
+    agent_data_by_name: dict[str, AgentData] = {}
     for field_prefix, leaf in _iter_condition_leaves(control_def.condition):
-        _, evaluator_spec = leaf.leaf_parts() or (None, None)
-        if evaluator_spec is None:
+        leaf_parts = leaf.leaf_parts()
+        if leaf_parts is None:
             continue
+        _, evaluator_spec = leaf_parts
 
         evaluator_ref = evaluator_spec.name
         parsed = parse_evaluator_ref_full(evaluator_ref)
 
         if parsed.type == "agent":
-            agent_result = await db.execute(
-                select(Agent).where(Agent.name == parsed.namespace)
-            )
-            agent = agent_result.scalars().first()
-            if agent is None:
-                raise NotFoundError(
-                    error_code=ErrorCode.AGENT_NOT_FOUND,
-                    detail=f"Agent '{parsed.namespace}' not found",
-                    resource="Agent",
-                    resource_id=parsed.namespace,
-                    hint=(
-                        "Ensure the agent exists before creating controls "
-                        "that reference its evaluators."
-                    ),
+            agent_data = agent_data_by_name.get(parsed.namespace)
+            if agent_data is None:
+                agent_result = await db.execute(
+                    select(Agent).where(Agent.name == parsed.namespace)
                 )
+                agent = agent_result.scalars().first()
+                if agent is None:
+                    raise NotFoundError(
+                        error_code=ErrorCode.AGENT_NOT_FOUND,
+                        detail=f"Agent '{parsed.namespace}' not found",
+                        resource="Agent",
+                        resource_id=parsed.namespace,
+                        hint=(
+                            "Ensure the agent exists before creating controls "
+                            "that reference its evaluators."
+                        ),
+                    )
 
-            try:
-                agent_data = AgentData.model_validate(agent.data)
-            except ValidationError as e:
-                raise APIValidationError(
-                    error_code=ErrorCode.CORRUPTED_DATA,
-                    detail=f"Agent '{parsed.namespace}' has invalid data",
-                    resource="Agent",
-                    errors=[
-                        ValidationErrorItem(
-                            resource="Agent",
-                            field=format_field_path(err.get("loc", ())),
-                            code=err.get("type", "validation_error"),
-                            message=err.get("msg", "Validation failed"),
-                        )
-                        for err in e.errors()
-                    ],
-                )
+                try:
+                    agent_data = AgentData.model_validate(agent.data)
+                except ValidationError as e:
+                    raise APIValidationError(
+                        error_code=ErrorCode.CORRUPTED_DATA,
+                        detail=f"Agent '{parsed.namespace}' has invalid data",
+                        resource="Agent",
+                        errors=[
+                            ValidationErrorItem(
+                                resource="Agent",
+                                field=format_field_path(err.get("loc", ())),
+                                code=err.get("type", "validation_error"),
+                                message=err.get("msg", "Validation failed"),
+                            )
+                            for err in e.errors()
+                        ],
+                    ) from e
+                agent_data_by_name[parsed.namespace] = agent_data
 
             evaluator = next(
                 (e for e in (agent_data.evaluators or []) if e.name == parsed.local_name),
@@ -183,7 +190,7 @@ async def _validate_control_definition(
                     )
             continue
 
-        evaluator_cls = list_evaluators().get(parsed.name)
+        evaluator_cls = available_evaluators.get(parsed.name)
         if evaluator_cls is None:
             continue
 
@@ -387,24 +394,12 @@ async def get_control_data(
             resource_id=str(control_id),
             hint="Verify the control ID is correct and the control has been created.",
         )
-    try:
-        control_def = ControlDefinition.model_validate(control.data)
-    except ValidationError as e:
-        raise APIValidationError(
-            error_code=ErrorCode.CORRUPTED_DATA,
-            detail=f"Control '{control.name}' has invalid data",
-            resource="Control",
-            hint="Update the control data using PUT /{control_id}/data.",
-            errors=[
-                ValidationErrorItem(
-                    resource="Control",
-                    field=format_field_path(err.get("loc", ())),
-                    code=err.get("type", "validation_error"),
-                    message=err.get("msg", "Validation failed"),
-                )
-                for err in e.errors()
-            ],
-        )
+    control_def = parse_control_definition_or_api_error(
+        control.data,
+        detail=f"Control '{control.name}' has invalid data",
+        hint="Update the control data using PUT /{control_id}/data.",
+        field_prefix=None,
+    )
     return GetControlDataResponse(data=control_def)
 
 
