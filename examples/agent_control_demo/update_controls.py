@@ -58,13 +58,15 @@ async def allow_ssn(client: AgentControlClient, control_id: int) -> None:
         "enabled": False,  # Disabled = SSNs allowed
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["post"]},
-        "selector": {"path": "output"},
-        "evaluator": {
-            "name": "regex",
-            "config": {
-                "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
-                "flags": []
-            }
+        "condition": {
+            "selector": {"path": "output"},
+            "evaluator": {
+                "name": "regex",
+                "config": {
+                    "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
+                    "flags": []
+                }
+            },
         },
         "action": {"decision": "deny"},
         "tags": ["pii", "ssn", "output-filter", "disabled"]
@@ -98,13 +100,15 @@ async def block_ssn(client: AgentControlClient, control_id: int) -> None:
         "enabled": True,  # Enabled = SSNs blocked
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["post"]},
-        "selector": {"path": "output"},
-        "evaluator": {
-            "name": "regex",
-            "config": {
-                "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
-                "flags": []
-            }
+        "condition": {
+            "selector": {"path": "output"},
+            "evaluator": {
+                "name": "regex",
+                "config": {
+                    "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
+                    "flags": []
+                }
+            },
         },
         "action": {"decision": "deny"},
         "tags": ["pii", "ssn", "output-filter"]

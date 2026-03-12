@@ -493,8 +493,9 @@ def render_sidebar():
                             # Display key information
                             st.markdown(f"**ID:** `{control_id}`")
 
-                            if "evaluator" in data:
-                                evaluator = data["evaluator"]
+                            condition = data.get("condition", {})
+                            if "evaluator" in condition:
+                                evaluator = condition["evaluator"]
                                 st.markdown(f"**Evaluator:** `{evaluator.get('name', 'N/A')}`")
 
                                 if "config" in evaluator:

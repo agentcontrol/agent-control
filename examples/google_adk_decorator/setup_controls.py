@@ -29,21 +29,20 @@ def _control_specs(execution: str) -> list[tuple[str, dict[str, Any]]]:
                     "step_names": ["get_current_time", "get_weather"],
                     "stages": ["pre"],
                 },
-                "selector": {"path": "input.city"},
-                "evaluator": {
-                    "name": "list",
-                    "config": {
-                        "values": ["Pyongyang", "Tehran", "Damascus"],
-                        "logic": "any",
-                        "match_on": "match",
-                        "match_mode": "exact",
-                        "case_sensitive": False,
+                "condition": {
+                    "selector": {"path": "input.city"},
+                    "evaluator": {
+                        "name": "list",
+                        "config": {
+                            "values": ["Pyongyang", "Tehran", "Damascus"],
+                            "logic": "any",
+                            "match_on": "match",
+                            "match_mode": "exact",
+                            "case_sensitive": False,
+                        },
                     },
                 },
-                "action": {
-                    "decision": "deny",
-                    "message": "That city is blocked by policy.",
-                },
+                "action": {"decision": "deny"},
             },
         ),
         (
@@ -57,17 +56,16 @@ def _control_specs(execution: str) -> list[tuple[str, dict[str, Any]]]:
                     "step_names": ["get_current_time", "get_weather"],
                     "stages": ["post"],
                 },
-                "selector": {"path": "output.note"},
-                "evaluator": {
-                    "name": "regex",
-                    "config": {
-                        "pattern": r"support@internal\.example|123-45-6789",
+                "condition": {
+                    "selector": {"path": "output.note"},
+                    "evaluator": {
+                        "name": "regex",
+                        "config": {
+                            "pattern": r"support@internal\.example|123-45-6789",
+                        },
                     },
                 },
-                "action": {
-                    "decision": "deny",
-                    "message": "Tool output exposed internal contact data.",
-                },
+                "action": {"decision": "deny"},
             },
         ),
     ]

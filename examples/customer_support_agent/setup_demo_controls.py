@@ -29,7 +29,7 @@ DEMO_STEPS = [
 ]
 
 # Demo controls to create
-# Demonstrates various ControlSelector options: path, tool_names, tool_name_regex
+# Demonstrates selector paths plus scope.step_names / scope.step_name_regex targeting.
 DEMO_CONTROLS = [
     # ==========================================================================
     # LLM CALL CONTROLS (using 'path' selector)
@@ -42,15 +42,14 @@ DEMO_CONTROLS = [
             "enabled": True,
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["post"]},
-            "selector": {"path": "output"},
-            "evaluator": {
-                "name": "regex",
-                "config": {"pattern": r"\d{3}-\d{2}-\d{4}"},
+            "condition": {
+                "selector": {"path": "output"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": r"\d{3}-\d{2}-\d{4}"},
+                },
             },
-            "action": {
-                "decision": "deny",
-                "message": "Response contains SSN pattern - blocked for PII protection",
-            },
+            "action": {"decision": "deny"},
         },
     },
     {
@@ -61,17 +60,16 @@ DEMO_CONTROLS = [
             "enabled": True,
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
-            "selector": {"path": "input"},
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    "pattern": r"(?i)(ignore.{0,20}(previous|prior|above).{0,20}instructions|you are now|system:|forget everything|disregard)"
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        "pattern": r"(?i)(ignore.{0,20}(previous|prior|above).{0,20}instructions|you are now|system:|forget everything|disregard)"
+                    },
                 },
             },
-            "action": {
-                "decision": "deny",
-                "message": "Potential prompt injection detected - request blocked",
-            },
+            "action": {"decision": "deny"},
         },
     },
     {
@@ -82,93 +80,97 @@ DEMO_CONTROLS = [
             "enabled": True,
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
-            "selector": {"path": "input"},
-            "evaluator": {
-                "name": "regex",
-                "config": {"pattern": r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b"},
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b"},
+                },
             },
-            "action": {
-                "decision": "deny",
-                "message": "Credit card number detected - please don't share payment info",
-            },
+            "action": {"decision": "deny"},
         },
     },
     # ==========================================================================
-    # TOOL CALL CONTROLS - using 'tool_names' (exact match)
+    # TOOL CALL CONTROLS - using scope.step_names (exact match)
     # ==========================================================================
     {
         "name": "block-sql-injection-customer-lookup",
-        "description": "Blocks SQL injection in customer lookup (tool_names: exact match)",
+        "description": "Blocks SQL injection in customer lookup (scope.step_names: exact match)",
         "definition": {
-            "description": "Blocks SQL injection in customer lookup (tool_names: exact match)",
+            "description": "Blocks SQL injection in customer lookup (scope.step_names: exact match)",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["tool"], "stages": ["pre"]},
-            "selector": {
-                "path": "input.query",
-                "tool_names": ["lookup_customer"],  # Only applies to this exact tool
+            "scope": {
+                "step_types": ["tool"],
+                "step_names": ["lookup_customer"],
+                "stages": ["pre"],
             },
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    "pattern": r"(?i)(select|insert|update|delete|drop|union|--|;)"
+            "condition": {
+                "selector": {
+                    "path": "input.query",
+                },
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        "pattern": r"(?i)(select|insert|update|delete|drop|union|--|;)"
+                    },
                 },
             },
-            "action": {
-                "decision": "deny",
-                "message": "Potential SQL injection in customer lookup query",
-            },
+            "action": {"decision": "deny"},
         },
     },
     {
         "name": "log-ticket-creation",
-        "description": "Logs all ticket creation for audit (tool_names: exact match)",
+        "description": "Logs all ticket creation for audit (scope.step_names: exact match)",
         "definition": {
-            "description": "Logs all ticket creation for audit (tool_names: exact match)",
+            "description": "Logs all ticket creation for audit (scope.step_names: exact match)",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["tool"], "stages": ["pre"]},
-            "selector": {
-                "path": "*",  # Log entire payload
-                "tool_names": ["create_ticket"],
+            "scope": {
+                "step_types": ["tool"],
+                "step_names": ["create_ticket"],
+                "stages": ["pre"],
             },
-            "evaluator": {
-                "name": "regex",
-                "config": {"pattern": r".*"},  # Always matches
+            "condition": {
+                "selector": {
+                    "path": "*",  # Log entire payload
+                },
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": r".*"},  # Always matches
+                },
             },
-            "action": {
-                "decision": "log",
-                "message": "Ticket creation logged for audit",
-            },
+            "action": {"decision": "log"},
         },
     },
     # ==========================================================================
-    # TOOL CALL CONTROLS - using 'tool_name_regex' (pattern match)
+    # TOOL CALL CONTROLS - using scope.step_name_regex (pattern match)
     # ==========================================================================
     {
         "name": "block-profanity-in-search",
-        "description": "Blocks profanity in any search/lookup tool (tool_name_regex: pattern)",
+        "description": "Blocks profanity in any search/lookup tool (scope.step_name_regex: pattern)",
         "definition": {
-            "description": "Blocks profanity in any search/lookup tool (tool_name_regex: pattern)",
+            "description": "Blocks profanity in any search/lookup tool (scope.step_name_regex: pattern)",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["tool"], "stages": ["pre"]},
-            "selector": {
-                "path": "input.query",
-                # Applies to any tool containing 'search' or 'lookup'
-                "tool_name_regex": r"(search|lookup)",
+            "scope": {
+                "step_types": ["tool"],
+                "step_name_regex": r"(search|lookup)",
+                "stages": ["pre"],
             },
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    # Simple profanity pattern for demo
-                    "pattern": r"(?i)\b(badword|offensive|inappropriate)\b"
+            "condition": {
+                "selector": {
+                    "path": "input.query",
+                },
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        # Simple profanity pattern for demo
+                        "pattern": r"(?i)\b(badword|offensive|inappropriate)\b"
+                    },
                 },
             },
-            "action": {
-                "decision": "deny",
-                "message": "Inappropriate content detected in search query",
-            },
+            "action": {"decision": "deny"},
         },
     },
     {
@@ -178,25 +180,27 @@ DEMO_CONTROLS = [
             "description": "Warns on high priority tickets (path: input.priority)",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["tool"], "stages": ["pre"]},
-            "selector": {
-                "path": "input.priority",
-                "tool_name_regex": r".*ticket.*",  # Any tool with 'ticket' in name
+            "scope": {
+                "step_types": ["tool"],
+                "step_name_regex": r".*ticket.*",
+                "stages": ["pre"],
             },
-            "evaluator": {
-                "name": "list",
-                "config": {
-                    "values": ["high", "critical", "urgent"],
-                    "logic": "any",
-                    "match_on": "match",
-                    "match_mode": "exact",
-                    "case_sensitive": False,
+            "condition": {
+                "selector": {
+                    "path": "input.priority",
+                },
+                "evaluator": {
+                    "name": "list",
+                    "config": {
+                        "values": ["high", "critical", "urgent"],
+                        "logic": "any",
+                        "match_on": "match",
+                        "match_mode": "exact",
+                        "case_sensitive": False,
+                    },
                 },
             },
-            "action": {
-                "decision": "warn",
-                "message": "High priority ticket requires manager approval",
-            },
+            "action": {"decision": "warn"},
         },
     },
     # ==========================================================================
@@ -209,22 +213,24 @@ DEMO_CONTROLS = [
             "description": "Blocks PII in ticket descriptions (path: input.description)",
             "enabled": True,
             "execution": "server",
-            "scope": {"step_types": ["tool"], "stages": ["pre"]},
-            "selector": {
-                "path": "input.description",
-                "tool_names": ["create_ticket"],
+            "scope": {
+                "step_types": ["tool"],
+                "step_names": ["create_ticket"],
+                "stages": ["pre"],
             },
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    # Email pattern
-                    "pattern": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
+            "condition": {
+                "selector": {
+                    "path": "input.description",
+                },
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        # Email pattern
+                        "pattern": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
+                    },
                 },
             },
-            "action": {
-                "decision": "warn",
-                "message": "Email address detected in ticket - consider removing PII",
-            },
+            "action": {"decision": "warn"},
         },
     },
 ]

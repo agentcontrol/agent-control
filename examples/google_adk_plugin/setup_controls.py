@@ -29,20 +29,19 @@ def _control_specs(execution: str) -> list[tuple[str, dict[str, Any]]]:
                 "enabled": True,
                 "execution": execution,
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
-                "selector": {"path": "input"},
-                "evaluator": {
-                    "name": "regex",
-                    "config": {
-                        "pattern": (
-                            r"(?i)(ignore.{0,20}(previous|prior|above).{0,20}instructions"
-                            r"|system:|forget everything|reveal secrets)"
-                        )
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {
+                        "name": "regex",
+                        "config": {
+                            "pattern": (
+                                r"(?i)(ignore.{0,20}(previous|prior|above).{0,20}instructions"
+                                r"|system:|forget everything|reveal secrets)"
+                            )
+                        },
                     },
                 },
-                "action": {
-                    "decision": "deny",
-                    "message": "Prompt injection attempt detected.",
-                },
+                "action": {"decision": "deny"},
             },
         ),
         (
@@ -56,21 +55,20 @@ def _control_specs(execution: str) -> list[tuple[str, dict[str, Any]]]:
                     "step_names": TOOL_STEP_NAMES,
                     "stages": ["pre"],
                 },
-                "selector": {"path": "input.city"},
-                "evaluator": {
-                    "name": "list",
-                    "config": {
-                        "values": ["Pyongyang", "Tehran", "Damascus"],
-                        "logic": "any",
-                        "match_on": "match",
-                        "match_mode": "exact",
-                        "case_sensitive": False,
+                "condition": {
+                    "selector": {"path": "input.city"},
+                    "evaluator": {
+                        "name": "list",
+                        "config": {
+                            "values": ["Pyongyang", "Tehran", "Damascus"],
+                            "logic": "any",
+                            "match_on": "match",
+                            "match_mode": "exact",
+                            "case_sensitive": False,
+                        },
                     },
                 },
-                "action": {
-                    "decision": "deny",
-                    "message": "That city is blocked by policy.",
-                },
+                "action": {"decision": "deny"},
             },
         ),
         (
@@ -84,17 +82,16 @@ def _control_specs(execution: str) -> list[tuple[str, dict[str, Any]]]:
                     "step_names": TOOL_STEP_NAMES,
                     "stages": ["post"],
                 },
-                "selector": {"path": "output.note"},
-                "evaluator": {
-                    "name": "regex",
-                    "config": {
-                        "pattern": r"support@internal\.example|123-45-6789",
+                "condition": {
+                    "selector": {"path": "output.note"},
+                    "evaluator": {
+                        "name": "regex",
+                        "config": {
+                            "pattern": r"support@internal\.example|123-45-6789",
+                        },
                     },
                 },
-                "action": {
-                    "decision": "deny",
-                    "message": "Tool output exposed internal contact data.",
-                },
+                "action": {"decision": "deny"},
             },
         ),
     ]

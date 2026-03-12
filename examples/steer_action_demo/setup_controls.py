@@ -49,17 +49,19 @@ async def setup_banking_controls():
                 "step_names": ["process_wire_transfer"],
                 "stages": ["pre"]
             },
-            "selector": {
-                "path": "input.destination_country"
-            },
-            "evaluator": {
-                "name": "list",
-                "config": {
-                    "values": ["north korea", "iran", "syria", "cuba", "crimea"],
-                    "logic": "any",
-                    "match_mode": "contains",
-                    "case_sensitive": False
-                }
+            "condition": {
+                "selector": {
+                    "path": "input.destination_country"
+                },
+                "evaluator": {
+                    "name": "list",
+                    "config": {
+                        "values": ["north korea", "iran", "syria", "cuba", "crimea"],
+                        "logic": "any",
+                        "match_mode": "contains",
+                        "case_sensitive": False
+                    }
+                },
             },
             "action": {
                 "decision": "deny"
@@ -76,19 +78,21 @@ async def setup_banking_controls():
                 "step_names": ["process_wire_transfer"],
                 "stages": ["pre"]
             },
-            "selector": {
-                "path": "input"
-            },
-            "evaluator": {
-                "name": "json",
-                "config": {
-                    "field_constraints": {
-                        "fraud_score": {
-                            "type": "number",
-                            "max": 0.8
+            "condition": {
+                "selector": {
+                    "path": "input"
+                },
+                "evaluator": {
+                    "name": "json",
+                    "config": {
+                        "field_constraints": {
+                            "fraud_score": {
+                                "type": "number",
+                                "max": 0.8
+                            }
                         }
                     }
-                }
+                },
             },
             "action": {
                 "decision": "deny"
@@ -109,16 +113,20 @@ async def setup_banking_controls():
                 "step_names": ["process_wire_transfer"],
                 "stages": ["pre"]
             },
-            "selector": {
-                "path": "input.recipient"
-            },
-            "evaluator": {
-                "name": "list",
-                "config": {
-                    "values": ["John Smith", "Acme Corp", "Global Suppliers Inc"],
-                    "match_type": "not_in",
-                    "case_sensitive": False
-                }
+            "condition": {
+                "selector": {
+                    "path": "input.recipient"
+                },
+                "evaluator": {
+                    "name": "list",
+                    "config": {
+                        "values": ["John Smith", "Acme Corp", "Global Suppliers Inc"],
+                        "logic": "any",
+                        "match_on": "no_match",
+                        "match_mode": "exact",
+                        "case_sensitive": False
+                    }
+                },
             },
             "action": {
                 "decision": "warn"
@@ -139,20 +147,22 @@ async def setup_banking_controls():
                 "step_names": ["process_wire_transfer"],
                 "stages": ["pre"]
             },
-            "selector": {
-                "path": "input"
-            },
-            "evaluator": {
-                "name": "json",
-                "config": {
-                    "json_schema": {
-                        "type": "object",
-                        "oneOf": [
-                            {"properties": {"amount": {"type": "number", "exclusiveMaximum": 10000}}},
-                            {"properties": {"amount": {"type": "number", "minimum": 10000}, "verified_2fa": {"const": True}}}
-                        ]
+            "condition": {
+                "selector": {
+                    "path": "input"
+                },
+                "evaluator": {
+                    "name": "json",
+                    "config": {
+                        "json_schema": {
+                            "type": "object",
+                            "oneOf": [
+                                {"properties": {"amount": {"type": "number", "exclusiveMaximum": 10000}}},
+                                {"properties": {"amount": {"type": "number", "minimum": 10000}, "verified_2fa": {"const": True}}}
+                            ]
+                        }
                     }
-                }
+                },
             },
             "action": {
                 "decision": "steer",
@@ -172,20 +182,22 @@ async def setup_banking_controls():
                 "step_names": ["process_wire_transfer"],
                 "stages": ["pre"]
             },
-            "selector": {
-                "path": "input"
-            },
-            "evaluator": {
-                "name": "json",
-                "config": {
-                    "json_schema": {
-                        "type": "object",
-                        "oneOf": [
-                            {"properties": {"amount": {"type": "number", "exclusiveMaximum": 10000}}},
-                            {"properties": {"amount": {"type": "number", "minimum": 10000}, "manager_approved": {"const": True}}}
-                        ]
+            "condition": {
+                "selector": {
+                    "path": "input"
+                },
+                "evaluator": {
+                    "name": "json",
+                    "config": {
+                        "json_schema": {
+                            "type": "object",
+                            "oneOf": [
+                                {"properties": {"amount": {"type": "number", "exclusiveMaximum": 10000}}},
+                                {"properties": {"amount": {"type": "number", "minimum": 10000}, "manager_approved": {"const": True}}}
+                            ]
+                        }
                     }
-                }
+                },
             },
             "action": {
                 "decision": "steer",

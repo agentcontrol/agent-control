@@ -74,17 +74,19 @@ async def setup_sql_controls():
                 "step_names": ["sql_db_query"],
                 "stages": ["pre"]
             },
-            "selector": {
-                "path": "input.query"
-            },
-            "evaluator": {
-                "name": "sql",
-                "config": {
-                    "blocked_operations": ["DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT"],
-                    "allow_multi_statements": False,
-                    "require_limit": True,
-                    "max_limit": 100
-                }
+            "condition": {
+                "selector": {
+                    "path": "input.query"
+                },
+                "evaluator": {
+                    "name": "sql",
+                    "config": {
+                        "blocked_operations": ["DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT"],
+                        "allow_multi_statements": False,
+                        "require_limit": True,
+                        "max_limit": 100
+                    }
+                },
             },
             "action": {"decision": "deny"}
         }

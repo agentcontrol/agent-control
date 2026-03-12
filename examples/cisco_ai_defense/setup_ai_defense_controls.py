@@ -104,8 +104,13 @@ async def main() -> int:
             "enabled": True,
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
-            "selector": {"path": "input"},
-            "evaluator": {"name": EVALUATOR_NAME, "config": {**base_config, "payload_field": "input"}},
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": EVALUATOR_NAME,
+                    "config": {**base_config, "payload_field": "input"},
+                },
+            },
             "action": {"decision": "deny"},
             "tags": ["ai_defense", "security", "safety", "privacy"],
         }
@@ -115,8 +120,13 @@ async def main() -> int:
             "enabled": True,
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["post"]},
-            "selector": {"path": "output"},
-            "evaluator": {"name": EVALUATOR_NAME, "config": {**base_config, "payload_field": "output"}},
+            "condition": {
+                "selector": {"path": "output"},
+                "evaluator": {
+                    "name": EVALUATOR_NAME,
+                    "config": {**base_config, "payload_field": "output"},
+                },
+            },
             "action": {"decision": "deny"},
             "tags": ["ai_defense", "security", "safety", "privacy"],
         }

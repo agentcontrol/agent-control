@@ -119,13 +119,15 @@ async def create_regex_control(client: AgentControlClient) -> int:
         "enabled": True,
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["post"]},  # Check AFTER
-        "selector": {"path": "output"},
-        "evaluator": {
-            "name": "regex",
-            "config": {
-                "pattern": r"\b\d{3}-\d{2}-\d{4}\b",  # SSN pattern
-                "flags": []
-            }
+        "condition": {
+            "selector": {"path": "output"},
+            "evaluator": {
+                "name": "regex",
+                "config": {
+                    "pattern": r"\b\d{3}-\d{2}-\d{4}\b",  # SSN pattern
+                    "flags": []
+                }
+            },
         },
         "action": {"decision": "deny"},
         "tags": ["pii", "ssn", "output-filter"]
@@ -133,7 +135,7 @@ async def create_regex_control(client: AgentControlClient) -> int:
 
     print(f"Creating control: block-ssn-output")
     print(f"  Type: Regex")
-    print(f"  Pattern: {control_definition['evaluator']['config']['pattern']}")
+    print(f"  Pattern: {control_definition['condition']['evaluator']['config']['pattern']}")
     print(f"  Stages: {', '.join(control_definition['scope']['stages'])}")
     print(f"  Action: {control_definition['action']['decision']}")
 
@@ -151,16 +153,18 @@ async def create_list_control(client: AgentControlClient) -> int:
         "enabled": True,
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},  # Check BEFORE
-        "selector": {"path": "input"},
-        "evaluator": {
-            "name": "list",
-            "config": {
-                "values": ["DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT"],
-                "logic": "any",  # Block if ANY keyword is found
-                "match_on": "match",
-                "match_mode": "contains",  # Substring/keyword matching
-                "case_sensitive": False
-            }
+        "condition": {
+            "selector": {"path": "input"},
+            "evaluator": {
+                "name": "list",
+                "config": {
+                    "values": ["DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT"],
+                    "logic": "any",  # Block if ANY keyword is found
+                    "match_on": "match",
+                    "match_mode": "contains",  # Substring/keyword matching
+                    "case_sensitive": False
+                }
+            },
         },
         "action": {"decision": "deny"},
         "tags": ["sql-injection", "input-filter", "security"]
@@ -168,8 +172,8 @@ async def create_list_control(client: AgentControlClient) -> int:
 
     print(f"Creating control: block-dangerous-sql")
     print(f"  Type: List")
-    print(f"  Values: {control_definition['evaluator']['config']['values']}")
-    print(f"  Logic: {control_definition['evaluator']['config']['logic']}")
+    print(f"  Values: {control_definition['condition']['evaluator']['config']['values']}")
+    print(f"  Logic: {control_definition['condition']['evaluator']['config']['logic']}")
     print(f"  Stages: {', '.join(control_definition['scope']['stages'])}")
     print(f"  Action: {control_definition['action']['decision']}")
 
@@ -223,7 +227,12 @@ async def list_agent_controls(client: AgentControlClient, agent_name: str) -> li
             print(f"     ID: {ctrl.get('id')}")
             ctrl_def = ctrl.get("control", {})
             print(f"     Enabled: {ctrl_def.get('enabled', True)}")
-            print(f"     Type: {ctrl_def.get('evaluator', {}).get('type', 'unknown')}")
+            evaluator_name = (
+                ctrl_def.get("condition", {})
+                .get("evaluator", {})
+                .get("name", "unknown")
+            )
+            print(f"     Evaluator: {evaluator_name}")
             scope = ctrl_def.get("scope", {}) or {}
             stages = scope.get("stages", [])
             stage_label = ", ".join(stages) if stages else "unknown"
@@ -250,19 +259,21 @@ async def update_control(client: AgentControlClient, control_id: int) -> None:
         "enabled": True,
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
-        "selector": {"path": "input"},
-        "evaluator": {
-            "name": "list",
-            "config": {
-                "values": [
-                    "DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT",
-                    "REVOKE", "EXECUTE", "SHUTDOWN", "BACKUP"  # More keywords!
-                ],
-                "logic": "any",
-                "match_on": "match",
-                "match_mode": "contains",  # Substring/keyword matching
-                "case_sensitive": False
-            }
+        "condition": {
+            "selector": {"path": "input"},
+            "evaluator": {
+                "name": "list",
+                "config": {
+                    "values": [
+                        "DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT",
+                        "REVOKE", "EXECUTE", "SHUTDOWN", "BACKUP"  # More keywords!
+                    ],
+                    "logic": "any",
+                    "match_on": "match",
+                    "match_mode": "contains",  # Substring/keyword matching
+                    "case_sensitive": False
+                }
+            },
         },
         "action": {"decision": "deny"},
         "tags": ["sql-injection", "input-filter", "security", "updated"]
@@ -298,8 +309,10 @@ async def get_control_data(client: AgentControlClient, control_id: int) -> dict:
 
         print(f"✓ Retrieved control {control_id}:")
         print(f"  Description: {data.get('description', 'N/A')}")
-        print(f"  Evaluator Type: {data.get('evaluator', {}).get('type', 'N/A')}")
-        print(f"  Values: {data.get('evaluator', {}).get('config', {}).get('values', [])}")
+        condition = data.get("condition", {})
+        evaluator = condition.get("evaluator", {})
+        print(f"  Evaluator: {evaluator.get('name', 'N/A')}")
+        print(f"  Values: {evaluator.get('config', {}).get('values', [])}")
         print(f"  Tags: {data.get('tags', [])}")
 
         return data

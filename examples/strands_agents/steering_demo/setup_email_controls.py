@@ -43,16 +43,17 @@ SAFETY_CONTROLS = [
                 "step_types": ["llm"],
                 "stages": ["post"]
             },
-            "selector": {"path": "output"},
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    "pattern": r"(\b\d{9,12}\b)|(\d{3}[-\s]?\d{2}[-\s]?\d{4})|(\$[\d,]+\d{3,})"
-                }
+            "condition": {
+                "selector": {"path": "output"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        "pattern": r"(\b\d{9,12}\b)|(\d{3}[-\s]?\d{2}[-\s]?\d{4})|(\$[\d,]+\d{3,})"
+                    }
+                },
             },
             "action": {
                 "decision": "steer",
-                "message": "PII detected in draft - redact before sending",
                 "steering_context": {
                     "message": """⚠️ FINANCIAL PII DETECTED - Apply redactions before sending email:
 
@@ -97,18 +98,17 @@ SAFETY_CONTROLS = [
                 "stages": ["pre"],
                 "step_names": ["send_monthly_account_summary"]
             },
-            "selector": {"path": "input.summary_text"},
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    # Match patterns like: api_key, password, secret, token
-                    "pattern": r"(api[_-]?key|password|secret|token|credential)[\s:=]+['\"]?[\w\-]{8,}"
-                }
+            "condition": {
+                "selector": {"path": "input.summary_text"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        # Match patterns like: api_key, password, secret, token
+                        "pattern": r"(api[_-]?key|password|secret|token|credential)[\s:=]+['\"]?[\w\-]{8,}"
+                    }
+                },
             },
-            "action": {
-                "decision": "deny",
-                "message": "Credentials detected in email - BLOCKED for security"
-            },
+            "action": {"decision": "deny"},
             "tags": ["credentials", "secrets", "critical", "deny"]
         }
     },
@@ -126,18 +126,17 @@ SAFETY_CONTROLS = [
                 "stages": ["pre"],
                 "step_names": ["send_monthly_account_summary"]
             },
-            "selector": {"path": "input.summary_text"},
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    # Match database names, server paths
-                    "pattern": r"(database|db_|server|localhost|127\.0\.0\.1|/var/|/etc/|C:\\\\)"
-                }
+            "condition": {
+                "selector": {"path": "input.summary_text"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        # Match database names, server paths
+                        "pattern": r"(database|db_|server|localhost|127\.0\.0\.1|/var/|/etc/|C:\\\\)"
+                    }
+                },
             },
-            "action": {
-                "decision": "deny",
-                "message": "Internal system info detected in email - BLOCKED for security"
-            },
+            "action": {"decision": "deny"},
             "tags": ["internal-info", "security", "deny"]
         }
     },

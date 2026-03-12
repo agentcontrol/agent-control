@@ -14,7 +14,7 @@ Test Commands (in interactive mode):
     /test-pii           Test PII detection (if control configured)
     /test-injection     Test prompt injection detection (if control configured)
     /test-multispan     Test multi-span traces (2-3 spans per request)
-    /test-tool-controls Test tool-specific controls (tool_names, tool_name_regex)
+    /test-tool-controls Test tool-specific controls (step_names, step_name_regex)
     /lookup <query>     Look up a customer (e.g., /lookup C001)
     /search <query>     Search knowledge base (e.g., /search refund)
     /ticket [priority]  Create a test ticket (e.g., /ticket high)
@@ -141,7 +141,7 @@ def print_header():
     print()
     print("Features demonstrated:")
     print("  • Multi-span traces (2-3 spans per request)")
-    print("  • ControlSelector options: path, tool_names, tool_name_regex")
+    print("  • Control targeting: selector paths plus scope.step_names / scope.step_name_regex")
     print("  • Various control types: LLM calls and tool calls")
     print()
     print("Commands:")
@@ -166,7 +166,7 @@ def print_help():
     print("  /test-pii            Test PII detection control")
     print("  /test-injection      Test prompt injection control")
     print("  /test-multispan      Test multi-span traces (2-3 spans per request)")
-    print("  /test-tool-controls  Test tool-specific controls (tool_names, tool_name_regex)")
+    print("  /test-tool-controls  Test tool-specific controls (step_names, step_name_regex)")
     print()
     print("Tools (single span each):")
     print("  /lookup <query>      Look up customer (e.g., /lookup C001)")
@@ -441,21 +441,21 @@ async def run_multispan_tests(agent: CustomerSupportAgent):
 
 
 async def run_tool_control_tests(agent: CustomerSupportAgent):
-    """Run tests to verify tool-specific controls (tool_names, tool_name_regex)."""
+    """Run tests to verify tool-specific controls (step_names, step_name_regex)."""
     print()
     print("-" * 50)
     print("Running Tool-Specific Control Tests")
     print("-" * 50)
     print()
-    print("These tests exercise controls using different ControlSelector options:")
-    print("  • tool_names: exact tool name match (e.g., 'lookup_customer')")
-    print("  • tool_name_regex: pattern match (e.g., 'search|lookup')")
-    print("  • path: argument paths (e.g., 'arguments.priority')")
+    print("These tests exercise controls using different scope/selector combinations:")
+    print("  • scope.step_names: exact tool name match (e.g., 'lookup_customer')")
+    print("  • scope.step_name_regex: pattern match (e.g., 'search|lookup')")
+    print("  • selector paths: input fields such as 'input.priority'")
     print()
 
-    # Test 1: SQL injection in customer lookup (tool_names: lookup_customer)
+    # Test 1: SQL injection in customer lookup (scope.step_names: lookup_customer)
     print("Test 1: SQL injection attempt in customer lookup")
-    print("  Control: block-sql-injection-customer-lookup (tool_names: exact match)")
+    print("  Control: block-sql-injection-customer-lookup (scope.step_names: exact match)")
     print("  Query: SELECT * FROM users --")
     response = await agent.lookup("SELECT * FROM users --")
     print(f"  Result: {response}")
@@ -468,9 +468,9 @@ async def run_tool_control_tests(agent: CustomerSupportAgent):
     print(f"  Result: {response}")
     print()
 
-    # Test 3: Profanity in search (tool_name_regex: search|lookup)
+    # Test 3: Profanity in search (scope.step_name_regex: search|lookup)
     print("Test 3: Inappropriate content in search")
-    print("  Control: block-profanity-in-search (tool_name_regex: pattern match)")
+    print("  Control: block-profanity-in-search (scope.step_name_regex: pattern match)")
     print("  Query: badword")
     response = await agent.search("badword")
     print(f"  Result: {response}")
@@ -485,7 +485,7 @@ async def run_tool_control_tests(agent: CustomerSupportAgent):
 
     # Test 5: High priority ticket (warn-high-priority-ticket)
     print("Test 5: High priority ticket creation")
-    print("  Control: warn-high-priority-ticket (tool_name_regex + path: arguments.priority)")
+    print("  Control: warn-high-priority-ticket (scope.step_name_regex + selector path: input.priority)")
     print("  Priority: critical")
     response = await agent.create_support_ticket(
         subject="Urgent issue",
@@ -508,7 +508,7 @@ async def run_tool_control_tests(agent: CustomerSupportAgent):
 
     # Test 7: PII in ticket description
     print("Test 7: Email in ticket description")
-    print("  Control: block-pii-in-ticket-description (tool_names + path: arguments.description)")
+    print("  Control: block-pii-in-ticket-description (scope.step_names + selector path: input.description)")
     response = await agent.create_support_ticket(
         subject="Contact request",
         description="Please email me at secret@company.com",

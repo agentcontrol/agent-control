@@ -56,27 +56,26 @@ DEEPEVAL_CONTROLS = [
             "enabled": True,
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["post"]},
-            "selector": {},
-            "evaluator": {
-                "name": "deepeval-geval",
-                "config": {
-                    "name": "Coherence",
-                    "criteria": (
-                        "Evaluate whether the response is coherent, logically consistent, "
-                        "and well-structured. Check for contradictions and flow of ideas. "
-                        "The response should make logical sense and not contain contradictory statements."
-                    ),
-                    "evaluation_params": ["input", "actual_output"],
-                    "threshold": 0.6,
-                    "model": "gpt-4o",
-                    "strict_mode": False,
-                    "verbose_mode": False,
+            "condition": {
+                "selector": {"path": "*"},
+                "evaluator": {
+                    "name": "deepeval-geval",
+                    "config": {
+                        "name": "Coherence",
+                        "criteria": (
+                            "Evaluate whether the response is coherent, logically consistent, "
+                            "and well-structured. Check for contradictions and flow of ideas. "
+                            "The response should make logical sense and not contain contradictory statements."
+                        ),
+                        "evaluation_params": ["input", "actual_output"],
+                        "threshold": 0.6,
+                        "model": "gpt-4o",
+                        "strict_mode": False,
+                        "verbose_mode": False,
+                    },
                 },
             },
-            "action": {
-                "decision": "deny",
-                "message": "Response failed coherence check - please reformulate",
-            },
+            "action": {"decision": "deny"},
         },
     },
     {
@@ -87,26 +86,25 @@ DEEPEVAL_CONTROLS = [
             "enabled": True,
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["post"]},
-            "selector": {},
-            "evaluator": {
-                "name": "deepeval-geval",
-                "config": {
-                    "name": "Relevance",
-                    "criteria": (
-                        "Determine whether the actual output is relevant and directly addresses "
-                        "the input query. Check if it stays on topic and provides useful information "
-                        "that answers the question asked."
-                    ),
-                    "evaluation_params": ["input", "actual_output"],
-                    "threshold": 0.5,
-                    "model": "gpt-4o",
-                    "strict_mode": False,
+            "condition": {
+                "selector": {"path": "*"},
+                "evaluator": {
+                    "name": "deepeval-geval",
+                    "config": {
+                        "name": "Relevance",
+                        "criteria": (
+                            "Determine whether the actual output is relevant and directly addresses "
+                            "the input query. Check if it stays on topic and provides useful information "
+                            "that answers the question asked."
+                        ),
+                        "evaluation_params": ["input", "actual_output"],
+                        "threshold": 0.5,
+                        "model": "gpt-4o",
+                        "strict_mode": False,
+                    },
                 },
             },
-            "action": {
-                "decision": "deny",
-                "message": "Response is not relevant to the question - please provide a relevant answer",
-            },
+            "action": {"decision": "deny"},
         },
     },
     {
@@ -117,26 +115,25 @@ DEEPEVAL_CONTROLS = [
             "enabled": False,  # Disabled by default - enable when you have expected outputs
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["post"]},
-            "selector": {"path": "*"},
-            "evaluator": {
-                "name": "deepeval-geval",
-                "config": {
-                    "name": "Correctness",
-                    "evaluation_steps": [
-                        "Check whether facts in actual output contradict expected output",
-                        "Heavily penalize omission of critical details",
-                        "Minor wording differences are acceptable",
-                        "Focus on factual accuracy, not style",
-                    ],
-                    "evaluation_params": ["actual_output", "expected_output"],
-                    "threshold": 0.8,
-                    "model": "gpt-4o",
+            "condition": {
+                "selector": {"path": "*"},
+                "evaluator": {
+                    "name": "deepeval-geval",
+                    "config": {
+                        "name": "Correctness",
+                        "evaluation_steps": [
+                            "Check whether facts in actual output contradict expected output",
+                            "Heavily penalize omission of critical details",
+                            "Minor wording differences are acceptable",
+                            "Focus on factual accuracy, not style",
+                        ],
+                        "evaluation_params": ["actual_output", "expected_output"],
+                        "threshold": 0.8,
+                        "model": "gpt-4o",
+                    },
                 },
             },
-            "action": {
-                "decision": "warn",
-                "message": "Response may contain factual errors - review carefully",
-            },
+            "action": {"decision": "warn"},
         },
     },
 ]
