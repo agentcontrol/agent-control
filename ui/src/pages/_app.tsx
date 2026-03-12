@@ -12,6 +12,8 @@ import '@rungalileo/icons/styles.css';
 import '@/styles/globals.css';
 
 import { MantineProvider } from '@mantine/core';
+
+import { appTheme } from '@/theme';
 import { DatesProvider } from '@mantine/dates';
 import { ModalsProvider } from '@mantine/modals';
 import { Notifications } from '@mantine/notifications';
@@ -125,7 +127,7 @@ export default function App({ Component, pageProps }: AppPropsWithLayout) {
 
       <ErrorBoundary variant="page">
         <QueryProvider>
-          <MantineProvider defaultColorScheme="auto">
+          <MantineProvider theme={appTheme} defaultColorScheme="auto">
             <Notifications />
             <DatesProvider settings={{ firstDayOfWeek: 0 }}>
               <JupiterThemeProvider>

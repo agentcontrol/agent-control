@@ -1,5 +1,6 @@
 import {
   Anchor,
+  Box,
   Group,
   Paper,
   ScrollArea,
@@ -17,6 +18,7 @@ import { EvaluatorJsonView } from './evaluator-json-view';
 import type { ConfigViewMode } from './types';
 
 const DEFAULT_HEIGHT = 450;
+const CONTENT_MIN_HEIGHT_EXTRA = 60;
 type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
 
 type EvaluatorConfigSectionProps = {
@@ -91,45 +93,48 @@ export function EvaluatorConfigSection({
             </Group>
           </Anchor>
         </Group>
-        <SegmentedControl
-          value={configViewMode}
-          onChange={handleConfigViewModeChange}
-          disabled={configViewMode === 'json' && !!jsonError}
-          data={[
-            { value: 'form', label: 'Form' },
-            { value: 'json', label: 'JSON' },
-          ]}
-          size="xs"
-        />
-      </Group>
-      {statusLabel ? (
-        <Text size="xs" c={statusColor}>
-          {statusLabel}
-        </Text>
-      ) : null}
-
-      <Paper withBorder radius="sm" p={16}>
-        {configViewMode === 'form' && (
-          <ScrollArea h={height} type="auto">
-            {FormComponent ? (
-              <FormComponent form={evaluatorForm} />
-            ) : (
-              <Text c="dimmed" ta="center" py="xl">
-                No form available for this evaluator. Use JSON view to
-                configure.
-              </Text>
-            )}
-          </ScrollArea>
-        )}
-
-        {configViewMode === 'json' && (
-          <EvaluatorJsonView
-            onValidateConfig={onValidateConfig}
-            onValidationStatusChange={setValidationStatus}
-            height={height}
-            {...jsonViewProps}
+        <Group gap="xs" align="center">
+          {statusLabel ? (
+            <Text size="xs" c={statusColor}>
+              {statusLabel}
+            </Text>
+          ) : null}
+          <SegmentedControl
+            value={configViewMode}
+            onChange={handleConfigViewModeChange}
+            disabled={configViewMode === 'json' && !!jsonError}
+            data={[
+              { value: 'form', label: 'Form' },
+              { value: 'json', label: 'JSON' },
+            ]}
+            size="xs"
           />
-        )}
+        </Group>
+      </Group>
+      <Paper withBorder radius="sm" p={16}>
+        <Box style={{ minHeight: height + CONTENT_MIN_HEIGHT_EXTRA }}>
+          {configViewMode === 'form' && (
+            <ScrollArea h={height} type="auto">
+              {FormComponent ? (
+                <FormComponent form={evaluatorForm} />
+              ) : (
+                <Text c="dimmed" ta="center" py="xl">
+                  No form available for this evaluator. Use JSON view to
+                  configure.
+                </Text>
+              )}
+            </ScrollArea>
+          )}
+
+          {configViewMode === 'json' && (
+            <EvaluatorJsonView
+              onValidateConfig={onValidateConfig}
+              onValidationStatusChange={setValidationStatus}
+              height={height}
+              {...jsonViewProps}
+            />
+          )}
+        </Box>
       </Paper>
     </Stack>
   );

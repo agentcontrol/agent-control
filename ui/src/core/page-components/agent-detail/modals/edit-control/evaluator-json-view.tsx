@@ -3,6 +3,10 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { useEffect, useRef } from 'react';
 
 import { isApiError } from '@/core/api/errors';
+import {
+  labelPropsInline,
+  LabelWithTooltip,
+} from '@/core/components/label-with-tooltip';
 
 import { ApiErrorAlert } from './api-error-alert';
 import type { EvaluatorJsonViewProps } from './types';
@@ -79,6 +83,13 @@ export const EvaluatorJsonView = ({
   return (
     <Box>
       <Textarea
+        label={
+          <LabelWithTooltip
+            label="Configuration (JSON)"
+            tooltip="Raw evaluator configuration in JSON format"
+          />
+        }
+        labelProps={labelPropsInline}
         value={jsonText}
         onChange={(e) => handleJsonChange(e.currentTarget.value)}
         styles={{
