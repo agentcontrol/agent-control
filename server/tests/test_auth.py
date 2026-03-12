@@ -5,10 +5,8 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
+from agent_control_server import __version__ as server_version
 from agent_control_server.config import auth_settings
-
-from .conftest import TEST_ADMIN_API_KEY, TEST_API_KEY
-
 
 class TestHealthEndpoint:
     """Health endpoint should always be accessible without authentication."""
@@ -22,6 +20,7 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
+        assert response.headers["X-Agent-Control-Server-Version"] == server_version
 
     def test_health_with_auth(self, client: TestClient) -> None:
         """Given valid API key, when requesting health, then returns 200."""
@@ -45,6 +44,7 @@ class TestProtectedEndpoints:
         # Then:
         assert response.status_code == 401
         assert "Missing credentials" in response.json()["detail"]
+        assert response.headers["X-Agent-Control-Server-Version"] == server_version
 
     def test_invalid_api_key_returns_401(self, app: object) -> None:
         """Given invalid API key, when requesting protected endpoint, then returns 401."""

@@ -1,8 +1,12 @@
 """Tests for control validation and schema enforcement."""
-from copy import deepcopy
+
 import uuid
+from copy import deepcopy
+
 from fastapi.testclient import TestClient
+
 from .utils import VALID_CONTROL_PAYLOAD
+
 
 def create_control(client: TestClient) -> int:
     name = f"control-{uuid.uuid4()}"
@@ -23,13 +27,13 @@ def test_validation_invalid_logic_enum(client: TestClient):
             "match_on": "match"
         }
     }
-    
+
     # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
     # Then: 422 Unprocessable Entity
     assert resp.status_code == 422
-    
+
     # Then: error message mentions the field (RFC 7807 format)
     response_data = resp.json()
     errors = response_data.get("errors", [])
@@ -76,7 +80,7 @@ def test_validation_regex_flags_list(client: TestClient):
             "flags": "IGNORECASE" # Should be ["IGNORECASE"]
         }
     }
-    
+
     # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
@@ -99,13 +103,13 @@ def test_validation_invalid_regex_pattern(client: TestClient):
             "flags": []
         }
     }
-    
+
     # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
     # Then: 422 Unprocessable Entity (RFC 7807 format)
     assert resp.status_code == 422
-    
+
     response_data = resp.json()
     errors = response_data.get("errors", [])
     # Then: error message mentions regex compilation failure
@@ -196,3 +200,83 @@ def test_validation_empty_step_names_rejected(client: TestClient):
     errors = response_data.get("errors", [])
     assert any("step_names" in str(e.get("field", "")) for e in errors)
     assert any("empty list" in e.get("message", "") for e in errors)
+
+
+def test_validation_nested_condition_error_uses_bracketed_field_path(
+    client: TestClient,
+):
+    """Nested condition leaf errors should report full dot/bracket paths."""
+    control_id = create_control(client)
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"] = {
+        "and": [
+            {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "list",
+                    "config": {
+                        "values": ["a", "b"],
+                        "logic": "invalid_logic",
+                        "match_on": "match",
+                    },
+                },
+            },
+            {
+                "selector": {"path": "output"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": "ok"},
+                },
+            },
+        ]
+    }
+
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    assert resp.status_code == 422
+    errors = resp.json().get("errors", [])
+    assert any(
+        err.get("field") == "data.condition.and[0].evaluator.logic"
+        for err in errors
+    )
+
+
+def test_validation_nested_agent_scoped_evaluator_error_uses_bracketed_field_path(
+    client: TestClient,
+):
+    """Nested agent-scoped evaluator failures should identify the exact leaf path."""
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {"agent_name": agent_name},
+            "steps": [],
+            "evaluators": [],
+        },
+    )
+    assert init_resp.status_code == 200
+
+    control_id = create_control(client)
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"] = {
+        "or": [
+            {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": f"{agent_name}:missing-evaluator",
+                    "config": {},
+                },
+            }
+        ]
+    }
+
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "EVALUATOR_NOT_FOUND"
+    assert any(
+        err.get("field") == "data.condition.or[0].evaluator.name"
+        and err.get("code") == "evaluator_not_found"
+        for err in body.get("errors", [])
+    )

@@ -1,4 +1,4 @@
-.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish
+.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all models-test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish
 
 # Workspace package names
 PACK_MODELS := agent-control-models
@@ -31,7 +31,8 @@ help:
 	@echo "  make openapi-spec-check - verify OpenAPI generation succeeds"
 	@echo ""
 	@echo "Test:"
-	@echo "  make test            - run tests for core packages (server, engine, sdk, evaluators)"
+	@echo "  make test            - run tests for core packages (models, server, engine, sdk, evaluators)"
+	@echo "  make models-test     - run shared model tests with coverage"
 	@echo "  make test-extras     - run tests for contrib evaluators (galileo, etc.)"
 	@echo "  make test-all        - run all tests (core + extras)"
 	@echo "  make sdk-ts-test     - run TypeScript SDK tests"
@@ -81,7 +82,12 @@ openapi-spec-check: openapi-spec
 # Test
 # ---------------------------
 
-test: server-test engine-test sdk-test evaluators-test
+test: models-test server-test engine-test sdk-test evaluators-test
+
+models-test:
+	cd $(MODELS_DIR) && uv run pytest --cov=src --cov-report=xml:../coverage-models.xml -q
+
+test-models: models-test
 
 # Run tests for contrib evaluators (not included in default test target)
 test-extras: galileo-test
