@@ -32,12 +32,12 @@
 
 Enforce runtime guardrails through a centralized control layer—configure once and apply across all agents. Agent Control evaluates inputs and outputs against configurable rules to block prompt injections, PII leakage, and other risks without changing your agent’s code.
 
+![Agent Control Overview](docs/images/AgentControlDiagram.png)
+
 - **Centralized safety** - define controls once, apply across agents, update without redeploying
 - **Runtime configuration** - manage controls via API or UI, no code changes needed
 - **Pluggable evaluators** - built-in (regex, list, JSON, SQL) or bring your own
 - **Framework support** - works with LangChain, CrewAI, Google ADK, AWS Strands, and more
-
-![Agent Control Overview](docs/images/AgentControlDiagram.png)
 
 ## Quick Start
 
