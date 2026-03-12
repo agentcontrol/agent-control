@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from agent_control_server.endpoints.evaluation import (
     SAFE_EVALUATOR_ERROR,
+    SAFE_EVALUATOR_TIMEOUT_ERROR,
     _sanitize_control_match,
 )
 from agent_control_server.observability.ingest.base import IngestResult
@@ -203,6 +204,46 @@ def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
     assert sanitized.result.message == SAFE_EVALUATOR_ERROR
     assert child_trace["error"] == SAFE_EVALUATOR_ERROR
     assert child_trace["message"] == SAFE_EVALUATOR_ERROR
+
+
+def test_sanitize_control_match_redacts_nested_condition_trace_timeouts() -> None:
+    # Given: a control match whose nested condition trace contains timeout errors
+    match = ControlMatch(
+        control_id=1,
+        control_name="nested-timeout",
+        action="deny",
+        result=EvaluatorResult(
+            matched=False,
+            confidence=0.0,
+            error="TimeoutError: Evaluator exceeded 30s timeout",
+            message="Condition evaluation failed: TimeoutError: Evaluator exceeded 30s timeout",
+            metadata={
+                "condition_trace": {
+                    "type": "or",
+                    "children": [
+                        {
+                            "type": "leaf",
+                            "error": "TimeoutError: Evaluator exceeded 30s timeout",
+                            "message": (
+                                "Evaluation failed: TimeoutError: "
+                                "Evaluator exceeded 30s timeout"
+                            ),
+                        }
+                    ],
+                }
+            },
+        ),
+    )
+
+    # When: sanitizing the control match for API output
+    sanitized = _sanitize_control_match(match)
+    child_trace = sanitized.result.metadata["condition_trace"]["children"][0]
+
+    # Then: both the top-level result and nested trace use the safe timeout text
+    assert sanitized.result.error == SAFE_EVALUATOR_TIMEOUT_ERROR
+    assert sanitized.result.message == SAFE_EVALUATOR_TIMEOUT_ERROR
+    assert child_trace["error"] == SAFE_EVALUATOR_TIMEOUT_ERROR
+    assert child_trace["message"] == SAFE_EVALUATOR_TIMEOUT_ERROR
 
 
 def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypatch) -> None:

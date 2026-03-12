@@ -145,3 +145,33 @@ def test_list_agent_controls_returns_canonical_shape_for_legacy_stored_payload(
     assert "evaluator" not in control
     assert control["condition"]["selector"]["path"] == "input"
     assert control["condition"]["evaluator"]["name"] == "regex"
+
+
+def test_get_control_data_rejects_partial_legacy_stored_payload(
+    client: TestClient,
+) -> None:
+    # Given: a stored control row with only one half of the legacy flat shape
+    control_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    assert control_resp.status_code == 200
+    control_id = control_resp.json()["control_id"]
+
+    invalid_payload = _legacy_control_payload()
+    invalid_payload.pop("evaluator")
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
+            {"data": json.dumps(invalid_payload), "id": control_id},
+        )
+
+    # When: fetching control data through the typed API endpoint
+    resp = client.get(f"/api/v1/controls/{control_id}/data")
+
+    # Then: the API reports structured corrupted-data validation instead of silently accepting it
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "CORRUPTED_DATA"
+    assert any(
+        "Legacy control definition must include both selector and evaluator."
+        in error.get("message", "")
+        for error in body.get("errors", [])
+    )

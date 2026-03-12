@@ -12,11 +12,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from agent_control_models import (
     ControlMatch,
     EvaluationResponse,
-    EvaluationResult,
     EvaluatorResult,
     Step,
 )
@@ -26,7 +24,6 @@ from agent_control.evaluation import (
     _merge_results,
     check_evaluation_with_local,
 )
-
 
 # =============================================================================
 # Test Fixtures
@@ -255,6 +252,45 @@ class TestCheckEvaluationWithLocal:
         assert "/api/v1/evaluation" in str(client.http_client.post.call_args)
 
         assert result.is_safe is True
+
+    @pytest.mark.asyncio
+    async def test_local_legacy_flat_control_executes_locally(self, agent_name, llm_payload):
+        """Legacy flat selector/evaluator controls should still execute in the SDK."""
+        # Given: a local SDK control in the legacy flat selector/evaluator shape
+        controls = [
+            {
+                "id": 1,
+                "name": "legacy_local_ctrl",
+                "control": {
+                    "description": "Legacy local control",
+                    "enabled": True,
+                    "execution": "sdk",
+                    "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                    "selector": {"path": "input"},
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "action": {"decision": "deny"},
+                },
+            }
+        ]
+        client = MagicMock(spec=AgentControlClient)
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock()
+
+        # When: running mixed local/server evaluation
+        result = await check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+        )
+
+        # Then: the legacy control is canonicalized locally and no server call is needed
+        client.http_client.post.assert_not_called()
+        assert result.is_safe is False
+        assert result.matches is not None
+        assert len(result.matches) == 1
+        assert result.matches[0].control_name == "legacy_local_ctrl"
 
     @pytest.mark.asyncio
     async def test_local_deny_short_circuits(self, agent_name, llm_payload):
@@ -636,7 +672,8 @@ class TestCheckEvaluationWithLocal:
     async def test_server_control_with_missing_evaluator_allowed(self, agent_name, llm_payload):
         """Test that server control with unavailable evaluator is allowed (server handles it).
 
-        Given: A server control (execution="server") referencing an evaluator that doesn't exist locally
+        Given: A server control (execution="server") referencing an evaluator
+        that doesn't exist locally
         When: check_evaluation_with_local is called
         Then: No error, server is called to handle it
         """
@@ -757,8 +794,6 @@ class TestCheckEvaluationWithLocal:
         Then: Response includes steering_context field in matches
         Coverage: Lines 275, 280, 298-301 in control_decorators.py
         """
-        from agent_control_models.controls import SteeringContext
-
         controls = [
             {
                 "id": 1,
