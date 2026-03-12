@@ -829,11 +829,63 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                     pass
 
         @functools.wraps(func)
+        async def async_gen_wrapper(*args: Any, **kwargs: Any) -> Any:
+            agent = _get_current_agent()
+            if agent is None:
+                logger.warning(
+                    "No agent initialized. Call agent_control.init() first. "
+                    "Running without protection."
+                )
+                async for chunk in func(*args, **kwargs):
+                    yield chunk
+                return
+
+            controls = _get_server_controls()
+
+            existing_trace_id = get_current_trace_id()
+            if existing_trace_id:
+                trace_id = existing_trace_id
+                span_id = _generate_span_id()
+            else:
+                trace_id, span_id = get_trace_and_span_ids()
+
+            ctx = ControlContext(
+                agent_name=agent.agent_name,
+                server_url=_get_server_url(),
+                func=func,
+                args=args,
+                kwargs=kwargs,
+                trace_id=trace_id,
+                span_id=span_id,
+                start_time=time.perf_counter(),
+                step_name=step_name,
+            )
+            ctx.log_start()
+
+            try:
+                # PRE-EXECUTION: Check controls with check_stage="pre"
+                await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
+
+                # Yield chunks while accumulating full output for post-check
+                accumulated: list[str] = []
+                async for chunk in func(*args, **kwargs):
+                    accumulated.append(str(chunk))
+                    yield chunk
+
+                # POST-EXECUTION: Check controls on full accumulated output
+                full_output = "".join(accumulated)
+                await _run_control_check(ctx, "post", ctx.post_payload(full_output), controls)
+            finally:
+                ctx.log_end()
+
+        @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             return asyncio.run(
                 _execute_with_control(func, args, kwargs, is_async=False, step_name=step_name)
             )
 
+        if inspect.isasyncgenfunction(func):
+            return async_gen_wrapper  # type: ignore
         if inspect.iscoroutinefunction(func):
             return async_wrapper  # type: ignore
         return sync_wrapper  # type: ignore

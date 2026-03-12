@@ -886,3 +886,139 @@ class TestExceptionHandling:
             assert mock_logger.error.call_args[0][0] == "%s-execution control check failed: %s"
             assert mock_logger.error.call_args[0][1] == "Post"
             assert str(mock_logger.error.call_args[0][2]) == "Post-execution error"
+
+
+# =============================================================================
+# ASYNC GENERATOR (STREAMING) TESTS
+# =============================================================================
+
+class TestAsyncGeneratorControl:
+    """Tests for @control decorator on async generator (streaming) functions."""
+
+    @pytest.mark.asyncio
+    async def test_preserves_async_gen_type(self, mock_agent, mock_safe_response):
+        """Test that decorated async generator is still recognized as async gen."""
+        import inspect
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            @control()
+            async def stream(message: str):
+                yield "Hello "
+                yield "world"
+
+            assert inspect.isasyncgenfunction(stream)
+
+    @pytest.mark.asyncio
+    async def test_yields_all_chunks(self, mock_agent, mock_safe_response):
+        """Test that all chunks are yielded through when safe."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+                yield "chunk3"
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert chunks == ["chunk1", "chunk2", "chunk3"]
+
+    @pytest.mark.asyncio
+    async def test_pre_check_blocks_before_first_yield(self, mock_agent, mock_unsafe_response):
+        """Test that pre-check deny prevents any chunks from being yielded."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_unsafe_response):
+
+            executed = False
+
+            @control()
+            async def stream(message: str):
+                nonlocal executed
+                executed = True
+                yield "should not appear"
+
+            with pytest.raises(ControlViolationError):
+                async for _ in stream("toxic input"):
+                    pass
+
+            assert not executed
+
+    @pytest.mark.asyncio
+    async def test_post_check_deny_raises_after_stream(self, mock_agent, mock_safe_response, mock_unsafe_response):
+        """Test that post-check deny raises after all chunks have been yielded."""
+        call_count = [0]
+
+        def mock_evaluate_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_safe_response  # pre-check passes
+            return mock_unsafe_response  # post-check fails
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate_side_effect):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+
+            collected = []
+            with pytest.raises(ControlViolationError):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            # Chunks were yielded before the post-check raised
+            assert collected == ["chunk1", "chunk2"]
+
+    @pytest.mark.asyncio
+    async def test_no_agent_streams_without_protection(self):
+        """Test that async gen passes through if no agent initialized."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=None):
+
+            @control()
+            async def stream(message: str):
+                yield "a"
+                yield "b"
+
+            chunks = [chunk async for chunk in stream("hello")]
+            assert chunks == ["a", "b"]
+
+    @pytest.mark.asyncio
+    async def test_empty_stream(self, mock_agent, mock_safe_response):
+        """Test that empty async generator works correctly."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            @control()
+            async def stream(message: str):
+                return
+                yield  # noqa: unreachable - makes this an async generator
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert chunks == []
+
+    @pytest.mark.asyncio
+    async def test_steer_on_post_check(self, mock_agent, mock_safe_response, mock_steer_response):
+        """Test that steer action raises ControlSteerError after stream."""
+        call_count = [0]
+
+        def mock_evaluate_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_safe_response
+            return mock_steer_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate_side_effect):
+
+            @control()
+            async def stream(message: str):
+                yield "response"
+
+            with pytest.raises(ControlSteerError) as exc_info:
+                async for _ in stream("offensive"):
+                    pass
+
+            assert exc_info.value.control_name == "steer-control"
