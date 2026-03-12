@@ -46,7 +46,6 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
     "mypy>=1.8.0",
-    "agent-control-server",
     "agent-control-models",
     "agent-control-engine",
     "agent-control-evaluators",
@@ -79,7 +78,6 @@ known-first-party = ["agent_control"]
 
 # For local development, use workspace packages
 [tool.uv.sources]
-agent-control-server = { workspace = true }
 agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
 agent-control-evaluators = { workspace = true }
