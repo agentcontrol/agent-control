@@ -173,6 +173,8 @@ def test_validation_none_path_defaults_to_star(client: TestClient):
 
     # When: reading back
     get_resp = client.get(f"/api/v1/controls/{control_id}/data")
+
+    # Then: reading back the control succeeds
     assert get_resp.status_code == 200
 
     # Then: path should default to '*'
@@ -182,11 +184,15 @@ def test_validation_none_path_defaults_to_star(client: TestClient):
 
 def test_get_control_data_returns_typed_response(client: TestClient):
     """Test that GET control data returns a typed ControlDefinition."""
-    # Given: a control with valid control data
+    # Given: a control shell
     control_id = create_control(client)
+
+    # When: setting valid control data
     resp_put = client.put(
         f"/api/v1/controls/{control_id}/data", json={"data": VALID_CONTROL_PAYLOAD}
     )
+
+    # Then: the control data is stored successfully
     assert resp_put.status_code == 200
 
     # When: getting control data
@@ -196,7 +202,7 @@ def test_get_control_data_returns_typed_response(client: TestClient):
     assert resp_get.status_code == 200
     data = resp_get.json()["data"]
 
-    # Should have required ControlDefinition fields
+    # Then: the response includes required ControlDefinition fields
     assert "evaluator" in data
     assert "action" in data
     assert "selector" in data

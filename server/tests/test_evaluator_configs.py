@@ -470,6 +470,8 @@ def test_list_evaluator_configs_cursor_pagination(client: TestClient) -> None:
 
     # When: requesting first page with limit=2
     resp = client.get("/api/v1/evaluator-configs", params={"limit": 2})
+
+    # Then: the first page indicates there are more results
     assert resp.status_code == 200
     page1 = resp.json()
     assert page1["pagination"]["has_more"] is True
@@ -598,10 +600,14 @@ def test_delete_evaluator_config_success(client: TestClient) -> None:
     # When: deleting the evaluator config
     resp = client.delete(f"/api/v1/evaluator-configs/{created['id']}")
 
-    # Then: success is returned and the config is gone
+    # Then: the delete call succeeds
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+
+    # When: fetching the deleted evaluator config
     get_resp = client.get(f"/api/v1/evaluator-configs/{created['id']}")
+
+    # Then: the config is gone
     assert get_resp.status_code == 404
 
 
