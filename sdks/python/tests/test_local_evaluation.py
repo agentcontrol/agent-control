@@ -9,7 +9,7 @@ These tests verify the check_evaluation_with_local function:
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from agent_control.client import AgentControlClient
@@ -89,6 +89,15 @@ def make_control_dict(
             "action": {"decision": action},
         },
     }
+
+
+NON_APPLICABLE_CONTROL_CASES = [
+    pytest.param({"enabled": False}, id="disabled"),
+    pytest.param({"stage": "post"}, id="stage_mismatch"),
+    pytest.param({"step_type": "tool"}, id="step_type_mismatch"),
+    pytest.param({"step_names": ["send_email"]}, id="step_name_mismatch"),
+    pytest.param({"step_name_regex": r"^send_.*$"}, id="step_name_regex_mismatch"),
+]
 
 
 # =============================================================================
@@ -263,13 +272,7 @@ class TestCheckEvaluationWithLocal:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "control_kwargs",
-        [
-            pytest.param({"enabled": False}, id="disabled"),
-            pytest.param({"stage": "post"}, id="stage_mismatch"),
-            pytest.param({"step_type": "tool"}, id="step_type_mismatch"),
-            pytest.param({"step_names": ["send_email"]}, id="step_name_mismatch"),
-            pytest.param({"step_name_regex": r"^send_.*$"}, id="step_name_regex_mismatch"),
-        ],
+        NON_APPLICABLE_CONTROL_CASES,
     )
     async def test_non_applicable_server_controls_do_not_call_server(
         self,
@@ -277,7 +280,11 @@ class TestCheckEvaluationWithLocal:
         llm_payload,
         control_kwargs,
     ):
-        """Server evaluation should be skipped when no server control applies."""
+        """Given: Only server controls that do not apply to this invocation.
+
+        When: check_evaluation_with_local is called.
+        Then: The SDK skips the server evaluation request entirely.
+        """
         controls = [
             make_control_dict(
                 1,
@@ -306,6 +313,101 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
         assert result.confidence == 1.0
         assert result.matches is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "control_kwargs",
+        NON_APPLICABLE_CONTROL_CASES,
+    )
+    async def test_non_applicable_local_controls_skip_local_evaluation(
+        self,
+        agent_name,
+        llm_payload,
+        control_kwargs,
+    ):
+        """Given: Only local controls that do not apply to this invocation.
+
+        When: check_evaluation_with_local is called.
+        Then: The SDK skips local evaluation and returns a no-op safe result.
+        """
+        controls = [
+            make_control_dict(
+                1,
+                "local_ctrl",
+                execution="sdk",
+                **control_kwargs,
+            ),
+        ]
+
+        client = MagicMock(spec=AgentControlClient)
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock()
+
+        with patch(
+            "agent_control.evaluation.ControlEngine.process",
+            side_effect=AssertionError("local evaluation should not run"),
+        ) as mock_process:
+            result = await check_evaluation_with_local(
+                client=client,
+                agent_name=agent_name,
+                step=llm_payload,
+                stage="pre",
+                controls=controls,
+            )
+
+        mock_process.assert_not_called()
+        client.http_client.post.assert_not_called()
+        assert result.is_safe is True
+        assert result.confidence == 1.0
+        assert result.matches is None
+
+    @pytest.mark.asyncio
+    async def test_non_applicable_local_controls_skip_local_but_still_call_server(
+        self,
+        agent_name,
+        llm_payload,
+    ):
+        """Given: A non-applicable local control and an applicable server control.
+
+        When: check_evaluation_with_local is called.
+        Then: Local evaluation is skipped, but the applicable server control still runs.
+        """
+        controls = [
+            make_control_dict(
+                1,
+                "local_ctrl",
+                execution="sdk",
+                step_names=["send_email"],
+            ),
+            make_control_dict(
+                2,
+                "server_ctrl",
+                execution="server",
+            ),
+        ]
+
+        client = MagicMock(spec=AgentControlClient)
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"is_safe": True, "confidence": 1.0}
+        mock_response.raise_for_status = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_response)
+
+        with patch(
+            "agent_control.evaluation.ControlEngine.process",
+            side_effect=AssertionError("local evaluation should not run"),
+        ) as mock_process:
+            result = await check_evaluation_with_local(
+                client=client,
+                agent_name=agent_name,
+                step=llm_payload,
+                stage="pre",
+                controls=controls,
+            )
+
+        mock_process.assert_not_called()
+        client.http_client.post.assert_called_once()
+        assert result.is_safe is True
 
     @pytest.mark.asyncio
     async def test_local_deny_short_circuits(self, agent_name, llm_payload):

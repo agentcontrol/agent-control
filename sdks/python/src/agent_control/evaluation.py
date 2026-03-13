@@ -134,6 +134,20 @@ class _ControlAdapter:
     control: "ControlDefinition"
 
 
+def _get_applicable_controls(
+    controls: list[_ControlAdapter],
+    request: EvaluationRequest,
+    *,
+    context: Literal["sdk", "server"],
+) -> list[_ControlAdapter]:
+    """Return parsed controls that apply to this request in the given context."""
+    applicable_controls = ControlEngine(
+        controls,
+        context=context,
+    ).get_applicable_controls(request)
+    return cast(list[_ControlAdapter], applicable_controls)
+
+
 def _has_applicable_server_controls(
     controls: list[dict[str, Any]],
     request: EvaluationRequest,
@@ -162,11 +176,7 @@ def _has_applicable_server_controls(
     if not server_controls:
         return False
 
-    applicable_controls = ControlEngine(
-        server_controls,
-        context="server",
-    ).get_applicable_controls(request)
-    return bool(applicable_controls)
+    return bool(_get_applicable_controls(server_controls, request, context="server"))
 
 
 def _merge_results(
@@ -327,14 +337,19 @@ async def check_evaluation_with_local(
         )
 
     local_result: EvaluationResponse | None = None
-    if local_controls:
-        engine = ControlEngine(local_controls, context="sdk")
+    applicable_local_controls = _get_applicable_controls(
+        local_controls,
+        request,
+        context="sdk",
+    )
+    if applicable_local_controls:
+        engine = ControlEngine(applicable_local_controls, context="sdk")
         local_result = await engine.process(request)
 
         _emit_local_events(
             local_result,
             request,
-            local_controls,
+            applicable_local_controls,
             trace_id,
             span_id,
             agent_name=event_agent_name,
