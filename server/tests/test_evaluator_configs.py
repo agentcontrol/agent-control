@@ -154,7 +154,7 @@ def test_create_evaluator_config_rejects_empty_list_values(client: TestClient) -
     # When: creating the evaluator config
     resp = client.post("/api/v1/evaluator-configs", json=payload)
 
-    # Then: validation error is returned
+    # Then: the invalid config is rejected
     assert resp.status_code == 422
     data = resp.json()
     assert data["error_code"] == "INVALID_CONFIG"

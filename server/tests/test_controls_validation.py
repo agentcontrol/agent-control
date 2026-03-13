@@ -88,6 +88,7 @@ def test_validation_regex_flags_list(client: TestClient):
 
 def test_validation_list_values_reject_empty_strings(client: TestClient):
     """Test that list evaluator config rejects empty-string entries."""
+    # Given: a control and a list evaluator payload with an empty-string value
     control_id = create_control(client)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
@@ -100,8 +101,10 @@ def test_validation_list_values_reject_empty_strings(client: TestClient):
         },
     }
 
+    # When: setting control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
+    # Then: the invalid config is rejected
     assert resp.status_code == 422
     response_data = resp.json()
     errors = response_data.get("errors", [])
