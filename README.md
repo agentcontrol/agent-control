@@ -92,29 +92,33 @@ TypeScript:
 
 ```python
 # my_agent.py
+
 import asyncio
 import agent_control
 from agent_control import control, ControlViolationError
 
-# Indicate which step you want to be guarded
+# Protect any function (like LLM calls)
+
 @control()
 async def chat(message: str) -> str:
-    # Simulates an LLM that might leak sensitive data
+    # In production: response = await LLM.ainvoke(message)
+    # For demo: simulate LLM that might leak sensitive data
     if "test" in message.lower():
-        return "Your SSN is 123-45-6789"  # Blocked after Step 4 adds a control
+        return "Your SSN is 123-45-6789"  # Will be blocked!
     return f"Echo: {message}"
 
-# Register your agent with Agent Control
+# Initialize your agent
+
 agent_control.init(
-    agent_name="my-first-agent",
-    agent_description="My first agent",
+    agent_name="awesome_bot_3000",  # Unique name
+    agent_description="My Chatbot",
 )
 
 async def main():
     try:
-        print(await chat("test"))
+        print(await chat("test"))  # ❌ Blocked
     except ControlViolationError as e:
-        print(f"Blocked: {e.control_name}")
+        print(f"❌ Blocked: {e.control_name}")
 
 asyncio.run(main())
 ```
@@ -131,30 +135,51 @@ Minimal SDK example (assumes the server is running at `http://localhost:8000`
 and uses the same `agent_name` as Step 3):
 
 ```python
-# setup.py
-import asyncio
-from agent_control import AgentControlClient, controls, agents
+# setup.py - Run once to configure agent controls
 
-async def main():
-    async with AgentControlClient() as client:
-        # Create a control to see Agent Control block PII leaks in action.
+import asyncio
+from datetime import datetime, UTC
+from agent_control import AgentControlClient, controls, agents
+from agent_control_models import Agent
+
+async def setup():
+    async with AgentControlClient() as client:  # Defaults to localhost:8000
+        # 1. Register agent first
+        agent = Agent(
+            agent_name="awesome_bot_3000",
+            agent_description="My Chatbot",
+            agent_created_at=datetime.now(UTC).isoformat(),
+        )
+        await agents.register_agent(client, agent, steps=[])
+
+        # 2. Create control (blocks SSN patterns in output)
         control = await controls.create_control(
             client,
-            name="block-ssn-demo",
+            name="block-ssn",
             data={
                 "enabled": True,
                 "execution": "server",
                 "scope": {"stages": ["post"]},
                 "selector": {"path": "output"},
-                "evaluator": {"name": "regex", "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"}},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"},
+                },
                 "action": {"decision": "deny"},
             },
         )
+
+        # 3. Associate control directly with agent
         await agents.add_agent_control(
-            client, agent_name="my-first-agent", control_id=control["control_id"]
+            client,
+            agent_name=agent.agent_name,
+            control_id=control["control_id"],
         )
 
-asyncio.run(main())
+        print("✅ Setup complete!")
+        print(f"   Control ID: {control['control_id']}")
+
+asyncio.run(setup())
 ```
 
 **Tip**: If you prefer a visual flow, use the UI instead - see the [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart).
