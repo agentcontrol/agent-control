@@ -11,8 +11,8 @@ dependencies = [
 ]
 
 [project.scripts]
-secure_research_crew = "secure_research_crew.main:main"
-run_crew = "secure_research_crew.main:main"
+secure_research_crew = "secure_research_crew.main:run"
+run_crew = "secure_research_crew.main:run"
 
 [build-system]
 requires = ["hatchling"]

@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-content_publishing_flow = "content_publishing_flow.main:main"
+content_publishing_flow = "content_publishing_flow.main:run"
 kickoff = "content_publishing_flow.main:kickoff"
 plot = "content_publishing_flow.main:plot"
 

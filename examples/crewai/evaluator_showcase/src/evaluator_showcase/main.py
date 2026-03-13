@@ -352,5 +352,16 @@ def main():
 """)
 
 
+def run():
+    """Entry point for [project.scripts]."""
+    try:
+        main()
+    finally:
+        agent_control.shutdown()
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        agent_control.shutdown()

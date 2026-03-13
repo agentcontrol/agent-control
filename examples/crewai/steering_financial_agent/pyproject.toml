@@ -11,8 +11,8 @@ dependencies = [
 ]
 
 [project.scripts]
-steering_financial_agent = "steering_financial_agent.main:main"
-run_crew = "steering_financial_agent.main:main"
+steering_financial_agent = "steering_financial_agent.main:run"
+run_crew = "steering_financial_agent.main:run"
 
 [build-system]
 requires = ["hatchling"]

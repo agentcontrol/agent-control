@@ -745,9 +745,20 @@ Scenarios Demonstrated:
 """)
 
 
+def run():
+    """Entry point for [project.scripts]."""
+    try:
+        main()
+    finally:
+        agent_control.shutdown()
+
+
 def kickoff():
     """Standard CrewAI flow entry point."""
-    main()
+    try:
+        main()
+    finally:
+        agent_control.shutdown()
 
 
 def plot():
@@ -757,4 +768,7 @@ def plot():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        agent_control.shutdown()

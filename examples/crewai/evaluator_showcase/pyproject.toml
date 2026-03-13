@@ -17,8 +17,8 @@ dev = [
 ]
 
 [project.scripts]
-evaluator_showcase = "evaluator_showcase.main:main"
-run_crew = "evaluator_showcase.main:main"
+evaluator_showcase = "evaluator_showcase.main:run"
+run_crew = "evaluator_showcase.main:run"
 
 [build-system]
 requires = ["hatchling"]
