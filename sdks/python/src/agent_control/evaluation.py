@@ -134,6 +134,41 @@ class _ControlAdapter:
     control: "ControlDefinition"
 
 
+def _has_applicable_server_controls(
+    controls: list[dict[str, Any]],
+    request: EvaluationRequest,
+) -> bool:
+    """Return whether any well-formed server control applies to this request.
+
+    If any server control cannot be parsed locally, this returns True so the SDK
+    still defers to the server for authoritative handling.
+    """
+    server_controls: list[_ControlAdapter] = []
+
+    for control in controls:
+        try:
+            control_def = ControlDefinition.model_validate(control["control"])
+            server_controls.append(
+                _ControlAdapter(
+                    id=control["id"],
+                    name=control["name"],
+                    control=control_def,
+                )
+            )
+        except Exception:
+            # Preserve existing fail-open behavior for malformed server controls.
+            return True
+
+    if not server_controls:
+        return False
+
+    applicable_controls = ControlEngine(
+        server_controls,
+        context="server",
+    ).get_applicable_controls(request)
+    return bool(applicable_controls)
+
+
 def _merge_results(
     local_result: "EvaluationResponse",
     server_result: "EvaluationResponse",
@@ -212,7 +247,7 @@ async def check_evaluation_with_local(
     # Partition controls by local flag
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []
-    has_server_controls = False
+    server_controls: list[dict[str, Any]] = []
 
     for control in controls:
         control_data = control.get("control", {})
@@ -220,7 +255,7 @@ async def check_evaluation_with_local(
         is_local = execution == "sdk"
 
         if not is_local:
-            has_server_controls = True
+            server_controls.append(control)
             continue
 
         try:
@@ -272,6 +307,12 @@ async def check_evaluation_with_local(
                 )
             )
 
+    request = EvaluationRequest(
+        agent_name=normalized_name,
+        step=step,
+        stage=stage,
+    )
+
     def _with_parse_errors(result: EvaluationResult) -> EvaluationResult:
         if not parse_errors:
             return result
@@ -284,12 +325,6 @@ async def check_evaluation_with_local(
             errors=combined_errors,
             non_matches=result.non_matches,
         )
-
-    request = EvaluationRequest(
-        agent_name=normalized_name,
-        step=step,
-        stage=stage,
-    )
 
     local_result: EvaluationResponse | None = None
     if local_controls:
@@ -317,7 +352,7 @@ async def check_evaluation_with_local(
                 )
             )
 
-    if has_server_controls:
+    if _has_applicable_server_controls(server_controls, request):
         request_payload = request.model_dump(mode="json", exclude_none=True)
         headers: dict[str, str] = {}
         if trace_id:
