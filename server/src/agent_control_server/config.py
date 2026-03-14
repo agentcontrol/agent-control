@@ -4,7 +4,7 @@ import logging
 import secrets
 from functools import cached_property
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _config_logger = logging.getLogger(__name__)
@@ -99,15 +99,36 @@ class AgentControlServerDatabaseConfig(BaseSettings):
     model_config = SettingsConfigDict(**_COMMON_SETTINGS_CONFIG, env_prefix="AGENT_CONTROL_DB_")
 
     # Allow direct URL override for SQLite in local dev
-    url: str | None = None
+    url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_CONTROL_DB_URL", "DATABASE_URL", "DB_URL"),
+    )
 
     # PostgreSQL settings (only used if url is not set)
-    host: str = "localhost"
-    port: int = 5432
-    user: str = "agent_control"
-    password: str = "agent_control"
-    database: str = "agent_control"
-    driver: str = "psycopg"
+    host: str = Field(
+        default="localhost",
+        validation_alias=AliasChoices("AGENT_CONTROL_DB_HOST", "DB_HOST"),
+    )
+    port: int = Field(
+        default=5432,
+        validation_alias=AliasChoices("AGENT_CONTROL_DB_PORT", "DB_PORT"),
+    )
+    user: str = Field(
+        default="agent_control",
+        validation_alias=AliasChoices("AGENT_CONTROL_DB_USER", "DB_USER"),
+    )
+    password: str = Field(
+        default="agent_control",
+        validation_alias=AliasChoices("AGENT_CONTROL_DB_PASSWORD", "DB_PASSWORD"),
+    )
+    database: str = Field(
+        default="agent_control",
+        validation_alias=AliasChoices("AGENT_CONTROL_DB_DATABASE", "DB_DATABASE"),
+    )
+    driver: str = Field(
+        default="psycopg",
+        validation_alias=AliasChoices("AGENT_CONTROL_DB_DRIVER", "DB_DRIVER"),
+    )
 
     def get_url(self) -> str:
         """Get database URL, preferring an explicit URL if configured."""
