@@ -142,13 +142,13 @@ def test_create_evaluator_config_invalid_config_422(client: TestClient) -> None:
     assert any("config" in str(err.get("field", "")) for err in data.get("errors", []))
 
 
-def test_create_evaluator_config_rejects_empty_list_values(client: TestClient) -> None:
-    # Given: a payload with an empty-string entry for the list evaluator
+def test_create_evaluator_config_rejects_blank_list_values(client: TestClient) -> None:
+    # Given: a payload with a whitespace-only entry for the list evaluator
     name = f"config-{uuid.uuid4().hex}"
     payload = _create_config_payload(
         name=name,
         evaluator="list",
-        config={"values": [""], "logic": "any", "match_on": "match", "match_mode": "contains"},
+        config={"values": [" "], "logic": "any", "match_on": "match", "match_mode": "contains"},
     )
 
     # When: creating the evaluator config
@@ -159,7 +159,10 @@ def test_create_evaluator_config_rejects_empty_list_values(client: TestClient) -
     data = resp.json()
     assert data["error_code"] == "INVALID_CONFIG"
     assert any("config.values" in str(err.get("field", "")) for err in data.get("errors", []))
-    assert any("empty strings" in err.get("message", "") for err in data.get("errors", []))
+    assert any(
+        "empty or whitespace-only strings" in err.get("message", "")
+        for err in data.get("errors", [])
+    )
 
 
 def test_create_evaluator_config_invalid_parameters_type_error_422(

@@ -28,7 +28,7 @@ class ListEvaluatorConfig(EvaluatorConfig):
     @field_validator("values")
     @classmethod
     def validate_values(cls, values: list[str | int | float]) -> list[str | int | float]:
-        """Reject empty-string entries that would compile into a match-all regex."""
-        if any(isinstance(value, str) and value == "" for value in values):
-            raise ValueError("values must not contain empty strings")
+        """Reject blank string entries that would compile into pathological regexes."""
+        if any(isinstance(value, str) and value.strip() == "" for value in values):
+            raise ValueError("values must not contain empty or whitespace-only strings")
         return values

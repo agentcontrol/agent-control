@@ -35,9 +35,9 @@ class ListEvaluator(Evaluator[ListEvaluatorConfig]):
 
     def __init__(self, config: ListEvaluatorConfig) -> None:
         super().__init__(config)
-        # Defensive filtering keeps legacy invalid configs from compiling into match-all regexes.
+        # Defensive filtering keeps legacy invalid configs from compiling into pathological regexes.
         normalized_values = [str(v) for v in config.values]
-        self._values = [value for value in normalized_values if value != ""]
+        self._values = [value for value in normalized_values if value.strip() != ""]
         self._regex: Any = self._build_regex()
 
     def _build_regex(self) -> Any:

@@ -86,15 +86,15 @@ def test_validation_regex_flags_list(client: TestClient):
     assert any("flags" in str(e.get("field", "")) for e in errors)
 
 
-def test_validation_list_values_reject_empty_strings(client: TestClient):
-    """Test that list evaluator config rejects empty-string entries."""
-    # Given: a control and a list evaluator payload with an empty-string value
+def test_validation_list_values_reject_blank_strings(client: TestClient):
+    """Test that list evaluator config rejects empty and whitespace-only entries."""
+    # Given: a control and a list evaluator payload with a whitespace-only value
     control_id = create_control(client)
     payload = VALID_CONTROL_PAYLOAD.copy()
     payload["evaluator"] = {
         "name": "list",
         "config": {
-            "values": [""],
+            "values": [" "],
             "logic": "any",
             "match_on": "match",
             "match_mode": "contains",
@@ -109,7 +109,7 @@ def test_validation_list_values_reject_empty_strings(client: TestClient):
     response_data = resp.json()
     errors = response_data.get("errors", [])
     assert any("values" in str(e.get("field", "")) for e in errors)
-    assert any("empty strings" in e.get("message", "") for e in errors)
+    assert any("empty or whitespace-only strings" in e.get("message", "") for e in errors)
 
 
 def test_validation_invalid_regex_pattern(client: TestClient):
