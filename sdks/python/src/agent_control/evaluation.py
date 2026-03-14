@@ -148,21 +148,25 @@ def _get_applicable_controls(
     return cast(list[_ControlAdapter], applicable_controls)
 
 
-def _has_applicable_server_controls(
-    controls: list[dict[str, Any]],
+def _has_applicable_prefiltered_server_controls(
+    server_control_payloads: list[dict[str, Any]],
     request: EvaluationRequest,
 ) -> bool:
-    """Return whether any well-formed server control applies to this request.
+    """Return whether any partitioned server control applies to this request.
 
-    If any server control cannot be parsed locally, this returns True so the SDK
-    still defers to the server for authoritative handling.
+    The caller is responsible for partitioning raw control payloads by
+    ``execution`` before calling this helper. This function only inspects the
+    server-control subset and does not re-check ``execution`` itself.
+
+    If any server control payload cannot be parsed locally, this returns True so
+    the SDK still defers to the server for authoritative handling.
     """
-    server_controls: list[_ControlAdapter] = []
+    parsed_server_controls: list[_ControlAdapter] = []
 
-    for control in controls:
+    for control in server_control_payloads:
         try:
             control_def = ControlDefinition.model_validate(control["control"])
-            server_controls.append(
+            parsed_server_controls.append(
                 _ControlAdapter(
                     id=control["id"],
                     name=control["name"],
@@ -173,10 +177,16 @@ def _has_applicable_server_controls(
             # Preserve existing fail-open behavior for malformed server controls.
             return True
 
-    if not server_controls:
+    if not parsed_server_controls:
         return False
 
-    return bool(_get_applicable_controls(server_controls, request, context="server"))
+    return bool(
+        _get_applicable_controls(
+            parsed_server_controls,
+            request,
+            context="server",
+        )
+    )
 
 
 def _merge_results(
@@ -257,7 +267,7 @@ async def check_evaluation_with_local(
     # Partition controls by local flag
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []
-    server_controls: list[dict[str, Any]] = []
+    server_control_payloads: list[dict[str, Any]] = []
 
     for control in controls:
         control_data = control.get("control", {})
@@ -265,7 +275,7 @@ async def check_evaluation_with_local(
         is_local = execution == "sdk"
 
         if not is_local:
-            server_controls.append(control)
+            server_control_payloads.append(control)
             continue
 
         try:
@@ -367,7 +377,7 @@ async def check_evaluation_with_local(
                 )
             )
 
-    if _has_applicable_server_controls(server_controls, request):
+    if _has_applicable_prefiltered_server_controls(server_control_payloads, request):
         request_payload = request.model_dump(mode="json", exclude_none=True)
         headers: dict[str, str] = {}
         if trace_id:
