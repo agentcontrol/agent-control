@@ -45,11 +45,9 @@ export function getControlConditionState(
     leafCondition,
     evaluatorId,
     evaluator,
-    canEditLeafCondition: Boolean(leafCondition && evaluator),
+    canEditLeafCondition: Boolean(leafCondition),
     conditionEditingMessage: leafCondition
-      ? evaluator
-        ? null
-        : `This control uses the "${leafCondition.evaluatorName}" evaluator, which does not have a UI editor here yet. Saving will preserve its current condition.`
+      ? null
       : COMPOSITE_CONDITION_EDITING_MESSAGE,
   };
 }

@@ -217,15 +217,19 @@ class ControlEngine:
         matched: bool,
         confidence: float,
         trace: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> EvaluatorResult:
         """Create a composite evaluator result with a condition trace."""
+        result_metadata = dict(metadata or {})
+        result_metadata["condition_trace"] = trace
+
         if error is not None:
             return EvaluatorResult(
                 matched=False,
                 confidence=0.0,
                 message=f"Condition evaluation failed: {error}",
-                metadata={"condition_trace": trace},
+                metadata=result_metadata,
                 error=error,
             )
 
@@ -234,8 +238,31 @@ class ControlEngine:
             matched=matched,
             confidence=confidence,
             message=message,
-            metadata={"condition_trace": trace},
+            metadata=result_metadata,
         )
+
+    @staticmethod
+    def _composite_metadata(
+        child_evaluations: Sequence[_ConditionEvaluation],
+        *,
+        matched: bool,
+    ) -> dict[str, Any] | None:
+        """Select stable child metadata to preserve on composite results."""
+        source_result: EvaluatorResult | None = None
+        if matched:
+            source_result = next(
+                (
+                    evaluation.result
+                    for evaluation in child_evaluations
+                    if evaluation.result.matched
+                ),
+                None,
+            )
+        if source_result is None and child_evaluations:
+            source_result = child_evaluations[0].result
+        if source_result is None or source_result.metadata is None:
+            return None
+        return dict(source_result.metadata)
 
     async def _evaluate_condition(
         self,
@@ -266,6 +293,7 @@ class ControlEngine:
                         matched=False,
                         confidence=0.0,
                         trace=trace,
+                        metadata=child_eval.result.metadata,
                         error=child_eval.result.error,
                     ),
                     trace=trace,
@@ -275,6 +303,7 @@ class ControlEngine:
                 matched=not child_eval.result.matched,
                 confidence=child_eval.result.confidence,
                 trace=trace,
+                metadata=child_eval.result.metadata,
             )
             return _ConditionEvaluation(result=result, trace=trace)
 
@@ -299,6 +328,7 @@ class ControlEngine:
                         matched=False,
                         confidence=0.0,
                         trace=trace,
+                        metadata=child_eval.result.metadata,
                         error=child_eval.result.error,
                     ),
                     trace=trace,
@@ -335,6 +365,7 @@ class ControlEngine:
                     matched=matched,
                     confidence=confidence,
                     trace=trace,
+                    metadata=child_eval.result.metadata,
                 )
                 return _ConditionEvaluation(result=result, trace=trace)
 
@@ -354,6 +385,7 @@ class ControlEngine:
             matched=matched,
             confidence=confidence,
             trace=trace,
+            metadata=self._composite_metadata(child_evaluations, matched=matched),
         )
         return _ConditionEvaluation(result=result, trace=trace)
 

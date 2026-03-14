@@ -38,6 +38,12 @@ def migrate_control_payload(data: object) -> ControlMigrationResult:
             reason="Stored control data must be a JSON object.",
         )
 
+    if not data:
+        return ControlMigrationResult(
+            status="unchanged",
+            payload={},
+        )
+
     has_condition = "condition" in data
     has_selector = "selector" in data
     has_evaluator = "evaluator" in data

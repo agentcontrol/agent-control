@@ -1,4 +1,8 @@
-import type { AgentControlsResponse, GetAgentResponse } from '@/core/api/types';
+import type {
+  AgentControlsResponse,
+  Control,
+  GetAgentResponse,
+} from '@/core/api/types';
 import { getAgentRoute } from '@/core/constants/agent-routes';
 
 import { expect, mockData, mockRoutes, test } from './fixtures';
@@ -562,6 +566,60 @@ test.describe('Agent Detail Page', () => {
     });
     await executionLabel.scrollIntoViewIfNeeded();
     await expect(executionLabel).toBeVisible();
+  });
+
+  test('leaf controls with unknown evaluators still expose JSON editing', async ({
+    mockedPage,
+  }) => {
+    const unknownEvaluatorControl: Control = {
+      id: 42,
+      name: 'External Guard',
+      control: {
+        description: 'Uses an external evaluator without a custom form',
+        enabled: true,
+        execution: 'server',
+        scope: { step_types: ['llm'], stages: ['post'] },
+        condition: {
+          selector: { path: 'output' },
+          evaluator: {
+            name: 'vendor.external',
+            config: { threshold: 0.7, mode: 'strict' },
+          },
+        },
+        action: { decision: 'deny' },
+        tags: ['external'],
+      },
+    };
+    const unknownControls: AgentControlsResponse = {
+      controls: [unknownEvaluatorControl],
+    };
+
+    await mockRoutes.agent(mockedPage, {
+      controls: { data: unknownControls },
+    });
+    await mockedPage.route('**/api/v1/controls/42/data', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: unknownEvaluatorControl.control }),
+      });
+    });
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 42 }));
+
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+    await expect(
+      modal.getByText(
+        'No form available for this evaluator. Use JSON view to configure.'
+      )
+    ).toBeVisible();
+
+    await modal.getByText('JSON', { exact: true }).click();
+    await expect(modal.getByTestId('raw-json-textarea')).toBeVisible();
+    await expect(
+      modal.getByText('Condition editing unavailable')
+    ).not.toBeVisible();
   });
 
   test('disables Form switch when JSON is invalid', async ({ mockedPage }) => {

@@ -140,6 +140,29 @@ class SlowEvaluator(Evaluator[SimpleConfig]):
         )
 
 
+class MetadataEvaluator(Evaluator[SimpleConfig]):
+    """Evaluator that emits structured metadata for propagation tests."""
+
+    metadata = EvaluatorMetadata(
+        name="test-metadata",
+        version="1.0.0",
+        description="Returns metadata while matching by config prefix",
+    )
+    config_model = SimpleConfig
+
+    async def evaluate(self, data: Any) -> EvaluatorResult:
+        _execution_log.append(f"metadata:{self.config.value}:start")
+        matched = self.config.value.startswith("match")
+        result = EvaluatorResult(
+            matched=matched,
+            confidence=0.8 if matched else 0.4,
+            message=f"Metadata {self.config.value}",
+            metadata={"source": self.config.value, "selected_data": data},
+        )
+        _execution_log.append(f"metadata:{self.config.value}:end")
+        return result
+
+
 @dataclass
 class MockControlWithIdentity:
     """Mock control for testing."""
@@ -156,7 +179,13 @@ def setup_test_evaluators():
     clear_evaluator_cache()
 
     # Register evaluators (may already be registered)
-    for evaluator_cls in [AllowEvaluator, DenyEvaluator, BlockerEvaluator, SlowEvaluator]:
+    for evaluator_cls in [
+        AllowEvaluator,
+        DenyEvaluator,
+        BlockerEvaluator,
+        SlowEvaluator,
+        MetadataEvaluator,
+    ]:
         try:
             register_evaluator(evaluator_cls)
         except ValueError:
@@ -1376,6 +1405,67 @@ class TestConditionTrees:
         assert trace["children"][1]["evaluated"] is False
         assert trace["children"][1]["matched"] is None
         assert trace["children"][1]["short_circuit_reason"] == "or_matched"
+
+    @pytest.mark.asyncio
+    async def test_composite_results_preserve_decisive_child_metadata(self):
+        """Composite results should retain structured metadata from the decisive child."""
+        # Given: an OR tree where the second child decides the result
+        controls = [
+            MockControlWithIdentity(
+                id=1,
+                name="or_metadata",
+                control=ControlDefinition(
+                    description="Preserve decisive metadata",
+                    enabled=True,
+                    execution="server",
+                    scope={"step_types": ["llm"], "stages": ["pre"]},
+                    condition={
+                        "or": [
+                            {
+                                "selector": {"path": "input"},
+                                "evaluator": {
+                                    "name": "test-metadata",
+                                    "config": {"value": "miss-left"},
+                                },
+                            },
+                            {
+                                "selector": {"path": "output"},
+                                "evaluator": {
+                                    "name": "test-metadata",
+                                    "config": {"value": "match-right"},
+                                },
+                            },
+                            {
+                                "selector": {"path": "name"},
+                                "evaluator": {
+                                    "name": "test-slow",
+                                    "config": {"value": "skip-tail"},
+                                },
+                            },
+                        ]
+                    },
+                    action={"decision": "log"},
+                ),
+            )
+        ]
+        engine = ControlEngine(controls)
+
+        # When: processing the request
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output="chosen"),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        # Then: the composite retains the metadata from the matching child
+        assert result.matches is not None
+        metadata = result.matches[0].result.metadata
+        assert metadata is not None
+        assert metadata["source"] == "match-right"
+        assert metadata["selected_data"] == "chosen"
+        assert metadata["condition_trace"]["type"] == "or"
+        assert "slow:skip-tail:start" not in _execution_log
 
     @pytest.mark.asyncio
     async def test_and_condition_all_children_match_records_full_trace(self):

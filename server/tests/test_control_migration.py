@@ -79,6 +79,16 @@ def test_migrate_control_payload_rejects_non_object_rows() -> None:
     assert result.reason == "Stored control data must be a JSON object."
 
 
+def test_migrate_control_payload_leaves_empty_draft_rows_unchanged() -> None:
+    # Given: an unconfigured control row created with the default empty payload
+    # When: migrating the stored payload
+    result = migrate_control_payload({})
+
+    # Then: the draft row is treated as unchanged instead of corrupted
+    assert result.status == "unchanged"
+    assert result.payload == {}
+
+
 @dataclass
 class _FakeControl:
     id: int
@@ -219,6 +229,35 @@ def test_migration_script_apply_rewrites_legacy_rows_and_commits(
     assert "condition" in controls[1].data
     assert "selector" not in controls[1].data
     assert "evaluator" not in controls[1].data
+
+
+def test_migration_script_apply_ignores_empty_draft_rows(
+    monkeypatch: Any,
+    capsys: Any,
+) -> None:
+    # Given: an empty draft row plus one legacy row ready to migrate
+    controls = [
+        _FakeControl(id=1, name="draft", data={}),
+        _FakeControl(id=2, name="legacy", data=_make_legacy_payload()),
+    ]
+
+    # When: running the script in apply mode
+    exit_code, fake_session, fake_engine = _run_migration_script(
+        monkeypatch,
+        controls=controls,
+        apply=True,
+    )
+    output = capsys.readouterr().out
+
+    # Then: empty draft rows do not block the migration and remain untouched
+    assert exit_code == 0
+    assert "Already canonical: 1" in output
+    assert "Ready to migrate: 1" in output
+    assert "Invalid/corrupted: 0" in output
+    assert fake_session.committed is True
+    assert fake_engine.disposed is True
+    assert controls[0].data == {}
+    assert "condition" in controls[1].data
 
 
 def test_migration_script_apply_aborts_when_invalid_rows_exist(
