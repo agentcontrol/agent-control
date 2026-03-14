@@ -44,16 +44,16 @@ services:
     environment:
       # Database connection (uses Docker service name 'postgres')
       # Use postgresql+psycopg:// (supports both sync migrations and async app code)
-      DATABASE_URL: postgresql+psycopg://agent_control:agent_control@postgres:5432/agent_control
+      AGENT_CONTROL_DB_URL: postgresql+psycopg://agent_control:agent_control@postgres:5432/agent_control
       # Server configuration
-      HOST: 0.0.0.0
-      PORT: 8000
+      AGENT_CONTROL_HOST: 0.0.0.0
+      AGENT_CONTROL_PORT: 8000
       # API authentication (override via host env or server/.env; see server/.env.example)
       AGENT_CONTROL_API_KEY_ENABLED: ${AGENT_CONTROL_API_KEY_ENABLED:-false}
       AGENT_CONTROL_API_KEYS: ${AGENT_CONTROL_API_KEYS:-}
       AGENT_CONTROL_ADMIN_API_KEYS: ${AGENT_CONTROL_ADMIN_API_KEYS:-}
       AGENT_CONTROL_SESSION_SECRET: ${AGENT_CONTROL_SESSION_SECRET:-}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4000}
+      AGENT_CONTROL_CORS_ORIGINS: ${AGENT_CONTROL_CORS_ORIGINS:-http://localhost:4000}
     depends_on:
       postgres:
         condition: service_healthy

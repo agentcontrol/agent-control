@@ -32,7 +32,7 @@ from .errors import (
     http_exception_handler,
     validation_exception_handler,
 )
-from .logging_utils import configure_logging
+from .logging_utils import configure_logging, get_log_level_name
 from .observability.ingest import DirectEventIngestor
 from .observability.store import PostgresEventStore
 from .ui_assets import configure_ui_routes
@@ -78,8 +78,8 @@ def add_prometheus_metrics(app: FastAPI, metrics_prefix: str) -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager for FastAPI app startup and shutdown."""
     # Startup: Configure logging
-    log_level = "DEBUG" if settings.debug else "INFO"
-    configure_logging(level=log_level)
+    default_log_level = "DEBUG" if settings.debug else "INFO"
+    configure_logging(default_level=default_log_level)
 
     # Discover evaluators at startup
     discover_evaluators()
@@ -152,13 +152,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
-    allow_methods=settings.allow_methods,
-    allow_headers=settings.allow_headers,
+    allow_methods=settings.get_allow_methods(),
+    allow_headers=settings.get_allow_headers(),
 )
 
 # Configure logging
-log_level = "DEBUG" if settings.debug else "INFO"
-configure_logging(level=log_level)
+default_log_level = "DEBUG" if settings.debug else "INFO"
+configure_logging(default_level=default_log_level)
 
 
 # =============================================================================
@@ -272,11 +272,12 @@ configure_ui_routes(app)
 
 def run() -> None:
     """Run the server application."""
+    default_log_level = "DEBUG" if settings.debug else "INFO"
     uvicorn.run(
         app,
         host=settings.host,
         port=settings.port,
-        log_level="debug" if settings.debug else "info",
+        log_level=get_log_level_name(default_log_level).lower(),
     )
 
 

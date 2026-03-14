@@ -75,7 +75,7 @@ For SQLite (local testing):
 
 ```bash
 cd server
-echo "DB_URL=sqlite+aiosqlite:///./test_agent_control.db" > .env
+echo "AGENT_CONTROL_DB_URL=sqlite+aiosqlite:///./test_agent_control.db" > .env
 uv run alembic upgrade head
 ```
 
@@ -231,7 +231,7 @@ jobs:
           uv run uvicorn agent_control_server.main:app &
           sleep 5
         env:
-          DB_URL: postgresql+psycopg://postgres:postgres@localhost/agent_control_test
+          AGENT_CONTROL_DB_URL: postgresql+psycopg://postgres:postgres@localhost/agent_control_test
           AGENT_CONTROL_API_KEYS: test-api-key-ci
           AGENT_CONTROL_ADMIN_API_KEYS: test-api-key-ci
       

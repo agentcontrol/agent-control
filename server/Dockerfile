@@ -70,8 +70,8 @@ RUN uv sync \
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Set default environment variables
-ENV HOST=0.0.0.0
-ENV PORT=8000
+ENV AGENT_CONTROL_HOST=0.0.0.0
+ENV AGENT_CONTROL_PORT=8000
 
 # Expose the port
 EXPOSE 8000

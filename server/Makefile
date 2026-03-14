@@ -9,13 +9,14 @@ SHOW ?= head
 STAMP ?= head
 
 TEST_DB ?= agent_control_test
+TEST_DB_ENV := AGENT_CONTROL_DB_URL= AGENT_CONTROL_DB_HOST=localhost AGENT_CONTROL_DB_PORT=5432 AGENT_CONTROL_DB_USER=agent_control AGENT_CONTROL_DB_PASSWORD=agent_control AGENT_CONTROL_DB_DATABASE=$(TEST_DB)
 .PHONY: help run start-dependencies test migrate alembic-migrate alembic-revision alembic-upgrade alembic-downgrade alembic-current alembic-history alembic-heads alembic-show alembic-stamp
 
 help:
 	@echo "Available targets:"
 	@echo "  run                          - start FastAPI server (reload)"
 	@echo "  start-dependencies           - docker compose up -d (start local dependencies)"
-	@echo "  test                         - run server tests (uses DB_DATABASE=$(TEST_DB))"
+	@echo "  test                         - run server tests (uses $(TEST_DB_ENV))"
 	@echo "  migrate                      - run database migrations (alembic upgrade head)"
 	@echo "  alembic-migrate MSG='message'  - autogenerate alembic revision"
 	@echo "  alembic-upgrade UP=head        - upgrade to revision"
@@ -63,7 +64,7 @@ start-dependencies:
 	@echo "PostgreSQL is ready!"
 
 test:
-	DB_DATABASE=$(TEST_DB) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q
+	$(TEST_DB_ENV) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q
 
 run: start-dependencies migrate
 	uv run --package agent-control-server uvicorn agent_control_server.main:app --reload

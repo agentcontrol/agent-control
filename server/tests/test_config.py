@@ -1,6 +1,10 @@
 """Tests for server configuration helpers."""
 
-from agent_control_server.config import AgentControlServerDatabaseConfig, Settings
+from agent_control_server.config import (
+    AgentControlServerDatabaseConfig,
+    ObservabilitySettings,
+    Settings,
+)
 
 
 def test_db_config_prefers_explicit_url() -> None:
@@ -15,6 +19,29 @@ def test_db_config_prefers_explicit_url() -> None:
     assert resolved == explicit_url
 
 
+def test_db_config_prefers_agent_control_url_over_legacy_env(monkeypatch) -> None:
+    # Given: both canonical and legacy database URL env vars are set
+    monkeypatch.setenv("AGENT_CONTROL_DB_URL", "sqlite:///tmp/canonical.db")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///tmp/legacy.db")
+
+    # When: loading DB config from the environment
+    config = AgentControlServerDatabaseConfig()
+
+    # Then: the canonical Agent Control env var wins
+    assert config.get_url() == "sqlite:///tmp/canonical.db"
+
+
+def test_db_config_supports_legacy_db_database_env(monkeypatch) -> None:
+    # Given: only the legacy DB_DATABASE env var is set
+    monkeypatch.setenv("DB_DATABASE", "agent_control_legacy")
+
+    # When: loading DB config from the environment
+    config = AgentControlServerDatabaseConfig()
+
+    # Then: the legacy value is still honored
+    assert config.database == "agent_control_legacy"
+
+
 def test_settings_parses_cors_origins_string() -> None:
     # Given: a comma-separated CORS origins string
     settings = Settings(cors_origins="https://a.example, https://b.example")
@@ -26,6 +53,23 @@ def test_settings_parses_cors_origins_string() -> None:
     assert origins == ["https://a.example", "https://b.example"]
 
 
+def test_settings_reads_agent_control_prefixed_env_vars(monkeypatch) -> None:
+    # Given: canonical Agent Control server env vars are set
+    monkeypatch.setenv("AGENT_CONTROL_HOST", "127.0.0.1")
+    monkeypatch.setenv("AGENT_CONTROL_CORS_ORIGINS", "https://a.example, https://b.example")
+    monkeypatch.setenv("AGENT_CONTROL_ALLOW_METHODS", "GET, POST")
+    monkeypatch.setenv("AGENT_CONTROL_ALLOW_HEADERS", "Authorization, Content-Type")
+
+    # When: loading settings from the environment
+    config = Settings()
+
+    # Then: the canonical env vars are parsed correctly
+    assert config.host == "127.0.0.1"
+    assert config.get_cors_origins() == ["https://a.example", "https://b.example"]
+    assert config.get_allow_methods() == ["GET", "POST"]
+    assert config.get_allow_headers() == ["Authorization", "Content-Type"]
+
+
 def test_settings_returns_cors_origins_list_unchanged() -> None:
     # Given: a CORS origins list
     settings = Settings(cors_origins=["https://a.example", "https://b.example"])
@@ -35,3 +79,16 @@ def test_settings_returns_cors_origins_list_unchanged() -> None:
 
     # Then: the list is returned as-is
     assert origins == ["https://a.example", "https://b.example"]
+
+
+def test_observability_settings_support_prefixed_env_vars(monkeypatch) -> None:
+    # Given: canonical observability env vars are set
+    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_ENABLED", "false")
+    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_STDOUT", "true")
+
+    # When: loading observability settings from the environment
+    config = ObservabilitySettings()
+
+    # Then: the Agent Control-prefixed env vars are used
+    assert config.enabled is False
+    assert config.stdout is True
