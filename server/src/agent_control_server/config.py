@@ -4,7 +4,7 @@ import logging
 import secrets
 from functools import cached_property
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _config_logger = logging.getLogger(__name__)
@@ -145,21 +145,51 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(**_COMMON_SETTINGS_CONFIG, env_prefix="AGENT_CONTROL_")
 
     # Server settings
-    host: str = "0.0.0.0"
-    port: int = 8000
-    debug: bool = False
+    host: str = Field(
+        default="0.0.0.0",
+        validation_alias=AliasChoices("AGENT_CONTROL_HOST", "HOST"),
+    )
+    port: int = Field(
+        default=8000,
+        validation_alias=AliasChoices("AGENT_CONTROL_PORT", "PORT"),
+    )
+    debug: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENT_CONTROL_DEBUG", "DEBUG"),
+    )
 
     # API settings
-    api_version: str = "v1"
-    api_prefix: str = "/api"
+    api_version: str = Field(
+        default="v1",
+        validation_alias=AliasChoices("AGENT_CONTROL_API_VERSION", "API_VERSION"),
+    )
+    api_prefix: str = Field(
+        default="/api",
+        validation_alias=AliasChoices("AGENT_CONTROL_API_PREFIX", "API_PREFIX"),
+    )
 
     # Prometheus metrics settings
-    prometheus_metrics_prefix: str = "agent_control_server"
+    prometheus_metrics_prefix: str = Field(
+        default="agent_control_server",
+        validation_alias=AliasChoices(
+            "AGENT_CONTROL_PROMETHEUS_METRICS_PREFIX",
+            "PROMETHEUS_METRICS_PREFIX",
+        ),
+    )
 
     # CORS settings
-    cors_origins: list[str] | str = "*"
-    allow_methods: list[str] | str = ["*"]
-    allow_headers: list[str] | str = ["*"]
+    cors_origins: list[str] | str = Field(
+        default="*",
+        validation_alias=AliasChoices("AGENT_CONTROL_CORS_ORIGINS", "CORS_ORIGINS"),
+    )
+    allow_methods: list[str] | str = Field(
+        default=["*"],
+        validation_alias=AliasChoices("AGENT_CONTROL_ALLOW_METHODS", "ALLOW_METHODS"),
+    )
+    allow_headers: list[str] | str = Field(
+        default=["*"],
+        validation_alias=AliasChoices("AGENT_CONTROL_ALLOW_HEADERS", "ALLOW_HEADERS"),
+    )
 
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from string or list."""
@@ -208,6 +238,28 @@ class LoggingSettings(BaseSettings):
         default=False,
         validation_alias="AGENT_CONTROL_LOG_JSON",
     )
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def _normalize_level(cls, value: object) -> object:
+        """Treat blank strings as unset and trim whitespace from configured levels."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            return stripped
+        return value
+
+    @field_validator("json_logs", mode="before")
+    @classmethod
+    def _normalize_json_logs(cls, value: object) -> object:
+        """Treat blank strings as false and trim whitespace before bool parsing."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return False
+            return stripped
+        return value
 
 
 class UISettings(BaseSettings):

@@ -25,16 +25,17 @@ def _parse_level(level: str | int | None) -> int:
 
 def get_log_level_name(default_level: str = "INFO") -> str:
     """Resolve the configured log level name, falling back to the provided default."""
+    normalized_default = default_level.upper()
+    if normalized_default not in _LEVELS:
+        normalized_default = "INFO"
+
     configured_level = LoggingSettings().level
     if configured_level is not None:
         normalized = configured_level.upper()
         if normalized in _LEVELS:
             return normalized
-        return "INFO"
-    normalized_default = default_level.upper()
-    if normalized_default in _LEVELS:
         return normalized_default
-    return "INFO"
+    return normalized_default
 
 
 def _parse_json(json_flag: bool | None) -> bool:

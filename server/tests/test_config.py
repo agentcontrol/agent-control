@@ -32,6 +32,7 @@ def test_db_config_reads_agent_control_url_from_env(monkeypatch) -> None:
 
 def test_db_config_reads_database_url_from_env(monkeypatch) -> None:
     # Given: only the legacy DATABASE_URL env var is set
+    monkeypatch.delenv("AGENT_CONTROL_DB_URL", raising=False)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///tmp/legacy.db")
 
     # When: loading DB config from the environment
@@ -43,6 +44,12 @@ def test_db_config_reads_database_url_from_env(monkeypatch) -> None:
 
 def test_db_config_reads_legacy_db_prefix_from_env(monkeypatch) -> None:
     # Given: only the legacy DB_* env vars are set
+    monkeypatch.delenv("AGENT_CONTROL_DB_HOST", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_DB_PORT", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_DB_USER", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_DB_PASSWORD", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_DB_DATABASE", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_DB_DRIVER", raising=False)
     monkeypatch.setenv("DB_HOST", "db.example")
     monkeypatch.setenv("DB_PORT", "15432")
     monkeypatch.setenv("DB_USER", "legacy_user")
@@ -95,6 +102,48 @@ def test_settings_reads_agent_control_prefixed_env_vars(monkeypatch) -> None:
     assert config.get_cors_origins() == ["https://a.example", "https://b.example"]
     assert config.get_allow_methods() == ["GET", "POST"]
     assert config.get_allow_headers() == ["Authorization", "Content-Type"]
+
+
+def test_settings_reads_legacy_env_vars(monkeypatch) -> None:
+    # Given: only legacy server env vars are set
+    monkeypatch.setenv("HOST", "127.0.0.1")
+    monkeypatch.setenv("PORT", "9000")
+    monkeypatch.setenv("DEBUG", "true")
+    monkeypatch.setenv("API_VERSION", "v2")
+    monkeypatch.setenv("API_PREFIX", "/legacy")
+    monkeypatch.setenv("PROMETHEUS_METRICS_PREFIX", "legacy_metrics")
+    monkeypatch.setenv("CORS_ORIGINS", "https://legacy.example")
+    monkeypatch.setenv("ALLOW_METHODS", "GET, POST")
+    monkeypatch.setenv("ALLOW_HEADERS", "Authorization, Content-Type")
+
+    # When: loading settings from the environment
+    config = Settings()
+
+    # Then: the legacy env vars remain compatible
+    assert config.host == "127.0.0.1"
+    assert config.port == 9000
+    assert config.debug is True
+    assert config.api_version == "v2"
+    assert config.api_prefix == "/legacy"
+    assert config.prometheus_metrics_prefix == "legacy_metrics"
+    assert config.get_cors_origins() == ["https://legacy.example"]
+    assert config.get_allow_methods() == ["GET", "POST"]
+    assert config.get_allow_headers() == ["Authorization", "Content-Type"]
+
+
+def test_settings_prefers_agent_control_env_vars_over_legacy(monkeypatch) -> None:
+    # Given: both canonical and legacy server env vars are set
+    monkeypatch.setenv("AGENT_CONTROL_PORT", "7000")
+    monkeypatch.setenv("PORT", "9000")
+    monkeypatch.setenv("AGENT_CONTROL_CORS_ORIGINS", "https://canonical.example")
+    monkeypatch.setenv("CORS_ORIGINS", "https://legacy.example")
+
+    # When: loading settings from the environment
+    config = Settings()
+
+    # Then: the canonical env vars win
+    assert config.port == 7000
+    assert config.get_cors_origins() == ["https://canonical.example"]
 
 
 def test_settings_returns_cors_origins_list_unchanged() -> None:
