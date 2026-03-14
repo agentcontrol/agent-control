@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 from agent_control_engine import list_evaluators
@@ -164,7 +165,7 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
 
 
 def _find_referencing_controls_for_removed_evaluators(
-    controls: list[_ControlWithDefinition],
+    controls: Sequence[_ControlWithDefinition],
     agent_name: str,
     remove_evaluator_set: set[str],
 ) -> list[tuple[str, str]]:

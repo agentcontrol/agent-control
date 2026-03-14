@@ -605,7 +605,9 @@ test.describe('Agent Detail Page', () => {
       });
     });
 
-    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 42 }));
+    await mockedPage.goto(
+      getAgentControlsUrl({ modal: 'edit', controlId: 42 })
+    );
 
     const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
     await expect(modal).toBeVisible();

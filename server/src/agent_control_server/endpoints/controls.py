@@ -97,18 +97,22 @@ async def _validate_control_definition(
         parsed = parse_evaluator_ref_full(evaluator_ref)
 
         if parsed.type == "agent":
-            agent_data = agent_data_by_name.get(parsed.namespace)
+            agent_namespace = parsed.namespace
+            if agent_namespace is None:
+                continue
+
+            agent_data = agent_data_by_name.get(agent_namespace)
             if agent_data is None:
                 agent_result = await db.execute(
-                    select(Agent).where(Agent.name == parsed.namespace)
+                    select(Agent).where(Agent.name == agent_namespace)
                 )
                 agent = agent_result.scalars().first()
                 if agent is None:
                     raise NotFoundError(
                         error_code=ErrorCode.AGENT_NOT_FOUND,
-                        detail=f"Agent '{parsed.namespace}' not found",
+                        detail=f"Agent '{agent_namespace}' not found",
                         resource="Agent",
-                        resource_id=parsed.namespace,
+                        resource_id=agent_namespace,
                         hint=(
                             "Ensure the agent exists before creating controls "
                             "that reference its evaluators."
@@ -132,7 +136,7 @@ async def _validate_control_definition(
                             for err in e.errors()
                         ],
                     ) from e
-                agent_data_by_name[parsed.namespace] = agent_data
+                agent_data_by_name[agent_namespace] = agent_data
 
             evaluator = next(
                 (e for e in (agent_data.evaluators or []) if e.name == parsed.local_name),
@@ -144,7 +148,7 @@ async def _validate_control_definition(
                     error_code=ErrorCode.EVALUATOR_NOT_FOUND,
                     detail=(
                         f"Evaluator '{parsed.local_name}' is not registered "
-                        f"with agent '{parsed.namespace}'"
+                        f"with agent '{agent_namespace}'"
                     ),
                     resource="Evaluator",
                     hint=(
@@ -158,7 +162,7 @@ async def _validate_control_definition(
                             code="evaluator_not_found",
                             message=(
                                 f"Evaluator '{parsed.local_name}' not found "
-                                f"on agent '{parsed.namespace}'"
+                                f"on agent '{agent_namespace}'"
                             ),
                             value=evaluator_ref,
                         )
