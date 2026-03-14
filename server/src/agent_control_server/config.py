@@ -4,7 +4,7 @@ import logging
 import secrets
 from functools import cached_property
 
-from pydantic import AliasChoices, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _config_logger = logging.getLogger(__name__)
@@ -94,50 +94,20 @@ class AuthSettings(BaseSettings):
 
 
 class AgentControlServerDatabaseConfig(BaseSettings):
-    """Database configuration for the server.
+    """Database configuration for the server."""
 
-    Canonical environment variables use the ``AGENT_CONTROL_DB_`` prefix.
-    Legacy ``DATABASE_URL`` / ``DB_*`` names are still accepted for
-    backwards compatibility.
-    """
-
-    model_config = _COMMON_SETTINGS_CONFIG
+    model_config = SettingsConfigDict(**_COMMON_SETTINGS_CONFIG, env_prefix="AGENT_CONTROL_DB_")
 
     # Allow direct URL override for SQLite in local dev
-    url: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices(
-            "AGENT_CONTROL_DB_URL",
-            "DATABASE_URL",
-            "DB_URL",
-        ),
-    )
+    url: str | None = None
 
     # PostgreSQL settings (only used if url is not set)
-    host: str = Field(
-        default="localhost",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_HOST", "DB_HOST"),
-    )
-    port: int = Field(
-        default=5432,
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_PORT", "DB_PORT"),
-    )
-    user: str = Field(
-        default="agent_control",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_USER", "DB_USER"),
-    )
-    password: str = Field(
-        default="agent_control",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_PASSWORD", "DB_PASSWORD"),
-    )
-    database: str = Field(
-        default="agent_control",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_DATABASE", "DB_DATABASE"),
-    )
-    driver: str = Field(
-        default="psycopg",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_DRIVER", "DB_DRIVER"),
-    )
+    host: str = "localhost"
+    port: int = 5432
+    user: str = "agent_control"
+    password: str = "agent_control"
+    database: str = "agent_control"
+    driver: str = "psycopg"
 
     def get_url(self) -> str:
         """Get database URL, preferring an explicit URL if configured."""
@@ -151,54 +121,24 @@ class AgentControlServerDatabaseConfig(BaseSettings):
 class Settings(BaseSettings):
     """Server configuration settings."""
 
-    model_config = _COMMON_SETTINGS_CONFIG
+    model_config = SettingsConfigDict(**_COMMON_SETTINGS_CONFIG, env_prefix="AGENT_CONTROL_")
 
     # Server settings
-    host: str = Field(
-        default="0.0.0.0",
-        validation_alias=AliasChoices("AGENT_CONTROL_HOST", "HOST"),
-    )
-    port: int = Field(
-        default=8000,
-        validation_alias=AliasChoices("AGENT_CONTROL_PORT", "PORT"),
-    )
-    debug: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("AGENT_CONTROL_DEBUG", "DEBUG"),
-    )
+    host: str = "0.0.0.0"
+    port: int = 8000
+    debug: bool = False
 
     # API settings
-    api_version: str = Field(
-        default="v1",
-        validation_alias=AliasChoices("AGENT_CONTROL_API_VERSION", "API_VERSION"),
-    )
-    api_prefix: str = Field(
-        default="/api",
-        validation_alias=AliasChoices("AGENT_CONTROL_API_PREFIX", "API_PREFIX"),
-    )
+    api_version: str = "v1"
+    api_prefix: str = "/api"
 
     # Prometheus metrics settings
-    prometheus_metrics_prefix: str = Field(
-        default="agent_control_server",
-        validation_alias=AliasChoices(
-            "AGENT_CONTROL_PROMETHEUS_METRICS_PREFIX",
-            "PROMETHEUS_METRICS_PREFIX",
-        ),
-    )
+    prometheus_metrics_prefix: str = "agent_control_server"
 
     # CORS settings
-    cors_origins: list[str] | str = Field(
-        default="*",
-        validation_alias=AliasChoices("AGENT_CONTROL_CORS_ORIGINS", "CORS_ORIGINS"),
-    )
-    allow_methods: list[str] | str = Field(
-        default=["*"],
-        validation_alias=AliasChoices("AGENT_CONTROL_ALLOW_METHODS", "ALLOW_METHODS"),
-    )
-    allow_headers: list[str] | str = Field(
-        default=["*"],
-        validation_alias=AliasChoices("AGENT_CONTROL_ALLOW_HEADERS", "ALLOW_HEADERS"),
-    )
+    cors_origins: list[str] | str = "*"
+    allow_methods: list[str] | str = ["*"]
+    allow_headers: list[str] | str = ["*"]
 
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from string or list."""
@@ -225,39 +165,27 @@ class Settings(BaseSettings):
 class ObservabilitySettings(BaseSettings):
     """Observability configuration settings."""
 
-    model_config = _COMMON_SETTINGS_CONFIG
+    model_config = SettingsConfigDict(
+        **_COMMON_SETTINGS_CONFIG,
+        env_prefix="AGENT_CONTROL_OBSERVABILITY_",
+    )
 
     # Enable/disable observability features
-    enabled: bool = Field(
-        default=True,
-        validation_alias=AliasChoices(
-            "AGENT_CONTROL_OBSERVABILITY_ENABLED",
-            "OBSERVABILITY_ENABLED",
-        ),
-    )
+    enabled: bool = True
 
     # Stdout logging of events
-    stdout: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            "AGENT_CONTROL_OBSERVABILITY_STDOUT",
-            "OBSERVABILITY_STDOUT",
-        ),
-    )
+    stdout: bool = False
 
 
 class LoggingSettings(BaseSettings):
     """Server logging configuration settings."""
 
-    model_config = _COMMON_SETTINGS_CONFIG
+    model_config = SettingsConfigDict(**_COMMON_SETTINGS_CONFIG, env_prefix="AGENT_CONTROL_LOG_")
 
-    level: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("AGENT_CONTROL_LOG_LEVEL", "LOG_LEVEL"),
-    )
+    level: str | None = None
     json_logs: bool = Field(
         default=False,
-        validation_alias=AliasChoices("AGENT_CONTROL_LOG_JSON", "LOG_JSON"),
+        validation_alias="AGENT_CONTROL_LOG_JSON",
     )
 
 
@@ -273,5 +201,4 @@ auth_settings = AuthSettings()
 db_config = AgentControlServerDatabaseConfig()
 settings = Settings()
 observability_settings = ObservabilitySettings()
-logging_settings = LoggingSettings()
 ui_settings = UISettings()

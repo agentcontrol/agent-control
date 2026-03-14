@@ -27,16 +27,15 @@ def test_parse_level_uses_env_default(monkeypatch) -> None:
     assert parsed == logging.ERROR
 
 
-def test_parse_level_prefers_canonical_env_over_legacy(monkeypatch) -> None:
-    # Given: both canonical and legacy logging env vars are set
-    monkeypatch.setenv("AGENT_CONTROL_LOG_LEVEL", "WARNING")
+def test_parse_level_ignores_legacy_env(monkeypatch) -> None:
+    # Given: only the legacy logging env var is set
     monkeypatch.setenv("LOG_LEVEL", "ERROR")
 
     # When: parsing with no explicit level
     parsed = _parse_level(None)
 
-    # Then: the canonical env var wins
-    assert parsed == logging.WARNING
+    # Then: the legacy env var is ignored
+    assert parsed == logging.INFO
 
 
 def test_parse_json_accepts_bool() -> None:

@@ -19,27 +19,26 @@ def test_db_config_prefers_explicit_url() -> None:
     assert resolved == explicit_url
 
 
-def test_db_config_prefers_agent_control_url_over_legacy_env(monkeypatch) -> None:
-    # Given: both canonical and legacy database URL env vars are set
+def test_db_config_reads_agent_control_url_from_env(monkeypatch) -> None:
+    # Given: the canonical database URL env var is set
     monkeypatch.setenv("AGENT_CONTROL_DB_URL", "sqlite:///tmp/canonical.db")
+
+    # When: loading DB config from the environment
+    config = AgentControlServerDatabaseConfig()
+
+    # Then: the canonical Agent Control env var is used
+    assert config.get_url() == "sqlite:///tmp/canonical.db"
+
+
+def test_db_config_ignores_legacy_database_env(monkeypatch) -> None:
+    # Given: only the legacy database URL env var is set
     monkeypatch.setenv("DATABASE_URL", "sqlite:///tmp/legacy.db")
 
     # When: loading DB config from the environment
     config = AgentControlServerDatabaseConfig()
 
-    # Then: the canonical Agent Control env var wins
-    assert config.get_url() == "sqlite:///tmp/canonical.db"
-
-
-def test_db_config_supports_legacy_db_database_env(monkeypatch) -> None:
-    # Given: only the legacy DB_DATABASE env var is set
-    monkeypatch.setenv("DB_DATABASE", "agent_control_legacy")
-
-    # When: loading DB config from the environment
-    config = AgentControlServerDatabaseConfig()
-
-    # Then: the legacy value is still honored
-    assert config.database == "agent_control_legacy"
+    # Then: the legacy env var is ignored
+    assert config.get_url() != "sqlite:///tmp/legacy.db"
 
 
 def test_settings_parses_cors_origins_string() -> None:
@@ -92,3 +91,16 @@ def test_observability_settings_support_prefixed_env_vars(monkeypatch) -> None:
     # Then: the Agent Control-prefixed env vars are used
     assert config.enabled is False
     assert config.stdout is True
+
+
+def test_observability_settings_ignore_legacy_env_vars(monkeypatch) -> None:
+    # Given: only legacy observability env vars are set
+    monkeypatch.setenv("OBSERVABILITY_ENABLED", "false")
+    monkeypatch.setenv("OBSERVABILITY_STDOUT", "true")
+
+    # When: loading observability settings from the environment
+    config = ObservabilitySettings()
+
+    # Then: the legacy env vars are ignored
+    assert config.enabled is True
+    assert config.stdout is False
