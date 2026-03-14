@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Thin REST client for Cisco AI Defense Chat Inspection.
 # Uses httpx.AsyncClient and the OpenAPI-defined endpoint/header.
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 try:
@@ -37,11 +37,15 @@ class AIDefenseClient:
         timeout_s: Timeout in seconds
     """
 
-    api_key: str
+    api_key: str = field(repr=False)
     endpoint_url: str
     timeout_s: float
 
-    _client: httpx.AsyncClient | None = None  # type: ignore[name-defined]
+    _client: httpx.AsyncClient | None = field(  # type: ignore[name-defined]
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     async def _get_client(self) -> httpx.AsyncClient:  # type: ignore[name-defined]
         if not AI_DEFENSE_HTTPX_AVAILABLE:  # pragma: no cover
@@ -88,7 +92,7 @@ class AIDefenseClient:
         """Close the HTTP client and release resources."""
         await self.aclose()
 
-    async def __aenter__(self) -> "AIDefenseClient":
+    async def __aenter__(self) -> AIDefenseClient:
         """Async context manager entry."""
         return self
 

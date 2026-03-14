@@ -8,9 +8,9 @@ using the packaged plugin integration.
 
 It demonstrates:
 
-- model guardrails through `before_model_callback`
+- the callback pattern can protect model I/O through `before_model_callback` and `after_model_callback`
 - tool guardrails through `before_tool_callback` and `after_tool_callback`
-- server-side control execution only
+- this example uses server-side control execution
 
 ## What It Demonstrates
 
@@ -107,3 +107,7 @@ For more details on this example, see the [Docs](https://docs.agentcontrol.dev/e
 
 > **Tip:** If you want the packaged, attach-once ADK integration, use
 > [`examples/google_adk_plugin/`](../google_adk_plugin/) instead.
+>
+> The callback pattern itself can also support sdk-local evaluation and
+> `after_model_callback`, but this example keeps the manual flow smaller and
+> focuses on `before_model_callback` plus the tool hooks.

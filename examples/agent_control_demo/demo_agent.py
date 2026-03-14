@@ -146,17 +146,8 @@ async def test_scenario(name: str, func, input_text: str):
         print(f"\n❌ ERROR: {e}")
 
 
-async def run_demo():
-    """Run the demo scenarios."""
-    logger.info("Starting agent control demo")
-    print("\n" + "=" * 60)
-    print("AGENT CONTROL DEMO: Running Agent")
-    print("=" * 60)
-
-    # Initialize the agent
-    print(f"\n🤖 Initializing agent: {AGENT_NAME}")
-    print(f"   Server: {SERVER_URL}")
-
+def initialize_demo_agent() -> bool:
+    """Initialize the demo agent and print actionable failure guidance."""
     try:
         logger.info(f"Initializing agent: {AGENT_NAME}")
         agent_control.init(
@@ -165,14 +156,18 @@ async def run_demo():
             server_url=SERVER_URL,
         )
         logger.info("Agent initialized successfully")
+        return True
     except Exception as e:
         logger.error(f"Failed to initialize agent: {e}")
         print(f"\n❌ Failed to initialize agent: {e}")
         print("\nMake sure:")
         print("  1. Server is running: cd server && make run")
         print("  2. Controls are created: python setup_controls.py")
-        return
+        return False
 
+
+async def run_demo_scenarios() -> None:
+    """Run the scripted demo scenarios."""
     # ==========================================================================
     # Test 1: Safe chat message
     # ==========================================================================
@@ -236,7 +231,9 @@ async def run_demo():
         "Get user info"  # Will generate response with SSN
     )
 
-    # Summary
+
+def print_demo_summary() -> None:
+    """Print the final demo summary."""
     logger.info("All demo scenarios completed")
     print("\n" + "=" * 60)
     print("DEMO COMPLETE!")
@@ -252,6 +249,32 @@ The controls are evaluated SERVER-SIDE:
   - All evaluations logged for audit
   - Centralized control management
 """)
+
+
+async def run_demo_session() -> None:
+    """Initialize the agent and run the scripted demo."""
+    if not initialize_demo_agent():
+        return
+
+    await run_demo_scenarios()
+    print_demo_summary()
+
+
+async def run_demo() -> None:
+    """Run the demo scenarios."""
+    logger.info("Starting agent control demo")
+    print("\n" + "=" * 60)
+    print("AGENT CONTROL DEMO: Running Agent")
+    print("=" * 60)
+
+    # Initialize the agent
+    print(f"\n🤖 Initializing agent: {AGENT_NAME}")
+    print(f"   Server: {SERVER_URL}")
+
+    try:
+        await run_demo_session()
+    finally:
+        await agent_control.ashutdown()
 
 
 if __name__ == "__main__":

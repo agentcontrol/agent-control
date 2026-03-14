@@ -22,19 +22,32 @@ import agent_control
 from agent_control import ControlViolationError, control
 from agent_control.tracing import with_trace
 
+AGENT_NAME = "customer-support-agent"
+AGENT_DESCRIPTION = (
+    "AI-powered customer support assistant that helps with inquiries, "
+    "searches knowledge bases, and creates support tickets."
+)
+
+
 # =============================================================================
 # SDK INITIALIZATION
 # =============================================================================
 # Call this once at the start of your application.
 # The agent registers with the server and loads associated controls.
 
-agent_control.init(
-    agent_name="customer-support-agent",
-    agent_description="AI-powered customer support assistant that helps with inquiries, "
-                      "searches knowledge bases, and creates support tickets.",
-    agent_version="1.0.0",
-    observability_enabled=True,
-)
+
+def initialize_agent_control() -> None:
+    """Initialize the SDK once for this example process."""
+    current_agent = agent_control.current_agent()
+    if current_agent is not None and current_agent.agent_name == AGENT_NAME:
+        return
+
+    agent_control.init(
+        agent_name=AGENT_NAME,
+        agent_description=AGENT_DESCRIPTION,
+        agent_version="1.0.0",
+        observability_enabled=True,
+    )
 
 
 # =============================================================================
@@ -268,6 +281,7 @@ class CustomerSupportAgent:
     """
 
     def __init__(self):
+        initialize_agent_control()
         self.conversation_history: list[dict[str, str]] = []
 
     async def chat(self, user_message: str) -> str:
@@ -410,42 +424,50 @@ class CustomerSupportAgent:
 # DIRECT EXECUTION
 # =============================================================================
 
+async def run_smoke_tests() -> None:
+    """Run the direct-execution smoke tests."""
+    agent = CustomerSupportAgent()
+
+    print("\n--- Test: Normal chat (1 span) ---")
+    response = await agent.chat("Hello, I need help with a refund")
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Customer lookup (1 span) ---")
+    response = await agent.lookup("C001")
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Knowledge base search (1 span) ---")
+    response = await agent.search("refund")
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Create ticket (1 span) ---")
+    response = await agent.create_support_ticket(
+        subject="Refund request",
+        description="I would like to return my order",
+        priority="medium"
+    )
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Comprehensive support (2-3 spans in one trace) ---")
+    response = await agent.handle_comprehensive_support(
+        user_message="I need help with a refund for my recent order",
+        customer_id="C001"
+    )
+    print(f"Agent: {response}")
+
+    print("\n--- Test: Comprehensive support without customer (2 spans) ---")
+    response = await agent.handle_comprehensive_support(
+        user_message="How do I reset my password?"
+    )
+    print(f"Agent: {response}")
+
+
 if __name__ == "__main__":
     # Quick test
     async def main():
-        agent = CustomerSupportAgent()
-
-        print("\n--- Test: Normal chat (1 span) ---")
-        response = await agent.chat("Hello, I need help with a refund")
-        print(f"Agent: {response}")
-
-        print("\n--- Test: Customer lookup (1 span) ---")
-        response = await agent.lookup("C001")
-        print(f"Agent: {response}")
-
-        print("\n--- Test: Knowledge base search (1 span) ---")
-        response = await agent.search("refund")
-        print(f"Agent: {response}")
-
-        print("\n--- Test: Create ticket (1 span) ---")
-        response = await agent.create_support_ticket(
-            subject="Refund request",
-            description="I would like to return my order",
-            priority="medium"
-        )
-        print(f"Agent: {response}")
-
-        print("\n--- Test: Comprehensive support (2-3 spans in one trace) ---")
-        response = await agent.handle_comprehensive_support(
-            user_message="I need help with a refund for my recent order",
-            customer_id="C001"
-        )
-        print(f"Agent: {response}")
-
-        print("\n--- Test: Comprehensive support without customer (2 spans) ---")
-        response = await agent.handle_comprehensive_support(
-            user_message="How do I reset my password?"
-        )
-        print(f"Agent: {response}")
+        try:
+            await run_smoke_tests()
+        finally:
+            await agent_control.ashutdown()
 
     asyncio.run(main())

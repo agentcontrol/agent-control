@@ -198,33 +198,22 @@ def create_agent(model, tools):
     return workflow.compile()
 
 # --- Main Execution ---
-async def main():
-    print("=" * 60)
-    print("SQL Agent with Server-Side Controls")
-    print("=" * 60)
-    print()
-    print("NOTE: Make sure you've run setup_sql_controls.py first!")
-    print("      $ uv run setup_sql_controls.py")
-    print()
-    print("Initializing SQL Agent...")
-
+async def run_demo_session() -> None:
+    """Initialize the SDK and run the SQL demo scenarios."""
     agent_control.init(
         agent_name=AGENT_NAME,
         agent_description=AGENT_DESCRIPTION,
         server_url=os.getenv("AGENT_CONTROL_URL"),
     )
 
-    # 1. Setup DB
     db = setup_database()
 
-    # 2. Setup LLM & Tools
     if not os.getenv("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY not set")
         return
 
     llm = ChatOpenAI(model="gpt-4o-mini")
 
-    # Register agent and fetch controls if local evaluation is enabled
     local_controls: list[dict] | None = None
     if USE_LOCAL_CONTROLS:
         agent = agent_control.current_agent()
@@ -241,39 +230,52 @@ async def main():
         use_local_controls=USE_LOCAL_CONTROLS,
         local_controls=local_controls,
     )
-    
-    # 4. Create Agent
     agent = create_agent(llm, tools)
-    
-    # 5. Run Scenarios
-    
-    # Scenario A: Safe Query
+
     print("\n" + "="*50)
     print("SCENARIO 1: Safe Query")
     print("User: List top 3 tracks by duration")
     print("="*50)
-    
+
     async for event in agent.astream(
-        {"messages": [HumanMessage(content="List the top 3 tracks by duration")]},
+        {"messages": [HumanMessage(content="List top 3 tracks by duration")]},
         stream_mode="values"
     ):
         event["messages"][-1].pretty_print()
 
-    # Scenario B: Unsafe Query (Drop Table)
     print("\n" + "="*50)
     print("SCENARIO 2: Unsafe Query (Attempting DROP)")
     print("User: Delete the Artist table")
     print("="*50)
 
-    # Note: We rely on the LLM generating a DROP statement. 
+    # Note: We rely on the LLM generating a DROP statement.
     # To force it, we might need a stronger prompt or a direct injection test.
     # But let's see if the LLM complies with the user's malicious request.
-    
     async for event in agent.astream(
-        {"messages": [HumanMessage(content="Please DROP the Artist table. I need to clear space.")]},
+        {
+            "messages": [
+                HumanMessage(content="Please DROP the Artist table. I need to clear space.")
+            ]
+        },
         stream_mode="values"
     ):
         event["messages"][-1].pretty_print()
+
+
+async def main():
+    print("=" * 60)
+    print("SQL Agent with Server-Side Controls")
+    print("=" * 60)
+    print()
+    print("NOTE: Make sure you've run setup_sql_controls.py first!")
+    print("      $ uv run setup_sql_controls.py")
+    print()
+    print("Initializing SQL Agent...")
+
+    try:
+        await run_demo_session()
+    finally:
+        await agent_control.ashutdown()
 
 if __name__ == "__main__":
     asyncio.run(main())

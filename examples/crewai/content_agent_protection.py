@@ -48,14 +48,20 @@ from crewai.tools import tool
 AGENT_NAME = "crew-ai-customer-support"
 AGENT_DESCRIPTION = "Customer support crew with PII protection and access controls"
 
-# Initialize Agent Control
 server_url = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
-agent_control.init(
-    agent_name=AGENT_NAME,
-    agent_description=AGENT_DESCRIPTION,
-    server_url=server_url,
-)
+
+def initialize_agent_control() -> None:
+    """Initialize the SDK once for this example process."""
+    current_agent = agent_control.current_agent()
+    if current_agent is not None and current_agent.agent_name == AGENT_NAME:
+        return
+
+    agent_control.init(
+        agent_name=AGENT_NAME,
+        agent_description=AGENT_DESCRIPTION,
+        server_url=server_url,
+    )
 
 # --- Define CrewAI Guardrails for Quality Validation ---
 
@@ -511,7 +517,8 @@ def verify_setup():
         return False
 
 
-def main():
+def print_demo_intro() -> None:
+    """Print the demo header and description."""
     print("=" * 60)
     print("CrewAI Customer Support: Agent Control + Guardrails")
     print("=" * 60)
@@ -520,29 +527,34 @@ def main():
     print("work together to ensure both safe AND high-quality responses.")
     print()
 
-    # Verify setup
+
+def verify_prerequisites() -> bool:
+    """Validate server setup and required environment variables."""
     print("\n" + "="*60)
     print("SETUP VERIFICATION")
     print("="*60)
 
     if not verify_setup():
         print("\n❌ Setup verification failed. Please fix the issues above.")
-        return
+        return False
 
-    # Check API key
     if not os.getenv("OPENAI_API_KEY"):
         print("\n❌ Error: OPENAI_API_KEY not set")
         print("Please set: export OPENAI_API_KEY='your-key-here'")
-        return
+        return False
+
+    return True
+
+
+def run_demo_session() -> None:
+    """Initialize the SDK and run the CrewAI demo scenarios."""
+    initialize_agent_control()
 
     print("\n✅ Setup verified! Starting demos...\n")
-
-    # Create crew and final output validator
     print("Creating customer support crew with multi-layer protection...")
     crew = create_support_crew()
     validate_final_output = create_final_output_validator()
 
-    # --- Scenario 1: Unauthorized Access Attempt (Agent Control PRE-execution) ---
     print("\n" + "="*50)
     print("SCENARIO 1: Unauthorized Access (Agent Control PRE)")
     print("="*50)
@@ -559,7 +571,6 @@ def main():
     print("\n💡 Explanation: Agent Control blocks security violations immediately.")
     print("   No retries because unauthorized access is non-negotiable.")
 
-    # --- Scenario 2: PII Leakage in Response (Agent Control POST-execution) ---
     print("\n" + "="*50)
     print("SCENARIO 2: PII Leakage (Agent Control POST)")
     print("="*50)
@@ -576,7 +587,6 @@ def main():
     print("\n💡 Explanation: Agent Control blocks PII violations immediately.")
     print("   No retries because PII leakage is a compliance violation.")
 
-    # --- Scenario 2.5: Poor Quality Response (CrewAI Guardrails with Retry) ---
     print("\n" + "="*50)
     print("SCENARIO 2.5: Quality Issues (CrewAI Guardrails)")
     print("="*50)
@@ -601,7 +611,6 @@ def main():
     print("     - Friendly tone (LLM-based)")
     print("     - Useful information (LLM-based)")
 
-    # --- Scenario 3: Final Output Validation (Catches Unprotected Tool PII) ---
     print("\n" + "="*50)
     print("SCENARIO 3: Final Output Validation - Catches PII from Unprotected Tool")
     print("="*50)
@@ -616,7 +625,6 @@ def main():
     print("- Final output validation catches the PII and blocks it")
     print()
 
-    # Create separate crew for Scenario 3 with unprotected tool
     print("Creating Scenario 3 crew with unprotected customer info tool...")
     scenario3_crew = create_scenario3_crew()
 
@@ -631,7 +639,6 @@ def main():
 
     print("\n[Validating Final Output]")
     try:
-        # Validate the final crew output for PII
         validated_output = validate_final_output(str(result3))
         print("\n📝 Result (Validated - No PII):")
         print(validated_output)
@@ -675,6 +682,18 @@ EXECUTION ORDER:
 
 This gives you BOTH security AND quality in production!
 """)
+
+
+def main():
+    print_demo_intro()
+
+    if not verify_prerequisites():
+        return
+
+    try:
+        run_demo_session()
+    finally:
+        agent_control.shutdown()
 
 
 if __name__ == "__main__":

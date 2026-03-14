@@ -1,5 +1,4 @@
 import { Text } from '@mantine/core';
-import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 
 import type { Control } from '@/core/api/types';
@@ -7,6 +6,7 @@ import {
   type RemoveControlFromAgentResult,
   useRemoveControlFromAgent,
 } from '@/core/hooks/query-hooks/use-remove-control-from-agent';
+import { openDestructiveConfirmModal } from '@/core/utils/modals';
 
 type UseDeleteControlFlowParams = {
   agentId: string;
@@ -22,7 +22,7 @@ export function useDeleteControlFlow({
   const removeControlFromAgent = useRemoveControlFromAgent();
 
   const handleDeleteControl = (control: Control) => {
-    modals.openConfirmModal({
+    openDestructiveConfirmModal({
       title: 'Remove control from agent?',
       children: (
         <Text size="sm" c="dimmed">
@@ -31,13 +31,6 @@ export function useDeleteControlFlow({
           globally.
         </Text>
       ),
-      labels: { confirm: 'Remove', cancel: 'Cancel' },
-      confirmProps: {
-        variant: 'filled',
-        color: 'red.7',
-        size: 'sm',
-      },
-      cancelProps: { variant: 'default', size: 'sm' },
       onConfirm: () =>
         removeControlFromAgent.mutate(
           {

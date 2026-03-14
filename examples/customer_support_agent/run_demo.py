@@ -30,8 +30,13 @@ import asyncio
 import logging
 import os
 import sys
+from typing import TYPE_CHECKING
 
+import agent_control
 from agent_control import AgentControlClient, agents, controls
+
+if TYPE_CHECKING:
+    from support_agent import CustomerSupportAgent
 
 # Configure logging to see SDK debug output
 logging.basicConfig(
@@ -68,7 +73,7 @@ async def reset_agent():
     async with AgentControlClient(base_url=server_url) as client:
         # Check if agent exists
         try:
-            await agents.get_agent(client, agent_name)
+            await agents.get_agent(client, AGENT_NAME)
             logger.debug("Agent exists, proceeding with reset")
         except Exception as e:
             if "404" in str(e):
@@ -93,7 +98,7 @@ async def reset_agent():
                 try:
                     remove_result = await agents.remove_agent_control(
                         client,
-                        agent_name,
+                        AGENT_NAME,
                         control_id,
                     )
                     if remove_result.get("removed_direct_association"):
@@ -104,7 +109,7 @@ async def reset_agent():
                         logger.debug(
                             "Error removing direct control %s from %s: %s",
                             control_id,
-                            agent_name,
+                            AGENT_NAME,
                             e,
                         )
 
@@ -244,7 +249,7 @@ async def run_interactive(agent: CustomerSupportAgent):
                     print("Usage: /comprehensive [customer_id] <message>")
                     print("Example: /comprehensive C001 I need help with a refund")
                 else:
-                    print(f"Running comprehensive support flow (multi-span)...")
+                    print("Running comprehensive support flow (multi-span)...")
                     if customer_id:
                         print(f"  Customer: {customer_id}")
                     print(f"  Message: {message}")
@@ -292,7 +297,13 @@ async def run_interactive(agent: CustomerSupportAgent):
             response = await agent.chat(user_input)
             print(f"Agent: {response}")
 
-        print()
+
+async def run_demo_mode(agent: CustomerSupportAgent, automated: bool) -> None:
+    """Run the selected demo mode."""
+    if automated:
+        await run_automated_tests(agent)
+    else:
+        await run_interactive(agent)
 
 
 async def run_safe_tests(agent: CustomerSupportAgent):
@@ -609,19 +620,20 @@ def main():
         asyncio.run(reset_agent())
         return
 
-    # Create agent instance (this triggers SDK initialization)
-    logger.info("Initializing customer support agent")
-    agent = get_agent()
-    logger.info("Agent initialized successfully")
+    try:
+        # Create agent instance (this triggers SDK initialization)
+        logger.info("Initializing customer support agent")
+        agent = get_agent()
+        logger.info("Agent initialized successfully")
 
-    # Run appropriate mode
-    mode = "automated" if (args.automated or args.mode == "automated") else "interactive"
-    logger.info(f"Starting demo in {mode} mode")
+        # Run appropriate mode
+        automated = args.automated or args.mode == "automated"
+        mode = "automated" if automated else "interactive"
+        logger.info(f"Starting demo in {mode} mode")
 
-    if args.automated or args.mode == "automated":
-        asyncio.run(run_automated_tests(agent))
-    else:
-        asyncio.run(run_interactive(agent))
+        asyncio.run(run_demo_mode(agent, automated=automated))
+    finally:
+        agent_control.shutdown()
 
 
 if __name__ == "__main__":

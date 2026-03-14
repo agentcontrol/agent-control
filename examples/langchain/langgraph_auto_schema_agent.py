@@ -237,6 +237,14 @@ def _print_auto_derived_steps() -> None:
 
 async def main() -> None:
     """Run the demo end-to-end."""
+    try:
+        await run_demo_session()
+    finally:
+        await agent_control.ashutdown()
+
+
+async def run_demo_session() -> None:
+    """Initialize the SDK and run the LangGraph scenarios."""
     print("Initializing Agent Control (no explicit steps passed)...")
     agent_control.init(
         agent_name=AGENT_NAME,
@@ -247,7 +255,6 @@ async def main() -> None:
     _print_auto_derived_steps()
 
     app = _build_graph()
-
     scenarios = [
         "Track order 1001 and include its history",
         "Issue a refund for order 2048 because it was late (49 dollars)",

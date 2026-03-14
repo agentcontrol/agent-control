@@ -1,5 +1,4 @@
 import { ActionIcon, Badge, Box, Group, Switch, Text } from '@mantine/core';
-import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { IconPencil, IconTrash } from '@tabler/icons-react';
 import { type ColumnDef } from '@tanstack/react-table';
@@ -8,6 +7,7 @@ import { useMemo } from 'react';
 import type { Control } from '@/core/api/types';
 import type { useRemoveControlFromAgent } from '@/core/hooks/query-hooks/use-remove-control-from-agent';
 import type { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
+import { openActionConfirmModal } from '@/core/utils/modals';
 
 import { getStepTypeLabelAndColor } from './utils';
 
@@ -41,7 +41,7 @@ export function useControlsTableColumns({
               color="green.5"
               onChange={(e) => {
                 const newEnabled = e.currentTarget.checked;
-                modals.openConfirmModal({
+                openActionConfirmModal({
                   title: newEnabled ? 'Enable control?' : 'Disable control?',
                   children: (
                     <Text size="sm" c="dimmed">
@@ -50,14 +50,6 @@ export function useControlsTableColumns({
                         : `Disable "${control.name}"?`}
                     </Text>
                   ),
-                  labels: { confirm: 'Confirm', cancel: 'Cancel' },
-                  confirmProps: {
-                    variant: 'filled',
-                    color: 'violet',
-                    size: 'sm',
-                    className: 'confirm-modal-confirm-btn',
-                  },
-                  cancelProps: { variant: 'default', size: 'sm' },
                   onConfirm: () =>
                     updateControl.mutate(
                       {

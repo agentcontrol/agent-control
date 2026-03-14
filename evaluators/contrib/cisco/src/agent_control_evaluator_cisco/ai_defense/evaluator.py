@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+import json
 import os
+from typing import Any
 
 from agent_control_evaluators import (
     Evaluator,
@@ -10,7 +11,7 @@ from agent_control_evaluators import (
 )
 from agent_control_models import EvaluatorResult
 
-from .client import REGION_BASE_URLS, AIDefenseClient, build_endpoint, AI_DEFENSE_HTTPX_AVAILABLE
+from .client import AI_DEFENSE_HTTPX_AVAILABLE, REGION_BASE_URLS, AIDefenseClient, build_endpoint
 from .config import CiscoAIDefenseConfig
 
 
@@ -46,8 +47,47 @@ def _build_messages(
         # Fallback to single
 
     role = "assistant" if payload_field == "output" else "user"
-    content = "" if data is None else str(data)
+    content = _coerce_message_content(data, payload_field)
     return [{"role": role, "content": content}]
+
+
+def _coerce_message_content(data: Any, payload_field: str | None) -> str:
+    if data is None:
+        return ""
+
+    if isinstance(data, dict):
+        candidate: Any = None
+        preferred_keys: list[str] = []
+        if payload_field is not None:
+            preferred_keys.append(payload_field)
+        if payload_field == "output":
+            preferred_keys.extend(["output", "content", "text", "message"])
+        else:
+            preferred_keys.extend(["input", "content", "text", "message"])
+
+        for key in preferred_keys:
+            if key in data and data[key] is not None:
+                candidate = data[key]
+                break
+
+        if candidate is None:
+            candidate = data
+        return _stringify_message_content(candidate)
+
+    return _stringify_message_content(data)
+
+
+def _stringify_message_content(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    except TypeError:
+        return str(value)
 
 
 @register_evaluator
@@ -79,7 +119,7 @@ class CiscoAIDefenseEvaluator(Evaluator[CiscoAIDefenseConfig]):
         # API key
         try:
             api_key = _load_api_key(self.config.api_key_env)
-        except Exception as e:  # noqa: BLE001
+        except RuntimeError as e:
             # Fail fast during construction so misconfiguration is caught early.
             raise ValueError(str(e)) from e
 
@@ -144,27 +184,34 @@ class CiscoAIDefenseEvaluator(Evaluator[CiscoAIDefenseConfig]):
 
             # If no boolean is present, consider it an evaluator error
             fallback = self.config.on_error
+            matched = fallback == "deny"
+            error_message = "Cisco AI Defense response missing 'is_safe'"
             meta2: dict[str, Any] = {"fallback_action": fallback}
             if self.config.include_raw_response:
                 meta2["raw"] = response
             return EvaluatorResult(
-                matched=(fallback == "deny"),
+                matched=matched,
                 confidence=0.0,
-                message="Cisco AI Defense response missing 'is_safe'",
+                message=error_message,
                 metadata=meta2,
+                error=None if matched else error_message,
             )
         except Exception as e:  # noqa: BLE001
             fallback = self.config.on_error
             matched = fallback == "deny"
-            # Pydantic model enforces: if error is set, matched must be False.
-            # Expose details via metadata always; set error field only on fail-open.
+            error_detail = str(e)
             return EvaluatorResult(
                 matched=matched,
                 confidence=0.0,
-                message=f"Cisco AI Defense evaluation error: {e}",
+                message=f"Cisco AI Defense evaluation error: {error_detail}",
                 metadata={
-                    "error": str(e),
+                    "error": error_detail,
                     "error_type": type(e).__name__,
                     "fallback_action": fallback,
                 },
+                error=None if matched else error_detail,
             )
+
+    async def aclose(self) -> None:
+        """Close the underlying Cisco AI Defense client."""
+        await self._client.aclose()

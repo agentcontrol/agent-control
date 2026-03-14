@@ -44,10 +44,19 @@ async def _ensure_control(
     except Exception as e:  # noqa: BLE001
         s = str(e).lower()
         if "409" in s or "already" in s:
-            existing = await controls.list_controls(client, name=name, limit=1)
-            items = existing.get("controls", [])
-            if items:
-                return int(items[0]["id"])  # type: ignore[index]
+            cursor: int | None = None
+            while True:
+                existing = await controls.list_controls(client, name=name, limit=100, cursor=cursor)
+                items = existing.get("controls", [])
+                for item in items:
+                    if item.get("name") == name:
+                        return int(item["id"])  # type: ignore[index]
+
+                pagination = existing.get("pagination", {})
+                if not pagination.get("has_more"):
+                    break
+                next_cursor = pagination.get("next_cursor")
+                cursor = int(next_cursor) if next_cursor is not None else None
         raise
 
 

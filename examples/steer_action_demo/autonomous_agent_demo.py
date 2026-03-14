@@ -598,16 +598,13 @@ def create_banking_graph() -> StateGraph:
 # MAIN
 # =============================================================================
 
-async def run_banking_agent():
-    """Run the conversational banking agent."""
-
-    # Initialize
+async def run_banking_session() -> None:
+    """Initialize the SDK and run the interactive banking session."""
     agent_control.init(
         agent_name="banking-transaction-agent",
         server_url=SERVER_URL
     )
 
-    # DEBUG: Check if controls were loaded
     controls = agent_control.get_server_controls()
     print(f"\n🔍 DEBUG: Loaded {len(controls) if controls else 0} controls from server")
     if controls:
@@ -621,7 +618,6 @@ async def run_banking_agent():
     else:
         print("   ⚠️  WARNING: No controls loaded! Agent will allow all operations.")
 
-    # DEBUG: Check registered steps
     registered_steps = agent_control.get_registered_steps()
     print(f"\n🔍 DEBUG: Registered steps: {len(registered_steps)}")
     for step in registered_steps:
@@ -639,7 +635,6 @@ async def run_banking_agent():
         print("\n" + "-"*80)
 
         try:
-            # Get user request
             request = user_input("Describe the wire transfer you'd like to make (or 'quit'): ")
 
             if request.lower() in ['quit', 'exit', 'q']:
@@ -649,10 +644,7 @@ async def run_banking_agent():
             if not request:
                 continue
 
-            # Parse request
             transfer_data = await parse_transfer_request(request)
-
-            # Confirm understanding
             agent_say(f"I understand you want to send ${transfer_data['amount']:,.2f} to {transfer_data['recipient_name']} in {transfer_data['destination_country']}.")
 
             confirm = user_input("Is this correct? (yes/no): ")
@@ -660,9 +652,7 @@ async def run_banking_agent():
                 agent_say("Let's try again.")
                 continue
 
-            # Process transfer
             agent_say("Let me process this transfer for you...")
-
             initial_state: AgentState = {
                 "messages": [],
                 "transfer_request": transfer_data,
@@ -675,8 +665,6 @@ async def run_banking_agent():
             }
 
             await app.ainvoke(initial_state)
-
-            # Done
             print("\n" + "-"*80)
 
         except KeyboardInterrupt:
@@ -689,6 +677,14 @@ async def run_banking_agent():
     print("\n" + "="*80)
     print("Thank you for using WealthBank!")
     print("="*80)
+
+
+async def run_banking_agent():
+    """Run the conversational banking agent."""
+    try:
+        await run_banking_session()
+    finally:
+        await agent_control.ashutdown()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,47 @@
 
 <!-- version list -->
 
+## v6.8.0 (2026-03-12)
+
+### Bug Fixes
+
+- **docs**: Clarify README quickstart flow
+  ([#119](https://github.com/agentcontrol/agent-control/pull/119),
+  [`317c626`](https://github.com/agentcontrol/agent-control/commit/317c6267812f4887bad8ca8742365c235809f60d))
+
+- **docs**: Promote Google ADK plugin in README
+  ([#99](https://github.com/agentcontrol/agent-control/pull/99),
+  [`f038aa4`](https://github.com/agentcontrol/agent-control/commit/f038aa4cc048e331f59fa4bcc6df0c266f14953e))
+
+- **evaluators**: Address Cisco AI Defense review issues
+  ([#103](https://github.com/agentcontrol/agent-control/pull/103),
+  [`81da81b`](https://github.com/agentcontrol/agent-control/commit/81da81bdab5b1a8d3ca4904b8cd9e4ed4843a5ba))
+
+- **examples**: Shut down SDK in short-lived demos
+  ([#85](https://github.com/agentcontrol/agent-control/pull/85),
+  [`df43264`](https://github.com/agentcontrol/agent-control/commit/df432644ac14d27d10442779532ed98a0263ea88))
+
+- **server**: Revert unwanted changes in server config
+  ([#117](https://github.com/agentcontrol/agent-control/pull/117),
+  [`d92e168`](https://github.com/agentcontrol/agent-control/commit/d92e168fe1c771f7f9824dc29d8d4b1a71501d8e))
+
+- **ui**: Create flow - name trimming issue
+  ([#93](https://github.com/agentcontrol/agent-control/pull/93),
+  [`1a9759d`](https://github.com/agentcontrol/agent-control/commit/1a9759d0b187cf5ac3e846a61cb5b82ec9d5e2e0))
+
+### Features
+
+- **docs**: Simplify main README quick start v2
+  ([#100](https://github.com/agentcontrol/agent-control/pull/100),
+  [`7701c65`](https://github.com/agentcontrol/agent-control/commit/7701c65a49ad2a927b965122224e286784feb554))
+
+### Refactoring
+
+- **ui**: Add shared confirm modal utils
+  ([#109](https://github.com/agentcontrol/agent-control/pull/109),
+  [`a7b3802`](https://github.com/agentcontrol/agent-control/commit/a7b380235a37dbd9a52241b081b4f2222fd02c56))
+
+
 ## v6.7.2 (2026-03-12)
 
 ### Bug Fixes
