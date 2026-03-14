@@ -3,8 +3,9 @@
 import logging
 import secrets
 from functools import cached_property
+from typing import Any
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _config_logger = logging.getLogger(__name__)
@@ -13,9 +14,15 @@ _COMMON_SETTINGS_CONFIG = SettingsConfigDict(
     env_file=".env",
     env_file_encoding="utf-8",
     case_sensitive=False,
+    env_ignore_empty=True,
     extra="ignore",
     populate_by_name=True,
 )
+
+
+def _env_alias_field(default: Any, *env_names: str) -> Any:
+    """Create a field that accepts multiple environment variable names."""
+    return Field(default=default, validation_alias=AliasChoices(*env_names))
 
 
 class AuthSettings(BaseSettings):
@@ -99,36 +106,23 @@ class AgentControlServerDatabaseConfig(BaseSettings):
     model_config = SettingsConfigDict(**_COMMON_SETTINGS_CONFIG, env_prefix="AGENT_CONTROL_DB_")
 
     # Allow direct URL override for SQLite in local dev
-    url: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_URL", "DATABASE_URL", "DB_URL"),
-    )
+    url: str | None = _env_alias_field(None, "AGENT_CONTROL_DB_URL", "DATABASE_URL", "DB_URL")
 
     # PostgreSQL settings (only used if url is not set)
-    host: str = Field(
-        default="localhost",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_HOST", "DB_HOST"),
+    host: str = _env_alias_field("localhost", "AGENT_CONTROL_DB_HOST", "DB_HOST")
+    port: int = _env_alias_field(5432, "AGENT_CONTROL_DB_PORT", "DB_PORT")
+    user: str = _env_alias_field("agent_control", "AGENT_CONTROL_DB_USER", "DB_USER")
+    password: str = _env_alias_field(
+        "agent_control",
+        "AGENT_CONTROL_DB_PASSWORD",
+        "DB_PASSWORD",
     )
-    port: int = Field(
-        default=5432,
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_PORT", "DB_PORT"),
+    database: str = _env_alias_field(
+        "agent_control",
+        "AGENT_CONTROL_DB_DATABASE",
+        "DB_DATABASE",
     )
-    user: str = Field(
-        default="agent_control",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_USER", "DB_USER"),
-    )
-    password: str = Field(
-        default="agent_control",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_PASSWORD", "DB_PASSWORD"),
-    )
-    database: str = Field(
-        default="agent_control",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_DATABASE", "DB_DATABASE"),
-    )
-    driver: str = Field(
-        default="psycopg",
-        validation_alias=AliasChoices("AGENT_CONTROL_DB_DRIVER", "DB_DRIVER"),
-    )
+    driver: str = _env_alias_field("psycopg", "AGENT_CONTROL_DB_DRIVER", "DB_DRIVER")
 
     def get_url(self) -> str:
         """Get database URL, preferring an explicit URL if configured."""
@@ -145,50 +139,36 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(**_COMMON_SETTINGS_CONFIG, env_prefix="AGENT_CONTROL_")
 
     # Server settings
-    host: str = Field(
-        default="0.0.0.0",
-        validation_alias=AliasChoices("AGENT_CONTROL_HOST", "HOST"),
-    )
-    port: int = Field(
-        default=8000,
-        validation_alias=AliasChoices("AGENT_CONTROL_PORT", "PORT"),
-    )
-    debug: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("AGENT_CONTROL_DEBUG", "DEBUG"),
-    )
+    host: str = _env_alias_field("0.0.0.0", "AGENT_CONTROL_HOST", "HOST")
+    port: int = _env_alias_field(8000, "AGENT_CONTROL_PORT", "PORT")
+    debug: bool = _env_alias_field(False, "AGENT_CONTROL_DEBUG", "DEBUG")
 
     # API settings
-    api_version: str = Field(
-        default="v1",
-        validation_alias=AliasChoices("AGENT_CONTROL_API_VERSION", "API_VERSION"),
-    )
-    api_prefix: str = Field(
-        default="/api",
-        validation_alias=AliasChoices("AGENT_CONTROL_API_PREFIX", "API_PREFIX"),
-    )
+    api_version: str = _env_alias_field("v1", "AGENT_CONTROL_API_VERSION", "API_VERSION")
+    api_prefix: str = _env_alias_field("/api", "AGENT_CONTROL_API_PREFIX", "API_PREFIX")
 
     # Prometheus metrics settings
-    prometheus_metrics_prefix: str = Field(
-        default="agent_control_server",
-        validation_alias=AliasChoices(
-            "AGENT_CONTROL_PROMETHEUS_METRICS_PREFIX",
-            "PROMETHEUS_METRICS_PREFIX",
-        ),
+    prometheus_metrics_prefix: str = _env_alias_field(
+        "agent_control_server",
+        "AGENT_CONTROL_PROMETHEUS_METRICS_PREFIX",
+        "PROMETHEUS_METRICS_PREFIX",
     )
 
     # CORS settings
-    cors_origins: list[str] | str = Field(
-        default="*",
-        validation_alias=AliasChoices("AGENT_CONTROL_CORS_ORIGINS", "CORS_ORIGINS"),
+    cors_origins: list[str] | str = _env_alias_field(
+        "*",
+        "AGENT_CONTROL_CORS_ORIGINS",
+        "CORS_ORIGINS",
     )
-    allow_methods: list[str] | str = Field(
-        default=["*"],
-        validation_alias=AliasChoices("AGENT_CONTROL_ALLOW_METHODS", "ALLOW_METHODS"),
+    allow_methods: list[str] | str = _env_alias_field(
+        ["*"],
+        "AGENT_CONTROL_ALLOW_METHODS",
+        "ALLOW_METHODS",
     )
-    allow_headers: list[str] | str = Field(
-        default=["*"],
-        validation_alias=AliasChoices("AGENT_CONTROL_ALLOW_HEADERS", "ALLOW_HEADERS"),
+    allow_headers: list[str] | str = _env_alias_field(
+        ["*"],
+        "AGENT_CONTROL_ALLOW_HEADERS",
+        "ALLOW_HEADERS",
     )
 
     def get_cors_origins(self) -> list[str]:
@@ -234,32 +214,7 @@ class LoggingSettings(BaseSettings):
     model_config = SettingsConfigDict(**_COMMON_SETTINGS_CONFIG, env_prefix="AGENT_CONTROL_LOG_")
 
     level: str | None = None
-    json_logs: bool = Field(
-        default=False,
-        validation_alias="AGENT_CONTROL_LOG_JSON",
-    )
-
-    @field_validator("level", mode="before")
-    @classmethod
-    def _normalize_level(cls, value: object) -> object:
-        """Treat blank strings as unset and trim whitespace from configured levels."""
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return None
-            return stripped
-        return value
-
-    @field_validator("json_logs", mode="before")
-    @classmethod
-    def _normalize_json_logs(cls, value: object) -> object:
-        """Treat blank strings as false and trim whitespace before bool parsing."""
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return False
-            return stripped
-        return value
+    json_logs: bool = _env_alias_field(False, "AGENT_CONTROL_LOG_JSON")
 
 
 class UISettings(BaseSettings):

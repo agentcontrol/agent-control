@@ -7,6 +7,7 @@ from agent_control_server.logging_utils import (
     _parse_level,
     configure_logging,
     get_log_level_name,
+    get_uvicorn_log_level_name,
 )
 
 
@@ -95,6 +96,17 @@ def test_get_log_level_name_treats_blank_env_as_unset(monkeypatch) -> None:
     resolved = get_log_level_name("DEBUG")
 
     # Then: the provided default is used
+    assert resolved == "DEBUG"
+
+
+def test_get_uvicorn_log_level_name_falls_back_from_notset(monkeypatch) -> None:
+    # Given: a configured level that Python logging accepts but uvicorn does not
+    monkeypatch.setenv("AGENT_CONTROL_LOG_LEVEL", "NOTSET")
+
+    # When: resolving the uvicorn log level
+    resolved = get_uvicorn_log_level_name("DEBUG")
+
+    # Then: uvicorn gets a supported fallback level
     assert resolved == "DEBUG"
 
 

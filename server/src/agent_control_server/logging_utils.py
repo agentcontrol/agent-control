@@ -10,32 +10,54 @@ _LEVELS = {
     "DEBUG": logging.DEBUG,
     "NOTSET": logging.NOTSET,
 }
+_UVICORN_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"}
+
+
+def _normalize_level_name(level: str | None) -> str | None:
+    if level is None:
+        return None
+    normalized = level.upper()
+    if normalized in _LEVELS:
+        return normalized
+    return None
+
+
+def _configured_level_name() -> str | None:
+    return _normalize_level_name(LoggingSettings().level)
 
 
 def _parse_level(level: str | int | None) -> int:
     if isinstance(level, int):
         return level
-    if isinstance(level, str):
-        return _LEVELS.get(level.upper(), logging.INFO)
-    configured_level = LoggingSettings().level
+    normalized = _normalize_level_name(level)
+    if normalized is not None:
+        return _LEVELS[normalized]
+    configured_level = _configured_level_name()
     if configured_level is not None:
-        return _LEVELS.get(configured_level.upper(), logging.INFO)
+        return _LEVELS[configured_level]
     return logging.INFO
 
 
 def get_log_level_name(default_level: str = "INFO") -> str:
     """Resolve the configured log level name, falling back to the provided default."""
-    normalized_default = default_level.upper()
-    if normalized_default not in _LEVELS:
-        normalized_default = "INFO"
-
-    configured_level = LoggingSettings().level
+    configured_level = _configured_level_name()
     if configured_level is not None:
-        normalized = configured_level.upper()
-        if normalized in _LEVELS:
-            return normalized
+        return configured_level
+    normalized_default = _normalize_level_name(default_level)
+    if normalized_default is not None:
         return normalized_default
-    return normalized_default
+    return "INFO"
+
+
+def get_uvicorn_log_level_name(default_level: str = "INFO") -> str:
+    """Resolve a uvicorn-compatible log level name."""
+    normalized_level = get_log_level_name(default_level)
+    if normalized_level in _UVICORN_LEVELS:
+        return normalized_level
+    normalized_default = _normalize_level_name(default_level)
+    if normalized_default in _UVICORN_LEVELS:
+        return normalized_default
+    return "INFO"
 
 
 def _parse_json(json_flag: bool | None) -> bool:

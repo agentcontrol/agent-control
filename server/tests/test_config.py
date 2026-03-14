@@ -76,6 +76,18 @@ def test_db_config_prefers_agent_control_env_over_legacy(monkeypatch) -> None:
     assert config.get_url() == "sqlite:///tmp/canonical.db"
 
 
+def test_db_config_ignores_blank_agent_control_url_and_uses_legacy(monkeypatch) -> None:
+    # Given: the canonical URL is blank but a legacy URL is still configured
+    monkeypatch.setenv("AGENT_CONTROL_DB_URL", "")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///tmp/legacy.db")
+
+    # When: loading DB config from the environment
+    config = AgentControlServerDatabaseConfig()
+
+    # Then: the blank canonical env var is ignored
+    assert config.get_url() == "sqlite:///tmp/legacy.db"
+
+
 def test_settings_parses_cors_origins_string() -> None:
     # Given: a comma-separated CORS origins string
     settings = Settings(cors_origins="https://a.example, https://b.example")
@@ -144,6 +156,18 @@ def test_settings_prefers_agent_control_env_vars_over_legacy(monkeypatch) -> Non
     # Then: the canonical env vars win
     assert config.port == 7000
     assert config.get_cors_origins() == ["https://canonical.example"]
+
+
+def test_settings_ignore_blank_agent_control_port_and_use_legacy(monkeypatch) -> None:
+    # Given: the canonical port is blank but the legacy port is still set
+    monkeypatch.setenv("AGENT_CONTROL_PORT", "")
+    monkeypatch.setenv("PORT", "9000")
+
+    # When: loading settings from the environment
+    config = Settings()
+
+    # Then: the blank canonical env var is ignored
+    assert config.port == 9000
 
 
 def test_settings_returns_cors_origins_list_unchanged() -> None:
