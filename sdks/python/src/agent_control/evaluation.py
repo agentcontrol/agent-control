@@ -31,16 +31,22 @@ _FALLBACK_SPAN_ID = "0" * 16
 _trace_warning_logged = False
 
 
-def _primary_leaf_details(
+def _observability_metadata(
     control_def: ControlDefinition,
-) -> tuple[str | None, str | None]:
-    """Return selector/evaluator identifiers for single-leaf controls only."""
-    primary_leaf = control_def.primary_leaf()
-    primary_parts = primary_leaf.leaf_parts() if primary_leaf else None
-    if primary_parts is None:
-        return None, None
-    selector, evaluator = primary_parts
-    return selector.path, evaluator.name
+) -> tuple[str | None, str | None, dict[str, object]]:
+    """Return representative event fields plus full composite context."""
+    identity = control_def.observability_identity()
+    return (
+        identity.selector_path,
+        identity.evaluator_name,
+        {
+            "primary_evaluator": identity.evaluator_name,
+            "primary_selector_path": identity.selector_path,
+            "leaf_count": identity.leaf_count,
+            "all_evaluators": identity.all_evaluators,
+            "all_selector_paths": identity.all_selector_paths,
+        },
+    )
 
 
 def _map_applies_to(step_type: str) -> Literal["llm_call", "tool_call"]:
@@ -90,9 +96,14 @@ def _emit_local_events(
             return
         for match in matches:
             ctrl = control_lookup.get(match.control_id)
-            selector_path, evaluator_name = (
-                _primary_leaf_details(ctrl.control) if ctrl else (None, None)
-            )
+            event_metadata = dict(match.result.metadata or {})
+            selector_path = None
+            evaluator_name = None
+            if ctrl:
+                selector_path, evaluator_name, identity_metadata = _observability_metadata(
+                    ctrl.control
+                )
+                event_metadata.update(identity_metadata)
             add_event(
                 ControlExecutionEvent(
                     control_execution_id=match.control_execution_id,
@@ -110,7 +121,7 @@ def _emit_local_events(
                     evaluator_name=evaluator_name,
                     selector_path=selector_path,
                     error_message=match.result.error if not matched else None,
-                    metadata=match.result.metadata or {},
+                    metadata=event_metadata,
                 )
             )
 

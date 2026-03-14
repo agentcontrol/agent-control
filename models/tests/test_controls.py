@@ -228,3 +228,35 @@ def test_single_leaf_control_returns_primary_leaf() -> None:
     selector, evaluator = leaf_parts
     assert selector.path == "input.value"
     assert evaluator.name == "regex"
+
+
+def test_condition_observability_identity_uses_first_leaf_and_dedupes() -> None:
+    # Given: a composite condition tree with repeated selectors/evaluators
+    control = ControlDefinition.model_validate(
+        {
+            "execution": "server",
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "condition": {
+                "and": [
+                    _leaf("input.user", evaluator_name="regex"),
+                    _leaf("output.user", evaluator_name="regex"),
+                    _leaf(
+                        "output.user",
+                        evaluator_name="list",
+                        config={"values": ["blocked"]},
+                    ),
+                ]
+            },
+            "action": {"decision": "deny"},
+        }
+    )
+
+    # When: deriving observability identity
+    identity = control.observability_identity()
+
+    # Then: the first leaf becomes the representative identity and full context stays ordered
+    assert identity.selector_path == "input.user"
+    assert identity.evaluator_name == "regex"
+    assert identity.leaf_count == 3
+    assert identity.all_evaluators == ["regex", "list"]
+    assert identity.all_selector_paths == ["input.user", "output.user"]

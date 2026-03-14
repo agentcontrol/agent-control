@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any, Literal, Self
 from uuid import uuid4
 
@@ -212,6 +213,17 @@ class EvaluatorSpec(BaseModel):
 
 
 type ConditionLeafParts = tuple[ControlSelector, EvaluatorSpec]
+
+
+@dataclass(frozen=True)
+class ControlObservabilityIdentity:
+    """Stable selector/evaluator identity derived from a condition tree."""
+
+    selector_path: str | None
+    evaluator_name: str | None
+    leaf_count: int
+    all_evaluators: list[str]
+    all_selector_paths: list[str]
 
 
 class SteeringContext(BaseModel):
@@ -530,6 +542,39 @@ class ControlDefinition(BaseModel):
         if self.condition.is_leaf():
             return self.condition
         return None
+
+    def observability_identity(self) -> ControlObservabilityIdentity:
+        """Return a deterministic representative identity for observability.
+
+        The representative selector/evaluator comes from the first leaf in
+        evaluation order so composite trees still populate top-level event
+        dimensions. The full ordered, deduped leaf context is also returned.
+        """
+        all_evaluators: list[str] = []
+        all_selector_paths: list[str] = []
+        seen_evaluators: set[str] = set()
+        seen_selector_paths: set[str] = set()
+        leaf_count = 0
+
+        for selector, evaluator in self.iter_condition_leaf_parts():
+            leaf_count += 1
+            selector_path = selector.path or "*"
+
+            if evaluator.name not in seen_evaluators:
+                seen_evaluators.add(evaluator.name)
+                all_evaluators.append(evaluator.name)
+
+            if selector_path not in seen_selector_paths:
+                seen_selector_paths.add(selector_path)
+                all_selector_paths.append(selector_path)
+
+        return ControlObservabilityIdentity(
+            selector_path=all_selector_paths[0] if all_selector_paths else None,
+            evaluator_name=all_evaluators[0] if all_evaluators else None,
+            leaf_count=leaf_count,
+            all_evaluators=all_evaluators,
+            all_selector_paths=all_selector_paths,
+        )
 
     model_config = {
         "json_schema_extra": {

@@ -126,6 +126,24 @@ def _sanitize_evaluation_response(response: EvaluationResponse) -> EvaluationRes
     )
 
 
+def _observability_metadata(
+    control_def: ControlDefinition,
+) -> tuple[str | None, str | None, dict[str, object]]:
+    """Return representative event fields plus full composite context."""
+    identity = control_def.observability_identity()
+    return (
+        identity.selector_path,
+        identity.evaluator_name,
+        {
+            "primary_evaluator": identity.evaluator_name,
+            "primary_selector_path": identity.selector_path,
+            "leaf_count": identity.leaf_count,
+            "all_evaluators": identity.all_evaluators,
+            "all_selector_paths": identity.all_selector_paths,
+        },
+    )
+
+
 @router.post(
     "",
     response_model=EvaluationResponse,
@@ -268,8 +286,14 @@ async def _emit_observability_events(
     if response.matches:
         for match in response.matches:
             ctrl = control_lookup.get(match.control_id)
-            primary_leaf = ctrl.control.primary_leaf() if ctrl else None
-            primary_parts = primary_leaf.leaf_parts() if primary_leaf else None
+            event_metadata = dict(match.result.metadata or {})
+            selector_path = None
+            evaluator_name = None
+            if ctrl:
+                selector_path, evaluator_name, identity_metadata = _observability_metadata(
+                    ctrl.control
+                )
+                event_metadata.update(identity_metadata)
             events.append(
                 ControlExecutionEvent(
                     control_execution_id=match.control_execution_id,
@@ -284,10 +308,10 @@ async def _emit_observability_events(
                     matched=True,
                     confidence=match.result.confidence,
                     timestamp=now,
-                    evaluator_name=primary_parts[1].name if primary_parts else None,
-                    selector_path=primary_parts[0].path if primary_parts else None,
+                    evaluator_name=evaluator_name,
+                    selector_path=selector_path,
                     error_message=match.result.error,
-                    metadata=match.result.metadata or {},
+                    metadata=event_metadata,
                 )
             )
 
@@ -295,8 +319,14 @@ async def _emit_observability_events(
     if response.errors:
         for error in response.errors:
             ctrl = control_lookup.get(error.control_id)
-            primary_leaf = ctrl.control.primary_leaf() if ctrl else None
-            primary_parts = primary_leaf.leaf_parts() if primary_leaf else None
+            event_metadata = dict(error.result.metadata or {})
+            selector_path = None
+            evaluator_name = None
+            if ctrl:
+                selector_path, evaluator_name, identity_metadata = _observability_metadata(
+                    ctrl.control
+                )
+                event_metadata.update(identity_metadata)
             events.append(
                 ControlExecutionEvent(
                     control_execution_id=error.control_execution_id,
@@ -311,10 +341,10 @@ async def _emit_observability_events(
                     matched=False,
                     confidence=error.result.confidence,
                     timestamp=now,
-                    evaluator_name=primary_parts[1].name if primary_parts else None,
-                    selector_path=primary_parts[0].path if primary_parts else None,
+                    evaluator_name=evaluator_name,
+                    selector_path=selector_path,
                     error_message=error.result.error,
-                    metadata=error.result.metadata or {},
+                    metadata=event_metadata,
                 )
             )
 
@@ -322,8 +352,14 @@ async def _emit_observability_events(
     if response.non_matches:
         for non_match in response.non_matches:
             ctrl = control_lookup.get(non_match.control_id)
-            primary_leaf = ctrl.control.primary_leaf() if ctrl else None
-            primary_parts = primary_leaf.leaf_parts() if primary_leaf else None
+            event_metadata = dict(non_match.result.metadata or {})
+            selector_path = None
+            evaluator_name = None
+            if ctrl:
+                selector_path, evaluator_name, identity_metadata = _observability_metadata(
+                    ctrl.control
+                )
+                event_metadata.update(identity_metadata)
             events.append(
                 ControlExecutionEvent(
                     control_execution_id=non_match.control_execution_id,
@@ -338,10 +374,10 @@ async def _emit_observability_events(
                     matched=False,
                     confidence=non_match.result.confidence,
                     timestamp=now,
-                    evaluator_name=primary_parts[1].name if primary_parts else None,
-                    selector_path=primary_parts[0].path if primary_parts else None,
+                    evaluator_name=evaluator_name,
+                    selector_path=selector_path,
                     error_message=None,
-                    metadata=non_match.result.metadata or {},
+                    metadata=event_metadata,
                 )
             )
 

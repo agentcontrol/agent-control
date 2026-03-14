@@ -3,8 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from agent_control_models import ControlDefinition
-
 from agent_control import evaluation
 from agent_control.evaluation import (
     _ControlAdapter,
@@ -12,6 +10,7 @@ from agent_control.evaluation import (
     _map_applies_to,
     _merge_results,
 )
+from agent_control_models import ControlDefinition
 
 # =============================================================================
 # _map_applies_to tests
@@ -250,8 +249,8 @@ class TestEmitLocalEvents:
             mock_logger.warning.assert_called_once()
             assert "fallback" in mock_logger.warning.call_args[0][0].lower()
 
-    def test_composite_control_omits_primary_leaf_metadata(self):
-        """Composite local controls should not emit misleading leaf metadata."""
+    def test_composite_control_emits_representative_leaf_metadata(self):
+        """Composite local controls should emit stable representative metadata."""
         # Given: a composite local control and a non-match response for that control
         ctrl = _ControlAdapter(
             id=1,
@@ -290,9 +289,14 @@ class TestEmitLocalEvents:
             )
             event = mock_add.call_args_list[0][0][0]
 
-        # Then: no single-leaf selector/evaluator metadata is attached
-        assert event.evaluator_name is None
-        assert event.selector_path is None
+        # Then: the first leaf becomes the event identity and full context is preserved
+        assert event.evaluator_name == "regex"
+        assert event.selector_path == "input"
+        assert event.metadata["primary_evaluator"] == "regex"
+        assert event.metadata["primary_selector_path"] == "input"
+        assert event.metadata["leaf_count"] == 2
+        assert event.metadata["all_evaluators"] == ["regex"]
+        assert event.metadata["all_selector_paths"] == ["input", "output"]
 
     def test_fallback_warning_logged_only_once(self):
         """The missing-trace-context warning should fire only on the first call."""
