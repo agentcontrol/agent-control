@@ -23,20 +23,18 @@ help:
 
 test:
 	@echo "Starting server for tests..."
-	@$(TEST_DB_ENV) uv run --package agent-control-server python scripts/reset_test_db.py
-	@$(TEST_DB_ENV) $(MAKE) -C ../../ server-alembic-upgrade
+	$(TEST_DB_ENV) uv run --package agent-control-server python scripts/reset_test_db.py
+	$(TEST_DB_ENV) $(MAKE) -C ../../ server-alembic-upgrade
 	@# Start server in background and save PID
 	@$(TEST_DB_ENV) uv run --package agent-control-server uvicorn agent_control_server.main:app --port $(TEST_SERVER_PORT) --host $(TEST_SERVER_HOST) > server.log 2>&1 & echo $$! > server.pid
 	@echo "Waiting for server..."
 	@bash -c 'for i in {1..30}; do if curl -s $(TEST_SERVER_URL)/health >/dev/null; then echo "Server up!"; exit 0; fi; sleep 1; done; echo "Server failed"; cat server.log; exit 1'
 	@# Run tests, capture exit code, and ensure cleanup
-	@set -e; \
-	cleanup() { \
-		echo "Stopping server..."; \
-		if [ -f server.pid ]; then kill `cat server.pid` 2>/dev/null || true; rm -f server.pid; fi; \
-	}; \
-	trap cleanup EXIT; \
-	$(TEST_DB_ENV) AGENT_CONTROL_TEST_URL=$(TEST_SERVER_URL) AGENT_CONTROL_URL=$(TEST_SERVER_URL) uv run pytest --cov=src --cov-report=xml:../../coverage-sdk.xml -q
+	@TEST_EXIT_CODE=0; \
+	$(TEST_DB_ENV) AGENT_CONTROL_TEST_URL=$(TEST_SERVER_URL) AGENT_CONTROL_URL=$(TEST_SERVER_URL) uv run pytest --cov=src --cov-report=xml:../../coverage-sdk.xml -q || TEST_EXIT_CODE=$$?; \
+	echo "Stopping server..."; \
+	if [ -f server.pid ]; then kill `cat server.pid` 2>/dev/null || true; rm -f server.pid; fi; \
+	exit $$TEST_EXIT_CODE
 
 lint:
 	uv run ruff check --config ../../pyproject.toml src/
