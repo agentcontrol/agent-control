@@ -232,7 +232,7 @@ async def _build_overwrite_evaluator_removals(
         )
         return [InitAgentEvaluatorRemoval(name=name) for name in sorted(removed_evaluators)]
 
-    references_by_evaluator: dict[str, list[tuple[int, str]]] = {}
+    references_by_evaluator: dict[str, set[tuple[int, str]]] = {}
     for control in controls:
         for _, evaluator_spec in control.control.iter_condition_leaf_parts():
             evaluator_ref = evaluator_spec.name
@@ -243,7 +243,7 @@ async def _build_overwrite_evaluator_removals(
                 continue
             if parsed.local_name not in removed_evaluators:
                 continue
-            references_by_evaluator.setdefault(parsed.local_name, []).append(
+            references_by_evaluator.setdefault(parsed.local_name, set()).add(
                 (control.id, control.name)
             )
 
@@ -253,12 +253,13 @@ async def _build_overwrite_evaluator_removals(
         if references is None:
             removals.append(InitAgentEvaluatorRemoval(name=evaluator_name))
             continue
+        sorted_references = sorted(references, key=lambda item: (item[1], item[0]))
         removals.append(
             InitAgentEvaluatorRemoval(
                 name=evaluator_name,
                 referenced_by_active_controls=True,
-                control_ids=[control_id for control_id, _ in references],
-                control_names=[control_name for _, control_name in references],
+                control_ids=[control_id for control_id, _ in sorted_references],
+                control_names=[control_name for _, control_name in sorted_references],
             )
         )
     return removals
