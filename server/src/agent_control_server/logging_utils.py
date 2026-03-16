@@ -1,5 +1,6 @@
 import logging
-import os
+
+from .config import LoggingSettings
 
 _LEVELS = {
     "CRITICAL": logging.CRITICAL,
@@ -9,26 +10,70 @@ _LEVELS = {
     "DEBUG": logging.DEBUG,
     "NOTSET": logging.NOTSET,
 }
+_UVICORN_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"}
+
+
+def _normalize_level_name(level: str | None) -> str | None:
+    if level is None:
+        return None
+    normalized = level.upper()
+    if normalized in _LEVELS:
+        return normalized
+    return None
+
+
+def _configured_level_name() -> str | None:
+    return _normalize_level_name(LoggingSettings().level)
 
 
 def _parse_level(level: str | int | None) -> int:
     if isinstance(level, int):
         return level
-    if isinstance(level, str):
-        return _LEVELS.get(level.upper(), logging.INFO)
-    env = os.getenv("LOG_LEVEL", "INFO")
-    return _LEVELS.get(env.upper(), logging.INFO)
+    normalized = _normalize_level_name(level)
+    if normalized is not None:
+        return _LEVELS[normalized]
+    configured_level = _configured_level_name()
+    if configured_level is not None:
+        return _LEVELS[configured_level]
+    return logging.INFO
+
+
+def get_log_level_name(default_level: str = "INFO") -> str:
+    """Resolve the configured log level name, falling back to the provided default."""
+    configured_level = _configured_level_name()
+    if configured_level is not None:
+        return configured_level
+    normalized_default = _normalize_level_name(default_level)
+    if normalized_default is not None:
+        return normalized_default
+    return "INFO"
+
+
+def get_uvicorn_log_level_name(default_level: str = "INFO") -> str:
+    """Resolve a uvicorn-compatible log level name."""
+    normalized_level = get_log_level_name(default_level)
+    if normalized_level in _UVICORN_LEVELS:
+        return normalized_level
+    normalized_default = _normalize_level_name(default_level)
+    if normalized_default in _UVICORN_LEVELS:
+        return normalized_default
+    return "INFO"
 
 
 def _parse_json(json_flag: bool | None) -> bool:
     if isinstance(json_flag, bool):
         return json_flag
-    env = os.getenv("LOG_JSON", "false").lower()
-    return env in {"1", "true", "yes", "y"}
+    return LoggingSettings().json_logs
 
 
-def configure_logging(*, level: str | int | None = None, json: bool | None = None) -> None:
-    lvl = _parse_level(level)
+def configure_logging(
+    *,
+    level: str | int | None = None,
+    json: bool | None = None,
+    default_level: str = "INFO",
+) -> None:
+    resolved_level = level if level is not None else get_log_level_name(default_level)
+    lvl = _parse_level(resolved_level)
     as_json = _parse_json(json)
     fmt = (
         '{"time":"%(asctime)s","level":"%(levelname)s","name":"%(name)s","msg":"%(message)s"}'

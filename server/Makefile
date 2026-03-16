@@ -9,6 +9,7 @@ SHOW ?= head
 STAMP ?= head
 
 TEST_DB ?= agent_control_test
+TEST_DB_ENV := env -u AGENT_CONTROL_DB_URL -u DATABASE_URL -u DB_URL AGENT_CONTROL_DB_HOST=localhost AGENT_CONTROL_DB_PORT=5432 AGENT_CONTROL_DB_USER=agent_control AGENT_CONTROL_DB_PASSWORD=agent_control AGENT_CONTROL_DB_DATABASE=$(TEST_DB) AGENT_CONTROL_DB_DRIVER=psycopg
 .PHONY: help run start-dependencies test migrate migrate-control-conditions alembic-migrate alembic-revision alembic-upgrade alembic-downgrade alembic-current alembic-history alembic-heads alembic-show alembic-stamp
 
 MIGRATE_ARGS ?= --dry-run
@@ -17,7 +18,7 @@ help:
 	@echo "Available targets:"
 	@echo "  run                          - start FastAPI server (reload)"
 	@echo "  start-dependencies           - docker compose up -d (start local dependencies)"
-	@echo "  test                         - run server tests (uses DB_DATABASE=$(TEST_DB))"
+	@echo "  test                         - run server tests (uses $(TEST_DB_ENV))"
 	@echo "  migrate                      - run database migrations (alembic upgrade head)"
 	@echo "  migrate-control-conditions   - rewrite stored controls to condition trees (default dry-run; set MIGRATE_ARGS=--apply to commit)"
 	@echo "  alembic-migrate MSG='message'  - autogenerate alembic revision"
@@ -69,7 +70,7 @@ start-dependencies:
 	@echo "PostgreSQL is ready!"
 
 test:
-	DB_DATABASE=$(TEST_DB) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q
+	$(TEST_DB_ENV) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q
 
 run: start-dependencies migrate
 	uv run -m agent_control_server.main
