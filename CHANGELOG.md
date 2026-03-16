@@ -2,6 +2,26 @@
 
 <!-- version list -->
 
+## v6.8.1 (2026-03-16)
+
+### Bug Fixes
+
+- **sdk**: Skip evaluation when no controls apply
+  ([#124](https://github.com/agentcontrol/agent-control/pull/124),
+  [`d2cd9f9`](https://github.com/agentcontrol/agent-control/commit/d2cd9f9aaa8a20df79e6b2bdd9a20263f510946e))
+
+### Chores
+
+- **evaluators**: Pin sqlglotc ([#131](https://github.com/agentcontrol/agent-control/pull/131),
+  [`1d3ebcc`](https://github.com/agentcontrol/agent-control/commit/1d3ebcceff832dc7595329c2a36861260b2e9dda))
+
+### Refactoring
+
+- **server**: Standardize server env config prefixes
+  ([#127](https://github.com/agentcontrol/agent-control/pull/127),
+  [`bf494cc`](https://github.com/agentcontrol/agent-control/commit/bf494cc62be677ca81c444798afed0f8fc094b7e))
+
+
 ## v6.8.0 (2026-03-12)
 
 ### Bug Fixes
