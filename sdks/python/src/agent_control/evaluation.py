@@ -134,6 +134,61 @@ class _ControlAdapter:
     control: "ControlDefinition"
 
 
+def _get_applicable_controls(
+    controls: list[_ControlAdapter],
+    request: EvaluationRequest,
+    *,
+    context: Literal["sdk", "server"],
+) -> list[_ControlAdapter]:
+    """Return parsed controls that apply to this request in the given context."""
+    applicable_controls = ControlEngine(
+        controls,
+        context=context,
+    ).get_applicable_controls(request)
+    return cast(list[_ControlAdapter], applicable_controls)
+
+
+def _has_applicable_prefiltered_server_controls(
+    server_control_payloads: list[dict[str, Any]],
+    request: EvaluationRequest,
+) -> bool:
+    """Return whether any partitioned server control applies to this request.
+
+    The caller is responsible for partitioning raw control payloads by
+    ``execution`` before calling this helper. This function only inspects the
+    server-control subset and does not re-check ``execution`` itself.
+
+    If any server control payload cannot be parsed locally, this returns True so
+    the SDK still defers to the server for authoritative handling.
+    """
+    parsed_server_controls: list[_ControlAdapter] = []
+
+    for control in server_control_payloads:
+        try:
+            control_def = ControlDefinition.model_validate(control["control"])
+            parsed_server_controls.append(
+                _ControlAdapter(
+                    id=control["id"],
+                    name=control["name"],
+                    control=control_def,
+                )
+            )
+        except Exception:
+            # Preserve existing fail-open behavior for malformed server controls.
+            return True
+
+    if not parsed_server_controls:
+        return False
+
+    return bool(
+        _get_applicable_controls(
+            parsed_server_controls,
+            request,
+            context="server",
+        )
+    )
+
+
 def _merge_results(
     local_result: "EvaluationResponse",
     server_result: "EvaluationResponse",
@@ -212,7 +267,7 @@ async def check_evaluation_with_local(
     # Partition controls by local flag
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []
-    has_server_controls = False
+    server_control_payloads: list[dict[str, Any]] = []
 
     for control in controls:
         control_data = control.get("control", {})
@@ -220,7 +275,7 @@ async def check_evaluation_with_local(
         is_local = execution == "sdk"
 
         if not is_local:
-            has_server_controls = True
+            server_control_payloads.append(control)
             continue
 
         try:
@@ -272,6 +327,12 @@ async def check_evaluation_with_local(
                 )
             )
 
+    request = EvaluationRequest(
+        agent_name=normalized_name,
+        step=step,
+        stage=stage,
+    )
+
     def _with_parse_errors(result: EvaluationResult) -> EvaluationResult:
         if not parse_errors:
             return result
@@ -285,21 +346,20 @@ async def check_evaluation_with_local(
             non_matches=result.non_matches,
         )
 
-    request = EvaluationRequest(
-        agent_name=normalized_name,
-        step=step,
-        stage=stage,
-    )
-
     local_result: EvaluationResponse | None = None
-    if local_controls:
-        engine = ControlEngine(local_controls, context="sdk")
+    applicable_local_controls = _get_applicable_controls(
+        local_controls,
+        request,
+        context="sdk",
+    )
+    if applicable_local_controls:
+        engine = ControlEngine(applicable_local_controls, context="sdk")
         local_result = await engine.process(request)
 
         _emit_local_events(
             local_result,
             request,
-            local_controls,
+            applicable_local_controls,
             trace_id,
             span_id,
             agent_name=event_agent_name,
@@ -317,7 +377,7 @@ async def check_evaluation_with_local(
                 )
             )
 
-    if has_server_controls:
+    if _has_applicable_prefiltered_server_controls(server_control_payloads, request):
         request_payload = request.model_dump(mode="json", exclude_none=True)
         headers: dict[str, str] = {}
         if trace_id:
