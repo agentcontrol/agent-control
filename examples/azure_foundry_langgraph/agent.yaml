@@ -16,7 +16,7 @@ environment_variables:
     - name: AZURE_AI_PROJECT_ENDPOINT
       value: ${AZURE_AI_PROJECT_ENDPOINT}
     - name: AGENT_CONTROL_URL
-      value: http://13.68.189.140:8000
+      value: ${AGENT_CONTROL_URL}
     - name: AGENT_NAME
       value: customer-support-agent
     - name: POLICY_REFRESH_INTERVAL_SECONDS
