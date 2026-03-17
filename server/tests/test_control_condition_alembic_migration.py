@@ -181,6 +181,36 @@ def test_upgrade_rewrites_valid_legacy_rows(
         assert migrated[field] == legacy_payload[field]
 
 
+def test_upgrade_rewrites_multiple_valid_legacy_rows(
+    upgrade_to,
+    temp_engine: Engine,
+) -> None:
+    upgrade_to(PRE_MIGRATION_REVISION)
+    first_legacy = _legacy_control_payload()
+    second_legacy = _legacy_control_payload()
+    second_legacy["description"] = "second legacy control"
+    second_legacy["scope"] = {"step_types": ["tool"], "stages": ["post"]}
+
+    first_id = _insert_control(temp_engine, name="legacy-one", data=first_legacy)
+    second_id = _insert_control(temp_engine, name="legacy-two", data=second_legacy)
+
+    upgrade_to(MIGRATION_REVISION)
+
+    first_migrated = _fetch_control_data(temp_engine, first_id)
+    second_migrated = _fetch_control_data(temp_engine, second_id)
+
+    for migrated, original in (
+        (first_migrated, first_legacy),
+        (second_migrated, second_legacy),
+    ):
+        assert "selector" not in migrated
+        assert "evaluator" not in migrated
+        assert migrated["condition"]["selector"] == original["selector"]
+        assert migrated["condition"]["evaluator"] == original["evaluator"]
+        for field in ("description", "enabled", "execution", "scope", "action"):
+            assert migrated[field] == original[field]
+
+
 def test_upgrade_preserves_empty_draft_rows(
     upgrade_to,
     temp_engine: Engine,
