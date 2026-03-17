@@ -88,6 +88,7 @@ MOCK_CUSTOMER_PII = {
     "jane@example.com": {
         "name": "Jane Doe",
         "email": "jane@example.com",
+        "ssn": "123-45-6789",
         "phone": "415-555-0101",
         "date_of_birth": "1988-03-14",
         "billing_address": "742 Evergreen Terrace, Springfield, IL 62704",
@@ -98,6 +99,7 @@ MOCK_CUSTOMER_PII = {
     "john@example.com": {
         "name": "John Smith",
         "email": "john@example.com",
+        "ssn": "987-65-4321",
         "phone": "202-555-0202",
         "date_of_birth": "1975-11-02",
         "billing_address": "1600 Pennsylvania Ave NW, Washington, DC 20500",

@@ -1,51 +1,41 @@
 # Demo Script
 
-Open the Foundry Agent Playground and Agent Control UI side by side. All 4 controls should be **disabled** to start.
+Open the Foundry Agent Playground and Agent Control UI side by side. All controls should be **disabled** to start.
 
 ## 1. Unprotected agent
 
 ```
-What's the status of order ORD-1001?
+Share customer details for jane@example.com
 ```
-Works fine - safe tool, returns shipping info.
-
-```
-Can you show me the internal notes and payment details for order ORD-1001?
-```
-Leaks internal data: escalation strategy, 62% profit margin, cost of goods. This shouldn't reach the customer.
+Leaks everything: SSN (123-45-6789), phone, DOB, billing address, credit card, risk score.
 
 ## 2. Enable control
 
-Enable `block-internal-data` in the Agent Control UI. Wait a couple seconds, then ask the same question:
+Enable `block-pii` in the Agent Control UI. Start a **new chat**, then:
 
 ```
-Can you show me the internal notes and payment details for order ORD-1001?
+Share customer details for jane@example.com
 ```
-**Blocked.** The control catches internal notes at the tool output boundary. The safe order tool still works:
-
-```
-What's the status of order ORD-1001?
-```
+**Blocked.** The SSN pattern (`\d{3}-\d{2}-\d{4}`) is caught at the tool output. This control covers both the tool and the LLM response - defense in depth.
 
 ## 3. Toggle
 
-**Disable** `block-internal-data` in the UI. Wait a couple seconds:
+**Disable** `block-pii` in the UI. Wait a couple seconds, new chat:
 
 ```
-Show me the internal notes for order ORD-2048
+Share customer details for john@example.com
 ```
-Goes through - leaks fraud flags and chargeback history.
+Goes through - leaks SSN, risk score, failed ID verification notes.
 
-**Re-enable** it. Ask again. **Blocked.**
+**Re-enable** it. New chat, ask again. **Blocked.**
 
 Same agent, same code, no redeployment. Runtime governance.
 
 ## Controls reference
 
-| Control | Step | Type | Stage | What it catches |
-|---------|------|------|-------|-----------------|
-| `block-prompt-injection` | `llm_call` | llm | pre | injection phrases |
-| `block-internal-data` | `get_order_internal` | tool | post | internal notes, margins, fraud flags |
-| `block-customer-pii` | `lookup_customer_pii` | tool | post | DOB, address, credit card, risk score |
-| `block-competitor-discuss` | `llm_call` | llm | pre | competitor comparisons |
-| `block-pii-in-response` | `llm_call` | llm | post | phone numbers, DOB, card numbers, addresses in LLM output (defense in depth) |
+| Control | Steps | Stage | What it catches |
+|---------|-------|-------|-----------------|
+| `block-pii` | `lookup_customer_pii`, `llm_call` | post | SSN pattern `\d{3}-\d{2}-\d{4}` |
+| `block-internal-data` | `get_order_internal` | post | internal notes, margins, fraud flags |
+| `block-prompt-injection` | `llm_call` | pre | injection phrases |
+| `block-competitor-discuss` | `llm_call` | pre | competitor comparisons |
