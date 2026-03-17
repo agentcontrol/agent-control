@@ -129,15 +129,22 @@ async def seed() -> None:
             print(f"Created control: {ctrl_def['name']} (id={ctrl_id})")
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 409:
-                # Already exists - look it up
+                # Already exists - look it up by name
                 result = await agent_control.list_controls(
-                    server_url=server_url, api_key=api_key
+                    server_url=server_url,
+                    api_key=api_key,
+                    name=ctrl_def["name"],
                 )
                 controls_list = result.get("controls", []) if isinstance(result, dict) else result
                 ctrl_id = next(
-                    c.get("id") for c in controls_list
-                    if c.get("name") == ctrl_def["name"]
+                    (c.get("id") for c in controls_list
+                     if c.get("name") == ctrl_def["name"]),
+                    None,
                 )
+                if ctrl_id is None:
+                    raise RuntimeError(
+                        f"Control '{ctrl_def['name']}' returned 409 but was not found via list_controls"
+                    ) from e
                 print(f"Control already exists: {ctrl_def['name']} (id={ctrl_id})")
             else:
                 raise

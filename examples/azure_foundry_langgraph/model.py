@@ -1,5 +1,3 @@
-import os
-
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from langchain.chat_models import init_chat_model
 
@@ -7,9 +5,7 @@ from settings import settings
 
 
 def create_chat_model():
-    deployment = os.environ.get(
-        "AZURE_AI_MODEL_DEPLOYMENT_NAME", settings.model_deployment_name
-    )
+    deployment = settings.model_deployment_name
     token_provider = get_bearer_token_provider(
         DefaultAzureCredential(),
         "https://cognitiveservices.azure.com/.default",

@@ -1,10 +1,9 @@
 """Customer support tools with Agent Control runtime guardrails.
 
-Every tool is decorated with @control() so Agent Control can evaluate
-inputs and outputs at runtime. Controls are configured on the server -
-if no control targets a step, @control() is a no-op.
+Uses the checked-wrapper pattern so @control() sees the tool name at
+registration time and correctly classifies steps as type="tool".
 
-Just decorate your tools. Configure governance separately.
+Pattern: raw function -> setattr(.name) -> control() -> @tool wrapper.
 """
 
 from __future__ import annotations
@@ -112,13 +111,11 @@ MOCK_CUSTOMER_PII = {
 }
 
 # ---------------------------------------------------------------------------
-# Tools - each decorated with @control() for Agent Control governance
+# Tools - checked-wrapper pattern for correct @control() registration
 # ---------------------------------------------------------------------------
 
 
-@tool("get_order_status")
-@control()
-async def get_order_status(order_id: str) -> dict:
+async def _get_order_status(order_id: str) -> dict:
     """Look up order status by ID. Returns shipping status, items, delivery estimate, and tracking info."""
     order = MOCK_ORDERS.get(order_id)
     if not order:
@@ -126,9 +123,17 @@ async def get_order_status(order_id: str) -> dict:
     return order
 
 
-@tool("lookup_customer")
-@control()
-async def lookup_customer(email: str) -> dict:
+setattr(_get_order_status, "name", "get_order_status")
+_get_order_status_checked = control()(_get_order_status)
+
+
+@tool("get_order_status")
+async def get_order_status(order_id: str) -> dict:
+    """Look up order status by ID. Returns shipping status, items, delivery estimate, and tracking info."""
+    return await _get_order_status_checked(order_id=order_id)
+
+
+async def _lookup_customer(email: str) -> dict:
     """Look up customer profile by email. Returns name, membership tier, and recent orders."""
     customer = MOCK_CUSTOMERS.get(email)
     if not customer:
@@ -136,9 +141,17 @@ async def lookup_customer(email: str) -> dict:
     return customer
 
 
-@tool("get_order_internal")
-@control()
-async def get_order_internal(order_id: str) -> dict:
+setattr(_lookup_customer, "name", "lookup_customer")
+_lookup_customer_checked = control()(_lookup_customer)
+
+
+@tool("lookup_customer")
+async def lookup_customer(email: str) -> dict:
+    """Look up customer profile by email. Returns name, membership tier, and recent orders."""
+    return await _lookup_customer_checked(email=email)
+
+
+async def _get_order_internal(order_id: str) -> dict:
     """Fetch internal order details including payment method, cost of goods, profit margins, internal notes, and fraud review status. Use this when the user asks about payment, internal notes, or fraud flags."""
     data = MOCK_ORDER_INTERNALS.get(order_id)
     if not data:
@@ -146,14 +159,32 @@ async def get_order_internal(order_id: str) -> dict:
     return data
 
 
-@tool("lookup_customer_pii")
-@control()
-async def lookup_customer_pii(email: str) -> dict:
+setattr(_get_order_internal, "name", "get_order_internal")
+_get_order_internal_checked = control()(_get_order_internal)
+
+
+@tool("get_order_internal")
+async def get_order_internal(order_id: str) -> dict:
+    """Fetch internal order details including payment method, cost of goods, profit margins, internal notes, and fraud review status. Use this when the user asks about payment, internal notes, or fraud flags."""
+    return await _get_order_internal_checked(order_id=order_id)
+
+
+async def _lookup_customer_pii(email: str) -> dict:
     """Fetch sensitive customer data including phone number, date of birth, billing address, credit card on file, risk score, and agent notes. Use this when the user asks for contact details, personal information, or account verification data."""
     data = MOCK_CUSTOMER_PII.get(email)
     if not data:
         return {"error": f"No PII data for {email}"}
     return data
+
+
+setattr(_lookup_customer_pii, "name", "lookup_customer_pii")
+_lookup_customer_pii_checked = control()(_lookup_customer_pii)
+
+
+@tool("lookup_customer_pii")
+async def lookup_customer_pii(email: str) -> dict:
+    """Fetch sensitive customer data including phone number, date of birth, billing address, credit card on file, risk score, and agent notes. Use this when the user asks for contact details, personal information, or account verification data."""
+    return await _lookup_customer_pii_checked(email=email)
 
 
 ALL_TOOLS = [get_order_status, lookup_customer, get_order_internal, lookup_customer_pii]
