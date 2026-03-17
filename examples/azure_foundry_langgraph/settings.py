@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     agent_name: str = "customer-support-agent"
     agent_control_url: str = "http://localhost:8000"
     agent_control_api_key: str = ""
-    policy_refresh_interval_seconds: int = 5
+    policy_refresh_interval_seconds: int = 2
 
     azure_ai_project_endpoint: str = ""
     model_deployment_name: str = "gpt-4.1-mini"

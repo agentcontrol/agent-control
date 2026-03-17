@@ -22,4 +22,4 @@ environment_variables:
     - name: AGENT_NAME
       value: customer-support-agent
     - name: POLICY_REFRESH_INTERVAL_SECONDS
-      value: "5"
+      value: "2"

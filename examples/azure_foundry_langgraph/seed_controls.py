@@ -28,7 +28,7 @@ CONTROLS = [
         "name": "block-prompt-injection",
         "data": {
             "enabled": False,
-            "execution": "server",
+            "execution": "sdk",
             "scope": {
                 "stages": ["pre"],
                 "step_names": ["llm_call"],
@@ -47,7 +47,7 @@ CONTROLS = [
         "name": "block-internal-data",
         "data": {
             "enabled": False,
-            "execution": "server",
+            "execution": "sdk",
             "scope": {
                 "stages": ["post"],
                 "step_names": ["get_order_internal"],
@@ -66,7 +66,7 @@ CONTROLS = [
         "name": "block-customer-pii",
         "data": {
             "enabled": False,
-            "execution": "server",
+            "execution": "sdk",
             "scope": {
                 "stages": ["post"],
                 "step_names": ["lookup_customer_pii"],
@@ -85,7 +85,7 @@ CONTROLS = [
         "name": "block-competitor-discuss",
         "data": {
             "enabled": False,
-            "execution": "server",
+            "execution": "sdk",
             "scope": {
                 "stages": ["pre"],
                 "step_names": ["llm_call"],

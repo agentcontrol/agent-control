@@ -200,6 +200,8 @@ azd deploy CustomerSupportAgentLG
 2. Enable controls one by one in the Agent Control UI - each blocks a different category of risk
 3. Toggle controls on/off in real-time - same agent, same code, different behavior
 
+See [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the full step-by-step demo script with prompts, expected results, and talking points.
+
 ## File Overview
 
 | File | Purpose |
