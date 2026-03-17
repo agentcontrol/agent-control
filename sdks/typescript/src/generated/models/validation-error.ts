@@ -9,32 +9,13 @@ import * as types from "../types/primitives.js";
 import { smartUnion } from "../types/smart-union.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
-export type Context = {};
-
 export type Loc = string | number;
 
 export type ValidationError = {
-  ctx?: Context | undefined;
-  input?: any | undefined;
   loc: Array<string | number>;
   msg: string;
   type: string;
 };
-
-/** @internal */
-export const Context$inboundSchema: z.ZodMiniType<Context, unknown> = z.object(
-  {},
-);
-
-export function contextFromJSON(
-  jsonString: string,
-): SafeParseResult<Context, SDKValidationError> {
-  return safeParse(
-    jsonString,
-    (x) => Context$inboundSchema.parse(JSON.parse(x)),
-    `Failed to parse 'Context' from JSON`,
-  );
-}
 
 /** @internal */
 export const Loc$inboundSchema: z.ZodMiniType<Loc, unknown> = smartUnion([
@@ -57,8 +38,6 @@ export const ValidationError$inboundSchema: z.ZodMiniType<
   ValidationError,
   unknown
 > = z.object({
-  ctx: types.optional(z.lazy(() => Context$inboundSchema)),
-  input: types.optional(z.any()),
   loc: z.array(smartUnion([types.string(), types.number()])),
   msg: types.string(),
   type: types.string(),
