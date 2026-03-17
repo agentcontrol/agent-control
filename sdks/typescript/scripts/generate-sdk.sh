@@ -6,6 +6,7 @@ SDK_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 SPEAKEASY_BIN="${SDK_ROOT}/.speakeasy/bin/speakeasy"
 SPEC_PATH="${OPENAPI_SPEC_PATH:-${SDK_ROOT}/../../server/.generated/openapi.json}"
 OVERLAY_GENERATOR="${SCRIPT_DIR}/generate-method-names-overlay.py"
+NORMALIZE_GENERATOR="${SCRIPT_DIR}/normalize_generated_sdk.py"
 OVERLAY_PATH="${SDK_ROOT}/overlays/method-names.overlay.yaml"
 TMP_OUTPUT_DIR="${SDK_ROOT}/.speakeasy/tmp-generated"
 TMP_SPEC_PATH="${TMP_OUTPUT_DIR}/openapi.with-overrides.json"
@@ -23,6 +24,11 @@ fi
 
 if [[ ! -f "${OVERLAY_GENERATOR}" ]]; then
   echo "Overlay generator not found at ${OVERLAY_GENERATOR}" >&2
+  exit 1
+fi
+
+if [[ ! -f "${NORMALIZE_GENERATOR}" ]]; then
+  echo "Generated SDK normalizer not found at ${NORMALIZE_GENERATOR}" >&2
   exit 1
 fi
 
@@ -75,5 +81,9 @@ INIT_REQUEST_MODEL="${GENERATED_DIR}/models/init-agent-request.ts"
 if [[ -f "${INIT_REQUEST_MODEL}" ]]; then
   perl -0pi -e 's/conflictMode: z\.optional\(ConflictMode\$outboundSchema\),/conflictMode: z._default(z.optional(ConflictMode\$outboundSchema), "overwrite"),/g' "${INIT_REQUEST_MODEL}"
 fi
+
+python3 "${NORMALIZE_GENERATOR}" \
+  --schema "${SPEC_PATH}" \
+  --generated-dir "${GENERATED_DIR}"
 
 echo "Generated TypeScript client copied to ${GENERATED_DIR}"

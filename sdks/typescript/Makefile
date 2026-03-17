@@ -31,7 +31,9 @@ generate: speakeasy-install
 	./scripts/generate-sdk.sh
 
 overlay-test:
-	cd ../.. && uv run --package agent-control-server pytest sdks/typescript/tests/test_generate_method_names_overlay.py
+	cd ../.. && uv run --package agent-control-server pytest \
+		sdks/typescript/tests/test_generate_method_names_overlay.py \
+		sdks/typescript/tests/test_normalize_generated_sdk.py
 
 name-check:
 	@if command -v rg >/dev/null 2>&1; then \
