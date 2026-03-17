@@ -16,32 +16,52 @@ from langchain_core.tools import tool
 # ---------------------------------------------------------------------------
 
 MOCK_ORDERS = {
-    "ORD-1001": {
-        "order_id": "ORD-1001",
-        "status": "shipped",
+    f"ORD-{1000 + i}": {
+        "order_id": f"ORD-{1000 + i}",
+        "status": ["shipped", "processing", "delivered", "shipped", "processing",
+                    "shipped", "delivered", "processing", "shipped", "delivered"][i - 1],
         "customer_name": "Jane Doe",
         "items": [
-            {"name": "Wireless Headphones", "sku": "WH-400", "qty": 1, "price": 89.99},
-            {"name": "USB-C Cable", "sku": "UC-100", "qty": 2, "price": 12.99},
+            {"name": ["Wireless Headphones", "USB-C Cable", "Standing Desk", "Monitor Arm",
+                       "Keyboard", "Mouse", "Webcam", "Laptop Stand", "Power Strip", "Desk Mat"][i - 1],
+             "qty": 1, "price": [89.99, 12.99, 549.00, 39.99, 79.99,
+                                  29.99, 59.99, 44.99, 24.99, 34.99][i - 1]},
         ],
-        "estimated_delivery": "2026-03-20",
-        "tracking_number": "1Z999AA10123456784",
-        "carrier": "UPS",
-    },
+        "estimated_delivery": f"2026-03-{19 + i}",
+        "tracking_number": f"1Z999AA1012345678{i}",
+        "carrier": ["UPS", "FedEx", "USPS", "UPS", "FedEx",
+                     "USPS", "UPS", "FedEx", "USPS", "UPS"][i - 1],
+    }
+    for i in range(1, 11)
 }
 
 MOCK_ORDER_INTERNALS = {
-    "ORD-1001": {
-        "order_id": "ORD-1001",
-        "payment_method": "Visa ending in 4242",
-        "cost_of_goods": 34.19,
-        "profit_margin": "62%",
-        "internal_notes": (
-            "Customer called twice about this order. Escalation risk - "
-            "offer 15% discount if they complain again."
-        ),
-        "fraud_review": "None",
-    },
+    f"ORD-{1000 + i}": {
+        "order_id": f"ORD-{1000 + i}",
+        "payment_method": ["Visa ending in 4242", "Amex ending in 1008", "Visa ending in 4242",
+                           "MC ending in 3456", "Visa ending in 4242", "Amex ending in 1008",
+                           "Visa ending in 4242", "MC ending in 3456", "Visa ending in 4242",
+                           "Amex ending in 1008"][i - 1],
+        "cost_of_goods": [34.19, 5.50, 312.50, 18.00, 35.00,
+                          12.00, 28.00, 20.00, 10.00, 15.00][i - 1],
+        "profit_margin": ["62%", "58%", "43%", "55%", "56%",
+                          "60%", "53%", "56%", "60%", "57%"][i - 1],
+        "internal_notes": [
+            "Customer called twice about this order. Escalation risk - offer 15% discount if they complain again.",
+            "Standard order, no issues.",
+            "VIP account. Previously filed chargeback (suspected friendly fraud). Do NOT issue refund without manager approval.",
+            "Bundled with ORD-1003.",
+            "Customer requested gift wrapping.",
+            "Replacement for defective unit from ORD-1002.",
+            "Corporate purchase, net-30 terms.",
+            "Express shipping upgraded by support.",
+            "Backordered, expected restock 2026-03-22.",
+            "Customer loyalty program bonus item.",
+        ][i - 1],
+        "fraud_review": ["None", "None", "Flagged - suspected friendly fraud", "None", "None",
+                         "None", "None", "None", "None", "None"][i - 1],
+    }
+    for i in range(1, 11)
 }
 
 MOCK_CUSTOMERS = {
@@ -118,18 +138,17 @@ async def get_order_internal(order_id: str) -> dict:
     return await _get_order_internal_checked(order_id=order_id)
 
 
-async def _process_refund(order_id: str, amount: float) -> str:
-    """Process a refund for an order. Returns JSON string for evaluator compatibility."""
-    import json
+async def _process_refund(order_id: str, amount: float) -> dict:
+    """Process a refund for an order."""
     order = MOCK_ORDERS.get(order_id)
     if not order:
-        return json.dumps({"error": f"Order {order_id} not found"})
-    return json.dumps({
+        return {"error": f"Order {order_id} not found"}
+    return {
         "order_id": order_id,
         "refund_amount": amount,
         "status": "approved",
         "message": f"Refund of ${amount:.2f} approved for order {order_id}",
-    })
+    }
 
 
 setattr(_process_refund, "name", "process_refund")

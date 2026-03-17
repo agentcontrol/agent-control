@@ -108,7 +108,7 @@ CONTROLS = [
         "name": "max-refund-amount",
         "data": {
             "enabled": False,
-            "execution": "server",
+            "execution": "sdk",
             "scope": {
                 "stages": ["post"],
                 "step_types": ["tool"],
