@@ -118,17 +118,18 @@ async def get_order_internal(order_id: str) -> dict:
     return await _get_order_internal_checked(order_id=order_id)
 
 
-async def _process_refund(order_id: str, amount: float) -> dict:
-    """Process a refund for an order."""
+async def _process_refund(order_id: str, amount: float) -> str:
+    """Process a refund for an order. Returns JSON string for evaluator compatibility."""
+    import json
     order = MOCK_ORDERS.get(order_id)
     if not order:
-        return {"error": f"Order {order_id} not found"}
-    return {
+        return json.dumps({"error": f"Order {order_id} not found"})
+    return json.dumps({
         "order_id": order_id,
         "refund_amount": amount,
         "status": "approved",
         "message": f"Refund of ${amount:.2f} approved for order {order_id}",
-    }
+    })
 
 
 setattr(_process_refund, "name", "process_refund")

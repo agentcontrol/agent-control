@@ -51,14 +51,17 @@ async def run_tests():
     print("\n5. process_refund $50 (under limit)...")
     try:
         result = await process_refund.ainvoke({"order_id": "ORD-1001", "amount": 50.0})
-        print(f"   PASS: {result['message']}")
+        import json
+        parsed = json.loads(result) if isinstance(result, str) else result
+        print(f"   PASS: {parsed['message']}")
     except ControlViolationError as e:
         print(f"   BLOCKED: {e}")
 
     print("\n6. process_refund $150 (over limit - max-refund-amount controls this)...")
     try:
         result = await process_refund.ainvoke({"order_id": "ORD-1001", "amount": 150.0})
-        print(f"   PASS (control disabled): {result['message']}")
+        parsed = json.loads(result) if isinstance(result, str) else result
+        print(f"   PASS (control disabled): {parsed['message']}")
     except ControlViolationError as e:
         print(f"   BLOCKED (control enabled): {e}")
 
