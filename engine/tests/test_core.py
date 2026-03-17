@@ -1700,8 +1700,67 @@ class TestConditionTrees:
 
         trace = result.errors[0].result.metadata["condition_trace"]
         assert trace["type"] == "and"
-        assert trace["matched"] is False
+        assert trace["matched"] is None
         assert trace["short_circuit_reason"] == "error"
+        assert result.errors[0].result.message.startswith(
+            "Condition evaluation aborted due to a child evaluator error:"
+        )
+        assert trace["children"][0]["evaluated"] is True
+        assert "Intentional error from boom" in trace["children"][0]["error"]
+        assert trace["children"][1]["evaluated"] is False
+        assert trace["children"][1]["short_circuit_reason"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_or_error_records_skipped_children_in_trace(self):
+        """OR error traces should be marked indeterminate, not as a definitive non-match."""
+        # Given: an OR tree whose first child evaluator errors
+        controls = [
+            MockControlWithIdentity(
+                id=1,
+                name="or_error",
+                control=ControlDefinition(
+                    description="Error in OR",
+                    enabled=True,
+                    execution="server",
+                    scope={"step_types": ["llm"], "stages": ["pre"]},
+                    condition={
+                        "or": [
+                            {
+                                "selector": {"path": "input"},
+                                "evaluator": {"name": "test-error", "config": {"value": "boom"}},
+                            },
+                            {
+                                "selector": {"path": "input"},
+                                "evaluator": {"name": "test-allow", "config": {"value": "skip"}},
+                            },
+                        ]
+                    },
+                    action={"decision": "log"},
+                ),
+            )
+        ]
+        engine = ControlEngine(controls)
+
+        # When: processing the request
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        # Then: the trace preserves the erroring child and marks remaining children skipped
+        assert result.errors is not None
+        assert len(result.errors) == 1
+        assert "allow:skip:end" not in _execution_log
+
+        trace = result.errors[0].result.metadata["condition_trace"]
+        assert trace["type"] == "or"
+        assert trace["matched"] is None
+        assert trace["short_circuit_reason"] == "error"
+        assert result.errors[0].result.message.startswith(
+            "Condition evaluation aborted due to a child evaluator error:"
+        )
         assert trace["children"][0]["evaluated"] is True
         assert "Intentional error from boom" in trace["children"][0]["error"]
         assert trace["children"][1]["evaluated"] is False

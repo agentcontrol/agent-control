@@ -228,7 +228,10 @@ class ControlEngine:
             return EvaluatorResult(
                 matched=False,
                 confidence=0.0,
-                message=f"Condition evaluation failed: {error}",
+                message=(
+                    "Condition evaluation aborted due to a child evaluator error: "
+                    f"{error}"
+                ),
                 metadata=result_metadata,
                 error=error,
             )
@@ -316,7 +319,7 @@ class ControlEngine:
                 trace = {
                     "type": kind,
                     "evaluated": True,
-                    "matched": False,
+                    "matched": None,
                     "children": [
                         evaluation.trace for evaluation in child_evaluations
                     ]

@@ -169,6 +169,72 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     assert data["matches"] is None or len(data["matches"]) == 0
 
 
+def test_evaluation_observability_receives_raw_errors_while_api_response_is_sanitized(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    """Observability should ingest raw evaluator diagnostics while API clients see safe text."""
+    # Given: an agent with a deny control and an evaluator that crashes at runtime
+    control_data = {
+        "description": "Test control",
+        "enabled": True,
+        "execution": "server",
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
+        "selector": {"path": "input"},
+        "evaluator": {
+            "name": "regex",
+            "config": {"pattern": "test"}
+        },
+        "action": {"decision": "deny"}
+    }
+    agent_name, control_name = create_and_assign_policy(client, control_data)
+
+    mock_evaluator = MagicMock()
+    mock_evaluator.evaluate = AsyncMock(side_effect=RuntimeError("Simulated evaluator crash"))
+    mock_evaluator.get_timeout_seconds = MagicMock(return_value=30.0)
+
+    import agent_control_engine.core as core_module
+    import agent_control_server.endpoints.evaluation as evaluation_module
+
+    monkeypatch.setattr(
+        core_module,
+        "get_evaluator_instance",
+        lambda _config: mock_evaluator,
+    )
+
+    emit_mock = AsyncMock()
+    monkeypatch.setattr(evaluation_module, "_emit_observability_events", emit_mock)
+    monkeypatch.setattr(evaluation_module.observability_settings, "enabled", True)
+
+    # When: sending an evaluation request
+    payload = Step(type="llm", name="test-step", input="test content", output=None)
+    req = EvaluationRequest(
+        agent_name=agent_name,
+        step=payload,
+        stage="pre"
+    )
+    resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+
+    # Then: the API response remains sanitized
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["errors"] is not None
+    assert len(data["errors"]) == 1
+    assert data["errors"][0]["control_name"] == control_name
+    assert data["errors"][0]["result"]["error"] == SAFE_EVALUATOR_ERROR
+
+    # And: observability receives the raw engine response with unsanitized diagnostics
+    emit_mock.assert_awaited_once()
+    raw_response = emit_mock.await_args.kwargs["response"]
+    assert raw_response.errors is not None
+    raw_error = raw_response.errors[0]
+    assert raw_error.control_name == control_name
+    assert raw_error.result.error == "RuntimeError: Simulated evaluator crash"
+    raw_trace = raw_error.result.metadata["condition_trace"]
+    assert raw_trace["error"] == "RuntimeError: Simulated evaluator crash"
+    assert raw_trace["message"] == "Evaluation failed: RuntimeError: Simulated evaluator crash"
+
+
 def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
     # Given: a control match whose nested condition trace contains raw evaluator errors
     match = ControlMatch(

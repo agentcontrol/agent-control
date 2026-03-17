@@ -217,7 +217,7 @@ async def evaluate(
     # Execute Control Engine (parallel with cancel-on-deny)
     engine = ControlEngine(engine_controls)
     try:
-        response = await engine.process(request)
+        raw_response = await engine.process(request)
     except ValueError:
         _logger.exception("Evaluation failed due to invalid configuration or input")
         raise APIValidationError(
@@ -235,8 +235,6 @@ async def evaluate(
             ],
         )
 
-    response = _sanitize_evaluation_response(response)
-
     # Calculate total execution time
     total_duration_ms = (time.perf_counter() - start_time) * 1000
 
@@ -249,7 +247,7 @@ async def evaluate(
             ingestor = None
 
         await _emit_observability_events(
-            response=response,
+            response=raw_response,
             request=request,
             trace_id=trace_id,
             span_id=span_id,
@@ -260,7 +258,7 @@ async def evaluate(
             ingestor=ingestor,
         )
 
-    return response
+    return _sanitize_evaluation_response(raw_response)
 
 
 async def _emit_observability_events(
