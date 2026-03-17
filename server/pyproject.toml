@@ -48,7 +48,6 @@ dev = [
 
 [project.scripts]
 agent-control-server = "agent_control_server.main:run"
-agent-control-migrate-controls = "agent_control_server.scripts.migrate_control_conditions:main"
 
 
 

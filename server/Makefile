@@ -10,9 +10,7 @@ STAMP ?= head
 
 TEST_DB ?= agent_control_test
 TEST_DB_ENV := env -u AGENT_CONTROL_DB_URL -u DATABASE_URL -u DB_URL AGENT_CONTROL_DB_HOST=localhost AGENT_CONTROL_DB_PORT=5432 AGENT_CONTROL_DB_USER=agent_control AGENT_CONTROL_DB_PASSWORD=agent_control AGENT_CONTROL_DB_DATABASE=$(TEST_DB) AGENT_CONTROL_DB_DRIVER=psycopg
-.PHONY: help run start-dependencies test migrate migrate-control-conditions alembic-migrate alembic-revision alembic-upgrade alembic-downgrade alembic-current alembic-history alembic-heads alembic-show alembic-stamp
-
-MIGRATE_ARGS ?= --dry-run
+.PHONY: help run start-dependencies test migrate alembic-migrate alembic-revision alembic-upgrade alembic-downgrade alembic-current alembic-history alembic-heads alembic-show alembic-stamp
 
 help:
 	@echo "Available targets:"
@@ -20,7 +18,6 @@ help:
 	@echo "  start-dependencies           - docker compose up -d (start local dependencies)"
 	@echo "  test                         - run server tests (uses $(TEST_DB_ENV))"
 	@echo "  migrate                      - run database migrations (alembic upgrade head)"
-	@echo "  migrate-control-conditions   - rewrite stored controls to condition trees (default dry-run; set MIGRATE_ARGS=--apply to commit)"
 	@echo "  alembic-migrate MSG='message'  - autogenerate alembic revision"
 	@echo "  alembic-upgrade UP=head        - upgrade to revision"
 	@echo "  alembic-downgrade DOWN=-1      - downgrade to revision"
@@ -33,9 +30,6 @@ help:
 migrate:
 	@echo "Running database migrations..."
 	$(ALEMBIC) upgrade head
-
-migrate-control-conditions:
-	uv run --package agent-control-server agent-control-migrate-controls $(MIGRATE_ARGS)
 
 alembic-migrate:
 	$(ALEMBIC) revision --autogenerate -m "$(MSG)"
