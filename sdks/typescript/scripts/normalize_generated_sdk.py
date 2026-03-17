@@ -57,8 +57,29 @@ def _strip_generated_validation_error_context_fields(file_path: Path) -> None:
         file_path.write_text(normalized, encoding="utf-8")
 
 
+def _normalize_sdk_metadata_version(file_path: Path) -> None:
+    original = file_path.read_text(encoding="utf-8")
+    normalized = re.sub(
+        r'openapiDocVersion: "[^"]+",',
+        'openapiDocVersion: "0.0.0",',
+        original,
+    )
+    normalized = re.sub(
+        r'userAgent: "speakeasy-sdk/typescript ([^"]+) ([^"]+) [^"]+ ([^"]+)",',
+        r'userAgent: "speakeasy-sdk/typescript \1 \2 0.0.0 \3",',
+        normalized,
+    )
+
+    if normalized != original:
+        file_path.write_text(normalized, encoding="utf-8")
+
+
 def normalize_generated_sdk(schema_path: Path, generated_dir: Path) -> None:
     """Normalize generated SDK output to match the server OpenAPI schema."""
+    config_file = generated_dir / "lib" / "config.ts"
+    if config_file.exists():
+        _normalize_sdk_metadata_version(config_file)
+
     validation_error_file = generated_dir / "models" / "validation-error.ts"
     if not validation_error_file.exists():
         return
