@@ -1,0 +1,10 @@
+azure-ai-agentserver-langgraph>=1.0.0b16
+azure-identity>=1.23
+langgraph>=1.0.10
+langchain>=1.2.0
+langchain-azure-ai>=1.1.0
+langchain-openai>=1.1.0
+agent-control-sdk>=6.8.0
+pydantic-settings>=2.0
+python-dotenv>=1.0
+httpx>=0.28
