@@ -42,9 +42,10 @@ Same agent, same code, no redeployment. Runtime governance.
 
 ## Controls reference
 
-| Control | Step | Stage | What it catches |
-|---------|------|-------|-----------------|
-| `block-prompt-injection` | `llm_call` | pre | injection phrases |
-| `block-internal-data` | `get_order_internal` | post | internal notes, margins, fraud flags |
-| `block-customer-pii` | `lookup_customer_pii` | post | DOB, address, credit card, risk score |
-| `block-competitor-discuss` | `llm_call` | pre | competitor comparisons |
+| Control | Step | Type | Stage | What it catches |
+|---------|------|------|-------|-----------------|
+| `block-prompt-injection` | `llm_call` | llm | pre | injection phrases |
+| `block-internal-data` | `get_order_internal` | tool | post | internal notes, margins, fraud flags |
+| `block-customer-pii` | `lookup_customer_pii` | tool | post | DOB, address, credit card, risk score |
+| `block-competitor-discuss` | `llm_call` | llm | pre | competitor comparisons |
+| `block-pii-in-response` | `llm_call` | llm | post | phone numbers, DOB, card numbers, addresses in LLM output (defense in depth) |

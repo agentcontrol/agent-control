@@ -3,11 +3,12 @@
 Usage:
     python seed_controls.py
 
-Creates 4 step-specific controls:
-  1. block-prompt-injection    - llm_call pre   (security)
+Creates 5 step-specific controls:
+  1. block-prompt-injection    - llm_call pre    (security)
   2. block-internal-data       - get_order_internal post (data protection)
   3. block-customer-pii        - lookup_customer_pii post (data protection)
-  4. block-competitor-discuss   - llm_call pre   (business policy)
+  4. block-competitor-discuss   - llm_call pre    (business policy)
+  5. block-pii-in-response     - llm_call post   (defense in depth)
 
 Controls are created DISABLED by default so the demo can start unprotected.
 """
@@ -31,13 +32,14 @@ CONTROLS = [
             "execution": "sdk",
             "scope": {
                 "stages": ["pre"],
+                "step_types": ["llm"],
                 "step_names": ["llm_call"],
             },
             "selector": {"path": "input"},
             "evaluator": {
                 "name": "regex",
                 "config": {
-                    "pattern": r"(?i)(ignore previous instructions|system prompt|you are now|forget everything|disregard all)"
+                    "pattern": r"([Ii]gnore previous instructions|[Ss]ystem prompt|[Yy]ou are now|[Ff]orget everything|[Dd]isregard all)"
                 },
             },
             "action": {"decision": "deny"},
@@ -50,13 +52,14 @@ CONTROLS = [
             "execution": "sdk",
             "scope": {
                 "stages": ["post"],
+                "step_types": ["tool"],
                 "step_names": ["get_order_internal"],
             },
             "selector": {"path": "output"},
             "evaluator": {
                 "name": "regex",
                 "config": {
-                    "pattern": r"(?i)(internal_notes|cost_of_goods|profit_margin|escalation risk|friendly fraud)"
+                    "pattern": r"(internal_notes|cost_of_goods|profit_margin|[Ee]scalation risk|[Ff]riendly fraud)"
                 },
             },
             "action": {"decision": "deny"},
@@ -69,13 +72,14 @@ CONTROLS = [
             "execution": "sdk",
             "scope": {
                 "stages": ["post"],
+                "step_types": ["tool"],
                 "step_names": ["lookup_customer_pii"],
             },
             "selector": {"path": "output"},
             "evaluator": {
                 "name": "regex",
                 "config": {
-                    "pattern": r"(?i)(date_of_birth|billing_address|credit_card_on_file|internal_risk_score|agent_notes)"
+                    "pattern": r"(date_of_birth|billing_address|credit_card_on_file|internal_risk_score|agent_notes)"
                 },
             },
             "action": {"decision": "deny"},
@@ -88,13 +92,34 @@ CONTROLS = [
             "execution": "sdk",
             "scope": {
                 "stages": ["pre"],
+                "step_types": ["llm"],
                 "step_names": ["llm_call"],
             },
             "selector": {"path": "input"},
             "evaluator": {
                 "name": "regex",
                 "config": {
-                    "pattern": r"(?i)(compare.*(amazon|shopify)|switch to (amazon|shopify)|better than (amazon|shopify))"
+                    "pattern": r"([Cc]ompare.*([Aa]mazon|[Ss]hopify)|[Ss]witch to ([Aa]mazon|[Ss]hopify)|[Bb]etter than ([Aa]mazon|[Ss]hopify))"
+                },
+            },
+            "action": {"decision": "deny"},
+        },
+    },
+    {
+        "name": "block-pii-in-response",
+        "data": {
+            "enabled": False,
+            "execution": "sdk",
+            "scope": {
+                "stages": ["post"],
+                "step_types": ["llm"],
+                "step_names": ["llm_call"],
+            },
+            "selector": {"path": "output"},
+            "evaluator": {
+                "name": "regex",
+                "config": {
+                    "pattern": r"(\d{3}-\d{3}-\d{4}|\d{3}-\d{2}-\d{4}|[Ee]nding in \d{4}|[Dd]ate of [Bb]irth|[Bb]illing [Aa]ddress|[Rr]isk [Ss]core)"
                 },
             },
             "action": {"decision": "deny"},
