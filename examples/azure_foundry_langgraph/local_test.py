@@ -15,12 +15,7 @@ load_dotenv()  # Must be before any agent_control imports
 from agent_control import ControlViolationError
 
 from agent_control_setup import bootstrap_agent_control
-from tools import (
-    get_order_status,
-    get_order_internal,
-    lookup_customer,
-    lookup_customer_pii,
-)
+from tools import get_order_status, lookup_customer, get_order_internal, process_refund
 
 
 async def run_tests():
@@ -32,35 +27,38 @@ async def run_tests():
     bootstrap_agent_control()
     print("   OK - connected to server")
 
-    # --- Safe tools (should always pass) ---
-
-    print("\n2. get_order_status (safe tool - no controls target this)...")
+    print("\n2. get_order_status (safe data)...")
     try:
         result = await get_order_status.ainvoke({"order_id": "ORD-1001"})
         print(f"   PASS: {result['status']}, {result['carrier']}, ETA {result['estimated_delivery']}")
     except ControlViolationError as e:
         print(f"   BLOCKED: {e}")
 
-    print("\n3. lookup_customer (safe tool - no controls target this)...")
+    print("\n3. lookup_customer (has SSN - block-pii controls this)...")
     try:
         result = await lookup_customer.ainvoke({"email": "jane@example.com"})
-        print(f"   PASS: {result['name']}, {result['membership']} member")
+        print(f"   PASS (control disabled): {result['name']}, SSN={result['ssn']}, phone={result['phone']}")
     except ControlViolationError as e:
-        print(f"   BLOCKED: {e}")
+        print(f"   BLOCKED (control enabled): {e}")
 
-    # --- Sensitive tools (controlled - behavior depends on whether controls are enabled) ---
-
-    print("\n4. get_order_internal (sensitive - block-internal-data controls this)...")
+    print("\n4. get_order_internal (has margins - block-internal-data controls this)...")
     try:
         result = await get_order_internal.ainvoke({"order_id": "ORD-1001"})
         print(f"   PASS (control disabled): margin={result['profit_margin']}, notes={result['internal_notes'][:50]}...")
     except ControlViolationError as e:
         print(f"   BLOCKED (control enabled): {e}")
 
-    print("\n5. lookup_customer_pii (sensitive - block-customer-pii controls this)...")
+    print("\n5. process_refund $50 (under limit)...")
     try:
-        result = await lookup_customer_pii.ainvoke({"email": "jane@example.com"})
-        print(f"   PASS (control disabled): phone={result['phone']}, DOB={result['date_of_birth']}")
+        result = await process_refund.ainvoke({"order_id": "ORD-1001", "amount": 50.0})
+        print(f"   PASS: {result['message']}")
+    except ControlViolationError as e:
+        print(f"   BLOCKED: {e}")
+
+    print("\n6. process_refund $150 (over limit - max-refund-amount controls this)...")
+    try:
+        result = await process_refund.ainvoke({"order_id": "ORD-1001", "amount": 150.0})
+        print(f"   PASS (control disabled): {result['message']}")
     except ControlViolationError as e:
         print(f"   BLOCKED (control enabled): {e}")
 

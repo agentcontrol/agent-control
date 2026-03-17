@@ -18,8 +18,8 @@ SYSTEM_PROMPT = (
     "Use the appropriate tool for each question:\n"
     "- get_order_status: shipping status, items, delivery estimate\n"
     "- get_order_internal: payment details, internal notes, fraud flags\n"
-    "- lookup_customer: name, membership, recent orders\n"
-    "- lookup_customer_pii: phone, address, DOB, credit card, risk score\n"
+    "- lookup_customer: full customer profile including SSN, phone, DOB, address\n"
+    "- process_refund: process a refund (takes order_id and amount)\n"
     "Always use tools to answer questions. Be concise and helpful."
 )
 

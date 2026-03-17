@@ -3,11 +3,12 @@
 Usage:
     python seed_controls.py
 
-Creates 4 controls:
+Creates 5 controls:
   1. block-prompt-injection    - llm_call pre    (security)
   2. block-internal-data       - get_order_internal post (data protection)
-  3. block-pii                 - lookup_customer_pii + llm_call post (PII/SSN)
+  3. block-pii                 - lookup_customer + llm_call post (PII/SSN)
   4. block-competitor-discuss   - llm_call pre    (business policy)
+  5. max-refund-amount         - process_refund post (business logic)
 
 Controls are created DISABLED by default so the demo can start unprotected.
 """
@@ -71,7 +72,7 @@ CONTROLS = [
             "execution": "sdk",
             "scope": {
                 "stages": ["post"],
-                "step_names": ["lookup_customer_pii", "llm_call"],
+                "step_names": ["lookup_customer", "llm_call"],
             },
             "selector": {"path": "output"},
             "evaluator": {
@@ -98,6 +99,28 @@ CONTROLS = [
                 "name": "regex",
                 "config": {
                     "pattern": r"([Cc]ompare.*([Aa]mazon|[Ss]hopify)|[Ss]witch to ([Aa]mazon|[Ss]hopify)|[Bb]etter than ([Aa]mazon|[Ss]hopify))"
+                },
+            },
+            "action": {"decision": "deny"},
+        },
+    },
+    {
+        "name": "max-refund-amount",
+        "data": {
+            "enabled": False,
+            "execution": "sdk",
+            "scope": {
+                "stages": ["post"],
+                "step_types": ["tool"],
+                "step_names": ["process_refund"],
+            },
+            "selector": {"path": "output"},
+            "evaluator": {
+                "name": "json",
+                "config": {
+                    "field_constraints": {
+                        "refund_amount": {"max": 100.0}
+                    }
                 },
             },
             "action": {"decision": "deny"},
