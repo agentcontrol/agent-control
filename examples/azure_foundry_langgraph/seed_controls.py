@@ -14,6 +14,9 @@ Controls are created DISABLED by default so the demo can start unprotected.
 
 import asyncio
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import httpx
 
 import agent_control
