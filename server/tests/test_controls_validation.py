@@ -91,6 +91,32 @@ def test_validation_regex_flags_list(client: TestClient):
     assert any("flags" in str(e.get("field", "")) for e in errors)
 
 
+def test_validation_list_values_reject_blank_strings(client: TestClient):
+    """Test that list evaluator config rejects empty and whitespace-only entries."""
+    # Given: a control and a list evaluator payload with a whitespace-only value
+    control_id = create_control(client)
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["evaluator"] = {
+        "name": "list",
+        "config": {
+            "values": [" "],
+            "logic": "any",
+            "match_on": "match",
+            "match_mode": "contains",
+        },
+    }
+
+    # When: setting control data
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    # Then: the invalid config is rejected
+    assert resp.status_code == 422
+    response_data = resp.json()
+    errors = response_data.get("errors", [])
+    assert any("values" in str(e.get("field", "")) for e in errors)
+    assert any("empty or whitespace-only strings" in e.get("message", "") for e in errors)
+
+
 def test_validation_invalid_regex_pattern(client: TestClient):
     """Test validation of regex pattern syntax."""
     # Given: a control and regex config with invalid pattern (unclosed bracket)
@@ -152,6 +178,8 @@ def test_validation_none_path_defaults_to_star(client: TestClient):
 
     # When: reading back
     get_resp = client.get(f"/api/v1/controls/{control_id}/data")
+
+    # Then: reading back the control succeeds
     assert get_resp.status_code == 200
 
     # Then: path should default to '*'
@@ -161,11 +189,15 @@ def test_validation_none_path_defaults_to_star(client: TestClient):
 
 def test_get_control_data_returns_typed_response(client: TestClient):
     """Test that GET control data returns a typed ControlDefinition."""
-    # Given: a control with valid control data
+    # Given: a control shell
     control_id = create_control(client)
+
+    # When: setting valid control data
     resp_put = client.put(
         f"/api/v1/controls/{control_id}/data", json={"data": VALID_CONTROL_PAYLOAD}
     )
+
+    # Then: the control data is stored successfully
     assert resp_put.status_code == 200
 
     # When: getting control data
@@ -175,7 +207,7 @@ def test_get_control_data_returns_typed_response(client: TestClient):
     assert resp_get.status_code == 200
     data = resp_get.json()["data"]
 
-    # Should have required ControlDefinition fields
+    # Then: the response includes required ControlDefinition fields
     assert "condition" in data
     assert "action" in data
     assert "execution" in data

@@ -142,6 +142,29 @@ def test_create_evaluator_config_invalid_config_422(client: TestClient) -> None:
     assert any("config" in str(err.get("field", "")) for err in data.get("errors", []))
 
 
+def test_create_evaluator_config_rejects_blank_list_values(client: TestClient) -> None:
+    # Given: a payload with a whitespace-only entry for the list evaluator
+    name = f"config-{uuid.uuid4().hex}"
+    payload = _create_config_payload(
+        name=name,
+        evaluator="list",
+        config={"values": [" "], "logic": "any", "match_on": "match", "match_mode": "contains"},
+    )
+
+    # When: creating the evaluator config
+    resp = client.post("/api/v1/evaluator-configs", json=payload)
+
+    # Then: the invalid config is rejected
+    assert resp.status_code == 422
+    data = resp.json()
+    assert data["error_code"] == "INVALID_CONFIG"
+    assert any("config.values" in str(err.get("field", "")) for err in data.get("errors", []))
+    assert any(
+        "empty or whitespace-only strings" in err.get("message", "")
+        for err in data.get("errors", [])
+    )
+
+
 def test_create_evaluator_config_invalid_parameters_type_error_422(
     client: TestClient, monkeypatch
 ) -> None:
@@ -450,6 +473,8 @@ def test_list_evaluator_configs_cursor_pagination(client: TestClient) -> None:
 
     # When: requesting first page with limit=2
     resp = client.get("/api/v1/evaluator-configs", params={"limit": 2})
+
+    # Then: the first page indicates there are more results
     assert resp.status_code == 200
     page1 = resp.json()
     assert page1["pagination"]["has_more"] is True
@@ -578,10 +603,14 @@ def test_delete_evaluator_config_success(client: TestClient) -> None:
     # When: deleting the evaluator config
     resp = client.delete(f"/api/v1/evaluator-configs/{created['id']}")
 
-    # Then: success is returned and the config is gone
+    # Then: the delete call succeeds
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+
+    # When: fetching the deleted evaluator config
     get_resp = client.get(f"/api/v1/evaluator-configs/{created['id']}")
+
+    # Then: the config is gone
     assert get_resp.status_code == 404
 
 
