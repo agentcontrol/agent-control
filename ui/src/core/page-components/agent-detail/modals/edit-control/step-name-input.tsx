@@ -99,7 +99,7 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
 
   return (
     <Box>
-      <Group gap="xs" mb={4} wrap="nowrap">
+      <Group gap="xs" mb={8} wrap="nowrap">
         <Group gap={4}>
           <Text size="sm" fw={500}>
             Step name

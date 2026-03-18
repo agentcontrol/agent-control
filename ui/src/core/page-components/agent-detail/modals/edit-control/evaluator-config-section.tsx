@@ -1,6 +1,5 @@
 import {
   Anchor,
-  Box,
   Group,
   Paper,
   ScrollArea,
@@ -74,6 +73,8 @@ export function EvaluatorConfigSection({
         ? 'red'
         : 'dimmed';
 
+  const contentHeight = height + CONTENT_MIN_HEIGHT_EXTRA;
+
   return (
     <Stack gap="md">
       <Group justify="space-between" align="center">
@@ -112,21 +113,21 @@ export function EvaluatorConfigSection({
         </Group>
       </Group>
       <Paper withBorder radius="sm" p={16}>
-        <Box style={{ minHeight: height + CONTENT_MIN_HEIGHT_EXTRA }}>
-          {configViewMode === 'form' && (
-            <ScrollArea h={height} type="auto">
-              {FormComponent ? (
-                <FormComponent form={evaluatorForm} />
-              ) : (
-                <Text c="dimmed" ta="center" py="xl">
-                  No form available for this evaluator. Use JSON view to
-                  configure.
-                </Text>
-              )}
-            </ScrollArea>
-          )}
-
-          {configViewMode === 'json' && (
+        <ScrollArea
+          h={contentHeight}
+          type="always"
+          offsetScrollbars="y"
+        >
+          {configViewMode === 'form' ? (
+            FormComponent ? (
+              <FormComponent form={evaluatorForm} />
+            ) : (
+              <Text c="dimmed" ta="center" py="xl">
+                No form available for this evaluator. Use JSON view to
+                configure.
+              </Text>
+            )
+          ) : (
             <EvaluatorJsonView
               onValidateConfig={onValidateConfig}
               onValidationStatusChange={setValidationStatus}
@@ -134,7 +135,7 @@ export function EvaluatorConfigSection({
               {...jsonViewProps}
             />
           )}
-        </Box>
+        </ScrollArea>
       </Paper>
     </Stack>
   );
