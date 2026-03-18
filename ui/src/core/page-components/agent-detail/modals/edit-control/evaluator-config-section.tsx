@@ -113,11 +113,7 @@ export function EvaluatorConfigSection({
         </Group>
       </Group>
       <Paper withBorder radius="sm" p={16}>
-        <ScrollArea
-          h={contentHeight}
-          type="always"
-          offsetScrollbars="y"
-        >
+        <ScrollArea h={contentHeight} type="always" offsetScrollbars="y">
           {configViewMode === 'form' ? (
             FormComponent ? (
               <FormComponent form={evaluatorForm} />
