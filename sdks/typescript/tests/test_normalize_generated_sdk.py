@@ -167,7 +167,7 @@ def test_normalizer_removes_context_fields_when_schema_omits_them(tmp_path: Path
     assert "input?: any | undefined;" not in normalized
 
 
-def test_normalizer_preserves_context_fields_when_schema_includes_them(tmp_path: Path) -> None:
+def test_normalizer_removes_context_fields_when_schema_includes_them(tmp_path: Path) -> None:
     schema_path = _write_schema(tmp_path, include_context_fields=True)
     generated_dir = _write_generated_file(tmp_path)
 
@@ -184,10 +184,10 @@ def test_normalizer_preserves_context_fields_when_schema_includes_them(tmp_path:
     )
 
     normalized = (generated_dir / "models" / "validation-error.ts").read_text(encoding="utf-8")
-    assert "Context$inboundSchema" in normalized
-    assert "contextFromJSON" in normalized
-    assert "ctx?: Context | undefined;" in normalized
-    assert "input?: any | undefined;" in normalized
+    assert "Context$inboundSchema" not in normalized
+    assert "contextFromJSON" not in normalized
+    assert "ctx?: Context | undefined;" not in normalized
+    assert "input?: any | undefined;" not in normalized
 
 
 def test_normalizer_rewrites_sdk_metadata_to_stable_version(tmp_path: Path) -> None:

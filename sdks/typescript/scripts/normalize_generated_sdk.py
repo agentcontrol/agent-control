@@ -4,20 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import json
 import re
 from pathlib import Path
-
-
-def _validation_error_schema_has_context_fields(schema_path: Path) -> bool:
-    spec = json.loads(schema_path.read_text(encoding="utf-8"))
-    properties = (
-        spec.get("components", {})
-        .get("schemas", {})
-        .get("ValidationError", {})
-        .get("properties", {})
-    )
-    return "ctx" in properties or "input" in properties
 
 
 def _strip_generated_validation_error_context_fields(file_path: Path) -> None:
@@ -74,17 +62,14 @@ def _normalize_sdk_metadata_version(file_path: Path) -> None:
         file_path.write_text(normalized, encoding="utf-8")
 
 
-def normalize_generated_sdk(schema_path: Path, generated_dir: Path) -> None:
-    """Normalize generated SDK output to match the server OpenAPI schema."""
+def normalize_generated_sdk(_schema_path: Path, generated_dir: Path) -> None:
+    """Normalize generated SDK output to keep generation deterministic."""
     config_file = generated_dir / "lib" / "config.ts"
     if config_file.exists():
         _normalize_sdk_metadata_version(config_file)
 
     validation_error_file = generated_dir / "models" / "validation-error.ts"
     if not validation_error_file.exists():
-        return
-
-    if _validation_error_schema_has_context_fields(schema_path):
         return
 
     _strip_generated_validation_error_context_fields(validation_error_file)
