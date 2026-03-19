@@ -66,11 +66,22 @@ curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/
 This starts PostgreSQL and Agent Control at `http://localhost:8000`, including
 the UI/dashboard.
 
+To override the exposed host ports, set `AGENT_CONTROL_SERVER_HOST_PORT` and/or
+`AGENT_CONTROL_DB_HOST_PORT` before starting Compose. Example:
+
+```bash
+export AGENT_CONTROL_SERVER_HOST_PORT=18000
+export AGENT_CONTROL_DB_HOST_PORT=15432
+curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
+```
+
 Verify it is up:
 
 ```bash
 curl http://localhost:8000/health
 ```
+
+If you changed `AGENT_CONTROL_SERVER_HOST_PORT`, use that port in the health check URL.
 
 ### 2. Install the SDK
 

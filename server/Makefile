@@ -7,6 +7,10 @@ UP ?= head
 DOWN ?= -1
 SHOW ?= head
 STAMP ?= head
+AGENT_CONTROL_HOST ?= 0.0.0.0
+AGENT_CONTROL_PORT ?= 8000
+AGENT_CONTROL_DB_PORT ?= 5432
+AGENT_CONTROL_DB_HOST_PORT ?= $(AGENT_CONTROL_DB_PORT)
 
 TEST_DB ?= agent_control_test
 TEST_DB_ENV := env -u AGENT_CONTROL_DB_URL -u DATABASE_URL -u DB_URL AGENT_CONTROL_DB_HOST=localhost AGENT_CONTROL_DB_PORT=5432 AGENT_CONTROL_DB_USER=agent_control AGENT_CONTROL_DB_PASSWORD=agent_control AGENT_CONTROL_DB_DATABASE=$(TEST_DB) AGENT_CONTROL_DB_DRIVER=psycopg
@@ -14,7 +18,8 @@ TEST_DB_ENV := env -u AGENT_CONTROL_DB_URL -u DATABASE_URL -u DB_URL AGENT_CONTR
 
 help:
 	@echo "Available targets:"
-	@echo "  run                          - start FastAPI server (reload)"
+	@echo "  run                          - start FastAPI server (reload; honors AGENT_CONTROL_HOST/AGENT_CONTROL_PORT)"
+	@echo "                                 local Postgres host mapping defaults to AGENT_CONTROL_DB_PORT"
 	@echo "  start-dependencies           - docker compose up -d (start local dependencies)"
 	@echo "  test                         - run server tests (uses $(TEST_DB_ENV))"
 	@echo "  migrate                      - run database migrations (alembic upgrade head)"
@@ -56,7 +61,7 @@ alembic-stamp:
 	$(ALEMBIC) stamp $(STAMP)
 
 start-dependencies:
-	docker compose -f ../docker-compose.dev.yml up -d
+	AGENT_CONTROL_DB_HOST_PORT=$(AGENT_CONTROL_DB_HOST_PORT) docker compose -f ../docker-compose.dev.yml up -d
 	@echo "Waiting for PostgreSQL to be ready..."
 	@until docker compose -f ../docker-compose.dev.yml exec -T postgres pg_isready -U agent_control -d agent_control > /dev/null 2>&1; do \
 		sleep 1; \
@@ -67,4 +72,4 @@ test:
 	$(TEST_DB_ENV) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q
 
 run: start-dependencies migrate
-	uv run --package agent-control-server uvicorn agent_control_server.main:app --reload
+	uv run --package agent-control-server uvicorn agent_control_server.main:app --reload --host $(AGENT_CONTROL_HOST) --port $(AGENT_CONTROL_PORT)

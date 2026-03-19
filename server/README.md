@@ -21,6 +21,12 @@ make server-run
 
 Server runs on http://localhost:8000. The UI expects this base URL by default.
 
+To use non-default local ports with `make server-run`, export
+`AGENT_CONTROL_PORT` for the server listen port. If you also want the local
+Postgres container exposed on a different host port, set
+`AGENT_CONTROL_DB_HOST_PORT` and point the server at the same value with
+`AGENT_CONTROL_DB_PORT`.
+
 ## Configuration
 
 Server configuration is driven by environment variables (database, auth, observability, evaluators). For the full list and examples, see the docs.
