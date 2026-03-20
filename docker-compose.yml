@@ -26,7 +26,7 @@ services:
     environment:
       POSTGRES_DB: agent_control
       POSTGRES_USER: agent_control
-      POSTGRES_PASSWORD: agent_control
+      POSTGRES_PASSWORD: "${AGENT_CONTROL_POSGTRES_PASSWORD:-agent_control}"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -45,7 +45,7 @@ services:
     environment:
       # Database connection (uses Docker service name 'postgres')
       # Use postgresql+psycopg:// (supports both sync migrations and async app code)
-      AGENT_CONTROL_DB_URL: postgresql+psycopg://agent_control:agent_control@postgres:5432/agent_control
+      AGENT_CONTROL_DB_URL: "postgresql+psycopg://agent_control:${AGENT_CONTROL_POSGTRES_PASSWORD:-agent_control}@postgres:5432/agent_control"
       # Server configuration
       AGENT_CONTROL_HOST: 0.0.0.0
       AGENT_CONTROL_PORT: 8000
