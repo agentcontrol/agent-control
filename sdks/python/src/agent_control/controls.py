@@ -170,22 +170,21 @@ async def create_control(
             )
             print(f"Created and configured control: {result['control_id']}")
     """
-    # Step 1: Create the control with name
+    payload: dict[str, Any] = {"name": name}
+    if data is not None:
+        if isinstance(data, ControlDefinition):
+            payload["data"] = data.model_dump(mode="json", exclude_none=True)
+        else:
+            payload["data"] = cast(dict[str, Any], data)
+
     response = await client.http_client.put(
         "/api/v1/controls",
-        json={"name": name}
+        json=payload,
     )
     response.raise_for_status()
     result = cast(dict[str, Any], response.json())
 
-    # Step 2: If data provided, configure the control
-    if data is not None:
-        control_id = result["control_id"]
-        await set_control_data(client, control_id, data)
-        result["configured"] = True
-    else:
-        result["configured"] = False
-
+    result["configured"] = data is not None
     return result
 
 

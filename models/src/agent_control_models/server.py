@@ -119,6 +119,10 @@ class CreateControlRequest(BaseModel):
         ...,
         description="Unique control name (letters, numbers, hyphens, underscores)",
     )
+    data: ControlDefinition | None = Field(
+        default=None,
+        description="Optional control definition to validate and store during creation",
+    )
 
 
 class InitAgentRequest(BaseModel):

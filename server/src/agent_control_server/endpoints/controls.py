@@ -81,6 +81,21 @@ def _iter_condition_leaves(
         yield from _iter_condition_leaves(node.not_, path=f"{path}.not")
 
 
+def _serialize_control_definition(control_def: ControlDefinition) -> dict[str, object]:
+    """Serialize control data for storage while omitting null scope fields."""
+    data_json = control_def.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+    if "scope" in data_json and isinstance(data_json["scope"], dict):
+        data_json["scope"] = {
+            k: v for k, v in data_json["scope"].items() if v is not None
+        }
+    return data_json
+
+
 async def _validate_control_definition(
     control_def: ControlDefinition, db: AsyncSession
 ) -> None:
@@ -252,13 +267,13 @@ async def create_control(
     request: CreateControlRequest, db: AsyncSession = Depends(get_async_db)
 ) -> CreateControlResponse:
     """
-    Create a new control with a unique name and empty data.
+    Create a new control with a unique name.
 
     Controls define protection logic and can be added to policies.
-    Use the PUT /{control_id}/data endpoint to set control configuration.
+    Optionally provide control data to validate and persist it atomically.
 
     Args:
-        request: Control creation request with unique name
+        request: Control creation request with unique name and optional data
         db: Database session (injected)
 
     Returns:
@@ -279,7 +294,12 @@ async def create_control(
             hint="Choose a different name or update the existing control.",
         )
 
-    control = Control(name=request.name, data={})
+    control_data: dict[str, object] = {}
+    if request.data is not None:
+        await _validate_control_definition(request.data, db)
+        control_data = _serialize_control_definition(request.data)
+
+    control = Control(name=request.name, data=control_data)
     db.add(control)
     try:
         await db.commit()
@@ -451,19 +471,7 @@ async def set_control_data(
     # Validate evaluator config using shared logic
     await _validate_control_definition(request.data, db)
 
-    data_json = request.data.model_dump(
-        mode="json",
-        by_alias=True,
-        exclude_none=True,
-        exclude_unset=True,
-    )
-    # Ensure scope does not store null/None for step_names or other optional fields,
-    # so round-trip (save then load) preserves step selection in the UI.
-    if "scope" in data_json and isinstance(data_json["scope"], dict):
-        data_json["scope"] = {
-            k: v for k, v in data_json["scope"].items() if v is not None
-        }
-    control.data = data_json
+    control.data = _serialize_control_definition(request.data)
     try:
         await db.commit()
     except Exception:

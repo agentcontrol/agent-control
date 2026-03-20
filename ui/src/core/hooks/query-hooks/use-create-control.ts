@@ -9,31 +9,20 @@ type CreateControlParams = {
 };
 
 /**
- * Mutation hook to create a new control with its definition
- * 1. Creates the control with a name
- * 2. Sets the control data (definition)
+ * Mutation hook to create a new control with its definition in one request.
  */
 export function useCreateControl() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ name, definition }: CreateControlParams) => {
-      // Step 1: Create control with name
+      // Create and validate the control atomically on the server.
       const { data: createResult, error: createError } =
-        await api.controls.create({ name });
+        await api.controls.create({ name, data: definition });
 
       if (createError) throw createError;
       if (!createResult) throw new Error('Failed to create control');
-
-      const controlId = createResult.control_id;
-
-      // Step 2: Set control data (definition)
-      const { data: setDataResult, error: setDataError } =
-        await api.controls.setData(controlId, { data: definition });
-
-      if (setDataError) throw setDataError;
-
-      return { controlId, ...setDataResult };
+      return { controlId: createResult.control_id, success: true };
     },
     onSuccess: () => {
       // Invalidate relevant queries to refetch data

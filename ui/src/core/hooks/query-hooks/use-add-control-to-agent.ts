@@ -13,9 +13,8 @@ type AddControlToAgentParams = {
 /**
  * Mutation hook to add a control to an agent
  * Flow:
- * 1. Create the control
- * 2. Set control data (definition)
- * 3. Associate the control directly with the agent
+ * 1. Create the control with its definition
+ * 2. Associate the control directly with the agent
  */
 export function useAddControlToAgent() {
   const queryClient = useQueryClient();
@@ -29,12 +28,12 @@ export function useAddControlToAgent() {
       let createdControlId: number | null = null;
 
       try {
-        // Step 1: Create the control
+        // Step 1: Create and validate the control atomically.
         const {
           data: createControlResult,
           error: createControlError,
           response: createControlResponse,
-        } = await api.controls.create({ name: controlName });
+        } = await api.controls.create({ name: controlName, data: definition });
 
         if (createControlError || !createControlResult) {
           throw parseApiError(
@@ -46,21 +45,7 @@ export function useAddControlToAgent() {
 
         createdControlId = createControlResult.control_id;
 
-        // Step 2: Set control data (definition)
-        const { error: setDataError, response: setDataResponse } =
-          await api.controls.setData(createdControlId, {
-            data: definition,
-          });
-
-        if (setDataError) {
-          throw parseApiError(
-            setDataError,
-            'Failed to set control data',
-            setDataResponse?.status
-          );
-        }
-
-        // Step 3: Associate control directly with the agent.
+        // Step 2: Associate control directly with the agent.
         const { error: associateError, response: associateResponse } =
           await api.agents.addControl(agentId, createdControlId);
 

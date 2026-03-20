@@ -3,8 +3,17 @@
  */
 
 import * as z from "zod/v4-mini";
+import {
+  ControlDefinitionInput,
+  ControlDefinitionInput$Outbound,
+  ControlDefinitionInput$outboundSchema,
+} from "./control-definition-input.js";
 
 export type CreateControlRequest = {
+  /**
+   * Optional control definition to validate and store during creation
+   */
+  data?: ControlDefinitionInput | null | undefined;
   /**
    * Unique control name (letters, numbers, hyphens, underscores)
    */
@@ -13,6 +22,7 @@ export type CreateControlRequest = {
 
 /** @internal */
 export type CreateControlRequest$Outbound = {
+  data?: ControlDefinitionInput$Outbound | null | undefined;
   name: string;
 };
 
@@ -21,6 +31,7 @@ export const CreateControlRequest$outboundSchema: z.ZodMiniType<
   CreateControlRequest$Outbound,
   CreateControlRequest
 > = z.object({
+  data: z.optional(z.nullable(ControlDefinitionInput$outboundSchema)),
   name: z.string(),
 });
 

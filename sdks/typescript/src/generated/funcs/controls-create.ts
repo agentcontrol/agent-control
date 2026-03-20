@@ -30,13 +30,13 @@ import { Result } from "../types/fp.js";
  * Create a new control
  *
  * @remarks
- * Create a new control with a unique name and empty data.
+ * Create a new control with a unique name.
  *
  * Controls define protection logic and can be added to policies.
- * Use the PUT /{control_id}/data endpoint to set control configuration.
+ * Optionally provide control data to validate and persist it atomically.
  *
  * Args:
- *     request: Control creation request with unique name
+ *     request: Control creation request with unique name and optional data
  *     db: Database session (injected)
  *
  * Returns:

@@ -23,6 +23,55 @@ def test_create_control_returns_id(client: TestClient) -> None:
     assert isinstance(resp.json()["control_id"], int)
 
 
+def test_create_control_with_data_stores_configured_payload(client: TestClient) -> None:
+    # Given: a valid control payload included during create
+    name = f"control-{uuid.uuid4()}"
+
+    # When: creating the control with data in one request
+    resp = client.put("/api/v1/controls", json={"name": name, "data": VALID_CONTROL_DATA})
+
+    # Then: the control is created successfully
+    assert resp.status_code == 200, resp.text
+    control_id = resp.json()["control_id"]
+
+    # When: reading back its data
+    data_resp = client.get(f"/api/v1/controls/{control_id}/data")
+
+    # Then: the configured payload was stored immediately
+    assert data_resp.status_code == 200
+    data = data_resp.json()["data"]
+    assert data["description"] == VALID_CONTROL_DATA["description"]
+    assert data["execution"] == VALID_CONTROL_DATA["execution"]
+    assert data["condition"]["evaluator"] == VALID_CONTROL_DATA["condition"]["evaluator"]
+
+
+def test_create_control_invalid_data_returns_422_without_persisting(client: TestClient) -> None:
+    # Given: a create request whose control data fails evaluator validation
+    name = f"control-{uuid.uuid4()}"
+    invalid_data = deepcopy(VALID_CONTROL_DATA)
+    invalid_data["condition"]["evaluator"] = {
+        "name": "list",
+        "config": {
+            "values": ["a", "b"],
+            "logic": "invalid_logic",
+            "match_on": "match",
+        },
+    }
+
+    # When: creating the control with invalid data
+    resp = client.put("/api/v1/controls", json={"name": name, "data": invalid_data})
+
+    # Then: the request is rejected
+    assert resp.status_code == 422
+
+    # And: no shell control was persisted
+    list_resp = client.get("/api/v1/controls", params={"name": name})
+    assert list_resp.status_code == 200
+    body = list_resp.json()
+    assert body["pagination"]["total"] == 0
+    assert body["controls"] == []
+
+
 def test_get_control_data_initially_unconfigured(client: TestClient) -> None:
     # Given: a newly created control (no data set yet)
     control_id = create_control(client)
