@@ -203,11 +203,16 @@ async def setup_demo(quiet: bool = False):
                     # Control exists, get its ID
                     resp = await client.get("/api/v1/controls", params={"name": control_name})
                     resp.raise_for_status()
-                    controls = resp.json().get("controls", [])
+                    controls = [
+                        control
+                        for control in resp.json().get("controls", [])
+                        if control.get("name") == control_name
+                    ]
                     if controls:
                         control_id = controls[0]["id"]
                         controls_updated += 1
                     else:
+                        print(f"  ❌ Could not find exact control match for '{control_name}'")
                         continue
                 else:
                     resp.raise_for_status()

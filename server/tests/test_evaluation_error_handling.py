@@ -17,11 +17,11 @@ from .utils import create_and_assign_policy
 
 
 def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
-    """Test that referencing missing agent evaluator fails at policy assignment.
+    """Test that referencing a missing agent evaluator fails during control creation.
 
     Given: A control referencing agent:evaluator that doesn't exist
-    When: Attempting to assign policy
-    Then: Returns 400 with clear error message
+    When: Creating the control
+    Then: Returns 422 EVALUATOR_NOT_FOUND
     """
     # Given: an agent without evaluators
     agent_name = f"testagent-{uuid.uuid4().hex[:12]}"
@@ -53,9 +53,9 @@ def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
         json={"name": f"control-{uuid.uuid4().hex[:8]}", "data": control_data},
     )
 
-    # Then: a validation or not-found error is returned
-    # This will fail because the agent doesn't exist yet
-    assert set_resp.status_code in [404, 422]
+    # Then: the missing evaluator is surfaced deterministically
+    assert set_resp.status_code == 422
+    assert set_resp.json()["error_code"] == "EVALUATOR_NOT_FOUND"
 
 
 def test_evaluation_control_with_invalid_config_caught_early(client: TestClient):
