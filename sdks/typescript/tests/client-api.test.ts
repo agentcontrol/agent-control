@@ -77,6 +77,25 @@ describe("AgentControlClient API wiring", () => {
 
     await client.controls.create({
       name: "deny-pii",
+      data: {
+        action: {
+          decision: "deny",
+        },
+        condition: {
+          evaluator: {
+            name: "regex",
+            config: { pattern: "pii" },
+          },
+          selector: {
+            path: "input",
+          },
+        },
+        execution: "server",
+        scope: {
+          stages: ["pre"],
+          stepTypes: ["llm"],
+        },
+      },
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -87,6 +106,26 @@ describe("AgentControlClient API wiring", () => {
     expect(request.headers.get("content-type")).toContain("application/json");
     await expect(request.clone().json()).resolves.toEqual({
       name: "deny-pii",
+      data: {
+        action: {
+          decision: "deny",
+        },
+        condition: {
+          evaluator: {
+            name: "regex",
+            config: { pattern: "pii" },
+          },
+          selector: {
+            path: "input",
+          },
+        },
+        enabled: true,
+        execution: "server",
+        scope: {
+          stages: ["pre"],
+          step_types: ["llm"],
+        },
+      },
     });
   });
 
