@@ -75,6 +75,15 @@ export AGENT_CONTROL_DB_HOST_PORT=15432
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
 ```
 
+To override the bundled PostgreSQL password, set
+`AGENT_CONTROL_POSTGRES_PASSWORD` before starting Compose. This value is used
+for both the Postgres container and the server's database connection. Example:
+
+```bash
+export AGENT_CONTROL_POSTGRES_PASSWORD=agent_control_local
+curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
+```
+
 Verify it is up:
 
 ```bash
