@@ -270,10 +270,10 @@ async def create_control(
     Create a new control with a unique name.
 
     Controls define protection logic and can be added to policies.
-    Optionally provide control data to validate and persist it atomically.
+    Control data is required and is validated before anything is inserted.
 
     Args:
-        request: Control creation request with unique name and optional data
+        request: Control creation request with unique name and data
         db: Database session (injected)
 
     Returns:
@@ -294,10 +294,8 @@ async def create_control(
             hint="Choose a different name or update the existing control.",
         )
 
-    control_data: dict[str, object] = {}
-    if request.data is not None:
-        await _validate_control_definition(request.data, db)
-        control_data = _serialize_control_definition(request.data)
+    await _validate_control_definition(request.data, db)
+    control_data = _serialize_control_definition(request.data)
 
     control = Control(name=request.name, data=control_data)
     db.add(control)

@@ -264,16 +264,12 @@ def _create_policy_with_control(
     policy_id = pol_resp.json()["policy_id"]
 
     # Create control
-    ctl_resp = client.put("/api/v1/controls", json={"name": control_name})
+    ctl_resp = client.put(
+        "/api/v1/controls",
+        json={"name": control_name, "data": canonicalize_control_payload(control_data)},
+    )
     assert ctl_resp.status_code == 200
     control_id = ctl_resp.json()["control_id"]
-
-    # Set control data
-    data_resp = client.put(
-        f"/api/v1/controls/{control_id}/data",
-        json={"data": canonicalize_control_payload(control_data)},
-    )
-    assert data_resp.status_code == 200
 
     # Add control to policy
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
@@ -342,20 +338,18 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
 
 
 def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) -> None:
-    """Given an agent without evaluator, when setting control to use that evaluator, then fails."""
+    """Given an agent without evaluator, when creating a control that uses it, then fails."""
     # Given:
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     agent_name = agent_name
     payload = make_agent_payload(agent_name=agent_name, name=agent_name)
     client.post("/api/v1/agents/initAgent", json=payload)
 
-    ctl_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4().hex[:8]}"})
-    control_id = ctl_resp.json()["control_id"]
-
     # When:
     data_resp = client.put(
-        f"/api/v1/controls/{control_id}/data",
+        "/api/v1/controls",
         json={
+            "name": f"control-{uuid.uuid4().hex[:8]}",
             "data": {
                 "execution": "server",
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},

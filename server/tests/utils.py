@@ -49,25 +49,21 @@ def create_and_assign_policy(
 
     # 1. Create Control
     control_name = f"control-{uuid.uuid4()}"
-    resp = client.put("/api/v1/controls", json={"name": control_name})
+    resp = client.put("/api/v1/controls", json={"name": control_name, "data": control_config})
     assert resp.status_code == 200
     control_id = resp.json()["control_id"]
 
-    # 2. Configure Control
-    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": control_config})
-    assert resp.status_code == 200
-
-    # 3. Create Policy
+    # 2. Create Policy
     policy_name = f"policy-{uuid.uuid4()}"
     resp = client.put("/api/v1/policies", json={"name": policy_name})
     assert resp.status_code == 200
     policy_id = resp.json()["policy_id"]
 
-    # 4. Add Control to Policy (direct relationship)
+    # 3. Add Control to Policy (direct relationship)
     resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert resp.status_code == 200
 
-    # 5. Register Agent
+    # 4. Register Agent
     normalized_agent_name = agent_name.lower()
     if len(normalized_agent_name) < 10:
         normalized_agent_name = f"{normalized_agent_name}-agent".replace("--", "-")
@@ -79,7 +75,7 @@ def create_and_assign_policy(
     })
     assert resp.status_code == 200
 
-    # 6. Assign Policy to Agent
+    # 5. Assign Policy to Agent
     resp = client.post(f"/api/v1/agents/{normalized_agent_name}/policy/{policy_id}")
     assert resp.status_code == 200
 

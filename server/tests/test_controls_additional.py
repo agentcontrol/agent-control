@@ -26,11 +26,26 @@ from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
 
 
-def _create_control(client: TestClient, name: str | None = None) -> tuple[int, str]:
+def _create_control(
+    client: TestClient,
+    name: str | None = None,
+    data: dict | None = None,
+) -> tuple[int, str]:
     control_name = name or f"control-{uuid.uuid4()}"
-    resp = client.put("/api/v1/controls", json={"name": control_name})
+    payload = deepcopy(data) if data is not None else deepcopy(VALID_CONTROL_PAYLOAD)
+    resp = client.put("/api/v1/controls", json={"name": control_name, "data": payload})
     assert resp.status_code == 200
     return resp.json()["control_id"], control_name
+
+
+def _insert_unconfigured_control(name: str | None = None) -> tuple[int, str]:
+    control_name = name or f"control-{uuid.uuid4()}"
+    control = Control(name=control_name, data={})
+    with Session(engine) as session:
+        session.add(control)
+        session.commit()
+        session.refresh(control)
+        return int(control.id), control_name
 
 
 def _set_control_data(client: TestClient, control_id: int, data: dict) -> None:
@@ -60,7 +75,10 @@ def test_create_control_integrity_error_returns_conflict(client: TestClient) -> 
 
     app.dependency_overrides[get_async_db] = mock_db_integrity_error
     try:
-        resp = client.put("/api/v1/controls", json={"name": "duplicate-control"})
+        resp = client.put(
+            "/api/v1/controls",
+            json={"name": "duplicate-control", "data": VALID_CONTROL_PAYLOAD},
+        )
     finally:
         app.dependency_overrides.clear()
 
@@ -199,7 +217,7 @@ def test_list_controls_filters_and_pagination(client: TestClient) -> None:
 
 def test_patch_control_enabled_requires_data(client: TestClient) -> None:
     # Given: a control without configured data
-    control_id, _ = _create_control(client)
+    control_id, _ = _insert_unconfigured_control()
 
     # When: toggling enabled without data
     resp = client.patch(f"/api/v1/controls/{control_id}", json={"enabled": False})
@@ -242,7 +260,10 @@ def test_patch_control_rename_with_spaces_rejected(client: TestClient) -> None:
 
 def test_create_control_trimmed_name_stored(client: TestClient) -> None:
     """Control names are canonicalized at the API boundary: leading/trailing whitespace is trimmed."""
-    resp = client.put("/api/v1/controls", json={"name": "  trimmed-control  "})
+    resp = client.put(
+        "/api/v1/controls",
+        json={"name": "  trimmed-control  ", "data": VALID_CONTROL_PAYLOAD},
+    )
     assert resp.status_code == 200
     control_id = resp.json()["control_id"]
     get_resp = client.get(f"/api/v1/controls/{control_id}")

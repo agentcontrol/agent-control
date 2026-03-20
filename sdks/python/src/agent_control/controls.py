@@ -118,13 +118,10 @@ async def get_control(
 async def create_control(
     client: AgentControlClient,
     name: str,
-    data: dict[str, Any] | ControlDefinition | None = None,
+    data: dict[str, Any] | ControlDefinition,
 ) -> dict[str, Any]:
     """
-    Create a new control with a unique name, optionally with configuration.
-
-    If `data` is provided, the control is created and configured in one call.
-    Otherwise, use `set_control_data()` to configure it later.
+    Create a new control with a unique name and configuration.
 
     Control names are canonicalized by the API (leading/trailing whitespace
     is trimmed); callers may pass trimmed names for consistency.
@@ -132,12 +129,12 @@ async def create_control(
     Args:
         client: AgentControlClient instance
         name: Unique name for the control
-        data: Optional control definition (condition tree, action, scope, etc.)
+        data: Control definition (condition tree, action, scope, etc.)
 
     Returns:
         Dictionary containing:
             - control_id: ID of the created control
-            - configured: True if data was set, False if only name was created
+            - configured: Always True because create requires data
 
     Raises:
         httpx.HTTPError: If request fails
@@ -147,11 +144,6 @@ async def create_control(
 
     Example:
         async with AgentControlClient() as client:
-            # Create without configuration (configure later)
-            result = await create_control(client, "pii-protection")
-            control_id = result["control_id"]
-
-            # Or create with configuration in one call
             result = await create_control(
                 client,
                 name="ssn-blocker",
@@ -171,11 +163,10 @@ async def create_control(
             print(f"Created and configured control: {result['control_id']}")
     """
     payload: dict[str, Any] = {"name": name}
-    if data is not None:
-        if isinstance(data, ControlDefinition):
-            payload["data"] = data.model_dump(mode="json", exclude_none=True)
-        else:
-            payload["data"] = cast(dict[str, Any], data)
+    if isinstance(data, ControlDefinition):
+        payload["data"] = data.model_dump(mode="json", exclude_none=True)
+    else:
+        payload["data"] = cast(dict[str, Any], data)
 
     response = await client.http_client.put(
         "/api/v1/controls",
@@ -184,7 +175,7 @@ async def create_control(
     response.raise_for_status()
     result = cast(dict[str, Any], response.json())
 
-    result["configured"] = data is not None
+    result["configured"] = True
     return result
 
 

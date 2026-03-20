@@ -41,21 +41,17 @@ def _create_policy_with_agent_evaluator_control(
     agent_name: str,
     evaluator_name: str,
 ) -> tuple[int, int, str]:
-    control_name = f"control-{uuid.uuid4().hex[:8]}"
-    create_control_resp = client.put("/api/v1/controls", json={"name": control_name})
-    assert create_control_resp.status_code == 200
-    control_id = create_control_resp.json()["control_id"]
-
     control_data = deepcopy(VALID_CONTROL_PAYLOAD)
+    control_name = f"control-{uuid.uuid4().hex[:8]}"
     control_data["condition"]["evaluator"] = {
         "name": f"{agent_name}:{evaluator_name}",
         "config": {},
     }
-    set_data_resp = client.put(
-        f"/api/v1/controls/{control_id}/data",
-        json={"data": control_data},
+    create_control_resp = client.put(
+        "/api/v1/controls", json={"name": control_name, "data": control_data}
     )
-    assert set_data_resp.status_code == 200
+    assert create_control_resp.status_code == 200
+    control_id = create_control_resp.json()["control_id"]
 
     policy_name = f"policy-{uuid.uuid4().hex[:8]}"
     create_policy_resp = client.put("/api/v1/policies", json={"name": policy_name})

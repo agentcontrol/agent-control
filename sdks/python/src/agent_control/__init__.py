@@ -935,26 +935,23 @@ async def list_controls(
 
 async def create_control(
     name: str,
-    data: dict[str, Any] | ControlDefinition | None = None,
+    data: dict[str, Any] | ControlDefinition,
     server_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
     """
-    Create a new control, optionally with configuration.
-
-    If `data` is provided, the control is created and configured in one call.
-    Otherwise, use `agent_control.controls.set_control_data()` to configure it later.
+    Create a new control with configuration.
 
     Args:
         name: Unique name for the control
-        data: Optional control definition with a condition tree, action, scope, etc.
+        data: Control definition with a condition tree, action, scope, etc.
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
 
     Returns:
         Dictionary containing:
             - control_id: ID of the created control
-            - configured: True if data was set, False if only name was created
+            - configured: Always True because create requires data
 
     Raises:
         httpx.HTTPError: If request fails
@@ -983,9 +980,6 @@ async def create_control(
                 }
             )
             print(f"Created control {result['control_id']}")
-
-            # Or create without config (configure later)
-            result = await agent_control.create_control(name="my-control")
 
         asyncio.run(main())
     """

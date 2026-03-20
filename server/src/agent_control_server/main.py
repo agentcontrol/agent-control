@@ -140,7 +140,7 @@ Agent → Policy → Control(s)
 ## Quick Start
 
 1. Register your agent with `/api/v1/agents/initAgent`
-2. Create controls with `/api/v1/controls` and configure them
+2. Create configured controls with `/api/v1/controls`
 3. Create a policy and add controls to it
 4. Assign the policy to your agent
 5. Query agent's active controls with `/api/v1/agents/{agent_name}/controls`

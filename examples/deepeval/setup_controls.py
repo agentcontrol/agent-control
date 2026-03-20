@@ -193,12 +193,13 @@ async def setup_demo(quiet: bool = False):
             description = control_spec["description"]
 
             try:
-                # Create control
+                # Create and validate the control atomically.
                 resp = await client.put(
                     "/api/v1/controls",
-                    json={"name": control_name},
+                    json={"name": control_name, "data": definition},
                 )
-                if resp.status_code == 409:
+                control_exists = resp.status_code == 409
+                if control_exists:
                     # Control exists, get its ID
                     resp = await client.get("/api/v1/controls", params={"name": control_name})
                     resp.raise_for_status()
@@ -213,12 +214,12 @@ async def setup_demo(quiet: bool = False):
                     control_id = resp.json()["control_id"]
                     controls_created += 1
 
-                # Set control definition
-                resp = await client.put(
-                    f"/api/v1/controls/{control_id}/data",
-                    json={"data": definition},
-                )
-                resp.raise_for_status()
+                if control_exists:
+                    resp = await client.put(
+                        f"/api/v1/controls/{control_id}/data",
+                        json={"data": definition},
+                    )
+                    resp.raise_for_status()
 
                 # Associate control directly with the agent
                 resp = await client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")

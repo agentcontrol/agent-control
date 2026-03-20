@@ -11,9 +11,14 @@ import {
 
 export type CreateControlRequest = {
   /**
-   * Optional control definition to validate and store during creation
+   * A control definition to evaluate agent interactions.
+   *
+   * @remarks
+   *
+   * This model contains only the logic and configuration.
+   * Identity fields (id, name) are managed by the database.
    */
-  data?: ControlDefinitionInput | null | undefined;
+  data: ControlDefinitionInput;
   /**
    * Unique control name (letters, numbers, hyphens, underscores)
    */
@@ -22,7 +27,7 @@ export type CreateControlRequest = {
 
 /** @internal */
 export type CreateControlRequest$Outbound = {
-  data?: ControlDefinitionInput$Outbound | null | undefined;
+  data: ControlDefinitionInput$Outbound;
   name: string;
 };
 
@@ -31,7 +36,7 @@ export const CreateControlRequest$outboundSchema: z.ZodMiniType<
   CreateControlRequest$Outbound,
   CreateControlRequest
 > = z.object({
-  data: z.optional(z.nullable(ControlDefinitionInput$outboundSchema)),
+  data: ControlDefinitionInput$outboundSchema,
   name: z.string(),
 });
 

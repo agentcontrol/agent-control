@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agent_control_server.db import get_async_db
 from agent_control_server.models import Control, Policy
 
+from .utils import VALID_CONTROL_PAYLOAD
+
 
 def _create_policy(client: TestClient) -> int:
     name = f"pol-{uuid.uuid4()}"
@@ -19,7 +21,7 @@ def _create_policy(client: TestClient) -> int:
 
 def _create_control(client: TestClient) -> int:
     name = f"ctrl-{uuid.uuid4()}"
-    r = client.put("/api/v1/controls", json={"name": name})
+    r = client.put("/api/v1/controls", json={"name": name, "data": VALID_CONTROL_PAYLOAD})
     assert r.status_code == 200
     return r.json()["control_id"]
 

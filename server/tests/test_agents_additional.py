@@ -6,6 +6,9 @@ from copy import deepcopy
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from agent_control_server.models import Control
 
 from .utils import VALID_CONTROL_PAYLOAD, canonicalize_control_payload
 from .conftest import engine
@@ -36,15 +39,24 @@ def _init_agent(
 
 
 def _create_control_with_data(client: TestClient, data: dict) -> int:
-    resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
-    assert resp.status_code == 200
-    control_id = resp.json()["control_id"]
-    set_resp = client.put(
-        f"/api/v1/controls/{control_id}/data",
-        json={"data": canonicalize_control_payload(data)},
+    resp = client.put(
+        "/api/v1/controls",
+        json={
+            "name": f"control-{uuid.uuid4()}",
+            "data": canonicalize_control_payload(data),
+        },
     )
-    assert set_resp.status_code == 200, set_resp.text
-    return control_id
+    assert resp.status_code == 200, resp.text
+    return resp.json()["control_id"]
+
+
+def _insert_unconfigured_control() -> int:
+    control = Control(name=f"control-{uuid.uuid4()}", data={})
+    with Session(engine) as session:
+        session.add(control)
+        session.commit()
+        session.refresh(control)
+        return int(control.id)
 
 
 def _create_policy(client: TestClient) -> int:
@@ -661,9 +673,7 @@ def test_set_agent_policy_skips_controls_without_data(client: TestClient) -> Non
     # Given: an agent and a policy with a control that has no data configured
     agent_name, _ = _init_agent(client)
     policy_id = _create_policy(client)
-    control_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
-    assert control_resp.status_code == 200
-    control_id = control_resp.json()["control_id"]
+    control_id = _insert_unconfigured_control()
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
 

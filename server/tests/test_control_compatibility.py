@@ -52,15 +52,12 @@ def test_set_agent_policy_accepts_legacy_stored_control_payload(client: TestClie
     agent_name = _init_agent(client)
     policy_id = _create_policy(client)
 
-    control_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    control_resp = client.put(
+        "/api/v1/controls",
+        json={"name": f"control-{uuid.uuid4()}", "data": VALID_CONTROL_PAYLOAD},
+    )
     assert control_resp.status_code == 200
     control_id = control_resp.json()["control_id"]
-
-    set_resp = client.put(
-        f"/api/v1/controls/{control_id}/data",
-        json={"data": VALID_CONTROL_PAYLOAD},
-    )
-    assert set_resp.status_code == 200
 
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
@@ -83,7 +80,10 @@ def test_get_control_data_returns_canonical_shape_for_legacy_stored_payload(
     client: TestClient,
 ) -> None:
     # Given: a control whose stored row has been reverted to the legacy flat shape
-    control_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    control_resp = client.put(
+        "/api/v1/controls",
+        json={"name": f"control-{uuid.uuid4()}", "data": VALID_CONTROL_PAYLOAD},
+    )
     assert control_resp.status_code == 200
     control_id = control_resp.json()["control_id"]
 
@@ -112,15 +112,12 @@ def test_list_agent_controls_returns_canonical_shape_for_legacy_stored_payload(
     agent_name = _init_agent(client)
     policy_id = _create_policy(client)
 
-    control_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    control_resp = client.put(
+        "/api/v1/controls",
+        json={"name": f"control-{uuid.uuid4()}", "data": VALID_CONTROL_PAYLOAD},
+    )
     assert control_resp.status_code == 200
     control_id = control_resp.json()["control_id"]
-
-    set_resp = client.put(
-        f"/api/v1/controls/{control_id}/data",
-        json={"data": VALID_CONTROL_PAYLOAD},
-    )
-    assert set_resp.status_code == 200
 
     assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
     assert assoc.status_code == 200
@@ -151,7 +148,10 @@ def test_get_control_data_rejects_partial_legacy_stored_payload(
     client: TestClient,
 ) -> None:
     # Given: a stored control row with only one half of the legacy flat shape
-    control_resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    control_resp = client.put(
+        "/api/v1/controls",
+        json={"name": f"control-{uuid.uuid4()}", "data": VALID_CONTROL_PAYLOAD},
+    )
     assert control_resp.status_code == 200
     control_id = control_resp.json()["control_id"]
 

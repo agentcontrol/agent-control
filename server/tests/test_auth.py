@@ -8,6 +8,9 @@ from fastapi.testclient import TestClient
 from agent_control_server import __version__ as server_version
 from agent_control_server.config import auth_settings
 
+from .utils import VALID_CONTROL_PAYLOAD
+
+
 class TestHealthEndpoint:
     """Health endpoint should always be accessible without authentication."""
 
@@ -163,7 +166,11 @@ class TestAdminWriteEndpointAuthorization:
     @pytest.mark.parametrize(
         ("method", "path", "json_body"),
         [
-            ("PUT", "/api/v1/controls", {"name": "control-authz-blocked"}),
+            (
+                "PUT",
+                "/api/v1/controls",
+                {"name": "control-authz-blocked", "data": _VALID_CONTROL_DATA},
+            ),
             ("PUT", "/api/v1/controls/1/data", {"data": _VALID_CONTROL_DATA}),
             ("PATCH", "/api/v1/controls/1", {"enabled": False}),
             ("DELETE", "/api/v1/controls/1", None),
@@ -248,7 +255,10 @@ class TestAdminWriteEndpointAuthorization:
 
     def test_admin_key_allowed_on_representative_mutations(self, admin_client: TestClient) -> None:
         control_name = f"control-authz-{uuid.uuid4().hex[:8]}"
-        control_response = admin_client.put("/api/v1/controls", json={"name": control_name})
+        control_response = admin_client.put(
+            "/api/v1/controls",
+            json={"name": control_name, "data": VALID_CONTROL_PAYLOAD},
+        )
         assert control_response.status_code == 200
         control_id = control_response.json()["control_id"]
 

@@ -437,13 +437,10 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
     policy_id = pol.json()["policy_id"]
 
     ctl_name = f"control-{uuid.uuid4()}"
-    ctl = client.put("/api/v1/controls", json={"name": ctl_name})
-    control_id = ctl.json()["control_id"]
-
-    # Set control data
     from .utils import VALID_CONTROL_PAYLOAD
     data_payload = VALID_CONTROL_PAYLOAD
-    client.put(f"/api/v1/controls/{control_id}/data", json={"data": data_payload})
+    ctl = client.put("/api/v1/controls", json={"name": ctl_name, "data": data_payload})
+    control_id = ctl.json()["control_id"]
 
     # Associate control -> policy; assign policy to agent
     client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")

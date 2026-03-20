@@ -33,10 +33,10 @@ import { Result } from "../types/fp.js";
  * Create a new control with a unique name.
  *
  * Controls define protection logic and can be added to policies.
- * Optionally provide control data to validate and persist it atomically.
+ * Control data is required and is validated before anything is inserted.
  *
  * Args:
- *     request: Control creation request with unique name and optional data
+ *     request: Control creation request with unique name and data
  *     db: Database session (injected)
  *
  * Returns:

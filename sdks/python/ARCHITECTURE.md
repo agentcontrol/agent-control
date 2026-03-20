@@ -113,7 +113,7 @@ async with agent_control.AgentControlClient() as client:
 - `GET /api/v1/controls/{control_id}/rules` - List control rules
 
 **Functions**:
-- `async def create_control(client, name)` - Create a new control
+- `async def create_control(client, name, data)` - Create a new configured control
 - `async def add_rule_to_control(client, control_id, rule_id)` - Associate rule
 - `async def remove_rule_from_control(client, control_id, rule_id)` - Dissociate rule
 - `async def list_control_rules(client, control_id)` - List all rules in control
@@ -124,7 +124,25 @@ import agent_control
 
 async with agent_control.AgentControlClient() as client:
     # Create control
-    result = await agent_control.controls.create_control(client, "pii-protection")
+    result = await agent_control.controls.create_control(
+        client,
+        "pii-protection",
+        {
+            "description": "PII protection",
+            "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["llm"], "stages": ["post"]},
+            "condition": {
+                "selector": {"path": "output"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": "\\\\d{3}-\\\\d{2}-\\\\d{4}", "flags": []},
+                },
+            },
+            "action": {"decision": "deny"},
+            "tags": ["security"],
+        },
+    )
     control_id = result["control_id"]
     
     # Add rule to control

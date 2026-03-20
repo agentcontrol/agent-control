@@ -793,8 +793,7 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
 
     Server Setup (separate from agent code):
         1. Create controls via API:
-           PUT /api/v1/controls {"name": "block-toxic-inputs"}
-           PUT /api/v1/controls/{id}/data {"data": {...}}
+           PUT /api/v1/controls {"name": "block-toxic-inputs", "data": {...}}
 
         2. Create policy and add controls:
            PUT /api/v1/policies {"name": "safety-policy"}

@@ -3,21 +3,39 @@ from copy import deepcopy
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from agent_control_server.models import Control
+
+from .conftest import engine
 
 
-def create_control(client: TestClient) -> int:
+def create_control(client: TestClient, data: dict[str, Any] | None = None) -> int:
     name = f"control-{uuid.uuid4()}"
-    resp = client.put("/api/v1/controls", json={"name": name})
+    payload = data if data is not None else VALID_CONTROL_DATA
+    resp = client.put("/api/v1/controls", json={"name": name, "data": payload})
     assert resp.status_code == 200
     cid = resp.json()["control_id"]
     assert isinstance(cid, int)
     return cid
 
 
+def create_unconfigured_control(name: str | None = None) -> int:
+    control = Control(name=name or f"control-{uuid.uuid4()}", data={})
+    with Session(engine) as session:
+        session.add(control)
+        session.commit()
+        session.refresh(control)
+        return int(control.id)
+
+
 def test_create_control_returns_id(client: TestClient) -> None:
     # Given: no prior controls
     # When: creating a control via API
-    resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    resp = client.put(
+        "/api/v1/controls",
+        json={"name": f"control-{uuid.uuid4()}", "data": VALID_CONTROL_DATA},
+    )
     # Then: a control_id is returned (integer)
     assert resp.status_code == 200
     assert isinstance(resp.json()["control_id"], int)
@@ -72,9 +90,14 @@ def test_create_control_invalid_data_returns_422_without_persisting(client: Test
     assert body["controls"] == []
 
 
+def test_create_control_without_data_returns_422(client: TestClient) -> None:
+    resp = client.put("/api/v1/controls", json={"name": f"control-{uuid.uuid4()}"})
+    assert resp.status_code == 422
+
+
 def test_get_control_data_initially_unconfigured(client: TestClient) -> None:
-    # Given: a newly created control (no data set yet)
-    control_id = create_control(client)
+    # Given: a legacy control row with no data set
+    control_id = create_unconfigured_control()
     # When: fetching its data
     resp = client.get(f"/api/v1/controls/{control_id}/data")
     # Then: 422 because empty data is not a valid ControlDefinition (RFC 7807 format)
@@ -100,8 +123,8 @@ VALID_CONTROL_DATA = {
 }
 
 def test_set_control_data_replaces_existing(client: TestClient) -> None:
-    # Given: a control with empty data
-    control_id = create_control(client)
+    # Given: a legacy control with empty data
+    control_id = create_unconfigured_control()
     # When: setting data
     payload = VALID_CONTROL_DATA
     resp_put = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
@@ -224,10 +247,10 @@ def test_set_control_data_requires_body_with_data_key(client: TestClient) -> Non
 def test_create_control_duplicate_name_409(client: TestClient) -> None:
     # Given: a specific control name
     name = f"dup-control-{uuid.uuid4()}"
-    r1 = client.put("/api/v1/controls", json={"name": name})
+    r1 = client.put("/api/v1/controls", json={"name": name, "data": VALID_CONTROL_DATA})
     assert r1.status_code == 200
     # When: creating again with the same name
-    r2 = client.put("/api/v1/controls", json={"name": name})
+    r2 = client.put("/api/v1/controls", json={"name": name, "data": VALID_CONTROL_DATA})
     # Then: conflict
     assert r2.status_code == 409
 
@@ -238,17 +261,15 @@ def test_create_control_duplicate_name_409(client: TestClient) -> None:
 
 
 def test_get_control_returns_metadata(client: TestClient) -> None:
-    """Test GET /controls/{id} returns control id, name, and data."""
-    # Given: a control with a specific name
+    """Test GET /controls/{id} returns id, name, and None data for legacy rows."""
+    # Given: a legacy control with a specific name and no configured data
     name = f"test-control-{uuid.uuid4()}"
-    resp = client.put("/api/v1/controls", json={"name": name})
-    assert resp.status_code == 200
-    control_id = resp.json()["control_id"]
+    control_id = create_unconfigured_control(name)
 
     # When: fetching the control
     get_resp = client.get(f"/api/v1/controls/{control_id}")
 
-    # Then: returns id, name, and data (None for unconfigured)
+    # Then: returns id, name, and data (None for legacy unconfigured rows)
     assert get_resp.status_code == 200
     body = get_resp.json()
     assert body["id"] == control_id

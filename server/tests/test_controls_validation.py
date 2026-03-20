@@ -10,7 +10,7 @@ from .utils import VALID_CONTROL_PAYLOAD
 
 def create_control(client: TestClient) -> int:
     name = f"control-{uuid.uuid4()}"
-    resp = client.put("/api/v1/controls", json={"name": name})
+    resp = client.put("/api/v1/controls", json={"name": name, "data": VALID_CONTROL_PAYLOAD})
     assert resp.status_code == 200
     return resp.json()["control_id"]
 

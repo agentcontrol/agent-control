@@ -77,10 +77,10 @@ async def create_control(
 ) -> int:
     """Create a control with the given definition."""
     try:
-        # Step 1: Create the control (just the name)
+        # Create and validate the control atomically.
         response = await client.http_client.put(
             "/api/v1/controls",
-            json={"name": name}
+            json={"name": name, "data": control_definition},
         )
 
         if response.status_code == 409:
@@ -92,13 +92,6 @@ async def create_control(
 
         response.raise_for_status()
         control_id = response.json().get("control_id")
-
-        # Step 2: Set the control data
-        response = await client.http_client.put(
-            f"/api/v1/controls/{control_id}/data",
-            json={"data": control_definition}
-        )
-        response.raise_for_status()
 
         print(f"✓ Created control '{name}' with ID: {control_id}")
         return control_id

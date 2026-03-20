@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent_control_server.db import get_async_db
 
+from .utils import VALID_CONTROL_PAYLOAD
+
 
 async def mock_db_with_commit_failure() -> AsyncGenerator[AsyncSession, None]:
     """Mock database session that fails on commit."""
@@ -287,7 +289,10 @@ def test_create_control_rollback_on_failure(
     # When: commit fails during control creation
     app.dependency_overrides[get_async_db] = mock_db_with_commit_failure
     try:
-        resp = client.put("/api/v1/controls", json={"name": control_name})
+        resp = client.put(
+            "/api/v1/controls",
+            json={"name": control_name, "data": VALID_CONTROL_PAYLOAD},
+        )
 
         # Then: rollback is called and 500 error is returned
         assert resp.status_code == 500
@@ -302,7 +307,10 @@ def test_delete_control_rollback_on_failure(
     """Test that delete_control rolls back when commit fails."""
     # Given: an existing control
     control_name = f"test-control-{uuid.uuid4()}"
-    create_resp = client.put("/api/v1/controls", json={"name": control_name})
+    create_resp = client.put(
+        "/api/v1/controls",
+        json={"name": control_name, "data": VALID_CONTROL_PAYLOAD},
+    )
     assert create_resp.status_code == 200
     control_id = create_resp.json()["control_id"]
 
@@ -441,7 +449,10 @@ def test_set_control_data_rollback_on_failure(
     """Test that set_control_data rolls back transaction when commit fails."""
     # Given: an existing control
     control_name = f"test-control-{uuid.uuid4()}"
-    r1 = client.put("/api/v1/controls", json={"name": control_name})
+    r1 = client.put(
+        "/api/v1/controls",
+        json={"name": control_name, "data": VALID_CONTROL_PAYLOAD},
+    )
     assert r1.status_code == 200
     control_id = r1.json()["control_id"]
 
@@ -497,7 +508,10 @@ def test_patch_control_rollback_on_failure(
     """Test that patch_control rolls back when commit fails."""
     # Given: an existing control
     control_name = f"test-control-{uuid.uuid4()}"
-    create_resp = client.put("/api/v1/controls", json={"name": control_name})
+    create_resp = client.put(
+        "/api/v1/controls",
+        json={"name": control_name, "data": VALID_CONTROL_PAYLOAD},
+    )
     assert create_resp.status_code == 200
     control_id = create_resp.json()["control_id"]
 

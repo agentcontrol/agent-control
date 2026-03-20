@@ -444,10 +444,10 @@ export interface paths {
          * @description Create a new control with a unique name.
          *
          *     Controls define protection logic and can be added to policies.
-         *     Optionally provide control data to validate and persist it atomically.
+         *     Control data is required and is validated before anything is inserted.
          *
          *     Args:
-         *         request: Control creation request with unique name and optional data
+         *         request: Control creation request with unique name and data
          *         db: Database session (injected)
          *
          *     Returns:
@@ -1961,8 +1961,8 @@ export interface components {
         };
         /** CreateControlRequest */
         CreateControlRequest: {
-            /** @description Optional control definition to validate and store during creation */
-            data?: components["schemas"]["ControlDefinition-Input"] | null;
+            /** @description Control definition to validate and store during creation */
+            data: components["schemas"]["ControlDefinition-Input"];
             /**
              * Name
              * @description Unique control name (letters, numbers, hyphens, underscores)

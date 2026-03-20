@@ -236,12 +236,14 @@ def test_evaluation_deny_precedence(client: TestClient):
         "evaluator": {"name": "regex", "config": {"pattern": "keyword"}},
         "action": {"decision": "deny"}
     }
-    resp = client.put("/api/v1/controls", json={"name": f"deny-control-{uuid.uuid4()}"})
-    deny_control_id = resp.json()["control_id"]
-    client.put(
-        f"/api/v1/controls/{deny_control_id}/data",
-        json={"data": canonicalize_control_payload(control_deny)},
+    resp = client.put(
+        "/api/v1/controls",
+        json={
+            "name": f"deny-control-{uuid.uuid4()}",
+            "data": canonicalize_control_payload(control_deny),
+        },
     )
+    deny_control_id = resp.json()["control_id"]
 
     # Add Control to Agent's Policy
     client.post(f"/api/v1/policies/{policy_id}/controls/{deny_control_id}")
