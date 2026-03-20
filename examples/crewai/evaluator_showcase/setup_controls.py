@@ -10,7 +10,7 @@ data-analyst agent scenario:
   SQL   - Prevent dangerous SQL operations (DROP, DELETE, multi-statement)
 
 Run once before running the demo:
-    uv run python setup_controls.py
+    uv run --active python setup_controls.py
 """
 
 import asyncio
@@ -276,7 +276,7 @@ async def setup():
         print("  JSON  - Validate request structure and field constraints")
         print("  JSON  - Steer agent to provide analysis purpose")
         print()
-        print("Run the demo:  uv run python -m evaluator_showcase.main")
+        print("Run the demo:  uv run --active python -m evaluator_showcase.main")
 
 
 if __name__ == "__main__":

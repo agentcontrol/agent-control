@@ -23,10 +23,10 @@ Scenarios:
   5. Writer blocked       -- PII in report output
 
 PREREQUISITE:
-    uv run python setup_controls.py
+    uv run --active python setup_controls.py
 
 Usage:
-    uv run secure_research_crew
+    uv run --active secure_research_crew
 """
 
 import json

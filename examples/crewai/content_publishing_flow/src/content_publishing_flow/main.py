@@ -29,10 +29,10 @@ Flow Architecture:
 
 PREREQUISITE:
     Run setup_controls.py first:
-        $ uv run python setup_controls.py
+        $ uv run --active python setup_controls.py
 
     Then run this flow:
-        $ uv run kickoff
+        $ uv run --active kickoff
 """
 
 import asyncio
@@ -559,7 +559,7 @@ def verify_setup() -> bool:
         missing = [c for c in required if c not in all_controls]
         if missing:
             print(f"  Missing controls: {missing}")
-            print("  Run: uv run python setup_controls.py")
+            print("  Run: uv run --active python setup_controls.py")
             return False
 
         print(f"  Server: {SERVER_URL}")

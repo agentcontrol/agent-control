@@ -13,11 +13,11 @@ generates reports:
 PREREQUISITE:
     Run setup_controls.py first:
 
-        $ uv run python setup_controls.py
+        $ uv run --active python setup_controls.py
 
     Then run this example:
 
-        $ uv run evaluator_showcase
+        $ uv run --active evaluator_showcase
 
 Scenarios:
     1. Safe SELECT query            -> SQL evaluator ALLOWS
@@ -68,7 +68,7 @@ def verify_server():
         missing = [n for n in required if n not in names]
         if missing:
             print(f"Missing controls: {missing}")
-            print("Run:  uv run python setup_controls.py")
+            print("Run:  uv run --active python setup_controls.py")
             return False
         print(f"Server OK - {len(names)} controls active")
         return True

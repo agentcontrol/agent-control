@@ -87,13 +87,13 @@ make server-run
 ### 3. Create controls and policies (one-time, idempotent)
 
 ```bash
-uv run python setup_controls.py
+uv run --active python setup_controls.py
 ```
 
 ### 4. Run the demo
 
 ```bash
-uv run python -m secure_research_crew.main
+uv run --active python -m secure_research_crew.main
 ```
 
 Scenarios 1-5 run with direct tool calls (no LLM needed). The optional full crew run at the end requires `OPENAI_API_KEY`.

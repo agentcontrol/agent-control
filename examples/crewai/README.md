@@ -69,37 +69,15 @@ Each example has a `setup_controls.py` (one-time, idempotent) and a main script:
 
 ```bash
 cd examples/crewai/secure_research_crew
-uv run python setup_controls.py
-uv run python -m secure_research_crew.main
+uv run --active python setup_controls.py
+uv run --active python -m secure_research_crew.main
 ```
 
 ---
 
 ## Examples
 
-### 1. [Content Agent Protection](./content_agent_protection.py) -- PII & Access Control
-
-The foundational example. A single-agent customer support crew with multi-layer protection:
-
-- **PRE-execution**: Block unauthorized data access (regex evaluator)
-- **POST-execution**: Block PII leakage in tool output (regex evaluator)
-- **Final validation**: Catch PII that bypasses tool-level controls
-- **CrewAI Guardrails**: Quality retries for length, tone, and structure
-
-| Scenario | Layer | Result |
-|----------|-------|--------|
-| Unauthorized access | Agent Control PRE | Blocked |
-| PII in tool output | Agent Control POST | Blocked |
-| Short/low-quality response | CrewAI Guardrails | Retry then pass |
-| Agent bypass attempt | Agent Control FINAL | Blocked |
-
-```bash
-cd examples/crewai
-uv run python setup_content_controls.py
-uv run python content_agent_protection.py
-```
-
-### 2. [Steering Financial Agent](./steering_financial_agent/) -- Deny, Steer & Warn
+### 1. [Steering Financial Agent](./steering_financial_agent/) -- Deny, Steer & Warn
 
 Demonstrates all three Agent Control action types in a wire-transfer scenario:
 
@@ -111,11 +89,11 @@ Demonstrates all three Agent Control action types in a wire-transfer scenario:
 
 ```bash
 cd examples/crewai/steering_financial_agent
-uv run python setup_controls.py
-uv run python -m steering_financial_agent.main
+uv run --active python setup_controls.py
+uv run --active python -m steering_financial_agent.main
 ```
 
-### 3. [Evaluator Showcase](./evaluator_showcase/) -- All 4 Built-in Evaluators
+### 2. [Evaluator Showcase](./evaluator_showcase/) -- All 4 Built-in Evaluators
 
 Demonstrates every built-in evaluator in a data-analyst scenario:
 
@@ -128,11 +106,11 @@ Demonstrates every built-in evaluator in a data-analyst scenario:
 
 ```bash
 cd examples/crewai/evaluator_showcase
-uv run python setup_controls.py
-uv run python -m evaluator_showcase.main
+uv run --active python setup_controls.py
+uv run --active python -m evaluator_showcase.main
 ```
 
-### 4. [Secure Research Crew](./secure_research_crew/) -- Multi-Agent Crew with Per-Role Policies
+### 3. [Secure Research Crew](./secure_research_crew/) -- Multi-Agent Crew with Per-Role Policies
 
 A production-quality **3-agent sequential crew** (Researcher, Analyst, Writer) where each agent has its own policy with distinct controls. This is the pattern you'd use in real multi-agent systems.
 
@@ -161,11 +139,11 @@ A production-quality **3-agent sequential crew** (Researcher, Analyst, Writer) w
 
 ```bash
 cd examples/crewai/secure_research_crew
-uv run python setup_controls.py
-uv run python -m secure_research_crew.main
+uv run --active python setup_controls.py
+uv run --active python -m secure_research_crew.main
 ```
 
-### 5. [Content Publishing Flow](./content_publishing_flow/) -- CrewAI Flow with Routing & Human-in-the-Loop
+### 4. [Content Publishing Flow](./content_publishing_flow/) -- CrewAI Flow with Routing & Human-in-the-Loop
 
 A complete **CrewAI Flow** using `@start`, `@listen`, and `@router` decorators with Agent Control guardrails at every pipeline stage. Content is routed through different paths based on risk level, with embedded crews and steering for human approval.
 
@@ -196,40 +174,39 @@ A complete **CrewAI Flow** using `@start`, `@listen`, and `@router` decorators w
 
 ```bash
 cd examples/crewai/content_publishing_flow
-uv run python setup_controls.py
-uv run python -m content_publishing_flow.main
+uv run --active python setup_controls.py
+uv run --active python -m content_publishing_flow.main
 ```
 
 ---
 
 ## Feature Coverage
 
-| Feature | Ex 1 | Ex 2 | Ex 3 | Ex 4 | Ex 5 |
-|---------|:----:|:----:|:----:|:----:|:----:|
-| `@control()` decorator | Yes | Yes | Yes | Yes | Yes |
-| PRE-execution checks | Yes | Yes | Yes | Yes | Yes |
-| POST-execution checks | Yes | Yes | Yes | Yes | Yes |
-| **deny** action | Yes | Yes | Yes | Yes | Yes |
-| **steer** action | | Yes | Yes | Yes | Yes |
-| **warn** action | | Yes | | | |
-| Regex evaluator | Yes | | Yes | Yes | Yes |
-| List evaluator | | Yes | Yes | Yes | Yes |
-| JSON evaluator | | Yes | Yes | Yes | Yes |
-| SQL evaluator | | | Yes | Yes | |
-| Steering context + retry loop | | Yes | Yes | Yes | Yes |
-| ControlViolationError handling | Yes | Yes | Yes | Yes | Yes |
-| ControlSteerError handling | | Yes | Yes | Yes | Yes |
-| **Multi-agent crew** | | | | **Yes** | |
-| **Per-agent policies** | | | | **Yes** | |
-| **CrewAI Flow (@start/@listen/@router)** | | | | | **Yes** |
-| **Conditional routing** | | | | | **Yes** |
-| **Human-in-the-loop (steer)** | | | | | **Yes** |
-| **Pydantic state management** | | | | | **Yes** |
-| CrewAI Guardrails coexistence | Yes | | | | |
+| Feature | Ex 1 | Ex 2 | Ex 3 | Ex 4 |
+|---------|:----:|:----:|:----:|:----:|
+| `@control()` decorator | Yes | Yes | Yes | Yes |
+| PRE-execution checks | Yes | Yes | Yes | Yes |
+| POST-execution checks | Yes | Yes | Yes | Yes |
+| **deny** action | Yes | Yes | Yes | Yes |
+| **steer** action | Yes | Yes | Yes | Yes |
+| **warn** action | Yes | | | |
+| Regex evaluator | | Yes | Yes | Yes |
+| List evaluator | Yes | Yes | Yes | Yes |
+| JSON evaluator | Yes | Yes | Yes | Yes |
+| SQL evaluator | | Yes | Yes | |
+| Steering context + retry loop | Yes | Yes | Yes | Yes |
+| ControlViolationError handling | Yes | Yes | Yes | Yes |
+| ControlSteerError handling | Yes | Yes | Yes | Yes |
+| **Multi-agent crew** | | | **Yes** | |
+| **Per-agent policies** | | | **Yes** | |
+| **CrewAI Flow (@start/@listen/@router)** | | | | **Yes** |
+| **Conditional routing** | | | | **Yes** |
+| **Human-in-the-loop (steer)** | | | | **Yes** |
+| **Pydantic state management** | | | | **Yes** |
 
 ## Architecture Deep Dive
 
-### Multi-Agent Crew (Example 4)
+### Multi-Agent Crew (Example 3)
 
 The SDK supports one `agent_control.init()` per process. All three CrewAI agents share a single Agent Control identity, but each tool's `step_name` routes it to the right policy:
 
@@ -249,7 +226,7 @@ The SDK supports one `agent_control.init()` per process. All three CrewAI agents
      (SQL + LIST deny)    (JSON deny + steer)   (REGEX deny)
 ```
 
-### CrewAI Flow (Example 5)
+### CrewAI Flow (Example 4)
 
 ```
 @start: intake_request -----> @listen: research -----> @listen: draft_content

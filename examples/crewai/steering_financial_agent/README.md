@@ -53,10 +53,10 @@ uv pip install -e . --upgrade
 export OPENAI_API_KEY="your-key"
 
 # Set up controls (one-time)
-uv run python setup_controls.py
+uv run --active python setup_controls.py
 
 # Run the demo
-uv run python -m steering_financial_agent.main
+uv run --active python -m steering_financial_agent.main
 ```
 
 ## How Steering Works

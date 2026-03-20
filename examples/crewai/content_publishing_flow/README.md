@@ -95,7 +95,7 @@ export AGENT_CONTROL_URL="http://localhost:8000"  # optional, this is the defaul
 ### 4. Setup Controls (One-Time)
 
 ```bash
-uv run python setup_controls.py
+uv run --active python setup_controls.py
 ```
 
 This creates 9 controls covering all pipeline stages and associates them with the `content-publishing-flow` agent.
@@ -103,7 +103,7 @@ This creates 9 controls covering all pipeline stages and associates them with th
 ### 5. Run the Flow
 
 ```bash
-uv run python -m content_publishing_flow.main
+uv run --active python -m content_publishing_flow.main
 ```
 
 ## Controls Reference

@@ -11,7 +11,7 @@ Creates Agent Control controls for each stage of the CrewAI Flow pipeline:
 - Human Review: STEER action for manager approval on internal memos
 
 Run once before running publishing_flow.py:
-    uv run python setup_controls.py
+    uv run --active python setup_controls.py
 """
 
 import asyncio
@@ -417,7 +417,7 @@ async def setup_publishing_controls():
         print("    - flow-human-review-steer (STEER: manager approval)")
         print("  AUTO-PUBLISH (low_risk path):")
         print("    - flow-publish-pii-scan (REGEX: final PII scan)")
-        print("\nRun the flow:  uv run python -m content_publishing_flow.main")
+        print("\nRun the flow:  uv run --active python -m content_publishing_flow.main")
 
 
 if __name__ == "__main__":

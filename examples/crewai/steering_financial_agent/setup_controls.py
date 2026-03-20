@@ -7,7 +7,7 @@ Creates controls that demonstrate all three non-blocking action types:
 - WARN:  Flag new recipients and unusual hours for audit (no blocking)
 
 Run once before running the agent:
-    uv run python setup_controls.py
+    uv run --active python setup_controls.py
 """
 
 import asyncio
@@ -326,7 +326,7 @@ async def setup():
         print("    - New/unknown recipient (list evaluator)")
         print("    - PII in confirmation output (regex evaluator)")
         print()
-        print("Run the demo:  uv run python -m steering_financial_agent.main")
+        print("Run the demo:  uv run --active python -m steering_financial_agent.main")
 
 
 if __name__ == "__main__":

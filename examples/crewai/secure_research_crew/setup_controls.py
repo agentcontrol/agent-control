@@ -13,7 +13,7 @@ organizational grouping and can be managed independently on the server.
 This script is fully idempotent -- safe to run multiple times.
 
 Usage:
-    uv run python setup_controls.py
+    uv run --active python setup_controls.py
 """
 
 import asyncio
@@ -351,7 +351,7 @@ Controls: {len(all_control_ids)}
   content-safety-policy (Writer -> write_report):
     - writer-pii-blocker            [post, deny]  Block SSN, email, phone in output
 
-You can now run:  uv run python -m secure_research_crew.main
+You can now run:  uv run --active python -m secure_research_crew.main
 """)
 
 

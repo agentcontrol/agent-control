@@ -13,11 +13,11 @@ wire-transfer scenario using a CrewAI crew:
 PREREQUISITE:
     Run setup_controls.py first:
 
-        $ uv run python setup_controls.py
+        $ uv run --active python setup_controls.py
 
     Then run this example:
 
-        $ uv run steering_financial_agent
+        $ uv run --active steering_financial_agent
 
 Scenarios:
     1. Small legitimate transfer     -> ALLOW (warn on new recipient)
@@ -72,7 +72,7 @@ def verify_server():
         missing = [n for n in required if n not in names]
         if missing:
             print(f"Missing controls: {missing}")
-            print("Run:  uv run python setup_controls.py")
+            print("Run:  uv run --active python setup_controls.py")
             return False
         print(f"Server OK - {len(names)} controls active")
         return True
