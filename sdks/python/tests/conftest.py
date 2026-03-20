@@ -186,7 +186,22 @@ async def test_control(
     """
     result = await agent_control.controls.create_control(
         client,
-        f"test-control-{unique_name}"
+        f"test-control-{unique_name}",
+        {
+            "description": "SDK integration test control",
+            "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": "test", "flags": []},
+                },
+            },
+            "action": {"decision": "deny"},
+            "tags": ["sdk-test"],
+        },
     )
 
     yield result
