@@ -78,7 +78,8 @@ class DriftEvaluatorConfig(EvaluatorConfig):
         """Validate that window_size <= baseline_size."""
         if self.window_size > self.baseline_size:
             raise ValueError(
-                f"window_size ({self.window_size}) must be <= baseline_size ({self.baseline_size}). "
+                f"window_size ({self.window_size}) must be <= "
+                f"baseline_size ({self.baseline_size}). "
                 "The recent window cannot be larger than the baseline."
             )
         return self

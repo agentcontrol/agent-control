@@ -1,14 +1,14 @@
 [project]
 name = "agent-control-evaluator-drift"
-version = "1.0.0"
+version = "8.0.0"
 description = "Temporal behavioral drift evaluator for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Nanook (nanookclaw)" }]
 dependencies = [
-    "agent-control-evaluators>=3.0.0",
-    "agent-control-models>=3.0.0",
+    "agent-control-evaluators>=7.5.0",
+    "agent-control-models>=7.5.0",
     "pydantic>=2.12.4",
 ]
 

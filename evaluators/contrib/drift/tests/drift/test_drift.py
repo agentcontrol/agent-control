@@ -6,16 +6,10 @@ is redirected to a temporary directory.
 
 from __future__ import annotations
 
-import json
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from agent_control_evaluators import Evaluator
 from agent_control_models import EvaluatorResult
 from pydantic import ValidationError
-
 
 # ---------------------------------------------------------------------------
 # Config tests

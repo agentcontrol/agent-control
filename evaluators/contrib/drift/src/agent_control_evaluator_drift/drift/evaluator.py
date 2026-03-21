@@ -6,9 +6,9 @@ by tracking numeric scores over time and comparing recent windows to baselines.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +27,7 @@ def _load_history(path: Path) -> list[float]:
         path: Path to the history file.
 
     Returns:
-        List of float scores, or empty list if file doesn't exist.
+        List of float scores, or empty list if file doesn't exist or cannot be read.
     """
     if not path.exists():
         return []
@@ -54,6 +54,60 @@ def _save_history(path: Path, scores: list[float]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as fh:
         json.dump({"scores": scores}, fh)
+
+
+def _load_and_append_history(path: Path, score: float) -> list[float]:
+    """Atomically load history, append a score, persist, and return the updated list.
+
+    Uses an exclusive advisory lock (``fcntl.LOCK_EX``) on the history file so
+    that concurrent workers for the same agent do not race on the
+    read-modify-write cycle.  Without this, two simultaneous calls can both read
+    the same stale list and the last writer silently drops the other's
+    observation, causing drift detection to miss events.
+
+    Args:
+        path: Path to the per-agent JSON history file.
+        score: New observation to append (already validated, in [0.0, 1.0]).
+
+    Returns:
+        Updated list of float scores (oldest first), including *score*.
+
+    Raises:
+        OSError: If the lock file or history file cannot be opened or written.
+        json.JSONDecodeError: If the history file contains malformed JSON.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(".lock")
+
+    # Open (or create) the lock file and hold an exclusive lock for the
+    # duration of the read-modify-write.  The lock is released automatically
+    # when the file descriptor is closed at the end of this block.
+    with lock_path.open("a") as lock_fh:
+        fcntl.flock(lock_fh, fcntl.LOCK_EX)
+
+        # Read existing scores under the lock.
+        scores: list[float] = []
+        if path.exists():
+            try:
+                with path.open("r") as fh:
+                    data = json.load(fh)
+                    scores = [
+                        float(s)
+                        for s in data.get("scores", [])
+                        if isinstance(s, (int, float))
+                    ]
+            except (json.JSONDecodeError, ValueError) as exc:
+                logger.warning("Corrupt drift history at %s; resetting. Error: %s", path, exc)
+                scores = []
+
+        # Append and persist while the lock is still held.
+        scores.append(score)
+        with path.open("w") as fh:
+            json.dump({"scores": scores}, fh)
+
+        # Lock released here when lock_fh closes.
+
+    return scores
 
 
 def _compute_drift(
@@ -109,7 +163,11 @@ def _compute_drift(
     recent_avg = sum(recent_scores) / len(recent_scores)
     drift_magnitude = baseline_avg - recent_avg  # positive = drop
 
-    matched = drift_magnitude >= drift_threshold
+    # Round before threshold comparison to avoid float precision issues.
+    # e.g. 1.0 - 0.9 evaluates to 0.09999999... in IEEE 754, which fails a
+    # >= 0.10 check without rounding.  Rounding to 10 decimal places preserves
+    # all meaningful precision while eliminating the ULP-level noise.
+    matched = round(drift_magnitude, 10) >= drift_threshold
 
     if matched:
         status = "drift_detected"
@@ -152,12 +210,12 @@ class DriftEvaluator(Evaluator[DriftEvaluatorConfig]):
 
     No external API or service required — history is stored as local JSON.
 
-    Instance Caching Note:
-        Per the base class contract, this evaluator stores only immutable
-        config state in ``__init__``. All file I/O happens inside
-        ``evaluate()`` using local variables, making it safe to reuse
-        across concurrent requests (each call reads and writes atomically
-        via a per-agent file lock-free JSON write).
+    Concurrency:
+        Each ``evaluate()`` call uses an exclusive advisory file lock
+        (``fcntl.LOCK_EX``) scoped to the read-modify-write cycle, ensuring
+        that concurrent workers for the same ``agent_id`` never race on
+        history updates.  The lock is per-agent (``<agent_id>.lock`` next to
+        ``<agent_id>.json``), so different agents remain fully parallel.
 
     Example:
         ```python
@@ -222,44 +280,22 @@ class DriftEvaluator(Evaluator[DriftEvaluatorConfig]):
         storage_dir = Path(self.config.storage_path)
         history_path = storage_dir / f"{self.config.agent_id}.json"
 
-        # Load existing history
+        # Atomically load, append, and persist history under a file lock.
         try:
-            scores = _load_history(history_path)
+            scores = _load_and_append_history(history_path, score)
         except Exception as exc:
-            logger.error("DriftEvaluator: failed to load history: %s", exc)
+            logger.error("DriftEvaluator: storage error: %s", exc)
             matched = self.config.on_error == "deny"
             return EvaluatorResult(
                 matched=matched,
                 confidence=0.0,
-                message=f"Storage error (load): {exc}",
+                message=f"Storage error: {exc}",
                 metadata={
                     "error": str(exc),
                     "agent_id": self.config.agent_id,
                     "fallback_action": self.config.on_error,
                 },
             )
-
-        # Append new score
-        scores.append(score)
-
-        # Persist updated history
-        try:
-            _save_history(history_path, scores)
-        except Exception as exc:
-            logger.error("DriftEvaluator: failed to save history: %s", exc)
-            # Still compute drift from in-memory scores even if save fails
-            matched_on_error = self.config.on_error == "deny"
-            if matched_on_error:
-                return EvaluatorResult(
-                    matched=True,
-                    confidence=0.0,
-                    message=f"Storage error (save): {exc}",
-                    metadata={
-                        "error": str(exc),
-                        "agent_id": self.config.agent_id,
-                        "fallback_action": self.config.on_error,
-                    },
-                )
 
         # Compute drift metrics
         metrics = _compute_drift(
