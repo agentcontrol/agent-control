@@ -3,7 +3,8 @@
 Provides two evaluators for enforcing financial policy on AI agent transactions:
 
 - ``financial_governance.spend_limit``: Tracks cumulative spend against rolling
-  period budgets and per-transaction caps.
+  period budgets and per-transaction caps.  Uses the :class:`BudgetLimit` /
+  :class:`BudgetWindow` model for expressive, scoped budget definitions.
 - ``financial_governance.transaction_policy``: Static policy checks — allowlists,
   blocklists, amount bounds, and permitted currencies.
 
@@ -14,14 +15,22 @@ Example usage in an agent-control control config::
 
     {
       "condition": {
-        "selector": {"path": "*"},
+        "selector": {"path": "input"},
         "evaluator": {
           "name": "financial_governance.spend_limit",
           "config": {
-            "max_per_transaction": 100.0,
-            "max_per_period": 1000.0,
-            "period_seconds": 86400,
-            "currency": "USDC"
+            "limits": [
+              {
+                "amount": "100.00",
+                "currency": "USDC"
+              },
+              {
+                "amount": "1000.00",
+                "currency": "USDC",
+                "scope_by": ["channel"],
+                "window": {"kind": "rolling", "seconds": 86400}
+              }
+            ]
           }
         }
       },
@@ -30,6 +39,8 @@ Example usage in an agent-control control config::
 """
 
 from agent_control_evaluator_financial_governance.spend_limit import (
+    BudgetLimit,
+    BudgetWindow,
     SpendLimitConfig,
     SpendLimitEvaluator,
 )
@@ -41,6 +52,8 @@ from agent_control_evaluator_financial_governance.transaction_policy import (
 __all__ = [
     "SpendLimitEvaluator",
     "SpendLimitConfig",
+    "BudgetLimit",
+    "BudgetWindow",
     "TransactionPolicyEvaluator",
     "TransactionPolicyConfig",
 ]

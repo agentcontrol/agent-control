@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -27,20 +28,20 @@ def test_config_defaults_are_permissive() -> None:
     cfg = TransactionPolicyConfig()
     assert cfg.allowed_recipients == []
     assert cfg.blocked_recipients == []
-    assert cfg.min_amount == 0.0
-    assert cfg.max_amount == 0.0
+    assert cfg.min_amount == Decimal("0")
+    assert cfg.max_amount == Decimal("0")
     assert cfg.allowed_currencies == []
 
 
 def test_config_max_amount_lt_min_raises() -> None:
     with pytest.raises(ValidationError, match="max_amount"):
-        TransactionPolicyConfig(min_amount=100.0, max_amount=10.0)
+        TransactionPolicyConfig(min_amount=Decimal("100"), max_amount=Decimal("10"))
 
 
 def test_config_max_equals_min_is_valid() -> None:
-    cfg = TransactionPolicyConfig(min_amount=50.0, max_amount=50.0)
-    assert cfg.min_amount == 50.0
-    assert cfg.max_amount == 50.0
+    cfg = TransactionPolicyConfig(min_amount=Decimal("50"), max_amount=Decimal("50"))
+    assert cfg.min_amount == Decimal("50")
+    assert cfg.max_amount == Decimal("50")
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +232,7 @@ async def test_blocked_beats_allowlist() -> None:
 
 @pytest.mark.asyncio
 async def test_amount_below_minimum_is_blocked() -> None:
-    ev = _make_evaluator(min_amount=10.0)
+    ev = _make_evaluator(min_amount=Decimal("10"))
     result = await ev.evaluate(_tx(amount=9.99))
     assert result.matched is True
     assert result.metadata and result.metadata["violation"] == "amount_below_minimum"
@@ -239,14 +240,14 @@ async def test_amount_below_minimum_is_blocked() -> None:
 
 @pytest.mark.asyncio
 async def test_amount_at_minimum_passes() -> None:
-    ev = _make_evaluator(min_amount=10.0)
+    ev = _make_evaluator(min_amount=Decimal("10"))
     result = await ev.evaluate(_tx(amount=10.0))
     assert result.matched is False
 
 
 @pytest.mark.asyncio
 async def test_amount_above_maximum_is_blocked() -> None:
-    ev = _make_evaluator(max_amount=1000.0)
+    ev = _make_evaluator(max_amount=Decimal("1000"))
     result = await ev.evaluate(_tx(amount=1000.01))
     assert result.matched is True
     assert result.metadata and result.metadata["violation"] == "amount_exceeds_maximum"
@@ -254,14 +255,14 @@ async def test_amount_above_maximum_is_blocked() -> None:
 
 @pytest.mark.asyncio
 async def test_amount_at_maximum_passes() -> None:
-    ev = _make_evaluator(max_amount=1000.0)
+    ev = _make_evaluator(max_amount=Decimal("1000"))
     result = await ev.evaluate(_tx(amount=1000.0))
     assert result.matched is False
 
 
 @pytest.mark.asyncio
 async def test_amount_bounds_disabled_at_zero() -> None:
-    ev = _make_evaluator(min_amount=0.0, max_amount=0.0)
+    ev = _make_evaluator(min_amount=Decimal("0"), max_amount=Decimal("0"))
     result = await ev.evaluate(_tx(amount=0.001))
     assert result.matched is False
     result2 = await ev.evaluate(_tx(amount=1_000_000_000.0))
@@ -279,8 +280,8 @@ async def test_full_policy_passes_compliant_transaction() -> None:
         allowed_currencies=["USDC", "USDT"],
         blocked_recipients=["0xDEAD"],
         allowed_recipients=["0xALICE", "0xBOB"],
-        min_amount=1.0,
-        max_amount=5000.0,
+        min_amount=Decimal("1"),
+        max_amount=Decimal("5000"),
     )
     result = await ev.evaluate(_tx(amount=250.0, currency="USDC", recipient="0xALICE"))
     assert result.matched is False

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from agent_control_evaluators import (
@@ -36,9 +37,9 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
     Input ``data`` schema::
 
         {
-          "amount":    float,  # required — transaction amount
-          "currency":  str,    # required — payment currency
-          "recipient": str,    # required — recipient address or identifier
+          "amount":    Decimal | float | str,  # required — transaction amount
+          "currency":  str,                    # required — payment currency
+          "recipient": str,                    # required — recipient address or id
           # optional context fields (logged in result metadata)
           "channel":   str,
           "agent_id":  str,
@@ -51,15 +52,16 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
             TransactionPolicyConfig,
             TransactionPolicyEvaluator,
         )
+        from decimal import Decimal
 
         config = TransactionPolicyConfig(
             allowed_currencies=["USDC", "USDT"],
             blocked_recipients=["0xDEAD..."],
-            max_amount=5000.0,
+            max_amount=Decimal("5000"),
         )
         evaluator = TransactionPolicyEvaluator(config)
         result = await evaluator.evaluate({
-            "amount": 100.0,
+            "amount": "100.00",
             "currency": "USDC",
             "recipient": "0xABC...",
         })
@@ -103,7 +105,8 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
 
         Args:
             data: Transaction dict (when ``selector.path`` is ``"input"``)
-                or full Step dict (when path is ``"*"``).
+                or full Step dict (when path is ``"*"``).  Malformed payload
+                returns ``matched=False, error=None`` — not an evaluator error.
 
         Returns:
             ``EvaluatorResult`` where ``matched=True`` indicates a policy
@@ -128,6 +131,7 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
         data = tx_data
 
         # ---- Extract and validate required fields ----
+        # Malformed input → matched=False, error=None (not an evaluator crash)
         currency_raw = data.get("currency")
         if not currency_raw:
             return EvaluatorResult(
@@ -154,8 +158,8 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
                 message="Transaction data missing required field 'amount'",
             )
         try:
-            amount = float(amount_raw)
-        except (TypeError, ValueError):
+            amount = Decimal(str(amount_raw))
+        except (TypeError, ValueError, InvalidOperation):
             return EvaluatorResult(
                 matched=False,
                 confidence=1.0,
@@ -164,7 +168,7 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
 
         # Build shared metadata for result context
         base_meta: dict[str, Any] = {
-            "amount": amount,
+            "amount": float(amount),
             "currency": currency,
             "recipient": recipient,
         }
@@ -217,7 +221,7 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
                 )
 
         # ---- Check 4: Minimum amount ----
-        if self.config.min_amount > 0.0 and amount < self.config.min_amount:
+        if self.config.min_amount > Decimal("0") and amount < self.config.min_amount:
             return EvaluatorResult(
                 matched=True,
                 confidence=1.0,
@@ -228,12 +232,12 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
                 metadata={
                     **base_meta,
                     "violation": "amount_below_minimum",
-                    "min_amount": self.config.min_amount,
+                    "min_amount": float(self.config.min_amount),
                 },
             )
 
         # ---- Check 5: Maximum amount ----
-        if self.config.max_amount > 0.0 and amount > self.config.max_amount:
+        if self.config.max_amount > Decimal("0") and amount > self.config.max_amount:
             return EvaluatorResult(
                 matched=True,
                 confidence=1.0,
@@ -244,7 +248,7 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
                 metadata={
                     **base_meta,
                     "violation": "amount_exceeds_maximum",
-                    "max_amount": self.config.max_amount,
+                    "max_amount": float(self.config.max_amount),
                 },
             )
 

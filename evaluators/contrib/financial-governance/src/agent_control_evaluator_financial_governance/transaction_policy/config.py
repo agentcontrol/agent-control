@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from pydantic import Field, field_validator, model_validator
@@ -20,10 +21,10 @@ class TransactionPolicyConfig(EvaluatorConfig):
             permitted.  Transactions to any other address are blocked.
         blocked_recipients: Recipients that are explicitly prohibited.  Checked
             before ``allowed_recipients``.
-        min_amount: Minimum transaction amount (inclusive).  ``0.0`` disables
-            the lower bound check.
-        max_amount: Maximum transaction amount (inclusive).  ``0.0`` disables
-            the upper bound check.
+        min_amount: Minimum transaction amount (inclusive).  ``Decimal("0")``
+            disables the lower bound check.
+        max_amount: Maximum transaction amount (inclusive).  ``Decimal("0")``
+            disables the upper bound check.
         allowed_currencies: If non-empty, **only** currencies in this list are
             permitted.
 
@@ -32,8 +33,8 @@ class TransactionPolicyConfig(EvaluatorConfig):
         {
           "allowed_recipients": ["0xABC...", "0xDEF..."],
           "blocked_recipients": ["0xDEAD..."],
-          "min_amount": 0.01,
-          "max_amount": 10000.0,
+          "min_amount": "0.01",
+          "max_amount": "10000.00",
           "allowed_currencies": ["USDC", "USDT"]
         }
     """
@@ -49,15 +50,15 @@ class TransactionPolicyConfig(EvaluatorConfig):
         default_factory=list,
         description="Blocklisted recipient addresses that are always denied.",
     )
-    min_amount: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Minimum transaction amount (inclusive). 0.0 = no minimum.",
+    min_amount: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        description="Minimum transaction amount (inclusive). Decimal('0') = no minimum.",
     )
-    max_amount: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Maximum transaction amount (inclusive). 0.0 = no maximum.",
+    max_amount: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        description="Maximum transaction amount (inclusive). Decimal('0') = no maximum.",
     )
     allowed_currencies: list[str] = Field(
         default_factory=list,
@@ -78,7 +79,11 @@ class TransactionPolicyConfig(EvaluatorConfig):
     @model_validator(mode="after")
     def validate_amount_bounds(self) -> TransactionPolicyConfig:
         """Ensure max_amount >= min_amount when both are non-zero."""
-        if self.max_amount > 0.0 and self.min_amount > 0.0 and self.max_amount < self.min_amount:
+        if (
+            self.max_amount > Decimal("0")
+            and self.min_amount > Decimal("0")
+            and self.max_amount < self.min_amount
+        ):
             raise ValueError(
                 f"max_amount ({self.max_amount}) must be >= min_amount ({self.min_amount})"
             )
