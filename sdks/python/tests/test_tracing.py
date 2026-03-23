@@ -2,6 +2,7 @@
 
 import pytest
 
+from agent_control.telemetry.trace_context import clear_trace_context_provider, set_trace_context_provider
 from agent_control.tracing import (
     _generate_span_id,
     _generate_trace_id,
@@ -15,6 +16,10 @@ from agent_control.tracing import (
     validate_trace_id,
     with_trace,
 )
+
+
+def teardown_function() -> None:
+    clear_trace_context_provider()
 
 
 class TestIdGeneration:
@@ -132,6 +137,30 @@ class TestContextVariables:
         assert trace_id is None or isinstance(trace_id, str)
         assert span_id is None or isinstance(span_id, str)
 
+    def test_get_current_trace_id_uses_provider(self):
+        """Test that get_current_trace_id uses external provider before OTEL fallback."""
+        expected_trace = "a" * 32
+        set_trace_context_provider(
+            lambda: {
+                "trace_id": expected_trace,
+                "span_id": "b" * 16,
+            }
+        )
+
+        assert get_current_trace_id() == expected_trace
+
+    def test_get_current_span_id_uses_provider(self):
+        """Test that get_current_span_id uses external provider before OTEL fallback."""
+        expected_span = "b" * 16
+        set_trace_context_provider(
+            lambda: {
+                "trace_id": "a" * 32,
+                "span_id": expected_span,
+            }
+        )
+
+        assert get_current_span_id() == expected_span
+
 
 class TestWithTraceContextManager:
     """Tests for the with_trace context manager."""
@@ -236,6 +265,23 @@ class TestGetTraceAndSpanIds:
             trace_id, span_id = get_trace_and_span_ids()
             assert trace_id == expected_trace
             assert span_id == expected_span
+
+    def test_get_trace_and_span_ids_uses_provider_before_otel(self):
+        """Test that an external provider is checked before OTEL fallback."""
+        expected_trace = "c" * 32
+        expected_span = "d" * 16
+
+        set_trace_context_provider(
+            lambda: {
+                "trace_id": expected_trace,
+                "span_id": expected_span,
+            }
+        )
+
+        trace_id, span_id = get_trace_and_span_ids()
+
+        assert trace_id == expected_trace
+        assert span_id == expected_span
 
 
 class TestOtelAvailability:

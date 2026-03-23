@@ -107,6 +107,14 @@ from .tracing import (
     is_otel_available,
     with_trace,
 )
+from .telemetry import (
+    clear_control_event_sink,
+    clear_trace_context_provider,
+    emit_control_events,
+    get_trace_context_from_provider,
+    set_control_event_sink,
+    set_trace_context_provider,
+)
 from .validation import ensure_agent_name
 
 # Module logger
@@ -1305,6 +1313,12 @@ __all__ = [
     "get_current_span_id",
     "with_trace",
     "is_otel_available",
+    "set_trace_context_provider",
+    "get_trace_context_from_provider",
+    "clear_trace_context_provider",
+    "set_control_event_sink",
+    "emit_control_events",
+    "clear_control_event_sink",
     # Observability
     "init_observability",
     "add_event",
