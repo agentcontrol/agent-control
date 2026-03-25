@@ -4,6 +4,9 @@ import {
   Divider,
   Grid,
   Group,
+  Paper,
+  SegmentedControl,
+  Stack,
   Text,
   TextInput,
 } from '@mantine/core';
@@ -32,11 +35,18 @@ import {
 } from './control-condition';
 import { ControlDefinitionForm } from './control-definition-form';
 import { EvaluatorConfigSection } from './evaluator-config-section';
-import type { ControlDefinitionFormValues, EditControlMode } from './types';
+import { JsonEditorView } from './json-editor-view';
+import type {
+  ControlDefinitionFormValues,
+  ControlEditorMode,
+  EditControlMode,
+} from './types';
 import { useEvaluatorConfigState } from './use-evaluator-config-state';
 import { applyApiErrorsToForms } from './utils';
 
 const EVALUATOR_CONFIG_HEIGHT = 450;
+const JSON_EDITOR_HEIGHT = 520;
+type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
 
 export type EditControlContentProps = {
   /** The control to edit/create template */
@@ -49,6 +59,8 @@ export type EditControlContentProps = {
   onClose: () => void;
   /** Callback when save succeeds */
   onSuccess?: () => void;
+  /** Initial editor mode */
+  initialEditorMode?: ControlEditorMode;
 };
 
 export const EditControlContent = ({
@@ -57,14 +69,28 @@ export const EditControlContent = ({
   mode = 'edit',
   onClose,
   onSuccess,
+  initialEditorMode = 'form',
 }: EditControlContentProps) => {
   const { data: agentResponse } = useAgent(agentId);
   const steps = agentResponse?.steps ?? [];
 
+  const [workingDefinition, setWorkingDefinition] = useState<ControlDefinition>(
+    control.control
+  );
+  const [editorMode, setEditorMode] =
+    useState<ControlEditorMode>(initialEditorMode);
   const [apiError, setApiError] = useState<ProblemDetail | null>(null);
   const [unmappedErrors, setUnmappedErrors] = useState<
     Array<{ field: string | null; message: string }>
   >([]);
+  const [definitionJsonText, setDefinitionJsonText] = useState('');
+  const [definitionJsonError, setDefinitionJsonError] = useState<string | null>(
+    null
+  );
+  const [definitionValidationError, setDefinitionValidationError] =
+    useState<ProblemDetail | null>(null);
+  const [definitionValidationStatus, setDefinitionValidationStatus] =
+    useState<ValidationStatus>('idle');
 
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
@@ -76,16 +102,11 @@ export const EditControlContent = ({
     : updateControl.isPending || updateControlMetadata.isPending;
 
   const formInitializedForEvaluator = useRef<string>('');
-  const {
-    leafCondition,
-    evaluatorId,
-    evaluator,
-    canEditLeafCondition,
-    conditionEditingMessage,
-  } = useMemo(
-    () => getControlConditionState(control.control),
-    [control.control]
-  );
+  const { leafCondition, evaluatorId, evaluator, canEditLeafCondition } =
+    useMemo(
+      () => getControlConditionState(workingDefinition),
+      [workingDefinition]
+    );
 
   const definitionForm = useForm<ControlDefinitionFormValues>({
     initialValues: {
@@ -105,7 +126,7 @@ export const EditControlContent = ({
     validate: {
       name: (value) => (!value?.trim() ? 'Control name is required' : null),
       selector_path: (value) => {
-        if (!canEditLeafCondition) {
+        if (editorMode === 'json' || !canEditLeafCondition) {
           return null;
         }
         if (!value?.trim()) {
@@ -148,25 +169,25 @@ export const EditControlContent = ({
     [evaluator, evaluatorForm]
   );
 
-  const buildCondition = useCallback(
+  const buildLeafCondition = useCallback(
     (
       values: ControlDefinitionFormValues,
       finalConfig: Record<string, unknown>
     ): ControlDefinition['condition'] => {
       return buildEditableCondition(
-        control.control,
+        workingDefinition,
         leafCondition,
         values.selector_path.trim(),
         finalConfig
       );
     },
-    [control.control, leafCondition]
+    [leafCondition, workingDefinition]
   );
 
   const buildControlDefinition = useCallback(
     (
       values: ControlDefinitionFormValues,
-      finalConfig: Record<string, unknown>
+      condition: ControlDefinition['condition']
     ): ControlDefinition => {
       const stepTypes = values.step_types
         .map((value) => value.trim())
@@ -189,7 +210,7 @@ export const EditControlContent = ({
         enabled: values.enabled,
         execution: values.execution,
         scope: Object.keys(scope).length > 0 ? scope : undefined,
-        condition: buildCondition(values, finalConfig),
+        condition,
         action: {
           decision: values.action_decision,
           ...(values.action_decision === 'steer' &&
@@ -201,18 +222,10 @@ export const EditControlContent = ({
               }
             : {}),
         },
-        tags: control.control.tags,
+        tags: workingDefinition.tags,
       };
     },
-    [buildCondition, control.control.tags]
-  );
-
-  const buildDefinitionForValidation = useCallback(
-    (finalConfig: Record<string, unknown>): ControlDefinition => ({
-      ...control.control,
-      condition: buildCondition(definitionForm.values, finalConfig),
-    }),
-    [buildCondition, control.control, definitionForm.values]
+    [workingDefinition.tags]
   );
 
   const validateEvaluatorConfig = useCallback(
@@ -220,12 +233,18 @@ export const EditControlContent = ({
       config: Record<string, unknown>,
       options?: { signal?: AbortSignal }
     ) => {
+      const condition = buildLeafCondition(definitionForm.values, config);
       await validateControlDataAsync({
-        definition: buildDefinitionForValidation(config),
+        definition: buildControlDefinition(definitionForm.values, condition),
         signal: options?.signal,
       });
     },
-    [buildDefinitionForValidation, validateControlDataAsync]
+    [
+      buildControlDefinition,
+      buildLeafCondition,
+      definitionForm.values,
+      validateControlDataAsync,
+    ]
   );
 
   const evaluatorConfig = useEvaluatorConfigState({
@@ -236,6 +255,133 @@ export const EditControlContent = ({
 
   const { reset } = evaluatorConfig;
 
+  const getDefinitionFromFormState =
+    useCallback((): ControlDefinition | null => {
+      let condition: ControlDefinition['condition'];
+
+      if (canEditLeafCondition) {
+        let finalConfig: Record<string, unknown> =
+          leafCondition?.evaluatorConfig ?? {};
+
+        if (evaluatorConfig.configViewMode === 'json') {
+          const jsonConfig = evaluatorConfig.getJsonConfig();
+          if (!jsonConfig) return null;
+          finalConfig = jsonConfig;
+        } else {
+          finalConfig = getEvaluatorConfig();
+        }
+
+        condition = buildLeafCondition(definitionForm.values, finalConfig);
+      } else {
+        condition = workingDefinition.condition;
+      }
+
+      return buildControlDefinition(definitionForm.values, condition);
+    }, [
+      buildControlDefinition,
+      buildLeafCondition,
+      canEditLeafCondition,
+      definitionForm.values,
+      evaluatorConfig,
+      getEvaluatorConfig,
+      leafCondition?.evaluatorConfig,
+      workingDefinition.condition,
+    ]);
+
+  const handleDefinitionJsonChange = useCallback((value: string) => {
+    setDefinitionJsonText(value);
+    setDefinitionJsonError(null);
+    setDefinitionValidationError(null);
+  }, []);
+
+  const getJsonDefinition = useCallback((): ControlDefinition | null => {
+    if (!definitionJsonText.trim()) {
+      setDefinitionJsonError(
+        'Control JSON is required. Please add a control definition.'
+      );
+      setDefinitionValidationError(null);
+      return null;
+    }
+
+    try {
+      setDefinitionJsonError(null);
+      return JSON.parse(definitionJsonText) as ControlDefinition;
+    } catch {
+      setDefinitionJsonError('Invalid JSON. Please fix before saving.');
+      setDefinitionValidationError(null);
+      return null;
+    }
+  }, [definitionJsonText]);
+
+  const validateDefinitionJson = useCallback(
+    async (
+      definition: Record<string, unknown>,
+      options?: { signal?: AbortSignal }
+    ) => {
+      await validateControlDataAsync({
+        definition: definition as ControlDefinition,
+        signal: options?.signal,
+      });
+    },
+    [validateControlDataAsync]
+  );
+
+  const handleEditorModeChange = useCallback(
+    async (value: string) => {
+      const nextMode = value as ControlEditorMode;
+
+      if (nextMode === editorMode) {
+        return;
+      }
+
+      if (nextMode === 'json') {
+        const definition = getDefinitionFromFormState();
+        if (!definition) {
+          return;
+        }
+
+        setDefinitionJsonText(JSON.stringify(definition, null, 2));
+        setDefinitionJsonError(null);
+        setDefinitionValidationError(null);
+        setDefinitionValidationStatus('idle');
+        setEditorMode('json');
+        return;
+      }
+
+      const parsedDefinition = getJsonDefinition();
+      if (!parsedDefinition) {
+        return;
+      }
+
+      try {
+        await validateControlDataAsync({ definition: parsedDefinition });
+      } catch (error) {
+        if (isApiError(error)) {
+          setDefinitionValidationError(error.problemDetail);
+          setDefinitionJsonError(null);
+          setDefinitionValidationStatus('invalid');
+        } else {
+          setDefinitionJsonError('Validation failed.');
+          setDefinitionValidationError(null);
+          setDefinitionValidationStatus('invalid');
+        }
+        return;
+      }
+
+      setWorkingDefinition(parsedDefinition);
+      setDefinitionJsonError(null);
+      setDefinitionValidationError(null);
+      setDefinitionValidationStatus('idle');
+      setEditorMode('form');
+    },
+    [
+      editorMode,
+      getDefinitionFromFormState,
+      getJsonDefinition,
+      validateControlDataAsync,
+    ]
+  );
+
   useEffect(() => {
     if (definitionForm.values.action_decision !== 'steer') {
       definitionForm.setFieldValue('action_steering_context', '');
@@ -244,34 +390,47 @@ export const EditControlContent = ({
   }, [definitionForm.values.action_decision]);
 
   useEffect(() => {
+    setWorkingDefinition(control.control);
+    setEditorMode(initialEditorMode);
+    setDefinitionJsonText(
+      initialEditorMode === 'json'
+        ? JSON.stringify(control.control, null, 2)
+        : ''
+    );
+    setDefinitionJsonError(null);
+    setDefinitionValidationError(null);
+    setDefinitionValidationStatus('idle');
+  }, [control.control, initialEditorMode]);
+
+  useEffect(() => {
     reset();
     setApiError(null);
     setUnmappedErrors([]);
     formInitializedForEvaluator.current = '';
-  }, [reset, evaluatorId, control.id]);
+  }, [reset, evaluatorId, control.id, workingDefinition]);
 
   useEffect(() => {
-    const scope = control.control.scope ?? {};
+    const scope = workingDefinition.scope ?? {};
     const stepNamesValue = (scope.step_names ?? []).join(', ');
     const stepRegexValue = scope.step_name_regex ?? '';
     const stepNameMode = stepRegexValue && !stepNamesValue ? 'regex' : 'names';
 
     definitionForm.setValues({
       name: control.name,
-      description: control.control.description ?? '',
-      enabled: control.control.enabled,
+      description: workingDefinition.description ?? '',
+      enabled: workingDefinition.enabled,
       step_types: scope.step_types ?? [],
       stages: scope.stages ?? [],
       step_names: stepNamesValue,
       step_name_regex: stepRegexValue,
       step_name_mode: stepNameMode,
       selector_path: leafCondition?.selectorPath ?? '*',
-      action_decision: control.control.action.decision,
+      action_decision: workingDefinition.action.decision,
       action_steering_context:
-        control.control.action.decision === 'steer'
-          ? (control.control.action.steering_context?.message ?? '')
+        workingDefinition.action.decision === 'steer'
+          ? (workingDefinition.action.steering_context?.message ?? '')
           : '',
-      execution: control.control.execution ?? 'server',
+      execution: workingDefinition.execution ?? 'server',
     });
 
     if (leafCondition && evaluator) {
@@ -281,7 +440,7 @@ export const EditControlContent = ({
       formInitializedForEvaluator.current = evaluatorId;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [control, evaluator, evaluatorId, leafCondition]);
+  }, [control.name, evaluator, evaluatorId, leafCondition, workingDefinition]);
 
   const handleSubmit = async (values: ControlDefinitionFormValues) => {
     setApiError(null);
@@ -290,6 +449,7 @@ export const EditControlContent = ({
     evaluatorForm.clearErrors();
 
     if (
+      editorMode === 'form' &&
       values.action_decision === 'steer' &&
       !leafCondition &&
       !values.action_steering_context?.trim()
@@ -301,25 +461,30 @@ export const EditControlContent = ({
       return;
     }
 
-    let finalConfig: Record<string, unknown> =
-      leafCondition?.evaluatorConfig ?? {};
+    let definition: ControlDefinition | null = null;
 
-    if (canEditLeafCondition) {
-      if (evaluatorConfig.configViewMode === 'json') {
-        const jsonConfig = evaluatorConfig.getJsonConfig();
-        if (!jsonConfig) return;
-        finalConfig = jsonConfig;
-      } else {
+    if (editorMode === 'json') {
+      definition = getJsonDefinition();
+      if (!definition) {
+        return;
+      }
+    } else {
+      if (canEditLeafCondition && evaluatorConfig.configViewMode === 'form') {
         const validation = evaluatorForm.validate();
         if (validation.hasErrors) return;
-        finalConfig = getEvaluatorConfig();
+      }
+
+      definition = getDefinitionFromFormState();
+      if (!definition) {
+        return;
       }
     }
 
-    const definition = buildControlDefinition(values, finalConfig);
-
     const runSave = async () => {
       try {
+        if (!definition) {
+          return;
+        }
         await validateControlDataAsync({ definition });
 
         if (isCreating) {
@@ -431,7 +596,14 @@ export const EditControlContent = ({
           setApiError(problemDetail);
 
           if (problemDetail.errors) {
-            if (evaluatorConfig.configViewMode === 'form') {
+            if (editorMode === 'json') {
+              setUnmappedErrors(
+                problemDetail.errors.map((e) => ({
+                  field: e.field,
+                  message: e.message,
+                }))
+              );
+            } else if (evaluatorConfig.configViewMode === 'form') {
               const unmapped = applyApiErrorsToForms(
                 problemDetail.errors,
                 definitionForm,
@@ -482,60 +654,124 @@ export const EditControlContent = ({
   };
 
   const formComponent = evaluator?.FormComponent;
+  const definitionStatusLabel = (() => {
+    if (editorMode !== 'json') return null;
+    if (definitionValidationStatus === 'validating')
+      return 'JSON validating...';
+    if (definitionValidationStatus === 'valid') return 'JSON valid';
+    if (definitionValidationStatus === 'invalid') return 'JSON invalid';
+    return null;
+  })();
+  const definitionStatusColor =
+    definitionValidationStatus === 'valid'
+      ? 'green'
+      : definitionValidationStatus === 'invalid'
+        ? 'red'
+        : 'dimmed';
+  const isDefinitionJsonInvalid =
+    editorMode === 'json' &&
+    (definitionJsonError !== null || definitionValidationError !== null);
 
   return (
     <Box>
       <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
-        <Grid gutter="xl" mb="lg">
-          <Grid.Col span={6}>
-            <TextInput
-              label="Control name"
-              placeholder="Enter control name"
-              size="sm"
-              required
-              {...definitionForm.getInputProps('name')}
-            />
-          </Grid.Col>
-          <Grid.Col span={6}>
+        <Stack gap="md" mb="lg">
+          <Group justify="space-between" align="flex-end" wrap="nowrap">
+            <Box
+              style={{
+                flex: 1,
+                maxWidth: editorMode === 'json' ? 420 : undefined,
+              }}
+            >
+              <TextInput
+                label="Control name"
+                placeholder="Enter control name"
+                size="sm"
+                required
+                {...definitionForm.getInputProps('name')}
+              />
+            </Box>
+            <Group gap="xs" align="center">
+              {definitionStatusLabel ? (
+                <Text size="xs" c={definitionStatusColor}>
+                  {definitionStatusLabel}
+                </Text>
+              ) : null}
+              <SegmentedControl
+                value={editorMode}
+                onChange={handleEditorModeChange}
+                disabled={isDefinitionJsonInvalid}
+                data={[
+                  { value: 'form', label: 'Form' },
+                  { value: 'json', label: 'Full JSON' },
+                ]}
+                size="xs"
+              />
+            </Group>
+          </Group>
+
+          {editorMode === 'json' ? (
+            <Text size="sm" c="dimmed">
+              Edit the full control definition below. Control name stays
+              separate.
+            </Text>
+          ) : (
             <TextInput
               label="Description"
               placeholder="Optional description of what this control does"
               size="sm"
               {...definitionForm.getInputProps('description')}
             />
-          </Grid.Col>
-        </Grid>
+          )}
+        </Stack>
 
-        <Grid gutter="xl">
-          <Grid.Col span={4}>
-            <ControlDefinitionForm
-              form={definitionForm}
-              steps={steps}
-              disableSelectorPath={!canEditLeafCondition}
+        {editorMode === 'json' ? (
+          <Paper withBorder radius="sm" p={16}>
+            <JsonEditorView
+              jsonText={definitionJsonText}
+              handleJsonChange={handleDefinitionJsonChange}
+              jsonError={definitionJsonError}
+              setJsonError={setDefinitionJsonError}
+              validationError={definitionValidationError}
+              setValidationError={setDefinitionValidationError}
+              onValidateConfig={validateDefinitionJson}
+              onValidationStatusChange={setDefinitionValidationStatus}
+              height={JSON_EDITOR_HEIGHT}
+              label="Control definition (JSON)"
+              tooltip="Edit the raw control definition as JSON. Control name remains outside this editor."
+              helperText="Enter the raw control definition only. Do not wrap it in data, name, id, or control objects."
+              testId="control-json-textarea"
             />
-          </Grid.Col>
-
-          <Grid.Col span={8}>
-            {canEditLeafCondition ? (
-              <EvaluatorConfigSection
-                config={evaluatorConfig}
-                evaluatorForm={evaluatorForm}
-                formComponent={formComponent}
-                height={EVALUATOR_CONFIG_HEIGHT}
-                onConfigChange={syncJsonToForm}
-                onValidateConfig={validateEvaluatorConfig}
+          </Paper>
+        ) : (
+          <Grid gutter="xl">
+            <Grid.Col span={4}>
+              <ControlDefinitionForm
+                form={definitionForm}
+                steps={steps}
+                disableSelectorPath={!canEditLeafCondition}
               />
-            ) : (
-              <Alert
-                color="blue"
-                variant="light"
-                title="Condition editing unavailable"
-              >
-                {conditionEditingMessage}
-              </Alert>
-            )}
-          </Grid.Col>
-        </Grid>
+            </Grid.Col>
+
+            <Grid.Col span={8}>
+              {canEditLeafCondition ? (
+                <EvaluatorConfigSection
+                  config={evaluatorConfig}
+                  evaluatorForm={evaluatorForm}
+                  formComponent={formComponent}
+                  height={EVALUATOR_CONFIG_HEIGHT}
+                  onConfigChange={syncJsonToForm}
+                  onValidateConfig={validateEvaluatorConfig}
+                />
+              ) : (
+                <Alert color="blue" variant="light" title="Composite condition">
+                  This control uses a composite boolean condition tree. Switch
+                  to Full JSON mode to edit the condition.
+                </Alert>
+              )}
+            </Grid.Col>
+          </Grid>
+        )}
 
         {apiError ? (
           <>

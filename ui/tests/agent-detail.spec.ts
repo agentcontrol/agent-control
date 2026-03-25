@@ -624,6 +624,145 @@ test.describe('Agent Detail Page', () => {
     ).not.toBeVisible();
   });
 
+  test('controls can be edited through the full JSON editor', async ({
+    mockedPage,
+  }) => {
+    const compositeControl: Control = {
+      id: 77,
+      name: 'Risk Escalation Guard',
+      control: {
+        description: 'Escalates high-risk interactions',
+        enabled: true,
+        execution: 'server',
+        scope: { step_types: ['llm'], stages: ['post'] },
+        condition: {
+          and: [
+            {
+              selector: { path: 'context.risk_level' },
+              evaluator: {
+                name: 'list',
+                config: {
+                  values: ['high', 'critical'],
+                  logic: 'any',
+                  match_on: 'match',
+                },
+              },
+            },
+            {
+              not: {
+                selector: { path: 'context.user_role' },
+                evaluator: {
+                  name: 'list',
+                  config: {
+                    values: ['admin'],
+                    logic: 'any',
+                    match_on: 'match',
+                  },
+                },
+              },
+            },
+          ],
+        },
+        action: { decision: 'deny' },
+        tags: ['risk'],
+      },
+    };
+    const compositeControls: AgentControlsResponse = {
+      controls: [compositeControl],
+    };
+    const updatedCondition = {
+      or: [
+        {
+          selector: { path: 'context.risk_level' },
+          evaluator: {
+            name: 'list',
+            config: {
+              values: ['critical'],
+              logic: 'any',
+              match_on: 'match',
+            },
+          },
+        },
+        {
+          selector: { path: 'output' },
+          evaluator: {
+            name: 'regex',
+            config: { pattern: 'urgent' },
+          },
+        },
+      ],
+    };
+
+    let updateRequestBody: Record<string, unknown> | null = null;
+
+    await mockRoutes.agent(mockedPage, {
+      controls: { data: compositeControls },
+    });
+    await mockedPage.route(
+      '**/api/v1/controls/77/data',
+      async (route, request) => {
+        if (request.method() === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ data: compositeControl.control }),
+          });
+          return;
+        }
+
+        if (request.method() === 'PUT') {
+          updateRequestBody = (await request.postDataJSON()) as Record<
+            string,
+            unknown
+          >;
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true }),
+          });
+          return;
+        }
+
+        await route.continue();
+      }
+    );
+
+    await mockedPage.goto(
+      getAgentControlsUrl({ modal: 'edit', controlId: 77 })
+    );
+
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+    await modal.getByText('Full JSON', { exact: true }).click();
+    await expect(modal.getByTestId('control-json-textarea')).toBeVisible();
+
+    await modal.getByTestId('control-json-textarea').fill(
+      JSON.stringify(
+        {
+          ...compositeControl.control,
+          description: 'Updated in full JSON mode',
+          condition: updatedCondition,
+        },
+        null,
+        2
+      )
+    );
+
+    await modal.getByRole('button', { name: /Save/i }).click();
+    await mockedPage.getByRole('button', { name: /Confirm/i }).click({
+      force: true,
+    });
+
+    await expect.poll(() => updateRequestBody).not.toBeNull();
+
+    expect(updateRequestBody).toMatchObject({
+      data: {
+        description: 'Updated in full JSON mode',
+        condition: updatedCondition,
+      },
+    });
+  });
+
   test('disables Form switch when JSON is invalid', async ({ mockedPage }) => {
     await mockedPage.goto(agentUrl);
 
@@ -657,7 +796,9 @@ test.describe('Agent Detail Page', () => {
     await jsonInput.fill('{');
 
     // Form option should be disabled when JSON is invalid (validation is debounced ~500ms)
-    await expect(modal.getByRole('radio', { name: 'Form' })).toBeDisabled({
+    await expect(
+      modal.getByRole('radio', { name: 'Form' }).last()
+    ).toBeDisabled({
       timeout: 2000,
     });
   });

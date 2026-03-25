@@ -513,6 +513,100 @@ test.describe('Modal Routing', () => {
     await expect(createModal).toBeVisible();
   });
 
+  test('can create a control from full JSON', async ({ mockedPage }) => {
+    const addNewModal = await openAddNewControlModal(mockedPage);
+    await addNewModal.getByTestId('from-json-button').click();
+
+    await expect(mockedPage).toHaveURL(
+      getAgentControlsUrl({
+        modal: 'control-store',
+        submodal: 'create',
+      })
+    );
+
+    const createModal = mockedPage.getByRole('dialog', {
+      name: 'Create Control',
+    });
+    await expect(createModal).toBeVisible();
+    await expect(
+      createModal.getByTestId('control-json-textarea')
+    ).toBeVisible();
+
+    let createRequestBody: Record<string, unknown> | null = null;
+
+    await mockedPage.route('**/api/v1/controls', async (route, request) => {
+      if (request.method() === 'PUT') {
+        createRequestBody = (await request.postDataJSON()) as Record<
+          string,
+          unknown
+        >;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ control_id: 100 }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await mockedPage.route(
+      '**/api/v1/agents/*/controls/*',
+      async (route, request) => {
+        if (request.method() === 'POST') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true }),
+          });
+        } else {
+          await route.continue();
+        }
+      }
+    );
+
+    const jsonDefinition = {
+      description: 'Created from JSON',
+      enabled: true,
+      execution: 'server',
+      scope: { step_types: ['tool'], stages: ['pre'] },
+      condition: {
+        selector: { path: 'input.query' },
+        evaluator: {
+          name: 'sql',
+          config: { mode: 'strict' },
+        },
+      },
+      action: { decision: 'deny' },
+      tags: ['json'],
+    };
+
+    await createModal
+      .getByPlaceholder('Enter control name')
+      .fill('json-created-control');
+    await createModal
+      .getByTestId('control-json-textarea')
+      .fill(JSON.stringify(jsonDefinition, null, 2));
+
+    await createModal.getByRole('button', { name: /Save|Create/i }).click();
+
+    const confirmButton = mockedPage.locator("button:has-text('Confirm')");
+    await expect(confirmButton).toBeVisible({ timeout: 5000 });
+
+    const responsePromise = mockedPage.waitForResponse(
+      '**/api/v1/agents/*/controls/*',
+      { timeout: 10000 }
+    );
+    await confirmButton.click();
+    await responsePromise;
+
+    await expect.poll(() => createRequestBody).not.toBeNull();
+    expect(createRequestBody).toMatchObject({
+      name: 'json-created-control',
+      data: jsonDefinition,
+    });
+  });
+
   test('closes all modals when control is successfully created', async ({
     mockedPage,
   }) => {

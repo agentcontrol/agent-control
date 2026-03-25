@@ -51,6 +51,33 @@ function getDefaultConfigForEvaluator(
   return DEFAULT_EVALUATOR_CONFIGS[evaluatorId] ?? {};
 }
 
+function buildJsonDraftControl(agentName: string) {
+  return {
+    id: 0,
+    name: `json-control-for-${sanitizeControlNamePart(agentName)}`,
+    control: {
+      description: '',
+      enabled: true,
+      execution: 'server' as const,
+      scope: {
+        step_types: ['llm'],
+        stages: ['post'] as ('post' | 'pre')[],
+      },
+      condition: {
+        selector: {
+          path: '*',
+        },
+        evaluator: {
+          name: 'regex',
+          config: getDefaultConfigForEvaluator('regex'),
+        },
+      },
+      action: { decision: 'deny' as const },
+      tags: [],
+    },
+  };
+}
+
 type AddNewControlModalProps = {
   opened: boolean;
   onClose: () => void;
@@ -90,6 +117,12 @@ export function AddNewControlModal({
     });
   };
 
+  const handleFromJsonClick = () => {
+    openModal(MODAL_NAMES.CONTROL_STORE, {
+      submodal: SUBMODAL_NAMES.CREATE,
+    });
+  };
+
   const handleEditModalClose = () => {
     closeSubmodal();
   };
@@ -110,31 +143,34 @@ export function AddNewControlModal({
   }, [evaluatorsData]);
 
   const draftControl = useMemo(() => {
-    if (!selectedEvaluator) return null;
-    const name = `${sanitizeControlNamePart(selectedEvaluator.name)}-control-for-${sanitizeControlNamePart(agentName)}`;
-    return {
-      id: 0,
-      name,
-      control: {
-        description: selectedEvaluator.description,
-        enabled: true,
-        execution: 'server' as const,
-        scope: {
-          step_types: ['llm'],
-          stages: ['post'] as ('post' | 'pre')[],
-        },
-        condition: {
-          selector: {
-            path: '*',
+    if (selectedEvaluator) {
+      const name = `${sanitizeControlNamePart(selectedEvaluator.name)}-control-for-${sanitizeControlNamePart(agentName)}`;
+      return {
+        id: 0,
+        name,
+        control: {
+          description: selectedEvaluator.description,
+          enabled: true,
+          execution: 'server' as const,
+          scope: {
+            step_types: ['llm'],
+            stages: ['post'] as ('post' | 'pre')[],
           },
-          evaluator: {
-            name: selectedEvaluator.id,
-            config: getDefaultConfigForEvaluator(selectedEvaluator.id),
+          condition: {
+            selector: {
+              path: '*',
+            },
+            evaluator: {
+              name: selectedEvaluator.id,
+              config: getDefaultConfigForEvaluator(selectedEvaluator.id),
+            },
           },
+          action: { decision: 'deny' as const },
         },
-        action: { decision: 'deny' as const },
-      },
-    };
+      };
+    }
+
+    return buildJsonDraftControl(agentName);
   }, [selectedEvaluator, agentName]);
 
   const columns: ColumnDef<EvaluatorInfo & { id: string }>[] = [
@@ -219,7 +255,7 @@ export function AddNewControlModal({
             </Button>
           </Group>
           <Text size="sm" c="dimmed">
-            Select an evaluator to create a new control
+            Select an evaluator to create a new control or start from JSON
           </Text>
         </Box>
         <Divider />
@@ -240,20 +276,30 @@ export function AddNewControlModal({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-              <Text size="sm" c="dimmed">
-                Learn here on how to add new type of evaluator.{' '}
-                <Text
-                  component="a"
-                  href="https://github.com/agentcontrol/agent-control/blob/main/README.md"
-                  c="blue"
+              <Group gap="md" wrap="nowrap">
+                <Button
+                  variant="outline"
                   size="sm"
-                  td="none"
-                  target="_blank"
-                  rel="noreferrer"
+                  data-testid="from-json-button"
+                  onClick={handleFromJsonClick}
                 >
-                  Docs ↗
+                  From JSON
+                </Button>
+                <Text size="sm" c="dimmed">
+                  Learn here on how to add new type of evaluator.{' '}
+                  <Text
+                    component="a"
+                    href="https://github.com/agentcontrol/agent-control/blob/main/README.md"
+                    c="blue"
+                    size="sm"
+                    td="none"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Docs ↗
+                  </Text>
                 </Text>
-              </Text>
+              </Group>
             </Group>
 
             {/* Table or Empty State */}
@@ -307,6 +353,7 @@ export function AddNewControlModal({
               control={draftControl}
               agentId={agentId}
               mode="create"
+              initialEditorMode={selectedEvaluator ? 'form' : 'json'}
               onClose={handleEditModalClose}
               onSuccess={handleEditModalSuccess}
             />

@@ -2,9 +2,6 @@ import type { ControlDefinition } from '@/core/api/types';
 import type { AnyEvaluatorDefinition } from '@/core/evaluators';
 import { getEvaluator } from '@/core/evaluators';
 
-const COMPOSITE_CONDITION_EDITING_MESSAGE =
-  'This control uses a composite condition tree. This PR keeps the old single-condition UI, so saving will preserve the existing tree without editing it.';
-
 export type LeafConditionDetails = {
   selectorPath: string;
   evaluatorName: string;
@@ -16,7 +13,6 @@ export type ControlConditionState = {
   evaluatorId: string;
   evaluator: AnyEvaluatorDefinition | undefined;
   canEditLeafCondition: boolean;
-  conditionEditingMessage: string | null;
 };
 
 function getLeafConditionDetails(
@@ -46,9 +42,6 @@ export function getControlConditionState(
     evaluatorId,
     evaluator,
     canEditLeafCondition: Boolean(leafCondition),
-    conditionEditingMessage: leafCondition
-      ? null
-      : COMPOSITE_CONDITION_EDITING_MESSAGE,
   };
 }
 

@@ -1,4 +1,4 @@
-import { Box, Textarea } from '@mantine/core';
+import { Box, Text, Textarea } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useEffect, useRef } from 'react';
 
@@ -9,12 +9,15 @@ import {
 } from '@/core/components/label-with-tooltip';
 
 import { ApiErrorAlert } from './api-error-alert';
-import type { EvaluatorJsonViewProps } from './types';
+import type { JsonEditorViewProps } from './types';
 
 const DEFAULT_HEIGHT = 400;
 const DEFAULT_VALIDATE_DEBOUNCE_MS = 500;
+const DEFAULT_LABEL = 'Configuration (JSON)';
+const DEFAULT_TOOLTIP = 'Raw JSON configuration';
+const DEFAULT_TEST_ID = 'raw-json-textarea';
 
-export const EvaluatorJsonView = ({
+export const JsonEditorView = ({
   jsonText,
   handleJsonChange,
   jsonError,
@@ -25,7 +28,11 @@ export const EvaluatorJsonView = ({
   onValidationStatusChange,
   validateDebounceMs = DEFAULT_VALIDATE_DEBOUNCE_MS,
   height = DEFAULT_HEIGHT,
-}: EvaluatorJsonViewProps) => {
+  label = DEFAULT_LABEL,
+  tooltip = DEFAULT_TOOLTIP,
+  helperText,
+  testId = DEFAULT_TEST_ID,
+}: JsonEditorViewProps) => {
   const [debouncedJsonText] = useDebouncedValue(jsonText, validateDebounceMs);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -40,7 +47,7 @@ export const EvaluatorJsonView = ({
 
     let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(debouncedJsonText);
+      parsed = JSON.parse(debouncedJsonText) as Record<string, unknown>;
     } catch {
       setJsonError?.('Invalid JSON');
       setValidationError?.(null);
@@ -74,21 +81,16 @@ export const EvaluatorJsonView = ({
     return () => controller.abort();
   }, [
     debouncedJsonText,
-    setJsonError,
     onValidateConfig,
-    setValidationError,
     onValidationStatusChange,
+    setJsonError,
+    setValidationError,
   ]);
 
   return (
     <Box>
       <Textarea
-        label={
-          <LabelWithTooltip
-            label="Configuration (JSON)"
-            tooltip="Raw evaluator configuration in JSON format"
-          />
-        }
+        label={<LabelWithTooltip label={label} tooltip={tooltip} />}
         labelProps={labelPropsInline}
         value={jsonText}
         onChange={(e) => handleJsonChange(e.currentTarget.value)}
@@ -101,8 +103,13 @@ export const EvaluatorJsonView = ({
           },
         }}
         error={jsonError}
-        data-testid="raw-json-textarea"
+        data-testid={testId}
       />
+      {helperText ? (
+        <Text size="xs" c="dimmed" mt="xs">
+          {helperText}
+        </Text>
+      ) : null}
       {validationError ? (
         <Box mt="sm">
           <ApiErrorAlert error={validationError} unmappedErrors={[]} />
