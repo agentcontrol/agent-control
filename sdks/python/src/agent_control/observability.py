@@ -471,9 +471,6 @@ class EventBatcher:
             events_to_send = self._events[:self.batch_size]
             self._events = self._events[self.batch_size:]
 
-        if not events_to_send:
-            return True
-
         success = self._send_batch_sync(events_to_send, deadline=deadline)
 
         if success:
@@ -524,8 +521,9 @@ class EventBatcher:
                 break
 
         # The worker thread normally closes the async client. If shutdown races or
-        # interpreter teardown prevented that path from completing, drop the reference
-        # so the SDK does not retain a half-closed async client after shutdown.
+        # interpreter teardown prevented that path from completing, we intentionally
+        # do not try to aclose() here because this fallback may be running after
+        # asyncio teardown. Drop the reference so shutdown can finish deterministically.
         self._client = None
 
     def stop(self) -> None:
@@ -621,9 +619,6 @@ class EventBatcher:
                 return True
             events_to_send = self._events[:self.batch_size]
             self._events = self._events[self.batch_size:]
-
-        if not events_to_send:
-            return True
 
         success = await self._send_batch(events_to_send)
 

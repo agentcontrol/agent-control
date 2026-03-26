@@ -207,12 +207,12 @@ class TestEventBatcherWorkerThread:
     def test_shutdown_flushes_when_worker_not_running(self):
         """Test that shutdown() still flushes when the worker thread is not running."""
         batcher = EventBatcher(batch_size=100, flush_interval=60.0)
-        batcher._send_batch = AsyncMock(return_value=True)
 
         for _ in range(5):
             batcher.add_event(create_mock_event())
 
-        batcher.shutdown()
+        with patch.object(batcher, "_send_batch_sync", return_value=True):
+            batcher.shutdown()
 
         assert batcher._events_sent == 5
         assert len(batcher._events) == 0
@@ -234,6 +234,7 @@ class TestEventBatcherWorkerThread:
         send_batch_sync.assert_called_once()
         assert batcher._events_sent == 5
         assert len(batcher._events) == 0
+        # The sync fallback only promises to drop the stale AsyncClient reference.
         assert batcher._client is None
 
     def test_shutdown_drains_inflight_flush_without_data_loss(self):
