@@ -156,6 +156,7 @@ async def evaluate(
     db: AsyncSession = Depends(get_async_db),
     x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
     x_span_id: str | None = Header(default=None, alias="X-Span-Id"),
+    x_merge_events: str | None = Header(default=None, alias="X-Agent-Control-Merge-Events"),
 ) -> EvaluationResponse:
     """Analyze content for safety and control violations.
 
@@ -238,30 +239,35 @@ async def evaluate(
     # Calculate total execution time
     total_duration_ms = (time.perf_counter() - start_time) * 1000
 
-    # Emit observability events if enabled
-    if observability_settings.enabled:
+    merge_events_requested = (x_merge_events or "").lower() == "true"
+    response_events = _build_observability_events(
+        response=raw_response,
+        request=request,
+        trace_id=trace_id,
+        span_id=span_id,
+        agent_name=agent_name,
+        applies_to=applies_to,
+        control_lookup=control_lookup,
+        total_duration_ms=total_duration_ms,
+    )
+
+    # OSS keeps server-side ingestion as the default. Enterprise merged mode
+    # returns events to the SDK and skips this server-side delivery step.
+    if observability_settings.enabled and not merge_events_requested:
         # Get ingestor from app.state (None if not initialized)
         try:
             ingestor = get_event_ingestor(req)
         except RuntimeError:
             ingestor = None
+        await _ingest_observability_events(response_events, ingestor)
 
-        await _emit_observability_events(
-            response=raw_response,
-            request=request,
-            trace_id=trace_id,
-            span_id=span_id,
-            agent_name=agent_name,
-            applies_to=applies_to,
-            control_lookup=control_lookup,
-            total_duration_ms=total_duration_ms,
-            ingestor=ingestor,
-        )
-
-    return _sanitize_evaluation_response(raw_response)
+    sanitized = _sanitize_evaluation_response(raw_response)
+    if response_events:
+        sanitized = sanitized.model_copy(update={"events": response_events})
+    return sanitized
 
 
-async def _emit_observability_events(
+def _build_observability_events(
     response: EvaluationResponse,
     request: EvaluationRequest,
     trace_id: str,
@@ -270,9 +276,8 @@ async def _emit_observability_events(
     applies_to: Literal["llm_call", "tool_call"],
     control_lookup: dict,
     total_duration_ms: float,
-    ingestor: EventIngestor | None,
-) -> None:
-    """Create and enqueue observability events for all evaluated controls.
+    ) -> list[ControlExecutionEvent]:
+    """Create observability events for all evaluated controls.
 
     Uses control_execution_id from the engine response to ensure correlation
     between SDK logs and server observability events.
@@ -379,11 +384,20 @@ async def _emit_observability_events(
                 )
             )
 
-    # Ingest events
-    if events and ingestor:
-        result = await ingestor.ingest(events)
-        if result.dropped > 0:
-            _logger.warning(
-                f"Dropped {result.dropped} observability events, "
-                f"processed {result.processed}"
-            )
+    return events
+
+
+async def _ingest_observability_events(
+    events: list[ControlExecutionEvent],
+    ingestor: EventIngestor | None,
+) -> None:
+    """Ingest server-side observability events when OSS batching is active."""
+    if not events or ingestor is None:
+        return
+
+    result = await ingestor.ingest(events)
+    if result.dropped > 0:
+        _logger.warning(
+            f"Dropped {result.dropped} observability events, "
+            f"processed {result.processed}"
+        )

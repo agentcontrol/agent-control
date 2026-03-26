@@ -20,6 +20,7 @@ from agent_control_models import (
 from ._state import state
 from .client import AgentControlClient
 from .observability import add_event, get_logger, is_observability_enabled
+from .telemetry import emit_control_events, has_control_event_sink
 from .validation import ensure_agent_name
 
 _logger = get_logger(__name__)
@@ -53,15 +54,15 @@ def _map_applies_to(step_type: str) -> Literal["llm_call", "tool_call"]:
     return "tool_call" if step_type == "tool" else "llm_call"
 
 
-def _emit_local_events(
+def _build_local_events(
     local_result: "EvaluationResponse",
     request: "EvaluationRequest",
     local_controls: list["_ControlAdapter"],
     trace_id: str | None,
     span_id: str | None,
     agent_name: str | None,
-) -> None:
-    """Emit observability events for locally-evaluated controls.
+) -> list[ControlExecutionEvent]:
+    """Build observability events for locally-evaluated controls.
 
     Mirrors the server's _emit_observability_events() so that SDK-evaluated
     controls are visible in the observability pipeline.
@@ -69,11 +70,9 @@ def _emit_local_events(
     When trace_id/span_id are missing, fallback all-zero IDs are used so events
     are still recorded (but clearly marked as uncorrelated).
 
-    Only runs when observability is enabled.
+    Returns a list of local events. Fallback IDs are applied when trace context
+    is missing so the events can still be correlated within the SDK pipeline.
     """
-    if not is_observability_enabled():
-        return
-
     global _trace_warning_logged  # noqa: PLW0603
     if not trace_id or not span_id:
         if not _trace_warning_logged:
@@ -90,8 +89,9 @@ def _emit_local_events(
     control_lookup = {c.id: c for c in local_controls}
     now = datetime.now(UTC)
     resolved_agent_name = agent_name or request.agent_name
+    events: list[ControlExecutionEvent] = []
 
-    def _emit_matches(matches: list[ControlMatch] | None, matched: bool) -> None:
+    def _append_matches(matches: list[ControlMatch] | None, matched: bool) -> None:
         if not matches:
             return
         for match in matches:
@@ -104,7 +104,7 @@ def _emit_local_events(
                     ctrl.control
                 )
                 event_metadata.update(identity_metadata)
-            add_event(
+            events.append(
                 ControlExecutionEvent(
                     control_execution_id=match.control_execution_id,
                     trace_id=trace_id,
@@ -125,9 +125,19 @@ def _emit_local_events(
                 )
             )
 
-    _emit_matches(local_result.matches, matched=True)
-    _emit_matches(local_result.errors, matched=False)
-    _emit_matches(local_result.non_matches, matched=False)
+    _append_matches(local_result.matches, matched=True)
+    _append_matches(local_result.errors, matched=False)
+    _append_matches(local_result.non_matches, matched=False)
+    return events
+
+
+def _deliver_oss_events(events: list[ControlExecutionEvent]) -> None:
+    """Send events through the existing OSS SDK observability path."""
+    if not is_observability_enabled():
+        return
+
+    for event in events:
+        add_event(event)
 
 
 async def check_evaluation(
@@ -236,6 +246,10 @@ def _merge_results(
     if local_result.non_matches or server_result.non_matches:
         non_matches = (local_result.non_matches or []) + (server_result.non_matches or [])
 
+    events: list[ControlExecutionEvent] | None = None
+    if local_result.events or server_result.events:
+        events = (local_result.events or []) + (server_result.events or [])
+
     reason = None
     if local_result.reason and server_result.reason:
         reason = f"{local_result.reason}; {server_result.reason}"
@@ -251,6 +265,7 @@ def _merge_results(
         matches=matches if matches else None,
         errors=errors if errors else None,
         non_matches=non_matches if non_matches else None,
+        events=events if events else None,
     )
 
 
@@ -366,16 +381,14 @@ async def check_evaluation_with_local(
         if not parse_errors:
             return result
         combined_errors = (result.errors or []) + parse_errors
-        return EvaluationResult(
-            is_safe=result.is_safe,
-            confidence=result.confidence,
-            reason=result.reason,
-            matches=result.matches,
-            errors=combined_errors,
-            non_matches=result.non_matches,
+        return result.model_copy(
+            update={
+                "errors": combined_errors,
+            }
         )
 
     local_result: EvaluationResponse | None = None
+    merged_emission_enabled = has_control_event_sink()
     applicable_local_controls = _get_applicable_controls(
         local_controls,
         request,
@@ -385,7 +398,7 @@ async def check_evaluation_with_local(
         engine = ControlEngine(applicable_local_controls, context="sdk")
         local_result = await engine.process(request)
 
-        _emit_local_events(
+        local_events = _build_local_events(
             local_result,
             request,
             applicable_local_controls,
@@ -393,18 +406,16 @@ async def check_evaluation_with_local(
             span_id,
             agent_name=event_agent_name,
         )
+        local_result = local_result.model_copy(update={"events": local_events or None})
+
+        if not merged_emission_enabled:
+            _deliver_oss_events(local_events)
 
         if not local_result.is_safe:
-            return _with_parse_errors(
-                EvaluationResult(
-                    is_safe=local_result.is_safe,
-                    confidence=local_result.confidence,
-                    reason=local_result.reason,
-                    matches=local_result.matches,
-                    errors=local_result.errors,
-                    non_matches=local_result.non_matches,
-                )
-            )
+            result = _with_parse_errors(EvaluationResult.model_validate(local_result.model_dump()))
+            if merged_emission_enabled and result.events:
+                emit_control_events(result.events)
+            return result
 
     if _has_applicable_prefiltered_server_controls(server_control_payloads, request):
         request_payload = request.model_dump(mode="json", exclude_none=True)
@@ -413,6 +424,8 @@ async def check_evaluation_with_local(
             headers["X-Trace-Id"] = trace_id
         if span_id:
             headers["X-Span-Id"] = span_id
+        if merged_emission_enabled:
+            headers["X-Agent-Control-Merge-Events"] = "true"
 
         response = await client.http_client.post(
             "/api/v1/evaluation",
@@ -423,32 +436,28 @@ async def check_evaluation_with_local(
         server_result = EvaluationResponse.model_validate(response.json())
 
         if local_result is not None:
-            return _with_parse_errors(_merge_results(local_result, server_result))
+            result = _with_parse_errors(_merge_results(local_result, server_result))
+            if merged_emission_enabled and result.events:
+                emit_control_events(result.events)
+            return result
 
-        return _with_parse_errors(
-            EvaluationResult(
-                is_safe=server_result.is_safe,
-                confidence=server_result.confidence,
-                reason=server_result.reason,
-                matches=server_result.matches,
-                errors=server_result.errors,
-                non_matches=server_result.non_matches,
-            )
+        result = _with_parse_errors(
+            EvaluationResult.model_validate(server_result.model_dump())
         )
+        if merged_emission_enabled and result.events:
+            emit_control_events(result.events)
+        return result
 
     if local_result is not None:
-        return _with_parse_errors(
-            EvaluationResult(
-                is_safe=local_result.is_safe,
-                confidence=local_result.confidence,
-                reason=local_result.reason,
-                matches=local_result.matches,
-                errors=local_result.errors,
-                non_matches=local_result.non_matches,
-            )
-        )
+        result = _with_parse_errors(EvaluationResult.model_validate(local_result.model_dump()))
+        if merged_emission_enabled and result.events:
+            emit_control_events(result.events)
+        return result
 
-    return _with_parse_errors(EvaluationResult(is_safe=True, confidence=1.0))
+    result = _with_parse_errors(EvaluationResult(is_safe=True, confidence=1.0))
+    if merged_emission_enabled and result.events:
+        emit_control_events(result.events)
+    return result
 
 
 async def evaluate_controls(

@@ -27,6 +27,11 @@ def emit_control_events(events: list[ControlExecutionEvent]) -> None:
         pass
 
 
+def has_control_event_sink() -> bool:
+    """Return whether a merged control event sink is currently registered."""
+    return _control_event_sink is not None
+
+
 def clear_control_event_sink() -> None:
     """Clear the registered control event sink."""
     global _control_event_sink

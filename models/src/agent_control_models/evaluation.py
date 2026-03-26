@@ -6,6 +6,7 @@ from pydantic import Field, field_validator
 from .agent import AGENT_NAME_MIN_LENGTH, AGENT_NAME_PATTERN, Step, normalize_agent_name
 from .base import BaseModel
 from .controls import ControlMatch
+from .observability import ControlExecutionEvent
 
 
 class EvaluationRequest(BaseModel):
@@ -126,6 +127,10 @@ class EvaluationResponse(BaseModel):
     non_matches: list[ControlMatch] | None = Field(
         default=None,
         description="List of controls that were evaluated but did not match (if any)",
+    )
+    events: list[ControlExecutionEvent] | None = Field(
+        default=None,
+        description="Control execution events produced during evaluation (if any)",
     )
 
 
