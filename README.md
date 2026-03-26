@@ -139,9 +139,14 @@ async def main():
         print(await chat("test"))  # ❌ Blocked
     except ControlViolationError as e:
         print(f"❌ Blocked: {e.control_name}")
+    finally:
+        await agent_control.ashutdown()
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
+
+Use `agent_control.shutdown()` or `await agent_control.ashutdown()` before process exit so short-lived scripts flush pending observability events cleanly.
 
 Next, create a control in Step 4, then run the setup and agent scripts in
 order to see blocking in action.
