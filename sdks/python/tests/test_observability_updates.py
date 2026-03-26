@@ -10,6 +10,10 @@ from agent_control.evaluation import (
     _map_applies_to,
     _merge_results,
 )
+from agent_control.telemetry.trace_context import (
+    clear_trace_context_provider,
+    set_trace_context_provider,
+)
 from agent_control_models import ControlDefinition
 
 # =============================================================================
@@ -326,6 +330,9 @@ class TestEmitLocalEvents:
 class TestCheckEvaluationWithLocal:
     """Tests for check_evaluation_with_local event emission and non_matches."""
 
+    def teardown_method(self) -> None:
+        clear_trace_context_provider()
+
     @pytest.mark.asyncio
     async def test_emits_events_when_trace_context_provided(self):
         """Should emit observability events when trace_id and span_id are passed."""
@@ -398,7 +405,7 @@ class TestCheckEvaluationWithLocal:
 
     @pytest.mark.asyncio
     async def test_emits_events_without_trace_context(self):
-        """Should still emit events when trace_id/span_id not provided (fallback IDs)."""
+        """Should resolve trace context from the provider when IDs are omitted."""
         from agent_control_models import EvaluationResponse, Step
 
         mock_response = EvaluationResponse(
@@ -424,6 +431,12 @@ class TestCheckEvaluationWithLocal:
         client = MagicMock()
         client.http_client = AsyncMock()
         step = Step(type="llm", name="test-step", input="hello")
+        set_trace_context_provider(
+            lambda: {
+                "trace_id": "a" * 32,
+                "span_id": "b" * 16,
+            }
+        )
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
@@ -438,8 +451,8 @@ class TestCheckEvaluationWithLocal:
             )
             mock_emit.assert_called_once()
             call_args = mock_emit.call_args
-            assert call_args[0][3] is None  # trace_id passed as None
-            assert call_args[0][4] is None  # span_id passed as None
+            assert call_args[0][3] == "a" * 32
+            assert call_args[0][4] == "b" * 16
 
     @pytest.mark.asyncio
     async def test_forwards_trace_headers_to_server(self):
@@ -491,6 +504,59 @@ class TestCheckEvaluationWithLocal:
         headers = call_kwargs.kwargs.get("headers", {})
         assert headers["X-Trace-Id"] == "aaaa1111bbbb2222cccc3333dddd4444"
         assert headers["X-Span-Id"] == "eeee5555ffff6666"
+
+    @pytest.mark.asyncio
+    async def test_forwards_provider_trace_headers_to_server_when_ids_omitted(self):
+        """Server POST should resolve trace headers from the provider when omitted."""
+        from agent_control_models import Step
+
+        controls = [{
+            "id": 1,
+            "name": "server-ctrl",
+            "control": {
+                "condition": {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
+                "action": {"decision": "deny"},
+                "execution": "server",
+            },
+        }]
+
+        mock_http_response = MagicMock()
+        mock_http_response.json.return_value = {
+            "is_safe": True,
+            "confidence": 1.0,
+            "matches": None,
+            "errors": None,
+            "non_matches": None,
+        }
+        mock_http_response.raise_for_status = MagicMock()
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+        set_trace_context_provider(
+            lambda: {
+                "trace_id": "c" * 32,
+                "span_id": "d" * 16,
+            }
+        )
+
+        with patch("agent_control.evaluation.list_evaluators", return_value=["regex"]):
+            await evaluation.check_evaluation_with_local(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+                controls=controls,
+            )
+
+        call_kwargs = client.http_client.post.call_args
+        headers = call_kwargs.kwargs.get("headers", {})
+        assert headers["X-Trace-Id"] == "c" * 32
+        assert headers["X-Span-Id"] == "d" * 16
 
 
 # =============================================================================

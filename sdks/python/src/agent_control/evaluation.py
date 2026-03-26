@@ -20,6 +20,7 @@ from agent_control_models import (
 from ._state import state
 from .client import AgentControlClient
 from .observability import add_event, get_logger, is_observability_enabled
+from .tracing import get_trace_and_span_ids
 from .validation import ensure_agent_name
 
 _logger = get_logger(__name__)
@@ -291,6 +292,13 @@ async def check_evaluation_with_local(
         httpx.HTTPError: If server request fails
     """
     normalized_name = ensure_agent_name(agent_name)
+    resolved_trace_id = trace_id
+    resolved_span_id = span_id
+    if trace_id is None or span_id is None:
+        current_trace_id, current_span_id = get_trace_and_span_ids()
+        resolved_trace_id = trace_id or current_trace_id
+        resolved_span_id = span_id or current_span_id
+
     # Partition controls by local flag
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []
@@ -389,8 +397,8 @@ async def check_evaluation_with_local(
             local_result,
             request,
             applicable_local_controls,
-            trace_id,
-            span_id,
+            resolved_trace_id,
+            resolved_span_id,
             agent_name=event_agent_name,
         )
 
@@ -409,10 +417,10 @@ async def check_evaluation_with_local(
     if _has_applicable_prefiltered_server_controls(server_control_payloads, request):
         request_payload = request.model_dump(mode="json", exclude_none=True)
         headers: dict[str, str] = {}
-        if trace_id:
-            headers["X-Trace-Id"] = trace_id
-        if span_id:
-            headers["X-Span-Id"] = span_id
+        if resolved_trace_id:
+            headers["X-Trace-Id"] = resolved_trace_id
+        if resolved_span_id:
+            headers["X-Span-Id"] = resolved_span_id
 
         response = await client.http_client.post(
             "/api/v1/evaluation",

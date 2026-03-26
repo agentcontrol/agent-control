@@ -40,6 +40,8 @@ def get_trace_context_from_provider() -> TraceContext | None:
     span_id = trace_context.get("span_id")
     if not isinstance(trace_id, str) or not isinstance(span_id, str):
         return None
+    if not trace_id or not span_id:
+        return None
 
     return {
         "trace_id": trace_id,
