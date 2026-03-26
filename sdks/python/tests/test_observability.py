@@ -219,6 +219,23 @@ class TestEventBatcherWorkerThread:
         assert batcher._events_dropped == 0
         assert batcher._thread is None
 
+    def test_shutdown_uses_sync_fallback_when_worker_not_running(self):
+        """Shutdown should use the sync fallback path without relying on asyncio."""
+        batcher = EventBatcher(batch_size=100, flush_interval=60.0)
+
+        for _ in range(5):
+            batcher.add_event(create_mock_event())
+
+        batcher._client = AsyncMock()
+
+        with patch.object(batcher, "_send_batch_sync", return_value=True) as send_batch_sync:
+            batcher.shutdown()
+
+        send_batch_sync.assert_called_once()
+        assert batcher._events_sent == 5
+        assert len(batcher._events) == 0
+        assert batcher._client is None
+
     def test_shutdown_drains_inflight_flush_without_data_loss(self):
         """Test that shutdown waits for in-flight flushes and sends all events."""
         import time
