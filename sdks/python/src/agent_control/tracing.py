@@ -31,6 +31,8 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 
+from .telemetry.trace_context import get_trace_context_from_provider
+
 # Context variables for trace/span propagation
 _trace_id_var: ContextVar[str | None] = ContextVar("trace_id", default=None)
 _span_id_var: ContextVar[str | None] = ContextVar("span_id", default=None)
@@ -94,8 +96,9 @@ def get_trace_and_span_ids() -> tuple[str, str]:
 
     Priority:
     1. Context variable (set by with_trace or explicitly)
-    2. OpenTelemetry context (if OTEL is installed and active)
-    3. Generate new OTEL-compatible IDs
+    2. External provider
+    3. OpenTelemetry context (if OTEL is installed and active)
+    4. Generate new OTEL-compatible IDs
 
     Returns:
         Tuple of (trace_id, span_id) - both are hex strings
@@ -113,6 +116,11 @@ def get_trace_and_span_ids() -> tuple[str, str]:
 
     if trace_id is not None and span_id is not None:
         return trace_id, span_id
+
+    # Try external provider
+    trace_context = get_trace_context_from_provider()
+    if trace_context:
+        return trace_context["trace_id"], trace_context["span_id"]
 
     # Try OpenTelemetry context
     otel_trace_id, otel_span_id = _get_otel_ids()
@@ -136,6 +144,11 @@ def get_current_trace_id() -> str | None:
     if trace_id is not None:
         return trace_id
 
+    # Try external provider
+    trace_context = get_trace_context_from_provider()
+    if trace_context:
+        return trace_context["trace_id"]
+
     # Try OpenTelemetry
     otel_trace_id, _ = _get_otel_ids()
     return otel_trace_id
@@ -152,6 +165,11 @@ def get_current_span_id() -> str | None:
     span_id = _span_id_var.get()
     if span_id is not None:
         return span_id
+
+    # Try external provider
+    trace_context = get_trace_context_from_provider()
+    if trace_context:
+        return trace_context["span_id"]
 
     # Try OpenTelemetry
     _, otel_span_id = _get_otel_ids()
