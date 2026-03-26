@@ -1,0 +1,54 @@
+version: 1
+description: >
+  OpenShell companion policy blueprint for the daily CI triage demo.
+  The Python deepagent is launched inside this sandbox. OpenShell enforces
+  binary, filesystem, and network boundaries, while Agent Control governs the
+  semantic intent of shell commands executed by the agent.
+
+filesystem_policy:
+  read_only:
+    - demo_workspace
+    - /usr
+    - /bin
+    - /lib
+    - /opt/homebrew
+  read_write:
+    - demo_workspace/reports
+    - /tmp/openshell-incident-responder
+
+landlock:
+  compatibility: best_effort
+
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+
+network_policies:
+  package_mirror:
+    name: package-mirror
+    endpoints:
+      - host: packages.company.internal
+        port: 443
+    binaries:
+      - path: /usr/local/bin/uv
+      - path: /opt/homebrew/bin/uv
+      - path: /usr/bin/grep
+      - path: /opt/homebrew/bin/grep
+      - path: /usr/local/bin/semgrep
+      - path: /opt/homebrew/bin/semgrep
+  internal_reporting:
+    name: internal-reporting
+    endpoints:
+      - host: triage.company.internal
+        port: 443
+        protocol: rest
+        tls: terminate
+        enforcement: enforce
+        access: full
+        rules:
+          - allow:
+              method: POST
+              path: /api/v1/reports
+    binaries:
+      - path: /usr/bin/python3
+      - path: /usr/bin/curl
