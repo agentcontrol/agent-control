@@ -357,13 +357,33 @@ export const JsonEditorView = ({
       });
     };
 
-    const disposable = editor.onDidChangeModelContent(() => {
+    const disposable = editor.onDidChangeModelContent((e) => {
       if (isProgrammaticEdit) {
         isProgrammaticEdit = false;
         return;
       }
 
       const text = editor.getValue();
+
+      // Immediate reformat for multi-line edits (e.g., code actions like "Wrap in AND").
+      // Only triggers when a single change spans multiple lines — normal typing
+      // is single-line and won't match, avoiding cursor-jump issues.
+      const isMultiLineEdit =
+        !e.isUndoing &&
+        !e.isRedoing &&
+        e.changes.length === 1 &&
+        (e.changes[0].text.includes('\n') ||
+          e.changes[0].range.endLineNumber >
+            e.changes[0].range.startLineNumber);
+      if (isMultiLineEdit) {
+        const formatted = tryFormat(text);
+        if (formatted && formatted !== text) {
+          isProgrammaticEdit = true;
+          replaceAllContent(editor, formatted, 'auto-reformat');
+          handleJsonChange(formatted);
+          return;
+        }
+      }
 
       // Debounced hints
       if (hintTimer) window.clearTimeout(hintTimer);
