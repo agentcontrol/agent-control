@@ -95,11 +95,8 @@ from .observability import (
     sync_shutdown_observability,
 )
 from .telemetry import (
-    clear_control_event_sink,
     clear_trace_context_provider,
-    emit_control_events,
     get_trace_context_from_provider,
-    set_control_event_sink,
     set_trace_context_provider,
 )
 from .tracing import (
@@ -1310,9 +1307,6 @@ __all__ = [
     "set_trace_context_provider",
     "get_trace_context_from_provider",
     "clear_trace_context_provider",
-    "set_control_event_sink",
-    "emit_control_events",
-    "clear_control_event_sink",
     # Observability
     "init_observability",
     "add_event",
