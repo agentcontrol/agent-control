@@ -600,6 +600,20 @@ function buildSchemaValueSnippet(
   }
 
   if (
+    schemaTitle === 'ControlAction' ||
+    isSchemaWithProperties(normalized, ['decision', 'steering_context'])
+  ) {
+    return '{\n  "decision": "deny"\n}';
+  }
+
+  if (
+    schemaTitle === 'ControlScope' ||
+    isSchemaWithProperties(normalized, ['step_types', 'stages'])
+  ) {
+    return '{\n  "step_types": ["llm"],\n  "stages": ["post"]\n}';
+  }
+
+  if (
     schemaTitle === 'ConditionNode' ||
     isSchemaWithProperties(normalized, [
       'selector',

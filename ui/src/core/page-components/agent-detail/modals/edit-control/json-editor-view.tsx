@@ -81,6 +81,7 @@ export const JsonEditorView = ({
   const monacoRef = useRef<MonacoModule | null>(null);
   const editorRootRef = useRef<JsonEditorTestElement | null>(null);
   const cleanupLanguageRef = useRef<(() => void) | null>(null);
+  const suppressCommaFixRef = useRef(false);
 
   const modelUri = useMemo(
     () => `inmemory://agent-control/${testId}.json`,
@@ -310,7 +311,11 @@ export const JsonEditorView = ({
     const disposable = editor.onDidChangeModelContent(() => {
       if (timeout) window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
-        // Don't auto-fix while the suggest widget is open — setValue kills it
+        // Skip if suggest widget is open or a programmatic edit just ran
+        if (suppressCommaFixRef.current) {
+          suppressCommaFixRef.current = false;
+          return;
+        }
         const suggestWidget = editor
           .getDomNode()
           ?.querySelector('.suggest-widget');
@@ -357,6 +362,7 @@ export const JsonEditorView = ({
       const startPos = model.getPositionAt(edit.offset);
       const endPos = model.getPositionAt(edit.offset + edit.length);
       queueMicrotask(() => {
+        suppressCommaFixRef.current = true;
         editor.executeEdits(source, [
           {
             range: {
