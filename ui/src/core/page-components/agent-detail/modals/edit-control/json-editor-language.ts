@@ -1193,20 +1193,25 @@ function buildCompletionSuggestions(
     );
   }
 
-  const valueSchemaCursor = resolveSchemaAtJsonPath(
-    context,
-    activeEvaluator,
-    location.path
-  );
+  // Only show value suggestions when NOT at a property key position.
+  // At key positions, property suggestions are sufficient — value suggestions
+  // like "null" are confusing noise.
+  if (!propertyKeyContext) {
+    const valueSchemaCursor = resolveSchemaAtJsonPath(
+      context,
+      activeEvaluator,
+      location.path
+    );
 
-  suggestions.push(
-    ...buildSchemaValueSuggestions(
-      monaco,
-      valueRange,
-      valueSchemaCursor,
-      isStringValueContext
-    )
-  );
+    suggestions.push(
+      ...buildSchemaValueSuggestions(
+        monaco,
+        valueRange,
+        valueSchemaCursor,
+        isStringValueContext
+      )
+    );
+  }
 
   return dedupeSuggestions(suggestions);
 }

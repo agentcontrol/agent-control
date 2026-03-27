@@ -323,6 +323,8 @@ export const JsonEditorView = ({
         const current = editor.getValue();
         const commaFixed = fixJsonCommas(current);
 
+        // Only apply changes if the result is valid JSON.
+        // Don't touch broken JSON mid-edit — comma insertion can corrupt it.
         try {
           const formatted = JSON.stringify(JSON.parse(commaFixed), null, 2);
           if (formatted !== current) {
@@ -331,11 +333,7 @@ export const JsonEditorView = ({
             handleJsonChange(formatted);
           }
         } catch {
-          if (commaFixed !== current) {
-            isProgrammaticEdit = true;
-            replaceAllContent(editor, commaFixed, 'auto-comma-fix');
-            handleJsonChange(commaFixed);
-          }
+          // JSON is invalid — leave it alone, user is still editing
         }
       }, COMMA_FIX_DEBOUNCE_MS);
 
