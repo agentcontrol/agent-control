@@ -284,7 +284,7 @@ export function AddNewControlModal({
                   data-testid="from-json-button"
                   onClick={handleFromJsonClick}
                 >
-                  From JSON
+                  Write your own
                 </Button>
                 <Text size="sm" c="dimmed">
                   Learn here on how to add new type of evaluator.{' '}
