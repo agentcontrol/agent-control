@@ -448,7 +448,7 @@ class EventBatcher:
                 logger.error("Error sending events during shutdown: %s", e)
 
             if attempt >= get_settings().max_retries - 1:
-                continue
+                break
 
             retry_delay = get_settings().retry_delay * (attempt + 1)
             if deadline is not None:
