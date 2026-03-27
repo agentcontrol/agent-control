@@ -11,6 +11,7 @@ import { ApiErrorAlert } from './api-error-alert';
 import {
   extractEvaluatorNames,
   findEvaluatorConfigEdit,
+  findSteeringContextEdit,
   fixJsonCommas,
   getEmptyValueHints,
   getJsonEditorCompletionItems,
@@ -117,7 +118,6 @@ export const JsonEditorView = ({
     const editor = editorRef.current;
     if (!editor) return;
 
-    // Fix missing commas first, then parse-and-reformat
     const text = editor.getValue();
     const commaFixed = fixJsonCommas(text);
     try {
@@ -206,11 +206,14 @@ export const JsonEditorView = ({
     };
 
     updateHints();
+    let hintTimeout: number | null = null;
     const disposable = editor.onDidChangeModelContent(() => {
-      updateHints();
+      if (hintTimeout) window.clearTimeout(hintTimeout);
+      hintTimeout = window.setTimeout(updateHints, 300);
     });
 
     return () => {
+      if (hintTimeout) window.clearTimeout(hintTimeout);
       disposable.dispose();
       decorationCollection.clear();
       styleElement.remove();
@@ -246,11 +249,41 @@ export const JsonEditorView = ({
         const isPropertyKey =
           isInString && /^\s*:/.test(afterCursor.replace(/^[^"]*"/, ''));
 
+        // Auto-trigger for string values where suggestions are useful.
+        // Short strings (≤ 2 chars): always trigger (user is browsing options).
+        // Longer strings: only trigger if we likely have domain-specific
+        // suggestions (enum values, evaluator names, selector paths).
+        let shouldTriggerString = false;
+        if (isInString && !isPropertyKey) {
+          const openQuoteIdx = beforeCursor.lastIndexOf('"');
+          const closeQuoteIdx = afterCursor.indexOf('"');
+          const contentLen =
+            openQuoteIdx >= 0 && closeQuoteIdx >= 0
+              ? beforeCursor.length - openQuoteIdx - 1 + closeQuoteIdx
+              : 999;
+
+          if (contentLen <= 2) {
+            shouldTriggerString = true;
+          } else {
+            // Check if this position has domain-specific suggestions
+            const model = editor.getModel();
+            if (model && monacoRef.current) {
+              const items = getJsonEditorCompletionItems(
+                monacoRef.current,
+                model,
+                pos,
+                autocompleteContext
+              );
+              shouldTriggerString = items.length > 0;
+            }
+          }
+        }
+
         // Also trigger on blank/whitespace lines inside objects (safe because
         // acceptSuggestionOnEnter is 'off' — Enter always creates a newline).
         const isBlankOrCommaLine = /^\s*,?\s*$/.test(line);
 
-        if ((isInString && !isPropertyKey) || isBlankOrCommaLine) {
+        if (shouldTriggerString || isBlankOrCommaLine) {
           editor.trigger('cursor', 'editor.action.triggerSuggest', {});
         }
       }, 50);
@@ -260,7 +293,7 @@ export const JsonEditorView = ({
       if (timeout) window.clearTimeout(timeout);
       disposable.dispose();
     };
-  }, [mounted]);
+  }, [mounted, autocompleteContext]);
 
   // Auto-fix missing commas after a pause in typing.
   // Uses jsonc-parser to detect CommaExpected errors and insert commas.
@@ -289,31 +322,29 @@ export const JsonEditorView = ({
     };
   }, [mounted, handleJsonChange]);
 
-  // When an evaluator name changes in control mode, auto-update the config
-  // to match the new evaluator's schema (e.g., regex→list resets config).
+  // Auto-update dependent fields: evaluator config when name changes,
+  // steering_context when decision changes to/from "steer".
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor || !mounted || editorMode !== 'control') return;
 
     let previousNames = extractEvaluatorNames(editor.getValue());
+    let previousDecision: string | null = null;
+    try {
+      const parsed = JSON.parse(editor.getValue());
+      previousDecision = parsed?.action?.decision ?? null;
+    } catch { /* ignore */ }
 
-    const disposable = editor.onDidChangeModelContent(() => {
-      const text = editor.getValue();
-      const edit = findEvaluatorConfigEdit(text, previousNames, evaluators);
-      previousNames = extractEvaluatorNames(text);
-
-      if (!edit) return;
-
+    const applyEditAndReformat = (
+      edit: { offset: number; length: number; newText: string },
+      source: string
+    ) => {
       const model = editor.getModel();
       if (!model) return;
-
       const startPos = model.getPositionAt(edit.offset);
       const endPos = model.getPositionAt(edit.offset + edit.length);
-
-      // Defer edit to avoid modifying the model inside its own change event.
-      // After inserting, reformat the entire document so indentation stays clean.
       queueMicrotask(() => {
-        editor.executeEdits('evaluator-config-update', [
+        editor.executeEdits(source, [
           {
             range: {
               startLineNumber: startPos.lineNumber,
@@ -325,17 +356,33 @@ export const JsonEditorView = ({
           },
         ]);
         try {
-          const formatted = JSON.stringify(
-            JSON.parse(editor.getValue()),
-            null,
-            2
-          );
+          const formatted = JSON.stringify(JSON.parse(editor.getValue()), null, 2);
           editor.setValue(formatted);
           handleJsonChange(formatted);
         } catch {
           handleJsonChange(editor.getValue());
         }
       });
+    };
+
+    const disposable = editor.onDidChangeModelContent(() => {
+      const text = editor.getValue();
+
+      const evalEdit = findEvaluatorConfigEdit(text, previousNames, evaluators);
+      previousNames = extractEvaluatorNames(text);
+      if (evalEdit) {
+        applyEditAndReformat(evalEdit, 'evaluator-config-update');
+        return;
+      }
+
+      const steerEdit = findSteeringContextEdit(text, previousDecision);
+      try {
+        const parsed = JSON.parse(text);
+        previousDecision = parsed?.action?.decision ?? null;
+      } catch { /* ignore */ }
+      if (steerEdit) {
+        applyEditAndReformat(steerEdit, 'steering-context-update');
+      }
     });
 
     return () => disposable.dispose();
@@ -345,7 +392,7 @@ export const JsonEditorView = ({
     const root = editorRootRef.current;
     if (!root) return;
 
-    root.__getJsonEditorValue = () => editorRef.current?.getValue() ?? jsonText;
+    root.__getJsonEditorValue = () => editorRef.current?.getValue() ?? '';
     root.__getJsonEditorLanguageId = () =>
       editorRef.current?.getModel()?.getLanguageId() ?? null;
     root.__isJsonEditorReady = () =>
@@ -394,7 +441,7 @@ export const JsonEditorView = ({
       delete root.__triggerJsonEditorSuggest;
       delete root.__getJsonEditorSuggestions;
     };
-  }, [autocompleteContext, handleJsonChange, jsonText]);
+  }, [autocompleteContext, handleJsonChange]);
 
   useEffect(() => {
     if (!onValidateConfig) return;

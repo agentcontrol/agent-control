@@ -379,11 +379,7 @@ function normalizeSchema(
       (variant) => getSchemaType(variant) !== 'null'
     );
 
-    if (nonNullVariants.length === 1) {
-      return mergeSchemas(nonNullVariants, current);
-    }
-
-    if (nonNullVariants.length > 1) {
+    if (nonNullVariants.length > 0) {
       return mergeSchemas(nonNullVariants, current);
     }
   }
@@ -534,14 +530,6 @@ function nextSnippetTabStop(
   }
 
   return `\${${tabStop}}`;
-}
-
-function indentMultiline(text: string, indentLevel: number): string {
-  const indent = '  '.repeat(indentLevel);
-  return text
-    .split('\n')
-    .map((line, index) => (index === 0 ? line : `${indent}${line}`))
-    .join('\n');
 }
 
 function getSuggestedObjectPropertyNames(schema: JsonSchema): string[] {
@@ -1385,6 +1373,58 @@ export function findEvaluatorConfigEdit(
   return null;
 }
 
+export function findSteeringContextEdit(
+  text: string,
+  previousDecision: string | null
+): { offset: number; length: number; newText: string } | null {
+  const tree = parseTree(text);
+  if (!tree) return null;
+
+  const decisionNode = findNodeAtLocation(tree, ['action', 'decision']);
+  if (!decisionNode || typeof decisionNode.value !== 'string') return null;
+
+  const currentDecision = decisionNode.value;
+  if (currentDecision === previousDecision) return null;
+
+  if (currentDecision === 'steer') {
+    // Add steering_context if missing
+    const steeringNode = findNodeAtLocation(tree, [
+      'action',
+      'steering_context',
+    ]);
+    if (!steeringNode) {
+      const decisionEnd = decisionNode.offset + decisionNode.length;
+      return {
+        offset: decisionEnd,
+        length: 0,
+        newText: `,\n"steering_context": {"message": "Please correct your response."}`,
+      };
+    }
+  } else if (previousDecision === 'steer') {
+    // Remove steering_context when switching away from steer
+    const actionNode = findNodeAtLocation(tree, ['action']);
+    if (actionNode?.type === 'object' && actionNode.children) {
+      for (const prop of actionNode.children) {
+        const key = prop.children?.[0];
+        if (key?.value === 'steering_context') {
+          // Find range including the preceding comma
+          let start = prop.offset;
+          while (start > 0 && /[\s,]/.test(text[start - 1])) {
+            start -= 1;
+          }
+          return {
+            offset: start,
+            length: prop.offset + prop.length - start,
+            newText: '',
+          };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 const MAX_HINT_VALUES = 6;
 
 function getStringValueAtPath(
@@ -1499,37 +1539,6 @@ function addDependentFieldHints(
     });
   }
 
-  // Also check inside condition tree for nested actions
-  addConditionTreeSteerHints(monaco, model, tree, tree, hints);
-}
-
-function addConditionTreeSteerHints(
-  monaco: MonacoModule,
-  model: import('monaco-editor').editor.ITextModel,
-  rootTree: JsonNode,
-  node: JsonNode,
-  hints: Array<{ range: import('monaco-editor').IRange; hint: string }>
-) {
-  if (node.type !== 'object' || !node.children) return;
-
-  for (const property of node.children) {
-    const keyNode = property.children?.[0];
-    const valueNode = property.children?.[1];
-    if (!keyNode || !valueNode) continue;
-
-    const key = keyNode.value;
-    if (key === 'and' || key === 'or') {
-      if (valueNode.type === 'array' && valueNode.children) {
-        for (const child of valueNode.children) {
-          addConditionTreeSteerHints(monaco, model, rootTree, child, hints);
-        }
-      }
-    } else if (key === 'not') {
-      if (valueNode.type === 'object') {
-        addConditionTreeSteerHints(monaco, model, rootTree, valueNode, hints);
-      }
-    }
-  }
 }
 
 // Default Monaco JSON mode configuration with completionItems disabled.
@@ -1710,27 +1719,38 @@ function registerConditionCodeActions(
       const actions: import('monaco-editor').languages.CodeAction[] = [];
       const { node, isLeaf, isArray, arrayKey } = condCtx;
 
+      const candidates: (import('monaco-editor').languages.CodeAction | null)[] = [];
+
       if (isLeaf) {
-        // Leaf condition: offer to wrap in AND/OR/NOT
-        actions.push(
-          buildWrapAction(monaco, model, node, 'and', 'Wrap in AND (add another condition)'),
-          buildWrapAction(monaco, model, node, 'or', 'Wrap in OR (add another condition)'),
-          buildWrapAction(monaco, model, node, 'not', 'Wrap in NOT')
+        candidates.push(
+          buildNodeTransformAction(monaco, model, node, 'Wrap in AND (add another condition)',
+            (p) => ({ and: [p, LEAF_CONDITION_TEMPLATE] })),
+          buildNodeTransformAction(monaco, model, node, 'Wrap in OR (add another condition)',
+            (p) => ({ or: [p, LEAF_CONDITION_TEMPLATE] })),
+          buildNodeTransformAction(monaco, model, node, 'Wrap in NOT',
+            (p) => ({ not: p })),
         );
       }
 
       if (isArray && (arrayKey === 'and' || arrayKey === 'or')) {
-        // Inside an AND/OR array: offer to add a condition
-        actions.push(buildAddConditionAction(monaco, model, node, arrayKey));
-
-        // Offer to convert AND↔OR
         const otherKey = arrayKey === 'and' ? 'or' : 'and';
-        actions.push(buildConvertArrayAction(monaco, model, node, arrayKey, otherKey));
+        candidates.push(
+          buildNodeTransformAction(monaco, model, node, `Add condition to ${arrayKey.toUpperCase()}`,
+            (p) => { const o = p as Record<string, unknown>; const a = o[arrayKey]; if (!Array.isArray(a)) return undefined; return { ...o, [arrayKey]: [...a, LEAF_CONDITION_TEMPLATE] }; }),
+          buildNodeTransformAction(monaco, model, node, `Convert ${arrayKey.toUpperCase()} to ${otherKey.toUpperCase()}`,
+            (p) => { const o = p as Record<string, unknown>; const a = o[arrayKey]; delete o[arrayKey]; return { ...o, [otherKey]: a }; }),
+        );
       }
 
       if (arrayKey === 'not') {
-        // On a NOT condition: offer to unwrap
-        actions.push(buildUnwrapNotAction(monaco, model, node));
+        candidates.push(
+          buildNodeTransformAction(monaco, model, node, 'Remove NOT (unwrap)',
+            (p) => (p as Record<string, unknown>).not),
+        );
+      }
+
+      for (const action of candidates) {
+        if (action) actions.push(action);
       }
 
       return { actions, dispose() {} };
@@ -1738,152 +1758,30 @@ function registerConditionCodeActions(
   });
 }
 
-function buildWrapAction(
+function buildNodeTransformAction(
   monaco: MonacoModule,
   model: import('monaco-editor').editor.ITextModel,
   node: JsonNode,
-  wrapKey: 'and' | 'or' | 'not',
-  title: string
-): import('monaco-editor').languages.CodeAction {
+  title: string,
+  transform: (parsed: unknown) => unknown
+): import('monaco-editor').languages.CodeAction | null {
   const nodeText = model.getValue().substring(node.offset, node.offset + node.length);
   let parsed: unknown;
-  try { parsed = JSON.parse(nodeText); } catch { parsed = null; }
-
-  let newText: string;
-  if (wrapKey === 'not') {
-    newText = JSON.stringify({ not: parsed }, null, 2);
-  } else {
-    newText = JSON.stringify(
-      { [wrapKey]: [parsed, LEAF_CONDITION_TEMPLATE] },
-      null,
-      2
-    );
+  try {
+    parsed = JSON.parse(nodeText);
+  } catch {
+    return null;
   }
 
+  const result = transform(parsed);
+  if (result === undefined) return null;
+
+  const newText = JSON.stringify(result, null, 2);
   const startPos = model.getPositionAt(node.offset);
   const endPos = model.getPositionAt(node.offset + node.length);
 
   return {
     title,
-    kind: 'refactor',
-    edit: {
-      edits: [
-        {
-          resource: model.uri,
-          textEdit: {
-            range: new monaco.Range(
-              startPos.lineNumber, startPos.column,
-              endPos.lineNumber, endPos.column
-            ),
-            text: newText,
-          },
-          versionId: model.getVersionId(),
-        },
-      ],
-    },
-  };
-}
-
-function buildAddConditionAction(
-  monaco: MonacoModule,
-  model: import('monaco-editor').editor.ITextModel,
-  node: JsonNode,
-  arrayKey: string
-): import('monaco-editor').languages.CodeAction {
-  const text = model.getValue();
-  const nodeText = text.substring(node.offset, node.offset + node.length);
-  let parsed: Record<string, unknown>;
-  try { parsed = JSON.parse(nodeText) as Record<string, unknown>; } catch { return { title: '', kind: '' }; }
-
-  const arr = parsed[arrayKey];
-  if (!Array.isArray(arr)) return { title: '', kind: '' };
-
-  arr.push(LEAF_CONDITION_TEMPLATE);
-  const newText = JSON.stringify(parsed, null, 2);
-
-  const startPos = model.getPositionAt(node.offset);
-  const endPos = model.getPositionAt(node.offset + node.length);
-
-  return {
-    title: `Add condition to ${arrayKey.toUpperCase()}`,
-    kind: 'refactor',
-    edit: {
-      edits: [
-        {
-          resource: model.uri,
-          textEdit: {
-            range: new monaco.Range(
-              startPos.lineNumber, startPos.column,
-              endPos.lineNumber, endPos.column
-            ),
-            text: newText,
-          },
-          versionId: model.getVersionId(),
-        },
-      ],
-    },
-  };
-}
-
-function buildConvertArrayAction(
-  monaco: MonacoModule,
-  model: import('monaco-editor').editor.ITextModel,
-  node: JsonNode,
-  fromKey: string,
-  toKey: string
-): import('monaco-editor').languages.CodeAction {
-  const text = model.getValue();
-  const nodeText = text.substring(node.offset, node.offset + node.length);
-  let parsed: Record<string, unknown>;
-  try { parsed = JSON.parse(nodeText) as Record<string, unknown>; } catch { return { title: '', kind: '' }; }
-
-  const arr = parsed[fromKey];
-  delete parsed[fromKey];
-  parsed[toKey] = arr;
-  const newText = JSON.stringify(parsed, null, 2);
-
-  const startPos = model.getPositionAt(node.offset);
-  const endPos = model.getPositionAt(node.offset + node.length);
-
-  return {
-    title: `Convert ${fromKey.toUpperCase()} to ${toKey.toUpperCase()}`,
-    kind: 'refactor',
-    edit: {
-      edits: [
-        {
-          resource: model.uri,
-          textEdit: {
-            range: new monaco.Range(
-              startPos.lineNumber, startPos.column,
-              endPos.lineNumber, endPos.column
-            ),
-            text: newText,
-          },
-          versionId: model.getVersionId(),
-        },
-      ],
-    },
-  };
-}
-
-function buildUnwrapNotAction(
-  monaco: MonacoModule,
-  model: import('monaco-editor').editor.ITextModel,
-  node: JsonNode
-): import('monaco-editor').languages.CodeAction {
-  const text = model.getValue();
-  const nodeText = text.substring(node.offset, node.offset + node.length);
-  let parsed: Record<string, unknown>;
-  try { parsed = JSON.parse(nodeText) as Record<string, unknown>; } catch { return { title: '', kind: '' }; }
-
-  const inner = parsed.not;
-  const newText = JSON.stringify(inner, null, 2);
-
-  const startPos = model.getPositionAt(node.offset);
-  const endPos = model.getPositionAt(node.offset + node.length);
-
-  return {
-    title: 'Remove NOT (unwrap)',
     kind: 'refactor',
     edit: {
       edits: [
