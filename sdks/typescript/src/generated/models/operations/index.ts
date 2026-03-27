@@ -7,7 +7,6 @@ export * from "./add-agent-policy-api-v1-agents-agent-name-policies-policy-id-po
 export * from "./add-control-to-policy-api-v1-policies-policy-id-controls-control-id-post.js";
 export * from "./delete-agent-policy-api-v1-agents-agent-name-policy-delete.js";
 export * from "./delete-control-api-v1-controls-control-id-delete.js";
-export * from "./delete-evaluator-config-api-v1-evaluator-configs-config-id-delete.js";
 export * from "./evaluate-api-v1-evaluation-post.js";
 export * from "./get-agent-api-v1-agents-agent-name-get.js";
 export * from "./get-agent-evaluator-api-v1-agents-agent-name-evaluators-evaluator-name-get.js";
@@ -16,13 +15,11 @@ export * from "./get-agent-policy-api-v1-agents-agent-name-policy-get.js";
 export * from "./get-control-api-v1-controls-control-id-get.js";
 export * from "./get-control-data-api-v1-controls-control-id-data-get.js";
 export * from "./get-control-stats-api-v1-observability-stats-controls-control-id-get.js";
-export * from "./get-evaluator-config-api-v1-evaluator-configs-config-id-get.js";
 export * from "./get-stats-api-v1-observability-stats-get.js";
 export * from "./list-agent-controls-api-v1-agents-agent-name-controls-get.js";
 export * from "./list-agent-evaluators-api-v1-agents-agent-name-evaluators-get.js";
 export * from "./list-agents-api-v1-agents-get.js";
 export * from "./list-controls-api-v1-controls-get.js";
-export * from "./list-evaluator-configs-api-v1-evaluator-configs-get.js";
 export * from "./list-policy-controls-api-v1-policies-policy-id-controls-get.js";
 export * from "./patch-agent-api-v1-agents-agent-name-patch.js";
 export * from "./patch-control-api-v1-controls-control-id-patch.js";
@@ -32,4 +29,3 @@ export * from "./remove-all-agent-policies-api-v1-agents-agent-name-policies-del
 export * from "./remove-control-from-policy-api-v1-policies-policy-id-controls-control-id-delete.js";
 export * from "./set-agent-policy-api-v1-agents-agent-name-policy-policy-id-post.js";
 export * from "./set-control-data-api-v1-controls-control-id-data-put.js";
-export * from "./update-evaluator-config-api-v1-evaluator-configs-config-id-put.js";

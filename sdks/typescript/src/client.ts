@@ -20,7 +20,6 @@ export interface AgentControlInitOptions {
 export type AgentsApi = AgentControlSDK["agents"];
 export type ControlsApi = AgentControlSDK["controls"];
 export type EvaluationApi = AgentControlSDK["evaluation"];
-export type EvaluatorConfigsApi = AgentControlSDK["evaluatorConfigs"];
 export type EvaluatorsApi = AgentControlSDK["evaluators"];
 export type ObservabilityApi = AgentControlSDK["observability"];
 export type PoliciesApi = AgentControlSDK["policies"];
@@ -58,10 +57,6 @@ export class AgentControlClient {
 
   get evaluation(): EvaluationApi {
     return this.requireSDK().evaluation;
-  }
-
-  get evaluatorConfigs(): EvaluatorConfigsApi {
-    return this.requireSDK().evaluatorConfigs;
   }
 
   get evaluators(): EvaluatorsApi {
