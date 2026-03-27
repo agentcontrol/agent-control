@@ -71,5 +71,8 @@ start-dependencies:
 test:
 	$(TEST_DB_ENV) uv run --package agent-control-server pytest --cov=src --cov-report=xml:../coverage-server.xml -q
 
-run: start-dependencies migrate
+run: start-dependencies migrate run-server
+
+run-server:
 	uv run --package agent-control-server uvicorn agent_control_server.main:app --reload --host $(AGENT_CONTROL_HOST) --port $(AGENT_CONTROL_PORT)
+	

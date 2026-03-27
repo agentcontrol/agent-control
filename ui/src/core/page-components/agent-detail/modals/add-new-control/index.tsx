@@ -232,6 +232,7 @@ export function AddNewControlModal({
       size="xxl"
       padding={0}
       withCloseButton={false}
+      closeOnEscape={false}
       styles={{
         body: {
           padding: 0,
@@ -342,6 +343,7 @@ export function AddNewControlModal({
         title="Create Control"
         size="xl"
         keepMounted={false}
+        closeOnEscape={false}
         styles={{
           title: { fontSize: '18px', fontWeight: 600 },
           content: { maxWidth: '1500px', width: '90vw' },

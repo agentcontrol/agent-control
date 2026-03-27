@@ -372,6 +372,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         onClose={handleCloseEditModal}
         title="Edit Control"
         size="xl"
+        closeOnEscape={false}
         styles={{
           title: { fontSize: '18px', fontWeight: 600 },
           content: { maxWidth: '1500px', width: '95vw' },

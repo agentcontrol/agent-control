@@ -11,6 +11,7 @@ from agent_control_models.server import (
     DeleteControlResponse,
     GetControlDataResponse,
     GetControlResponse,
+    GetControlSchemaResponse,
     ListControlsResponse,
     PaginationInfo,
     PatchControlRequest,
@@ -323,6 +324,19 @@ async def create_control(
             operation="create",
         )
     return CreateControlResponse(control_id=control.id)
+
+
+@router.get(
+    "/schema",
+    response_model=GetControlSchemaResponse,
+    summary="Get control definition JSON schema",
+    response_description="JSON schema for ControlDefinition",
+)
+async def get_control_schema() -> GetControlSchemaResponse:
+    """Return the canonical JSON schema for ControlDefinition."""
+    return GetControlSchemaResponse(
+        schema_=ControlDefinition.model_json_schema(by_alias=True)
+    )
 
 
 @router.get(

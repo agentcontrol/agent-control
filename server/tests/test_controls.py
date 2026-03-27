@@ -2,10 +2,9 @@ import uuid
 from copy import deepcopy
 from typing import Any
 
+from agent_control_server.models import Control
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-
-from agent_control_server.models import Control
 
 from .conftest import engine
 
@@ -104,6 +103,20 @@ def test_get_control_data_initially_unconfigured(client: TestClient) -> None:
     assert resp.status_code == 422
     response_data = resp.json()
     assert "invalid data" in response_data.get("detail", "").lower()
+
+
+def test_get_control_schema_returns_control_definition_schema(client: TestClient) -> None:
+    resp = client.get("/api/v1/controls/schema")
+
+    assert resp.status_code == 200, resp.text
+    schema = resp.json()["schema"]
+    properties = schema["properties"]
+
+    assert schema["type"] == "object"
+    assert {"execution", "condition", "action"}.issubset(properties)
+    assert set(schema["required"]) >= {"execution", "condition", "action"}
+    assert "condition" in properties
+    assert "$defs" in schema
 
 
 VALID_CONTROL_DATA = {

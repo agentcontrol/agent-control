@@ -23,6 +23,8 @@ import type {
 } from '@/core/api/types';
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
+import { useControlSchema } from '@/core/hooks/query-hooks/use-control-schema';
+import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
@@ -40,6 +42,7 @@ import type {
   ControlDefinitionFormValues,
   ControlEditorMode,
   EditControlMode,
+  JsonEditorEvaluatorOption,
 } from './types';
 import { useEvaluatorConfigState } from './use-evaluator-config-state';
 import { applyApiErrorsToForms } from './utils';
@@ -47,6 +50,29 @@ import { applyApiErrorsToForms } from './utils';
 const EVALUATOR_CONFIG_HEIGHT = 450;
 const JSON_EDITOR_HEIGHT = 520;
 type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
+
+const DEFAULT_CONTROL_TEMPLATE = JSON.stringify(
+  {
+    description: 'Block outputs containing US Social Security Numbers',
+    enabled: true,
+    execution: 'server',
+    scope: {
+      step_types: ['llm'],
+      stages: ['post'],
+    },
+    condition: {
+      selector: { path: 'output' },
+      evaluator: {
+        name: 'regex',
+        config: { pattern: '\\b\\d{3}-\\d{2}-\\d{4}\\b' },
+      },
+    },
+    action: { decision: 'deny' },
+    tags: ['pii', 'compliance'],
+  },
+  null,
+  2
+);
 
 export type EditControlContentProps = {
   /** The control to edit/create template */
@@ -72,7 +98,10 @@ export const EditControlContent = ({
   initialEditorMode = 'form',
 }: EditControlContentProps) => {
   const { data: agentResponse } = useAgent(agentId);
+  const { data: controlSchemaResponse } = useControlSchema();
+  const { data: globalEvaluators } = useEvaluators();
   const steps = agentResponse?.steps ?? [];
+  const agentName = agentResponse?.agent?.agent_name ?? agentId;
 
   const [workingDefinition, setWorkingDefinition] = useState<ControlDefinition>(
     control.control
@@ -107,6 +136,38 @@ export const EditControlContent = ({
       () => getControlConditionState(workingDefinition),
       [workingDefinition]
     );
+  const availableEvaluators = useMemo<JsonEditorEvaluatorOption[]>(() => {
+    const merged = new Map<string, JsonEditorEvaluatorOption>();
+
+    for (const [id, evaluatorInfo] of Object.entries(globalEvaluators ?? {})) {
+      merged.set(id, {
+        id,
+        label: evaluatorInfo.name,
+        description: evaluatorInfo.description,
+        source: 'global',
+        configSchema: evaluatorInfo.config_schema,
+      });
+    }
+
+    for (const evaluatorSchema of agentResponse?.evaluators ?? []) {
+      const id = `${agentName}:${evaluatorSchema.name}`;
+      merged.set(id, {
+        id,
+        label: evaluatorSchema.name,
+        description: evaluatorSchema.description,
+        source: 'agent',
+        configSchema: evaluatorSchema.config_schema,
+      });
+    }
+
+    return [...merged.values()];
+  }, [agentName, agentResponse?.evaluators, globalEvaluators]);
+  const activeEvaluatorOption = useMemo(
+    () =>
+      availableEvaluators.find((candidate) => candidate.id === evaluatorId) ??
+      null,
+    [availableEvaluators, evaluatorId]
+  );
 
   const definitionForm = useForm<ControlDefinitionFormValues>({
     initialValues: {
@@ -394,7 +455,9 @@ export const EditControlContent = ({
     setEditorMode(initialEditorMode);
     setDefinitionJsonText(
       initialEditorMode === 'json'
-        ? JSON.stringify(control.control, null, 2)
+        ? mode === 'create'
+          ? DEFAULT_CONTROL_TEMPLATE
+          : JSON.stringify(control.control, null, 2)
         : ''
     );
     setDefinitionJsonError(null);
@@ -741,6 +804,10 @@ export const EditControlContent = ({
               tooltip="Edit the raw control definition as JSON. Control name remains outside this editor."
               helperText="Enter the raw control definition only. Do not wrap it in data, name, id, or control objects."
               testId="control-json-textarea"
+              editorMode="control"
+              schema={controlSchemaResponse?.schema ?? null}
+              evaluators={availableEvaluators}
+              steps={steps}
             />
           </Paper>
         ) : (
@@ -762,6 +829,8 @@ export const EditControlContent = ({
                   height={EVALUATOR_CONFIG_HEIGHT}
                   onConfigChange={syncJsonToForm}
                   onValidateConfig={validateEvaluatorConfig}
+                  activeEvaluatorId={evaluatorId}
+                  activeEvaluatorSchema={activeEvaluatorOption?.configSchema}
                 />
               ) : (
                 <Alert color="blue" variant="light" title="Composite condition">
