@@ -76,9 +76,15 @@ function replaceAllContent(
   const model = editor.getModel();
   if (!model) return;
   const fullRange = model.getFullModelRange();
-  editor.executeEdits(source, [
-    { range: fullRange, text: newText, forceMoveMarkers: true },
-  ]);
+  editor.executeEdits(source, [{ range: fullRange, text: newText }]);
+  // Clamp cursor to valid range after content replacement
+  const pos = editor.getPosition();
+  if (pos) {
+    const maxLine = model.getLineCount();
+    if (pos.lineNumber > maxLine) {
+      editor.setPosition({ lineNumber: maxLine, column: 1 });
+    }
+  }
 }
 
 function reformatIfValid(
@@ -380,53 +386,58 @@ export const JsonEditorView = ({
     const disposable = editor.onDidChangeCursorPosition(() => {
       if (timeout) window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
-        const pos = editor.getPosition();
-        const model = editor.getModel();
-        if (!pos || !model) return;
-        if (pos.lineNumber < 1 || pos.lineNumber > model.getLineCount()) return;
+        try {
+          const pos = editor.getPosition();
+          const model = editor.getModel();
+          if (!pos || !model) return;
+          if (pos.lineNumber < 1 || pos.lineNumber > model.getLineCount())
+            return;
 
-        const line = model.getLineContent(pos.lineNumber);
-        const beforeCursor = line.substring(0, pos.column - 1);
-        const afterCursor = line.substring(pos.column - 1);
+          const line = model.getLineContent(pos.lineNumber);
+          const beforeCursor = line.substring(0, pos.column - 1);
+          const afterCursor = line.substring(pos.column - 1);
 
-        // Detect string value (not property key)
-        const quotesBefore = beforeCursor.split('"').length - 1;
-        const isInString =
-          quotesBefore % 2 === 1 && /^[^"]*"/.test(afterCursor);
-        const isPropertyKey =
-          isInString && /^\s*:/.test(afterCursor.replace(/^[^"]*"/, ''));
+          // Detect string value (not property key)
+          const quotesBefore = beforeCursor.split('"').length - 1;
+          const isInString =
+            quotesBefore % 2 === 1 && /^[^"]*"/.test(afterCursor);
+          const isPropertyKey =
+            isInString && /^\s*:/.test(afterCursor.replace(/^[^"]*"/, ''));
 
-        let shouldTrigger = false;
+          let shouldTrigger = false;
 
-        if (isInString && !isPropertyKey) {
-          const openIdx = beforeCursor.lastIndexOf('"');
-          const closeIdx = afterCursor.indexOf('"');
-          const len =
-            openIdx >= 0 && closeIdx >= 0
-              ? beforeCursor.length - openIdx - 1 + closeIdx
-              : 999;
+          if (isInString && !isPropertyKey) {
+            const openIdx = beforeCursor.lastIndexOf('"');
+            const closeIdx = afterCursor.indexOf('"');
+            const len =
+              openIdx >= 0 && closeIdx >= 0
+                ? beforeCursor.length - openIdx - 1 + closeIdx
+                : 999;
 
-          if (len <= 2) {
-            shouldTrigger = true;
-          } else if (monacoRef.current) {
-            // Only trigger for longer strings if we have domain suggestions
-            shouldTrigger =
-              getJsonEditorCompletionItems(
-                monacoRef.current,
-                model,
-                pos,
-                autocompleteContext
-              ).length > 0;
+            if (len <= 2) {
+              shouldTrigger = true;
+            } else if (monacoRef.current) {
+              // Only trigger for longer strings if we have domain suggestions
+              shouldTrigger =
+                getJsonEditorCompletionItems(
+                  monacoRef.current,
+                  model,
+                  pos,
+                  autocompleteContext
+                ).length > 0;
+            }
           }
-        }
 
-        // Blank line inside object
-        if (!shouldTrigger && /^\s*,?\s*$/.test(line)) {
-          shouldTrigger = true;
-        }
+          // Blank line inside object
+          if (!shouldTrigger && /^\s*,?\s*$/.test(line)) {
+            shouldTrigger = true;
+          }
 
-        if (shouldTrigger) {
-          editor.trigger('cursor', 'editor.action.triggerSuggest', {});
+          if (shouldTrigger) {
+            editor.trigger('cursor', 'editor.action.triggerSuggest', {});
+          }
+        } catch {
+          // Ignore — can happen during undo when cursor references stale line numbers
         }
       }, 50);
     });

@@ -73,6 +73,7 @@ class ControlScope(BaseModel):
             "Step types this control applies to (omit to apply to all types). "
             "Built-in types are 'tool' and 'llm'."
         ),
+        json_schema_extra={"items": {"examples": ["tool", "llm"]}},
     )
     step_names: list[str] | None = Field(
         default=None,
