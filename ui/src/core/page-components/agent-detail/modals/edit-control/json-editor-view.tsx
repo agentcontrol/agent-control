@@ -310,6 +310,12 @@ export const JsonEditorView = ({
     const disposable = editor.onDidChangeModelContent(() => {
       if (timeout) window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
+        // Don't auto-fix while the suggest widget is open — setValue kills it
+        const suggestWidget = editor
+          .getDomNode()
+          ?.querySelector('.suggest-widget');
+        if (suggestWidget?.classList.contains('visible')) return;
+
         const text = editor.getValue();
         const fixed = fixJsonCommas(text);
         if (fixed !== text) {
