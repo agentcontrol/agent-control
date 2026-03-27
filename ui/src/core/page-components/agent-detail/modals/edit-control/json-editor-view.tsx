@@ -67,13 +67,27 @@ function isSuggestWidgetVisible(editor: MonacoEditorInstance): boolean {
   );
 }
 
+/** Replace all editor content via executeEdits (preserves undo stack). */
+function replaceAllContent(
+  editor: MonacoEditorInstance,
+  newText: string,
+  source: string
+) {
+  const model = editor.getModel();
+  if (!model) return;
+  const fullRange = model.getFullModelRange();
+  editor.executeEdits(source, [
+    { range: fullRange, text: newText, forceMoveMarkers: true },
+  ]);
+}
+
 function reformatIfValid(
   editor: MonacoEditorInstance,
   handleJsonChange: (text: string) => void
 ) {
   try {
     const formatted = JSON.stringify(JSON.parse(editor.getValue()), null, 2);
-    editor.setValue(formatted);
+    replaceAllContent(editor, formatted, 'reformat');
     handleJsonChange(formatted);
   } catch {
     handleJsonChange(editor.getValue());
@@ -161,12 +175,12 @@ export const JsonEditorView = ({
     try {
       const formatted = JSON.stringify(JSON.parse(commaFixed), null, 2);
       if (formatted !== text) {
-        editor.setValue(formatted);
+        replaceAllContent(editor, formatted, 'format');
         handleJsonChange(formatted);
       }
     } catch {
       if (commaFixed !== text) {
-        editor.setValue(commaFixed);
+        replaceAllContent(editor, commaFixed, 'comma-fix');
         handleJsonChange(commaFixed);
       }
       editor.getAction('editor.action.formatDocument')?.run();
@@ -309,23 +323,17 @@ export const JsonEditorView = ({
         const current = editor.getValue();
         const commaFixed = fixJsonCommas(current);
 
-        // Try to reformat if valid (catches code action insertions too)
         try {
           const formatted = JSON.stringify(JSON.parse(commaFixed), null, 2);
           if (formatted !== current) {
             isProgrammaticEdit = true;
-            const pos = editor.getPosition();
-            editor.setValue(formatted);
-            if (pos) editor.setPosition(pos);
+            replaceAllContent(editor, formatted, 'auto-reformat');
             handleJsonChange(formatted);
           }
         } catch {
-          // JSON still invalid — just apply comma fixes if any
           if (commaFixed !== current) {
             isProgrammaticEdit = true;
-            const pos = editor.getPosition();
-            editor.setValue(commaFixed);
-            if (pos) editor.setPosition(pos);
+            replaceAllContent(editor, commaFixed, 'auto-comma-fix');
             handleJsonChange(commaFixed);
           }
         }
