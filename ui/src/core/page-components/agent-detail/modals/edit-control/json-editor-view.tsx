@@ -256,7 +256,9 @@ export const JsonEditorView = ({
     } catch {
       /* ignore */
     }
-    let skipCommaFix = false;
+    // Programmatic edits (config update, comma fix, reformat) set this flag
+    // so subsequent content-change events from setValue don't re-trigger fixes.
+    let isProgrammaticEdit = false;
 
     const applyEditAndReformat = (
       edit: { offset: number; length: number; newText: string },
@@ -267,7 +269,7 @@ export const JsonEditorView = ({
       const start = model.getPositionAt(edit.offset);
       const end = model.getPositionAt(edit.offset + edit.length);
       queueMicrotask(() => {
-        skipCommaFix = true;
+        isProgrammaticEdit = true;
         editor.executeEdits(source, [
           {
             range: {
@@ -288,6 +290,12 @@ export const JsonEditorView = ({
     let commaTimer: number | null = null;
 
     const disposable = editor.onDidChangeModelContent(() => {
+      // Skip all reactive logic for changes we made ourselves
+      if (isProgrammaticEdit) {
+        isProgrammaticEdit = false;
+        return;
+      }
+
       const text = editor.getValue();
 
       // 1. Debounced hint update
@@ -297,14 +305,11 @@ export const JsonEditorView = ({
       // 2. Debounced comma auto-fix
       if (commaTimer) window.clearTimeout(commaTimer);
       commaTimer = window.setTimeout(() => {
-        if (skipCommaFix) {
-          skipCommaFix = false;
-          return;
-        }
         if (isSuggestWidgetVisible(editor)) return;
         const current = editor.getValue();
         const fixed = fixJsonCommas(current);
         if (fixed !== current) {
+          isProgrammaticEdit = true;
           const pos = editor.getPosition();
           editor.setValue(fixed);
           if (pos) editor.setPosition(pos);
