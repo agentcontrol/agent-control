@@ -261,10 +261,7 @@ async def evaluate(
             ingestor = None
         await _ingest_observability_events(response_events, ingestor)
 
-    sanitized = _sanitize_evaluation_response(raw_response)
-    if response_events:
-        sanitized = sanitized.model_copy(update={"events": response_events})
-    return sanitized
+    return _sanitize_evaluation_response(raw_response)
 
 
 def _build_observability_events(

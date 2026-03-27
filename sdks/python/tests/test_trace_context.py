@@ -52,3 +52,14 @@ def test_get_trace_context_from_provider_returns_none_for_invalid_shape() -> Non
     )
 
     assert get_trace_context_from_provider() is None
+
+
+def test_get_trace_context_from_provider_returns_none_for_empty_ids() -> None:
+    set_trace_context_provider(
+        lambda: {
+            "trace_id": "",
+            "span_id": "",
+        }
+    )
+
+    assert get_trace_context_from_provider() is None

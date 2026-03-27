@@ -1,14 +1,12 @@
 """Evaluation check operations for Agent Control SDK."""
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
 from agent_control_engine import list_evaluators
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
     ControlDefinition,
-    ControlExecutionEvent,
     ControlMatch,
     EvaluationRequest,
     EvaluationResponse,
@@ -19,147 +17,10 @@ from agent_control_models import (
 
 from ._state import state
 from .client import AgentControlClient
-from .observability import add_event, get_logger, is_observability_enabled
+from .evaluation_events import build_control_execution_events, deliver_oss_events
 from .telemetry import emit_control_events, has_control_event_sink
+from .tracing import get_trace_and_span_ids
 from .validation import ensure_agent_name
-
-_logger = get_logger(__name__)
-
-# Fallback IDs used when trace context is missing.
-# All-zero values are invalid trace/span IDs per OpenTelemetry.
-_FALLBACK_TRACE_ID = "0" * 32
-_FALLBACK_SPAN_ID = "0" * 16
-_trace_warning_logged = False
-
-
-def _observability_metadata(
-    control_def: ControlDefinition,
-) -> tuple[str | None, str | None, dict[str, object]]:
-    """Return representative event fields plus full composite context."""
-    identity = control_def.observability_identity()
-    return (
-        identity.selector_path,
-        identity.evaluator_name,
-        {
-            "primary_evaluator": identity.evaluator_name,
-            "primary_selector_path": identity.selector_path,
-            "leaf_count": identity.leaf_count,
-            "all_evaluators": identity.all_evaluators,
-            "all_selector_paths": identity.all_selector_paths,
-        },
-    )
-
-
-def _map_applies_to(step_type: str) -> Literal["llm_call", "tool_call"]:
-    return "tool_call" if step_type == "tool" else "llm_call"
-
-
-def _build_local_events(
-    local_result: "EvaluationResponse",
-    request: "EvaluationRequest",
-    local_controls: list["_ControlAdapter"],
-    trace_id: str | None,
-    span_id: str | None,
-    agent_name: str | None,
-) -> list[ControlExecutionEvent]:
-    """Build observability events for locally-evaluated controls.
-
-    Mirrors the server's _emit_observability_events() so that SDK-evaluated
-    controls are visible in the observability pipeline.
-
-    When trace_id/span_id are missing, fallback all-zero IDs are used so events
-    are still recorded (but clearly marked as uncorrelated).
-
-    Returns a list of local events. Fallback IDs are applied when trace context
-    is missing so the events can still be correlated within the SDK pipeline.
-    """
-    global _trace_warning_logged  # noqa: PLW0603
-    if not trace_id or not span_id:
-        if not _trace_warning_logged:
-            _logger.warning(
-                "Emitting local control events without trace context; "
-                "events will use fallback IDs and cannot be correlated with traces. "
-                "Pass trace_id/span_id for full observability."
-            )
-            _trace_warning_logged = True
-        trace_id = trace_id or _FALLBACK_TRACE_ID
-        span_id = span_id or _FALLBACK_SPAN_ID
-
-    applies_to = _map_applies_to(request.step.type)
-    control_lookup = {c.id: c for c in local_controls}
-    now = datetime.now(UTC)
-    resolved_agent_name = agent_name or request.agent_name
-    events: list[ControlExecutionEvent] = []
-
-    def _append_matches(matches: list[ControlMatch] | None, matched: bool) -> None:
-        if not matches:
-            return
-        for match in matches:
-            ctrl = control_lookup.get(match.control_id)
-            event_metadata = dict(match.result.metadata or {})
-            selector_path = None
-            evaluator_name = None
-            if ctrl:
-                selector_path, evaluator_name, identity_metadata = _observability_metadata(
-                    ctrl.control
-                )
-                event_metadata.update(identity_metadata)
-            events.append(
-                ControlExecutionEvent(
-                    control_execution_id=match.control_execution_id,
-                    trace_id=trace_id,
-                    span_id=span_id,
-                    agent_name=resolved_agent_name,
-                    control_id=match.control_id,
-                    control_name=match.control_name,
-                    check_stage=request.stage,
-                    applies_to=applies_to,
-                    action=match.action,
-                    matched=matched,
-                    confidence=match.result.confidence,
-                    timestamp=now,
-                    evaluator_name=evaluator_name,
-                    selector_path=selector_path,
-                    error_message=match.result.error if not matched else None,
-                    metadata=event_metadata,
-                )
-            )
-
-    _append_matches(local_result.matches, matched=True)
-    _append_matches(local_result.errors, matched=False)
-    _append_matches(local_result.non_matches, matched=False)
-    return events
-
-
-def _deliver_oss_events(events: list[ControlExecutionEvent]) -> None:
-    """Send events through the existing OSS SDK observability path."""
-    if not is_observability_enabled():
-        return
-
-    for event in events:
-        add_event(event)
-
-
-async def check_evaluation(
-    client: AgentControlClient,
-    agent_name: str,
-    step: "Step",
-    stage: Literal["pre", "post"],
-) -> EvaluationResult:
-    """Check if agent interaction is safe."""
-    normalized_name = ensure_agent_name(agent_name)
-
-    request = EvaluationRequest(
-        agent_name=normalized_name,
-        step=step,
-        stage=stage,
-    )
-    request_payload = request.model_dump(mode="json")
-
-    response = await client.http_client.post("/api/v1/evaluation", json=request_payload)
-    response.raise_for_status()
-
-    return cast(EvaluationResult, EvaluationResult.from_dict(response.json()))
 
 
 @dataclass
@@ -168,7 +29,7 @@ class _ControlAdapter:
 
     id: int
     name: str
-    control: "ControlDefinition"
+    control: ControlDefinition
 
 
 def _get_applicable_controls(
@@ -183,6 +44,22 @@ def _get_applicable_controls(
         context=context,
     ).get_applicable_controls(request)
     return cast(list[_ControlAdapter], applicable_controls)
+
+
+def _build_server_control_lookup(
+    server_control_payloads: list[dict[str, Any]],
+) -> dict[int, ControlDefinition]:
+    """Return best-effort parsed server control definitions keyed by control ID."""
+    control_lookup: dict[int, ControlDefinition] = {}
+
+    for control in server_control_payloads:
+        try:
+            control_lookup[control["id"]] = ControlDefinition.model_validate(control["control"])
+        except Exception:
+            # The server remains authoritative for malformed/unparseable controls.
+            continue
+
+    return control_lookup
 
 
 def _has_applicable_prefiltered_server_controls(
@@ -227,9 +104,9 @@ def _has_applicable_prefiltered_server_controls(
 
 
 def _merge_results(
-    local_result: "EvaluationResponse",
-    server_result: "EvaluationResponse",
-) -> "EvaluationResult":
+    local_result: EvaluationResponse,
+    server_result: EvaluationResponse,
+) -> EvaluationResult:
     """Merge local and server evaluation results."""
     is_safe = local_result.is_safe and server_result.is_safe
     confidence = min(local_result.confidence, server_result.confidence)
@@ -246,10 +123,6 @@ def _merge_results(
     if local_result.non_matches or server_result.non_matches:
         non_matches = (local_result.non_matches or []) + (server_result.non_matches or [])
 
-    events: list[ControlExecutionEvent] | None = None
-    if local_result.events or server_result.events:
-        events = (local_result.events or []) + (server_result.events or [])
-
     reason = None
     if local_result.reason and server_result.reason:
         reason = f"{local_result.reason}; {server_result.reason}"
@@ -265,48 +138,50 @@ def _merge_results(
         matches=matches if matches else None,
         errors=errors if errors else None,
         non_matches=non_matches if non_matches else None,
-        events=events if events else None,
     )
+
+
+async def check_evaluation(
+    client: AgentControlClient,
+    agent_name: str,
+    step: Step,
+    stage: Literal["pre", "post"],
+) -> EvaluationResult:
+    """Check if agent interaction is safe."""
+    normalized_name = ensure_agent_name(agent_name)
+
+    request = EvaluationRequest(
+        agent_name=normalized_name,
+        step=step,
+        stage=stage,
+    )
+    request_payload = request.model_dump(mode="json")
+
+    response = await client.http_client.post("/api/v1/evaluation", json=request_payload)
+    response.raise_for_status()
+
+    return cast(EvaluationResult, EvaluationResult.from_dict(response.json()))
 
 
 async def check_evaluation_with_local(
     client: AgentControlClient,
     agent_name: str,
-    step: "Step",
+    step: Step,
     stage: Literal["pre", "post"],
     controls: list[dict[str, Any]],
     trace_id: str | None = None,
     span_id: str | None = None,
     event_agent_name: str | None = None,
 ) -> EvaluationResult:
-    """
-    Check if agent interaction is safe, running local controls first.
-
-    This function executes controls with execution="sdk" locally in the SDK,
-    then calls the server for execution="server" controls. If a local control
-    denies, it short-circuits and returns immediately without calling the server.
-
-    Note on parse errors: If a local control fails to parse/validate, it is
-    skipped (logged as WARNING) and the error is included in result.errors.
-    This does NOT affect is_safe or confidence—callers concerned with safety
-    should check result.errors for any parse failures.
-
-    Args:
-        client: AgentControlClient instance
-        agent_name: Normalized agent identifier
-        step: Step payload to evaluate
-        stage: 'pre' for pre-execution check, 'post' for post-execution check
-        controls: List of control dicts from initAgent response
-                  (each has 'id', 'name', 'control' keys)
-
-    Returns:
-        EvaluationResult with safety analysis (merged from local + server)
-
-    Raises:
-        httpx.HTTPError: If server request fails
-    """
+    """Check if agent interaction is safe, running local controls first."""
     normalized_name = ensure_agent_name(agent_name)
-    # Partition controls by local flag
+    resolved_trace_id = trace_id
+    resolved_span_id = span_id
+    if trace_id is None or span_id is None:
+        current_trace_id, current_span_id = get_trace_and_span_ids()
+        resolved_trace_id = trace_id or current_trace_id
+        resolved_span_id = span_id or current_span_id
+
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []
     available_evaluators = list_evaluators()
@@ -351,12 +226,6 @@ async def check_evaluation_with_local(
         except Exception as exc:
             control_id = control.get("id", -1)
             control_name = control.get("name", "unknown")
-            _logger.warning(
-                "Skipping invalid local control '%s' (id=%s): %s",
-                control_name,
-                control_id,
-                exc,
-            )
             parse_errors.append(
                 ControlMatch(
                     control_id=control_id,
@@ -381,14 +250,12 @@ async def check_evaluation_with_local(
         if not parse_errors:
             return result
         combined_errors = (result.errors or []) + parse_errors
-        return result.model_copy(
-            update={
-                "errors": combined_errors,
-            }
-        )
+        return result.model_copy(update={"errors": combined_errors})
+
+    merged_emission_enabled = has_control_event_sink()
 
     local_result: EvaluationResponse | None = None
-    merged_emission_enabled = has_control_event_sink()
+    local_events = []
     applicable_local_controls = _get_applicable_controls(
         local_controls,
         request,
@@ -397,33 +264,32 @@ async def check_evaluation_with_local(
     if applicable_local_controls:
         engine = ControlEngine(applicable_local_controls, context="sdk")
         local_result = await engine.process(request)
-
-        local_events = _build_local_events(
+        local_control_lookup = {control.id: control.control for control in applicable_local_controls}
+        local_events = build_control_execution_events(
             local_result,
             request,
-            applicable_local_controls,
-            trace_id,
-            span_id,
-            agent_name=event_agent_name,
+            local_control_lookup,
+            resolved_trace_id,
+            resolved_span_id,
+            event_agent_name,
         )
-        local_result = local_result.model_copy(update={"events": local_events or None})
 
         if not merged_emission_enabled:
-            _deliver_oss_events(local_events)
+            deliver_oss_events(local_events)
 
         if not local_result.is_safe:
             result = _with_parse_errors(EvaluationResult.model_validate(local_result.model_dump()))
-            if merged_emission_enabled and result.events:
-                emit_control_events(result.events)
+            if merged_emission_enabled:
+                emit_control_events(local_events)
             return result
 
     if _has_applicable_prefiltered_server_controls(server_control_payloads, request):
         request_payload = request.model_dump(mode="json", exclude_none=True)
         headers: dict[str, str] = {}
-        if trace_id:
-            headers["X-Trace-Id"] = trace_id
-        if span_id:
-            headers["X-Span-Id"] = span_id
+        if resolved_trace_id:
+            headers["X-Trace-Id"] = resolved_trace_id
+        if resolved_span_id:
+            headers["X-Span-Id"] = resolved_span_id
         if merged_emission_enabled:
             headers["X-Agent-Control-Merge-Events"] = "true"
 
@@ -434,30 +300,34 @@ async def check_evaluation_with_local(
         )
         response.raise_for_status()
         server_result = EvaluationResponse.model_validate(response.json())
+        server_control_lookup = _build_server_control_lookup(server_control_payloads)
+        server_events = build_control_execution_events(
+            server_result,
+            request,
+            server_control_lookup,
+            resolved_trace_id,
+            resolved_span_id,
+            event_agent_name,
+        )
 
         if local_result is not None:
             result = _with_parse_errors(_merge_results(local_result, server_result))
-            if merged_emission_enabled and result.events:
-                emit_control_events(result.events)
+            if merged_emission_enabled:
+                emit_control_events(local_events + server_events)
             return result
 
-        result = _with_parse_errors(
-            EvaluationResult.model_validate(server_result.model_dump())
-        )
-        if merged_emission_enabled and result.events:
-            emit_control_events(result.events)
+        result = _with_parse_errors(EvaluationResult.model_validate(server_result.model_dump()))
+        if merged_emission_enabled:
+            emit_control_events(server_events)
         return result
 
     if local_result is not None:
         result = _with_parse_errors(EvaluationResult.model_validate(local_result.model_dump()))
-        if merged_emission_enabled and result.events:
-            emit_control_events(result.events)
+        if merged_emission_enabled:
+            emit_control_events(local_events)
         return result
 
-    result = _with_parse_errors(EvaluationResult(is_safe=True, confidence=1.0))
-    if merged_emission_enabled and result.events:
-        emit_control_events(result.events)
-    return result
+    return _with_parse_errors(EvaluationResult(is_safe=True, confidence=1.0))
 
 
 async def evaluate_controls(
@@ -472,58 +342,10 @@ async def evaluate_controls(
     trace_id: str | None = None,
     span_id: str | None = None,
 ) -> EvaluationResult:
-    """
-    Evaluate controls for a step.
-
-    This convenience function evaluates controls (both local SDK-executed and
-    server-executed) for a given step.
-
-    Args:
-        step_name: Name of the step (e.g., "chat", "search_db")
-        input: Input data for the step (for pre-stage evaluation)
-        output: Output data from the step (for post-stage evaluation)
-        context: Additional context metadata
-        step_type: Type of step - "llm" or "tool" (default: "llm")
-        stage: When to evaluate - "pre" or "post" (default: "pre")
-        agent_name: Agent name (required)
-        trace_id: Optional OpenTelemetry trace ID for observability
-        span_id: Optional OpenTelemetry span ID for observability
-
-    Returns:
-        EvaluationResult with is_safe, confidence, reason, matches, errors
-
-    Raises:
-        httpx.HTTPError: If server request fails
-
-    Example:
-        import agent_control
-
-        # Evaluate controls for an agent
-        result = await agent_control.evaluate_controls(
-            "chat",
-            input="User message here",
-            stage="pre",
-            agent_name="customer-service-bot"
-        )
-
-        # With trace/span IDs for observability
-        result = await agent_control.evaluate_controls(
-            "chat",
-            input="User message",
-            stage="pre",
-            agent_name="customer-service-bot",
-            trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
-            span_id="00f067aa0ba902b7"
-        )
-    """
-    # Ensure server_url is set (for mypy type narrowing)
+    """Evaluate controls for a step."""
     if state.server_url is None:
-        raise RuntimeError(
-            "Server URL not configured. Call agent_control.init() first."
-        )
+        raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
 
-    # Build Step dict (input and output are required by Step model)
-    # Tool steps require dict input/output, LLM steps use strings
     default_value = {} if step_type == "tool" else ""
     step_dict: dict[str, Any] = {
         "type": step_type,
@@ -534,15 +356,11 @@ async def evaluate_controls(
     if context is not None:
         step_dict["context"] = context
 
-    # Convert to Step object if models available
-    step_obj = Step(**step_dict)  # type: ignore
-
-    # Get controls from server cache
+    step_obj = Step(**step_dict)  # type: ignore[arg-type]
     resolved_controls = state.server_controls or []
 
-    # Evaluate using local + server controls
     async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
-        result = await check_evaluation_with_local(
+        return await check_evaluation_with_local(
             client=client,
             agent_name=agent_name,
             step=step_obj,
@@ -552,5 +370,3 @@ async def evaluate_controls(
             span_id=span_id,
             event_agent_name=agent_name,
         )
-
-    return result

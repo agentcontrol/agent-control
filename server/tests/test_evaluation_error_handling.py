@@ -383,10 +383,10 @@ def test_evaluation_warns_when_observability_drops_events(
             app.state.event_ingestor = previous_ingestor
 
 
-def test_evaluation_returns_events_and_skips_ingest_for_merge_mode(
+def test_evaluation_skips_ingest_for_merge_mode(
     client: TestClient, monkeypatch
 ) -> None:
-    """Merged-event mode should return events without ingesting them server-side."""
+    """Merged-event mode should skip server-side observability ingestion."""
     agent_name, _ = create_and_assign_policy(client)
 
     import agent_control_server.endpoints.evaluation as evaluation_module
@@ -419,7 +419,5 @@ def test_evaluation_returns_events_and_skips_ingest_for_merge_mode(
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["events"] is not None
-    assert len(body["events"]) == 1
-    assert body["events"][0]["control_execution_id"] == event.control_execution_id
+    assert "events" not in body
     ingest_mock.assert_not_awaited()
