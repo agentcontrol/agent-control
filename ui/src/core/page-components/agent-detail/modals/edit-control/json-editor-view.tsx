@@ -1,6 +1,10 @@
 import { ActionIcon, Box, Group, Text, Tooltip } from '@mantine/core';
 import { useClipboard, useDebouncedValue } from '@mantine/hooks';
-import { IconClipboardCheck, IconClipboardCopy, IconCode } from '@tabler/icons-react';
+import {
+  IconClipboardCheck,
+  IconClipboardCopy,
+  IconCode,
+} from '@tabler/icons-react';
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -25,7 +29,8 @@ const MonacoEditor = dynamic(
 );
 
 type MonacoModule = typeof import('monaco-editor');
-type MonacoEditorInstance = import('monaco-editor').editor.IStandaloneCodeEditor;
+type MonacoEditorInstance =
+  import('monaco-editor').editor.IStandaloneCodeEditor;
 
 type JsonEditorTestElement = HTMLDivElement & {
   __getJsonEditorValue?: () => string;
@@ -99,8 +104,9 @@ export const JsonEditorView = ({
   // (useComputedColorScheme reads from the nearest provider which may be a nested one)
   useEffect(() => {
     const detectScheme = () => {
-      const scheme =
-        document.documentElement.getAttribute('data-mantine-color-scheme');
+      const scheme = document.documentElement.getAttribute(
+        'data-mantine-color-scheme'
+      );
       setIsDarkMode(scheme === 'dark');
     };
 
@@ -194,8 +200,7 @@ export const JsonEditorView = ({
               after: {
                 content: hint.hint,
                 inlineClassName: hintClassName,
-                cursorStops:
-                  monaco.editor.InjectedTextCursorStops.None,
+                cursorStops: monaco.editor.InjectedTextCursorStops.None,
               },
             },
           }))
@@ -333,7 +338,9 @@ export const JsonEditorView = ({
     try {
       const parsed = JSON.parse(editor.getValue());
       previousDecision = parsed?.action?.decision ?? null;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     const applyEditAndReformat = (
       edit: { offset: number; length: number; newText: string },
@@ -356,7 +363,11 @@ export const JsonEditorView = ({
           },
         ]);
         try {
-          const formatted = JSON.stringify(JSON.parse(editor.getValue()), null, 2);
+          const formatted = JSON.stringify(
+            JSON.parse(editor.getValue()),
+            null,
+            2
+          );
           editor.setValue(formatted);
           handleJsonChange(formatted);
         } catch {
@@ -379,7 +390,9 @@ export const JsonEditorView = ({
       try {
         const parsed = JSON.parse(text);
         previousDecision = parsed?.action?.decision ?? null;
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       if (steerEdit) {
         applyEditAndReformat(steerEdit, 'steering-context-update');
       }
@@ -537,7 +550,9 @@ export const JsonEditorView = ({
         style={{
           position: 'relative',
           border: `1px solid ${
-            jsonError ? 'var(--mantine-color-red-6)' : 'var(--mantine-color-gray-4)'
+            jsonError
+              ? 'var(--mantine-color-red-6)'
+              : 'var(--mantine-color-gray-4)'
           }`,
           borderRadius: 8,
         }}

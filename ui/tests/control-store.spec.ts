@@ -2,7 +2,13 @@ import type { Page } from '@playwright/test';
 
 import { getAgentRoute } from '@/core/constants/agent-routes';
 
-import { expect, mockData, mockRoutes, setJsonEditorValue, test } from './fixtures';
+import {
+  expect,
+  mockData,
+  mockRoutes,
+  setJsonEditorValue,
+  test,
+} from './fixtures';
 
 const agentUrl = getAgentRoute('agent-1', { tab: 'controls' });
 const getAgentControlsUrl = (

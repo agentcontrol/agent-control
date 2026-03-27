@@ -294,6 +294,8 @@ class GetControlDataResponse(BaseModel):
 
 
 class GetControlSchemaResponse(BaseModel):
+    model_config = {"populate_by_name": True}
+
     schema_: dict[str, Any] = Field(
         alias="schema",
         serialization_alias="schema",

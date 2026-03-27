@@ -207,7 +207,9 @@ function getSchemaTypes(schema: unknown): string[] {
     return [];
   }
 
-  return schema.type.filter((value): value is string => typeof value === 'string');
+  return schema.type.filter(
+    (value): value is string => typeof value === 'string'
+  );
 }
 
 function getSchemaType(schema: unknown): string | null {
@@ -274,7 +276,10 @@ function mergeSchemas(
       additionalProperties = schema.additionalProperties;
     }
 
-    if (merged.description === undefined && typeof schema.description === 'string') {
+    if (
+      merged.description === undefined &&
+      typeof schema.description === 'string'
+    ) {
       merged.description = schema.description;
     }
 
@@ -348,7 +353,11 @@ function normalizeSchema(
     const localOverrides = stripCompositionKeys(current);
     const nextSeenRefs = new Set(seenRefs);
     nextSeenRefs.add(ref);
-    const normalizedResolved = normalizeSchema(resolved, rootSchema, nextSeenRefs);
+    const normalizedResolved = normalizeSchema(
+      resolved,
+      rootSchema,
+      nextSeenRefs
+    );
     return normalizedResolved
       ? mergeSchemas([normalizedResolved, localOverrides])
       : localOverrides;
@@ -409,7 +418,9 @@ function getSchemaRequiredProperties(schema: unknown): string[] {
     return [];
   }
 
-  return schema.required.filter((value): value is string => typeof value === 'string');
+  return schema.required.filter(
+    (value): value is string => typeof value === 'string'
+  );
 }
 
 function getSchemaAtProperty(
@@ -511,7 +522,9 @@ function isSchemaWithProperties(
 }
 
 function getSchemaExamples(schema: unknown): unknown[] {
-  return isObject(schema) && Array.isArray(schema.examples) ? schema.examples : [];
+  return isObject(schema) && Array.isArray(schema.examples)
+    ? schema.examples
+    : [];
 }
 
 function getSchemaDefault(schema: unknown): unknown {
@@ -607,7 +620,9 @@ function buildSchemaValueSnippet(
       return '[]';
     }
     case 'boolean': {
-      return String(typeof preferredValue === 'boolean' ? preferredValue : true);
+      return String(
+        typeof preferredValue === 'boolean' ? preferredValue : true
+      );
     }
     case 'integer':
     case 'number': {
@@ -818,7 +833,9 @@ function resolveActiveEvaluator(
   ];
   const evaluatorNameNode = findNodeAtLocation(tree, evaluatorNamePath);
   const evaluatorName =
-    typeof evaluatorNameNode?.value === 'string' ? evaluatorNameNode.value : null;
+    typeof evaluatorNameNode?.value === 'string'
+      ? evaluatorNameNode.value
+      : null;
 
   return findEvaluatorById(context.evaluators, evaluatorName);
 }
@@ -864,10 +881,7 @@ function resolveSchemaAtJsonPath(
       return cursor;
     }
 
-    if (
-      context.mode === 'control' &&
-      isEvaluatorConfigSegment(path, index)
-    ) {
+    if (context.mode === 'control' && isEvaluatorConfigSegment(path, index)) {
       const rootSchema = asSchema(activeEvaluator?.configSchema ?? null);
       cursor = {
         schema: normalizeSchema(rootSchema, rootSchema),
@@ -1148,9 +1162,7 @@ function buildCompletionSuggestions(
       propertyKeyContext.objectPath
     );
     const currentPropertyName =
-      replaceExistingKey && typeof node?.value === 'string'
-        ? node.value
-        : null;
+      replaceExistingKey && typeof node?.value === 'string' ? node.value : null;
 
     suggestions.push(
       ...buildSchemaPropertySuggestions(
@@ -1260,9 +1272,7 @@ function collectEvaluatorNames(
   }
 }
 
-export function extractEvaluatorNames(
-  text: string
-): Map<string, string> {
+export function extractEvaluatorNames(text: string): Map<string, string> {
   const tree = parseTree(text);
   if (!tree) return new Map();
 
@@ -1456,7 +1466,8 @@ export function getEmptyValueHints(
   const tree = parseTree(text);
   if (!tree) return [];
 
-  const hints: Array<{ range: import('monaco-editor').IRange; hint: string }> = [];
+  const hints: Array<{ range: import('monaco-editor').IRange; hint: string }> =
+    [];
 
   // Hints for empty string values
   const emptyStringPattern = /:\s*""/g;
@@ -1475,19 +1486,27 @@ export function getEmptyValueHints(
       pos.column
     );
 
-    const activeEvaluator = resolveActiveEvaluator(context, tree, location.path);
+    const activeEvaluator = resolveActiveEvaluator(
+      context,
+      tree,
+      location.path
+    );
 
     if (isEvaluatorNameLocation(location.path) && context.evaluators?.length) {
       const names = context.evaluators.map((e) => e.id);
       const display = names.slice(0, MAX_HINT_VALUES);
       const hint =
-        display.join('  |  ') + (names.length > MAX_HINT_VALUES ? '  | ...' : '');
+        display.join('  |  ') +
+        (names.length > MAX_HINT_VALUES ? '  | ...' : '');
       hints.push({ range, hint: `  ${hint}` });
       continue;
     }
 
     if (isSelectorPathLocation(location.path)) {
-      hints.push({ range, hint: '  *  |  input  |  output  |  context  |  ...' });
+      hints.push({
+        range,
+        hint: '  *  |  input  |  output  |  context  |  ...',
+      });
       continue;
     }
 
@@ -1527,7 +1546,9 @@ function addDependentFieldHints(
     decisionNode?.value === 'steer' &&
     !hasSiblingProperty(tree, ['action', 'decision'], 'steering_context')
   ) {
-    const endPos = model.getPositionAt(decisionNode.offset + decisionNode.length);
+    const endPos = model.getPositionAt(
+      decisionNode.offset + decisionNode.length
+    );
     hints.push({
       range: new monaco.Range(
         endPos.lineNumber,
@@ -1538,7 +1559,6 @@ function addDependentFieldHints(
       hint: '  \u2190 add "steering_context": { "message": "..." }',
     });
   }
-
 }
 
 // Default Monaco JSON mode configuration with completionItems disabled.
@@ -1641,7 +1661,12 @@ const LEAF_CONDITION_TEMPLATE = {
 function findConditionNodeAtOffset(
   tree: JsonNode | undefined,
   offset: number
-): { node: JsonNode; isLeaf: boolean; isArray: boolean; arrayKey: string | null } | null {
+): {
+  node: JsonNode;
+  isLeaf: boolean;
+  isArray: boolean;
+  arrayKey: string | null;
+} | null {
   if (!tree) return null;
 
   const conditionNode = findNodeAtLocation(tree, ['condition']);
@@ -1653,7 +1678,12 @@ function findConditionNodeAtOffset(
 function findConditionAtOffset(
   node: JsonNode,
   offset: number
-): { node: JsonNode; isLeaf: boolean; isArray: boolean; arrayKey: string | null } | null {
+): {
+  node: JsonNode;
+  isLeaf: boolean;
+  isArray: boolean;
+  arrayKey: string | null;
+} | null {
   if (offset < node.offset || offset > node.offset + node.length) return null;
 
   if (node.type === 'object' && node.children) {
@@ -1671,7 +1701,12 @@ function findConditionAtOffset(
           }
           // Offset is in the array but not inside a specific item
           if (offset >= value.offset && offset <= value.offset + value.length) {
-            return { node, isLeaf: false, isArray: true, arrayKey: key as string };
+            return {
+              node,
+              isLeaf: false,
+              isArray: true,
+              arrayKey: key as string,
+            };
           }
         }
       } else if (key === 'not' && value.type === 'object') {
@@ -1705,7 +1740,8 @@ function registerConditionCodeActions(
 ) {
   return monaco.languages.registerCodeActionProvider('json', {
     provideCodeActions(model, range) {
-      if (model.uri.toString() !== context.modelUri) return { actions: [], dispose() {} };
+      if (model.uri.toString() !== context.modelUri)
+        return { actions: [], dispose() {} };
       if (context.mode !== 'control') return { actions: [], dispose() {} };
 
       const text = model.getValue();
@@ -1719,33 +1755,72 @@ function registerConditionCodeActions(
       const actions: import('monaco-editor').languages.CodeAction[] = [];
       const { node, isLeaf, isArray, arrayKey } = condCtx;
 
-      const candidates: (import('monaco-editor').languages.CodeAction | null)[] = [];
+      const candidates: (
+        | import('monaco-editor').languages.CodeAction
+        | null
+      )[] = [];
 
       if (isLeaf) {
         candidates.push(
-          buildNodeTransformAction(monaco, model, node, 'Wrap in AND (add another condition)',
-            (p) => ({ and: [p, LEAF_CONDITION_TEMPLATE] })),
-          buildNodeTransformAction(monaco, model, node, 'Wrap in OR (add another condition)',
-            (p) => ({ or: [p, LEAF_CONDITION_TEMPLATE] })),
-          buildNodeTransformAction(monaco, model, node, 'Wrap in NOT',
-            (p) => ({ not: p })),
+          buildNodeTransformAction(
+            monaco,
+            model,
+            node,
+            'Wrap in AND (add another condition)',
+            (p) => ({ and: [p, LEAF_CONDITION_TEMPLATE] })
+          ),
+          buildNodeTransformAction(
+            monaco,
+            model,
+            node,
+            'Wrap in OR (add another condition)',
+            (p) => ({ or: [p, LEAF_CONDITION_TEMPLATE] })
+          ),
+          buildNodeTransformAction(monaco, model, node, 'Wrap in NOT', (p) => ({
+            not: p,
+          }))
         );
       }
 
       if (isArray && (arrayKey === 'and' || arrayKey === 'or')) {
         const otherKey = arrayKey === 'and' ? 'or' : 'and';
         candidates.push(
-          buildNodeTransformAction(monaco, model, node, `Add condition to ${arrayKey.toUpperCase()}`,
-            (p) => { const o = p as Record<string, unknown>; const a = o[arrayKey]; if (!Array.isArray(a)) return undefined; return { ...o, [arrayKey]: [...a, LEAF_CONDITION_TEMPLATE] }; }),
-          buildNodeTransformAction(monaco, model, node, `Convert ${arrayKey.toUpperCase()} to ${otherKey.toUpperCase()}`,
-            (p) => { const o = p as Record<string, unknown>; const a = o[arrayKey]; delete o[arrayKey]; return { ...o, [otherKey]: a }; }),
+          buildNodeTransformAction(
+            monaco,
+            model,
+            node,
+            `Add condition to ${arrayKey.toUpperCase()}`,
+            (p) => {
+              const o = p as Record<string, unknown>;
+              const a = o[arrayKey];
+              if (!Array.isArray(a)) return undefined;
+              return { ...o, [arrayKey]: [...a, LEAF_CONDITION_TEMPLATE] };
+            }
+          ),
+          buildNodeTransformAction(
+            monaco,
+            model,
+            node,
+            `Convert ${arrayKey.toUpperCase()} to ${otherKey.toUpperCase()}`,
+            (p) => {
+              const o = p as Record<string, unknown>;
+              const a = o[arrayKey];
+              delete o[arrayKey];
+              return { ...o, [otherKey]: a };
+            }
+          )
         );
       }
 
       if (arrayKey === 'not') {
         candidates.push(
-          buildNodeTransformAction(monaco, model, node, 'Remove NOT (unwrap)',
-            (p) => (p as Record<string, unknown>).not),
+          buildNodeTransformAction(
+            monaco,
+            model,
+            node,
+            'Remove NOT (unwrap)',
+            (p) => (p as Record<string, unknown>).not
+          )
         );
       }
 
@@ -1765,7 +1840,9 @@ function buildNodeTransformAction(
   title: string,
   transform: (parsed: unknown) => unknown
 ): import('monaco-editor').languages.CodeAction | null {
-  const nodeText = model.getValue().substring(node.offset, node.offset + node.length);
+  const nodeText = model
+    .getValue()
+    .substring(node.offset, node.offset + node.length);
   let parsed: unknown;
   try {
     parsed = JSON.parse(nodeText);
@@ -1789,8 +1866,10 @@ function buildNodeTransformAction(
           resource: model.uri,
           textEdit: {
             range: new monaco.Range(
-              startPos.lineNumber, startPos.column,
-              endPos.lineNumber, endPos.column
+              startPos.lineNumber,
+              startPos.column,
+              endPos.lineNumber,
+              endPos.column
             ),
             text: newText,
           },

@@ -842,13 +842,7 @@ test.describe('Agent Detail Page', () => {
     const labels = suggestions.map((item) => item.label);
 
     expect(labels).toEqual(
-      expect.arrayContaining([
-        'selector',
-        'evaluator',
-        'and',
-        'or',
-        'not',
-      ])
+      expect.arrayContaining(['selector', 'evaluator', 'and', 'or', 'not'])
     );
   });
 
@@ -920,13 +914,7 @@ test.describe('Agent Detail Page', () => {
     const labels = suggestions.map((item) => item.label);
 
     expect(labels).toEqual(
-      expect.arrayContaining([
-        'selector',
-        'evaluator',
-        'and',
-        'or',
-        'not',
-      ])
+      expect.arrayContaining(['selector', 'evaluator', 'and', 'or', 'not'])
     );
   });
 
@@ -998,13 +986,7 @@ test.describe('Agent Detail Page', () => {
     const labels = suggestions.map((item) => item.label);
 
     expect(labels).toEqual(
-      expect.arrayContaining([
-        'selector',
-        'evaluator',
-        'and',
-        'or',
-        'not',
-      ])
+      expect.arrayContaining(['selector', 'evaluator', 'and', 'or', 'not'])
     );
   });
 

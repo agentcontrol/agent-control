@@ -335,7 +335,7 @@ async def create_control(
 async def get_control_schema() -> GetControlSchemaResponse:
     """Return the canonical JSON schema for ControlDefinition."""
     return GetControlSchemaResponse(
-        schema_=ControlDefinition.model_json_schema(by_alias=True)
+        schema=ControlDefinition.model_json_schema(by_alias=True)
     )
 
 

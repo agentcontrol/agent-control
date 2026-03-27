@@ -389,10 +389,16 @@ const controlSchemaResponse: GetControlSchemaResponse = {
         type: 'object',
         properties: {
           step_types: {
-            anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }],
+            anyOf: [
+              { type: 'array', items: { type: 'string' } },
+              { type: 'null' },
+            ],
           },
           step_names: {
-            anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }],
+            anyOf: [
+              { type: 'array', items: { type: 'string' } },
+              { type: 'null' },
+            ],
           },
           step_name_regex: {
             anyOf: [{ type: 'string' }, { type: 'null' }],
@@ -930,18 +936,13 @@ export async function setJsonEditorValue(
 ) {
   const locator = page.getByTestId(testId);
   await expect(locator).toBeVisible();
-  await page.waitForFunction(
-    (selector) => {
-      const element = document.querySelector(
-        `[data-testid="${selector}"]`
-      ) as {
-        __setJsonEditorValue?: (nextValue: string) => void;
-      } | null;
+  await page.waitForFunction((selector) => {
+    const element = document.querySelector(`[data-testid="${selector}"]`) as {
+      __setJsonEditorValue?: (nextValue: string) => void;
+    } | null;
 
-      return typeof element?.__setJsonEditorValue === 'function';
-    },
-    testId
-  );
+    return typeof element?.__setJsonEditorValue === 'function';
+  }, testId);
 
   await locator.evaluate((element, nextValue) => {
     const target = element as {
@@ -964,25 +965,20 @@ export async function getJsonEditorSuggestions(
 ) {
   const locator = page.getByTestId(testId);
   await expect(locator).toBeVisible();
-  await page.waitForFunction(
-    (selector) => {
-      const element = document.querySelector(
-        `[data-testid="${selector}"]`
-      ) as {
-        __isJsonEditorReady?: () => boolean;
-        __getJsonEditorSuggestions?: (
-          line: number,
-          column: number
-        ) => Array<{ label: string; detail?: string }>;
-      } | null;
+  await page.waitForFunction((selector) => {
+    const element = document.querySelector(`[data-testid="${selector}"]`) as {
+      __isJsonEditorReady?: () => boolean;
+      __getJsonEditorSuggestions?: (
+        line: number,
+        column: number
+      ) => Array<{ label: string; detail?: string }>;
+    } | null;
 
-      return (
-        typeof element?.__getJsonEditorSuggestions === 'function' &&
-        element.__isJsonEditorReady?.() === true
-      );
-    },
-    testId
-  );
+    return (
+      typeof element?.__getJsonEditorSuggestions === 'function' &&
+      element.__isJsonEditorReady?.() === true
+    );
+  }, testId);
 
   return locator.evaluate(
     (element, params) => {
@@ -1014,22 +1010,17 @@ export async function focusJsonEditorAt(
 ) {
   const locator = page.getByTestId(testId);
   await expect(locator).toBeVisible();
-  await page.waitForFunction(
-    (selector) => {
-      const element = document.querySelector(
-        `[data-testid="${selector}"]`
-      ) as {
-        __isJsonEditorReady?: () => boolean;
-        __focusJsonEditorAt?: (line: number, column: number) => void;
-      } | null;
+  await page.waitForFunction((selector) => {
+    const element = document.querySelector(`[data-testid="${selector}"]`) as {
+      __isJsonEditorReady?: () => boolean;
+      __focusJsonEditorAt?: (line: number, column: number) => void;
+    } | null;
 
-      return (
-        typeof element?.__focusJsonEditorAt === 'function' &&
-        element.__isJsonEditorReady?.() === true
-      );
-    },
-    testId
-  );
+    return (
+      typeof element?.__focusJsonEditorAt === 'function' &&
+      element.__isJsonEditorReady?.() === true
+    );
+  }, testId);
 
   await locator.evaluate(
     (element, params) => {
