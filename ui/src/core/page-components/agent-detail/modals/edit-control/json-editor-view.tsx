@@ -316,24 +316,22 @@ export const JsonEditorView = ({
       if (hintTimer) window.clearTimeout(hintTimer);
       hintTimer = window.setTimeout(updateHints, HINT_DEBOUNCE_MS);
 
-      // 2. Debounced comma auto-fix + reformat
+      // 2. Debounced comma auto-fix (no auto-reformat — that's the Format button's job)
       if (commaTimer) window.clearTimeout(commaTimer);
       commaTimer = window.setTimeout(() => {
         if (isSuggestWidgetVisible(editor)) return;
+        if (editor.hasTextFocus()) return; // don't touch content while user is typing
         const current = editor.getValue();
         const commaFixed = fixJsonCommas(current);
-
-        // Only apply changes if the result is valid JSON.
-        // Don't touch broken JSON mid-edit — comma insertion can corrupt it.
+        if (commaFixed === current) return;
+        // Only apply if the fix produces valid JSON
         try {
-          const formatted = JSON.stringify(JSON.parse(commaFixed), null, 2);
-          if (formatted !== current) {
-            isProgrammaticEdit = true;
-            replaceAllContent(editor, formatted, 'auto-reformat');
-            handleJsonChange(formatted);
-          }
+          JSON.parse(commaFixed);
+          isProgrammaticEdit = true;
+          replaceAllContent(editor, commaFixed, 'auto-comma-fix');
+          handleJsonChange(commaFixed);
         } catch {
-          // JSON is invalid — leave it alone, user is still editing
+          // Still invalid after comma fix — leave it alone
         }
       }, COMMA_FIX_DEBOUNCE_MS);
 
