@@ -302,18 +302,32 @@ export const JsonEditorView = ({
       if (hintTimer) window.clearTimeout(hintTimer);
       hintTimer = window.setTimeout(updateHints, HINT_DEBOUNCE_MS);
 
-      // 2. Debounced comma auto-fix
+      // 2. Debounced comma auto-fix + reformat
       if (commaTimer) window.clearTimeout(commaTimer);
       commaTimer = window.setTimeout(() => {
         if (isSuggestWidgetVisible(editor)) return;
         const current = editor.getValue();
-        const fixed = fixJsonCommas(current);
-        if (fixed !== current) {
-          isProgrammaticEdit = true;
-          const pos = editor.getPosition();
-          editor.setValue(fixed);
-          if (pos) editor.setPosition(pos);
-          handleJsonChange(fixed);
+        const commaFixed = fixJsonCommas(current);
+
+        // Try to reformat if valid (catches code action insertions too)
+        try {
+          const formatted = JSON.stringify(JSON.parse(commaFixed), null, 2);
+          if (formatted !== current) {
+            isProgrammaticEdit = true;
+            const pos = editor.getPosition();
+            editor.setValue(formatted);
+            if (pos) editor.setPosition(pos);
+            handleJsonChange(formatted);
+          }
+        } catch {
+          // JSON still invalid — just apply comma fixes if any
+          if (commaFixed !== current) {
+            isProgrammaticEdit = true;
+            const pos = editor.getPosition();
+            editor.setValue(commaFixed);
+            if (pos) editor.setPosition(pos);
+            handleJsonChange(commaFixed);
+          }
         }
       }, COMMA_FIX_DEBOUNCE_MS);
 
