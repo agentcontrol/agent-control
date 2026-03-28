@@ -144,10 +144,11 @@ function tryFormat(text: string): string | null {
 
 /** Check if the cursor is at a position where auto-triggering suggestions is useful. */
 function shouldAutoTriggerSuggest(
-  line: string,
+  line: string | undefined,
   column: number,
   hasDomainSuggestions: () => boolean
 ): boolean {
+  if (!line) return false;
   const beforeCursor = line.substring(0, column - 1);
   const afterCursor = line.substring(column - 1);
 
