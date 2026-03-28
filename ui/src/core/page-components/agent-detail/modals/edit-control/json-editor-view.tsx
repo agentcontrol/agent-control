@@ -94,7 +94,6 @@ const EDITOR_OPTIONS: import('monaco-editor').editor.IStandaloneEditorConstructi
     tabSize: 2,
     insertSpaces: true,
     wordWrap: 'off',
-    fixedOverflowWidgets: true,
     bracketPairColorization: { enabled: true },
     guides: { bracketPairs: true, indentation: true },
     stickyScroll: { enabled: true },
@@ -165,15 +164,21 @@ function shouldAutoTriggerSuggest(
   if (!isInString) return false;
   if (/^\s*:/.test(afterCursor.replace(/^[^"]*"/, ''))) return false;
 
-  // Only auto-trigger for short strings (≤ 2 chars) — user is browsing options.
-  // For longer strings, user can Ctrl+Space manually.
   const openIdx = beforeCursor.lastIndexOf('"');
   const closeIdx = afterCursor.indexOf('"');
   const contentLen =
     openIdx >= 0 && closeIdx >= 0
       ? beforeCursor.length - openIdx - 1 + closeIdx
       : 999;
-  return contentLen <= 2;
+
+  // Short strings: always trigger (browsing options)
+  if (contentLen <= 2) return true;
+
+  // Longer strings: only trigger for known domain fields where alternatives exist
+  // (evaluator name, selector path, decision, execution, stages)
+  const domainFieldPattern =
+    /"\s*(?:name|path|decision|execution|step_name_regex)\s*"\s*:\s*"[^"]*$/;
+  return domainFieldPattern.test(beforeCursor);
 }
 
 // ---------------------------------------------------------------------------
