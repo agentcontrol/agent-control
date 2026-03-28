@@ -632,7 +632,7 @@ export const JsonEditorView = ({
           borderRadius: 8,
         }}
       >
-        <Box style={{ borderRadius: 8, overflow: 'clip' }}>
+        <Box>
           <MonacoEditor
             height={height}
             defaultLanguage="json"

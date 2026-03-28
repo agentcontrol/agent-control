@@ -1049,7 +1049,7 @@ function buildSchemaValueSuggestions(
     getSchemaDefault(schema),
     ...getSchemaExamples(schema),
   ].filter((value, index, collection) => {
-    if (value === undefined) {
+    if (value === undefined || value === null) {
       return false;
     }
 
@@ -1193,10 +1193,12 @@ function buildCompletionSuggestions(
     );
   }
 
-  // Only show value suggestions when NOT at a property key position.
-  // At key positions, property suggestions are sufficient — value suggestions
-  // like "null" are confusing noise.
-  if (!propertyKeyContext) {
+  // Only show value suggestions at actual value positions — not on blank lines,
+  // closing brackets, or property key positions where they're confusing noise.
+  const lineText = model.getLineContent(position.lineNumber);
+  const isValuePosition =
+    !propertyKeyContext && !location.isAtPropertyKey && isStringValueContext;
+  if (isValuePosition) {
     const valueSchemaCursor = resolveSchemaAtJsonPath(
       context,
       activeEvaluator,
@@ -1582,26 +1584,6 @@ function addDependentFieldHints(
 
 // Default Monaco JSON mode configuration with completionItems disabled.
 // We disable the built-in JSON completion provider to avoid duplicate suggestions
-// with our custom provider (which adds evaluator names, selector paths, and
-// evaluator-specific config schema support).
-const JSON_MODE_CONFIG_NO_COMPLETIONS: Record<string, boolean> = {
-  completionItems: false,
-  hovers: true,
-  documentSymbols: true,
-  tokens: true,
-  colors: true,
-  foldingRanges: true,
-  diagnostics: true,
-  selectionRanges: true,
-  documentFormattingEdits: false,
-  documentRangeFormattingEdits: false,
-};
-
-const JSON_MODE_CONFIG_DEFAULTS: Record<string, boolean> = {
-  ...JSON_MODE_CONFIG_NO_COMPLETIONS,
-  completionItems: true,
-};
-
 export function setupJsonEditorLanguageSupport(
   monaco: MonacoModule,
   context: JsonEditorAutocompleteContext
@@ -1618,7 +1600,6 @@ export function setupJsonEditorLanguageSupport(
             schema: JsonSchema;
           }>;
         }) => void;
-        setModeConfiguration?: (config: Record<string, boolean>) => void;
       };
     }
   ).jsonDefaults;
@@ -1638,8 +1619,6 @@ export function setupJsonEditorLanguageSupport(
         ]
       : [],
   });
-
-  jsonDefaults?.setModeConfiguration?.(JSON_MODE_CONFIG_NO_COMPLETIONS);
 
   const disposable = monaco.languages.registerCompletionItemProvider('json', {
     triggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
@@ -1664,7 +1643,6 @@ export function setupJsonEditorLanguageSupport(
   return () => {
     disposable.dispose();
     codeActionDisposable.dispose();
-    jsonDefaults?.setModeConfiguration?.(JSON_MODE_CONFIG_DEFAULTS);
   };
 }
 
