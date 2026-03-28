@@ -136,9 +136,9 @@ jobs:
           # Skip unnecessary optimizations for test builds
           SKIP_ENV_VALIDATION: true
 
-      - name: Run integration tests
+      - name: Run integration tests with coverage
         working-directory: ./ui
-        run: pnpm run test:integration
+        run: pnpm run test:integration:coverage
         env:
           # Use production build for faster startup
           NODE_ENV: production
@@ -158,6 +158,13 @@ jobs:
           name: test-results
           path: ui/test-results/
           retention-days: 3
+
+      - name: Upload UI coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ui/coverage-playwright/lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   sdk-ts-ci:
     runs-on: ubuntu-latest

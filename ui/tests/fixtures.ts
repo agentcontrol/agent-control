@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import { type Page, test as base } from '@playwright/test';
 
 import type {
@@ -728,13 +731,38 @@ export async function mockApiRoutesWithAuthRequired(page: Page) {
 }
 
 /**
- * Extended test with mocked API
+ * Extended test with mocked API and optional JS coverage collection.
+ * Coverage is collected for Chromium runs and written as raw V8 coverage
+ * JSON under each project's output directory (e.g. playwright-report/).
  */
 export const test = base.extend<{ mockedPage: Page }>({
   /* eslint-disable react-hooks/rules-of-hooks */
-  mockedPage: async ({ page }, use) => {
+  mockedPage: async ({ page }, use, testInfo) => {
+    const shouldCollectCoverage = testInfo.project.name === 'chromium';
+
+    if (shouldCollectCoverage) {
+      // Only JS coverage; CSS is usually less interesting for app logic.
+      await page.coverage.startJSCoverage();
+    }
+
     await mockApiRoutes(page);
     await use(page);
+
+    if (shouldCollectCoverage) {
+      const jsCoverage = await page.coverage.stopJSCoverage();
+
+      const coverageDir = path.join(
+        process.cwd(),
+        'playwright-coverage',
+        'raw',
+        testInfo.project.name
+      );
+      await fs.mkdir(coverageDir, { recursive: true });
+
+      const safeTestId = testInfo.testId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filePath = path.join(coverageDir, `${safeTestId}.json`);
+      await fs.writeFile(filePath, JSON.stringify(jsCoverage), 'utf-8');
+    }
   },
   /* eslint-enable react-hooks/rules-of-hooks */
 });

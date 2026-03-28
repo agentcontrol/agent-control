@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "fetch-api-types": "openapi-typescript http://localhost:8000/openapi.json -o src/core/api/generated/api-types.ts",
     "test:integration": "playwright test",
+    "test:integration:coverage": "playwright test && node scripts/coverage-playwright.cjs",
     "test:integration:ui": "playwright test --ui",
     "test:integration:headed": "playwright test --headed",
     "test:integration:debug": "playwright test --debug",
@@ -77,13 +78,21 @@
     "eslint-config-next": "16.1.1",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "eslint-plugin-unused-imports": "^4.3.0",
+    "istanbul-lib-coverage": "^3.2.2",
+    "istanbul-lib-report": "^3.0.1",
+    "istanbul-reports": "^3.2.0",
     "npm-scripts-info": "^0.3.9",
     "openapi-typescript": "^7.10.1",
+    "istanbul-lib-coverage": "^3.2.2",
+    "istanbul-lib-report": "^3.0.1",
+    "istanbul-reports": "^3.1.7",
     "postcss-preset-mantine": "1.17.0",
     "postcss-simple-vars": "7.0.1",
     "prettier": "^3.4.2",
     "tailwindcss": "^4",
+    "v8-to-istanbul": "^9.3.0",
     "typescript": "^5",
-    "typescript-eslint": "^8.32.1"
+    "typescript-eslint": "^8.32.1",
+    "v8-to-istanbul": "^9.3.0"
   }
 }
