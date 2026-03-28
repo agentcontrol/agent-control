@@ -75,7 +75,7 @@ const EDITOR_OPTIONS: import('monaco-editor').editor.IStandaloneEditorConstructi
   {
     automaticLayout: true,
     quickSuggestions: false,
-    suggestOnTriggerCharacters: false,
+    suggestOnTriggerCharacters: true,
     wordBasedSuggestions: 'off',
     suggest: {
       showWords: false,
@@ -94,6 +94,7 @@ const EDITOR_OPTIONS: import('monaco-editor').editor.IStandaloneEditorConstructi
     tabSize: 2,
     insertSpaces: true,
     wordWrap: 'off',
+    fixedOverflowWidgets: true,
     bracketPairColorization: { enabled: true },
     guides: { bracketPairs: true, indentation: true },
     stickyScroll: { enabled: true },
