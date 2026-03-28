@@ -74,7 +74,7 @@ if (typeof document !== 'undefined') {
 const EDITOR_OPTIONS: import('monaco-editor').editor.IStandaloneEditorConstructionOptions =
   {
     automaticLayout: true,
-    quickSuggestions: { other: true, strings: true, comments: false },
+    quickSuggestions: { other: true, strings: false, comments: false },
     suggestOnTriggerCharacters: true,
     wordBasedSuggestions: 'off',
     suggest: {
@@ -366,26 +366,9 @@ export const JsonEditorView = ({
 
       const text = editor.getValue();
 
-      // Deferred reformat for multi-line edits (e.g., code actions like "Wrap in AND").
-      // Must use queueMicrotask — editing inside onDidChangeModelContent crashes Monaco.
-      const isMultiLineEdit =
-        !e.isUndoing &&
-        !e.isRedoing &&
-        e.changes.length === 1 &&
-        (e.changes[0].text.includes('\n') ||
-          e.changes[0].range.endLineNumber >
-            e.changes[0].range.startLineNumber);
-      if (isMultiLineEdit) {
-        queueMicrotask(() => {
-          const current = editor.getValue();
-          const formatted = tryFormat(current);
-          if (formatted && formatted !== current) {
-            isProgrammaticEdit = true;
-            replaceAllContent(editor, formatted, 'auto-reformat');
-            handleJsonChange(formatted);
-          }
-        });
-      }
+      // No auto-reformat here — code actions produce formatted JSON by replacing
+      // the full document (see buildNodeTransformAction). Auto-reformatting would
+      // create a second undo entry that breaks Ctrl+Z.
 
       // Debounced hints
       if (hintTimer) window.clearTimeout(hintTimer);
@@ -443,7 +426,12 @@ export const JsonEditorView = ({
     if (!editor || !mounted) return;
 
     let timeout: number | null = null;
-    const disposable = editor.onDidChangeCursorPosition(() => {
+    const disposable = editor.onDidChangeCursorPosition((e) => {
+      // Skip cursor changes from typing — quickSuggestions handles those.
+      // Only auto-trigger on navigation (click, arrow keys, etc.).
+      // CursorChangeReason: NotSet=0, ContentFlush=1, RecoverFromMarkers=2, Explicit=3, Paste=4, Undo=5, Redo=6
+      if (e.reason !== 3 /* Explicit */) return;
+
       if (timeout) window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
         try {

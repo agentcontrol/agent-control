@@ -1859,9 +1859,12 @@ function buildNodeTransformAction(
   title: string,
   transform: (parsed: unknown) => unknown
 ): import('monaco-editor').languages.CodeAction | null {
-  const nodeText = model
-    .getValue()
-    .substring(node.offset, node.offset + node.length);
+  // Parse the full document, apply the transform to the target node,
+  // then re-serialize the whole document. This produces a single edit
+  // that replaces the entire content with properly formatted JSON,
+  // making undo a clean single-step revert.
+  const fullText = model.getValue();
+  const nodeText = fullText.substring(node.offset, node.offset + node.length);
   let parsed: unknown;
   try {
     parsed = JSON.parse(nodeText);
@@ -1872,9 +1875,25 @@ function buildNodeTransformAction(
   const result = transform(parsed);
   if (result === undefined) return null;
 
-  const newText = JSON.stringify(result, null, 2);
-  const startPos = model.getPositionAt(node.offset);
-  const endPos = model.getPositionAt(node.offset + node.length);
+  // Rebuild full document with the transformed node
+  const newNodeText = JSON.stringify(result);
+  const rawDoc =
+    fullText.substring(0, node.offset) +
+    newNodeText +
+    fullText.substring(node.offset + node.length);
+
+  let newText: string;
+  try {
+    newText = JSON.stringify(JSON.parse(rawDoc), null, 2);
+  } catch {
+    // Fallback: just replace the node
+    newText =
+      fullText.substring(0, node.offset) +
+      JSON.stringify(result, null, 2) +
+      fullText.substring(node.offset + node.length);
+  }
+
+  const fullRange = model.getFullModelRange();
 
   return {
     title,
@@ -1885,10 +1904,10 @@ function buildNodeTransformAction(
           resource: model.uri,
           textEdit: {
             range: new monaco.Range(
-              startPos.lineNumber,
-              startPos.column,
-              endPos.lineNumber,
-              endPos.column
+              fullRange.startLineNumber,
+              fullRange.startColumn,
+              fullRange.endLineNumber,
+              fullRange.endColumn
             ),
             text: newText,
           },
