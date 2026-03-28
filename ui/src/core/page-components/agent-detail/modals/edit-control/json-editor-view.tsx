@@ -366,9 +366,8 @@ export const JsonEditorView = ({
 
       const text = editor.getValue();
 
-      // Immediate reformat for multi-line edits (e.g., code actions like "Wrap in AND").
-      // Only triggers when a single change spans multiple lines — normal typing
-      // is single-line and won't match, avoiding cursor-jump issues.
+      // Deferred reformat for multi-line edits (e.g., code actions like "Wrap in AND").
+      // Must use queueMicrotask — editing inside onDidChangeModelContent crashes Monaco.
       const isMultiLineEdit =
         !e.isUndoing &&
         !e.isRedoing &&
@@ -377,13 +376,15 @@ export const JsonEditorView = ({
           e.changes[0].range.endLineNumber >
             e.changes[0].range.startLineNumber);
       if (isMultiLineEdit) {
-        const formatted = tryFormat(text);
-        if (formatted && formatted !== text) {
-          isProgrammaticEdit = true;
-          replaceAllContent(editor, formatted, 'auto-reformat');
-          handleJsonChange(formatted);
-          return;
-        }
+        queueMicrotask(() => {
+          const current = editor.getValue();
+          const formatted = tryFormat(current);
+          if (formatted && formatted !== current) {
+            isProgrammaticEdit = true;
+            replaceAllContent(editor, formatted, 'auto-reformat');
+            handleJsonChange(formatted);
+          }
+        });
       }
 
       // Debounced hints
