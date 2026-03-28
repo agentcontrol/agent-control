@@ -74,8 +74,8 @@ if (typeof document !== 'undefined') {
 const EDITOR_OPTIONS: import('monaco-editor').editor.IStandaloneEditorConstructionOptions =
   {
     automaticLayout: true,
-    quickSuggestions: { other: true, strings: false, comments: false },
-    suggestOnTriggerCharacters: true,
+    quickSuggestions: false,
+    suggestOnTriggerCharacters: false,
     wordBasedSuggestions: 'off',
     suggest: {
       showWords: false,
@@ -146,34 +146,33 @@ function tryFormat(text: string): string | null {
 function shouldAutoTriggerSuggest(
   line: string | undefined,
   column: number,
-  hasDomainSuggestions: () => boolean
+  skipStringTrigger: boolean
 ): boolean {
   if (!line) return false;
   const beforeCursor = line.substring(0, column - 1);
   const afterCursor = line.substring(column - 1);
 
-  // Blank / comma-only line — likely inside an object needing a property
+  // Blank / comma-only line — always trigger (even after Enter)
   if (/^\s*,?\s*$/.test(line)) return true;
 
-  // Check if inside a string
+  // Don't trigger string suggestions after typing
+  if (skipStringTrigger) return false;
+
+  // Check if inside a string value (not a property key)
   const quotesBefore = beforeCursor.split('"').length - 1;
   const isInString = quotesBefore % 2 === 1 && /^[^"]*"/.test(afterCursor);
   if (!isInString) return false;
-
-  // Don't trigger on property keys (have ":" after closing quote)
   if (/^\s*:/.test(afterCursor.replace(/^[^"]*"/, ''))) return false;
 
-  // Short strings: always trigger
+  // Only auto-trigger for short strings (≤ 2 chars) — user is browsing options.
+  // For longer strings, user can Ctrl+Space manually.
   const openIdx = beforeCursor.lastIndexOf('"');
   const closeIdx = afterCursor.indexOf('"');
   const contentLen =
     openIdx >= 0 && closeIdx >= 0
       ? beforeCursor.length - openIdx - 1 + closeIdx
       : 999;
-  if (contentLen <= 2) return true;
-
-  // Longer strings: only if we have domain-specific suggestions
-  return hasDomainSuggestions();
+  return contentLen <= 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -425,20 +424,22 @@ export const JsonEditorView = ({
     const editor = editorRef.current;
     if (!editor || !mounted) return;
 
-    // Track content changes to distinguish typing (content+cursor change)
-    // from navigation (cursor change only). Don't auto-trigger after typing.
+    // Track content changes to suppress string-value auto-trigger after typing.
+    // Blank line triggers still fire (Enter creates a new line → want suggestions).
     let contentJustChanged = false;
-    const contentDisposable = editor.onDidChangeModelContent(() => {
-      contentJustChanged = true;
+    const contentDisposable = editor.onDidChangeModelContent((e) => {
+      // Only flag as "typing" for small single-char edits, not large replacements
+      // (setValue, code actions, reformat). This prevents suppressing auto-trigger
+      // after programmatic content changes.
+      const isSmallEdit =
+        e.changes.length === 1 &&
+        e.changes[0].text.length <= 2 &&
+        !e.changes[0].text.includes('\n');
+      contentJustChanged = isSmallEdit;
     });
 
     let timeout: number | null = null;
     const disposable = editor.onDidChangeCursorPosition(() => {
-      if (contentJustChanged) {
-        contentJustChanged = false;
-        return;
-      }
-
       if (timeout) window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
         try {
@@ -448,18 +449,13 @@ export const JsonEditorView = ({
           if (pos.lineNumber < 1 || pos.lineNumber > model.getLineCount())
             return;
 
+          const wasTyping = contentJustChanged;
+          contentJustChanged = false;
+
           const trigger = shouldAutoTriggerSuggest(
             model.getLineContent(pos.lineNumber),
             pos.column,
-            () =>
-              monacoRef.current
-                ? getJsonEditorCompletionItems(
-                    monacoRef.current,
-                    model,
-                    pos,
-                    autocompleteContext
-                  ).length > 0
-                : false
+            wasTyping
           );
           if (trigger) {
             editor.trigger('cursor', 'editor.action.triggerSuggest', {});
