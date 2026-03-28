@@ -425,12 +425,19 @@ export const JsonEditorView = ({
     const editor = editorRef.current;
     if (!editor || !mounted) return;
 
+    // Track content changes to distinguish typing (content+cursor change)
+    // from navigation (cursor change only). Don't auto-trigger after typing.
+    let contentJustChanged = false;
+    const contentDisposable = editor.onDidChangeModelContent(() => {
+      contentJustChanged = true;
+    });
+
     let timeout: number | null = null;
-    const disposable = editor.onDidChangeCursorPosition((e) => {
-      // Skip cursor changes from typing — quickSuggestions handles those.
-      // Only auto-trigger on navigation (click, arrow keys, etc.).
-      // CursorChangeReason: NotSet=0, ContentFlush=1, RecoverFromMarkers=2, Explicit=3, Paste=4, Undo=5, Redo=6
-      if (e.reason !== 3 /* Explicit */) return;
+    const disposable = editor.onDidChangeCursorPosition(() => {
+      if (contentJustChanged) {
+        contentJustChanged = false;
+        return;
+      }
 
       if (timeout) window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
@@ -466,6 +473,7 @@ export const JsonEditorView = ({
     return () => {
       if (timeout) window.clearTimeout(timeout);
       disposable.dispose();
+      contentDisposable.dispose();
     };
   }, [mounted, autocompleteContext]);
 
