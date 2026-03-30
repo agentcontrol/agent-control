@@ -299,12 +299,13 @@ export const JsonEditorView = ({
     const monaco = monacoRef.current;
     if (!editor || !monaco || !mounted) return;
 
-    const decorations = editor.createDecorationsCollection();
+    let decorationIds: string[] = [];
     const updateHints = () => {
       const model = editor.getModel();
       if (!model) return;
       try {
-        decorations.set(
+        decorationIds = editor.deltaDecorations(
+          decorationIds,
           getEmptyValueHints(monaco, model, autocompleteContext).map((h) => ({
             range: h.range,
             options: {
@@ -317,7 +318,7 @@ export const JsonEditorView = ({
           }))
         );
       } catch {
-        decorations.clear();
+        decorationIds = editor.deltaDecorations(decorationIds, []);
       }
     };
     updateHints();
@@ -422,7 +423,7 @@ export const JsonEditorView = ({
       if (hintTimer) window.clearTimeout(hintTimer);
       if (commaTimer) window.clearTimeout(commaTimer);
       disposable.dispose();
-      decorations.clear();
+      editor.deltaDecorations(decorationIds, []);
     };
   }, [mounted, autocompleteContext, editorMode, evaluators, handleJsonChange]);
 
