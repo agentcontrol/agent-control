@@ -1470,17 +1470,6 @@ function getStringValueAtPath(
   return typeof node?.value === 'string' ? node.value : null;
 }
 
-function hasSiblingProperty(
-  tree: JsonNode | undefined,
-  path: JsonPath,
-  propertyName: string
-): boolean {
-  if (!tree || path.length === 0) return false;
-  const parentPath = path.slice(0, -1);
-  const parentNode = findNodeAtLocation(tree, parentPath);
-  return getObjectPropertyNames(parentNode).has(propertyName);
-}
-
 export function getEmptyValueHints(
   monaco: MonacoModule,
   model: import('monaco-editor').editor.ITextModel,
@@ -1550,39 +1539,7 @@ export function getEmptyValueHints(
     }
   }
 
-  // Context-aware hints for dependent fields
-  if (context.mode === 'control') {
-    addDependentFieldHints(monaco, model, tree, hints);
-  }
-
   return hints;
-}
-
-function addDependentFieldHints(
-  monaco: MonacoModule,
-  model: import('monaco-editor').editor.ITextModel,
-  tree: JsonNode,
-  hints: Array<{ range: import('monaco-editor').IRange; hint: string }>
-) {
-  // When decision is "steer" but steering_context is missing, hint to add it
-  const decisionNode = findNodeAtLocation(tree, ['action', 'decision']);
-  if (
-    decisionNode?.value === 'steer' &&
-    !hasSiblingProperty(tree, ['action', 'decision'], 'steering_context')
-  ) {
-    const endPos = model.getPositionAt(
-      decisionNode.offset + decisionNode.length
-    );
-    hints.push({
-      range: new monaco.Range(
-        endPos.lineNumber,
-        endPos.column,
-        endPos.lineNumber,
-        endPos.column
-      ),
-      hint: '  \u2190 add "steering_context": { "message": "..." }',
-    });
-  }
 }
 
 // Default Monaco JSON mode configuration with completionItems disabled.
