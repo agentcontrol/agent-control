@@ -897,6 +897,14 @@ class _PlainObjectChunk:
         return "plain-object"
 
 
+class _DuckDictChunk:
+    def dict(self) -> dict[str, str]:
+        return {"secret": "top-secret"}
+
+    def __str__(self) -> str:
+        return "duck-dict"
+
+
 class TestAsyncGeneratorControl:
     """Tests for buffered async-generator support in @control()."""
 
@@ -1128,6 +1136,40 @@ class TestAsyncGeneratorControl:
             chunks = [chunk async for chunk in stream("test")]
             assert len(chunks) == 1
             assert post_steps[0]["output"] == "plain-object"
+
+    @pytest.mark.asyncio
+    async def test_duck_typed_dict_chunk_falls_back_to_string(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that arbitrary objects with dict() do not take the Pydantic v1 path."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _DuckDictChunk()
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert len(chunks) == 1
+            assert post_steps[0]["output"] == "duck-dict"
 
     @pytest.mark.asyncio
     async def test_post_check_block_happens_before_any_chunk_is_replayed(

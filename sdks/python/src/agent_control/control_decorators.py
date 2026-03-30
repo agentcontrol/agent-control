@@ -220,8 +220,9 @@ class _BufferedStreamCapture:
     max_bytes: int
     replay_chunks: list[Any] = field(default_factory=list)
     normalized_chunks: list[JSONValue] = field(default_factory=list)
-    chunk_bytes: int = 0
-    text_bytes: int = 0
+    chunk_item_bytes: int = 0
+    text_content_bytes: int = 0
+    string_chunk_count: int = 0
     has_non_string_chunk: bool = False
 
     def add(self, chunk: Any) -> None:
@@ -233,18 +234,23 @@ class _BufferedStreamCapture:
             )
 
         normalized_chunk = _normalize_json_value(chunk)
-        next_chunk_bytes = self.chunk_bytes + _json_value_size(normalized_chunk)
-        next_text_bytes = self.text_bytes
+        next_chunk_item_bytes = self.chunk_item_bytes + _json_value_size(normalized_chunk)
+        next_text_content_bytes = self.text_content_bytes
+        next_string_chunk_count = self.string_chunk_count
         next_has_non_string_chunk = self.has_non_string_chunk
         if isinstance(normalized_chunk, str):
-            next_text_bytes += _json_value_size(normalized_chunk)
+            next_text_content_bytes += _json_value_size(normalized_chunk) - 2
+            next_string_chunk_count += 1
         else:
             next_has_non_string_chunk = True
 
-        next_payload_bytes = next_chunk_bytes
-        if next_has_non_string_chunk:
-            next_payload_bytes += next_text_bytes
-
+        next_payload_bytes = self._payload_size(
+            chunk_count=next_chunk_count,
+            chunk_item_bytes=next_chunk_item_bytes,
+            text_content_bytes=next_text_content_bytes,
+            string_chunk_count=next_string_chunk_count,
+            has_non_string_chunk=next_has_non_string_chunk,
+        )
         if next_payload_bytes > self.max_bytes:
             raise RuntimeError(
                 "Buffered async generator output exceeded the configured size limit. "
@@ -253,9 +259,30 @@ class _BufferedStreamCapture:
 
         self.replay_chunks.append(chunk)
         self.normalized_chunks.append(normalized_chunk)
-        self.chunk_bytes = next_chunk_bytes
-        self.text_bytes = next_text_bytes
+        self.chunk_item_bytes = next_chunk_item_bytes
+        self.text_content_bytes = next_text_content_bytes
+        self.string_chunk_count = next_string_chunk_count
         self.has_non_string_chunk = next_has_non_string_chunk
+
+    def _payload_size(
+        self,
+        *,
+        chunk_count: int,
+        chunk_item_bytes: int,
+        text_content_bytes: int,
+        string_chunk_count: int,
+        has_non_string_chunk: bool,
+    ) -> int:
+        chunk_list_size = 2 + chunk_item_bytes + max(0, chunk_count - 1)
+        joined_text_size = 0 if string_chunk_count == 0 else 2 + text_content_bytes
+
+        if not has_non_string_chunk:
+            return joined_text_size
+
+        payload_size = _json_value_size("chunks") + chunk_list_size + 3
+        if string_chunk_count:
+            payload_size += _json_value_size("text") + joined_text_size + 2
+        return payload_size
 
     def output_payload(self) -> JSONValue:
         if not self.normalized_chunks:
@@ -313,6 +340,7 @@ def _json_value_size(value: JSONValue) -> int:
                 ensure_ascii=False,
                 sort_keys=True,
                 allow_nan=False,
+                separators=(",", ":"),
             ).encode("utf-8")
         )
     except (TypeError, ValueError):
@@ -350,7 +378,7 @@ def _normalize_json_value(value: Any, *, _seen: set[int] | None = None) -> JSONV
                 seen.remove(value_id)
 
         dict_method = getattr(value, "dict", None)
-        if callable(dict_method):
+        if callable(dict_method) and hasattr(value, "__fields__"):
             seen.add(value_id)
             try:
                 return _normalize_json_value(dict_method(), _seen=seen)
