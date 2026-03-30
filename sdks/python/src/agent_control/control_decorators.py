@@ -225,13 +225,12 @@ class _BufferedStreamCapture:
         if not self.normalized_chunks:
             return ""
 
-        if all(isinstance(chunk, str) for chunk in self.normalized_chunks):
-            return "".join(chunk for chunk in self.normalized_chunks if isinstance(chunk, str))
+        text_chunks = [chunk for chunk in self.normalized_chunks if isinstance(chunk, str)]
+        if len(text_chunks) == len(self.normalized_chunks):
+            return "".join(text_chunks)
 
         output: dict[str, JSONValue] = {"chunks": list(self.normalized_chunks)}
-        text_output = "".join(
-            chunk for chunk in self.normalized_chunks if isinstance(chunk, str)
-        )
+        text_output = "".join(text_chunks)
         if text_output:
             output["text"] = text_output
         return output
@@ -276,11 +275,19 @@ def _normalize_json_value(value: Any, *, _seen: set[int] | None = None) -> JSONV
 
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
-        return _normalize_json_value(model_dump(mode="json"), _seen=seen)
+        seen.add(value_id)
+        try:
+            return _normalize_json_value(model_dump(mode="json"), _seen=seen)
+        finally:
+            seen.remove(value_id)
 
     dict_method = getattr(value, "dict", None)
     if callable(dict_method):
-        return _normalize_json_value(dict_method(), _seen=seen)
+        seen.add(value_id)
+        try:
+            return _normalize_json_value(dict_method(), _seen=seen)
+        finally:
+            seen.remove(value_id)
 
     if isinstance(value, Mapping):
         seen.add(value_id)
@@ -367,14 +374,6 @@ def _build_control_context(
         ),
         controls,
     )
-
-
-async def _close_async_generator(stream: AsyncGenerator[Any, None]) -> None:
-    """Close a buffered async generator without masking the original failure."""
-    try:
-        await stream.aclose()
-    except Exception:
-        logger.debug("Failed to close buffered async generator cleanly", exc_info=True)
 
 
 async def _evaluate(
@@ -946,7 +945,10 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         register(func, policy)
 
         @functools.wraps(func)
-        async def async_gen_wrapper(*args: Any, **kwargs: Any) -> Any:
+        async def async_gen_wrapper(
+            *args: Any,
+            **kwargs: Any,
+        ) -> AsyncGenerator[Any, None]:
             context = _build_control_context(func, args, kwargs, step_name)
             if context is None:
                 logger.warning(
@@ -965,12 +967,8 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
             try:
                 await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
 
-                try:
-                    async for chunk in stream:
-                        capture.add(chunk)
-                except BaseException:
-                    await _close_async_generator(stream)
-                    raise
+                async for chunk in stream:
+                    capture.add(chunk)
 
                 await _run_control_check(
                     ctx,

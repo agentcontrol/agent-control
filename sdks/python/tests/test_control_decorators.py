@@ -800,6 +800,15 @@ class _StructuredChunk:
     value: str
 
 
+class _RecursiveModelDumpChunk:
+    def model_dump(self, mode: str = "json") -> dict[str, object]:
+        _ = mode
+        return {"self": self}
+
+    def __str__(self) -> str:
+        return "recursive-model-dump"
+
+
 class TestAsyncGeneratorControl:
     """Tests for buffered async-generator support in @control()."""
 
@@ -926,6 +935,42 @@ class TestAsyncGeneratorControl:
                     "tail",
                 ],
                 "text": "tail",
+            }
+
+    @pytest.mark.asyncio
+    async def test_model_dump_cycle_is_guarded_during_chunk_normalization(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that self-referential model_dump payloads do not recurse forever."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _RecursiveModelDumpChunk()
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert len(chunks) == 1
+            assert post_steps[0]["output"] == {
+                "chunks": [{"self": "recursive-model-dump"}]
             }
 
     @pytest.mark.asyncio
