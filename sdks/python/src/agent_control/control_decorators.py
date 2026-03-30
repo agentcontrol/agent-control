@@ -31,11 +31,11 @@ import asyncio
 import functools
 import inspect
 import time
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator, Callable, Mapping
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, TypeVar
 
-from agent_control_models import Step
+from agent_control_models import JSONValue, Step
 
 from agent_control import AgentControlClient
 from agent_control.evaluation import check_evaluation_with_local
@@ -210,6 +210,33 @@ class ControlSteerError(Exception):
         )
 
 
+@dataclass
+class _BufferedStreamCapture:
+    """Buffer streamed chunks for post-check evaluation before replay."""
+
+    replay_chunks: list[Any] = field(default_factory=list)
+    normalized_chunks: list[JSONValue] = field(default_factory=list)
+
+    def add(self, chunk: Any) -> None:
+        self.replay_chunks.append(chunk)
+        self.normalized_chunks.append(_normalize_json_value(chunk))
+
+    def output_payload(self) -> JSONValue:
+        if not self.normalized_chunks:
+            return ""
+
+        if all(isinstance(chunk, str) for chunk in self.normalized_chunks):
+            return "".join(chunk for chunk in self.normalized_chunks if isinstance(chunk, str))
+
+        output: dict[str, JSONValue] = {"chunks": list(self.normalized_chunks)}
+        text_output = "".join(
+            chunk for chunk in self.normalized_chunks if isinstance(chunk, str)
+        )
+        if text_output:
+            output["text"] = text_output
+        return output
+
+
 def _get_current_agent() -> Any | None:
     """Get the current agent from agent_control module."""
     try:
@@ -222,6 +249,132 @@ def _get_current_agent() -> Any | None:
 def _get_server_url() -> str:
     """Get the server URL from settings."""
     return get_settings().url
+
+
+def _copy_public_attributes(source: Any, target: Any) -> None:
+    """Copy public function attributes onto a wrapped callable."""
+    for attr in dir(source):
+        if not attr.startswith("_") and attr not in ("__call__", "__wrapped__"):
+            try:
+                setattr(target, attr, getattr(source, attr))
+            except (AttributeError, TypeError):
+                pass
+
+
+def _normalize_json_value(value: Any, *, _seen: set[int] | None = None) -> JSONValue:
+    """Convert runtime values into JSON-safe data for evaluation payloads."""
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("utf-8", errors="replace")
+
+    seen = set() if _seen is None else _seen
+    value_id = id(value)
+    if value_id in seen:
+        return str(value)
+
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        return _normalize_json_value(model_dump(mode="json"), _seen=seen)
+
+    dict_method = getattr(value, "dict", None)
+    if callable(dict_method):
+        return _normalize_json_value(dict_method(), _seen=seen)
+
+    if isinstance(value, Mapping):
+        seen.add(value_id)
+        try:
+            return {
+                str(key): _normalize_json_value(item, _seen=seen)
+                for key, item in value.items()
+            }
+        finally:
+            seen.remove(value_id)
+
+    if isinstance(value, (list, tuple, set, frozenset)):
+        seen.add(value_id)
+        try:
+            return [_normalize_json_value(item, _seen=seen) for item in value]
+        finally:
+            seen.remove(value_id)
+
+    if is_dataclass(value) and not isinstance(value, type):
+        seen.add(value_id)
+        try:
+            return {
+                field_info.name: _normalize_json_value(
+                    getattr(value, field_info.name),
+                    _seen=seen,
+                )
+                for field_info in fields(value)
+            }
+        finally:
+            seen.remove(value_id)
+
+    value_dict = getattr(value, "__dict__", None)
+    if isinstance(value_dict, dict):
+        seen.add(value_id)
+        try:
+            return {
+                str(key): _normalize_json_value(item, _seen=seen)
+                for key, item in value_dict.items()
+            }
+        finally:
+            seen.remove(value_id)
+
+    return str(value)
+
+
+def _normalized_output_value(output: Any) -> JSONValue | None:
+    """Return normalized output for a post-check payload."""
+    if output is None:
+        return None
+    return _normalize_json_value(output)
+
+
+def _build_control_context(
+    func: Callable,
+    args: tuple,
+    kwargs: dict,
+    step_name: str | None,
+) -> tuple[ControlContext, list[dict[str, Any]] | None] | None:
+    """Create the shared control context for a protected invocation."""
+    agent = _get_current_agent()
+    if agent is None:
+        return None
+
+    controls = _get_server_controls()
+
+    existing_trace_id = get_current_trace_id()
+    if existing_trace_id:
+        trace_id = existing_trace_id
+        span_id = _generate_span_id()
+    else:
+        trace_id, span_id = get_trace_and_span_ids()
+
+    return (
+        ControlContext(
+            agent_name=agent.agent_name,
+            server_url=_get_server_url(),
+            func=func,
+            args=args,
+            kwargs=kwargs,
+            trace_id=trace_id,
+            span_id=span_id,
+            start_time=time.perf_counter(),
+            step_name=step_name,
+        ),
+        controls,
+    )
+
+
+async def _close_async_generator(stream: AsyncGenerator[Any, None]) -> None:
+    """Close a buffered async generator without masking the original failure."""
+    try:
+        await stream.aclose()
+    except Exception:
+        logger.debug("Failed to close buffered async generator cleanly", exc_info=True)
 
 
 async def _evaluate(
@@ -480,9 +633,7 @@ def _create_evaluation_payload(
             "type": "tool",
             "name": determined_name,
             "input": dict(bound.arguments),
-            "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
-                None if output is None else str(output)
-            ),
+            "output": _normalized_output_value(output),
         }
 
     # This is an LLM step
@@ -491,9 +642,7 @@ def _create_evaluation_payload(
         "type": "llm",
         "name": determined_name,
         "input": input_data,
-        "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
-            None if output is None else str(output)
-        ),
+        "output": _normalized_output_value(output),
     }
 
 
@@ -687,8 +836,8 @@ async def _execute_with_control(
         ControlSteerError: If any control triggers with "steer" action
         RuntimeError: If control evaluation fails unexpectedly
     """
-    agent = _get_current_agent()
-    if agent is None:
+    context = _build_control_context(func, args, kwargs, step_name)
+    if context is None:
         logger.warning(
             "No agent initialized. Call agent_control.init() first. "
             "Running without protection."
@@ -697,29 +846,7 @@ async def _execute_with_control(
             return await func(*args, **kwargs)
         return func(*args, **kwargs)
 
-    # Get cached controls for local evaluation support
-    controls = _get_server_controls()
-
-    # Get trace context: inherit trace_id if set, always generate new span_id
-    # This allows multiple @control() calls to share the same trace but have unique spans
-    existing_trace_id = get_current_trace_id()
-    if existing_trace_id:
-        trace_id = existing_trace_id
-        span_id = _generate_span_id()  # New span for this function
-    else:
-        trace_id, span_id = get_trace_and_span_ids()  # New trace and span
-
-    ctx = ControlContext(
-        agent_name=agent.agent_name,
-        server_url=_get_server_url(),
-        func=func,
-        args=args,
-        kwargs=kwargs,
-        trace_id=trace_id,
-        span_id=span_id,
-        start_time=time.perf_counter(),
-        step_name=step_name,
-    )
+    ctx, controls = context
     ctx.log_start()
 
     try:
@@ -768,6 +895,11 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         3. After function execution: Calls server with stage="post"
            - Server evaluates all matching "post" controls for the agent
 
+        Async generator note:
+        - Decorated async generators are buffered before replay.
+        - The post-check runs on the full buffered output.
+        - Chunks are yielded to the caller only after the post-check passes.
+
     Example:
         import agent_control
 
@@ -814,18 +946,52 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         register(func, policy)
 
         @functools.wraps(func)
+        async def async_gen_wrapper(*args: Any, **kwargs: Any) -> Any:
+            context = _build_control_context(func, args, kwargs, step_name)
+            if context is None:
+                logger.warning(
+                    "No agent initialized. Call agent_control.init() first. "
+                    "Running without protection."
+                )
+                async for chunk in func(*args, **kwargs):
+                    yield chunk
+                return
+
+            ctx, controls = context
+            ctx.log_start()
+            stream = func(*args, **kwargs)
+            capture = _BufferedStreamCapture()
+
+            try:
+                await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
+
+                try:
+                    async for chunk in stream:
+                        capture.add(chunk)
+                except BaseException:
+                    await _close_async_generator(stream)
+                    raise
+
+                await _run_control_check(
+                    ctx,
+                    "post",
+                    ctx.post_payload(capture.output_payload()),
+                    controls,
+                )
+
+                for chunk in capture.replay_chunks:
+                    yield chunk
+            finally:
+                ctx.log_end()
+
+        @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             return await _execute_with_control(
                 func, args, kwargs, is_async=True, step_name=step_name
             )
 
-        # Copy over ALL attributes from the original function (important for LangChain tools)
-        for attr in dir(func):
-            if not attr.startswith('_') and attr not in ('__call__', '__wrapped__'):
-                try:
-                    setattr(async_wrapper, attr, getattr(func, attr))
-                except (AttributeError, TypeError):
-                    pass
+        _copy_public_attributes(func, async_gen_wrapper)
+        _copy_public_attributes(func, async_wrapper)
 
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -833,6 +999,8 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                 _execute_with_control(func, args, kwargs, is_async=False, step_name=step_name)
             )
 
+        if inspect.isasyncgenfunction(func):
+            return async_gen_wrapper  # type: ignore
         if inspect.iscoroutinefunction(func):
             return async_wrapper  # type: ignore
         return sync_wrapper  # type: ignore

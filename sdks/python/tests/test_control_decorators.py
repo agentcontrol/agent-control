@@ -1,5 +1,7 @@
 """Tests for @control decorator."""
 
+import inspect
+from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -786,6 +788,237 @@ class TestSteeringContextHandling:
 
             # Should fall back to evaluator message
             assert exc_info.value.steering_context == "Default evaluator message"
+
+
+# =============================================================================
+# ASYNC GENERATOR TESTS
+# =============================================================================
+
+
+@dataclass
+class _StructuredChunk:
+    value: str
+
+
+class TestAsyncGeneratorControl:
+    """Tests for buffered async-generator support in @control()."""
+
+    @pytest.mark.asyncio
+    async def test_preserves_async_generator_identity(self, mock_agent, mock_safe_response):
+        """Test that decorating an async generator preserves its async-gen type."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            @control()
+            async def stream(message: str):
+                yield "hello"
+
+            assert inspect.isasyncgenfunction(stream)
+
+    @pytest.mark.asyncio
+    async def test_buffers_stream_until_post_check_passes(self, mock_agent, mock_safe_response):
+        """Test that async-generator output is buffered before replay."""
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+                yield "chunk3"
+
+            collected = []
+            async for chunk in stream("test"):
+                collected.append(chunk)
+                break
+
+            assert collected == ["chunk1"]
+            assert call_stages == ["pre", "post"]
+
+    @pytest.mark.asyncio
+    async def test_post_check_receives_joined_text_output_for_string_chunks(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that string chunks are joined for the buffered post-check payload."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "hello "
+                yield "world"
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert chunks == ["hello ", "world"]
+            assert post_steps[0]["output"] == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_structured_chunks_are_normalized_without_lossy_repr(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that structured chunks are normalized into JSON-safe post payloads."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield {"kind": "json"}
+                yield _StructuredChunk(value="structured")
+                yield b"tail"
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert chunks == [{"kind": "json"}, _StructuredChunk(value="structured"), b"tail"]
+            assert post_steps[0]["output"] == {
+                "chunks": [
+                    {"kind": "json"},
+                    {"value": "structured"},
+                    "tail",
+                ],
+                "text": "tail",
+            }
+
+    @pytest.mark.asyncio
+    async def test_post_check_block_happens_before_any_chunk_is_replayed(
+        self,
+        mock_agent,
+        mock_safe_response,
+        mock_unsafe_response,
+    ):
+        """Test that a post-stage deny blocks the buffered stream before replay starts."""
+        call_count = 0
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_safe_response
+            return mock_unsafe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+
+            collected = []
+            with pytest.raises(ControlViolationError):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+
+    @pytest.mark.asyncio
+    async def test_generator_failure_skips_post_check_and_replays_nothing(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that a source stream failure propagates before any replay or post-check."""
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                raise RuntimeError("stream failed")
+
+            collected = []
+            with pytest.raises(RuntimeError, match="stream failed"):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+            assert call_stages == ["pre"]
+
+    @pytest.mark.asyncio
+    async def test_async_generator_without_agent_passthrough(self):
+        """Test that async generators pass through unchanged without an initialized agent."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=None):
+
+            @control()
+            async def stream(message: str):
+                yield "a"
+                yield "b"
+
+            chunks = [chunk async for chunk in stream("hello")]
+            assert chunks == ["a", "b"]
 
 
 # =============================================================================
