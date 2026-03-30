@@ -1614,6 +1614,95 @@ export function setupJsonEditorLanguageSupport(
     schemas: [],
   });
 
+  const hoverDisposable = monaco.languages.registerHoverProvider('json', {
+    provideHover(model, position) {
+      if (model.uri.toString() !== context.modelUri) return null;
+      if (!context.schema) return null;
+
+      const text = model.getValue();
+      const offset = model.getOffsetAt(position);
+      const tree = parseTree(text);
+      const location = getLocation(text, offset);
+      if (!location.path.length) return null;
+
+      const rootSchema = asSchema(context.schema);
+      const activeEvaluator = resolveActiveEvaluator(
+        context,
+        tree,
+        location.path
+      );
+      const cursor = resolveSchemaAtJsonPath(
+        context,
+        activeEvaluator,
+        location.isAtPropertyKey ? location.path.slice(0, -1) : location.path
+      );
+
+      // For property keys, show the property's schema description
+      if (location.isAtPropertyKey) {
+        const propName = location.path[location.path.length - 1];
+        if (typeof propName !== 'string' || !cursor.schema) return null;
+        const propSchema = getSchemaAtProperty(
+          cursor.schema,
+          propName,
+          cursor.rootSchema
+        );
+        const desc = getSchemaDescription(propSchema);
+        const title = getSchemaTitle(propSchema);
+        if (!desc && !title) return null;
+
+        const word = model.getWordAtPosition(position);
+        const range = word
+          ? new monaco.Range(
+              position.lineNumber,
+              word.startColumn,
+              position.lineNumber,
+              word.endColumn
+            )
+          : undefined;
+
+        return {
+          range,
+          contents: [
+            {
+              value: `**${title ?? propName}**${desc ? '\n\n' + desc : ''}`,
+            },
+          ],
+        };
+      }
+
+      // For values, show the value's schema info
+      if (cursor.schema) {
+        const desc = getSchemaDescription(cursor.schema);
+        const title = getSchemaTitle(cursor.schema);
+        const enumVals = getSchemaEnumValues(cursor.schema);
+        if (!desc && !title && enumVals.length === 0) return null;
+
+        const parts: string[] = [];
+        if (title) parts.push(`**${title}**`);
+        if (desc) parts.push(desc);
+        if (enumVals.length > 0)
+          parts.push(`Values: \`${enumVals.join('` | `')}\``);
+
+        const word = model.getWordAtPosition(position);
+        const range = word
+          ? new monaco.Range(
+              position.lineNumber,
+              word.startColumn,
+              position.lineNumber,
+              word.endColumn
+            )
+          : undefined;
+
+        return {
+          range,
+          contents: [{ value: parts.join('\n\n') }],
+        };
+      }
+
+      return null;
+    },
+  });
+
   const disposable = monaco.languages.registerCompletionItemProvider('json', {
     triggerCharacters: COMPLETION_TRIGGER_CHARACTERS,
     provideCompletionItems(model, position) {
@@ -1635,6 +1724,7 @@ export function setupJsonEditorLanguageSupport(
   const codeActionDisposable = registerConditionCodeActions(monaco, context);
 
   return () => {
+    hoverDisposable.dispose();
     disposable.dispose();
     codeActionDisposable.dispose();
   };
