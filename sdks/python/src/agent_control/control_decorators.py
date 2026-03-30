@@ -1012,6 +1012,8 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
           before replay.
         - The post-check runs on the full buffered output.
         - Chunks are yielded to the caller only after the post-check passes.
+        - stream_buffer_max_bytes limits the normalized post-check payload size,
+          not the in-memory size of replayed chunks.
         - Decorated async generators are pull-only and do not preserve
           interactive asend()/athrow() semantics against the source generator.
 

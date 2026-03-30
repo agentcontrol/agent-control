@@ -64,7 +64,10 @@ class SDKSettings(BaseSettings):
     stream_buffer_max_bytes: int = Field(
         default=5_000_000,
         ge=1,
-        description="Maximum normalized bytes buffered by @control() before failing closed",
+        description=(
+            "Maximum normalized post-check payload bytes buffered by @control() "
+            "before failing closed; does not bound replay-memory usage"
+        ),
     )
 
     # Observability (event batching)
