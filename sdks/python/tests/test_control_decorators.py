@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent_control.control_decorators import ControlViolationError, ControlSteerError, control
-from agent_control.settings import configure_settings, get_settings
+from agent_control.settings import get_settings
 
 
 # =============================================================================
@@ -1175,10 +1175,9 @@ class TestAsyncGeneratorControl:
         self,
         mock_agent,
         mock_safe_response,
+        monkeypatch,
     ):
         """Test that exceeding the configured chunk cap blocks buffered replay."""
-        original_settings = get_settings().model_dump()
-        limited_settings = {**original_settings, "stream_buffer_max_chunks": 2}
         call_stages = []
 
         async def mock_evaluate(
@@ -1194,26 +1193,66 @@ class TestAsyncGeneratorControl:
             call_stages.append(stage)
             return mock_safe_response
 
-        configure_settings(**limited_settings)
-        try:
-            with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-                 patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+        monkeypatch.setattr(get_settings(), "stream_buffer_max_chunks", 2)
 
-                @control()
-                async def stream(message: str):
-                    yield "chunk1"
-                    yield "chunk2"
-                    yield "chunk3"
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
 
-                collected = []
-                with pytest.raises(RuntimeError, match="chunk limit"):
-                    async for chunk in stream("test"):
-                        collected.append(chunk)
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+                yield "chunk3"
 
-                assert collected == []
-                assert call_stages == ["pre"]
-        finally:
-            configure_settings(**original_settings)
+            collected = []
+            with pytest.raises(RuntimeError, match="chunk limit"):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+            assert call_stages == ["pre"]
+
+    @pytest.mark.asyncio
+    async def test_stream_buffer_byte_limit_accounts_for_mixed_text_duplication(
+        self,
+        mock_agent,
+        mock_safe_response,
+        monkeypatch,
+    ):
+        """Test that mixed streams count duplicated text toward the byte cap."""
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        monkeypatch.setattr(get_settings(), "stream_buffer_max_bytes", 15)
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "a"
+                yield {"kind": "json"}
+                yield "b"
+
+            collected = []
+            with pytest.raises(RuntimeError, match="size limit"):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+            assert call_stages == ["pre"]
 
     @pytest.mark.asyncio
     async def test_generator_failure_skips_post_check_and_replays_nothing(
@@ -1265,6 +1304,28 @@ class TestAsyncGeneratorControl:
 
             chunks = [chunk async for chunk in stream("hello")]
             assert chunks == ["a", "b"]
+
+    @pytest.mark.asyncio
+    async def test_asend_non_none_is_rejected_for_buffered_replay(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that buffered replay rejects interactive sends."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            @control()
+            async def stream(message: str):
+                received = yield "chunk1"
+                yield f"received={received}"
+
+            agen = stream("hello")
+            first = await agen.__anext__()
+            assert first == "chunk1"
+
+            with pytest.raises(TypeError, match="asend\\(non-None\\)"):
+                await agen.asend("interactive-input")
 
     def test_sync_wrapper_copies_public_attributes(self, mock_agent, mock_safe_response):
         """Test that sync wrappers preserve custom public attributes."""

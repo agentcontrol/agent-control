@@ -220,7 +220,9 @@ class _BufferedStreamCapture:
     max_bytes: int
     replay_chunks: list[Any] = field(default_factory=list)
     normalized_chunks: list[JSONValue] = field(default_factory=list)
-    buffered_bytes: int = 0
+    chunk_bytes: int = 0
+    text_bytes: int = 0
+    has_non_string_chunk: bool = False
 
     def add(self, chunk: Any) -> None:
         next_chunk_count = len(self.replay_chunks) + 1
@@ -231,8 +233,19 @@ class _BufferedStreamCapture:
             )
 
         normalized_chunk = _normalize_json_value(chunk)
-        next_buffered_bytes = self.buffered_bytes + _json_value_size(normalized_chunk)
-        if next_buffered_bytes > self.max_bytes:
+        next_chunk_bytes = self.chunk_bytes + _json_value_size(normalized_chunk)
+        next_text_bytes = self.text_bytes
+        next_has_non_string_chunk = self.has_non_string_chunk
+        if isinstance(normalized_chunk, str):
+            next_text_bytes += _json_value_size(normalized_chunk)
+        else:
+            next_has_non_string_chunk = True
+
+        next_payload_bytes = next_chunk_bytes
+        if next_has_non_string_chunk:
+            next_payload_bytes += next_text_bytes
+
+        if next_payload_bytes > self.max_bytes:
             raise RuntimeError(
                 "Buffered async generator output exceeded the configured size limit. "
                 "Failing closed."
@@ -240,7 +253,9 @@ class _BufferedStreamCapture:
 
         self.replay_chunks.append(chunk)
         self.normalized_chunks.append(normalized_chunk)
-        self.buffered_bytes = next_buffered_bytes
+        self.chunk_bytes = next_chunk_bytes
+        self.text_bytes = next_text_bytes
+        self.has_non_string_chunk = next_has_non_string_chunk
 
     def output_payload(self) -> JSONValue:
         if not self.normalized_chunks:
@@ -944,6 +959,8 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         - Decorated async generators are buffered before replay.
         - The post-check runs on the full buffered output.
         - Chunks are yielded to the caller only after the post-check passes.
+        - Buffered async generators are pull-only and do not preserve interactive
+          asend()/athrow() semantics against the source generator.
 
     Example:
         import agent_control
@@ -1028,7 +1045,12 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                 )
 
                 for chunk in capture.replay_chunks:
-                    yield chunk
+                    sent = yield chunk
+                    if sent is not None:
+                        raise TypeError(
+                            "Buffered @control() async generators do not support "
+                            "asend(non-None)."
+                        )
             finally:
                 ctx.log_end()
 
