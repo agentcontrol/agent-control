@@ -168,7 +168,7 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
 
         # Build shared metadata for result context
         base_meta: dict[str, Any] = {
-            "amount": float(amount),
+            "amount": str(amount),
             "currency": currency,
             "recipient": recipient,
         }
@@ -232,7 +232,7 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
                 metadata={
                     **base_meta,
                     "violation": "amount_below_minimum",
-                    "min_amount": float(self.config.min_amount),
+                    "min_amount": str(self.config.min_amount),
                 },
             )
 
@@ -248,7 +248,7 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
                 metadata={
                     **base_meta,
                     "violation": "amount_exceeds_maximum",
-                    "max_amount": float(self.config.max_amount),
+                    "max_amount": str(self.config.max_amount),
                 },
             )
 

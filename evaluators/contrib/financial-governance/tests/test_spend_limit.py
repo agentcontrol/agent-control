@@ -387,8 +387,8 @@ async def test_period_budget_violation() -> None:
     result = await ev.evaluate(_tx(amount="25.00"))
     assert result.matched is True
     assert result.metadata and result.metadata["violation"] == "period_budget"
-    assert result.metadata["current_period_spend"] == pytest.approx(480.0)
-    assert result.metadata["projected_period_spend"] == pytest.approx(505.0)
+    assert result.metadata["current_period_spend"] == Decimal("480")
+    assert result.metadata["projected_period_spend"] == Decimal("505")
 
 
 @pytest.mark.asyncio
