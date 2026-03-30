@@ -983,7 +983,10 @@ function buildSchemaPropertySuggestions(
   }
 
   return Object.entries(getSchemaProperties(schemaCursor.schema))
-    .filter(([propertyName]) => !existingKeys.has(propertyName))
+    .filter(
+      ([propertyName]) =>
+        !existingKeys.has(propertyName) && !propertyName.startsWith('$')
+    )
     .map(([propertyName, propertySchema], index) => ({
       label: propertyName,
       kind: monaco.languages.CompletionItemKind.Property,
