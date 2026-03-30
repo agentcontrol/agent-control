@@ -75,13 +75,14 @@ export const ListForm = ({ form }: EvaluatorFormProps<ListFormValues>) => {
         label={
           <LabelWithTooltip
             label="Match mode"
-            tooltip="Exact string match or substring (contains)"
+            tooltip="Exact string match, keyword contains, or string prefix matching"
           />
         }
         labelProps={labelPropsInline}
         data={[
           { value: 'exact', label: 'Exact (full string match)' },
-          { value: 'contains', label: 'Contains (substring match)' },
+          { value: 'contains', label: 'Contains (keyword match)' },
+          { value: 'starts_with', label: 'Starts with (prefix match)' },
         ]}
         size="sm"
         {...form.getInputProps('match_mode')}
