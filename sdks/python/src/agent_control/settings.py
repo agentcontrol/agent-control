@@ -55,6 +55,18 @@ class SDKSettings(BaseSettings):
         description="API key for server authentication",
     )
 
+    # Buffered async-generator control limits
+    stream_buffer_max_chunks: int = Field(
+        default=10000,
+        ge=1,
+        description="Maximum streamed chunks buffered by @control() before failing closed",
+    )
+    stream_buffer_max_bytes: int = Field(
+        default=5_000_000,
+        ge=1,
+        description="Maximum normalized bytes buffered by @control() before failing closed",
+    )
+
     # Observability (event batching)
     observability_enabled: bool = Field(
         default=True,

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent_control.control_decorators import ControlViolationError, ControlSteerError, control
+from agent_control.settings import configure_settings, get_settings
 
 
 # =============================================================================
@@ -317,6 +318,76 @@ class TestPrePostExecution:
 
             assert "output" in captured_step
             assert "Generated response" in captured_step["output"]
+
+    @pytest.mark.asyncio
+    async def test_post_check_serializer_failure_falls_back_to_string(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that serializer hook failures do not escape the post-check path."""
+        captured_step = {}
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                captured_step.update(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def chat(message: str) -> _ExplodingModelDumpChunk:
+                return _ExplodingModelDumpChunk()
+
+            result = await chat("Hello!")
+
+            assert isinstance(result, _ExplodingModelDumpChunk)
+            assert captured_step["output"] == "exploding-model-dump"
+
+    @pytest.mark.asyncio
+    async def test_post_check_non_finite_float_is_stringified(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that non-finite floats are normalized to JSON-safe strings."""
+        captured_step = {}
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                captured_step.update(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def chat(message: str) -> float:
+                return float("inf")
+
+            result = await chat("Hello!")
+
+            assert result == float("inf")
+            assert captured_step["output"] == "inf"
 
 
 # =============================================================================
@@ -809,6 +880,23 @@ class _RecursiveModelDumpChunk:
         return "recursive-model-dump"
 
 
+class _ExplodingModelDumpChunk:
+    def model_dump(self, mode: str = "json") -> dict[str, object]:
+        _ = mode
+        raise RuntimeError("model_dump exploded")
+
+    def __str__(self) -> str:
+        return "exploding-model-dump"
+
+
+class _PlainObjectChunk:
+    def __init__(self) -> None:
+        self.secret = "top-secret"
+
+    def __str__(self) -> str:
+        return "plain-object"
+
+
 class TestAsyncGeneratorControl:
     """Tests for buffered async-generator support in @control()."""
 
@@ -974,6 +1062,74 @@ class TestAsyncGeneratorControl:
             }
 
     @pytest.mark.asyncio
+    async def test_chunk_serializer_failure_falls_back_to_string(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that serializer hook failures on streamed chunks fall back to strings."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _ExplodingModelDumpChunk()
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert len(chunks) == 1
+            assert post_steps[0]["output"] == "exploding-model-dump"
+
+    @pytest.mark.asyncio
+    async def test_plain_object_chunk_falls_back_to_string(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that plain objects are stringified instead of expanding __dict__."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _PlainObjectChunk()
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert len(chunks) == 1
+            assert post_steps[0]["output"] == "plain-object"
+
+    @pytest.mark.asyncio
     async def test_post_check_block_happens_before_any_chunk_is_replayed(
         self,
         mock_agent,
@@ -1013,6 +1169,51 @@ class TestAsyncGeneratorControl:
                     collected.append(chunk)
 
             assert collected == []
+
+    @pytest.mark.asyncio
+    async def test_stream_buffer_chunk_limit_fails_closed_before_replay(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that exceeding the configured chunk cap blocks buffered replay."""
+        original_settings = get_settings().model_dump()
+        limited_settings = {**original_settings, "stream_buffer_max_chunks": 2}
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        configure_settings(**limited_settings)
+        try:
+            with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+                 patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+                @control()
+                async def stream(message: str):
+                    yield "chunk1"
+                    yield "chunk2"
+                    yield "chunk3"
+
+                collected = []
+                with pytest.raises(RuntimeError, match="chunk limit"):
+                    async for chunk in stream("test"):
+                        collected.append(chunk)
+
+                assert collected == []
+                assert call_stages == ["pre"]
+        finally:
+            configure_settings(**original_settings)
 
     @pytest.mark.asyncio
     async def test_generator_failure_skips_post_check_and_replays_nothing(
@@ -1064,6 +1265,20 @@ class TestAsyncGeneratorControl:
 
             chunks = [chunk async for chunk in stream("hello")]
             assert chunks == ["a", "b"]
+
+    def test_sync_wrapper_copies_public_attributes(self, mock_agent, mock_safe_response):
+        """Test that sync wrappers preserve custom public attributes."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            def process(input: str) -> str:
+                return input.upper()
+
+            process.description = "Uppercases the input"
+
+            wrapped = control()(process)
+
+            assert wrapped.description == "Uppercases the input"
 
 
 # =============================================================================

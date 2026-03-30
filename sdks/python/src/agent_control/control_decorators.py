@@ -30,6 +30,8 @@ Usage:
 import asyncio
 import functools
 import inspect
+import json
+import math
 import time
 from collections.abc import AsyncGenerator, Callable, Mapping
 from dataclasses import dataclass, field, fields, is_dataclass
@@ -214,12 +216,31 @@ class ControlSteerError(Exception):
 class _BufferedStreamCapture:
     """Buffer streamed chunks for post-check evaluation before replay."""
 
+    max_chunks: int
+    max_bytes: int
     replay_chunks: list[Any] = field(default_factory=list)
     normalized_chunks: list[JSONValue] = field(default_factory=list)
+    buffered_bytes: int = 0
 
     def add(self, chunk: Any) -> None:
+        next_chunk_count = len(self.replay_chunks) + 1
+        if next_chunk_count > self.max_chunks:
+            raise RuntimeError(
+                "Buffered async generator output exceeded the configured chunk limit. "
+                "Failing closed."
+            )
+
+        normalized_chunk = _normalize_json_value(chunk)
+        next_buffered_bytes = self.buffered_bytes + _json_value_size(normalized_chunk)
+        if next_buffered_bytes > self.max_bytes:
+            raise RuntimeError(
+                "Buffered async generator output exceeded the configured size limit. "
+                "Failing closed."
+            )
+
         self.replay_chunks.append(chunk)
-        self.normalized_chunks.append(_normalize_json_value(chunk))
+        self.normalized_chunks.append(normalized_chunk)
+        self.buffered_bytes = next_buffered_bytes
 
     def output_payload(self) -> JSONValue:
         if not self.normalized_chunks:
@@ -260,10 +281,39 @@ def _copy_public_attributes(source: Any, target: Any) -> None:
                 pass
 
 
+def _safe_stringify(value: Any) -> str:
+    """Stringify a value without letting representation errors escape."""
+    try:
+        return str(value)
+    except Exception:
+        return f"<unprintable {type(value).__name__}>"
+
+
+def _json_value_size(value: JSONValue) -> int:
+    """Estimate normalized JSON payload size in bytes for buffered streams."""
+    try:
+        return len(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        )
+    except (TypeError, ValueError):
+        return len(_safe_stringify(value).encode("utf-8"))
+
+
 def _normalize_json_value(value: Any, *, _seen: set[int] | None = None) -> JSONValue:
     """Convert runtime values into JSON-safe data for evaluation payloads."""
-    if isinstance(value, (str, int, float, bool)) or value is None:
+    if isinstance(value, str) or value is None:
         return value
+
+    if isinstance(value, bool | int):
+        return value
+
+    if isinstance(value, float):
+        return value if math.isfinite(value) else _safe_stringify(value)
 
     if isinstance(value, (bytes, bytearray)):
         return bytes(value).decode("utf-8", errors="replace")
@@ -271,66 +321,62 @@ def _normalize_json_value(value: Any, *, _seen: set[int] | None = None) -> JSONV
     seen = set() if _seen is None else _seen
     value_id = id(value)
     if value_id in seen:
-        return str(value)
+        return _safe_stringify(value)
 
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        seen.add(value_id)
-        try:
-            return _normalize_json_value(model_dump(mode="json"), _seen=seen)
-        finally:
-            seen.remove(value_id)
+    try:
+        model_dump = getattr(value, "model_dump", None)
+        if callable(model_dump):
+            seen.add(value_id)
+            try:
+                return _normalize_json_value(model_dump(mode="json"), _seen=seen)
+            except Exception:
+                return _safe_stringify(value)
+            finally:
+                seen.remove(value_id)
 
-    dict_method = getattr(value, "dict", None)
-    if callable(dict_method):
-        seen.add(value_id)
-        try:
-            return _normalize_json_value(dict_method(), _seen=seen)
-        finally:
-            seen.remove(value_id)
+        dict_method = getattr(value, "dict", None)
+        if callable(dict_method):
+            seen.add(value_id)
+            try:
+                return _normalize_json_value(dict_method(), _seen=seen)
+            except Exception:
+                return _safe_stringify(value)
+            finally:
+                seen.remove(value_id)
 
-    if isinstance(value, Mapping):
-        seen.add(value_id)
-        try:
-            return {
-                str(key): _normalize_json_value(item, _seen=seen)
-                for key, item in value.items()
-            }
-        finally:
-            seen.remove(value_id)
+        if isinstance(value, Mapping):
+            seen.add(value_id)
+            try:
+                return {
+                    str(key): _normalize_json_value(item, _seen=seen)
+                    for key, item in value.items()
+                }
+            finally:
+                seen.remove(value_id)
 
-    if isinstance(value, (list, tuple, set, frozenset)):
-        seen.add(value_id)
-        try:
-            return [_normalize_json_value(item, _seen=seen) for item in value]
-        finally:
-            seen.remove(value_id)
+        if isinstance(value, (list, tuple, set, frozenset)):
+            seen.add(value_id)
+            try:
+                return [_normalize_json_value(item, _seen=seen) for item in value]
+            finally:
+                seen.remove(value_id)
 
-    if is_dataclass(value) and not isinstance(value, type):
-        seen.add(value_id)
-        try:
-            return {
-                field_info.name: _normalize_json_value(
-                    getattr(value, field_info.name),
-                    _seen=seen,
-                )
-                for field_info in fields(value)
-            }
-        finally:
-            seen.remove(value_id)
+        if is_dataclass(value) and not isinstance(value, type):
+            seen.add(value_id)
+            try:
+                return {
+                    field_info.name: _normalize_json_value(
+                        getattr(value, field_info.name),
+                        _seen=seen,
+                    )
+                    for field_info in fields(value)
+                }
+            finally:
+                seen.remove(value_id)
+    except Exception:
+        return _safe_stringify(value)
 
-    value_dict = getattr(value, "__dict__", None)
-    if isinstance(value_dict, dict):
-        seen.add(value_id)
-        try:
-            return {
-                str(key): _normalize_json_value(item, _seen=seen)
-                for key, item in value_dict.items()
-            }
-        finally:
-            seen.remove(value_id)
-
-    return str(value)
+    return _safe_stringify(value)
 
 
 def _normalized_output_value(output: Any) -> JSONValue | None:
@@ -962,7 +1008,11 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
             ctx, controls = context
             ctx.log_start()
             stream = func(*args, **kwargs)
-            capture = _BufferedStreamCapture()
+            settings = get_settings()
+            capture = _BufferedStreamCapture(
+                max_chunks=settings.stream_buffer_max_chunks,
+                max_bytes=settings.stream_buffer_max_bytes,
+            )
 
             try:
                 await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
@@ -996,6 +1046,8 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
             return asyncio.run(
                 _execute_with_control(func, args, kwargs, is_async=False, step_name=step_name)
             )
+
+        _copy_public_attributes(func, sync_wrapper)
 
         if inspect.isasyncgenfunction(func):
             return async_gen_wrapper  # type: ignore
