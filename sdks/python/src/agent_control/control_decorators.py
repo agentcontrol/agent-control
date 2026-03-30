@@ -28,12 +28,14 @@ Usage:
 """
 
 import asyncio
+import copy
 import functools
 import inspect
 import json
 import math
 import time
 from collections.abc import AsyncGenerator, Callable, Mapping
+from contextlib import aclosing
 from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, TypeVar
 
@@ -234,12 +236,13 @@ class _BufferedStreamCapture:
             )
 
         normalized_chunk = _normalize_json_value(chunk)
-        next_chunk_item_bytes = self.chunk_item_bytes + _json_value_size(normalized_chunk)
+        normalized_chunk_bytes = _json_value_size(normalized_chunk)
+        next_chunk_item_bytes = self.chunk_item_bytes + normalized_chunk_bytes
         next_text_content_bytes = self.text_content_bytes
         next_string_chunk_count = self.string_chunk_count
         next_has_non_string_chunk = self.has_non_string_chunk
         if isinstance(normalized_chunk, str):
-            next_text_content_bytes += _json_value_size(normalized_chunk) - 2
+            next_text_content_bytes += normalized_chunk_bytes - 2
             next_string_chunk_count += 1
         else:
             next_has_non_string_chunk = True
@@ -257,7 +260,7 @@ class _BufferedStreamCapture:
                 "Failing closed."
             )
 
-        self.replay_chunks.append(chunk)
+        self.replay_chunks.append(_freeze_replay_chunk(chunk, normalized_chunk))
         self.normalized_chunks.append(normalized_chunk)
         self.chunk_item_bytes = next_chunk_item_bytes
         self.text_content_bytes = next_text_content_bytes
@@ -329,6 +332,17 @@ def _safe_stringify(value: Any) -> str:
         return str(value)
     except Exception:
         return f"<unprintable {type(value).__name__}>"
+
+
+def _freeze_replay_chunk(chunk: Any, normalized_chunk: JSONValue) -> Any:
+    """Freeze a replayed chunk so later mutations cannot bypass the post-check."""
+    if isinstance(chunk, (str, bool, int, float, bytes, type(None))):
+        return chunk
+
+    try:
+        return copy.deepcopy(chunk)
+    except Exception:
+        return copy.deepcopy(normalized_chunk)
 
 
 def _json_value_size(value: JSONValue) -> int:
@@ -1046,13 +1060,14 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                     "No agent initialized. Call agent_control.init() first. "
                     "Running without protection."
                 )
-                async for chunk in func(*args, **kwargs):
-                    yield chunk
+                async with aclosing(func(*args, **kwargs)) as stream:
+                    async for chunk in stream:
+                        yield chunk
                 return
 
             ctx, controls = context
             ctx.log_start()
-            stream = func(*args, **kwargs)
+            span_open = True
             settings = get_settings()
             capture = _BufferedStreamCapture(
                 max_chunks=settings.stream_buffer_max_chunks,
@@ -1060,17 +1075,21 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
             )
 
             try:
-                await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
+                async with aclosing(func(*args, **kwargs)) as stream:
+                    await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
 
-                async for chunk in stream:
-                    capture.add(chunk)
+                    async for chunk in stream:
+                        capture.add(chunk)
 
-                await _run_control_check(
-                    ctx,
-                    "post",
-                    ctx.post_payload(capture.output_payload()),
-                    controls,
-                )
+                    await _run_control_check(
+                        ctx,
+                        "post",
+                        ctx.post_payload(capture.output_payload()),
+                        controls,
+                    )
+
+                ctx.log_end()
+                span_open = False
 
                 for chunk in capture.replay_chunks:
                     sent = yield chunk
@@ -1080,7 +1099,8 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                             "asend(non-None)."
                         )
             finally:
-                ctx.log_end()
+                if span_open:
+                    ctx.log_end()
 
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:

@@ -1335,6 +1335,91 @@ class TestAsyncGeneratorControl:
             assert call_stages == ["pre"]
 
     @pytest.mark.asyncio
+    async def test_mutable_chunk_is_replayed_from_captured_snapshot(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that later chunk mutation cannot change buffered replay output."""
+        original_chunks = []
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            @control()
+            async def stream(message: str):
+                chunk = {"text": "safe"}
+                original_chunks.append(chunk)
+                yield chunk
+                chunk["text"] = "unsafe"
+
+            chunks = [chunk async for chunk in stream("test")]
+
+            assert chunks == [{"text": "safe"}]
+            assert chunks[0] is not original_chunks[0]
+            assert original_chunks[0] == {"text": "unsafe"}
+
+    @pytest.mark.asyncio
+    async def test_stream_span_ends_before_buffered_replay_begins(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that control tracing ends before replay is yielded to the caller."""
+        end_events = []
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response), \
+             patch(
+                 "agent_control.control_decorators.log_span_end",
+                 side_effect=lambda *args, **kwargs: end_events.append("ended"),
+             ):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+
+            agen = stream("test")
+            first = await anext(agen)
+            rest = [chunk async for chunk in agen]
+
+            assert first == "chunk1"
+            assert rest == ["chunk2"]
+            assert end_events == ["ended"]
+
+    @pytest.mark.asyncio
+    async def test_stream_is_closed_when_buffering_fails(
+        self,
+        mock_agent,
+        mock_safe_response,
+        monkeypatch,
+    ):
+        """Test that buffering failures still close the source async generator."""
+        closed = False
+
+        async def stream(message: str):
+            nonlocal closed
+            try:
+                yield "chunk1"
+                yield "chunk2"
+            finally:
+                closed = True
+
+        monkeypatch.setattr(get_settings(), "stream_buffer_max_chunks", 1)
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            wrapped = control()(stream)
+
+            with pytest.raises(RuntimeError, match="chunk limit"):
+                async for _ in wrapped("test"):
+                    pass
+
+            assert closed is True
+
+    @pytest.mark.asyncio
     async def test_async_generator_without_agent_passthrough(self):
         """Test that async generators pass through unchanged without an initialized agent."""
         with patch("agent_control.control_decorators._get_current_agent", return_value=None):
