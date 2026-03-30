@@ -146,7 +146,8 @@ function tryFormat(text: string): string | null {
 function shouldAutoTriggerSuggest(
   line: string | undefined,
   column: number,
-  skipStringTrigger: boolean
+  skipStringTrigger: boolean,
+  hasSuggestions: () => boolean
 ): boolean {
   if (!line) return false;
   const beforeCursor = line.substring(0, column - 1);
@@ -174,11 +175,11 @@ function shouldAutoTriggerSuggest(
   // Short strings: always trigger (browsing options)
   if (contentLen <= 2) return true;
 
-  // Longer strings: only trigger for known domain fields where alternatives exist
-  // (evaluator name, selector path, decision, execution, stages)
-  const domainFieldPattern =
-    /"\s*(?:name|path|decision|execution|step_name_regex)\s*"\s*:\s*"[^"]*$/;
-  return domainFieldPattern.test(beforeCursor);
+  // Longer strings: trigger if our provider has suggestions (enum values,
+  // evaluator names, selector paths). This covers all domain fields
+  // including evaluator config enums (logic, match_on, mode, etc.)
+  // without hardcoding field names.
+  return hasSuggestions();
 }
 
 // ---------------------------------------------------------------------------
@@ -461,7 +462,16 @@ export const JsonEditorView = ({
           const trigger = shouldAutoTriggerSuggest(
             model.getLineContent(pos.lineNumber),
             pos.column,
-            wasTyping
+            wasTyping,
+            () =>
+              monacoRef.current
+                ? getJsonEditorCompletionItems(
+                    monacoRef.current,
+                    model,
+                    pos,
+                    autocompleteContext
+                  ).length > 0
+                : false
           );
           if (trigger) {
             editor.trigger('cursor', 'editor.action.triggerSuggest', {});
