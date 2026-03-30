@@ -60,15 +60,30 @@ const COMMA_FIX_DEBOUNCE_MS = 800;
 const CURSOR_TRIGGER_DEBOUNCE_MS = 50;
 const HINT_CSS_CLASS = 'json-editor-value-hint';
 
-// Injected once — never removed. Shared across all editor instances.
-if (typeof document !== 'undefined') {
-  const id = 'json-editor-hint-style';
-  if (!document.getElementById(id)) {
-    const style = document.createElement('style');
-    style.id = id;
-    style.textContent = `.${HINT_CSS_CLASS} { color: var(--mantine-color-gray-5); font-style: italic; }`;
-    document.head.appendChild(style);
+// Dynamic hint styles — each unique hint text gets a CSS class with ::after content.
+// Monaco 0.55 doesn't support `after.content` in decorations, so we use
+// `afterContentClassName` with CSS `::after` pseudo-elements instead.
+let hintStyleEl: HTMLStyleElement | null = null;
+let hintClassCounter = 0;
+const hintClassMap = new Map<string, string>();
+
+function getHintClassName(hintText: string): string {
+  let cls = hintClassMap.get(hintText);
+  if (cls) return cls;
+
+  cls = `${HINT_CSS_CLASS}-${hintClassCounter++}`;
+  hintClassMap.set(hintText, cls);
+
+  if (typeof document !== 'undefined') {
+    if (!hintStyleEl) {
+      hintStyleEl = document.createElement('style');
+      hintStyleEl.id = 'json-editor-hint-styles';
+      document.head.appendChild(hintStyleEl);
+    }
+    const escaped = hintText.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    hintStyleEl.textContent += `.${cls}::after { content: "${escaped}"; color: var(--mantine-color-gray-5); font-style: italic; pointer-events: none; }\n`;
   }
+  return cls;
 }
 
 const EDITOR_OPTIONS: import('monaco-editor').editor.IStandaloneEditorConstructionOptions =
@@ -309,11 +324,7 @@ export const JsonEditorView = ({
           getEmptyValueHints(monaco, model, autocompleteContext).map((h) => ({
             range: h.range,
             options: {
-              after: {
-                content: h.hint,
-                inlineClassName: HINT_CSS_CLASS,
-                cursorStops: monaco.editor.InjectedTextCursorStops.None,
-              },
+              afterContentClassName: getHintClassName(h.hint),
             },
           }))
         );
