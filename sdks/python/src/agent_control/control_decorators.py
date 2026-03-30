@@ -55,6 +55,7 @@ from agent_control.tracing import _generate_span_id, get_current_trace_id, get_t
 logger = get_logger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
+_ASYNC_GEN_ASEND_ERROR = "Decorated @control() async generators do not support asend(non-None)."
 
 
 @dataclass
@@ -260,7 +261,7 @@ class _BufferedStreamCapture:
                 "Failing closed."
             )
 
-        self.replay_chunks.append(_freeze_replay_chunk(chunk, normalized_chunk))
+        self.replay_chunks.append(_freeze_replay_chunk(chunk))
         self.normalized_chunks.append(normalized_chunk)
         self.chunk_item_bytes = next_chunk_item_bytes
         self.text_content_bytes = next_text_content_bytes
@@ -334,15 +335,24 @@ def _safe_stringify(value: Any) -> str:
         return f"<unprintable {type(value).__name__}>"
 
 
-def _freeze_replay_chunk(chunk: Any, normalized_chunk: JSONValue) -> Any:
+def _freeze_replay_chunk(chunk: Any) -> Any:
     """Freeze a replayed chunk so later mutations cannot bypass the post-check."""
     if isinstance(chunk, (str, bool, int, float, bytes, type(None))):
         return chunk
 
     try:
         return copy.deepcopy(chunk)
-    except Exception:
-        return copy.deepcopy(normalized_chunk)
+    except Exception as exc:
+        raise RuntimeError(
+            "Buffered async generator produced a chunk that could not be safely "
+            "snapshotted for replay. Failing closed."
+        ) from exc
+
+
+def _validate_async_gen_send(value: Any) -> None:
+    """Reject interactive sends for decorated async generators."""
+    if value is not None:
+        raise TypeError(_ASYNC_GEN_ASEND_ERROR)
 
 
 def _json_value_size(value: JSONValue) -> int:
@@ -998,11 +1008,12 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
            - Server evaluates all matching "post" controls for the agent
 
         Async generator note:
-        - Decorated async generators are buffered before replay.
+        - When an agent is initialized, decorated async generators are buffered
+          before replay.
         - The post-check runs on the full buffered output.
         - Chunks are yielded to the caller only after the post-check passes.
-        - Buffered async generators are pull-only and do not preserve interactive
-          asend()/athrow() semantics against the source generator.
+        - Decorated async generators are pull-only and do not preserve
+          interactive asend()/athrow() semantics against the source generator.
 
     Example:
         import agent_control
@@ -1061,8 +1072,14 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                     "Running without protection."
                 )
                 async with aclosing(func(*args, **kwargs)) as stream:
-                    async for chunk in stream:
-                        yield chunk
+                    while True:
+                        try:
+                            chunk = await anext(stream)
+                        except StopAsyncIteration:
+                            return
+
+                        sent = yield chunk
+                        _validate_async_gen_send(sent)
                 return
 
             ctx, controls = context
@@ -1075,9 +1092,9 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
             )
 
             try:
-                async with aclosing(func(*args, **kwargs)) as stream:
-                    await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
+                await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
 
+                async with aclosing(func(*args, **kwargs)) as stream:
                     async for chunk in stream:
                         capture.add(chunk)
 
@@ -1093,11 +1110,7 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
 
                 for chunk in capture.replay_chunks:
                     sent = yield chunk
-                    if sent is not None:
-                        raise TypeError(
-                            "Buffered @control() async generators do not support "
-                            "asend(non-None)."
-                        )
+                    _validate_async_gen_send(sent)
             finally:
                 if span_open:
                     ctx.log_end()

@@ -905,6 +905,15 @@ class _DuckDictChunk:
         return "duck-dict"
 
 
+class _UndeepcopyableChunk:
+    def __deepcopy__(self, memo: dict[int, object]) -> "_UndeepcopyableChunk":
+        _ = memo
+        raise RuntimeError("cannot deepcopy")
+
+    def __str__(self) -> str:
+        return "undeepcopyable"
+
+
 class TestAsyncGeneratorControl:
     """Tests for buffered async-generator support in @control()."""
 
@@ -1420,6 +1429,23 @@ class TestAsyncGeneratorControl:
             assert closed is True
 
     @pytest.mark.asyncio
+    async def test_non_none_asend_is_rejected_without_agent(self):
+        """Test that no-agent async generators reject interactive sends consistently."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=None):
+
+            @control()
+            async def stream(message: str):
+                received = yield "chunk1"
+                yield f"received={received}"
+
+            agen = stream("hello")
+            first = await agen.__anext__()
+            assert first == "chunk1"
+
+            with pytest.raises(TypeError, match="asend\\(non-None\\)"):
+                await agen.asend("interactive-input")
+
+    @pytest.mark.asyncio
     async def test_async_generator_without_agent_passthrough(self):
         """Test that async generators pass through unchanged without an initialized agent."""
         with patch("agent_control.control_decorators._get_current_agent", return_value=None):
@@ -1453,6 +1479,43 @@ class TestAsyncGeneratorControl:
 
             with pytest.raises(TypeError, match="asend\\(non-None\\)"):
                 await agen.asend("interactive-input")
+
+    @pytest.mark.asyncio
+    async def test_non_deepcopyable_chunk_fails_closed_before_replay(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that replay snapshot failures raise instead of substituting types."""
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _UndeepcopyableChunk()
+
+            collected = []
+            with pytest.raises(RuntimeError, match="safely snapshotted for replay"):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+            assert call_stages == ["pre"]
 
     def test_sync_wrapper_copies_public_attributes(self, mock_agent, mock_safe_response):
         """Test that sync wrappers preserve custom public attributes."""
