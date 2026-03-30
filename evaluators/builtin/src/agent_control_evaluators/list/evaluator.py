@@ -18,7 +18,7 @@ class ListEvaluator(Evaluator[ListEvaluatorConfig]):
     Checks if data matches values in a list. Supports:
     - any/all logic (match any value vs match all values)
     - match/no_match trigger (trigger on match or no match)
-    - exact/contains/starts_with mode (full match vs keyword vs prefix)
+    - exact/contains/starts_with/ends_with mode (full match vs keyword vs prefix/suffix)
     - case sensitivity toggle
 
     Example configs:
@@ -53,6 +53,9 @@ class ListEvaluator(Evaluator[ListEvaluatorConfig]):
         elif self.config.match_mode == "starts_with":
             # Prefix matching using anchors
             pattern = f"^({'|'.join(escaped)})"
+        elif self.config.match_mode == "ends_with":
+            # Suffix matching using anchors
+            pattern = f"({'|'.join(escaped)})$"
         else:
             # Exact match using anchors
             pattern = f"^({'|'.join(escaped)})$"
