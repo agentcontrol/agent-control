@@ -2,6 +2,33 @@
 
 <!-- version list -->
 
+## v7.3.0 (2026-03-30)
+
+### Bug Fixes
+
+- **docs**: Add explicit shutdown to quickstart example
+  ([#149](https://github.com/agentcontrol/agent-control/pull/149),
+  [`b76014f`](https://github.com/agentcontrol/agent-control/commit/b76014f1132218448b93169b3c6350f62bac49ac))
+
+- **sdk**: Use sync shutdown flush fallback
+  ([#150](https://github.com/agentcontrol/agent-control/pull/150),
+  [`90265ba`](https://github.com/agentcontrol/agent-control/commit/90265ba79132d8a8669f92948cf73568eb38fd5a))
+
+- **server**: Remove unused evaluator config store
+  ([#152](https://github.com/agentcontrol/agent-control/pull/152),
+  [`dea2873`](https://github.com/agentcontrol/agent-control/commit/dea2873241004c9398909609d4b665808270290e))
+
+### Features
+
+- **evaluators**: Add starts_with/ends_with mode to list evaluator
+  ([#154](https://github.com/agentcontrol/agent-control/pull/154),
+  [`bf1f7d7`](https://github.com/agentcontrol/agent-control/commit/bf1f7d7cf271a231a165699d44f726467b49bd50))
+
+- **sdk**: [Enterprise Integration]: Add provider agnostic traceing
+  ([#145](https://github.com/agentcontrol/agent-control/pull/145),
+  [`f1ca27c`](https://github.com/agentcontrol/agent-control/commit/f1ca27ccac5f6666f997c876598ef1bcbbae0b6d))
+
+
 ## v7.2.0 (2026-03-26)
 
 ### Bug Fixes

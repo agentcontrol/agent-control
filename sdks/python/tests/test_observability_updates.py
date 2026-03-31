@@ -14,6 +14,10 @@ from agent_control.telemetry.trace_context import (
     clear_trace_context_provider,
     set_trace_context_provider,
 )
+from agent_control.telemetry.trace_context import (
+    clear_trace_context_provider,
+    set_trace_context_provider,
+)
 from agent_control_models import ControlDefinition
 
 
@@ -208,6 +212,9 @@ class TestCheckEvaluationWithLocal:
     def teardown_method(self) -> None:
         clear_trace_context_provider()
 
+    def teardown_method(self) -> None:
+        clear_trace_context_provider()
+
     @pytest.mark.asyncio
     async def test_delivers_local_events_in_oss_mode(self):
         from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
@@ -351,6 +358,73 @@ class TestCheckEvaluationWithLocal:
         headers = client.http_client.post.call_args.kwargs["headers"]
         assert headers["X-Trace-Id"] == "c" * 32
         assert headers["X-Span-Id"] == "d" * 16
+        # Verify POST was called with headers
+        call_kwargs = client.http_client.post.call_args
+        headers = call_kwargs.kwargs.get("headers", {})
+        assert headers["X-Trace-Id"] == "aaaa1111bbbb2222cccc3333dddd4444"
+        assert headers["X-Span-Id"] == "eeee5555ffff6666"
+
+    @pytest.mark.asyncio
+    async def test_forwards_provider_trace_headers_to_server_when_ids_omitted(self):
+        """Server POST should resolve trace headers from the provider when omitted."""
+        from agent_control_models import Step
+
+        controls = [{
+            "id": 1,
+            "name": "server-ctrl",
+            "control": {
+                "condition": {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
+                "action": {"decision": "deny"},
+                "execution": "server",
+            },
+        }]
+
+        mock_http_response = MagicMock()
+        mock_http_response.json.return_value = {
+            "is_safe": True,
+            "confidence": 1.0,
+            "matches": None,
+            "errors": None,
+            "non_matches": None,
+        }
+        mock_http_response.raise_for_status = MagicMock()
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+        set_trace_context_provider(
+            lambda: {
+                "trace_id": "c" * 32,
+                "span_id": "d" * 16,
+            }
+        )
+
+        with patch("agent_control.evaluation.list_evaluators", return_value=["regex"]):
+            await evaluation.check_evaluation_with_local(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+                controls=controls,
+            )
+
+        call_kwargs = client.http_client.post.call_args
+        headers = call_kwargs.kwargs.get("headers", {})
+        assert headers["X-Trace-Id"] == "c" * 32
+        assert headers["X-Span-Id"] == "d" * 16
+
+
+# =============================================================================
+# control_decorators non_matches dict conversion
+# =============================================================================
+
+
+class TestControlDecoratorsNonMatches:
+    """Tests for non_matches dict conversion in control_decorators._evaluate."""
 
     @pytest.mark.asyncio
     async def test_merged_event_sink_emits_reconstructed_local_and_server_events_once(self):

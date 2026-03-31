@@ -9,7 +9,6 @@ export type {
   AgentsApi,
   ControlsApi,
   EvaluationApi,
-  EvaluatorConfigsApi,
   EvaluatorsApi,
   ObservabilityApi,
   PoliciesApi,

@@ -145,31 +145,6 @@ actions:
       x-speakeasy-group: evaluation
       x-speakeasy-name-override: evaluate
 
-  - target: $["paths"]["/api/v1/evaluator-configs"]["get"]
-    update:
-      x-speakeasy-group: evaluatorConfigs
-      x-speakeasy-name-override: list
-
-  - target: $["paths"]["/api/v1/evaluator-configs"]["post"]
-    update:
-      x-speakeasy-group: evaluatorConfigs
-      x-speakeasy-name-override: create
-
-  - target: $["paths"]["/api/v1/evaluator-configs/{config_id}"]["get"]
-    update:
-      x-speakeasy-group: evaluatorConfigs
-      x-speakeasy-name-override: get
-
-  - target: $["paths"]["/api/v1/evaluator-configs/{config_id}"]["put"]
-    update:
-      x-speakeasy-group: evaluatorConfigs
-      x-speakeasy-name-override: update
-
-  - target: $["paths"]["/api/v1/evaluator-configs/{config_id}"]["delete"]
-    update:
-      x-speakeasy-group: evaluatorConfigs
-      x-speakeasy-name-override: delete
-
   - target: $["paths"]["/api/v1/evaluators"]["get"]
     update:
       x-speakeasy-group: evaluators

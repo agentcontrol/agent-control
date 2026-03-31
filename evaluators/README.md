@@ -19,9 +19,14 @@ Pattern matching for text (PII, keywords, SQL injection)
 ```
 
 ### List
-Match against value lists (blocked users, restricted cities)
+Match against value lists (blocked users, restricted cities, allowed prefixes).
+Supports `match_mode: "exact"` for full-string membership, `match_mode: "contains"`
+for keyword-style matching, `match_mode: "starts_with"` for prefix matching, and
+`match_mode: "ends_with"` for suffix matching.
 ```python
 {"name": "list", "config": {"values": ["admin", "root"], "case_sensitive": False}}
+{"name": "list", "config": {"values": ["/home/lev/agent-control"], "match_mode": "starts_with"}}
+{"name": "list", "config": {"values": [".md"], "match_mode": "ends_with"}}
 ```
 
 ### SQL

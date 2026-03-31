@@ -19,9 +19,12 @@ class ListEvaluatorConfig(EvaluatorConfig):
     match_on: Literal["match", "no_match"] = Field(
         "match", description="Trigger rule on match or no match"
     )
-    match_mode: Literal["exact", "contains"] = Field(
+    match_mode: Literal["exact", "contains", "starts_with", "ends_with"] = Field(
         "exact",
-        description="'exact' for full string match, 'contains' for keyword/substring match",
+        description=(
+            "'exact' for full string match, 'contains' for keyword matching, "
+            "'starts_with' for prefix matching, and 'ends_with' for suffix matching"
+        ),
     )
     case_sensitive: bool = Field(False, description="Whether matching is case sensitive")
 

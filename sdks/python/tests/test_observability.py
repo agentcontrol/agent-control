@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from agent_control.observability import (
@@ -207,17 +208,35 @@ class TestEventBatcherWorkerThread:
     def test_shutdown_flushes_when_worker_not_running(self):
         """Test that shutdown() still flushes when the worker thread is not running."""
         batcher = EventBatcher(batch_size=100, flush_interval=60.0)
-        batcher._send_batch = AsyncMock(return_value=True)
 
         for _ in range(5):
             batcher.add_event(create_mock_event())
 
-        batcher.shutdown()
+        with patch.object(batcher, "_send_batch_sync", return_value=True):
+            batcher.shutdown()
 
         assert batcher._events_sent == 5
         assert len(batcher._events) == 0
         assert batcher._events_dropped == 0
         assert batcher._thread is None
+
+    def test_shutdown_uses_sync_fallback_when_worker_not_running(self):
+        """Shutdown should use the sync fallback path without relying on asyncio."""
+        batcher = EventBatcher(batch_size=100, flush_interval=60.0)
+
+        for _ in range(5):
+            batcher.add_event(create_mock_event())
+
+        batcher._client = AsyncMock()
+
+        with patch.object(batcher, "_send_batch_sync", return_value=True) as send_batch_sync:
+            batcher.shutdown()
+
+        send_batch_sync.assert_called_once()
+        assert batcher._events_sent == 5
+        assert len(batcher._events) == 0
+        # The sync fallback only promises to drop the stale AsyncClient reference.
+        assert batcher._client is None
 
     def test_shutdown_drains_inflight_flush_without_data_loss(self):
         """Test that shutdown waits for in-flight flushes and sends all events."""
@@ -430,6 +449,154 @@ class TestEventBatcherSendBatch:
             assert isinstance(result, bool)
 
 
+class TestEventBatcherSendBatchSync:
+    """Tests for sync HTTP sending used during shutdown fallback."""
+
+    def test_send_batch_sync_returns_true_on_202(self):
+        batcher = EventBatcher(server_url="http://test:8000", api_key="test-key")
+        response = MagicMock(status_code=202, text="accepted")
+        client = MagicMock()
+        client.post.return_value = response
+        client_context = MagicMock()
+        client_context.__enter__.return_value = client
+
+        with patch("agent_control.observability.httpx.Client", return_value=client_context) as client_ctor:
+            result = batcher._send_batch_sync([create_mock_event()])
+
+        assert result is True
+        client_ctor.assert_called_once_with(timeout=30.0)
+        client.post.assert_called_once()
+
+    def test_send_batch_sync_returns_false_on_401_without_retry(self):
+        batcher = EventBatcher()
+        response = MagicMock(status_code=401, text="unauthorized")
+        client = MagicMock()
+        client.post.return_value = response
+        client_context = MagicMock()
+        client_context.__enter__.return_value = client
+
+        with patch("agent_control.observability.httpx.Client", return_value=client_context) as client_ctor:
+            result = batcher._send_batch_sync([create_mock_event()])
+
+        assert result is False
+        assert client_ctor.call_count == 1
+        client.post.assert_called_once()
+
+    def test_send_batch_sync_retries_after_server_error_then_succeeds(self):
+        from agent_control.settings import configure_settings
+
+        original = get_settings().model_dump()
+        configure_settings(max_retries=2, retry_delay=0.25)
+        batcher = EventBatcher()
+
+        first = MagicMock(status_code=500, text="server error")
+        second = MagicMock(status_code=202, text="accepted")
+        client = MagicMock()
+        client.post.side_effect = [first, second]
+        client_context = MagicMock()
+        client_context.__enter__.return_value = client
+
+        try:
+            with (
+                patch(
+                    "agent_control.observability.httpx.Client",
+                    return_value=client_context,
+                ) as client_ctor,
+                patch("agent_control.observability.time.sleep") as sleep_mock,
+            ):
+                result = batcher._send_batch_sync([create_mock_event()])
+
+            assert result is True
+            assert client_ctor.call_count == 2
+            sleep_mock.assert_called_once_with(0.25)
+        finally:
+            configure_settings(**original)
+
+    def test_send_batch_sync_returns_false_when_deadline_already_expired(self):
+        batcher = EventBatcher()
+
+        with (
+            patch("agent_control.observability.httpx.Client") as client_ctor,
+            patch("agent_control.observability.time.monotonic", return_value=2.0),
+        ):
+            result = batcher._send_batch_sync([create_mock_event()], deadline=1.0)
+
+        assert result is False
+        client_ctor.assert_not_called()
+
+    def test_send_batch_sync_returns_false_when_retry_backoff_exceeds_deadline(self):
+        from agent_control.settings import configure_settings
+
+        original = get_settings().model_dump()
+        configure_settings(max_retries=3, retry_delay=0.25)
+        batcher = EventBatcher()
+
+        client = MagicMock()
+        client.post.side_effect = httpx.ConnectError("boom")
+        client_context = MagicMock()
+        client_context.__enter__.return_value = client
+
+        try:
+            with (
+                patch(
+                    "agent_control.observability.httpx.Client",
+                    return_value=client_context,
+                ) as client_ctor,
+                patch(
+                    "agent_control.observability.time.monotonic",
+                    side_effect=[0.0, 1.1],
+                ),
+                patch("agent_control.observability.time.sleep") as sleep_mock,
+            ):
+                result = batcher._send_batch_sync([create_mock_event()], deadline=1.0)
+
+            assert result is False
+            assert client_ctor.call_count == 1
+            sleep_mock.assert_not_called()
+        finally:
+            configure_settings(**original)
+
+    def test_send_batch_sync_handles_timeout_exception(self):
+        from agent_control.settings import configure_settings
+
+        original = get_settings().model_dump()
+        configure_settings(max_retries=1)
+        batcher = EventBatcher()
+
+        client = MagicMock()
+        client.post.side_effect = httpx.TimeoutException("boom")
+        client_context = MagicMock()
+        client_context.__enter__.return_value = client
+
+        try:
+            with patch("agent_control.observability.httpx.Client", return_value=client_context):
+                result = batcher._send_batch_sync([create_mock_event()])
+
+            assert result is False
+        finally:
+            configure_settings(**original)
+
+    def test_send_batch_sync_handles_unexpected_exception(self):
+        from agent_control.settings import configure_settings
+
+        original = get_settings().model_dump()
+        configure_settings(max_retries=1)
+        batcher = EventBatcher()
+
+        client = MagicMock()
+        client.post.side_effect = RuntimeError("boom")
+        client_context = MagicMock()
+        client_context.__enter__.return_value = client
+
+        try:
+            with patch("agent_control.observability.httpx.Client", return_value=client_context):
+                result = batcher._send_batch_sync([create_mock_event()])
+
+            assert result is False
+        finally:
+            configure_settings(**original)
+
+
 class TestGlobalBatcher:
     """Tests for global batcher functions."""
 
@@ -583,6 +750,40 @@ class TestEventBatcherShutdownConfig:
                 fallback_flush.assert_called_once_with(timeout=4.5)
         finally:
             configure_settings(**original)
+
+    def test_sync_shutdown_flush_stops_after_failed_flush_limit(self):
+        """Test that sync shutdown fallback exits after configured failed flushes."""
+        batcher = EventBatcher(batch_size=2)
+        batcher.shutdown_max_failed_flushes = 2
+        batcher._client = AsyncMock()
+        for _ in range(3):
+            batcher.add_event(create_mock_event())
+
+        with patch.object(batcher, "_send_batch_sync", return_value=False) as send_batch_sync:
+            batcher._flush_all_without_worker(timeout=1.0)
+
+        assert send_batch_sync.call_count == 2
+        assert len(batcher._events) == 3
+        assert batcher._client is None
+
+    def test_sync_shutdown_flush_honors_timeout_before_first_attempt(self):
+        """Test that sync shutdown fallback exits if its timeout is already exhausted."""
+        batcher = EventBatcher()
+        batcher._client = AsyncMock()
+        batcher.add_event(create_mock_event())
+
+        with (
+            patch.object(batcher, "_send_batch_sync") as send_batch_sync,
+            patch(
+                "agent_control.observability.time.monotonic",
+                side_effect=[0.0, 0.0],
+            ),
+        ):
+            batcher._flush_all_without_worker(timeout=0.0)
+
+        send_batch_sync.assert_not_called()
+        assert len(batcher._events) == 1
+        assert batcher._client is None
 
 
 class TestSpanLogging:

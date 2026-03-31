@@ -6,7 +6,6 @@ import { ClientSDK } from "../lib/sdks.js";
 import { Agents } from "./agents.js";
 import { Controls } from "./controls.js";
 import { Evaluation } from "./evaluation.js";
-import { EvaluatorConfigs } from "./evaluator-configs.js";
 import { Evaluators } from "./evaluators.js";
 import { Observability } from "./observability.js";
 import { Policies } from "./policies.js";
@@ -31,11 +30,6 @@ export class AgentControlSDK extends ClientSDK {
   private _evaluation?: Evaluation;
   get evaluation(): Evaluation {
     return (this._evaluation ??= new Evaluation(this._options));
-  }
-
-  private _evaluatorConfigs?: EvaluatorConfigs;
-  get evaluatorConfigs(): EvaluatorConfigs {
-    return (this._evaluatorConfigs ??= new EvaluatorConfigs(this._options));
   }
 
   private _evaluators?: Evaluators;

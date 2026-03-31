@@ -646,43 +646,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/evaluator-configs': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List evaluator configs */
-    get: operations['list_evaluator_configs_api_v1_evaluator_configs_get'];
-    put?: never;
-    /** Create evaluator config */
-    post: operations['create_evaluator_config_api_v1_evaluator_configs_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/evaluator-configs/{config_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get evaluator config */
-    get: operations['get_evaluator_config_api_v1_evaluator_configs__config_id__get'];
-    /** Update evaluator config */
-    put: operations['update_evaluator_config_api_v1_evaluator_configs__config_id__put'];
-    post?: never;
-    /** Delete evaluator config */
-    delete: operations['delete_evaluator_config_api_v1_evaluator_configs__config_id__delete'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   '/api/v1/evaluators': {
     parameters: {
       query?: never;
@@ -1977,34 +1940,6 @@ export interface components {
        */
       control_id: number;
     };
-    /**
-     * CreateEvaluatorConfigRequest
-     * @description Request to create an evaluator config template.
-     */
-    CreateEvaluatorConfigRequest: {
-      /**
-       * Config
-       * @description Evaluator-specific configuration
-       */
-      config: {
-        [key: string]: unknown;
-      };
-      /**
-       * Description
-       * @description Optional description
-       */
-      description?: string | null;
-      /**
-       * Evaluator
-       * @description Evaluator name (built-in or custom)
-       */
-      evaluator: string;
-      /**
-       * Name
-       * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
-       */
-      name: string;
-    };
     /** CreatePolicyRequest */
     CreatePolicyRequest: {
       /**
@@ -2044,17 +1979,6 @@ export interface components {
       /**
        * Success
        * @description Whether the control was deleted
-       */
-      success: boolean;
-    };
-    /**
-     * DeleteEvaluatorConfigResponse
-     * @description Response for deleting an evaluator config.
-     */
-    DeleteEvaluatorConfigResponse: {
-      /**
-       * Success
-       * @description Whether the evaluator config was deleted
        */
       success: boolean;
     };
@@ -2200,49 +2124,6 @@ export interface components {
        * @description Explanation for the decision
        */
       reason?: string | null;
-    };
-    /**
-     * EvaluatorConfigItem
-     * @description Evaluator config template stored in the server.
-     */
-    EvaluatorConfigItem: {
-      /**
-       * Config
-       * @description Evaluator-specific configuration
-       */
-      config: {
-        [key: string]: unknown;
-      };
-      /**
-       * Created At
-       * @description ISO 8601 created timestamp
-       */
-      created_at?: string | null;
-      /**
-       * Description
-       * @description Optional description
-       */
-      description?: string | null;
-      /**
-       * Evaluator
-       * @description Evaluator name (built-in or custom)
-       */
-      evaluator: string;
-      /**
-       * Id
-       * @description Evaluator config ID
-       */
-      id: number;
-      /**
-       * Name
-       * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
-       */
-      name: string;
-      /**
-       * Updated At
-       * @description ISO 8601 updated timestamp
-       */
-      updated_at?: string | null;
     };
     /**
      * EvaluatorInfo
@@ -2821,19 +2702,6 @@ export interface components {
       pagination: components['schemas']['PaginationInfo'];
     };
     /**
-     * ListEvaluatorConfigsResponse
-     * @description Response for listing evaluator configs.
-     */
-    ListEvaluatorConfigsResponse: {
-      /**
-       * Evaluator Configs
-       * @description List of evaluator configs
-       */
-      evaluator_configs: components['schemas']['EvaluatorConfigItem'][];
-      /** @description Pagination metadata */
-      pagination: components['schemas']['PaginationInfo'];
-    };
-    /**
      * ListEvaluatorsResponse
      * @description Response for listing agent's evaluator schemas.
      */
@@ -3292,34 +3160,6 @@ export interface components {
       timestamp: string;
     };
     /**
-     * UpdateEvaluatorConfigRequest
-     * @description Request to replace an evaluator config template.
-     */
-    UpdateEvaluatorConfigRequest: {
-      /**
-       * Config
-       * @description Evaluator-specific configuration
-       */
-      config: {
-        [key: string]: unknown;
-      };
-      /**
-       * Description
-       * @description Optional description
-       */
-      description?: string | null;
-      /**
-       * Evaluator
-       * @description Evaluator name (built-in or custom)
-       */
-      evaluator: string;
-      /**
-       * Name
-       * @description Unique evaluator config name (letters, numbers, hyphens, underscores)
-       */
-      name: string;
-    };
-    /**
      * ValidateControlDataRequest
      * @description Request to validate control configuration data without saving.
      */
@@ -3337,6 +3177,10 @@ export interface components {
     };
     /** ValidationError */
     ValidationError: {
+      /** Context */
+      ctx?: Record<string, never>;
+      /** Input */
+      input?: unknown;
       /** Location */
       loc: (string | number)[];
       /** Message */
@@ -4237,173 +4081,6 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['EvaluationResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  list_evaluator_configs_api_v1_evaluator_configs_get: {
-    parameters: {
-      query?: {
-        /** @description Evaluator config ID to start after */
-        cursor?: number | null;
-        limit?: number;
-        /** @description Filter by name (partial, case-insensitive) */
-        name?: string | null;
-        /** @description Filter by evaluator name */
-        evaluator?: string | null;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated list of evaluator configs */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ListEvaluatorConfigsResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  create_evaluator_config_api_v1_evaluator_configs_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateEvaluatorConfigRequest'];
-      };
-    };
-    responses: {
-      /** @description Created evaluator config */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['EvaluatorConfigItem'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  get_evaluator_config_api_v1_evaluator_configs__config_id__get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        config_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Evaluator config details */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['EvaluatorConfigItem'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  update_evaluator_config_api_v1_evaluator_configs__config_id__put: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        config_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateEvaluatorConfigRequest'];
-      };
-    };
-    responses: {
-      /** @description Updated evaluator config */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['EvaluatorConfigItem'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  delete_evaluator_config_api_v1_evaluator_configs__config_id__delete: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        config_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Deletion confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DeleteEvaluatorConfigResponse'];
         };
       };
       /** @description Validation Error */
