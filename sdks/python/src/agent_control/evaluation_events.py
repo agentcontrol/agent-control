@@ -125,7 +125,28 @@ def build_control_execution_events(
     span_id: str | None,
     agent_name: str | None,
 ) -> list[ControlExecutionEvent]:
-    """Construct final ControlExecutionEvents from an evaluation response."""
+    """Reconstruct control execution events from an evaluation response.
+
+    This is the shared reconstruction step used by both supported ingestion
+    styles:
+    - the default SDK observability path, where reconstructed local events are
+      queued into the existing SDK batcher
+    - the merged-event path, where local and server events are reconstructed in
+      the SDK and emitted together through a registered sink
+
+    Args:
+        response: Evaluation response containing matches, errors, and
+            non-matches.
+        request: Original evaluation request used to derive stage and
+            ``applies_to``.
+        control_lookup: Parsed controls keyed by control ID.
+        trace_id: Optional trace ID for correlation.
+        span_id: Optional span ID for correlation.
+        agent_name: Optional override for the agent name stamped on events.
+
+    Returns:
+        A list of reconstructed ``ControlExecutionEvent`` objects.
+    """
     resolved_trace_id, resolved_span_id = _resolve_event_trace_context(trace_id, span_id)
     resolved_agent_name = agent_name or request.agent_name
     now = datetime.now(UTC)
@@ -170,8 +191,18 @@ def build_control_execution_events(
     return events
 
 
-def deliver_oss_events(events: list[ControlExecutionEvent]) -> None:
-    """Send reconstructed events through the existing OSS SDK observability path."""
+def enqueue_observability_events(events: list[ControlExecutionEvent]) -> None:
+    """Enqueue reconstructed events through the existing SDK observability path.
+
+    This preserves the default SDK behavior of forwarding local events through
+    the existing observability batcher rather than a custom merged-event sink.
+
+    Args:
+        events: Reconstructed control execution events to enqueue.
+
+    Returns:
+        None.
+    """
     if not is_observability_enabled():
         return
 

@@ -7,7 +7,7 @@ from agent_control import evaluation
 from agent_control.evaluation import _ControlAdapter, _merge_results
 from agent_control.evaluation_events import (
     build_control_execution_events,
-    deliver_oss_events,
+    enqueue_observability_events,
     map_applies_to,
 )
 from agent_control.telemetry.trace_context import (
@@ -183,7 +183,7 @@ class TestBuildControlExecutionEvents:
         assert event.metadata["all_evaluators"] == ["regex"]
         assert event.metadata["all_selector_paths"] == ["input", "output"]
 
-    def test_deliver_oss_events_uses_existing_batcher(self):
+    def test_enqueue_observability_events_uses_existing_batcher(self):
         from agent_control_models import ControlExecutionEvent
 
         events = [
@@ -203,7 +203,7 @@ class TestBuildControlExecutionEvents:
 
         with patch("agent_control.evaluation_events.is_observability_enabled", return_value=True), \
              patch("agent_control.evaluation_events.add_event") as mock_add:
-            deliver_oss_events(events)
+            enqueue_observability_events(events)
 
         mock_add.assert_called_once_with(events[0])
 
@@ -253,7 +253,7 @@ class TestCheckEvaluationWithLocal:
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
-             patch("agent_control.evaluation.deliver_oss_events") as mock_deliver:
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation_with_local(
                 client=client,
                 agent_name="agent-000000000001",
@@ -265,8 +265,8 @@ class TestCheckEvaluationWithLocal:
                 event_agent_name="test-agent",
             )
 
-        mock_deliver.assert_called_once()
-        delivered_events = mock_deliver.call_args.args[0]
+        mock_enqueue.assert_called_once()
+        delivered_events = mock_enqueue.call_args.args[0]
         assert len(delivered_events) == 1
         assert delivered_events[0].trace_id == "abc123"
         assert delivered_events[0].span_id == "def456"
@@ -275,9 +275,20 @@ class TestCheckEvaluationWithLocal:
 
     @pytest.mark.asyncio
     async def test_resolves_provider_trace_context_for_local_events(self):
-        from agent_control_models import EvaluationResponse, Step
+        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
 
-        mock_response = EvaluationResponse(is_safe=True, confidence=1.0)
+        mock_response = EvaluationResponse(
+            is_safe=True,
+            confidence=1.0,
+            non_matches=[
+                ControlMatch(
+                    control_id=1,
+                    control_name="test-ctrl",
+                    action="allow",
+                    result=EvaluatorResult(matched=False, confidence=0.1),
+                )
+            ],
+        )
         mock_engine = MagicMock()
         mock_engine.process = AsyncMock(return_value=mock_response)
         controls = [{
@@ -300,7 +311,7 @@ class TestCheckEvaluationWithLocal:
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
-             patch("agent_control.evaluation.deliver_oss_events") as mock_deliver:
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             await evaluation.check_evaluation_with_local(
                 client=client,
                 agent_name="agent-000000000001",
@@ -309,7 +320,7 @@ class TestCheckEvaluationWithLocal:
                 controls=controls,
             )
 
-        delivered_events = mock_deliver.call_args.args[0]
+        delivered_events = mock_enqueue.call_args.args[0]
         assert delivered_events[0].trace_id == "a" * 32
         assert delivered_events[0].span_id == "b" * 16
 
@@ -500,7 +511,7 @@ class TestControlDecoratorsNonMatches:
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
              patch("agent_control.evaluation.has_control_event_sink", return_value=True), \
              patch("agent_control.evaluation.emit_control_events") as mock_emit, \
-             patch("agent_control.evaluation.deliver_oss_events") as mock_deliver:
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation_with_local(
                 client=client,
                 agent_name="agent-000000000001",
@@ -512,7 +523,7 @@ class TestControlDecoratorsNonMatches:
                 event_agent_name="test-agent",
             )
 
-        mock_deliver.assert_not_called()
+        mock_enqueue.assert_not_called()
         mock_emit.assert_called_once()
         merged_events = mock_emit.call_args.args[0]
         assert len(merged_events) == 2

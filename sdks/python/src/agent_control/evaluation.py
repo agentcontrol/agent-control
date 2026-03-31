@@ -17,7 +17,7 @@ from agent_control_models import (
 
 from ._state import state
 from .client import AgentControlClient
-from .evaluation_events import build_control_execution_events, deliver_oss_events
+from .evaluation_events import build_control_execution_events, enqueue_observability_events
 from .telemetry import emit_control_events, has_control_event_sink
 from .tracing import get_trace_and_span_ids
 from .validation import ensure_agent_name
@@ -49,7 +49,20 @@ def _get_applicable_controls(
 def _build_server_control_lookup(
     server_control_payloads: list[dict[str, Any]],
 ) -> dict[int, ControlDefinition]:
-    """Return best-effort parsed server control definitions keyed by control ID."""
+    """Build a best-effort lookup of server control definitions.
+
+    The merged-event path reconstructs server-side events in the SDK after the
+    server returns a lightweight ``EvaluationResponse``. This helper parses the
+    cached server control payloads so the shared event builder can reconstruct
+    those events locally.
+
+    Args:
+        server_control_payloads: Raw cached server control payloads.
+
+    Returns:
+        A mapping of control ID to parsed ``ControlDefinition`` for every
+        payload that can be parsed locally.
+    """
     control_lookup: dict[int, ControlDefinition] = {}
 
     for control in server_control_payloads:
@@ -107,7 +120,20 @@ def _merge_results(
     local_result: EvaluationResponse,
     server_result: EvaluationResponse,
 ) -> EvaluationResult:
-    """Merge local and server evaluation results."""
+    """Merge local and server evaluation results into one SDK-facing result.
+
+    This helper merges only evaluation semantics. Event reconstruction happens
+    later so the response shape can stay lightweight regardless of which event
+    ingestion path is used.
+
+    Args:
+        local_result: Evaluation response produced by SDK-local controls.
+        server_result: Evaluation response produced by server-side controls.
+
+    Returns:
+        A merged ``EvaluationResult`` with combined matches, errors,
+        non-matches, and the strictest safety/confidence outcome.
+    """
     is_safe = local_result.is_safe and server_result.is_safe
     confidence = min(local_result.confidence, server_result.confidence)
 
@@ -173,7 +199,33 @@ async def check_evaluation_with_local(
     span_id: str | None = None,
     event_agent_name: str | None = None,
 ) -> EvaluationResult:
-    """Check if agent interaction is safe, running local controls first."""
+    """Evaluate controls with local-first execution and configurable event flow.
+
+    This is the main decision boundary between the two supported event
+    ingestion styles:
+    - default behavior: local events are reconstructed and queued immediately in
+      the SDK, while server-side events are still emitted by the server
+    - merged-event behavior: local and server events are reconstructed in the
+      SDK and emitted once through a registered sink
+
+    In both cases, the evaluation result itself stays lightweight and event
+    reconstruction happens after evaluation completes.
+
+    Args:
+        client: Configured AgentControl client.
+        agent_name: Agent name to evaluate against.
+        step: Step payload to evaluate.
+        stage: Evaluation stage, ``pre`` or ``post``.
+        controls: Cached control payloads used to split local vs server
+            execution.
+        trace_id: Optional explicit trace ID.
+        span_id: Optional explicit span ID.
+        event_agent_name: Optional override for the agent name stamped on
+            reconstructed events.
+
+    Returns:
+        A merged evaluation result across local and server execution.
+    """
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id = trace_id
     resolved_span_id = span_id
@@ -264,7 +316,9 @@ async def check_evaluation_with_local(
     if applicable_local_controls:
         engine = ControlEngine(applicable_local_controls, context="sdk")
         local_result = await engine.process(request)
-        local_control_lookup = {control.id: control.control for control in applicable_local_controls}
+        local_control_lookup = {
+            control.id: control.control for control in applicable_local_controls
+        }
         local_events = build_control_execution_events(
             local_result,
             request,
@@ -275,7 +329,7 @@ async def check_evaluation_with_local(
         )
 
         if not merged_emission_enabled:
-            deliver_oss_events(local_events)
+            enqueue_observability_events(local_events)
 
         if not local_result.is_safe:
             result = _with_parse_errors(EvaluationResult.model_validate(local_result.model_dump()))

@@ -274,10 +274,24 @@ def _build_observability_events(
     control_lookup: dict,
     total_duration_ms: float,
     ) -> list[ControlExecutionEvent]:
-    """Create observability events for all evaluated controls.
+    """Build observability events for all evaluated controls.
 
-    Uses control_execution_id from the engine response to ensure correlation
-    between SDK logs and server observability events.
+    This preserves the existing server-side event shape while allowing the
+    merged-event path to skip server-side ingestion and keep the response
+    lightweight.
+
+    Args:
+        response: Raw evaluation response from the engine.
+        request: Original evaluation request.
+        trace_id: Trace ID to stamp on emitted events.
+        span_id: Span ID to stamp on emitted events.
+        agent_name: Agent name to stamp on emitted events.
+        applies_to: Observability applies_to value derived from the step type.
+        control_lookup: Controls keyed by control ID.
+        total_duration_ms: Total request execution duration in milliseconds.
+
+    Returns:
+        A list of reconstructed server-side control execution events.
     """
     events: list[ControlExecutionEvent] = []
     now = datetime.now(UTC)
@@ -398,3 +412,28 @@ async def _ingest_observability_events(
             f"Dropped {result.dropped} observability events, "
             f"processed {result.processed}"
         )
+
+
+async def _emit_observability_events(
+    response: EvaluationResponse,
+    request: EvaluationRequest,
+    trace_id: str,
+    span_id: str,
+    agent_name: str,
+    applies_to: Literal["llm_call", "tool_call"],
+    control_lookup: dict,
+    total_duration_ms: float,
+    ingestor: EventIngestor | None,
+) -> None:
+    """Backward-compatible wrapper around build + ingest observability helpers."""
+    events = _build_observability_events(
+        response=response,
+        request=request,
+        trace_id=trace_id,
+        span_id=span_id,
+        agent_name=agent_name,
+        applies_to=applies_to,
+        control_lookup=control_lookup,
+        total_duration_ms=total_duration_ms,
+    )
+    await _ingest_observability_events(events, ingestor)
