@@ -97,9 +97,14 @@ from .observability import (
 from .telemetry import (
     clear_control_event_sink,
     clear_trace_context_provider,
+    configure_otel_event_sink,
+    control_event_to_otel_attributes,
+    control_event_to_otel_span,
+    create_otel_event_sink,
     emit_control_events,
     get_trace_context_from_provider,
     has_control_event_sink,
+    is_otel_event_emission_configured,
     set_control_event_sink,
     set_trace_context_provider,
 )
@@ -622,6 +627,9 @@ def init(
     )
     if batcher:
         logger.info("Observability enabled")
+
+    if configure_otel_event_sink():
+        logger.info("OTEL merged-event emission enabled")
 
     if policy_refresh_interval_seconds > 0:
         _start_policy_refresh_loop(policy_refresh_interval_seconds)
@@ -1311,8 +1319,13 @@ __all__ = [
     "set_trace_context_provider",
     "get_trace_context_from_provider",
     "clear_trace_context_provider",
+    "configure_otel_event_sink",
+    "control_event_to_otel_attributes",
+    "control_event_to_otel_span",
+    "create_otel_event_sink",
     "set_control_event_sink",
     "has_control_event_sink",
+    "is_otel_event_emission_configured",
     "emit_control_events",
     "clear_control_event_sink",
     # Observability

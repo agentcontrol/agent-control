@@ -118,6 +118,24 @@ class SDKSettings(BaseSettings):
         description="Log span results (legacy compatibility)",
     )
 
+    # Optional OTEL emission for merged control events
+    otel_enabled: bool = Field(
+        default=False,
+        description="Enable OTEL emission for merged control execution events",
+    )
+    otel_endpoint: str = Field(
+        default="",
+        description="OTLP HTTP endpoint for control execution span export",
+    )
+    otel_headers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Headers to include when exporting OTEL spans",
+    )
+    otel_service_name: str = Field(
+        default="agent-control",
+        description="Service name to use for OTEL control execution spans",
+    )
+
 
 # Global settings instance - loaded from environment at import time
 settings = SDKSettings()
