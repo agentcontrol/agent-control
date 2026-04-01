@@ -155,3 +155,32 @@ export function sanitizeControlNamePart(s: string): string {
     .replace(/^[-_]+/, '');
   return sanitized || 'control';
 }
+
+/**
+ * Recursively remove object properties whose values are null.
+ */
+export function omitNullProperties(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => omitNullProperties(item));
+  }
+
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([key, currentValue]) =>
+        currentValue === null
+          ? []
+          : [[key, omitNullProperties(currentValue)]]
+      )
+    );
+  }
+
+  return value;
+}
+
+/**
+ * Stringify JSON for editor display while omitting object properties whose
+ * values are null. This keeps the editor aligned with persisted control data.
+ */
+export function stringifyJsonWithoutNulls(value: unknown): string {
+  return JSON.stringify(omitNullProperties(value), null, 2) ?? '';
+}
