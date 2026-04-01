@@ -669,6 +669,29 @@ def test_render_control_template_maps_invalid_regex_parameter(client: TestClient
     )
 
 
+def test_render_control_template_rejects_optional_referenced_parameter_without_default(
+    client: TestClient,
+) -> None:
+    payload = _template_payload()
+    payload["template"] = deepcopy(payload["template"])
+    payload["template"]["parameters"]["step_name"] = {  # type: ignore[index]
+        "type": "string",
+        "label": "Step Name",
+        "required": False,
+    }
+
+    response = client.post("/api/v1/control-templates/render", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
+    assert any(
+        err.get("field") == "template.parameters.step_name"
+        and err.get("code") == "optional_referenced_parameter_requires_default"
+        for err in body.get("errors", [])
+    )
+
+
 def test_render_control_template_rejects_malformed_param_binding(client: TestClient) -> None:
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])

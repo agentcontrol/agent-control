@@ -528,11 +528,9 @@ async def set_control_data(
     current_template_backed = _is_template_backed_payload(control.data)
     if isinstance(request.data, TemplateControlInput):
         current_enabled = True
-        if control.data:
-            try:
-                current_enabled = ControlDefinition.model_validate(control.data).enabled
-            except ValidationError:
-                current_enabled = True
+        if isinstance(control.data, dict):
+            raw_enabled = control.data.get("enabled", True)
+            current_enabled = raw_enabled if type(raw_enabled) is bool else True
         control_def = await _render_and_validate_template_input(
             request.data,
             db=db,

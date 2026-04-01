@@ -58,6 +58,28 @@ def test_control_definition_requires_template_fields_together() -> None:
         )
 
 
+def test_control_definition_rejects_template_values_without_template() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="template and template_values must both be present or both absent",
+    ):
+        ControlDefinition.model_validate(
+            {
+                "execution": "server",
+                "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {
+                        "name": "regex",
+                        "config": {"pattern": "ok"},
+                    },
+                },
+                "action": {"decision": "deny"},
+                "template_values": {"pattern": "hello"},
+            }
+        )
+
+
 def test_template_definition_rejects_invalid_parameter_name() -> None:
     with pytest.raises(
         ValidationError,
@@ -91,7 +113,13 @@ def test_create_control_request_parses_template_payload_as_template_input() -> N
 
 
 def test_create_control_request_rejects_mixed_raw_and_template_payload() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "Template-backed control input cannot mix template fields with rendered "
+            "control fields"
+        ),
+    ):
         CreateControlRequest.model_validate(
             {
                 "name": "template-control",
@@ -128,6 +156,26 @@ def test_control_definition_can_round_trip_to_template_control_input() -> None:
     assert template_input.template.parameters["pattern"].type == "regex_re2"
     assert template_input.template.definition_template == VALID_TEMPLATE["definition_template"]
     assert template_input.template_values == {"pattern": "hello"}
+
+
+def test_control_definition_to_template_control_input_rejects_raw_control() -> None:
+    control = ControlDefinition.model_validate(
+        {
+            "execution": "server",
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": "hello"},
+                },
+            },
+            "action": {"decision": "deny"},
+        }
+    )
+
+    with pytest.raises(ValueError, match="not template-backed"):
+        control.to_template_control_input()
 
 
 def test_control_definition_runtime_ignores_template_metadata() -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal, Self, cast
+from typing import Annotated, Any, Literal, Self
 from uuid import uuid4
 
 import re2
@@ -870,13 +870,6 @@ class ControlDefinitionRuntime(BaseModel):
             all_evaluators=all_evaluators,
             all_selector_paths=all_selector_paths,
         )
-
-    def to_control_definition(self) -> ControlDefinition:
-        """Promote a runtime control to the full public model when needed."""
-        return ControlDefinition.model_validate(
-            cast(dict[str, JSONValue], self.model_dump(mode="python"))
-        )
-
 
 class EvaluatorResult(BaseModel):
     """Result from a control evaluator.

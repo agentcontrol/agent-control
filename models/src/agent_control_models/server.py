@@ -16,6 +16,20 @@ def _strip_slug_name(v: str) -> str:
 
 _CONTROL_DEFINITION_ADAPTER = TypeAdapter(ControlDefinition)
 _TEMPLATE_CONTROL_INPUT_ADAPTER = TypeAdapter(TemplateControlInput)
+_RAW_CONTROL_INPUT_FIELDS = frozenset(
+    {
+        "description",
+        "enabled",
+        "execution",
+        "scope",
+        "condition",
+        "action",
+        "tags",
+        # Legacy flat leaf fields still accepted for raw controls.
+        "selector",
+        "evaluator",
+    }
+)
 
 
 def _parse_control_input(v: Any) -> Any:
@@ -30,6 +44,12 @@ def _parse_control_input(v: Any) -> Any:
         return v
 
     if v.get("template") is not None:
+        mixed_fields = sorted(field for field in v if field in _RAW_CONTROL_INPUT_FIELDS)
+        if mixed_fields:
+            raise ValueError(
+                "Template-backed control input cannot mix template fields with rendered control "
+                f"fields. Remove raw fields: {', '.join(mixed_fields)}."
+            )
         return _TEMPLATE_CONTROL_INPUT_ADAPTER.validate_python(v)
     return _CONTROL_DEFINITION_ADAPTER.validate_python(v)
 

@@ -109,6 +109,90 @@ async def test_render_control_template_calls_preview_endpoint() -> None:
     )
 
 
+@pytest.mark.asyncio
+async def test_validate_control_data_accepts_template_control_input() -> None:
+    response = Mock()
+    response.raise_for_status = Mock()
+    response.json = Mock(return_value={"success": True})
+    client = SimpleNamespace(http_client=SimpleNamespace(post=AsyncMock(return_value=response)))
+    template_input = TemplateControlInput.model_validate(
+        {
+            "template": {
+                "parameters": {
+                    "pattern": {
+                        "type": "regex_re2",
+                        "label": "Pattern",
+                    }
+                },
+                "definition_template": {
+                    "execution": "server",
+                    "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {"pattern": {"$param": "pattern"}},
+                        },
+                    },
+                    "action": {"decision": "deny"},
+                },
+            },
+            "template_values": {"pattern": "hello"},
+        }
+    )
+
+    await agent_control.controls.validate_control_data(client, template_input)
+
+    client.http_client.post.assert_awaited_once()
+    _, kwargs = client.http_client.post.await_args
+    assert kwargs["json"]["data"]["template_values"]["pattern"] == "hello"
+    assert kwargs["json"] == {
+        "data": {
+            "template": kwargs["json"]["data"]["template"],
+            "template_values": {"pattern": "hello"},
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_control_data_accepts_template_control_input() -> None:
+    response = Mock()
+    response.raise_for_status = Mock()
+    response.json = Mock(return_value={"success": True})
+    client = SimpleNamespace(http_client=SimpleNamespace(put=AsyncMock(return_value=response)))
+    template_input = TemplateControlInput.model_validate(
+        {
+            "template": {
+                "parameters": {
+                    "pattern": {
+                        "type": "regex_re2",
+                        "label": "Pattern",
+                    }
+                },
+                "definition_template": {
+                    "execution": "server",
+                    "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {"pattern": {"$param": "pattern"}},
+                        },
+                    },
+                    "action": {"decision": "deny"},
+                },
+            },
+            "template_values": {"pattern": "hello"},
+        }
+    )
+
+    await agent_control.controls.set_control_data(client, 123, template_input)
+
+    client.http_client.put.assert_awaited_once()
+    _, kwargs = client.http_client.put.await_args
+    assert kwargs["json"]["data"]["template_values"]["pattern"] == "hello"
+
+
 def test_to_template_control_input_reshapes_stored_control_data() -> None:
     template_input = agent_control.controls.to_template_control_input(
         {
@@ -148,3 +232,21 @@ def test_to_template_control_input_reshapes_stored_control_data() -> None:
 
     assert isinstance(template_input, TemplateControlInput)
     assert template_input.template_values == {"pattern": "hello"}
+
+
+def test_to_template_control_input_rejects_raw_control_data() -> None:
+    with pytest.raises(ValueError, match="not template-backed"):
+        agent_control.controls.to_template_control_input(
+            {
+                "execution": "server",
+                "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {
+                        "name": "regex",
+                        "config": {"pattern": "hello"},
+                    },
+                },
+                "action": {"decision": "deny"},
+            }
+        )

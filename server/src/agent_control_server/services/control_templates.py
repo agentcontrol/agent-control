@@ -297,9 +297,27 @@ def _render_json_value(
                     message=f"Template references undefined parameter '{parameter_name}'.",
                 )
 
+            parameter_definition = template.parameters[parameter_name]
+            if (
+                not parameter_definition.required
+                and _parameter_default(parameter_definition) is _TEMPLATE_VALUE_MISSING
+            ):
+                raise _render_error(
+                    detail=(
+                        f"Template parameter '{parameter_name}' is optional but referenced in "
+                        "definition_template without a default value"
+                    ),
+                    field=f"template.parameters.{parameter_name}",
+                    code="optional_referenced_parameter_requires_default",
+                    message=(
+                        f"Optional template parameter '{parameter_definition.label}' is "
+                        "referenced in the template and must define a default value or be "
+                        "marked required."
+                    ),
+                )
+
             resolved_value = resolved_values[parameter_name]
             if resolved_value is _TEMPLATE_VALUE_MISSING:
-                parameter_definition = template.parameters[parameter_name]
                 raise _parameter_error(
                     parameter_name,
                     parameter_definition,
