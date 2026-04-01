@@ -1658,7 +1658,97 @@ def test_unrendered_template_can_be_deleted(client: TestClient) -> None:
     assert response.json()["success"] is True
 
 
-def test_rendered_template_then_update_to_unrendered_stays_rendered(
+def test_patch_disable_on_unrendered_template_is_noop(client: TestClient) -> None:
+    # Given: an unrendered template control (already enabled=false)
+    control_id, _ = _create_unrendered_control(client)
+
+    # When: patching enabled=false (redundant, but should not crash)
+    response = client.patch(
+        f"/api/v1/controls/{control_id}",
+        json={"enabled": False},
+    )
+
+    # Then: the request succeeds without error (no CORRUPTED_DATA)
+    assert response.status_code == 200, response.text
+    assert response.json()["enabled"] is False
+
+
+def test_create_unrendered_template_rejects_undefined_param_reference(
+    client: TestClient,
+) -> None:
+    # Given: a template whose definition_template references an undefined parameter
+    payload = _unrendered_template_payload()
+    payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["extra"] = {  # type: ignore[index]
+        "$param": "nonexistent",
+    }
+
+    # When: creating the unrendered control
+    response = client.put(
+        "/api/v1/controls",
+        json={"name": f"bad-unrendered-{uuid.uuid4()}", "data": payload},
+    )
+
+    # Then: the server rejects with a structural validation error
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
+    assert any(
+        err.get("code") == "undefined_parameter_reference"
+        for err in body.get("errors", [])
+    )
+
+
+def test_create_unrendered_template_rejects_unused_parameter(
+    client: TestClient,
+) -> None:
+    # Given: a template with an extra parameter never referenced in definition_template
+    payload = _unrendered_template_payload()
+    payload["template"]["parameters"]["unused_param"] = {  # type: ignore[index]
+        "type": "string",
+        "label": "Unused",
+        "default": "val",
+    }
+
+    # When: creating the unrendered control
+    response = client.put(
+        "/api/v1/controls",
+        json={"name": f"unused-param-{uuid.uuid4()}", "data": payload},
+    )
+
+    # Then: the server rejects with unused parameter error
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
+    assert any(
+        err.get("code") == "unused_template_parameter"
+        for err in body.get("errors", [])
+    )
+
+
+def test_create_unrendered_template_rejects_agent_scoped_evaluator(
+    client: TestClient,
+) -> None:
+    # Given: a template with a hardcoded agent-scoped evaluator name
+    payload = _unrendered_template_payload()
+    payload["template"]["definition_template"]["condition"]["evaluator"]["name"] = "agent-x:custom"  # type: ignore[index]
+
+    # When: creating the unrendered control
+    response = client.put(
+        "/api/v1/controls",
+        json={"name": f"agent-scoped-{uuid.uuid4()}", "data": payload},
+    )
+
+    # Then: the server rejects
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
+    assert any(
+        err.get("code") == "agent_scoped_evaluator_not_supported"
+        for err in body.get("errors", [])
+    )
+
+
+def test_rendered_template_rejects_update_with_incomplete_values(
     client: TestClient,
 ) -> None:
     # Given: a rendered template control
@@ -1670,9 +1760,13 @@ def test_rendered_template_then_update_to_unrendered_stays_rendered(
         json={"data": _unrendered_template_payload()},
     )
 
-    # Then: the control becomes unrendered (stored without rendered fields)
-    assert put_response.status_code == 200, put_response.text
+    # Then: the server rejects (missing required parameter for a rendered control)
+    assert put_response.status_code == 422
+    body = put_response.json()
+    assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
+
+    # And: the control remains rendered and unchanged
     get_response = client.get(f"/api/v1/controls/{control_id}/data")
     data = get_response.json()["data"]
-    assert data["enabled"] is False
-    assert "condition" not in data
+    assert "condition" in data
+    assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"

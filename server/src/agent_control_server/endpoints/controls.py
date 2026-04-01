@@ -186,7 +186,24 @@ async def _materialize_control_input(
                 enabled=enabled,
             )
 
-        # Incomplete values — store as unrendered template.
+        # Incomplete values — only allowed for new controls or already-unrendered
+        # templates.  Updating a rendered control with incomplete values is
+        # rejected to prevent silently stripping rendered fields.
+        current_is_rendered = (
+            current_payload is not None
+            and isinstance(current_payload, dict)
+            and current_payload.get("condition") is not None
+        )
+        if current_is_rendered:
+            # Force a full render attempt so the caller gets a clear error
+            # about which required parameters are missing.
+            enabled = _enabled_from_stored_payload(current_payload)
+            return await _render_and_validate_template_input(
+                control_input,
+                db=db,
+                enabled=enabled,
+            )
+
         validate_template_structure(control_input.template)
         return UnrenderedTemplateControl(
             template=control_input.template,
@@ -1117,57 +1134,64 @@ async def patch_control(
                 ],
             )
 
-        if request.enabled and _is_unrendered_template(control.data):
-            raise APIValidationError(
-                error_code=ErrorCode.VALIDATION_ERROR,
-                detail=(
-                    f"Cannot enable control '{control.name}': "
-                    "unrendered template controls must be rendered first"
-                ),
-                resource="Control",
-                hint=(
-                    f"Provide complete parameter values via PUT /api/v1/controls/{control_id}/data "
-                    "to render the template before enabling."
-                ),
-                errors=[
-                    ValidationErrorItem(
-                        resource="Control",
-                        field="enabled",
-                        code="unrendered_template_cannot_enable",
-                        message="Provide parameter values to render the template before enabling.",
-                    )
-                ],
-            )
-
-        try:
-            ctrl_def = ControlDefinition.model_validate(control.data)
-            if ctrl_def.enabled != request.enabled:
-                new_data = dict(control.data)
-                new_data["enabled"] = request.enabled
-                control.data = new_data
-                updated = True
-            current_enabled = request.enabled if updated else ctrl_def.enabled
-        except ValidationError:
-            _logger.error(
-                "Control '%s' (%s) has corrupted data in patch request",
-                control.name,
-                control_id,
-                exc_info=True,
-            )
-            raise APIValidationError(
-                error_code=ErrorCode.CORRUPTED_DATA,
-                detail=f"Control '{control.name}' has corrupted data",
-                resource="Control",
-                hint="Update the control data using PUT /{control_id}/data.",
-                errors=[
-                    ValidationErrorItem(
-                        resource="Control",
-                        field="data",
-                        code="corrupted_data",
-                        message=_CORRUPTED_CONTROL_DATA_MESSAGE,
-                    )
-                ],
-            )
+        if _is_unrendered_template(control.data):
+            if request.enabled:
+                raise APIValidationError(
+                    error_code=ErrorCode.VALIDATION_ERROR,
+                    detail=(
+                        f"Cannot enable control '{control.name}': "
+                        "unrendered template controls must be rendered first"
+                    ),
+                    resource="Control",
+                    hint=(
+                        "Provide complete parameter values via "
+                        f"PUT /api/v1/controls/{control_id}/data "
+                        "to render the template before enabling."
+                    ),
+                    errors=[
+                        ValidationErrorItem(
+                            resource="Control",
+                            field="enabled",
+                            code="unrendered_template_cannot_enable",
+                            message=(
+                            "Provide parameter values to render the "
+                            "template before enabling."
+                        ),
+                        )
+                    ],
+                )
+            # enabled=False on an unrendered template is a no-op (already false).
+            current_enabled = False
+        else:
+            try:
+                ctrl_def = ControlDefinition.model_validate(control.data)
+                if ctrl_def.enabled != request.enabled:
+                    new_data = dict(control.data)
+                    new_data["enabled"] = request.enabled
+                    control.data = new_data
+                    updated = True
+                current_enabled = request.enabled if updated else ctrl_def.enabled
+            except ValidationError:
+                _logger.error(
+                    "Control '%s' (%s) has corrupted data in patch request",
+                    control.name,
+                    control_id,
+                    exc_info=True,
+                )
+                raise APIValidationError(
+                    error_code=ErrorCode.CORRUPTED_DATA,
+                    detail=f"Control '{control.name}' has corrupted data",
+                    resource="Control",
+                    hint="Update the control data using PUT /{control_id}/data.",
+                    errors=[
+                        ValidationErrorItem(
+                            resource="Control",
+                            field="data",
+                            code="corrupted_data",
+                            message=_CORRUPTED_CONTROL_DATA_MESSAGE,
+                        )
+                    ],
+                )
     elif control.data:
         # Get current enabled status for response
         try:

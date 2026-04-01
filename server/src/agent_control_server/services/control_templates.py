@@ -525,12 +525,57 @@ def _reject_agent_scoped_evaluators(
         )
 
 
+def _collect_param_references(
+    value: JsonValue,
+    *,
+    path_parts: list[str | int],
+    template: TemplateDefinition,
+    referenced: set[str],
+) -> None:
+    """Walk definition_template collecting $param references and validating bindings."""
+    if isinstance(value, dict):
+        if "$param" in value:
+            if len(value) != 1 or not isinstance(value["$param"], str):
+                raise _render_error(
+                    detail="Invalid $param binding object in template definition",
+                    field=_format_rendered_path(path_parts),
+                    code="invalid_param_binding",
+                    message="A $param binding must be exactly {'$param': '<parameter_name>'}.",
+                )
+            parameter_name = value["$param"]
+            if parameter_name not in template.parameters:
+                raise _render_error(
+                    detail=f"Template references undefined parameter '{parameter_name}'",
+                    field=_format_rendered_path(path_parts),
+                    code="undefined_parameter_reference",
+                    message=f"Template references undefined parameter '{parameter_name}'.",
+                )
+            referenced.add(parameter_name)
+            return
+
+        for key, nested in value.items():
+            _collect_param_references(
+                nested,
+                path_parts=[*path_parts, key],
+                template=template,
+                referenced=referenced,
+            )
+    elif isinstance(value, list):
+        for idx, nested in enumerate(value):
+            _collect_param_references(
+                nested,
+                path_parts=[*path_parts, idx],
+                template=template,
+                referenced=referenced,
+            )
+
+
 def validate_template_structure(template: TemplateDefinition) -> None:
     """Validate a template definition's structure without rendering.
 
-    Checks forbidden top-level keys, legacy format, and that ``definition_template``
-    is a dict.  Used for unrendered template creation where parameter values are
-    not yet available.
+    Performs all structural checks that don't require parameter values:
+    forbidden top-level keys, legacy format, $param reference validity,
+    unused parameter detection, and agent-scoped evaluator rejection.
     """
     definition_template = template.definition_template
     if not isinstance(definition_template, dict):
@@ -565,6 +610,74 @@ def validate_template_structure(template: TemplateDefinition) -> None:
                 "top-level selector/evaluator fields."
             ),
         )
+
+    # Walk the template to validate $param references and collect referenced params.
+    referenced: set[str] = set()
+    _collect_param_references(
+        definition_template,
+        path_parts=[],
+        template=template,
+        referenced=referenced,
+    )
+
+    # Reject unused parameters.
+    unused = sorted(set(template.parameters) - referenced)
+    if unused:
+        raise APIValidationError(
+            error_code=ErrorCode.TEMPLATE_RENDER_ERROR,
+            detail="Template defines parameters that are never referenced",
+            resource="Control",
+            hint="Remove unused parameters or reference them in definition_template.",
+            errors=[
+                ValidationErrorItem(
+                    resource="Control",
+                    field=f"template.parameters.{name}",
+                    code="unused_template_parameter",
+                    message=f"Template parameter '{name}' is never referenced.",
+                    parameter=name,
+                    parameter_label=template.parameters[name].label,
+                )
+                for name in unused
+            ],
+        )
+
+    # Reject agent-scoped evaluator names baked into the template (not via $param).
+    _reject_hardcoded_agent_scoped_evaluators(definition_template)
+
+
+def _reject_hardcoded_agent_scoped_evaluators(
+    definition_template: dict[str, JsonValue],
+) -> None:
+    """Reject agent-scoped evaluator names that are hardcoded in the template."""
+    # Walk condition tree looking for evaluator.name fields containing ':'
+    condition = definition_template.get("condition")
+    if not isinstance(condition, dict):
+        return
+
+    stack: list[dict[str, JsonValue]] = [condition]
+    while stack:
+        node = stack.pop()
+        evaluator = node.get("evaluator")
+        if isinstance(evaluator, dict):
+            name = evaluator.get("name")
+            if isinstance(name, str) and ":" in name:
+                raise _render_error(
+                    detail="Agent-scoped evaluators are not supported in control templates",
+                    field="condition.evaluator.name",
+                    code="agent_scoped_evaluator_not_supported",
+                    message="Agent-scoped evaluators are not supported in control templates.",
+                )
+
+        for key in ("and", "or"):
+            children = node.get(key)
+            if isinstance(children, list):
+                for child in children:
+                    if isinstance(child, dict):
+                        stack.append(child)
+
+        not_child = node.get("not")
+        if isinstance(not_child, dict):
+            stack.append(not_child)
 
 
 def render_template_control_input(
