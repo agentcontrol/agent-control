@@ -95,6 +95,8 @@ def _parameter_default(
     parameter_definition: TemplateParameterDefinition,
 ) -> TemplateValue | object:
     """Return the explicit default for a parameter, if any."""
+    # TemplateValue intentionally excludes None, so None continues to mean
+    # "no default provided" for current v1 parameter types.
     default = getattr(parameter_definition, "default", None)
     return _TEMPLATE_VALUE_MISSING if default is None else cast(TemplateValue, default)
 

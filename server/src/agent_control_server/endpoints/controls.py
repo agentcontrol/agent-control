@@ -541,7 +541,7 @@ async def set_control_data(
     else:
         if current_template_backed:
             raise ConflictError(
-                error_code=ErrorCode.CONTROL_IN_USE,
+                error_code=ErrorCode.CONTROL_TEMPLATE_CONFLICT,
                 detail="Template-backed controls cannot be updated with raw control data in v1",
                 resource="Control",
                 resource_id=str(control_id),

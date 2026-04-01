@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BeforeValidator, Field, StringConstraints, TypeAdapter
+from pydantic import BeforeValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 
 from .agent import Agent, StepSchema
 from .base import BaseModel
@@ -345,6 +345,8 @@ class ValidateControlDataResponse(BaseModel):
 
 class RenderControlTemplateRequest(BaseModel):
     """Request to render a template-backed control without persisting it."""
+
+    model_config = ConfigDict(extra="forbid")
 
     template: TemplateDefinition = Field(..., description="Template definition to render")
     template_values: dict[str, TemplateValue] = Field(
