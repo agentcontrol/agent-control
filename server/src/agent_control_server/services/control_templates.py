@@ -759,25 +759,9 @@ def render_template_control_input(
         template=template,
     )
 
-    unused_parameters = sorted(set(template.parameters) - referenced_parameters)
-    if unused_parameters:
-        raise APIValidationError(
-            error_code=ErrorCode.TEMPLATE_RENDER_ERROR,
-            detail="Template defines parameters that are never referenced",
-            resource="Control",
-            hint="Remove unused parameters or reference them in definition_template.",
-            errors=[
-                ValidationErrorItem(
-                    resource="Control",
-                    field=f"template.parameters.{parameter_name}",
-                    code="unused_template_parameter",
-                    message=f"Template parameter '{parameter_name}' is never referenced.",
-                    parameter=parameter_name,
-                    parameter_label=template.parameters[parameter_name].label,
-                )
-                for parameter_name in unused_parameters
-            ],
-        )
+    # Note: unused-parameter detection is handled by validate_template_structure
+    # (called above).  The referenced_parameters set is still tracked here for
+    # the reverse path map used in error remapping.
 
     try:
         rendered_control = ControlDefinition.model_validate(rendered_payload)

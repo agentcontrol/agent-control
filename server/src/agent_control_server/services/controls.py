@@ -8,11 +8,14 @@ from agent_control_models.policy import Control as APIControl
 from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..logging_utils import get_logger
 from ..models import Control, agent_controls, agent_policies, policy_controls
 from .control_definitions import (
     parse_control_definition_or_api_error,
     parse_runtime_control_definition_or_api_error,
 )
+
+_logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -89,7 +92,16 @@ async def list_controls_for_agent(
             and c.data.get("template") is not None
             and c.data.get("condition") is None
         ):
-            unrendered = UnrenderedTemplateControl.model_validate(c.data)
+            try:
+                unrendered = UnrenderedTemplateControl.model_validate(c.data)
+            except Exception:
+                _logger.warning(
+                    "Skipping control '%s' (id=%s): corrupted unrendered template data",
+                    c.name,
+                    c.id,
+                    exc_info=True,
+                )
+                continue
             api_controls.append(APIControl(id=c.id, name=c.name, control=unrendered))
             continue
 

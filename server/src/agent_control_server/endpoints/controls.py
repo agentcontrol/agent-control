@@ -109,7 +109,24 @@ def _parse_stored_control_data(
 ) -> ControlDefinition | UnrenderedTemplateControl:
     """Parse stored JSONB into the appropriate model type."""
     if _is_unrendered_template(data):
-        return UnrenderedTemplateControl.model_validate(data)
+        try:
+            return UnrenderedTemplateControl.model_validate(data)
+        except ValidationError:
+            raise APIValidationError(
+                error_code=ErrorCode.CORRUPTED_DATA,
+                detail=f"Control '{control_name}' has corrupted unrendered template data",
+                resource="Control",
+                resource_id=str(control_id),
+                hint=f"Update the control data using PUT /api/v1/controls/{control_id}/data.",
+                errors=[
+                    ValidationErrorItem(
+                        resource="Control",
+                        field="data",
+                        code="corrupted_data",
+                        message="Stored unrendered template data is invalid.",
+                    )
+                ],
+            )
 
     return parse_control_definition_or_api_error(
         data,
