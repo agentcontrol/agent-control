@@ -16,15 +16,10 @@ def _strip_slug_name(v: str) -> str:
 
 _CONTROL_DEFINITION_ADAPTER = TypeAdapter(ControlDefinition)
 _TEMPLATE_CONTROL_INPUT_ADAPTER = TypeAdapter(TemplateControlInput)
-_RAW_CONTROL_INPUT_FIELDS = frozenset(
+_TEMPLATE_ONLY_CONTROL_FIELDS = frozenset({"template", "template_values"})
+_RAW_CONTROL_INPUT_FIELDS = frozenset(ControlDefinition.model_fields) - _TEMPLATE_ONLY_CONTROL_FIELDS
+_RAW_CONTROL_INPUT_FIELDS = _RAW_CONTROL_INPUT_FIELDS.union(
     {
-        "description",
-        "enabled",
-        "execution",
-        "scope",
-        "condition",
-        "action",
-        "tags",
         # Legacy flat leaf fields still accepted for raw controls.
         "selector",
         "evaluator",
