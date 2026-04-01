@@ -398,6 +398,37 @@ def test_create_template_backed_control_persists_resolved_defaults_when_values_o
     }
 
 
+def test_create_template_backed_control_failure_does_not_persist_control(
+    client: TestClient,
+) -> None:
+    # Given: an invalid template-backed create payload and the current control list
+    invalid_payload = _template_payload()
+    invalid_payload["template_values"] = {"pattern": "["}
+    control_name = f"invalid-template-control-{uuid.uuid4()}"
+
+    before_response = client.get("/api/v1/controls")
+    assert before_response.status_code == 200, before_response.text
+    before_controls = before_response.json()["controls"]
+    before_ids = {control["id"] for control in before_controls}
+
+    # When: creating the invalid template-backed control
+    response = client.put(
+        "/api/v1/controls",
+        json={"name": control_name, "data": invalid_payload},
+    )
+
+    # Then: the request fails and no control is persisted
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "TEMPLATE_PARAMETER_INVALID"
+
+    after_response = client.get("/api/v1/controls")
+    assert after_response.status_code == 200, after_response.text
+    after_controls = after_response.json()["controls"]
+    after_ids = {control["id"] for control in after_controls}
+    assert after_ids == before_ids
+    assert all(control["name"] != control_name for control in after_controls)
+
+
 def test_template_backed_control_evaluates_after_policy_attachment(client: TestClient) -> None:
     # Given: a template-backed control attached to an agent through a policy
     control_id, control_name = _create_template_control_with_name(client)
@@ -746,6 +777,36 @@ def test_raw_control_can_be_replaced_with_template_backed_control(client: TestCl
     assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"
 
 
+def test_raw_control_failed_template_replacement_does_not_mutate_raw_control(
+    client: TestClient,
+) -> None:
+    # Given: an existing raw control and invalid template-backed replacement input
+    control_id = _create_raw_control(client)
+    original_response = client.get(f"/api/v1/controls/{control_id}/data")
+    assert original_response.status_code == 200, original_response.text
+    original_data = original_response.json()["data"]
+
+    invalid_payload = _template_payload()
+    invalid_payload["template_values"] = {"pattern": "["}
+
+    # When: replacing the raw control with invalid template-backed input
+    response = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": invalid_payload},
+    )
+
+    # Then: the conversion fails and the raw control stays unchanged
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "TEMPLATE_PARAMETER_INVALID"
+
+    refreshed_response = client.get(f"/api/v1/controls/{control_id}/data")
+    assert refreshed_response.status_code == 200, refreshed_response.text
+    refreshed_data = refreshed_response.json()["data"]
+    assert refreshed_data == original_data
+    assert "template" not in refreshed_data
+    assert "template_values" not in refreshed_data
+
+
 def test_template_update_preserves_enabled_value(client: TestClient) -> None:
     # Given: a template-backed control that has been disabled through the metadata patch API
     control_id = _create_template_control(client)
@@ -779,6 +840,33 @@ def test_template_update_preserves_enabled_value(client: TestClient) -> None:
     }
     assert data["condition"]["evaluator"]["config"]["pattern"] == "updated"
     assert data["scope"]["step_names"] == ["updated-step"]
+
+
+def test_template_update_failure_does_not_mutate_existing_template_backed_control(
+    client: TestClient,
+) -> None:
+    # Given: an existing template-backed control and invalid updated template values
+    control_id = _create_template_control(client)
+    original_response = client.get(f"/api/v1/controls/{control_id}/data")
+    assert original_response.status_code == 200, original_response.text
+    original_data = original_response.json()["data"]
+
+    invalid_payload = _template_payload()
+    invalid_payload["template_values"] = {"pattern": "["}
+
+    # When: updating the stored template-backed control with invalid input
+    response = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": invalid_payload},
+    )
+
+    # Then: the update fails and the stored control remains unchanged
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "TEMPLATE_PARAMETER_INVALID"
+
+    refreshed_response = client.get(f"/api/v1/controls/{control_id}/data")
+    assert refreshed_response.status_code == 200, refreshed_response.text
+    assert refreshed_response.json()["data"] == original_data
 
 
 def test_template_update_preview_matches_persisted_rendered_control(client: TestClient) -> None:
