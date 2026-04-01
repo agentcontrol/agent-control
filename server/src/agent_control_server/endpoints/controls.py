@@ -1194,12 +1194,17 @@ async def patch_control(
                 )
     elif control.data:
         # Get current enabled status for response
-        try:
-            ctrl_def = ControlDefinition.model_validate(control.data)
-            current_enabled = ctrl_def.enabled
-        except ValidationError:
-            # Data corrupted, use default enabled=True
-            _logger.warning("Control '%s' has invalid data, using default", control.name)
+        if _is_unrendered_template(control.data):
+            current_enabled = False
+        else:
+            try:
+                ctrl_def = ControlDefinition.model_validate(control.data)
+                current_enabled = ctrl_def.enabled
+            except ValidationError:
+                _logger.warning(
+                    "Control '%s' has invalid data, using default",
+                    control.name,
+                )
 
     # Commit if anything changed
     if updated:

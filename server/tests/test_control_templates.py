@@ -1599,7 +1599,9 @@ def test_patch_enable_on_unrendered_template_is_rejected(client: TestClient) -> 
     )
 
 
-def test_patch_name_on_unrendered_template_works(client: TestClient) -> None:
+def test_patch_name_on_unrendered_template_returns_correct_enabled(
+    client: TestClient,
+) -> None:
     # Given: an unrendered template control
     control_id, _ = _create_unrendered_control(client)
     new_name = f"renamed-unrendered-{uuid.uuid4()}"
@@ -1610,9 +1612,35 @@ def test_patch_name_on_unrendered_template_works(client: TestClient) -> None:
         json={"name": new_name},
     )
 
-    # Then: the rename succeeds
+    # Then: the rename succeeds and enabled is correctly reported as False
     assert response.status_code == 200, response.text
-    assert response.json()["name"] == new_name
+    body = response.json()
+    assert body["name"] == new_name
+    assert body["enabled"] is False
+
+
+def test_create_unrendered_template_rejects_optional_param_without_default(
+    client: TestClient,
+) -> None:
+    # Given: a template with an optional parameter that has no default but is
+    # referenced in definition_template
+    payload = _unrendered_template_payload()
+    payload["template"]["parameters"]["pattern"]["required"] = False  # type: ignore[index]
+
+    # When: creating an unrendered control
+    response = client.put(
+        "/api/v1/controls",
+        json={"name": f"bad-optional-{uuid.uuid4()}", "data": payload},
+    )
+
+    # Then: the server rejects — this template can never render
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
+    assert any(
+        err.get("code") == "optional_referenced_parameter_requires_default"
+        for err in body.get("errors", [])
+    )
 
 
 def test_unrendered_template_excluded_from_evaluation(client: TestClient) -> None:

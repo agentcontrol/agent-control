@@ -550,6 +550,25 @@ def _collect_param_references(
                     code="undefined_parameter_reference",
                     message=f"Template references undefined parameter '{parameter_name}'.",
                 )
+            # Reject optional params without defaults — they can never render.
+            param_def = template.parameters[parameter_name]
+            if (
+                not param_def.required
+                and _parameter_default(param_def) is _TEMPLATE_VALUE_MISSING
+            ):
+                raise _render_error(
+                    detail=(
+                        f"Template parameter '{parameter_name}' is optional "
+                        "but referenced without a default value"
+                    ),
+                    field=f"template.parameters.{parameter_name}",
+                    code="optional_referenced_parameter_requires_default",
+                    message=(
+                        f"Optional template parameter '{param_def.label}' is "
+                        "referenced in the template and must define a default "
+                        "value or be marked required."
+                    ),
+                )
             referenced.add(parameter_name)
             return
 

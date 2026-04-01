@@ -70,6 +70,7 @@ from agent_control_models import (
     TemplateControlInput,
     TemplateDefinition,
     TemplateValue,
+    UnrenderedTemplateControl,
 )
 
 from . import agents, controls, evaluation, evaluators, policies
@@ -1371,6 +1372,7 @@ __all__ = [
     "ControlDefinition",
     "TemplateControlInput",
     "TemplateDefinition",
+    "UnrenderedTemplateControl",
     "ControlSelector",
     "ControlScope",
     "ControlAction",
