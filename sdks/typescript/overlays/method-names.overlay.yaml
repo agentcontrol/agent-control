@@ -100,6 +100,11 @@ actions:
       x-speakeasy-group: agents
       x-speakeasy-name-override: updatePolicy
 
+  - target: $["paths"]["/api/v1/control-templates/render"]["post"]
+    update:
+      x-speakeasy-group: controls
+      x-speakeasy-name-override: renderTemplate
+
   - target: $["paths"]["/api/v1/controls"]["get"]
     update:
       x-speakeasy-group: controls

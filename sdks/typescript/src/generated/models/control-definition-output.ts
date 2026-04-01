@@ -3,6 +3,7 @@
  */
 
 import * as z from "zod/v4-mini";
+import { remap as remap$ } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
 import * as openEnums from "../types/enums.js";
 import { OpenEnum } from "../types/enums.js";
@@ -18,6 +19,14 @@ import {
 } from "./control-action.js";
 import { ControlScope, ControlScope$inboundSchema } from "./control-scope.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
+import {
+  TemplateDefinitionOutput,
+  TemplateDefinitionOutput$inboundSchema,
+} from "./template-definition-output.js";
+import {
+  TemplateValue,
+  TemplateValue$inboundSchema,
+} from "./template-value.js";
 
 /**
  * Where this control executes
@@ -68,6 +77,14 @@ export type ControlDefinitionOutput = {
    * Tags for categorization
    */
   tags?: Array<string> | undefined;
+  /**
+   * Template metadata for template-backed controls
+   */
+  template?: TemplateDefinitionOutput | null | undefined;
+  /**
+   * Resolved parameter values for template-backed controls
+   */
+  templateValues?: { [k: string]: TemplateValue } | null | undefined;
 };
 
 /** @internal */
@@ -78,15 +95,26 @@ export const Execution$inboundSchema: z.ZodMiniType<Execution, unknown> =
 export const ControlDefinitionOutput$inboundSchema: z.ZodMiniType<
   ControlDefinitionOutput,
   unknown
-> = z.object({
-  action: ControlAction$inboundSchema,
-  condition: ConditionNodeOutput$inboundSchema,
-  description: z.optional(z.nullable(types.string())),
-  enabled: z._default(types.boolean(), true),
-  execution: Execution$inboundSchema,
-  scope: types.optional(ControlScope$inboundSchema),
-  tags: types.optional(z.array(types.string())),
-});
+> = z.pipe(
+  z.object({
+    action: ControlAction$inboundSchema,
+    condition: ConditionNodeOutput$inboundSchema,
+    description: z.optional(z.nullable(types.string())),
+    enabled: z._default(types.boolean(), true),
+    execution: Execution$inboundSchema,
+    scope: types.optional(ControlScope$inboundSchema),
+    tags: types.optional(z.array(types.string())),
+    template: z.optional(z.nullable(TemplateDefinitionOutput$inboundSchema)),
+    template_values: z.optional(
+      z.nullable(z.record(z.string(), TemplateValue$inboundSchema)),
+    ),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "template_values": "templateValues",
+    });
+  }),
+);
 
 export function controlDefinitionOutputFromJSON(
   jsonString: string,

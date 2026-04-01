@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self, cast
 from uuid import uuid4
 
 import re2
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
+from .agent import JSONValue
 from .base import BaseModel
 
 
@@ -262,6 +264,171 @@ class SteeringContext(BaseModel):
     }
 
 
+type TemplateValue = str | bool | list[str]
+type JsonValue = JSONValue
+
+_TEMPLATE_PARAMETER_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _validate_re2_value(value: str, *, field_name: str) -> str:
+    """Validate that a string is a valid RE2 expression."""
+    try:
+        re2.compile(value)
+    except re2.error as exc:
+        raise ValueError(f"Invalid {field_name}: {exc}") from exc
+    return value
+
+
+class TemplateParameterBase(BaseModel):
+    """Base definition for a template parameter."""
+
+    label: str = Field(..., min_length=1, description="Human-readable parameter label")
+    description: str | None = Field(
+        None,
+        description="Optional description of what the parameter controls",
+    )
+    required: bool = Field(
+        True,
+        description="Whether the caller must provide a value when no default exists",
+    )
+    ui_hint: str | None = Field(
+        None,
+        description="Optional UI hint for rendering the parameter input",
+    )
+
+
+class StringTemplateParameter(TemplateParameterBase):
+    """String-valued template parameter."""
+
+    type: Literal["string"] = "string"
+    default: str | None = Field(None, description="Optional default value")
+    placeholder: str | None = Field(None, description="Optional placeholder text")
+
+
+class StringListTemplateParameter(TemplateParameterBase):
+    """List-of-strings template parameter."""
+
+    type: Literal["string_list"] = "string_list"
+    default: list[str] | None = Field(None, description="Optional default value")
+    placeholder: list[str] | None = Field(
+        None,
+        description="Optional placeholder/example list",
+    )
+
+    @field_validator("default", "placeholder")
+    @classmethod
+    def validate_string_lists(
+        cls, value: list[str] | None
+    ) -> list[str] | None:
+        if value is None:
+            return value
+        if any((not isinstance(item, str)) for item in value):
+            raise ValueError("Values must be strings")
+        return value
+
+
+class EnumTemplateParameter(TemplateParameterBase):
+    """String enum template parameter."""
+
+    type: Literal["enum"] = "enum"
+    allowed_values: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Allowed string values for the parameter",
+    )
+    default: str | None = Field(None, description="Optional default value")
+
+    @field_validator("allowed_values")
+    @classmethod
+    def validate_allowed_values(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("allowed_values must not be empty")
+        if any(not item for item in value):
+            raise ValueError("allowed_values must contain non-empty strings")
+        if len(set(value)) != len(value):
+            raise ValueError("allowed_values must not contain duplicates")
+        return value
+
+    @model_validator(mode="after")
+    def validate_default(self) -> Self:
+        if self.default is not None and self.default not in self.allowed_values:
+            raise ValueError("Default must be one of allowed_values")
+        return self
+
+
+class BooleanTemplateParameter(TemplateParameterBase):
+    """Boolean template parameter."""
+
+    type: Literal["boolean"] = "boolean"
+    default: bool | None = Field(None, description="Optional default value")
+
+
+class RegexTemplateParameter(TemplateParameterBase):
+    """RE2 regex template parameter."""
+
+    type: Literal["regex_re2"] = "regex_re2"
+    default: str | None = Field(None, description="Optional default regex pattern")
+    placeholder: str | None = Field(None, description="Optional placeholder regex")
+
+    @field_validator("default", "placeholder")
+    @classmethod
+    def validate_regex_values(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return _validate_re2_value(value, field_name="regex pattern")
+
+
+type TemplateParameterDefinition = Annotated[
+    StringTemplateParameter
+    | StringListTemplateParameter
+    | EnumTemplateParameter
+    | BooleanTemplateParameter
+    | RegexTemplateParameter,
+    Field(discriminator="type"),
+]
+
+
+class TemplateDefinition(BaseModel):
+    """Reusable template with typed parameters and a JSON definition template."""
+
+    description: str | None = Field(
+        None,
+        description="Metadata describing the template itself",
+    )
+    parameters: dict[str, TemplateParameterDefinition] = Field(
+        default_factory=dict,
+        description="Typed parameter definitions keyed by parameter name",
+    )
+    definition_template: JsonValue = Field(
+        ...,
+        description="Template payload containing $param binding objects",
+    )
+
+    @field_validator("parameters")
+    @classmethod
+    def validate_parameter_names(
+        cls, value: dict[str, TemplateParameterDefinition]
+    ) -> dict[str, TemplateParameterDefinition]:
+        for name in value:
+            if not _TEMPLATE_PARAMETER_NAME_RE.fullmatch(name):
+                raise ValueError(
+                    "Parameter names must match [a-zA-Z_][a-zA-Z0-9_]*"
+                )
+        return value
+
+
+class TemplateControlInput(BaseModel):
+    """Template-backed input payload for control create/update requests."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template: TemplateDefinition = Field(..., description="Template definition to render")
+    template_values: dict[str, TemplateValue] = Field(
+        default_factory=dict,
+        description="Template parameter values keyed by parameter name",
+    )
+
+
 class ControlAction(BaseModel):
     """What to do when control matches."""
 
@@ -474,6 +641,14 @@ class ControlDefinition(BaseModel):
 
     # Metadata
     tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+    template: TemplateDefinition | None = Field(
+        None,
+        description="Template metadata for template-backed controls",
+    )
+    template_values: dict[str, TemplateValue] | None = Field(
+        None,
+        description="Resolved parameter values for template-backed controls",
+    )
 
     @classmethod
     def canonicalize_payload(cls, data: Any) -> Any:
@@ -526,6 +701,12 @@ class ControlDefinition(BaseModel):
         ):
             raise ValueError(
                 "Composite steer controls require action.steering_context"
+            )
+        has_template = self.template is not None
+        has_template_values = self.template_values is not None
+        if has_template != has_template_values:
+            raise ValueError(
+                "template and template_values must both be present or both absent"
             )
         return self
 
@@ -601,6 +782,37 @@ class ControlDefinition(BaseModel):
             ]
         }
     }
+
+
+class ControlDefinitionRuntime(BaseModel):
+    """Slim runtime control model that ignores template authoring metadata."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    description: str | None = Field(None, description="Detailed description of the control")
+    enabled: bool = Field(True, description="Whether this control is active")
+    execution: Literal["server", "sdk"] = Field(
+        ..., description="Where this control executes"
+    )
+    scope: ControlScope = Field(
+        default_factory=ControlScope,
+        description="Which steps and stages this control applies to",
+    )
+    condition: ConditionNode = Field(
+        ...,
+        description=(
+            "Recursive boolean condition tree. Leaf nodes contain selector + evaluator; "
+            "composite nodes contain and/or/not."
+        ),
+    )
+    action: ControlAction = Field(..., description="What action to take when control matches")
+    tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+
+    def to_control_definition(self) -> ControlDefinition:
+        """Promote a runtime control to the full public model when needed."""
+        return ControlDefinition.model_validate(
+            cast(dict[str, JSONValue], self.model_dump(mode="python"))
+        )
 
 
 class EvaluatorResult(BaseModel):

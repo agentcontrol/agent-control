@@ -47,6 +47,10 @@ export type ControlSummary = {
    */
   tags?: Array<string> | undefined;
   /**
+   * Whether the control was created from a template
+   */
+  templateBacked: boolean;
+  /**
    * Agent using this control
    */
   usedByAgent?: AgentRef | null | undefined;
@@ -70,12 +74,14 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
     stages: z.optional(z.nullable(z.array(types.string()))),
     step_types: z.optional(z.nullable(z.array(types.string()))),
     tags: types.optional(z.array(types.string())),
+    template_backed: z._default(types.boolean(), false),
     used_by_agent: z.optional(z.nullable(AgentRef$inboundSchema)),
     used_by_agents_count: z._default(types.number(), 0),
   }),
   z.transform((v) => {
     return remap$(v, {
       "step_types": "stepTypes",
+      "template_backed": "templateBacked",
       "used_by_agent": "usedByAgent",
       "used_by_agents_count": "usedByAgentsCount",
     });

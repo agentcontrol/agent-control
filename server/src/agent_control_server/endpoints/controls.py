@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 
 from agent_control_engine import list_evaluators
-from agent_control_models import ConditionNode, ControlDefinition
+from agent_control_models import ConditionNode, ControlDefinition, TemplateControlInput
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentRef,
@@ -15,6 +15,8 @@ from agent_control_models.server import (
     PaginationInfo,
     PatchControlRequest,
     PatchControlResponse,
+    RenderControlTemplateRequest,
+    RenderControlTemplateResponse,
     SetControlDataRequest,
     SetControlDataResponse,
     ValidateControlDataRequest,
@@ -38,6 +40,7 @@ from ..errors import (
 from ..logging_utils import get_logger
 from ..models import Agent, AgentData, Control, agent_controls, agent_policies, policy_controls
 from ..services.control_definitions import parse_control_definition_or_api_error
+from ..services.control_templates import remap_template_api_error, render_template_control_input
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
@@ -53,6 +56,7 @@ _CORRUPTED_CONTROL_DATA_MESSAGE = "Stored control data is corrupted and cannot b
 _SCHEMA_VALIDATION_FAILED_MESSAGE = "Config does not satisfy the evaluator schema."
 
 router = APIRouter(prefix="/controls", tags=["controls"])
+template_router = APIRouter(prefix="/control-templates", tags=["controls"])
 
 _logger = get_logger(__name__)
 
@@ -94,6 +98,30 @@ def _serialize_control_definition(control_def: ControlDefinition) -> dict[str, o
             k: v for k, v in data_json["scope"].items() if v is not None
         }
     return data_json
+
+
+def _is_template_backed_payload(data: object) -> bool:
+    """Return whether stored control JSON contains template metadata."""
+    return isinstance(data, dict) and data.get("template") is not None
+
+
+async def _render_and_validate_template_input(
+    template_input: TemplateControlInput,
+    *,
+    db: AsyncSession,
+    enabled: bool = True,
+) -> ControlDefinition:
+    """Render a template-backed input and validate evaluator config."""
+    rendered = render_template_control_input(template_input, enabled=enabled)
+    try:
+        await _validate_control_definition(rendered.control, db)
+    except APIValidationError as exc:
+        raise remap_template_api_error(
+            exc,
+            reverse_path_map=rendered.reverse_path_map,
+            template=template_input.template,
+        ) from exc
+    return rendered.control
 
 
 async def _validate_control_definition(
@@ -256,6 +284,29 @@ async def _validate_control_definition(
             )
 
 
+@template_router.post(
+    "/render",
+    response_model=RenderControlTemplateResponse,
+    response_model_exclude_none=True,
+    summary="Render a control template preview",
+    response_description="Rendered control preview",
+)
+async def render_control_template(
+    request: RenderControlTemplateRequest,
+    db: AsyncSession = Depends(get_async_db),
+) -> RenderControlTemplateResponse:
+    """Render a template-backed control without persisting it."""
+    control_def = await _render_and_validate_template_input(
+        TemplateControlInput(
+            template=request.template,
+            template_values=request.template_values,
+        ),
+        db=db,
+        enabled=True,
+    )
+    return RenderControlTemplateResponse(control=control_def)
+
+
 @router.put(
     "",
     dependencies=[Depends(require_admin_key)],
@@ -294,8 +345,16 @@ async def create_control(
             hint="Choose a different name or update the existing control.",
         )
 
-    await _validate_control_definition(request.data, db)
-    control_data = _serialize_control_definition(request.data)
+    if isinstance(request.data, TemplateControlInput):
+        control_def = await _render_and_validate_template_input(
+            request.data,
+            db=db,
+            enabled=True,
+        )
+    else:
+        control_def = request.data
+        await _validate_control_definition(control_def, db)
+    control_data = _serialize_control_definition(control_def)
 
     control = Control(name=request.name, data=control_data)
     db.add(control)
@@ -466,10 +525,43 @@ async def set_control_data(
             hint="Verify the control ID is correct and the control has been created.",
         )
 
-    # Validate evaluator config using shared logic
-    await _validate_control_definition(request.data, db)
+    current_template_backed = _is_template_backed_payload(control.data)
+    if isinstance(request.data, TemplateControlInput):
+        current_enabled = True
+        if control.data:
+            try:
+                current_enabled = ControlDefinition.model_validate(control.data).enabled
+            except ValidationError:
+                current_enabled = True
+        control_def = await _render_and_validate_template_input(
+            request.data,
+            db=db,
+            enabled=current_enabled,
+        )
+    else:
+        if current_template_backed:
+            raise ConflictError(
+                error_code=ErrorCode.CONTROL_IN_USE,
+                detail="Template-backed controls cannot be updated with raw control data in v1",
+                resource="Control",
+                resource_id=str(control_id),
+                hint=(
+                    "Submit template input to update this control, or delete and recreate "
+                    "it as a raw control."
+                ),
+                errors=[
+                    ValidationErrorItem(
+                        resource="Control",
+                        field="data",
+                        code="template_backed_control_conflict",
+                        message="Template-backed controls must be updated with template input.",
+                    )
+                ],
+            )
+        control_def = request.data
+        await _validate_control_definition(control_def, db)
 
-    control.data = _serialize_control_definition(request.data)
+    control.data = _serialize_control_definition(control_def)
     try:
         await db.commit()
     except Exception:
@@ -505,7 +597,14 @@ async def validate_control_data(
     Returns:
         ValidateControlDataResponse with success=True if valid
     """
-    await _validate_control_definition(request.data, db)
+    if isinstance(request.data, TemplateControlInput):
+        await _render_and_validate_template_input(
+            request.data,
+            db=db,
+            enabled=True,
+        )
+    else:
+        await _validate_control_definition(request.data, db)
     return ValidateControlDataResponse(success=True)
 
 
@@ -520,6 +619,10 @@ async def list_controls(
     limit: int = Query(_DEFAULT_PAGINATION_LIMIT, ge=1, le=_MAX_PAGINATION_LIMIT),
     name: str | None = Query(None, description="Filter by name (partial, case-insensitive)"),
     enabled: bool | None = Query(None, description="Filter by enabled status"),
+    template_backed: bool | None = Query(
+        None,
+        description="Filter by whether the control is template-backed",
+    ),
     step_type: str | None = Query(
         None, description="Filter by step type (built-ins: 'tool', 'llm')"
     ),
@@ -538,6 +641,7 @@ async def list_controls(
         limit: Maximum number of controls to return (default 20, max 100)
         name: Optional filter by name (partial, case-insensitive match)
         enabled: Optional filter by enabled status
+        template_backed: Optional filter by whether the control is template-backed
         step_type: Optional filter by step type (built-ins: 'tool', 'llm')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
@@ -574,6 +678,12 @@ async def list_controls(
         else:
             # enabled=False: only include if explicitly false
             query = query.where(Control.data["enabled"].astext == "false")
+
+    if template_backed is not None:
+        if template_backed:
+            query = query.where(Control.data.has_key("template"))
+        else:
+            query = query.where(~Control.data.has_key("template"))
 
     if step_type is not None:
         query = query.where(
@@ -618,6 +728,11 @@ async def list_controls(
             )
         else:
             total_query = total_query.where(Control.data["enabled"].astext == "false")
+    if template_backed is not None:
+        if template_backed:
+            total_query = total_query.where(Control.data.has_key("template"))
+        else:
+            total_query = total_query.where(~Control.data.has_key("template"))
     if step_type is not None:
         total_query = total_query.where(
             or_(
@@ -702,6 +817,7 @@ async def list_controls(
                 step_types=scope.get("step_types"),
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
+                template_backed="template" in data,
                 used_by_agent=control_agent_map.get(ctrl.id),
                 used_by_agents_count=len(control_agent_names_map.get(ctrl.id, set())),
             )

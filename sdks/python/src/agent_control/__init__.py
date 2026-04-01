@@ -67,6 +67,9 @@ from agent_control_models import (
     EvaluatorSpec,
     Step,
     StepSchema,
+    TemplateControlInput,
+    TemplateDefinition,
+    TemplateValue,
 )
 
 from . import agents, controls, evaluation, evaluators, policies
@@ -871,6 +874,7 @@ async def list_controls(
     limit: int = 20,
     name: str | None = None,
     enabled: bool | None = None,
+    template_backed: bool | None = None,
     step_type: str | None = None,
     stage: Literal["pre", "post"] | None = None,
     execution: Literal["server", "sdk"] | None = None,
@@ -886,6 +890,7 @@ async def list_controls(
         limit: Number of results per page (default 20, max 100)
         name: Optional filter by name (partial, case-insensitive)
         enabled: Optional filter by enabled status
+        template_backed: Optional filter by whether the control is template-backed
         step_type: Optional filter by step type (built-ins: 'tool', 'llm')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
@@ -925,6 +930,7 @@ async def list_controls(
             limit=limit,
             name=name,
             enabled=enabled,
+            template_backed=template_backed,
             step_type=step_type,
             stage=stage,
             execution=execution,
@@ -934,7 +940,7 @@ async def list_controls(
 
 async def create_control(
     name: str,
-    data: dict[str, Any] | ControlDefinition,
+    data: dict[str, Any] | ControlDefinition | TemplateControlInput,
     server_url: str | None = None,
     api_key: str | None = None,
 ) -> dict[str, Any]:
@@ -943,7 +949,7 @@ async def create_control(
 
     Args:
         name: Unique name for the control
-        data: Control definition with a condition tree, action, scope, etc.
+        data: Raw control definition or template-backed control input
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
 
@@ -986,6 +992,35 @@ async def create_control(
 
     async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
         return await controls.create_control(client, name, data=data)
+
+
+async def validate_control_data(
+    data: dict[str, Any] | ControlDefinition | TemplateControlInput,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Validate raw or template-backed control data without saving it."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await controls.validate_control_data(client, data=data)
+
+
+async def render_control_template(
+    template: dict[str, Any] | TemplateDefinition,
+    template_values: dict[str, TemplateValue],
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Render a template-backed control preview without persisting it."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await controls.render_control_template(
+            client,
+            template=template,
+            template_values=template_values,
+        )
 
 
 async def get_control(
@@ -1279,6 +1314,8 @@ __all__ = [
     "get_control",
     "delete_control",
     "update_control",
+    "validate_control_data",
+    "render_control_template",
     # Decorator
     "control",
     "ControlViolationError",
@@ -1324,10 +1361,13 @@ __all__ = [
     "EvaluationRequest",
     "EvaluationResult",
     "ControlDefinition",
+    "TemplateControlInput",
+    "TemplateDefinition",
     "ControlSelector",
     "ControlScope",
     "ControlAction",
     "ControlMatch",
     "EvaluatorSpec",
     "EvaluatorResult",
+    "TemplateValue",
 ]

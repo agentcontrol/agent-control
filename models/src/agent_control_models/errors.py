@@ -77,6 +77,8 @@ class ErrorCode(StrEnum):
     INVALID_SCHEMA = "INVALID_SCHEMA"
     CORRUPTED_DATA = "CORRUPTED_DATA"
     POLICY_CONTROL_INCOMPATIBLE = "POLICY_CONTROL_INCOMPATIBLE"
+    TEMPLATE_PARAMETER_INVALID = "TEMPLATE_PARAMETER_INVALID"
+    TEMPLATE_RENDER_ERROR = "TEMPLATE_RENDER_ERROR"
 
     # Server Errors (5xx pattern)
     DATABASE_ERROR = "DATABASE_ERROR"
@@ -134,6 +136,18 @@ class ValidationErrorItem(BaseModel):
     value: Any | None = Field(
         default=None,
         description="The invalid value that was provided (omitted for sensitive data)",
+    )
+    parameter: str | None = Field(
+        default=None,
+        description="Template parameter key when the error maps to a template input",
+    )
+    parameter_label: str | None = Field(
+        default=None,
+        description="Human-readable template parameter label for template-aware errors",
+    )
+    rendered_field: str | None = Field(
+        default=None,
+        description="Rendered control field path that produced the validation error",
     )
 
 
@@ -364,6 +378,8 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.INVALID_SCHEMA: "Invalid Schema",
     ErrorCode.CORRUPTED_DATA: "Corrupted Data",
     ErrorCode.POLICY_CONTROL_INCOMPATIBLE: "Policy Control Incompatible",
+    ErrorCode.TEMPLATE_PARAMETER_INVALID: "Template Parameter Invalid",
+    ErrorCode.TEMPLATE_RENDER_ERROR: "Template Render Error",
     # Server errors
     ErrorCode.DATABASE_ERROR: "Database Error",
     ErrorCode.INTERNAL_ERROR: "Internal Server Error",

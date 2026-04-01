@@ -3,22 +3,28 @@
  */
 
 import * as z from "zod/v4-mini";
+import { smartUnion } from "../types/smart-union.js";
 import {
   ControlDefinitionInput,
   ControlDefinitionInput$Outbound,
   ControlDefinitionInput$outboundSchema,
 } from "./control-definition-input.js";
+import {
+  TemplateControlInput,
+  TemplateControlInput$Outbound,
+  TemplateControlInput$outboundSchema,
+} from "./template-control-input.js";
+
+/**
+ * Control definition to validate and store during creation
+ */
+export type Data = ControlDefinitionInput | TemplateControlInput;
 
 export type CreateControlRequest = {
   /**
-   * A control definition to evaluate agent interactions.
-   *
-   * @remarks
-   *
-   * This model contains only the logic and configuration.
-   * Identity fields (id, name) are managed by the database.
+   * Control definition to validate and store during creation
    */
-  data: ControlDefinitionInput;
+  data: ControlDefinitionInput | TemplateControlInput;
   /**
    * Unique control name (letters, numbers, hyphens, underscores)
    */
@@ -26,8 +32,24 @@ export type CreateControlRequest = {
 };
 
 /** @internal */
+export type Data$Outbound =
+  | ControlDefinitionInput$Outbound
+  | TemplateControlInput$Outbound;
+
+/** @internal */
+export const Data$outboundSchema: z.ZodMiniType<Data$Outbound, Data> =
+  smartUnion([
+    ControlDefinitionInput$outboundSchema,
+    TemplateControlInput$outboundSchema,
+  ]);
+
+export function dataToJSON(data: Data): string {
+  return JSON.stringify(Data$outboundSchema.parse(data));
+}
+
+/** @internal */
 export type CreateControlRequest$Outbound = {
-  data: ControlDefinitionInput$Outbound;
+  data: ControlDefinitionInput$Outbound | TemplateControlInput$Outbound;
   name: string;
 };
 
@@ -36,7 +58,10 @@ export const CreateControlRequest$outboundSchema: z.ZodMiniType<
   CreateControlRequest$Outbound,
   CreateControlRequest
 > = z.object({
-  data: ControlDefinitionInput$outboundSchema,
+  data: smartUnion([
+    ControlDefinitionInput$outboundSchema,
+    TemplateControlInput$outboundSchema,
+  ]),
   name: z.string(),
 });
 
