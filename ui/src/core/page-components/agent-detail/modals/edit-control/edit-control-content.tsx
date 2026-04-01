@@ -42,11 +42,7 @@ import type {
   EditControlMode,
 } from './types';
 import { useEvaluatorConfigState } from './use-evaluator-config-state';
-import {
-  applyApiErrorsToForms,
-  omitNullProperties,
-  stringifyJsonWithoutNulls,
-} from './utils';
+import { applyApiErrorsToForms, stringifyJsonWithoutNulls } from './utils';
 
 const EVALUATOR_CONFIG_HEIGHT = 450;
 const JSON_EDITOR_HEIGHT = 520;
@@ -77,13 +73,9 @@ export const EditControlContent = ({
 }: EditControlContentProps) => {
   const { data: agentResponse } = useAgent(agentId);
   const steps = agentResponse?.steps ?? [];
-  const sanitizedControlDefinition = useMemo(
-    () => omitNullProperties(control.control) as ControlDefinition,
-    [control.control]
-  );
 
   const [workingDefinition, setWorkingDefinition] = useState<ControlDefinition>(
-    sanitizedControlDefinition
+    control.control
   );
   const [editorMode, setEditorMode] =
     useState<ControlEditorMode>(initialEditorMode);
@@ -398,17 +390,17 @@ export const EditControlContent = ({
   }, [definitionForm.values.action_decision]);
 
   useEffect(() => {
-    setWorkingDefinition(sanitizedControlDefinition);
+    setWorkingDefinition(control.control);
     setEditorMode(initialEditorMode);
     setDefinitionJsonText(
       initialEditorMode === 'json'
-        ? stringifyJsonWithoutNulls(sanitizedControlDefinition)
+        ? stringifyJsonWithoutNulls(control.control)
         : ''
     );
     setDefinitionJsonError(null);
     setDefinitionValidationError(null);
     setDefinitionValidationStatus('idle');
-  }, [initialEditorMode, sanitizedControlDefinition]);
+  }, [control.control, initialEditorMode]);
 
   useEffect(() => {
     reset();
