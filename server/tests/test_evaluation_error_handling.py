@@ -3,7 +3,13 @@ import logging
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
-from agent_control_models import ControlMatch, EvaluationRequest, EvaluatorResult, Step
+from agent_control_models import (
+    ControlExecutionEvent,
+    ControlMatch,
+    EvaluationRequest,
+    EvaluatorResult,
+    Step,
+)
 from fastapi.testclient import TestClient
 
 from agent_control_server.endpoints.evaluation import (
@@ -198,8 +204,10 @@ def test_evaluation_observability_receives_raw_errors_while_api_response_is_sani
         lambda _config: mock_evaluator,
     )
 
-    emit_mock = AsyncMock()
-    monkeypatch.setattr(evaluation_module, "_emit_observability_events", emit_mock)
+    build_mock = MagicMock(return_value=[])
+    ingest_mock = AsyncMock()
+    monkeypatch.setattr(evaluation_module, "_build_observability_events", build_mock)
+    monkeypatch.setattr(evaluation_module, "_ingest_observability_events", ingest_mock)
     monkeypatch.setattr(evaluation_module.observability_settings, "enabled", True)
 
     # When: sending an evaluation request
@@ -220,8 +228,8 @@ def test_evaluation_observability_receives_raw_errors_while_api_response_is_sani
     assert data["errors"][0]["result"]["error"] == SAFE_EVALUATOR_ERROR
 
     # And: observability receives the raw engine response with unsanitized diagnostics
-    emit_mock.assert_awaited_once()
-    raw_response = emit_mock.await_args.kwargs["response"]
+    build_mock.assert_called_once()
+    raw_response = build_mock.call_args.kwargs["response"]
     assert raw_response.errors is not None
     raw_error = raw_response.errors[0]
     assert raw_error.control_name == control_name
@@ -229,6 +237,7 @@ def test_evaluation_observability_receives_raw_errors_while_api_response_is_sani
     raw_trace = raw_error.result.metadata["condition_trace"]
     assert raw_trace["error"] == "RuntimeError: Simulated evaluator crash"
     assert raw_trace["message"] == "Evaluation failed: RuntimeError: Simulated evaluator crash"
+    ingest_mock.assert_awaited_once()
 
 
 def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
@@ -372,3 +381,66 @@ def test_evaluation_warns_when_observability_drops_events(
             del app.state.event_ingestor
         else:
             app.state.event_ingestor = previous_ingestor
+
+
+def test_evaluation_skips_ingest_for_merge_mode(
+    client: TestClient, monkeypatch
+) -> None:
+    """Merged-event mode should skip server-side observability ingestion."""
+    agent_name, _ = create_and_assign_policy(client)
+
+    import agent_control_server.endpoints.evaluation as evaluation_module
+
+    event = ControlExecutionEvent(
+        trace_id="a" * 32,
+        span_id="b" * 16,
+        agent_name=agent_name,
+        control_id=1,
+        control_name="test-control",
+        check_stage="pre",
+        applies_to="llm_call",
+        action="deny",
+        matched=True,
+        confidence=0.9,
+    )
+    build_mock = MagicMock(return_value=[event])
+    ingest_mock = AsyncMock()
+    monkeypatch.setattr(evaluation_module, "_build_observability_events", build_mock)
+    monkeypatch.setattr(evaluation_module, "_ingest_observability_events", ingest_mock)
+    monkeypatch.setattr(evaluation_module.observability_settings, "enabled", True)
+
+    payload = Step(type="llm", name="test-step", input="x", output=None)
+    req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
+    resp = client.post(
+        "/api/v1/evaluation",
+        json=req.model_dump(mode="json"),
+        headers={"X-Agent-Control-Merge-Events": "true"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "events" not in body
+    ingest_mock.assert_not_awaited()
+
+
+def test_evaluation_skips_build_and_ingest_when_observability_disabled(
+    client: TestClient, monkeypatch
+) -> None:
+    """Observability-disabled requests should not build or ingest events."""
+    agent_name, _ = create_and_assign_policy(client)
+
+    import agent_control_server.endpoints.evaluation as evaluation_module
+
+    build_mock = MagicMock()
+    ingest_mock = AsyncMock()
+    monkeypatch.setattr(evaluation_module, "_build_observability_events", build_mock)
+    monkeypatch.setattr(evaluation_module, "_ingest_observability_events", ingest_mock)
+    monkeypatch.setattr(evaluation_module.observability_settings, "enabled", False)
+
+    payload = Step(type="llm", name="test-step", input="x", output=None)
+    req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
+    resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+
+    assert resp.status_code == 200
+    build_mock.assert_not_called()
+    ingest_mock.assert_not_awaited()

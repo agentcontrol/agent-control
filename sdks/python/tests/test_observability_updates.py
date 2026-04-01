@@ -1,14 +1,14 @@
-"""Tests for observability updates: event emission, non_matches propagation, applies_to mapping."""
+"""Tests for reconstructed control-execution events in SDK evaluation flows."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from agent_control import evaluation
-from agent_control.evaluation import (
-    _ControlAdapter,
-    _emit_local_events,
-    _map_applies_to,
-    _merge_results,
+from agent_control.evaluation import _ControlAdapter, _merge_results
+from agent_control.evaluation_events import (
+    build_control_execution_events,
+    enqueue_observability_events,
+    map_applies_to,
 )
 from agent_control.telemetry.trace_context import (
     clear_trace_context_provider,
@@ -16,37 +16,19 @@ from agent_control.telemetry.trace_context import (
 )
 from agent_control_models import ControlDefinition
 
-# =============================================================================
-# _map_applies_to tests
-# =============================================================================
-
 
 class TestMapAppliesTo:
-    """Tests for _map_applies_to helper."""
-
     def test_maps_tool_to_tool_call(self):
-        assert _map_applies_to("tool") == "tool_call"
+        assert map_applies_to("tool") == "tool_call"
 
     def test_maps_llm_to_llm_call(self):
-        assert _map_applies_to("llm") == "llm_call"
-
-    def test_maps_unknown_to_llm_call(self):
-        """Unknown types default to llm_call (matches server pattern)."""
-        assert _map_applies_to("unknown") == "llm_call"
-        assert _map_applies_to("") == "llm_call"
-
-
-# =============================================================================
-# _merge_results tests
-# =============================================================================
+        assert map_applies_to("llm") == "llm_call"
 
 
 class TestMergeResults:
-    """Tests for _merge_results combining non_matches."""
-
     def _make_response(self, **kwargs):
-        """Create a mock EvaluationResponse."""
         from agent_control_models import EvaluationResponse
+
         defaults = {
             "is_safe": True,
             "confidence": 1.0,
@@ -60,6 +42,7 @@ class TestMergeResults:
 
     def _make_match(self, control_id, control_name="ctrl", action="allow", matched=True):
         from agent_control_models import ControlMatch, EvaluatorResult
+
         return ControlMatch(
             control_id=control_id,
             control_name=control_name,
@@ -67,69 +50,55 @@ class TestMergeResults:
             result=EvaluatorResult(matched=matched, confidence=0.9),
         )
 
-    def test_combines_non_matches(self):
-        """non_matches from both sides should be combined."""
-        nm1 = self._make_match(1, "ctrl-1", matched=False)
-        nm2 = self._make_match(2, "ctrl-2", matched=False)
-
-        local = self._make_response(non_matches=[nm1])
-        server = self._make_response(non_matches=[nm2])
-
-        result = _merge_results(local, server)
-        assert result.non_matches is not None
-        assert len(result.non_matches) == 2
-        ids = {nm.control_id for nm in result.non_matches}
-        assert ids == {1, 2}
-
-    def test_non_matches_none_when_both_empty(self):
-        local = self._make_response()
-        server = self._make_response()
-        result = _merge_results(local, server)
-        assert result.non_matches is None
-
-    def test_non_matches_from_one_side(self):
-        nm = self._make_match(1, matched=False)
-        local = self._make_response(non_matches=[nm])
-        server = self._make_response()
-        result = _merge_results(local, server)
-        assert result.non_matches is not None
-        assert len(result.non_matches) == 1
-
-    def test_still_combines_matches_and_errors(self):
-        m1 = self._make_match(1, "m1")
-        m2 = self._make_match(2, "m2")
-        e1 = self._make_match(3, "e1", matched=False)
-
-        local = self._make_response(matches=[m1], errors=[e1])
-        server = self._make_response(matches=[m2])
-
-        result = _merge_results(local, server)
-        assert len(result.matches) == 2
-        assert len(result.errors) == 1
-
-
-# =============================================================================
-# _emit_local_events tests
-# =============================================================================
-
-
-class TestEmitLocalEvents:
-    """Tests for _emit_local_events helper."""
-
-    def _make_control_adapter(self, id, name, evaluator_name="regex", selector_path="input"):
-        """Create a _ControlAdapter for testing."""
-        control_def = ControlDefinition(
-            execution="sdk",
-            condition={
-                "evaluator": {"name": evaluator_name, "config": {"pattern": "test"}},
-                "selector": {"path": selector_path},
-            },
-            action={"decision": "deny"},
+    def test_combines_matches_errors_and_non_matches(self):
+        local = self._make_response(
+            matches=[self._make_match(1)],
+            errors=[self._make_match(2, matched=False)],
         )
-        return _ControlAdapter(id=id, name=name, control=control_def)
+        server = self._make_response(non_matches=[self._make_match(3, matched=False)])
+
+        result = _merge_results(local, server)
+
+        assert [match.control_id for match in result.matches or []] == [1]
+        assert [match.control_id for match in result.errors or []] == [2]
+        assert [match.control_id for match in result.non_matches or []] == [3]
+
+
+class TestBuildControlExecutionEvents:
+    def _make_control(self, id, name, condition):
+        return _ControlAdapter(
+            id=id,
+            name=name,
+            control=ControlDefinition(
+                execution="sdk",
+                condition=condition,
+                action={"decision": "allow"},
+            ),
+        )
+
+    def _make_request(self, step_type="llm"):
+        from agent_control_models import EvaluationRequest
+
+        step_input = {"query": "hello"} if step_type == "tool" else "hello"
+        return EvaluationRequest(
+            agent_name="agent-000000000001",
+            step={"type": step_type, "name": "test-step", "input": step_input},
+            stage="pre",
+        )
+
+    def _make_match(self, control_id, control_name="ctrl", action="allow", matched=True):
+        from agent_control_models import ControlMatch, EvaluatorResult
+
+        return ControlMatch(
+            control_id=control_id,
+            control_name=control_name,
+            action=action,
+            result=EvaluatorResult(matched=matched, confidence=0.9),
+        )
 
     def _make_response(self, matches=None, errors=None, non_matches=None):
         from agent_control_models import EvaluationResponse
+
         return EvaluationResponse(
             is_safe=not bool(matches),
             confidence=1.0 if not matches else 0.5,
@@ -138,130 +107,45 @@ class TestEmitLocalEvents:
             non_matches=non_matches,
         )
 
-    def _make_match(self, control_id, control_name="ctrl", action="deny", matched=True):
-        from agent_control_models import ControlMatch, EvaluatorResult
-        return ControlMatch(
-            control_id=control_id,
-            control_name=control_name,
-            action=action,
-            result=EvaluatorResult(matched=matched, confidence=0.9),
+    def test_builds_events_with_trace_context(self):
+        response = self._make_response(matches=[self._make_match(1, "ctrl-1")])
+        request = self._make_request()
+        control_lookup = {
+            1: self._make_control(
+                1,
+                "ctrl-1",
+                {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
+            ).control
+        }
+
+        events = build_control_execution_events(
+            response,
+            request,
+            control_lookup,
+            "trace123",
+            "span456",
+            "test-agent",
         )
 
-    def _make_request(self, step_type="llm"):
-        from agent_control_models import EvaluationRequest
-        # Tool steps require object input, LLM steps accept string
-        step_input = {"query": "hello"} if step_type == "tool" else "hello"
-        return EvaluationRequest(
-            agent_name="agent-000000000001",
-            step={"type": step_type, "name": "test-step", "input": step_input},
-            stage="pre",
-        )
+        assert len(events) == 1
+        event = events[0]
+        assert event.trace_id == "trace123"
+        assert event.span_id == "span456"
+        assert event.agent_name == "test-agent"
+        assert event.evaluator_name == "regex"
+        assert event.selector_path == "input"
 
-    def test_emits_events_when_observability_enabled(self):
-        """Should call add_event for each match/error/non_match."""
-        from agent_control.evaluation import _emit_local_events
-
-        ctrl = self._make_control_adapter(1, "ctrl-1")
-        match = self._make_match(1, "ctrl-1")
-        non_match = self._make_match(2, "ctrl-2", matched=False)
-        response = self._make_response(matches=[match], non_matches=[non_match])
+    def test_composite_control_uses_representative_observability_identity(self):
+        response = self._make_response(non_matches=[self._make_match(1, "ctrl-1", matched=False)])
         request = self._make_request()
-
-        with patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
-             patch("agent_control.evaluation.add_event") as mock_add:
-            _emit_local_events(
-                response, request,
-                [ctrl, self._make_control_adapter(2, "ctrl-2")],
-                "trace123", "span456", "test-agent",
-            )
-            assert mock_add.call_count == 2
-            # Verify event fields for the match
-            event = mock_add.call_args_list[0][0][0]
-            assert event.trace_id == "trace123"
-            assert event.span_id == "span456"
-            assert event.agent_name == "test-agent"
-            assert event.matched is True
-            assert event.evaluator_name == "regex"
-            assert event.selector_path == "input"
-
-    def test_skips_when_observability_disabled(self):
-        """Should not call add_event when observability is disabled."""
-        from agent_control.evaluation import _emit_local_events
-
-        ctrl = self._make_control_adapter(1, "ctrl-1")
-        match = self._make_match(1, "ctrl-1")
-        response = self._make_response(matches=[match])
-        request = self._make_request()
-
-        with patch("agent_control.evaluation.is_observability_enabled", return_value=False), \
-             patch("agent_control.evaluation.add_event") as mock_add:
-            _emit_local_events(
-                response, request, [ctrl],
-                "trace123", "span456", "test-agent",
-            )
-            mock_add.assert_not_called()
-
-    def test_maps_tool_step_to_tool_call(self):
-        """Should set applies_to='tool_call' for tool steps."""
-        from agent_control.evaluation import _emit_local_events
-
-        ctrl = self._make_control_adapter(1, "ctrl-1")
-        match = self._make_match(1, "ctrl-1")
-        response = self._make_response(matches=[match])
-        request = self._make_request(step_type="tool")
-
-        with patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
-             patch("agent_control.evaluation.add_event") as mock_add:
-            _emit_local_events(
-                response, request, [ctrl],
-                "trace123", "span456", "test-agent",
-            )
-            event = mock_add.call_args_list[0][0][0]
-            assert event.applies_to == "tool_call"
-
-    def test_uses_fallback_ids_when_trace_context_missing(self):
-        """Should emit events with all-zero fallback IDs when trace context is absent."""
-        import agent_control.evaluation as eval_mod
-        from agent_control.evaluation import (
-            _FALLBACK_SPAN_ID,
-            _FALLBACK_TRACE_ID,
-            _emit_local_events,
-        )
-
-        ctrl = self._make_control_adapter(1, "ctrl-1")
-        match = self._make_match(1, "ctrl-1")
-        response = self._make_response(matches=[match])
-        request = self._make_request()
-
-        # Reset the once-only warning flag so the warning fires in this test
-        eval_mod._trace_warning_logged = False
-
-        with patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
-             patch("agent_control.evaluation.add_event") as mock_add, \
-             patch("agent_control.evaluation._logger") as mock_logger:
-            _emit_local_events(
-                response, request, [ctrl],
-                None, None, "test-agent",
-            )
-            assert mock_add.call_count == 1
-            event = mock_add.call_args_list[0][0][0]
-            assert event.trace_id == _FALLBACK_TRACE_ID
-            assert event.span_id == _FALLBACK_SPAN_ID
-            assert event.trace_id == "0" * 32
-            assert event.span_id == "0" * 16
-            # Warning should have been logged
-            mock_logger.warning.assert_called_once()
-            assert "fallback" in mock_logger.warning.call_args[0][0].lower()
-
-    def test_composite_control_emits_representative_leaf_metadata(self):
-        """Composite local controls should emit stable representative metadata."""
-        # Given: a composite local control and a non-match response for that control
-        ctrl = _ControlAdapter(
-            id=1,
-            name="composite-ctrl",
-            control=ControlDefinition(
-                execution="sdk",
-                condition={
+        control_lookup = {
+            1: self._make_control(
+                1,
+                "ctrl-1",
+                {
                     "and": [
                         {
                             "selector": {"path": "input"},
@@ -273,27 +157,20 @@ class TestEmitLocalEvents:
                         },
                     ]
                 },
-                action={"decision": "allow"},
-            ),
+            ).control
+        }
+
+        events = build_control_execution_events(
+            response,
+            request,
+            control_lookup,
+            "trace123",
+            "span456",
+            "test-agent",
         )
-        non_match = self._make_match(1, "composite-ctrl", action="allow", matched=False)
-        response = self._make_response(non_matches=[non_match])
-        request = self._make_request()
 
-        # When: emitting local observability events
-        with patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
-             patch("agent_control.evaluation.add_event") as mock_add:
-            _emit_local_events(
-                response,
-                request,
-                [ctrl],
-                "trace123",
-                "span456",
-                "test-agent",
-            )
-            event = mock_add.call_args_list[0][0][0]
-
-        # Then: the first leaf becomes the event identity and full context is preserved
+        assert len(events) == 1
+        event = events[0]
         assert event.evaluator_name == "regex"
         assert event.selector_path == "input"
         assert event.metadata["primary_evaluator"] == "regex"
@@ -302,52 +179,42 @@ class TestEmitLocalEvents:
         assert event.metadata["all_evaluators"] == ["regex"]
         assert event.metadata["all_selector_paths"] == ["input", "output"]
 
-    def test_fallback_warning_logged_only_once(self):
-        """The missing-trace-context warning should fire only on the first call."""
-        import agent_control.evaluation as eval_mod
-        from agent_control.evaluation import _emit_local_events
+    def test_enqueue_observability_events_uses_existing_batcher(self):
+        from agent_control_models import ControlExecutionEvent
 
-        ctrl = self._make_control_adapter(1, "ctrl-1")
-        match = self._make_match(1, "ctrl-1")
-        response = self._make_response(matches=[match])
-        request = self._make_request()
+        events = [
+            ControlExecutionEvent(
+                trace_id="a" * 32,
+                span_id="b" * 16,
+                agent_name="agent-000000000001",
+                control_id=1,
+                control_name="ctrl-1",
+                check_stage="pre",
+                applies_to="llm_call",
+                action="allow",
+                matched=False,
+                confidence=1.0,
+            )
+        ]
 
-        eval_mod._trace_warning_logged = False
+        with patch("agent_control.evaluation_events.is_observability_enabled", return_value=True), \
+             patch("agent_control.evaluation_events.add_event") as mock_add:
+            enqueue_observability_events(events)
 
-        with patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
-             patch("agent_control.evaluation.add_event"), \
-             patch("agent_control.evaluation._logger") as mock_logger:
-            _emit_local_events(response, request, [ctrl], None, None, "agent-test-a1")
-            _emit_local_events(response, request, [ctrl], None, None, "agent-test-a1")
-            assert mock_logger.warning.call_count == 1
-
-
-# =============================================================================
-# check_evaluation_with_local event emission + header forwarding
-# =============================================================================
+        mock_add.assert_called_once_with(events[0])
 
 
 class TestCheckEvaluationWithLocal:
-    """Tests for check_evaluation_with_local event emission and non_matches."""
-
     def teardown_method(self) -> None:
         clear_trace_context_provider()
 
     @pytest.mark.asyncio
-    async def test_emits_events_when_trace_context_provided(self):
-        """Should emit observability events when trace_id and span_id are passed."""
-        from agent_control_models import (
-            ControlMatch,
-            EvaluationResponse,
-            EvaluatorResult,
-            Step,
-        )
+    async def test_delivers_local_events_in_oss_mode(self):
+        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
 
         mock_response = EvaluationResponse(
             is_safe=True,
             confidence=1.0,
-            matches=None,
-            errors=None,
             non_matches=[
                 ControlMatch(
                     control_id=1,
@@ -357,7 +224,6 @@ class TestCheckEvaluationWithLocal:
                 )
             ],
         )
-
         mock_engine = MagicMock()
         mock_engine.process = AsyncMock(return_value=mock_response)
 
@@ -380,7 +246,8 @@ class TestCheckEvaluationWithLocal:
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
-             patch("agent_control.evaluation._emit_local_events") as mock_emit:
+             patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation_with_local(
                 client=client,
                 agent_name="agent-000000000001",
@@ -392,29 +259,32 @@ class TestCheckEvaluationWithLocal:
                 event_agent_name="test-agent",
             )
 
-            mock_emit.assert_called_once()
-            call_args = mock_emit.call_args
-            assert call_args[0][2] is not None  # local_controls
-            assert call_args[0][3] == "abc123"  # trace_id
-            assert call_args[0][4] == "def456"  # span_id
-            assert call_args.kwargs["agent_name"] == "test-agent"
-
-        # Also verify non_matches propagated
+        mock_enqueue.assert_called_once()
+        delivered_events = mock_enqueue.call_args.args[0]
+        assert len(delivered_events) == 1
+        assert delivered_events[0].trace_id == "abc123"
+        assert delivered_events[0].span_id == "def456"
         assert result.non_matches is not None
         assert len(result.non_matches) == 1
 
     @pytest.mark.asyncio
-    async def test_emits_events_without_trace_context(self):
-        """Should resolve trace context from the provider when IDs are omitted."""
-        from agent_control_models import EvaluationResponse, Step
+    async def test_resolves_provider_trace_context_for_local_events(self):
+        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
 
         mock_response = EvaluationResponse(
-            is_safe=True, confidence=1.0, matches=None, errors=None, non_matches=None,
+            is_safe=True,
+            confidence=1.0,
+            non_matches=[
+                ControlMatch(
+                    control_id=1,
+                    control_name="test-ctrl",
+                    action="allow",
+                    result=EvaluatorResult(matched=False, confidence=0.1),
+                )
+            ],
         )
-
         mock_engine = MagicMock()
         mock_engine.process = AsyncMock(return_value=mock_response)
-
         controls = [{
             "id": 1,
             "name": "test-ctrl",
@@ -431,79 +301,23 @@ class TestCheckEvaluationWithLocal:
         client = MagicMock()
         client.http_client = AsyncMock()
         step = Step(type="llm", name="test-step", input="hello")
-        set_trace_context_provider(
-            lambda: {
-                "trace_id": "a" * 32,
-                "span_id": "b" * 16,
-            }
-        )
+        set_trace_context_provider(lambda: {"trace_id": "a" * 32, "span_id": "b" * 16})
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
-             patch("agent_control.evaluation._emit_local_events") as mock_emit:
+             patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             await evaluation.check_evaluation_with_local(
                 client=client,
                 agent_name="agent-000000000001",
                 step=step,
                 stage="pre",
                 controls=controls,
-                # No trace_id/span_id
-            )
-            mock_emit.assert_called_once()
-            call_args = mock_emit.call_args
-            assert call_args[0][3] == "a" * 32
-            assert call_args[0][4] == "b" * 16
-
-    @pytest.mark.asyncio
-    async def test_forwards_trace_headers_to_server(self):
-        """Server POST should include X-Trace-Id and X-Span-Id headers."""
-        from agent_control_models import Step
-
-        # Only server controls, no local controls
-        controls = [{
-            "id": 1,
-            "name": "server-ctrl",
-            "control": {
-                "condition": {
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
-                    "selector": {"path": "input"},
-                },
-                "action": {"decision": "deny"},
-                "execution": "server",
-            },
-        }]
-
-        mock_http_response = MagicMock()
-        mock_http_response.json.return_value = {
-            "is_safe": True,
-            "confidence": 1.0,
-            "matches": None,
-            "errors": None,
-            "non_matches": None,
-        }
-        mock_http_response.raise_for_status = MagicMock()
-
-        client = MagicMock()
-        client.http_client = AsyncMock()
-        client.http_client.post = AsyncMock(return_value=mock_http_response)
-        step = Step(type="llm", name="test-step", input="hello")
-
-        with patch("agent_control.evaluation.list_evaluators", return_value=["regex"]):
-            await evaluation.check_evaluation_with_local(
-                client=client,
-                agent_name="agent-000000000001",
-                step=step,
-                stage="pre",
-                controls=controls,
-                trace_id="aaaa1111bbbb2222cccc3333dddd4444",
-                span_id="eeee5555ffff6666",
             )
 
-        # Verify POST was called with headers
-        call_kwargs = client.http_client.post.call_args
-        headers = call_kwargs.kwargs.get("headers", {})
-        assert headers["X-Trace-Id"] == "aaaa1111bbbb2222cccc3333dddd4444"
-        assert headers["X-Span-Id"] == "eeee5555ffff6666"
+        delivered_events = mock_enqueue.call_args.args[0]
+        assert delivered_events[0].trace_id == "a" * 32
+        assert delivered_events[0].span_id == "b" * 16
 
     @pytest.mark.asyncio
     async def test_forwards_provider_trace_headers_to_server_when_ids_omitted(self):
@@ -559,54 +373,330 @@ class TestCheckEvaluationWithLocal:
         assert headers["X-Span-Id"] == "d" * 16
 
 
-# =============================================================================
-# control_decorators non_matches dict conversion
-# =============================================================================
-
-
-class TestControlDecoratorsNonMatches:
-    """Tests for non_matches dict conversion in control_decorators._evaluate."""
-
+class TestCheckEvaluation:
     @pytest.mark.asyncio
-    async def test_non_matches_populated_in_stats(self):
-        """non_matches should be properly converted to dicts for stats tracking."""
-        from agent_control.control_decorators import ControlContext
+    async def test_default_path_keeps_server_only_behavior(self):
+        from agent_control_models import Step
 
-        # Simulate a result dict with non_matches
-        result = {
+        mock_http_response = MagicMock()
+        mock_http_response.raise_for_status = MagicMock()
+        mock_http_response.json.return_value = {
             "is_safe": True,
-            "confidence": 1.0,
+            "confidence": 0.9,
             "matches": None,
             "errors": None,
-            "non_matches": [
-                {
-                    "control_id": 1,
-                    "control_name": "ctrl-1",
-                    "action": "allow",
-                    "result": {"matched": False, "confidence": 0.1},
-                },
-                {
-                    "control_id": 2,
-                    "control_name": "ctrl-2",
-                    "action": "deny",
-                    "result": {"matched": False, "confidence": 0.2},
-                },
-            ],
+            "non_matches": None,
         }
 
-        ctx = ControlContext(
-            agent_name="test-agent",
-            server_url="http://localhost:8000",
-            func=lambda: None,
-            args=(),
-            kwargs={},
-            trace_id="trace123",
-            span_id="span456",
-            start_time=0,
-        )
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
 
-        ctx._update_stats(result)
-        assert ctx.total_executions == 2
-        assert ctx.total_non_matches == 2
-        assert ctx.total_matches == 0
-        assert ctx.total_errors == 0
+        with patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=False), \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+            result = await evaluation.check_evaluation(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+            )
+
+        call_kwargs = client.http_client.post.call_args.kwargs
+        assert call_kwargs["headers"] is None
+        mock_enqueue.assert_not_called()
+        assert result.is_safe is True
+        assert result.confidence == 0.9
+
+    @pytest.mark.asyncio
+    async def test_merged_event_mode_enqueues_reconstructed_server_events(self):
+        from agent_control_models import Step
+
+        controls = [
+            {
+                "id": 2,
+                "name": "server-ctrl",
+                "control": {
+                    "condition": {
+                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "selector": {"path": "input"},
+                    },
+                    "action": {"decision": "allow"},
+                    "execution": "server",
+                },
+            }
+        ]
+
+        mock_http_response = MagicMock()
+        mock_http_response.raise_for_status = MagicMock()
+        mock_http_response.json.return_value = {
+            "is_safe": True,
+            "confidence": 0.9,
+            "matches": [
+                {
+                    "control_id": 2,
+                    "control_name": "server-ctrl",
+                    "action": "allow",
+                    "control_execution_id": "ce-server",
+                    "result": {"matched": True, "confidence": 0.4},
+                }
+            ],
+            "errors": None,
+            "non_matches": None,
+        }
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=True), \
+             patch("agent_control.evaluation.get_trace_and_span_ids", return_value=("a" * 32, "b" * 16)), \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue, \
+             patch.object(evaluation.state, "server_controls", controls):
+            result = await evaluation.check_evaluation(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+            )
+
+        headers = client.http_client.post.call_args.kwargs["headers"]
+        assert headers["X-Trace-Id"] == "a" * 32
+        assert headers["X-Span-Id"] == "b" * 16
+        assert headers["X-Agent-Control-Merge-Events"] == "true"
+
+        mock_enqueue.assert_called_once()
+        emitted_events = mock_enqueue.call_args.args[0]
+        assert len(emitted_events) == 1
+        assert emitted_events[0].control_id == 2
+        assert emitted_events[0].trace_id == "a" * 32
+        assert emitted_events[0].span_id == "b" * 16
+        assert emitted_events[0].metadata["primary_evaluator"] == "regex"
+        assert result.matches is not None
+        assert len(result.matches) == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_local_event_reconstruction_when_nothing_consumes_events(self):
+        from agent_control_models import EvaluationResponse, Step
+
+        controls = [{
+            "id": 1,
+            "name": "local-ctrl",
+            "control": {
+                "condition": {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
+                "action": {"decision": "allow"},
+                "execution": "sdk",
+            },
+        }]
+
+        mock_response = EvaluationResponse(is_safe=True, confidence=1.0)
+        mock_engine = MagicMock()
+        mock_engine.process = AsyncMock(return_value=mock_response)
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
+             patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
+             patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=False), \
+             patch("agent_control.evaluation.is_observability_enabled", return_value=False), \
+             patch("agent_control.evaluation.build_control_execution_events") as mock_build, \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+            result = await evaluation.check_evaluation_with_local(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+                controls=controls,
+            )
+
+        mock_build.assert_not_called()
+        mock_enqueue.assert_not_called()
+        assert result.is_safe is True
+        assert result.confidence == 1.0
+
+    @pytest.mark.asyncio
+    async def test_check_evaluation_falls_back_when_initialized_agent_does_not_match(self):
+        from agent_control_models import Step
+
+        mock_http_response = MagicMock()
+        mock_http_response.raise_for_status = MagicMock()
+        mock_http_response.json.return_value = {
+            "is_safe": True,
+            "confidence": 0.9,
+            "matches": None,
+            "errors": None,
+            "non_matches": None,
+        }
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch.object(evaluation.state, "merge_events", True), \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue, \
+             patch.object(evaluation.state, "current_agent", MagicMock(agent_name="agent-000000000002")), \
+             patch.object(evaluation.state, "server_controls", []):
+            result = await evaluation.check_evaluation(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+            )
+
+        call_kwargs = client.http_client.post.call_args.kwargs
+        assert call_kwargs["headers"] is None
+        mock_enqueue.assert_not_called()
+        assert result.is_safe is True
+        assert result.confidence == 0.9
+
+    @pytest.mark.asyncio
+    async def test_check_evaluation_falls_back_when_client_targets_different_server(self):
+        from agent_control_models import Step
+
+        mock_http_response = MagicMock()
+        mock_http_response.raise_for_status = MagicMock()
+        mock_http_response.json.return_value = {
+            "is_safe": True,
+            "confidence": 0.9,
+            "matches": None,
+            "errors": None,
+            "non_matches": None,
+        }
+
+        client = MagicMock()
+        client.base_url = "http://different-server:8000"
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch.object(evaluation.state, "merge_events", True), \
+             patch.object(evaluation.state, "server_url", "http://localhost:8000"), \
+             patch.object(
+                 evaluation.state,
+                 "current_agent",
+                 MagicMock(agent_name="agent-000000000001"),
+             ), \
+             patch.object(evaluation.state, "server_controls", [{"id": 1, "name": "ctrl"}]), \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+            result = await evaluation.check_evaluation(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+            )
+
+        call_kwargs = client.http_client.post.call_args.kwargs
+        assert call_kwargs["headers"] is None
+        mock_enqueue.assert_not_called()
+        assert result.is_safe is True
+        assert result.confidence == 0.9
+
+
+# =============================================================================
+# Merged Event Creation
+# =============================================================================
+
+
+class TestMergedEventCreation:
+    """Tests for SDK-side merged event reconstruction and enqueueing."""
+
+    @pytest.mark.asyncio
+    async def test_merged_event_mode_enqueues_reconstructed_local_and_server_events_once(self):
+        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+
+        local_response = EvaluationResponse(
+            is_safe=True,
+            confidence=1.0,
+            matches=[
+                ControlMatch(
+                    control_id=1,
+                    control_name="local-ctrl",
+                    action="allow",
+                    result=EvaluatorResult(matched=False, confidence=0.8),
+                )
+            ],
+        )
+        server_response = {
+            "is_safe": True,
+            "confidence": 0.9,
+            "matches": [
+                {
+                    "control_id": 2,
+                    "control_name": "server-ctrl",
+                    "action": "allow",
+                    "control_execution_id": "ce-server",
+                    "result": {"matched": False, "confidence": 0.4},
+                }
+            ],
+            "errors": None,
+            "non_matches": None,
+        }
+
+        controls = [
+            {
+                "id": 1,
+                "name": "local-ctrl",
+                "control": {
+                    "condition": {
+                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "selector": {"path": "input"},
+                    },
+                    "action": {"decision": "allow"},
+                    "execution": "sdk",
+                },
+            },
+            {
+                "id": 2,
+                "name": "server-ctrl",
+                "control": {
+                    "condition": {
+                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "selector": {"path": "input"},
+                    },
+                    "action": {"decision": "allow"},
+                    "execution": "server",
+                },
+            },
+        ]
+
+        mock_engine = MagicMock()
+        mock_engine.process = AsyncMock(return_value=local_response)
+        mock_http_response = MagicMock()
+        mock_http_response.raise_for_status = MagicMock()
+        mock_http_response.json.return_value = server_response
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
+             patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
+             patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=True), \
+             patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+            result = await evaluation.check_evaluation_with_local(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+                controls=controls,
+                trace_id="abc123",
+                span_id="def456",
+                event_agent_name="test-agent",
+            )
+        mock_enqueue.assert_called_once()
+        merged_events = mock_enqueue.call_args.args[0]
+        assert len(merged_events) == 2
+        assert {event.control_id for event in merged_events} == {1, 2}
+        headers = client.http_client.post.call_args.kwargs["headers"]
+        assert headers["X-Agent-Control-Merge-Events"] == "true"
+        assert result.matches is not None
+        assert len(result.matches) == 2

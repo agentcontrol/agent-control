@@ -1,5 +1,4 @@
 """Telemetry interfaces for provider-agnostic tracing."""
-
 from .trace_context import (
     TraceContext,
     TraceContextProvider,

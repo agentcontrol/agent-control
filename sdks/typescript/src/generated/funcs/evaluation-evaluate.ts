@@ -109,6 +109,11 @@ async function $do(
   const headers = new Headers(compactMap({
     "Content-Type": "application/json",
     Accept: "application/json",
+    "X-Agent-Control-Merge-Events": encodeSimple(
+      "X-Agent-Control-Merge-Events",
+      payload["X-Agent-Control-Merge-Events"],
+      { explode: false, charEncoding: "none" },
+    ),
     "X-Span-Id": encodeSimple("X-Span-Id", payload["X-Span-Id"], {
       explode: false,
       charEncoding: "none",

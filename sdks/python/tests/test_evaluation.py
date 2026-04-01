@@ -66,6 +66,7 @@ async def test_check_evaluation_returns_result_model():
             },
             "stage": "pre",
         },
+        headers=None,
     )
 
 
