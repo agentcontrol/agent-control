@@ -53,12 +53,19 @@ function parseTemplateJson(text: string): TemplateDefinition | string {
   if (!obj.definition_template) {
     return 'Missing required field "definition_template".';
   }
-  if (typeof obj.definition_template !== 'object' || obj.definition_template === null) {
+  if (
+    typeof obj.definition_template !== 'object' ||
+    obj.definition_template === null
+  ) {
     return '"definition_template" must be a JSON object.';
   }
   // parameters is optional (defaults to empty dict on the server)
   if (obj.parameters !== undefined) {
-    if (typeof obj.parameters !== 'object' || obj.parameters === null || Array.isArray(obj.parameters)) {
+    if (
+      typeof obj.parameters !== 'object' ||
+      obj.parameters === null ||
+      Array.isArray(obj.parameters)
+    ) {
       return '"parameters" must be a JSON object.';
     }
   }
@@ -125,12 +132,9 @@ export function CreateFromTemplate({
     setApiError(null);
   };
 
-  const handlePreviewErrors = useCallback(
-    (errors: Record<string, string>) => {
-      setParamErrors(errors);
-    },
-    []
-  );
+  const handlePreviewErrors = useCallback((errors: Record<string, string>) => {
+    setParamErrors(errors);
+  }, []);
 
   const handleSave = () => {
     if (!template) return;
@@ -170,10 +174,7 @@ export function CreateFromTemplate({
               const newParamErrors: Record<string, string> = {};
               for (const item of pd.errors) {
                 if (item.field?.startsWith('template_values.')) {
-                  const paramName = item.field.replace(
-                    'template_values.',
-                    ''
-                  );
+                  const paramName = item.field.replace('template_values.', '');
                   newParamErrors[paramName] = item.message;
                 }
               }
@@ -204,7 +205,11 @@ export function CreateFromTemplate({
           <Title order={3} fw={600}>
             Create from Template
           </Title>
-          <Button size="sm" onClick={onClose} data-testid="close-template-modal-button">
+          <Button
+            size="sm"
+            onClick={onClose}
+            data-testid="close-template-modal-button"
+          >
             <IconX size={16} />
           </Button>
         </Group>
@@ -256,10 +261,18 @@ export function CreateFromTemplate({
             />
 
             <Group justify="flex-end">
-              <Button variant="outline" onClick={onClose} data-testid="cancel-template-paste">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                data-testid="cancel-template-paste"
+              >
                 Cancel
               </Button>
-              <Button variant="filled" onClick={handleContinue} data-testid="continue-template">
+              <Button
+                variant="filled"
+                onClick={handleContinue}
+                data-testid="continue-template"
+              >
                 Continue
               </Button>
             </Group>
@@ -332,7 +345,11 @@ export function CreateFromTemplate({
             <Divider />
 
             <Group justify="flex-end">
-              <Button variant="outline" onClick={onClose} data-testid="cancel-template-create">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                data-testid="cancel-template-create"
+              >
                 Cancel
               </Button>
               <Button

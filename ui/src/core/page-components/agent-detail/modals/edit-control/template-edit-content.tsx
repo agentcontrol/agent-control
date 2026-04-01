@@ -54,10 +54,9 @@ export function TemplateEditContent({
   // generated API types yet. Will be cleaned up after type regeneration.
   const definitionRaw = control.control as Record<string, unknown>;
   const template = definitionRaw.template as TemplateControlInput['template'];
-  const storedValues = definitionRaw.template_values as Record<
-    string,
-    TemplateValue
-  > | undefined;
+  const storedValues = definitionRaw.template_values as
+    | Record<string, TemplateValue>
+    | undefined;
 
   const [editorMode, setEditorMode] = useState<EditorMode>('params');
   const [controlName, setControlName] = useState(control.name);
@@ -76,12 +75,9 @@ export function TemplateEditContent({
   const updateControlMetadata = useUpdateControlMetadata();
   const isPending = updateControl.isPending || updateControlMetadata.isPending;
 
-  const handlePreviewErrors = useCallback(
-    (errors: Record<string, string>) => {
-      setParamErrors(errors);
-    },
-    []
-  );
+  const handlePreviewErrors = useCallback((errors: Record<string, string>) => {
+    setParamErrors(errors);
+  }, []);
 
   const buildTemplateInput = useCallback((): TemplateControlInput => {
     return {
@@ -107,14 +103,18 @@ export function TemplateEditContent({
     try {
       const parsed = JSON.parse(jsonText) as TemplateControlInput;
       if (!parsed.template?.definition_template) {
-        setJsonError('JSON must contain a "template" object with "definition_template".');
+        setJsonError(
+          'JSON must contain a "template" object with "definition_template".'
+        );
         return;
       }
       setTemplateValues(parsed.template_values ?? {});
       setJsonError(null);
       setEditorMode('params');
     } catch {
-      setJsonError('Invalid JSON. Fix syntax errors before switching to Parameters.');
+      setJsonError(
+        'Invalid JSON. Fix syntax errors before switching to Parameters.'
+      );
     }
   };
 
@@ -131,7 +131,9 @@ export function TemplateEditContent({
       try {
         templateInput = JSON.parse(jsonText) as TemplateControlInput;
         if (!templateInput.template?.definition_template) {
-          setJsonError('JSON must contain a "template" object with "definition_template".');
+          setJsonError(
+            'JSON must contain a "template" object with "definition_template".'
+          );
           return;
         }
       } catch {
@@ -212,10 +214,7 @@ export function TemplateEditContent({
               const newParamErrors: Record<string, string> = {};
               for (const item of pd.errors) {
                 if (item.field?.startsWith('template_values.')) {
-                  const paramName = item.field.replace(
-                    'template_values.',
-                    ''
-                  );
+                  const paramName = item.field.replace('template_values.', '');
                   newParamErrors[paramName] = item.message;
                 }
               }
@@ -239,7 +238,8 @@ export function TemplateEditContent({
   };
 
   // Extract read-only summary from the rendered control
-  const action = (definitionRaw.action as { decision?: string })?.decision ?? 'unknown';
+  const action =
+    (definitionRaw.action as { decision?: string })?.decision ?? 'unknown';
   const execution = (definitionRaw.execution as string) ?? 'server';
   const description = definitionRaw.description as string | undefined;
 
@@ -281,7 +281,8 @@ export function TemplateEditContent({
       {editorMode === 'json' ? (
         <Stack gap="md">
           <Text size="sm" c="dimmed">
-            Edit the full template input JSON below. Control name stays separate.
+            Edit the full template input JSON below. Control name stays
+            separate.
           </Text>
           <Textarea
             value={jsonText}
@@ -336,8 +337,8 @@ export function TemplateEditContent({
               ) : null}
               <Alert variant="light" color="blue" p="xs">
                 <Text size="xs">
-                  Scope, condition, and action are managed by the template.
-                  Edit the parameters on the right to change control behavior.
+                  Scope, condition, and action are managed by the template. Edit
+                  the parameters on the right to change control behavior.
                 </Text>
               </Alert>
             </Stack>

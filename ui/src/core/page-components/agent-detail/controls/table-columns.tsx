@@ -69,7 +69,8 @@ export function useControlsTableColumns({
                       onError: (error: Error) => {
                         notifications.show({
                           title: 'Failed to update control',
-                          message: error.message || 'An unexpected error occurred',
+                          message:
+                            error.message || 'An unexpected error occurred',
                           color: 'red',
                         });
                       },
@@ -78,17 +79,24 @@ export function useControlsTableColumns({
                     if (isTemplate) {
                       // Template-backed controls use PATCH to avoid 409 on PUT /data
                       updateControlMetadata.mutate(
-                        { agentId, controlId: control.id, data: { enabled: newEnabled } },
-                        callbacks,
+                        {
+                          agentId,
+                          controlId: control.id,
+                          data: { enabled: newEnabled },
+                        },
+                        callbacks
                       );
                     } else {
                       updateControl.mutate(
                         {
                           agentId,
                           controlId: control.id,
-                          definition: { ...control.control, enabled: newEnabled },
+                          definition: {
+                            ...control.control,
+                            enabled: newEnabled,
+                          },
                         },
-                        callbacks,
+                        callbacks
                       );
                     }
                   },
@@ -104,7 +112,9 @@ export function useControlsTableColumns({
         accessorKey: 'name',
         size: 280,
         cell: ({ row }: { row: { original: Control } }) => {
-          const ctrl = row.original.control as Record<string, unknown> | undefined;
+          const ctrl = row.original.control as
+            | Record<string, unknown>
+            | undefined;
           const isTemplate = ctrl?.template != null;
           return (
             <Group gap={6} wrap="nowrap">

@@ -14,10 +14,7 @@ import type {
   TemplateValue,
 } from '@/core/api/types';
 
-import {
-  labelPropsInline,
-  LabelWithTooltip,
-} from './label-with-tooltip';
+import { labelPropsInline, LabelWithTooltip } from './label-with-tooltip';
 
 type TemplateParamFormProps = {
   template: TemplateDefinition;

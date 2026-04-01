@@ -801,17 +801,20 @@ export const mockRoutes = {
 
   /** Mock POST /api/v1/agents/:name/controls/:id (attach control) */
   agentAddControl: async (page: Page) => {
-    await page.route('**/api/v1/agents/*/controls/*', async (route, request) => {
-      if (request.method() !== 'POST') {
-        await route.fallback();
-        return;
+    await page.route(
+      '**/api/v1/agents/*/controls/*',
+      async (route, request) => {
+        if (request.method() !== 'POST') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
       }
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true }),
-      });
-    });
+    );
   },
 
   /** Mock GET /api/v1/observability/stats */

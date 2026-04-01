@@ -53,7 +53,11 @@ export function TemplatePreview({
       });
       if (result?.control) {
         // Strip template authoring metadata — show only what the engine sees.
-        const { template: _t, template_values: _tv, ...rendered } = result.control as Record<string, unknown>;
+        const {
+          template: _t,
+          template_values: _tv,
+          ...rendered
+        } = result.control as Record<string, unknown>;
         setRenderedJson(JSON.stringify(rendered, null, 2));
         onErrors?.({});
       }

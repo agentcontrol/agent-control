@@ -123,7 +123,6 @@ export function AddNewControlModal({
     });
   };
 
-
   const handleEditModalClose = () => {
     closeSubmodal();
   };
@@ -361,7 +360,6 @@ export function AddNewControlModal({
           ) : null}
         </ErrorBoundary>
       </Modal>
-
     </Modal>
   );
 }

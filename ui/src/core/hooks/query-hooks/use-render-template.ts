@@ -10,9 +10,8 @@ import type { RenderControlTemplateRequest } from '@/core/api/types';
 export function useRenderTemplate() {
   return useMutation({
     mutationFn: async (request: RenderControlTemplateRequest) => {
-      const { data, error, response } = await api.controlTemplates.render(
-        request
-      );
+      const { data, error, response } =
+        await api.controlTemplates.render(request);
 
       if (error) {
         throw parseApiError(

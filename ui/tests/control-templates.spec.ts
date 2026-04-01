@@ -47,7 +47,9 @@ test.describe('Control Templates', () => {
       await mockedPage.goto(controlsUrl);
 
       // Then: the template-backed control row shows a "Template" badge
-      const badge = mockedPage.locator('table').getByText('Template', { exact: true });
+      const badge = mockedPage
+        .locator('table')
+        .getByText('Template', { exact: true });
       await expect(badge).toBeVisible();
     });
 
@@ -60,7 +62,9 @@ test.describe('Control Templates', () => {
       await mockedPage.goto(controlsUrl);
 
       // Then: no "Template" badge appears anywhere in the table
-      const badges = mockedPage.locator('table').getByText('Template', { exact: true });
+      const badges = mockedPage
+        .locator('table')
+        .getByText('Template', { exact: true });
       await expect(badges).toHaveCount(0);
     });
   });
@@ -99,7 +103,9 @@ test.describe('Control Templates', () => {
 
       // Then: the Template badge is visible in the dialog header
       const dialog = mockedPage.getByRole('dialog');
-      await expect(dialog.getByText('Template', { exact: true }).first()).toBeVisible();
+      await expect(
+        dialog.getByText('Template', { exact: true }).first()
+      ).toBeVisible();
     });
 
     test('shows Parameters and Full JSON mode switcher', async ({
@@ -113,8 +119,12 @@ test.describe('Control Templates', () => {
 
       // Then: both mode options are visible in the segmented control
       const dialog = mockedPage.getByRole('dialog');
-      await expect(dialog.getByText('Parameters', { exact: true })).toBeVisible();
-      await expect(dialog.locator('label').getByText('Full JSON')).toBeVisible();
+      await expect(
+        dialog.getByText('Parameters', { exact: true })
+      ).toBeVisible();
+      await expect(
+        dialog.locator('label').getByText('Full JSON')
+      ).toBeVisible();
     });
 
     test('can toggle to Full JSON mode and see template JSON', async ({
@@ -166,9 +176,13 @@ test.describe('Control Templates', () => {
 
       // Then: the left panel shows rendered control metadata as read-only
       const dialog = mockedPage.getByRole('dialog');
-      await expect(dialog.getByText('Deny when input matches pattern')).toBeVisible();
+      await expect(
+        dialog.getByText('Deny when input matches pattern')
+      ).toBeVisible();
       await expect(dialog.getByText('Regex denial template')).toBeVisible();
-      await expect(dialog.locator('.mantine-Badge-root').getByText('deny')).toBeVisible();
+      await expect(
+        dialog.locator('.mantine-Badge-root').getByText('deny')
+      ).toBeVisible();
     });
 
     test('control name field is pre-filled and editable', async ({
@@ -240,7 +254,9 @@ test.describe('Control Templates', () => {
 
       // And: template-specific elements are NOT shown
       await expect(dialog.getByText('Template Parameters')).not.toBeVisible();
-      await expect(dialog.getByText(/managed by the template/)).not.toBeVisible();
+      await expect(
+        dialog.getByText(/managed by the template/)
+      ).not.toBeVisible();
     });
 
     test('raw control edit does not show Parameters toggle', async ({
@@ -253,7 +269,9 @@ test.describe('Control Templates', () => {
 
       // Then: the "Parameters" toggle (template-only) is not visible
       const dialog = mockedPage.getByRole('dialog');
-      await expect(dialog.getByText('Parameters', { exact: true })).not.toBeVisible();
+      await expect(
+        dialog.getByText('Parameters', { exact: true })
+      ).not.toBeVisible();
     });
   });
 
