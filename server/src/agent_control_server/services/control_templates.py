@@ -489,30 +489,37 @@ def render_template_control_input(
     """Render a template-backed control input into a concrete control definition."""
     template = template_input.template
     definition_template = template.definition_template
-    if isinstance(definition_template, dict):
-        for forbidden_key in ("enabled", "name"):
-            if forbidden_key in definition_template:
-                raise _render_error(
-                    detail=f"Templates must not define top-level '{forbidden_key}'",
-                    field=forbidden_key,
-                    code="forbidden_template_field",
-                    message=(
-                        f"Templates must not define top-level '{forbidden_key}'. "
-                        "Manage it outside the template."
-                    ),
-                )
-        if "condition" not in definition_template and (
-            "selector" in definition_template or "evaluator" in definition_template
-        ):
+    if not isinstance(definition_template, dict):
+        raise _render_error(
+            detail="Templates must define a top-level control object",
+            field="template.definition_template",
+            code="invalid_definition_template_type",
+            message="definition_template must be a JSON object representing a control definition.",
+        )
+
+    for forbidden_key in ("enabled", "name"):
+        if forbidden_key in definition_template:
             raise _render_error(
-                detail="Templates must use the canonical 'condition' format",
-                field="condition",
-                code="legacy_condition_format_not_supported",
+                detail=f"Templates must not define top-level '{forbidden_key}'",
+                field=forbidden_key,
+                code="forbidden_template_field",
                 message=(
-                    "Templates must use the canonical 'condition' wrapper instead of "
-                    "top-level selector/evaluator fields."
+                    f"Templates must not define top-level '{forbidden_key}'. "
+                    "Manage it outside the template."
                 ),
             )
+    if "condition" not in definition_template and (
+        "selector" in definition_template or "evaluator" in definition_template
+    ):
+        raise _render_error(
+            detail="Templates must use the canonical 'condition' format",
+            field="condition",
+            code="legacy_condition_format_not_supported",
+            message=(
+                "Templates must use the canonical 'condition' wrapper instead of "
+                "top-level selector/evaluator fields."
+            ),
+        )
 
     resolved_values = _resolve_template_values(template, template_input.template_values)
     reverse_path_map: dict[str, str] = {}
