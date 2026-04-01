@@ -101,6 +101,41 @@ def _parameter_default(
     return _TEMPLATE_VALUE_MISSING if default is None else cast(TemplateValue, default)
 
 
+def _parameter_invalid_type(
+    parameter_name: str,
+    parameter_definition: TemplateParameterDefinition,
+    *,
+    expected: str,
+    value: TemplateValue,
+) -> APIValidationError:
+    """Create a standard invalid-type error for template parameter values."""
+    return _parameter_error(
+        parameter_name,
+        parameter_definition,
+        f"Parameter '{parameter_definition.label}' must be {expected}.",
+        code="invalid_type",
+        value=value,
+    )
+
+
+def _require_string_parameter(
+    parameter_name: str,
+    parameter_definition: TemplateParameterDefinition,
+    value: TemplateValue,
+    *,
+    expected: str,
+) -> str:
+    """Return a string parameter value or raise a parameter-focused type error."""
+    if not isinstance(value, str):
+        raise _parameter_invalid_type(
+            parameter_name,
+            parameter_definition,
+            expected=expected,
+            value=value,
+        )
+    return value
+
+
 def _coerce_parameter_value(
     parameter_name: str,
     parameter_definition: TemplateParameterDefinition,
@@ -109,38 +144,32 @@ def _coerce_parameter_value(
     """Validate a concrete parameter value against its parameter definition."""
     parameter_type = parameter_definition.type
     if parameter_type == "string":
-        if not isinstance(value, str):
-            raise _parameter_error(
-                parameter_name,
-                parameter_definition,
-                f"Parameter '{parameter_definition.label}' must be a string.",
-                code="invalid_type",
-                value=value,
-            )
-        return value
+        return _require_string_parameter(
+            parameter_name,
+            parameter_definition,
+            value,
+            expected="a string",
+        )
 
     if parameter_type == "string_list":
         if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-            raise _parameter_error(
+            raise _parameter_invalid_type(
                 parameter_name,
                 parameter_definition,
-                f"Parameter '{parameter_definition.label}' must be a list of strings.",
-                code="invalid_type",
+                expected="a list of strings",
                 value=value,
             )
         return list(value)
 
     if parameter_type == "enum":
-        if not isinstance(value, str):
-            raise _parameter_error(
-                parameter_name,
-                parameter_definition,
-                f"Parameter '{parameter_definition.label}' must be a string enum value.",
-                code="invalid_type",
-                value=value,
-            )
+        enum_value = _require_string_parameter(
+            parameter_name,
+            parameter_definition,
+            value,
+            expected="a string enum value",
+        )
         enum_definition = cast(EnumTemplateParameter, parameter_definition)
-        if value not in enum_definition.allowed_values:
+        if enum_value not in enum_definition.allowed_values:
             raise _parameter_error(
                 parameter_name,
                 parameter_definition,
@@ -149,32 +178,29 @@ def _coerce_parameter_value(
                     f"{enum_definition.allowed_values}."
                 ),
                 code="invalid_enum_value",
-                value=value,
+                value=enum_value,
             )
-        return value
+        return enum_value
 
     if parameter_type == "boolean":
         if type(value) is not bool:
-            raise _parameter_error(
+            raise _parameter_invalid_type(
                 parameter_name,
                 parameter_definition,
-                f"Parameter '{parameter_definition.label}' must be a boolean.",
-                code="invalid_type",
+                expected="a boolean",
                 value=value,
             )
         return value
 
     if parameter_type == "regex_re2":
-        if not isinstance(value, str):
-            raise _parameter_error(
-                parameter_name,
-                parameter_definition,
-                f"Parameter '{parameter_definition.label}' must be a string regex pattern.",
-                code="invalid_type",
-                value=value,
-            )
+        pattern = _require_string_parameter(
+            parameter_name,
+            parameter_definition,
+            value,
+            expected="a string regex pattern",
+        )
         try:
-            re2.compile(value)
+            re2.compile(pattern)
         except re2.error as exc:
             raise _parameter_error(
                 parameter_name,
@@ -184,9 +210,9 @@ def _coerce_parameter_value(
                     f"Invalid regex pattern: {exc}"
                 ),
                 code="invalid_regex",
-                value=value,
+                value=pattern,
             ) from exc
-        return value
+        return pattern
 
     raise _render_error(
         detail=f"Unsupported template parameter type '{parameter_type}'",

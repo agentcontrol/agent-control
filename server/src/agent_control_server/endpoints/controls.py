@@ -58,6 +58,8 @@ router = APIRouter(prefix="/controls", tags=["controls"])
 template_router = APIRouter(prefix="/control-templates", tags=["controls"])
 
 _logger = get_logger(__name__)
+
+
 def _serialize_control_definition(control_def: ControlDefinition) -> dict[str, object]:
     """Serialize control data for storage while omitting null scope fields."""
     data_json = control_def.model_dump(
@@ -78,6 +80,36 @@ def _is_template_backed_payload(data: object) -> bool:
     return isinstance(data, dict) and data.get("template") is not None
 
 
+def _enabled_from_stored_payload(data: object) -> bool:
+    """Return the persisted enabled flag, defaulting to True when absent."""
+    if not isinstance(data, dict):
+        return True
+    raw_enabled = data.get("enabled", True)
+    return raw_enabled if type(raw_enabled) is bool else True
+
+
+def _template_backed_raw_update_conflict(control_id: int) -> ConflictError:
+    """Return the v1 conflict raised when raw data updates target template-backed controls."""
+    return ConflictError(
+        error_code=ErrorCode.CONTROL_TEMPLATE_CONFLICT,
+        detail="Template-backed controls cannot be updated with raw control data in v1",
+        resource="Control",
+        resource_id=str(control_id),
+        hint=(
+            "Submit template input to update this control, or delete and recreate "
+            "it as a raw control."
+        ),
+        errors=[
+            ValidationErrorItem(
+                resource="Control",
+                field="data",
+                code="template_backed_control_conflict",
+                message="Template-backed controls must be updated with template input.",
+            )
+        ],
+    )
+
+
 async def _render_and_validate_template_input(
     template_input: TemplateControlInput,
     *,
@@ -95,6 +127,33 @@ async def _render_and_validate_template_input(
             template=template_input.template,
         ) from exc
     return rendered.control
+
+
+async def _materialize_control_input(
+    control_input: ControlDefinition | TemplateControlInput,
+    *,
+    db: AsyncSession,
+    current_payload: object | None = None,
+    control_id: int | None = None,
+) -> ControlDefinition:
+    """Resolve raw or template-backed input into a validated control definition."""
+    if isinstance(control_input, TemplateControlInput):
+        enabled = (
+            True if current_payload is None else _enabled_from_stored_payload(current_payload)
+        )
+        return await _render_and_validate_template_input(
+            control_input,
+            db=db,
+            enabled=enabled,
+        )
+
+    if current_payload is not None and _is_template_backed_payload(current_payload):
+        if control_id is None:
+            raise RuntimeError("control_id is required for template-backed raw updates")
+        raise _template_backed_raw_update_conflict(control_id)
+
+    await _validate_control_definition(control_input, db)
+    return control_input
 
 
 async def _validate_control_definition(
@@ -321,15 +380,7 @@ async def create_control(
             hint="Choose a different name or update the existing control.",
         )
 
-    if isinstance(request.data, TemplateControlInput):
-        control_def = await _render_and_validate_template_input(
-            request.data,
-            db=db,
-            enabled=True,
-        )
-    else:
-        control_def = request.data
-        await _validate_control_definition(control_def, db)
+    control_def = await _materialize_control_input(request.data, db=db)
     control_data = _serialize_control_definition(control_def)
 
     control = Control(name=request.name, data=control_data)
@@ -501,39 +552,12 @@ async def set_control_data(
             hint="Verify the control ID is correct and the control has been created.",
         )
 
-    current_template_backed = _is_template_backed_payload(control.data)
-    if isinstance(request.data, TemplateControlInput):
-        current_enabled = True
-        if isinstance(control.data, dict):
-            raw_enabled = control.data.get("enabled", True)
-            current_enabled = raw_enabled if type(raw_enabled) is bool else True
-        control_def = await _render_and_validate_template_input(
-            request.data,
-            db=db,
-            enabled=current_enabled,
-        )
-    else:
-        if current_template_backed:
-            raise ConflictError(
-                error_code=ErrorCode.CONTROL_TEMPLATE_CONFLICT,
-                detail="Template-backed controls cannot be updated with raw control data in v1",
-                resource="Control",
-                resource_id=str(control_id),
-                hint=(
-                    "Submit template input to update this control, or delete and recreate "
-                    "it as a raw control."
-                ),
-                errors=[
-                    ValidationErrorItem(
-                        resource="Control",
-                        field="data",
-                        code="template_backed_control_conflict",
-                        message="Template-backed controls must be updated with template input.",
-                    )
-                ],
-            )
-        control_def = request.data
-        await _validate_control_definition(control_def, db)
+    control_def = await _materialize_control_input(
+        request.data,
+        db=db,
+        current_payload=control.data,
+        control_id=control_id,
+    )
 
     control.data = _serialize_control_definition(control_def)
     try:
@@ -571,14 +595,7 @@ async def validate_control_data(
     Returns:
         ValidateControlDataResponse with success=True if valid
     """
-    if isinstance(request.data, TemplateControlInput):
-        await _render_and_validate_template_input(
-            request.data,
-            db=db,
-            enabled=True,
-        )
-    else:
-        await _validate_control_definition(request.data, db)
+    await _materialize_control_input(request.data, db=db)
     return ValidateControlDataResponse(success=True)
 
 
