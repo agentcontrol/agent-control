@@ -90,7 +90,61 @@ def _defaults_only_template_payload() -> dict[str, object]:
     }
 
 
-def _raw_control_payload(pattern: str = "raw") -> dict[str, object]:
+def _case_sensitive_template_payload(
+    *,
+    values: list[str] | None = None,
+    case_sensitive: bool | None = None,
+    action: str = "deny",
+) -> dict[str, object]:
+    template_values: dict[str, object] = {}
+    if values is not None:
+        template_values["values"] = values
+    if case_sensitive is not None:
+        template_values["case_sensitive"] = case_sensitive
+
+    return {
+        "template": {
+            "description": "Case sensitivity template",
+            "parameters": {
+                "values": {
+                    "type": "string_list",
+                    "label": "Values",
+                    "required": False,
+                    "default": ["HELLO"],
+                },
+                "case_sensitive": {
+                    "type": "boolean",
+                    "label": "Case Sensitive",
+                    "required": False,
+                    "default": True,
+                },
+            },
+            "definition_template": {
+                "description": "Case sensitivity control",
+                "execution": "server",
+                "scope": {
+                    "step_names": ["templated-step"],
+                    "stages": ["pre"],
+                },
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {
+                        "name": "list",
+                        "config": {
+                            "values": {"$param": "values"},
+                            "match_mode": "exact",
+                            "case_sensitive": {"$param": "case_sensitive"},
+                        },
+                    },
+                },
+                "action": {"decision": action},
+            },
+        },
+        "template_values": template_values,
+    }
+
+
+def _raw_control_payload(pattern: str = "raw", *, action: str = "deny") -> dict[str, object]:
     return {
         "description": "Raw control",
         "enabled": True,
@@ -103,7 +157,7 @@ def _raw_control_payload(pattern: str = "raw") -> dict[str, object]:
                 "config": {"pattern": pattern},
             },
         },
-        "action": {"decision": "deny"},
+        "action": {"decision": action},
     }
 
 
@@ -112,13 +166,18 @@ def _create_template_control(client: TestClient) -> int:
     return control_id
 
 
-def _create_template_control_with_name(client: TestClient) -> tuple[int, str]:
-    control_name = f"template-control-{uuid.uuid4()}"
+def _create_template_control_with_name(
+    client: TestClient,
+    payload: dict[str, object] | None = None,
+    *,
+    name_prefix: str = "template-control",
+) -> tuple[int, str]:
+    control_name = f"{name_prefix}-{uuid.uuid4()}"
     response = client.put(
         "/api/v1/controls",
         json={
             "name": control_name,
-            "data": _template_payload(),
+            "data": payload or _template_payload(),
         },
     )
     assert response.status_code == 200, response.text
@@ -130,14 +189,8 @@ def _assign_control_to_agent(
     control_id: int,
     *,
     agent_name: str | None = None,
+    via_policy: bool = True,
 ) -> str:
-    policy_response = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
-    assert policy_response.status_code == 200, policy_response.text
-    policy_id = policy_response.json()["policy_id"]
-
-    add_control_response = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
-    assert add_control_response.status_code == 200, add_control_response.text
-
     effective_agent_name = agent_name or f"template-agent-{uuid.uuid4().hex[:12]}"
     init_response = client.post(
         "/api/v1/agents/initAgent",
@@ -145,8 +198,20 @@ def _assign_control_to_agent(
     )
     assert init_response.status_code == 200, init_response.text
 
-    assign_response = client.post(f"/api/v1/agents/{effective_agent_name}/policy/{policy_id}")
-    assert assign_response.status_code == 200, assign_response.text
+    if via_policy:
+        policy_response = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
+        assert policy_response.status_code == 200, policy_response.text
+        policy_id = policy_response.json()["policy_id"]
+
+        add_control_response = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+        assert add_control_response.status_code == 200, add_control_response.text
+
+        assign_response = client.post(f"/api/v1/agents/{effective_agent_name}/policy/{policy_id}")
+        assert assign_response.status_code == 200, assign_response.text
+    else:
+        assign_response = client.post(f"/api/v1/agents/{effective_agent_name}/controls/{control_id}")
+        assert assign_response.status_code == 200, assign_response.text
+
     return effective_agent_name
 
 
@@ -160,6 +225,23 @@ def _create_raw_control(client: TestClient) -> int:
     )
     assert response.status_code == 200, response.text
     return response.json()["control_id"]
+
+
+def _evaluate_step(
+    client: TestClient,
+    agent_name: str,
+    *,
+    step_name: str,
+    input_value: str,
+    step_type: str = "llm",
+    stage: str = "pre",
+):
+    request = EvaluationRequest(
+        agent_name=agent_name,
+        step=Step(type=step_type, name=step_name, input=input_value, output=None),
+        stage=stage,
+    )
+    return client.post("/api/v1/evaluation", json=request.model_dump(mode="json"))
 
 
 def test_render_control_template_preview_returns_rendered_control(client: TestClient) -> None:
@@ -215,25 +297,220 @@ def test_template_backed_control_evaluates_after_policy_attachment(client: TestC
     control_id, control_name = _create_template_control_with_name(client)
     agent_name = _assign_control_to_agent(client, control_id)
 
-    safe_request = EvaluationRequest(
-        agent_name=agent_name,
-        step=Step(type="llm", name="other-step", input="hello", output=None),
-        stage="pre",
+    safe_response = _evaluate_step(
+        client,
+        agent_name,
+        step_name="other-step",
+        input_value="hello",
     )
-    safe_response = client.post("/api/v1/evaluation", json=safe_request.model_dump(mode="json"))
     assert safe_response.status_code == 200, safe_response.text
     assert safe_response.json()["is_safe"] is True
 
-    deny_request = EvaluationRequest(
-        agent_name=agent_name,
-        step=Step(type="llm", name="templated-step", input="hello", output=None),
-        stage="pre",
+    deny_response = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
     )
-    deny_response = client.post("/api/v1/evaluation", json=deny_request.model_dump(mode="json"))
     assert deny_response.status_code == 200, deny_response.text
     body = deny_response.json()
     assert body["is_safe"] is False
     assert body["matches"][0]["control_name"] == control_name
+
+
+def test_template_backed_control_can_be_disabled_and_reenabled_in_evaluation(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_template_control_with_name(client)
+    agent_name = _assign_control_to_agent(client, control_id)
+
+    initial_response = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+    assert initial_response.status_code == 200, initial_response.text
+    assert initial_response.json()["is_safe"] is False
+
+    disable_response = client.patch(f"/api/v1/controls/{control_id}", json={"enabled": False})
+    assert disable_response.status_code == 200, disable_response.text
+
+    disabled_eval = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+    assert disabled_eval.status_code == 200, disabled_eval.text
+    assert disabled_eval.json()["is_safe"] is True
+
+    enable_response = client.patch(f"/api/v1/controls/{control_id}", json={"enabled": True})
+    assert enable_response.status_code == 200, enable_response.text
+
+    reenabled_eval = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+    assert reenabled_eval.status_code == 200, reenabled_eval.text
+    body = reenabled_eval.json()
+    assert body["is_safe"] is False
+    assert body["matches"][0]["control_name"] == control_name
+
+
+def test_template_backed_control_update_changes_scope_behavior(client: TestClient) -> None:
+    control_id, control_name = _create_template_control_with_name(client)
+    agent_name = _assign_control_to_agent(client, control_id)
+
+    initial_eval = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+    assert initial_eval.status_code == 200, initial_eval.text
+    assert initial_eval.json()["is_safe"] is False
+
+    updated_payload = _template_payload()
+    updated_payload["template_values"] = {
+        "pattern": "hello",
+        "step_name": "updated-step",
+    }
+    update_response = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": updated_payload},
+    )
+    assert update_response.status_code == 200, update_response.text
+
+    old_scope_eval = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+    assert old_scope_eval.status_code == 200, old_scope_eval.text
+    assert old_scope_eval.json()["is_safe"] is True
+
+    updated_scope_eval = _evaluate_step(
+        client,
+        agent_name,
+        step_name="updated-step",
+        input_value="hello",
+    )
+    assert updated_scope_eval.status_code == 200, updated_scope_eval.text
+    body = updated_scope_eval.json()
+    assert body["is_safe"] is False
+    assert body["matches"][0]["control_name"] == control_name
+
+
+def test_template_backed_control_supports_direct_agent_attachment(client: TestClient) -> None:
+    control_id, control_name = _create_template_control_with_name(client)
+    agent_name = _assign_control_to_agent(client, control_id, via_policy=False)
+
+    response = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["is_safe"] is False
+    assert body["matches"][0]["control_name"] == control_name
+
+
+def test_template_backed_control_preserves_falsey_values_and_uses_them_in_behavior(
+    client: TestClient,
+) -> None:
+    payload = _case_sensitive_template_payload(values=[], case_sensitive=False)
+    control_id, control_name = _create_template_control_with_name(
+        client,
+        payload,
+        name_prefix="falsey-template-control",
+    )
+    agent_name = _assign_control_to_agent(client, control_id)
+
+    get_response = client.get(f"/api/v1/controls/{control_id}/data")
+    assert get_response.status_code == 200, get_response.text
+    data = get_response.json()["data"]
+    assert data["template_values"] == {
+        "values": [],
+        "case_sensitive": False,
+    }
+
+    non_applicable_eval = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+    assert non_applicable_eval.status_code == 200, non_applicable_eval.text
+    assert non_applicable_eval.json()["is_safe"] is True
+
+    updated_payload = _case_sensitive_template_payload(
+        values=["HELLO"],
+        case_sensitive=False,
+    )
+    update_response = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": updated_payload},
+    )
+    assert update_response.status_code == 200, update_response.text
+
+    deny_eval = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+    assert deny_eval.status_code == 200, deny_eval.text
+    body = deny_eval.json()
+    assert body["is_safe"] is False
+    assert body["matches"][0]["control_name"] == control_name
+
+
+def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
+    client: TestClient,
+) -> None:
+    template_control_id, template_control_name = _create_template_control_with_name(client)
+    agent_name = _assign_control_to_agent(client, template_control_id)
+
+    policy_response = client.get(f"/api/v1/agents/{agent_name}/policy")
+    assert policy_response.status_code == 200, policy_response.text
+    policy_id = policy_response.json()["policy_id"]
+
+    raw_warn_name = f"raw-warn-{uuid.uuid4()}"
+    raw_warn_response = client.put(
+        "/api/v1/controls",
+        json={
+            "name": raw_warn_name,
+            "data": _raw_control_payload("hello", action="warn"),
+        },
+    )
+    assert raw_warn_response.status_code == 200, raw_warn_response.text
+    raw_warn_control_id = raw_warn_response.json()["control_id"]
+
+    add_control_response = client.post(f"/api/v1/policies/{policy_id}/controls/{raw_warn_control_id}")
+    assert add_control_response.status_code == 200, add_control_response.text
+
+    response = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["is_safe"] is False
+    assert len(body["matches"]) == 2
+    names = {match["control_name"] for match in body["matches"]}
+    actions = {match["action"] for match in body["matches"]}
+    assert names == {template_control_name, raw_warn_name}
+    assert actions == {"deny", "warn"}
 
 
 def test_raw_control_can_be_replaced_with_template_backed_control(client: TestClient) -> None:
