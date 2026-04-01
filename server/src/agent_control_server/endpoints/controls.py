@@ -683,12 +683,9 @@ async def validate_control_data(
     Returns:
         ValidateControlDataResponse with success=True if valid
     """
-    if isinstance(request.data, TemplateControlInput):
-        # Validate always attempts full rendering, even if values are incomplete.
-        # This differs from create/update which allow unrendered storage.
-        await _render_and_validate_template_input(request.data, db=db, enabled=True)
-    else:
-        await _validate_control_definition(request.data, db)
+    # Validate mirrors create: complete template values trigger a full render,
+    # incomplete values validate structure only (matching unrendered create).
+    await _materialize_control_input(request.data, db=db)
     return ValidateControlDataResponse(success=True)
 
 
@@ -769,6 +766,12 @@ async def list_controls(
         else:
             query = query.where(~Control.data.has_key("template"))
 
+    # Filters that reference rendered-only fields exclude unrendered templates
+    # (which lack condition/execution/scope/tags).
+    has_rendered_filter = any(f is not None for f in (step_type, stage, execution, tag))
+    if has_rendered_filter:
+        query = query.where(Control.data.has_key("condition"))
+
     if step_type is not None:
         query = query.where(
             or_(
@@ -817,6 +820,8 @@ async def list_controls(
             total_query = total_query.where(Control.data.has_key("template"))
         else:
             total_query = total_query.where(~Control.data.has_key("template"))
+    if has_rendered_filter:
+        total_query = total_query.where(Control.data.has_key("condition"))
     if step_type is not None:
         total_query = total_query.where(
             or_(

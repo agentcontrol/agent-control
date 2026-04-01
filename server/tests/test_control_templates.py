@@ -995,23 +995,38 @@ def test_template_update_defaults_enabled_to_true_when_stored_key_is_missing(
     }
 
 
-def test_template_validate_maps_missing_parameter_error(client: TestClient) -> None:
-    # Given: a template-backed control payload missing a required parameter value
+def test_template_validate_accepts_incomplete_values_as_unrendered(
+    client: TestClient,
+) -> None:
+    # Given: a template payload with empty values (would be stored as unrendered)
     payload = _template_payload()
     payload["template_values"] = {}
 
-    # When: validating the payload through the public API
+    # When: validating the payload
     response = client.post("/api/v1/controls/validate", json={"data": payload})
 
-    # Then: the error is remapped back to the missing template parameter
+    # Then: validation succeeds (mirrors create behavior for unrendered templates)
+    assert response.status_code == 200, response.text
+    assert response.json()["success"] is True
+
+
+def test_template_validate_rejects_structurally_invalid_unrendered(
+    client: TestClient,
+) -> None:
+    # Given: a template with an undefined $param reference and empty values
+    payload = _template_payload()
+    payload["template_values"] = {}
+    payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["extra"] = {  # type: ignore[index]
+        "$param": "nonexistent",
+    }
+
+    # When: validating the payload
+    response = client.post("/api/v1/controls/validate", json={"data": payload})
+
+    # Then: structural validation catches the error even without values
     assert response.status_code == 422
     body = response.json()
-    assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
-    assert any(
-        err.get("field") == "template_values.pattern"
-        and err.get("parameter") == "pattern"
-        for err in body.get("errors", [])
-    )
+    assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
 
 
 def test_template_validate_succeeds_with_defaults_only_payload(client: TestClient) -> None:
@@ -1736,6 +1751,37 @@ def test_unrendered_template_shows_in_list_with_correct_flags(client: TestClient
     assert unrendered is not None
     assert unrendered["template_backed"] is True
     assert unrendered["template_rendered"] is False
+
+
+def test_unrendered_template_excluded_from_rendered_field_filters(
+    client: TestClient,
+) -> None:
+    # Given: an unrendered template control
+    control_id, _ = _create_unrendered_control(client)
+
+    # When: filtering by execution (a rendered-only field)
+    exec_response = client.get("/api/v1/controls", params={"execution": "server"})
+    assert exec_response.status_code == 200
+    exec_ids = {c["id"] for c in exec_response.json()["controls"]}
+
+    # Then: unrendered template is excluded
+    assert control_id not in exec_ids
+
+    # When: filtering by step_type
+    step_response = client.get("/api/v1/controls", params={"step_type": "llm"})
+    assert step_response.status_code == 200
+    step_ids = {c["id"] for c in step_response.json()["controls"]}
+
+    # Then: unrendered template is excluded
+    assert control_id not in step_ids
+
+    # When: listing without rendered-field filters
+    all_response = client.get("/api/v1/controls")
+    assert all_response.status_code == 200
+    all_ids = {c["id"] for c in all_response.json()["controls"]}
+
+    # Then: unrendered template IS included in the unfiltered listing
+    assert control_id in all_ids
 
 
 def test_unrendered_template_can_be_deleted(client: TestClient) -> None:
