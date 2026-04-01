@@ -6,37 +6,61 @@ import * as z from "zod/v4-mini";
 import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
+import { smartUnion } from "../types/smart-union.js";
 import {
   ControlDefinitionOutput,
   ControlDefinitionOutput$inboundSchema,
 } from "./control-definition-output.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
+import {
+  UnrenderedTemplateControl,
+  UnrenderedTemplateControl$inboundSchema,
+} from "./unrendered-template-control.js";
+
+export type ControlControl =
+  | ControlDefinitionOutput
+  | UnrenderedTemplateControl;
 
 /**
  * A control with identity and configuration.
  *
  * @remarks
  *
- * Note: Only fully-configured controls (with valid ControlDefinition)
- * are returned from API endpoints. Unconfigured controls are filtered out.
+ * For rendered controls (raw or template-backed), ``control`` is a
+ * ``ControlDefinition``.  For unrendered template controls, ``control``
+ * is an ``UnrenderedTemplateControl``.
  */
 export type Control = {
-  /**
-   * A control definition to evaluate agent interactions.
-   *
-   * @remarks
-   *
-   * This model contains only the logic and configuration.
-   * Identity fields (id, name) are managed by the database.
-   */
-  control: ControlDefinitionOutput;
+  control: ControlDefinitionOutput | UnrenderedTemplateControl;
   id: number;
   name: string;
 };
 
 /** @internal */
+export const ControlControl$inboundSchema: z.ZodMiniType<
+  ControlControl,
+  unknown
+> = smartUnion([
+  ControlDefinitionOutput$inboundSchema,
+  UnrenderedTemplateControl$inboundSchema,
+]);
+
+export function controlControlFromJSON(
+  jsonString: string,
+): SafeParseResult<ControlControl, SDKValidationError> {
+  return safeParse(
+    jsonString,
+    (x) => ControlControl$inboundSchema.parse(JSON.parse(x)),
+    `Failed to parse 'ControlControl' from JSON`,
+  );
+}
+
+/** @internal */
 export const Control$inboundSchema: z.ZodMiniType<Control, unknown> = z.object({
-  control: ControlDefinitionOutput$inboundSchema,
+  control: smartUnion([
+    ControlDefinitionOutput$inboundSchema,
+    UnrenderedTemplateControl$inboundSchema,
+  ]),
   id: types.number(),
   name: types.string(),
 });

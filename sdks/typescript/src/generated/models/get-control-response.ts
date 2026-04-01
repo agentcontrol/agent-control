@@ -6,20 +6,32 @@ import * as z from "zod/v4-mini";
 import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
+import { smartUnion } from "../types/smart-union.js";
 import {
   ControlDefinitionOutput,
   ControlDefinitionOutput$inboundSchema,
 } from "./control-definition-output.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
+import {
+  UnrenderedTemplateControl,
+  UnrenderedTemplateControl$inboundSchema,
+} from "./unrendered-template-control.js";
+
+/**
+ * Control configuration data. A ControlDefinition for raw/rendered controls, an UnrenderedTemplateControl for unrendered templates, or None if not yet configured.
+ */
+export type GetControlResponseData =
+  | ControlDefinitionOutput
+  | UnrenderedTemplateControl;
 
 /**
  * Response containing control details.
  */
 export type GetControlResponse = {
   /**
-   * Control configuration data (None if not yet configured)
+   * Control configuration data. A ControlDefinition for raw/rendered controls, an UnrenderedTemplateControl for unrendered templates, or None if not yet configured.
    */
-  data?: ControlDefinitionOutput | null | undefined;
+  data?: ControlDefinitionOutput | UnrenderedTemplateControl | null | undefined;
   /**
    * Control ID
    */
@@ -31,11 +43,37 @@ export type GetControlResponse = {
 };
 
 /** @internal */
+export const GetControlResponseData$inboundSchema: z.ZodMiniType<
+  GetControlResponseData,
+  unknown
+> = smartUnion([
+  ControlDefinitionOutput$inboundSchema,
+  UnrenderedTemplateControl$inboundSchema,
+]);
+
+export function getControlResponseDataFromJSON(
+  jsonString: string,
+): SafeParseResult<GetControlResponseData, SDKValidationError> {
+  return safeParse(
+    jsonString,
+    (x) => GetControlResponseData$inboundSchema.parse(JSON.parse(x)),
+    `Failed to parse 'GetControlResponseData' from JSON`,
+  );
+}
+
+/** @internal */
 export const GetControlResponse$inboundSchema: z.ZodMiniType<
   GetControlResponse,
   unknown
 > = z.object({
-  data: z.optional(z.nullable(ControlDefinitionOutput$inboundSchema)),
+  data: z.optional(
+    z.nullable(
+      smartUnion([
+        ControlDefinitionOutput$inboundSchema,
+        UnrenderedTemplateControl$inboundSchema,
+      ]),
+    ),
+  ),
   id: types.number(),
   name: types.string(),
 });

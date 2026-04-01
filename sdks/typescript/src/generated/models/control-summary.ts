@@ -51,6 +51,10 @@ export type ControlSummary = {
    */
   templateBacked: boolean;
   /**
+   * Whether a template-backed control has been rendered. True for rendered templates, False for unrendered templates, None for non-template controls.
+   */
+  templateRendered?: boolean | null | undefined;
+  /**
    * Agent using this control
    */
   usedByAgent?: AgentRef | null | undefined;
@@ -75,6 +79,7 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
     step_types: z.optional(z.nullable(z.array(types.string()))),
     tags: types.optional(z.array(types.string())),
     template_backed: z._default(types.boolean(), false),
+    template_rendered: z.optional(z.nullable(types.boolean())),
     used_by_agent: z.optional(z.nullable(AgentRef$inboundSchema)),
     used_by_agents_count: z._default(types.number(), 0),
   }),
@@ -82,6 +87,7 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
     return remap$(v, {
       "step_types": "stepTypes",
       "template_backed": "templateBacked",
+      "template_rendered": "templateRendered",
       "used_by_agent": "usedByAgent",
       "used_by_agents_count": "usedByAgentsCount",
     });

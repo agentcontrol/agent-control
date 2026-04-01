@@ -89,6 +89,7 @@ export * from "./template-definition-output.js";
 export * from "./template-parameter-definition.js";
 export * from "./template-value.js";
 export * from "./timeseries-bucket.js";
+export * from "./unrendered-template-control.js";
 export * from "./validate-control-data-request.js";
 export * from "./validate-control-data-response.js";
 export * from "./validation-error.js";
