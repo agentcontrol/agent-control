@@ -326,57 +326,6 @@ class TestCheckEvaluationWithLocal:
 
     @pytest.mark.asyncio
     async def test_forwards_provider_trace_headers_to_server_when_ids_omitted(self):
-        from agent_control_models import Step
-
-        controls = [{
-            "id": 1,
-            "name": "server-ctrl",
-            "control": {
-                "condition": {
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
-                    "selector": {"path": "input"},
-                },
-                "action": {"decision": "deny"},
-                "execution": "server",
-            },
-        }]
-
-        mock_http_response = MagicMock()
-        mock_http_response.json.return_value = {
-            "is_safe": True,
-            "confidence": 1.0,
-            "matches": None,
-            "errors": None,
-            "non_matches": None,
-        }
-        mock_http_response.raise_for_status = MagicMock()
-
-        client = MagicMock()
-        client.http_client = AsyncMock()
-        client.http_client.post = AsyncMock(return_value=mock_http_response)
-        step = Step(type="llm", name="test-step", input="hello")
-        set_trace_context_provider(lambda: {"trace_id": "c" * 32, "span_id": "d" * 16})
-
-        with patch("agent_control.evaluation.list_evaluators", return_value=["regex"]):
-            await evaluation.check_evaluation_with_local(
-                client=client,
-                agent_name="agent-000000000001",
-                step=step,
-                stage="pre",
-                controls=controls,
-            )
-
-        headers = client.http_client.post.call_args.kwargs["headers"]
-        assert headers["X-Trace-Id"] == "c" * 32
-        assert headers["X-Span-Id"] == "d" * 16
-        # Verify POST was called with headers
-        call_kwargs = client.http_client.post.call_args
-        headers = call_kwargs.kwargs.get("headers", {})
-        assert headers["X-Trace-Id"] == "aaaa1111bbbb2222cccc3333dddd4444"
-        assert headers["X-Span-Id"] == "eeee5555ffff6666"
-
-    @pytest.mark.asyncio
-    async def test_forwards_provider_trace_headers_to_server_when_ids_omitted(self):
         """Server POST should resolve trace headers from the provider when omitted."""
         from agent_control_models import Step
 
@@ -427,6 +376,154 @@ class TestCheckEvaluationWithLocal:
         headers = call_kwargs.kwargs.get("headers", {})
         assert headers["X-Trace-Id"] == "c" * 32
         assert headers["X-Span-Id"] == "d" * 16
+
+
+class TestCheckEvaluation:
+    @pytest.mark.asyncio
+    async def test_default_path_keeps_server_only_behavior(self):
+        from agent_control_models import Step
+
+        mock_http_response = MagicMock()
+        mock_http_response.raise_for_status = MagicMock()
+        mock_http_response.json.return_value = {
+            "is_safe": True,
+            "confidence": 0.9,
+            "matches": None,
+            "errors": None,
+            "non_matches": None,
+        }
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch("agent_control.evaluation.has_control_event_sink", return_value=False), \
+             patch("agent_control.evaluation.emit_control_events") as mock_emit:
+            result = await evaluation.check_evaluation(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+            )
+
+        call_kwargs = client.http_client.post.call_args.kwargs
+        assert call_kwargs["headers"] is None
+        mock_emit.assert_not_called()
+        assert result.is_safe is True
+        assert result.confidence == 0.9
+
+    @pytest.mark.asyncio
+    async def test_merged_event_sink_emits_reconstructed_server_events(self):
+        from agent_control_models import Step
+
+        controls = [
+            {
+                "id": 2,
+                "name": "server-ctrl",
+                "control": {
+                    "condition": {
+                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "selector": {"path": "input"},
+                    },
+                    "action": {"decision": "allow"},
+                    "execution": "server",
+                },
+            }
+        ]
+
+        mock_http_response = MagicMock()
+        mock_http_response.raise_for_status = MagicMock()
+        mock_http_response.json.return_value = {
+            "is_safe": True,
+            "confidence": 0.9,
+            "matches": [
+                {
+                    "control_id": 2,
+                    "control_name": "server-ctrl",
+                    "action": "allow",
+                    "control_execution_id": "ce-server",
+                    "result": {"matched": True, "confidence": 0.4},
+                }
+            ],
+            "errors": None,
+            "non_matches": None,
+        }
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch("agent_control.evaluation.has_control_event_sink", return_value=True), \
+             patch("agent_control.evaluation.get_trace_and_span_ids", return_value=("a" * 32, "b" * 16)), \
+             patch("agent_control.evaluation.emit_control_events") as mock_emit, \
+             patch.object(evaluation.state, "server_controls", controls):
+            result = await evaluation.check_evaluation(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+            )
+
+        headers = client.http_client.post.call_args.kwargs["headers"]
+        assert headers["X-Trace-Id"] == "a" * 32
+        assert headers["X-Span-Id"] == "b" * 16
+        assert headers["X-Agent-Control-Merge-Events"] == "true"
+
+        mock_emit.assert_called_once()
+        emitted_events = mock_emit.call_args.args[0]
+        assert len(emitted_events) == 1
+        assert emitted_events[0].control_id == 2
+        assert emitted_events[0].trace_id == "a" * 32
+        assert emitted_events[0].span_id == "b" * 16
+        assert emitted_events[0].metadata["primary_evaluator"] == "regex"
+        assert result.matches is not None
+        assert len(result.matches) == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_local_event_reconstruction_when_nothing_consumes_events(self):
+        from agent_control_models import EvaluationResponse, Step
+
+        controls = [{
+            "id": 1,
+            "name": "local-ctrl",
+            "control": {
+                "condition": {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
+                "action": {"decision": "allow"},
+                "execution": "sdk",
+            },
+        }]
+
+        mock_response = EvaluationResponse(is_safe=True, confidence=1.0)
+        mock_engine = MagicMock()
+        mock_engine.process = AsyncMock(return_value=mock_response)
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
+             patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
+             patch("agent_control.evaluation.has_control_event_sink", return_value=False), \
+             patch("agent_control.evaluation.is_observability_enabled", return_value=False), \
+             patch("agent_control.evaluation.build_control_execution_events") as mock_build, \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+            result = await evaluation.check_evaluation_with_local(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+                controls=controls,
+            )
+
+        mock_build.assert_not_called()
+        mock_enqueue.assert_not_called()
+        assert result.is_safe is True
+        assert result.confidence == 1.0
 
 
 # =============================================================================
