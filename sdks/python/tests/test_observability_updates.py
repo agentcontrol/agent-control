@@ -398,7 +398,7 @@ class TestCheckEvaluation:
         client.http_client.post = AsyncMock(return_value=mock_http_response)
         step = Step(type="llm", name="test-step", input="hello")
 
-        with patch("agent_control.evaluation.has_control_event_sink", return_value=False), \
+        with patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=False), \
              patch("agent_control.evaluation.emit_control_events") as mock_emit:
             result = await evaluation.check_evaluation(
                 client=client,
@@ -455,7 +455,7 @@ class TestCheckEvaluation:
         client.http_client.post = AsyncMock(return_value=mock_http_response)
         step = Step(type="llm", name="test-step", input="hello")
 
-        with patch("agent_control.evaluation.has_control_event_sink", return_value=True), \
+        with patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=True), \
              patch("agent_control.evaluation.get_trace_and_span_ids", return_value=("a" * 32, "b" * 16)), \
              patch("agent_control.evaluation.emit_control_events") as mock_emit, \
              patch.object(evaluation.state, "server_controls", controls):
@@ -508,7 +508,7 @@ class TestCheckEvaluation:
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
-             patch("agent_control.evaluation.has_control_event_sink", return_value=False), \
+             patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=False), \
              patch("agent_control.evaluation.is_observability_enabled", return_value=False), \
              patch("agent_control.evaluation.build_control_execution_events") as mock_build, \
              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
@@ -524,6 +524,42 @@ class TestCheckEvaluation:
         mock_enqueue.assert_not_called()
         assert result.is_safe is True
         assert result.confidence == 1.0
+
+    @pytest.mark.asyncio
+    async def test_check_evaluation_falls_back_when_initialized_agent_does_not_match(self):
+        from agent_control_models import Step
+
+        mock_http_response = MagicMock()
+        mock_http_response.raise_for_status = MagicMock()
+        mock_http_response.json.return_value = {
+            "is_safe": True,
+            "confidence": 0.9,
+            "matches": None,
+            "errors": None,
+            "non_matches": None,
+        }
+
+        client = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch("agent_control.evaluation.has_control_event_sink", return_value=True), \
+             patch("agent_control.evaluation.emit_control_events") as mock_emit, \
+             patch.object(evaluation.state, "current_agent", MagicMock(agent_name="agent-000000000002")), \
+             patch.object(evaluation.state, "server_controls", []):
+            result = await evaluation.check_evaluation(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+            )
+
+        call_kwargs = client.http_client.post.call_args.kwargs
+        assert call_kwargs["headers"] is None
+        mock_emit.assert_not_called()
+        assert result.is_safe is True
+        assert result.confidence == 0.9
 
 
 # =============================================================================
@@ -606,7 +642,7 @@ class TestControlDecoratorsNonMatches:
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
-             patch("agent_control.evaluation.has_control_event_sink", return_value=True), \
+             patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=True), \
              patch("agent_control.evaluation.emit_control_events") as mock_emit, \
              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation_with_local(

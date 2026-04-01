@@ -477,6 +477,7 @@ def init(
 
     # Re-init behavior: always stop existing loop before mutating shared agent/session globals.
     _stop_policy_refresh_loop()
+    clear_control_event_sink()
 
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
@@ -647,6 +648,7 @@ def _reset_state() -> None:
         state.server_controls = None
         state.server_url = None
         state.api_key = None
+        clear_control_event_sink()
 
 
 async def ashutdown() -> None:

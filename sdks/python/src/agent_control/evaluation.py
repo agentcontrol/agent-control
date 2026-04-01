@@ -117,6 +117,32 @@ def _has_applicable_prefiltered_server_controls(
     )
 
 
+def _is_merged_event_mode_enabled(agent_name: str) -> bool:
+    """Return whether SDK-side merged event emission is safe for this request.
+
+    Merged reconstruction depends on initialized SDK session state:
+    a registered sink, an initialized agent, and a cached server-control
+    snapshot for the same agent. If any of those prerequisites are missing,
+    evaluation falls back to the default behavior where the server remains the
+    final emitter for server-side events.
+
+    Args:
+        agent_name: Normalized agent name for the current request.
+
+    Returns:
+        ``True`` when the current SDK session has enough state to reconstruct
+        and emit merged events safely.
+    """
+    if not has_control_event_sink():
+        return False
+
+    current_agent = state.current_agent
+    if current_agent is None or current_agent.agent_name != agent_name:
+        return False
+
+    return state.server_controls is not None
+
+
 def _merge_results(
     local_result: EvaluationResponse,
     server_result: EvaluationResponse,
@@ -192,7 +218,7 @@ async def check_evaluation(
         The parsed evaluation result returned by the server.
     """
     normalized_name = ensure_agent_name(agent_name)
-    merged_emission_enabled = has_control_event_sink()
+    merged_emission_enabled = _is_merged_event_mode_enabled(normalized_name)
     trace_id = None
     span_id = None
     headers: dict[str, str] | None = None
@@ -351,7 +377,7 @@ async def check_evaluation_with_local(
         combined_errors = (result.errors or []) + parse_errors
         return result.model_copy(update={"errors": combined_errors})
 
-    merged_emission_enabled = has_control_event_sink()
+    merged_emission_enabled = _is_merged_event_mode_enabled(normalized_name)
     should_reconstruct_local_events = merged_emission_enabled or is_observability_enabled()
 
     local_result: EvaluationResponse | None = None

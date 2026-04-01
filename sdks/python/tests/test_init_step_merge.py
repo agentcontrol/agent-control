@@ -20,9 +20,11 @@ if TYPE_CHECKING:
 @pytest.fixture(autouse=True)
 def _clean_registry() -> Generator[None, None, None]:
     """Ensure each test starts with an empty step registry."""
+    agent_control._reset_state()
     clear()
     yield
     clear()
+    agent_control._reset_state()
 
 
 def test_init_passes_merged_steps_to_register_agent(
