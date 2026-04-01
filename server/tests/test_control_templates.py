@@ -256,8 +256,11 @@ def _evaluate_step(
 
 
 def test_render_control_template_preview_returns_rendered_control(client: TestClient) -> None:
+    # Given: a valid template-backed control payload
+    # When: rendering a template preview through the public API
     response = client.post("/api/v1/control-templates/render", json=_template_payload())
 
+    # Then: the rendered control includes resolved template metadata and values
     assert response.status_code == 200, response.text
     control = response.json()["control"]
     assert control["enabled"] is True
@@ -273,8 +276,11 @@ def test_render_control_template_preview_returns_rendered_control(client: TestCl
 def test_render_control_template_preview_uses_defaults_when_values_omitted(
     client: TestClient,
 ) -> None:
+    # Given: a template whose defaults fully satisfy all parameters
+    # When: rendering a template preview without explicit template values
     response = client.post("/api/v1/control-templates/render", json=_defaults_only_template_payload())
 
+    # Then: the rendered control uses the parameter defaults
     assert response.status_code == 200, response.text
     control = response.json()["control"]
     assert control["template_values"] == {
@@ -293,11 +299,14 @@ def test_render_control_template_preview_uses_defaults_when_values_omitted(
 def test_render_control_template_preview_rejects_excessive_definition_nesting(
     client: TestClient,
 ) -> None:
+    # Given: a template definition that exceeds the nesting limit
     payload = _template_payload()
     payload["template"]["definition_template"] = _nested_template_value(12)
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the API rejects the request with a clear validation error
     assert response.status_code == 422, response.text
     body = response.json()
     assert body["detail"].startswith("Request validation failed")
@@ -307,11 +316,14 @@ def test_render_control_template_preview_rejects_excessive_definition_nesting(
 def test_render_control_template_preview_rejects_excessive_definition_size(
     client: TestClient,
 ) -> None:
+    # Given: a template definition that exceeds the size limit
     payload = _template_payload()
     payload["template"]["definition_template"] = list(range(1001))
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the API rejects the oversized template definition
     assert response.status_code == 422, response.text
     body = response.json()
     assert body["detail"].startswith("Request validation failed")
@@ -319,9 +331,13 @@ def test_render_control_template_preview_rejects_excessive_definition_size(
 
 
 def test_create_template_backed_control_persists_template_metadata(client: TestClient) -> None:
+    # Given: a valid template-backed control created through the API
     control_id = _create_template_control(client)
 
+    # When: fetching the stored control data
     response = client.get(f"/api/v1/controls/{control_id}/data")
+
+    # Then: both template metadata and rendered values are persisted
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["template"]["description"] == "Regex denial template"
@@ -336,10 +352,13 @@ def test_create_template_backed_control_persists_template_metadata(client: TestC
 def test_get_control_returns_template_metadata_for_template_backed_control(
     client: TestClient,
 ) -> None:
+    # Given: a template-backed control created through the API
     control_id, control_name = _create_template_control_with_name(client)
 
+    # When: fetching the full control resource
     response = client.get(f"/api/v1/controls/{control_id}")
 
+    # Then: the response includes template metadata alongside normal control metadata
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["id"] == control_id
@@ -354,14 +373,17 @@ def test_get_control_returns_template_metadata_for_template_backed_control(
 def test_create_template_backed_control_persists_resolved_defaults_when_values_omitted(
     client: TestClient,
 ) -> None:
+    # Given: a template-backed control created without explicit template values
     control_id, _ = _create_template_control_with_name(
         client,
         _defaults_only_template_payload(),
         name_prefix="defaulted-template-control",
     )
 
+    # When: fetching the stored control data
     response = client.get(f"/api/v1/controls/{control_id}/data")
 
+    # Then: the persisted template values and rendered config include resolved defaults
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["template_values"] == {
@@ -377,9 +399,11 @@ def test_create_template_backed_control_persists_resolved_defaults_when_values_o
 
 
 def test_template_backed_control_evaluates_after_policy_attachment(client: TestClient) -> None:
+    # Given: a template-backed control attached to an agent through a policy
     control_id, control_name = _create_template_control_with_name(client)
     agent_name = _assign_control_to_agent(client, control_id)
 
+    # When: evaluating a non-matching step and then a matching step
     safe_response = _evaluate_step(
         client,
         agent_name,
@@ -395,6 +419,7 @@ def test_template_backed_control_evaluates_after_policy_attachment(client: TestC
         step_name="templated-step",
         input_value="hello",
     )
+    # Then: only the matching step is denied by the attached template-backed control
     assert deny_response.status_code == 200, deny_response.text
     body = deny_response.json()
     assert body["is_safe"] is False
@@ -404,9 +429,11 @@ def test_template_backed_control_evaluates_after_policy_attachment(client: TestC
 def test_template_backed_control_can_be_disabled_and_reenabled_in_evaluation(
     client: TestClient,
 ) -> None:
+    # Given: an attached template-backed control
     control_id, control_name = _create_template_control_with_name(client)
     agent_name = _assign_control_to_agent(client, control_id)
 
+    # When: evaluating before disabling, after disabling, and after re-enabling the control
     initial_response = _evaluate_step(
         client,
         agent_name,
@@ -437,6 +464,7 @@ def test_template_backed_control_can_be_disabled_and_reenabled_in_evaluation(
         step_name="templated-step",
         input_value="hello",
     )
+    # Then: evaluation reflects the user-managed enabled state
     assert reenabled_eval.status_code == 200, reenabled_eval.text
     body = reenabled_eval.json()
     assert body["is_safe"] is False
@@ -444,10 +472,12 @@ def test_template_backed_control_can_be_disabled_and_reenabled_in_evaluation(
 
 
 def test_template_backed_control_rename_is_reflected_in_evaluation(client: TestClient) -> None:
+    # Given: an attached template-backed control
     control_id, _ = _create_template_control_with_name(client)
     agent_name = _assign_control_to_agent(client, control_id)
     renamed_control_name = f"renamed-template-control-{uuid.uuid4()}"
 
+    # When: renaming the control and evaluating a matching step
     patch_response = client.patch(
         f"/api/v1/controls/{control_id}",
         json={"name": renamed_control_name},
@@ -462,6 +492,7 @@ def test_template_backed_control_rename_is_reflected_in_evaluation(client: TestC
         input_value="hello",
     )
 
+    # Then: the evaluation match reflects the updated control name
     assert eval_response.status_code == 200, eval_response.text
     body = eval_response.json()
     assert body["is_safe"] is False
@@ -471,14 +502,17 @@ def test_template_backed_control_rename_is_reflected_in_evaluation(client: TestC
 def test_template_backed_control_patch_updates_name_and_enabled_together(
     client: TestClient,
 ) -> None:
+    # Given: a template-backed control
     control_id, _ = _create_template_control_with_name(client)
     renamed_control_name = f"patched-template-control-{uuid.uuid4()}"
 
+    # When: patching both user-managed metadata fields together
     patch_response = client.patch(
         f"/api/v1/controls/{control_id}",
         json={"name": renamed_control_name, "enabled": False},
     )
 
+    # Then: the metadata updates persist without losing template metadata
     assert patch_response.status_code == 200, patch_response.text
     body = patch_response.json()
     assert body["name"] == renamed_control_name
@@ -497,9 +531,11 @@ def test_template_backed_control_patch_updates_name_and_enabled_together(
 
 
 def test_template_backed_control_update_changes_scope_behavior(client: TestClient) -> None:
+    # Given: an attached template-backed control
     control_id, control_name = _create_template_control_with_name(client)
     agent_name = _assign_control_to_agent(client, control_id)
 
+    # When: updating the template values to change the rendered scope
     initial_eval = _evaluate_step(
         client,
         agent_name,
@@ -535,6 +571,7 @@ def test_template_backed_control_update_changes_scope_behavior(client: TestClien
         step_name="updated-step",
         input_value="hello",
     )
+    # Then: the old scope stops matching and the new scope starts matching
     assert updated_scope_eval.status_code == 200, updated_scope_eval.text
     body = updated_scope_eval.json()
     assert body["is_safe"] is False
@@ -542,9 +579,11 @@ def test_template_backed_control_update_changes_scope_behavior(client: TestClien
 
 
 def test_template_backed_control_supports_direct_agent_attachment(client: TestClient) -> None:
+    # Given: a template-backed control attached directly to an agent
     control_id, control_name = _create_template_control_with_name(client)
     agent_name = _assign_control_to_agent(client, control_id, via_policy=False)
 
+    # When: evaluating a matching step
     response = _evaluate_step(
         client,
         agent_name,
@@ -552,6 +591,7 @@ def test_template_backed_control_supports_direct_agent_attachment(client: TestCl
         input_value="hello",
     )
 
+    # Then: the directly attached control participates in evaluation
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["is_safe"] is False
@@ -561,6 +601,7 @@ def test_template_backed_control_supports_direct_agent_attachment(client: TestCl
 def test_template_backed_warn_control_evaluates_as_safe_with_warn_match(
     client: TestClient,
 ) -> None:
+    # Given: a template-backed control whose rendered action is warn
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"]["action"]["decision"] = "warn"  # type: ignore[index]
@@ -571,6 +612,7 @@ def test_template_backed_warn_control_evaluates_as_safe_with_warn_match(
     )
     agent_name = _assign_control_to_agent(client, control_id)
 
+    # When: evaluating a matching step
     response = _evaluate_step(
         client,
         agent_name,
@@ -578,6 +620,7 @@ def test_template_backed_warn_control_evaluates_as_safe_with_warn_match(
         input_value="hello",
     )
 
+    # Then: the evaluation remains safe while returning a warn match
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["is_safe"] is True
@@ -589,6 +632,7 @@ def test_template_backed_warn_control_evaluates_as_safe_with_warn_match(
 def test_template_backed_control_preserves_falsey_values_and_uses_them_in_behavior(
     client: TestClient,
 ) -> None:
+    # Given: a template-backed control created with falsey template values
     payload = _case_sensitive_template_payload(values=[], case_sensitive=False)
     control_id, control_name = _create_template_control_with_name(
         client,
@@ -597,6 +641,7 @@ def test_template_backed_control_preserves_falsey_values_and_uses_them_in_behavi
     )
     agent_name = _assign_control_to_agent(client, control_id)
 
+    # When: inspecting stored data, evaluating, then updating to non-empty values
     get_response = client.get(f"/api/v1/controls/{control_id}/data")
     assert get_response.status_code == 200, get_response.text
     data = get_response.json()["data"]
@@ -630,6 +675,7 @@ def test_template_backed_control_preserves_falsey_values_and_uses_them_in_behavi
         step_name="templated-step",
         input_value="hello",
     )
+    # Then: falsey values persist and later updates change evaluation behavior
     assert deny_eval.status_code == 200, deny_eval.text
     body = deny_eval.json()
     assert body["is_safe"] is False
@@ -639,6 +685,7 @@ def test_template_backed_control_preserves_falsey_values_and_uses_them_in_behavi
 def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
     client: TestClient,
 ) -> None:
+    # Given: an agent with both a template-backed deny control and a raw warn control
     template_control_id, template_control_name = _create_template_control_with_name(client)
     agent_name = _assign_control_to_agent(client, template_control_id)
 
@@ -660,6 +707,7 @@ def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
     add_control_response = client.post(f"/api/v1/policies/{policy_id}/controls/{raw_warn_control_id}")
     assert add_control_response.status_code == 200, add_control_response.text
 
+    # When: evaluating a step that matches both controls
     response = _evaluate_step(
         client,
         agent_name,
@@ -667,6 +715,7 @@ def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
         input_value="hello",
     )
 
+    # Then: both matches are returned and deny precedence makes the result unsafe
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["is_safe"] is False
@@ -678,14 +727,17 @@ def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
 
 
 def test_raw_control_can_be_replaced_with_template_backed_control(client: TestClient) -> None:
+    # Given: an existing raw control
     control_id = _create_raw_control(client)
 
+    # When: replacing its data with template-backed control input
     put_response = client.put(
         f"/api/v1/controls/{control_id}/data",
         json={"data": _template_payload()},
     )
     assert put_response.status_code == 200, put_response.text
 
+    # Then: the stored control becomes template-backed and persists rendered values
     get_response = client.get(f"/api/v1/controls/{control_id}/data")
     assert get_response.status_code == 200, get_response.text
     data = get_response.json()["data"]
@@ -695,6 +747,7 @@ def test_raw_control_can_be_replaced_with_template_backed_control(client: TestCl
 
 
 def test_template_update_preserves_enabled_value(client: TestClient) -> None:
+    # Given: a template-backed control that has been disabled through the metadata patch API
     control_id = _create_template_control(client)
 
     patch_response = client.patch(
@@ -703,6 +756,7 @@ def test_template_update_preserves_enabled_value(client: TestClient) -> None:
     )
     assert patch_response.status_code == 200, patch_response.text
 
+    # When: updating the template-backed control data
     updated_payload = _template_payload()
     updated_payload["template_values"] = {
         "pattern": "updated",
@@ -714,6 +768,7 @@ def test_template_update_preserves_enabled_value(client: TestClient) -> None:
     )
     assert put_response.status_code == 200, put_response.text
 
+    # Then: the stored enabled value is preserved across the template update
     get_response = client.get(f"/api/v1/controls/{control_id}/data")
     assert get_response.status_code == 200, get_response.text
     data = get_response.json()["data"]
@@ -727,9 +782,11 @@ def test_template_update_preserves_enabled_value(client: TestClient) -> None:
 
 
 def test_template_update_accepts_different_template_structure(client: TestClient) -> None:
+    # Given: an attached template-backed control using the regex template shape
     control_id, _ = _create_template_control_with_name(client)
     agent_name = _assign_control_to_agent(client, control_id)
 
+    # When: replacing its data with a different template structure
     old_behavior_response = _evaluate_step(
         client,
         agent_name,
@@ -778,6 +835,7 @@ def test_template_update_accepts_different_template_structure(client: TestClient
         step_name="other-step",
         input_value="secret",
     )
+    # Then: the stored template metadata and runtime behavior both follow the new template
     assert new_match_response.status_code == 200, new_match_response.text
     assert new_match_response.json()["is_safe"] is False
 
@@ -785,6 +843,7 @@ def test_template_update_accepts_different_template_structure(client: TestClient
 def test_template_update_defaults_enabled_to_true_when_stored_key_is_missing(
     client: TestClient,
 ) -> None:
+    # Given: a stored template-backed control whose persisted JSON is missing enabled
     control_id = _create_template_control(client)
     get_response = client.get(f"/api/v1/controls/{control_id}/data")
     assert get_response.status_code == 200, get_response.text
@@ -797,6 +856,7 @@ def test_template_update_defaults_enabled_to_true_when_stored_key_is_missing(
             {"data": json.dumps(stored_data), "id": control_id},
         )
 
+    # When: updating the template-backed control data
     updated_payload = _template_payload()
     updated_payload["template_values"] = {
         "pattern": "updated",
@@ -808,6 +868,7 @@ def test_template_update_defaults_enabled_to_true_when_stored_key_is_missing(
     )
     assert put_response.status_code == 200, put_response.text
 
+    # Then: the update path preserves the default enabled=True behavior
     refreshed_response = client.get(f"/api/v1/controls/{control_id}/data")
     assert refreshed_response.status_code == 200, refreshed_response.text
     data = refreshed_response.json()["data"]
@@ -819,11 +880,14 @@ def test_template_update_defaults_enabled_to_true_when_stored_key_is_missing(
 
 
 def test_template_validate_maps_missing_parameter_error(client: TestClient) -> None:
+    # Given: a template-backed control payload missing a required parameter value
     payload = _template_payload()
     payload["template_values"] = {}
 
+    # When: validating the payload through the public API
     response = client.post("/api/v1/controls/validate", json={"data": payload})
 
+    # Then: the error is remapped back to the missing template parameter
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
@@ -835,21 +899,27 @@ def test_template_validate_maps_missing_parameter_error(client: TestClient) -> N
 
 
 def test_template_validate_succeeds_with_defaults_only_payload(client: TestClient) -> None:
+    # Given: a template-backed control payload whose defaults satisfy every parameter
+    # When: validating it through the public API
     response = client.post(
         "/api/v1/controls/validate",
         json={"data": _defaults_only_template_payload()},
     )
 
+    # Then: validation succeeds without requiring explicit template values
     assert response.status_code == 200, response.text
     assert response.json()["success"] is True
 
 
 def test_render_control_template_rejects_unknown_template_value_key(client: TestClient) -> None:
+    # Given: a template payload with an undeclared template value key
     payload = _template_payload()
     payload["template_values"] = {"pattern": "hello", "unknown": "value"}
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the API rejects the unknown parameter key clearly
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
@@ -861,14 +931,17 @@ def test_render_control_template_rejects_unknown_template_value_key(client: Test
 
 
 def test_render_control_template_rejects_undefined_param_reference(client: TestClient) -> None:
+    # Given: a template definition that references an undeclared parameter
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["pattern"] = {  # type: ignore[index]
         "$param": "undefined_pattern",
     }
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the API reports the undefined parameter reference on the rendered field
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
@@ -882,12 +955,15 @@ def test_render_control_template_rejects_undefined_param_reference(client: TestC
 def test_render_control_template_rejects_non_object_definition_template(
     client: TestClient,
 ) -> None:
+    # Given: a template whose top-level definition_template is not an object
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"] = "not-an-object"  # type: ignore[index]
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the API rejects the template with a clear top-level type error
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
@@ -899,6 +975,7 @@ def test_render_control_template_rejects_non_object_definition_template(
 
 
 def test_template_backed_control_rejects_raw_put_update(client: TestClient) -> None:
+    # Given: a template-backed control and a raw replacement payload
     control_id = _create_template_control(client)
     raw_payload = deepcopy(
         {
@@ -917,11 +994,13 @@ def test_template_backed_control_rejects_raw_put_update(client: TestClient) -> N
         }
     )
 
+    # When: replacing template-backed data with raw control data
     response = client.put(
         f"/api/v1/controls/{control_id}/data",
         json={"data": raw_payload},
     )
 
+    # Then: the API rejects the conversion back to raw control data
     assert response.status_code == 409
     assert response.json()["error_code"] == "CONTROL_TEMPLATE_CONFLICT"
 
@@ -929,9 +1008,11 @@ def test_template_backed_control_rejects_raw_put_update(client: TestClient) -> N
 def test_create_control_rejects_mixed_raw_and_template_payload_at_api_boundary(
     client: TestClient,
 ) -> None:
+    # Given: a create payload that mixes template-backed and rendered control fields
     payload = _template_payload()
     payload["execution"] = "server"
 
+    # When: creating the control through the public API
     response = client.put(
         "/api/v1/controls",
         json={
@@ -940,6 +1021,7 @@ def test_create_control_rejects_mixed_raw_and_template_payload_at_api_boundary(
         },
     )
 
+    # Then: the request is rejected with the mixed-payload validation message
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "VALIDATION_ERROR"
@@ -952,11 +1034,14 @@ def test_create_control_rejects_mixed_raw_and_template_payload_at_api_boundary(
 def test_validate_control_rejects_mixed_raw_and_template_payload_at_api_boundary(
     client: TestClient,
 ) -> None:
+    # Given: a validate payload that mixes template-backed and rendered control fields
     payload = _template_payload()
     payload["execution"] = "server"
 
+    # When: validating the mixed payload through the public API
     response = client.post("/api/v1/controls/validate", json={"data": payload})
 
+    # Then: the request is rejected with the mixed-payload validation message
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "VALIDATION_ERROR"
@@ -967,9 +1052,13 @@ def test_validate_control_rejects_mixed_raw_and_template_payload_at_api_boundary
 
 
 def test_list_controls_includes_template_backed_flag_and_filter(client: TestClient) -> None:
+    # Given: a template-backed control in the system
     control_id = _create_template_control(client)
 
+    # When: listing controls with the template_backed=true filter
     response = client.get("/api/v1/controls", params={"template_backed": True})
+
+    # Then: the matching summary row is marked as template-backed
     assert response.status_code == 200, response.text
     controls = response.json()["controls"]
     template_control = next(control for control in controls if control["id"] == control_id)
@@ -977,10 +1066,14 @@ def test_list_controls_includes_template_backed_flag_and_filter(client: TestClie
 
 
 def test_list_controls_template_backed_false_returns_only_raw_controls(client: TestClient) -> None:
+    # Given: one template-backed control and one raw control
     template_control_id = _create_template_control(client)
     raw_control_id = _create_raw_control(client)
 
+    # When: listing controls with the template_backed=false filter
     response = client.get("/api/v1/controls", params={"template_backed": False})
+
+    # Then: only raw controls are returned
     assert response.status_code == 200, response.text
     control_ids = {control["id"] for control in response.json()["controls"]}
     assert raw_control_id in control_ids
@@ -988,21 +1081,27 @@ def test_list_controls_template_backed_false_returns_only_raw_controls(client: T
 
 
 def test_render_control_template_rejects_extra_request_fields(client: TestClient) -> None:
+    # Given: a render request payload with extra top-level fields
     payload = _template_payload()
     payload["execution"] = "server"
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: request validation rejects the extra fields
     assert response.status_code == 422
     assert response.json()["error_code"] == "VALIDATION_ERROR"
 
 
 def test_render_control_template_maps_invalid_regex_parameter(client: TestClient) -> None:
+    # Given: a template payload with an invalid regex parameter value
     payload = _template_payload()
     payload["template_values"] = {"pattern": "["}
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the regex validation error is remapped back to the template parameter
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
@@ -1016,6 +1115,7 @@ def test_render_control_template_maps_invalid_regex_parameter(client: TestClient
 def test_render_control_template_rejects_optional_referenced_parameter_without_default(
     client: TestClient,
 ) -> None:
+    # Given: an optional parameter that is referenced in the template without a default
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["parameters"]["step_name"] = {  # type: ignore[index]
@@ -1024,8 +1124,10 @@ def test_render_control_template_rejects_optional_referenced_parameter_without_d
         "required": False,
     }
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the API reports that referenced optional parameters require defaults
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
@@ -1037,6 +1139,7 @@ def test_render_control_template_rejects_optional_referenced_parameter_without_d
 
 
 def test_render_control_template_rejects_malformed_param_binding(client: TestClient) -> None:
+    # Given: a malformed $param binding object with extra keys
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["pattern"] = {  # type: ignore[index]
@@ -1044,8 +1147,10 @@ def test_render_control_template_rejects_malformed_param_binding(client: TestCli
         "extra": True,
     }
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the invalid binding is rejected as a template render error
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
@@ -1053,14 +1158,17 @@ def test_render_control_template_rejects_malformed_param_binding(client: TestCli
 
 
 def test_render_control_template_rejects_non_string_param_reference(client: TestClient) -> None:
+    # Given: a malformed $param binding whose reference is not a string
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["pattern"] = {  # type: ignore[index]
         "$param": 123,
     }
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the invalid binding is rejected as a template render error
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
@@ -1068,6 +1176,7 @@ def test_render_control_template_rejects_non_string_param_reference(client: Test
 
 
 def test_render_control_template_rejects_unused_parameter(client: TestClient) -> None:
+    # Given: a template definition that declares an unused parameter
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["parameters"]["unused"] = {  # type: ignore[index]
@@ -1076,8 +1185,10 @@ def test_render_control_template_rejects_unused_parameter(client: TestClient) ->
         "default": "still-unused",
     }
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the unused parameter is reported on the template definition
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
@@ -1089,12 +1200,15 @@ def test_render_control_template_rejects_unused_parameter(client: TestClient) ->
 
 
 def test_render_control_template_rejects_agent_scoped_evaluator(client: TestClient) -> None:
+    # Given: a template definition that uses an agent-scoped evaluator directly
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"]["condition"]["evaluator"]["name"] = "agent-x:custom"  # type: ignore[index]
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the API rejects agent-scoped evaluators for template-backed controls
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
@@ -1107,6 +1221,7 @@ def test_render_control_template_rejects_agent_scoped_evaluator(client: TestClie
 def test_render_control_template_remaps_param_bound_agent_scoped_evaluator_error(
     client: TestClient,
 ) -> None:
+    # Given: a template whose evaluator name comes from a bound parameter
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["parameters"]["evaluator_name"] = {  # type: ignore[index]
@@ -1118,8 +1233,10 @@ def test_render_control_template_remaps_param_bound_agent_scoped_evaluator_error
     }
     payload["template_values"]["evaluator_name"] = "agent-x:custom"  # type: ignore[index]
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the agent-scoped evaluator error is remapped to the bound parameter
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
@@ -1135,13 +1252,16 @@ def test_render_control_template_remaps_param_bound_agent_scoped_evaluator_error
 def test_render_control_template_rejects_forbidden_top_level_template_fields(
     client: TestClient,
 ) -> None:
+    # Given: templates that try to manage forbidden top-level control fields
     for forbidden_field, value in (("enabled", True), ("name", "templated-name")):
         payload = _template_payload()
         payload["template"] = deepcopy(payload["template"])
         payload["template"]["definition_template"][forbidden_field] = value  # type: ignore[index]
 
+        # When: rendering a template preview
         response = client.post("/api/v1/control-templates/render", json=payload)
 
+        # Then: the forbidden field is rejected clearly
         assert response.status_code == 422
         body = response.json()
         assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
@@ -1152,6 +1272,7 @@ def test_render_control_template_rejects_forbidden_top_level_template_fields(
 
 
 def test_render_control_template_rejects_legacy_flat_format(client: TestClient) -> None:
+    # Given: a template that uses the legacy flat selector/evaluator format
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"] = {  # type: ignore[index]
@@ -1165,8 +1286,10 @@ def test_render_control_template_rejects_legacy_flat_format(client: TestClient) 
         "action": {"decision": "deny"},
     }
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the API requires the canonical condition wrapper
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
@@ -1179,6 +1302,7 @@ def test_render_control_template_rejects_legacy_flat_format(client: TestClient) 
 def test_render_control_template_rejects_invalid_parameter_name_at_api_boundary(
     client: TestClient,
 ) -> None:
+    # Given: a render request with an invalid template parameter name
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["parameters"] = {  # type: ignore[index]
@@ -1188,8 +1312,10 @@ def test_render_control_template_rejects_invalid_parameter_name_at_api_boundary(
         }
     }
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: request validation rejects the invalid parameter name
     assert response.status_code == 422
     assert response.json()["error_code"] == "VALIDATION_ERROR"
 
@@ -1197,12 +1323,15 @@ def test_render_control_template_rejects_invalid_parameter_name_at_api_boundary(
 def test_render_control_template_keeps_non_parameterized_errors_on_rendered_fields(
     client: TestClient,
 ) -> None:
+    # Given: a template whose rendered action is invalid independently of any parameter
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"]["action"]["decision"] = "block"  # type: ignore[index]
 
+    # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
+    # Then: the error remains attached to the rendered field path
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"

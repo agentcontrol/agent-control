@@ -305,12 +305,14 @@ class TestCheckEvaluationWithLocal:
         llm_payload,
     ):
         """Template metadata must not break routing for server-executed cached controls."""
+        # Given: a cached server-executed control that includes template metadata
         controls = [
             add_template_metadata(
                 make_control_dict(1, "templated_server_ctrl", execution="server"),
             ),
         ]
 
+        # Given: a client stub that returns a safe server evaluation response
         client = MagicMock(spec=AgentControlClient)
         mock_response = MagicMock()
         mock_response.json.return_value = {"is_safe": True, "confidence": 1.0}
@@ -318,6 +320,7 @@ class TestCheckEvaluationWithLocal:
         client.http_client = AsyncMock()
         client.http_client.post = AsyncMock(return_value=mock_response)
 
+        # When: evaluating with local controls enabled
         result = await check_evaluation_with_local(
             client=client,
             agent_name=agent_name,
@@ -326,6 +329,7 @@ class TestCheckEvaluationWithLocal:
             controls=controls,
         )
 
+        # Then: the SDK still routes evaluation to the server
         client.http_client.post.assert_called_once()
         assert result.is_safe is True
 
@@ -512,15 +516,18 @@ class TestCheckEvaluationWithLocal:
         llm_payload,
     ):
         """Template metadata should be ignored by runtime parsing in local evaluation."""
+        # Given: a cached SDK-executed control that includes template metadata
         controls = [
             add_template_metadata(
                 make_control_dict(1, "templated_local_ctrl", execution="sdk", pattern=r"test"),
             ),
         ]
+        # Given: a client stub that would allow server calls if routing were wrong
         client = MagicMock(spec=AgentControlClient)
         client.http_client = AsyncMock()
         client.http_client.post = AsyncMock()
 
+        # When: evaluating with local controls enabled
         result = await check_evaluation_with_local(
             client=client,
             agent_name=agent_name,
@@ -529,6 +536,7 @@ class TestCheckEvaluationWithLocal:
             controls=controls,
         )
 
+        # Then: local evaluation succeeds and no server call is made
         client.http_client.post.assert_not_called()
         assert result.is_safe is False
         assert result.matches is not None
