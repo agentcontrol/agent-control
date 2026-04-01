@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
-from agent_control_models import ControlDefinition
+from agent_control_models import ControlDefinition, ControlDefinitionRuntime
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from pydantic import ValidationError
 
@@ -53,6 +53,32 @@ def parse_control_definition_or_api_error(
     """Parse stored control data or raise a structured CORRUPTED_DATA error."""
     try:
         return ControlDefinition.model_validate(data, context=dict(context) if context else None)
+    except ValidationError as exc:
+        raise APIValidationError(
+            error_code=ErrorCode.CORRUPTED_DATA,
+            detail=detail,
+            resource="Control",
+            resource_id=resource_id,
+            hint=hint,
+            errors=build_control_validation_errors(exc, field_prefix=field_prefix),
+        ) from exc
+
+
+def parse_runtime_control_definition_or_api_error(
+    data: Any,
+    *,
+    detail: str,
+    hint: str,
+    resource_id: str | None = None,
+    context: Mapping[str, Any] | None = None,
+    field_prefix: str | None = "data",
+) -> ControlDefinitionRuntime:
+    """Parse stored runtime control data or raise a structured CORRUPTED_DATA error."""
+    try:
+        return ControlDefinitionRuntime.model_validate(
+            data,
+            context=dict(context) if context else None,
+        )
     except ValidationError as exc:
         raise APIValidationError(
             error_code=ErrorCode.CORRUPTED_DATA,

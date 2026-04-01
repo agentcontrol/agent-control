@@ -7,6 +7,7 @@ from typing import Literal
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
     ControlDefinition,
+    ControlDefinitionRuntime,
     ControlExecutionEvent,
     ControlMatch,
     EvaluationRequest,
@@ -23,7 +24,7 @@ from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
 from ..observability.ingest.base import EventIngestor
-from ..services.controls import list_controls_for_agent
+from ..services.controls import list_runtime_controls_for_agent
 from .observability import get_event_ingestor
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
@@ -43,7 +44,12 @@ SAFE_ENGINE_VALIDATION_MESSAGE = "Invalid evaluation request or control configur
 class ControlAdapter:
     """Adapts API Control to Engine ControlWithIdentity protocol."""
 
-    def __init__(self, id: int, name: str, control: ControlDefinition):
+    def __init__(
+        self,
+        id: int,
+        name: str,
+        control: ControlDefinition | ControlDefinitionRuntime,
+    ):
         self.id = id
         self.name = name
         self.control = control
@@ -201,18 +207,18 @@ async def evaluate(
         )
     agent_name = agent.name
 
-    # Fetch controls for the agent (already validated as ControlDefinition)
-    api_controls = await list_controls_for_agent(
+    # Fetch controls for the agent using the runtime model for evaluation.
+    runtime_controls = await list_runtime_controls_for_agent(
         request.agent_name,
         db,
         allow_invalid_step_name_regex=True,
     )
 
     # Build control lookup for observability
-    control_lookup = {c.id: c for c in api_controls}
+    control_lookup = {c.id: c for c in runtime_controls}
 
     # Adapt controls for the engine
-    engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in api_controls]
+    engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
 
     # Execute Control Engine (parallel with cancel-on-deny)
     engine = ControlEngine(engine_controls)

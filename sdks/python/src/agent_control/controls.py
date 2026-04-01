@@ -265,6 +265,22 @@ async def render_control_template(
     return cast(dict[str, Any], response.json())
 
 
+def to_template_control_input(
+    data: dict[str, Any] | ControlDefinition,
+) -> TemplateControlInput:
+    """Convert stored control data into template authoring input.
+
+    This is the supported reshape path for template-backed controls returned by
+    ``GET /controls/{id}`` or ``GET /controls/{id}/data`` before submitting them
+    back to ``set_control_data``.
+    """
+    if isinstance(data, ControlDefinition):
+        control_def = data
+    else:
+        control_def = ControlDefinition.model_validate(data)
+    return control_def.to_template_control_input()
+
+
 async def add_rule_to_control(
     client: AgentControlClient,
     control_id: int,

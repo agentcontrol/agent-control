@@ -1,11 +1,12 @@
 from collections.abc import Sequence
-from typing import Any, Protocol
+from typing import Any
 
 from agent_control_engine import list_evaluators
 from agent_control_models.agent import Agent as APIAgent
 from agent_control_models.agent import StepSchema
-from agent_control_models.controls import ControlDefinition
+from agent_control_models.controls import ControlDefinitionRuntime
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
+from agent_control_models.policy import Control as APIControl
 from agent_control_models.server import (
     AgentControlsResponse,
     AgentSummary,
@@ -82,13 +83,6 @@ _CORRUPTED_AGENT_DATA_MESSAGE = "Stored agent data is corrupted and cannot be pa
 type StepKeyTuple = tuple[str, str]
 
 
-class _ControlWithDefinition(Protocol):
-    """Minimal control shape needed for evaluator dependency scans."""
-
-    name: str
-    control: ControlDefinition
-
-
 # =============================================================================
 # List Agents Models
 # =============================================================================
@@ -119,7 +113,7 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
             continue
 
         try:
-            control_definition = ControlDefinition.model_validate(control.data)
+            control_definition = ControlDefinitionRuntime.model_validate(control.data)
         except ValidationError:
             errors.append(f"Control '{control.name}' has corrupted data")
             continue
@@ -165,7 +159,7 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
 
 
 def _find_referencing_controls_for_removed_evaluators(
-    controls: Sequence[_ControlWithDefinition],
+    controls: Sequence[APIControl],
     agent_name: str,
     remove_evaluator_set: set[str],
 ) -> list[tuple[str, str]]:

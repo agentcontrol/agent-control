@@ -8,6 +8,7 @@ from agent_control_engine import list_evaluators
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
     ControlDefinition,
+    ControlDefinitionRuntime,
     ControlExecutionEvent,
     ControlMatch,
     EvaluationRequest,
@@ -33,7 +34,7 @@ _trace_warning_logged = False
 
 
 def _observability_metadata(
-    control_def: ControlDefinition,
+    control_def: ControlDefinition | ControlDefinitionRuntime,
 ) -> tuple[str | None, str | None, dict[str, object]]:
     """Return representative event fields plus full composite context."""
     identity = control_def.observability_identity()
@@ -159,7 +160,7 @@ class _ControlAdapter:
 
     id: int
     name: str
-    control: "ControlDefinition"
+    control: "ControlDefinition | ControlDefinitionRuntime"
 
 
 def _get_applicable_controls(
@@ -193,7 +194,7 @@ def _has_applicable_prefiltered_server_controls(
 
     for control in server_control_payloads:
         try:
-            control_def = ControlDefinition.model_validate(control["control"])
+            control_def = ControlDefinitionRuntime.model_validate(control["control"])
             parsed_server_controls.append(
                 _ControlAdapter(
                     id=control["id"],
@@ -315,7 +316,7 @@ async def check_evaluation_with_local(
             continue
 
         try:
-            control_def = ControlDefinition.model_validate(control_data)
+            control_def = ControlDefinitionRuntime.model_validate(control_data)
             for _, evaluator_spec in control_def.iter_condition_leaf_parts():
                 evaluator_name = evaluator_spec.name
 

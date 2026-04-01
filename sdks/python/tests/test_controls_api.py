@@ -107,3 +107,44 @@ async def test_render_control_template_calls_preview_endpoint() -> None:
             "template_values": {},
         },
     )
+
+
+def test_to_template_control_input_reshapes_stored_control_data() -> None:
+    template_input = agent_control.controls.to_template_control_input(
+        {
+            "execution": "server",
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": "hello"},
+                },
+            },
+            "action": {"decision": "deny"},
+            "template": {
+                "parameters": {
+                    "pattern": {
+                        "type": "regex_re2",
+                        "label": "Pattern",
+                    }
+                },
+                "definition_template": {
+                    "execution": "server",
+                    "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {"pattern": {"$param": "pattern"}},
+                        },
+                    },
+                    "action": {"decision": "deny"},
+                },
+            },
+            "template_values": {"pattern": "hello"},
+        }
+    )
+
+    assert isinstance(template_input, TemplateControlInput)
+    assert template_input.template_values == {"pattern": "hello"}

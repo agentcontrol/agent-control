@@ -448,6 +448,24 @@ class ControlAction(BaseModel):
 MAX_CONDITION_DEPTH = 6
 
 
+def _validate_common_control_constraints(
+    condition: ConditionNode,
+    action: ControlAction,
+) -> None:
+    """Validate control constraints shared by authoring and runtime models."""
+    if condition.max_depth() > MAX_CONDITION_DEPTH:
+        raise ValueError(
+            f"Condition nesting depth exceeds maximum of {MAX_CONDITION_DEPTH}"
+        )
+
+    if (
+        action.decision == "steer"
+        and not condition.is_leaf()
+        and action.steering_context is None
+    ):
+        raise ValueError("Composite steer controls require action.steering_context")
+
+
 class ConditionNode(BaseModel):
     """Recursive boolean condition tree for control evaluation."""
 
@@ -689,19 +707,7 @@ class ControlDefinition(BaseModel):
     @model_validator(mode="after")
     def validate_condition_constraints(self) -> Self:
         """Validate cross-field control constraints."""
-        if self.condition.max_depth() > MAX_CONDITION_DEPTH:
-            raise ValueError(
-                f"Condition nesting depth exceeds maximum of {MAX_CONDITION_DEPTH}"
-            )
-
-        if (
-            self.action.decision == "steer"
-            and not self.condition.is_leaf()
-            and self.action.steering_context is None
-        ):
-            raise ValueError(
-                "Composite steer controls require action.steering_context"
-            )
+        _validate_common_control_constraints(self.condition, self.action)
         has_template = self.template is not None
         has_template_values = self.template_values is not None
         if has_template != has_template_values:
@@ -709,6 +715,15 @@ class ControlDefinition(BaseModel):
                 "template and template_values must both be present or both absent"
             )
         return self
+
+    def to_template_control_input(self) -> TemplateControlInput:
+        """Extract template-backed authoring input from a stored control definition."""
+        if self.template is None or self.template_values is None:
+            raise ValueError("Control definition is not template-backed")
+        return TemplateControlInput(
+            template=self.template,
+            template_values=dict(self.template_values),
+        )
 
     def iter_condition_leaves(self) -> Iterator[ConditionNode]:
         """Yield leaf conditions in evaluation order."""
@@ -807,6 +822,54 @@ class ControlDefinitionRuntime(BaseModel):
     )
     action: ControlAction = Field(..., description="What action to take when control matches")
     tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+
+    @model_validator(mode="before")
+    @classmethod
+    def canonicalize_legacy_condition_shape(cls, data: Any) -> Any:
+        """Accept legacy flat leaf payloads during runtime parsing."""
+        return ControlDefinition.canonicalize_payload(data)
+
+    @model_validator(mode="after")
+    def validate_condition_constraints(self) -> Self:
+        """Validate runtime-relevant control constraints."""
+        _validate_common_control_constraints(self.condition, self.action)
+        return self
+
+    def iter_condition_leaves(self) -> Iterator[ConditionNode]:
+        """Yield leaf conditions in evaluation order."""
+        yield from self.condition.iter_leaves()
+
+    def iter_condition_leaf_parts(self) -> Iterator[ConditionLeafParts]:
+        """Yield leaf selector/evaluator pairs in evaluation order."""
+        yield from self.condition.iter_leaf_parts()
+
+    def observability_identity(self) -> ControlObservabilityIdentity:
+        """Return a deterministic representative identity for observability."""
+        all_evaluators: list[str] = []
+        all_selector_paths: list[str] = []
+        seen_evaluators: set[str] = set()
+        seen_selector_paths: set[str] = set()
+        leaf_count = 0
+
+        for selector, evaluator in self.iter_condition_leaf_parts():
+            leaf_count += 1
+            selector_path = selector.path or "*"
+
+            if evaluator.name not in seen_evaluators:
+                seen_evaluators.add(evaluator.name)
+                all_evaluators.append(evaluator.name)
+
+            if selector_path not in seen_selector_paths:
+                seen_selector_paths.add(selector_path)
+                all_selector_paths.append(selector_path)
+
+        return ControlObservabilityIdentity(
+            selector_path=all_selector_paths[0] if all_selector_paths else None,
+            evaluator_name=all_evaluators[0] if all_evaluators else None,
+            leaf_count=leaf_count,
+            all_evaluators=all_evaluators,
+            all_selector_paths=all_selector_paths,
+        )
 
     def to_control_definition(self) -> ControlDefinition:
         """Promote a runtime control to the full public model when needed."""

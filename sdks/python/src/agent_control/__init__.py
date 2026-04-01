@@ -164,6 +164,13 @@ def get_server_controls() -> list[dict[str, Any]] | None:
     return state.server_controls
 
 
+def to_template_control_input(
+    data: dict[str, Any] | ControlDefinition,
+) -> TemplateControlInput:
+    """Convert stored control data into template authoring input."""
+    return controls.to_template_control_input(data)
+
+
 def _publish_server_controls(
     controls: list[dict[str, Any]] | None,
 ) -> list[dict[str, Any]] | None:
@@ -1316,6 +1323,7 @@ __all__ = [
     "update_control",
     "validate_control_data",
     "render_control_template",
+    "to_template_control_input",
     # Decorator
     "control",
     "ControlViolationError",

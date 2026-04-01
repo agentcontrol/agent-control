@@ -16,6 +16,7 @@ from agent_control_evaluators import get_evaluator_instance
 from agent_control_models import (
     ConditionNode,
     ControlDefinition,
+    ControlDefinitionRuntime,
     ControlMatch,
     EvaluationRequest,
     EvaluationResponse,
@@ -47,7 +48,7 @@ class ControlWithIdentity(Protocol):
 
     id: int
     name: str
-    control: ControlDefinition
+    control: ControlDefinition | ControlDefinitionRuntime
 
 
 @dataclass
