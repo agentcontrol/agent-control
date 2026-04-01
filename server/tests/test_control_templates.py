@@ -328,6 +328,24 @@ def test_create_template_backed_control_persists_template_metadata(client: TestC
     assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"
 
 
+def test_get_control_returns_template_metadata_for_template_backed_control(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_template_control_with_name(client)
+
+    response = client.get(f"/api/v1/controls/{control_id}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == control_id
+    assert body["name"] == control_name
+    assert body["data"]["template"]["description"] == "Regex denial template"
+    assert body["data"]["template_values"] == {
+        "pattern": "hello",
+        "step_name": "templated-step",
+    }
+
+
 def test_create_template_backed_control_persists_resolved_defaults_when_values_omitted(
     client: TestClient,
 ) -> None:
@@ -418,6 +436,59 @@ def test_template_backed_control_can_be_disabled_and_reenabled_in_evaluation(
     body = reenabled_eval.json()
     assert body["is_safe"] is False
     assert body["matches"][0]["control_name"] == control_name
+
+
+def test_template_backed_control_rename_is_reflected_in_evaluation(client: TestClient) -> None:
+    control_id, _ = _create_template_control_with_name(client)
+    agent_name = _assign_control_to_agent(client, control_id)
+    renamed_control_name = f"renamed-template-control-{uuid.uuid4()}"
+
+    patch_response = client.patch(
+        f"/api/v1/controls/{control_id}",
+        json={"name": renamed_control_name},
+    )
+    assert patch_response.status_code == 200, patch_response.text
+    assert patch_response.json()["name"] == renamed_control_name
+
+    eval_response = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+
+    assert eval_response.status_code == 200, eval_response.text
+    body = eval_response.json()
+    assert body["is_safe"] is False
+    assert body["matches"][0]["control_name"] == renamed_control_name
+
+
+def test_template_backed_control_patch_updates_name_and_enabled_together(
+    client: TestClient,
+) -> None:
+    control_id, _ = _create_template_control_with_name(client)
+    renamed_control_name = f"patched-template-control-{uuid.uuid4()}"
+
+    patch_response = client.patch(
+        f"/api/v1/controls/{control_id}",
+        json={"name": renamed_control_name, "enabled": False},
+    )
+
+    assert patch_response.status_code == 200, patch_response.text
+    body = patch_response.json()
+    assert body["name"] == renamed_control_name
+    assert body["enabled"] is False
+
+    get_response = client.get(f"/api/v1/controls/{control_id}")
+    assert get_response.status_code == 200, get_response.text
+    get_body = get_response.json()
+    assert get_body["name"] == renamed_control_name
+    assert get_body["data"]["enabled"] is False
+    assert get_body["data"]["template"]["description"] == "Regex denial template"
+    assert get_body["data"]["template_values"] == {
+        "pattern": "hello",
+        "step_name": "templated-step",
+    }
 
 
 def test_template_backed_control_update_changes_scope_behavior(client: TestClient) -> None:
@@ -664,6 +735,16 @@ def test_template_validate_maps_missing_parameter_error(client: TestClient) -> N
         and err.get("parameter") == "pattern"
         for err in body.get("errors", [])
     )
+
+
+def test_template_validate_succeeds_with_defaults_only_payload(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/controls/validate",
+        json={"data": _defaults_only_template_payload()},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["success"] is True
 
 
 def test_render_control_template_rejects_unknown_template_value_key(client: TestClient) -> None:
