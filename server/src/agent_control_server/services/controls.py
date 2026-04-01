@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from agent_control_models import ControlDefinitionRuntime
+from agent_control_models import ControlDefinitionRuntime, UnrenderedTemplateControl
 from agent_control_models.policy import Control as APIControl
 from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,8 +89,6 @@ async def list_controls_for_agent(
             and c.data.get("template") is not None
             and c.data.get("condition") is None
         ):
-            from agent_control_models import UnrenderedTemplateControl
-
             unrendered = UnrenderedTemplateControl.model_validate(c.data)
             api_controls.append(APIControl(id=c.id, name=c.name, control=unrendered))
             continue

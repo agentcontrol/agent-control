@@ -1658,6 +1658,70 @@ def test_unrendered_template_excluded_from_evaluation(client: TestClient) -> Non
     assert eval_response.json()["is_safe"] is True
 
 
+def test_create_unrendered_template_rejects_unknown_value_key(
+    client: TestClient,
+) -> None:
+    # Given: a template payload with values for a nonexistent parameter
+    payload = _unrendered_template_payload()
+    payload["template_values"] = {"nonexistent": "value"}  # type: ignore[assignment]
+
+    # When: creating the unrendered control
+    response = client.put(
+        "/api/v1/controls",
+        json={"name": f"unknown-val-{uuid.uuid4()}", "data": payload},
+    )
+
+    # Then: the server rejects with unknown parameter error
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
+    assert any(
+        err.get("code") == "unknown_parameter"
+        and err.get("field") == "template_values.nonexistent"
+        for err in body.get("errors", [])
+    )
+
+
+def test_create_unrendered_template_rejects_wrong_type_value(
+    client: TestClient,
+) -> None:
+    # Given: a template with a regex_re2 parameter but we provide a list value
+    payload = _unrendered_template_payload()
+    payload["template_values"] = {"pattern": ["not", "a", "string"]}  # type: ignore[assignment]
+
+    # When: creating the unrendered control
+    response = client.put(
+        "/api/v1/controls",
+        json={"name": f"wrong-type-{uuid.uuid4()}", "data": payload},
+    )
+
+    # Then: the server rejects with a type error
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
+    assert any(
+        err.get("parameter") == "pattern"
+        for err in body.get("errors", [])
+    )
+
+
+def test_unrendered_template_list_shows_template_description_as_fallback(
+    client: TestClient,
+) -> None:
+    # Given: an unrendered template control whose template has a description
+    control_id, _ = _create_unrendered_control(client)
+
+    # When: listing controls
+    response = client.get("/api/v1/controls", params={"template_backed": True})
+
+    # Then: the summary description falls back to the template description
+    assert response.status_code == 200, response.text
+    controls = response.json()["controls"]
+    unrendered = next((c for c in controls if c["id"] == control_id), None)
+    assert unrendered is not None
+    assert unrendered["description"] == "Regex denial template"
+
+
 def test_unrendered_template_shows_in_list_with_correct_flags(client: TestClient) -> None:
     # Given: an unrendered template control
     control_id, _ = _create_unrendered_control(client)

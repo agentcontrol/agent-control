@@ -664,25 +664,59 @@ def validate_template_structure(template: TemplateDefinition) -> None:
     _reject_hardcoded_agent_scoped_evaluators(definition_template)
 
 
+def validate_partial_template_values(
+    template: TemplateDefinition,
+    template_values: Mapping[str, TemplateValue],
+) -> None:
+    """Validate provided template values without requiring completeness.
+
+    Rejects unknown parameter keys and type-checks any values that are
+    provided.  Called for unrendered template creation so invalid values
+    fail fast instead of persisting silently.
+    """
+    unknown_keys = sorted(set(template_values) - set(template.parameters))
+    if unknown_keys:
+        raise APIValidationError(
+            error_code=ErrorCode.TEMPLATE_PARAMETER_INVALID,
+            detail="Unknown template parameter(s) supplied",
+            resource="Control",
+            hint="Remove unknown template parameter keys and try again.",
+            errors=[
+                ValidationErrorItem(
+                    resource="Control",
+                    field=f"template_values.{name}",
+                    code="unknown_parameter",
+                    message=f"Unknown template parameter '{name}'.",
+                    parameter=name,
+                )
+                for name in unknown_keys
+            ],
+        )
+
+    for name, value in template_values.items():
+        if name in template.parameters:
+            _coerce_parameter_value(name, template.parameters[name], value)
+
+
 def _reject_hardcoded_agent_scoped_evaluators(
     definition_template: dict[str, JsonValue],
 ) -> None:
     """Reject agent-scoped evaluator names that are hardcoded in the template."""
-    # Walk condition tree looking for evaluator.name fields containing ':'
     condition = definition_template.get("condition")
     if not isinstance(condition, dict):
         return
 
-    stack: list[dict[str, JsonValue]] = [condition]
+    # Walk condition tree tracking the path for accurate error reporting.
+    stack: list[tuple[dict[str, JsonValue], str]] = [(condition, "condition")]
     while stack:
-        node = stack.pop()
+        node, path = stack.pop()
         evaluator = node.get("evaluator")
         if isinstance(evaluator, dict):
             name = evaluator.get("name")
             if isinstance(name, str) and ":" in name:
                 raise _render_error(
                     detail="Agent-scoped evaluators are not supported in control templates",
-                    field="condition.evaluator.name",
+                    field=f"{path}.evaluator.name",
                     code="agent_scoped_evaluator_not_supported",
                     message="Agent-scoped evaluators are not supported in control templates.",
                 )
@@ -690,13 +724,13 @@ def _reject_hardcoded_agent_scoped_evaluators(
         for key in ("and", "or"):
             children = node.get(key)
             if isinstance(children, list):
-                for child in children:
+                for idx, child in enumerate(children):
                     if isinstance(child, dict):
-                        stack.append(child)
+                        stack.append((child, f"{path}.{key}[{idx}]"))
 
         not_child = node.get("not")
         if isinstance(not_child, dict):
-            stack.append(not_child)
+            stack.append((not_child, f"{path}.not"))
 
 
 def render_template_control_input(
@@ -707,37 +741,11 @@ def render_template_control_input(
     """Render a template-backed control input into a concrete control definition."""
     template = template_input.template
     definition_template = template.definition_template
-    if not isinstance(definition_template, dict):
-        raise _render_error(
-            detail="Templates must define a top-level control object",
-            field="template.definition_template",
-            code="invalid_definition_template_type",
-            message="definition_template must be a JSON object representing a control definition.",
-        )
 
-    for forbidden_key in ("enabled", "name"):
-        if forbidden_key in definition_template:
-            raise _render_error(
-                detail=f"Templates must not define top-level '{forbidden_key}'",
-                field=forbidden_key,
-                code="forbidden_template_field",
-                message=(
-                    f"Templates must not define top-level '{forbidden_key}'. "
-                    "Manage it outside the template."
-                ),
-            )
-    if "condition" not in definition_template and (
-        "selector" in definition_template or "evaluator" in definition_template
-    ):
-        raise _render_error(
-            detail="Templates must use the canonical 'condition' format",
-            field="condition",
-            code="legacy_condition_format_not_supported",
-            message=(
-                "Templates must use the canonical 'condition' wrapper instead of "
-                "top-level selector/evaluator fields."
-            ),
-        )
+    # Reuse structural validation (dict type, forbidden keys, legacy format,
+    # $param references, unused params, agent-scoped evaluators).
+    validate_template_structure(template)
+    assert isinstance(definition_template, dict)  # guaranteed by validate_template_structure
 
     resolved_values = _resolve_template_values(template, template_input.template_values)
     reverse_path_map: dict[str, str] = {}

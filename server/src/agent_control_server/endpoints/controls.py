@@ -43,6 +43,7 @@ from ..services.control_templates import (
     can_render_template,
     remap_template_api_error,
     render_template_control_input,
+    validate_partial_template_values,
     validate_template_structure,
 )
 from ..services.evaluator_utils import (
@@ -205,6 +206,9 @@ async def _materialize_control_input(
             )
 
         validate_template_structure(control_input.template)
+        validate_partial_template_values(
+            control_input.template, control_input.template_values,
+        )
         return UnrenderedTemplateControl(
             template=control_input.template,
             template_values=dict(control_input.template_values),
@@ -874,7 +878,10 @@ async def list_controls(
             ControlSummary(
                 id=ctrl.id,
                 name=ctrl.name,
-                description=data.get("description"),
+                description=(
+                    data.get("description")
+                    or (data.get("template") or {}).get("description")
+                ),
                 enabled=data.get("enabled", True),
                 execution=data.get("execution"),
                 step_types=scope.get("step_types"),
@@ -1154,9 +1161,9 @@ async def patch_control(
                             field="enabled",
                             code="unrendered_template_cannot_enable",
                             message=(
-                            "Provide parameter values to render the "
-                            "template before enabling."
-                        ),
+                                "Provide parameter values to render "
+                                "the template before enabling."
+                            ),
                         )
                     ],
                 )
