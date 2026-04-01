@@ -781,6 +781,34 @@ def test_template_update_preserves_enabled_value(client: TestClient) -> None:
     assert data["scope"]["step_names"] == ["updated-step"]
 
 
+def test_template_update_preview_matches_persisted_rendered_control(client: TestClient) -> None:
+    # Given: an existing template-backed control and updated template values
+    control_id = _create_template_control(client)
+    updated_payload = _template_payload()
+    updated_payload["template_values"] = {
+        "pattern": "updated",
+        "step_name": "updated-step",
+    }
+
+    # When: previewing the updated template render and then persisting the update
+    preview_response = client.post("/api/v1/control-templates/render", json=updated_payload)
+    assert preview_response.status_code == 200, preview_response.text
+    preview_control = preview_response.json()["control"]
+
+    put_response = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": updated_payload},
+    )
+    assert put_response.status_code == 200, put_response.text
+
+    get_response = client.get(f"/api/v1/controls/{control_id}/data")
+
+    # Then: the persisted rendered control matches the preview output
+    assert get_response.status_code == 200, get_response.text
+    persisted_control = get_response.json()["data"]
+    assert persisted_control == preview_control
+
+
 def test_template_update_accepts_different_template_structure(client: TestClient) -> None:
     # Given: an attached template-backed control using the regex template shape
     control_id, _ = _create_template_control_with_name(client)
