@@ -300,6 +300,20 @@ def test_render_control_template_preview_rejects_excessive_definition_nesting(
     assert "definition_template nesting depth exceeds maximum" in body["errors"][0]["message"]
 
 
+def test_render_control_template_preview_rejects_excessive_definition_size(
+    client: TestClient,
+) -> None:
+    payload = _template_payload()
+    payload["template"]["definition_template"] = list(range(1001))
+
+    response = client.post("/api/v1/control-templates/render", json=payload)
+
+    assert response.status_code == 422, response.text
+    body = response.json()
+    assert body["detail"].startswith("Request validation failed")
+    assert "definition_template size exceeds maximum" in body["errors"][0]["message"]
+
+
 def test_create_template_backed_control_persists_template_metadata(client: TestClient) -> None:
     control_id = _create_template_control(client)
 
@@ -312,6 +326,31 @@ def test_create_template_backed_control_persists_template_metadata(client: TestC
         "step_name": "templated-step",
     }
     assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"
+
+
+def test_create_template_backed_control_persists_resolved_defaults_when_values_omitted(
+    client: TestClient,
+) -> None:
+    control_id, _ = _create_template_control_with_name(
+        client,
+        _defaults_only_template_payload(),
+        name_prefix="defaulted-template-control",
+    )
+
+    response = client.get(f"/api/v1/controls/{control_id}/data")
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["template_values"] == {
+        "values": ["secret", "blocked"],
+        "logic": "any",
+        "case_sensitive": False,
+    }
+    assert data["condition"]["evaluator"]["config"] == {
+        "values": ["secret", "blocked"],
+        "logic": "any",
+        "case_sensitive": False,
+    }
 
 
 def test_template_backed_control_evaluates_after_policy_attachment(client: TestClient) -> None:
@@ -441,6 +480,34 @@ def test_template_backed_control_supports_direct_agent_attachment(client: TestCl
     body = response.json()
     assert body["is_safe"] is False
     assert body["matches"][0]["control_name"] == control_name
+
+
+def test_template_backed_warn_control_evaluates_as_safe_with_warn_match(
+    client: TestClient,
+) -> None:
+    payload = _template_payload()
+    payload["template"] = deepcopy(payload["template"])
+    payload["template"]["definition_template"]["action"]["decision"] = "warn"  # type: ignore[index]
+    control_id, control_name = _create_template_control_with_name(
+        client,
+        payload,
+        name_prefix="warn-template-control",
+    )
+    agent_name = _assign_control_to_agent(client, control_id)
+
+    response = _evaluate_step(
+        client,
+        agent_name,
+        step_name="templated-step",
+        input_value="hello",
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["is_safe"] is True
+    assert len(body["matches"]) == 1
+    assert body["matches"][0]["control_name"] == control_name
+    assert body["matches"][0]["action"] == "warn"
 
 
 def test_template_backed_control_preserves_falsey_values_and_uses_them_in_behavior(
@@ -615,6 +682,25 @@ def test_render_control_template_rejects_unknown_template_value_key(client: Test
     )
 
 
+def test_render_control_template_rejects_undefined_param_reference(client: TestClient) -> None:
+    payload = _template_payload()
+    payload["template"] = deepcopy(payload["template"])
+    payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["pattern"] = {  # type: ignore[index]
+        "$param": "undefined_pattern",
+    }
+
+    response = client.post("/api/v1/control-templates/render", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
+    assert any(
+        err.get("code") == "undefined_parameter_reference"
+        and err.get("field") == "condition.evaluator.config.pattern"
+        for err in body.get("errors", [])
+    )
+
+
 def test_template_backed_control_rejects_raw_put_update(client: TestClient) -> None:
     control_id = _create_template_control(client)
     raw_payload = deepcopy(
@@ -641,6 +727,46 @@ def test_template_backed_control_rejects_raw_put_update(client: TestClient) -> N
 
     assert response.status_code == 409
     assert response.json()["error_code"] == "CONTROL_TEMPLATE_CONFLICT"
+
+
+def test_create_control_rejects_mixed_raw_and_template_payload_at_api_boundary(
+    client: TestClient,
+) -> None:
+    payload = _template_payload()
+    payload["execution"] = "server"
+
+    response = client.put(
+        "/api/v1/controls",
+        json={
+            "name": f"mixed-template-control-{uuid.uuid4()}",
+            "data": payload,
+        },
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "VALIDATION_ERROR"
+    assert any(
+        "cannot mix template fields with rendered control fields" in err.get("message", "")
+        for err in body.get("errors", [])
+    )
+
+
+def test_validate_control_rejects_mixed_raw_and_template_payload_at_api_boundary(
+    client: TestClient,
+) -> None:
+    payload = _template_payload()
+    payload["execution"] = "server"
+
+    response = client.post("/api/v1/controls/validate", json={"data": payload})
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "VALIDATION_ERROR"
+    assert any(
+        "cannot mix template fields with rendered control fields" in err.get("message", "")
+        for err in body.get("errors", [])
+    )
 
 
 def test_list_controls_includes_template_backed_flag_and_filter(client: TestClient) -> None:
