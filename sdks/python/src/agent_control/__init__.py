@@ -95,8 +95,13 @@ from .observability import (
     sync_shutdown_observability,
 )
 from .telemetry import (
+    ControlEventSink,
+    clear_control_event_sink,
     clear_trace_context_provider,
+    emit_control_events,
     get_trace_context_from_provider,
+    has_control_event_sink,
+    set_control_event_sink,
     set_trace_context_provider,
 )
 from .tracing import (
@@ -477,6 +482,7 @@ def init(
 
     # Re-init behavior: always stop existing loop before mutating shared agent/session globals.
     _stop_policy_refresh_loop()
+    clear_control_event_sink()
 
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
@@ -640,6 +646,8 @@ def init(
 def _reset_state() -> None:
     """Clear all global SDK state."""
     global _session_generation
+
+    clear_control_event_sink()
 
     with _session_lock:
         _session_generation += 1
@@ -1313,6 +1321,11 @@ __all__ = [
     "set_trace_context_provider",
     "get_trace_context_from_provider",
     "clear_trace_context_provider",
+    "ControlEventSink",
+    "set_control_event_sink",
+    "has_control_event_sink",
+    "emit_control_events",
+    "clear_control_event_sink",
     # Observability
     "init_observability",
     "add_event",

@@ -15,6 +15,7 @@ import agent_control
 import agent_control.observability as obs_mod
 from agent_control._state import state
 from agent_control.observability import EventBatcher
+from agent_control.telemetry.event_sink import has_control_event_sink, set_control_event_sink
 
 
 def _make_started_batcher() -> EventBatcher:
@@ -65,6 +66,7 @@ class TestShutdownSync:
         state.server_url = "http://localhost:8000"
         state.api_key = "key"
         state.merge_events = True
+        set_control_event_sink(lambda events: None)
 
         agent_control.shutdown()
 
@@ -74,6 +76,7 @@ class TestShutdownSync:
         assert state.server_url is None
         assert state.api_key is None
         assert state.merge_events is False
+        assert has_control_event_sink() is False
 
     def test_shutdown_idempotent(self):
         agent_control.shutdown()
@@ -86,6 +89,20 @@ class TestShutdownSync:
         agent_control._refresh_thread = None
 
         agent_control.shutdown()
+
+    def test_init_clears_previously_registered_control_event_sink(self):
+        set_control_event_sink(lambda events: None)
+
+        with patch("agent_control._stop_policy_refresh_loop"), \
+             patch("agent_control.init_observability", return_value=None), \
+             patch("agent_control._start_policy_refresh_loop"), \
+             patch("agent_control.get_registered_steps", return_value=[]), \
+             patch("agent_control.merge_explicit_and_auto_steps") as mock_merge, \
+             patch("agent_control._run_coro_in_new_loop", return_value=None):
+            mock_merge.return_value = MagicMock(steps=[], overridden_keys=[])
+            agent_control.init(agent_name="agent-000000000001")
+
+        assert has_control_event_sink() is False
 
 
 class TestAshutdownAsync:
