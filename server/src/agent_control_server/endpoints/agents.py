@@ -1367,6 +1367,7 @@ async def remove_agent_control(
 @router.get(
     "/{agent_name}/controls",
     response_model=AgentControlsResponse,
+    response_model_exclude_none=True,
     summary="List agent's active controls",
     response_description="List of controls from agent policy and direct associations",
 )

@@ -155,18 +155,3 @@ export function sanitizeControlNamePart(s: string): string {
     .replace(/^[-_]+/, '');
   return sanitized || 'control';
 }
-
-/**
- * Stringify JSON for editor display while omitting object properties whose
- * values are null. This keeps the editor aligned with persisted control data.
- */
-export function stringifyJsonWithoutNulls(value: unknown): string {
-  return (
-    JSON.stringify(
-      value,
-      (_key: string, currentValue: unknown) =>
-        currentValue === null ? undefined : currentValue,
-      2
-    ) ?? ''
-  );
-}

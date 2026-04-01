@@ -42,7 +42,7 @@ import type {
   EditControlMode,
 } from './types';
 import { useEvaluatorConfigState } from './use-evaluator-config-state';
-import { applyApiErrorsToForms, stringifyJsonWithoutNulls } from './utils';
+import { applyApiErrorsToForms } from './utils';
 
 const EVALUATOR_CONFIG_HEIGHT = 450;
 const JSON_EDITOR_HEIGHT = 520;
@@ -340,7 +340,7 @@ export const EditControlContent = ({
           return;
         }
 
-        setDefinitionJsonText(stringifyJsonWithoutNulls(definition));
+        setDefinitionJsonText(JSON.stringify(definition, null, 2));
         setDefinitionJsonError(null);
         setDefinitionValidationError(null);
         setDefinitionValidationStatus('idle');
@@ -394,7 +394,7 @@ export const EditControlContent = ({
     setEditorMode(initialEditorMode);
     setDefinitionJsonText(
       initialEditorMode === 'json'
-        ? stringifyJsonWithoutNulls(control.control)
+        ? JSON.stringify(control.control, null, 2)
         : ''
     );
     setDefinitionJsonError(null);
