@@ -36,6 +36,13 @@ VALID_TEMPLATE = {
 }
 
 
+def _nested_template_value(depth: int) -> object:
+    value: object = "leaf"
+    for _ in range(depth):
+        value = {"nested": value}
+    return value
+
+
 def test_control_definition_requires_template_fields_together() -> None:
     with pytest.raises(
         ValidationError,
@@ -94,6 +101,32 @@ def test_template_definition_rejects_invalid_parameter_name() -> None:
                     }
                 },
                 "definition_template": {},
+            }
+        )
+
+
+def test_template_definition_rejects_excessive_nesting() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="definition_template nesting depth exceeds maximum",
+    ):
+        TemplateDefinition.model_validate(
+            {
+                "parameters": {},
+                "definition_template": _nested_template_value(12),
+            }
+        )
+
+
+def test_template_definition_rejects_excessive_size() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="definition_template size exceeds maximum",
+    ):
+        TemplateDefinition.model_validate(
+            {
+                "parameters": {},
+                "definition_template": list(range(1001)),
             }
         )
 

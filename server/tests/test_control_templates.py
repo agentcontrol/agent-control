@@ -161,6 +161,13 @@ def _raw_control_payload(pattern: str = "raw", *, action: str = "deny") -> dict[
     }
 
 
+def _nested_template_value(depth: int) -> object:
+    value: object = "leaf"
+    for _ in range(depth):
+        value = {"nested": value}
+    return value
+
+
 def _create_template_control(client: TestClient) -> int:
     control_id, _ = _create_template_control_with_name(client)
     return control_id
@@ -277,6 +284,20 @@ def test_render_control_template_preview_uses_defaults_when_values_omitted(
         "logic": "any",
         "case_sensitive": False,
     }
+
+
+def test_render_control_template_preview_rejects_excessive_definition_nesting(
+    client: TestClient,
+) -> None:
+    payload = _template_payload()
+    payload["template"]["definition_template"] = _nested_template_value(12)
+
+    response = client.post("/api/v1/control-templates/render", json=payload)
+
+    assert response.status_code == 422, response.text
+    body = response.json()
+    assert body["detail"].startswith("Request validation failed")
+    assert "definition_template nesting depth exceeds maximum" in body["errors"][0]["message"]
 
 
 def test_create_template_backed_control_persists_template_metadata(client: TestClient) -> None:

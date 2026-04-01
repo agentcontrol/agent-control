@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 
 import re2
 from agent_control_models import (
-    ConditionNode,
     ControlDefinition,
     EnumTemplateParameter,
     JsonValue,
@@ -21,6 +20,7 @@ from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from pydantic import ValidationError
 
 from ..errors import APIValidationError
+from .condition_traversal import iter_condition_leaves_with_paths
 from .validation_paths import format_field_path
 
 _TEMPLATE_VALUE_MISSING = object()
@@ -439,30 +439,6 @@ def remap_template_api_error(
     )
 
 
-def _iter_condition_leaves(
-    node: ConditionNode,
-    *,
-    path: str = "condition",
-) -> Iterator[tuple[str, ConditionNode]]:
-    """Yield each leaf condition with a dotted/bracketed field path."""
-    if node.is_leaf():
-        yield path, node
-        return
-
-    if node.and_ is not None:
-        for index, child in enumerate(node.and_):
-            yield from _iter_condition_leaves(child, path=f"{path}.and[{index}]")
-        return
-
-    if node.or_ is not None:
-        for index, child in enumerate(node.or_):
-            yield from _iter_condition_leaves(child, path=f"{path}.or[{index}]")
-        return
-
-    if node.not_ is not None:
-        yield from _iter_condition_leaves(node.not_, path=f"{path}.not")
-
-
 def _reject_agent_scoped_evaluators(
     control: ControlDefinition,
     *,
@@ -470,7 +446,10 @@ def _reject_agent_scoped_evaluators(
     template: TemplateDefinition,
 ) -> None:
     """Reject agent-scoped evaluator references in v1 templates."""
-    for field_prefix, leaf in _iter_condition_leaves(control.condition):
+    for field_prefix, leaf in iter_condition_leaves_with_paths(
+        control.condition,
+        path="condition",
+    ):
         leaf_parts = leaf.leaf_parts()
         if leaf_parts is None:
             continue

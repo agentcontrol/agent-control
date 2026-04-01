@@ -268,6 +268,8 @@ type TemplateValue = str | bool | list[str]
 type JsonValue = JSONValue
 
 _TEMPLATE_PARAMETER_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+MAX_TEMPLATE_DEFINITION_DEPTH = 12
+MAX_TEMPLATE_DEFINITION_NODES = 1000
 
 
 def _validate_re2_value(value: str, *, field_name: str) -> str:
@@ -276,6 +278,35 @@ def _validate_re2_value(value: str, *, field_name: str) -> str:
         re2.compile(value)
     except re2.error as exc:
         raise ValueError(f"Invalid {field_name}: {exc}") from exc
+    return value
+
+
+def _validate_template_definition_structure(value: JsonValue) -> JsonValue:
+    """Validate template definition nesting and overall size."""
+    stack: list[tuple[JsonValue, int]] = [(value, 1)]
+    node_count = 0
+
+    while stack:
+        node, depth = stack.pop()
+        node_count += 1
+
+        if depth > MAX_TEMPLATE_DEFINITION_DEPTH:
+            raise ValueError(
+                "definition_template nesting depth exceeds maximum of "
+                f"{MAX_TEMPLATE_DEFINITION_DEPTH}"
+            )
+
+        if node_count > MAX_TEMPLATE_DEFINITION_NODES:
+            raise ValueError(
+                "definition_template size exceeds maximum of "
+                f"{MAX_TEMPLATE_DEFINITION_NODES} JSON nodes"
+            )
+
+        if isinstance(node, dict):
+            stack.extend((nested_value, depth + 1) for nested_value in node.values())
+        elif isinstance(node, list):
+            stack.extend((nested_value, depth + 1) for nested_value in node)
+
     return value
 
 
@@ -415,6 +446,12 @@ class TemplateDefinition(BaseModel):
                     "Parameter names must match [a-zA-Z_][a-zA-Z0-9_]*"
                 )
         return value
+
+    @field_validator("definition_template")
+    @classmethod
+    def validate_definition_template_structure(cls, value: JsonValue) -> JsonValue:
+        """Limit template nesting and size to keep rendering bounded."""
+        return _validate_template_definition_structure(value)
 
 
 class TemplateControlInput(BaseModel):
@@ -626,7 +663,56 @@ class ConditionNode(BaseModel):
 ConditionNode.model_rebuild()
 
 
-class ControlDefinition(BaseModel):
+def _build_observability_identity(
+    condition: ConditionNode,
+) -> ControlObservabilityIdentity:
+    """Build a stable selector/evaluator identity for a condition tree."""
+    all_evaluators: list[str] = []
+    all_selector_paths: list[str] = []
+    seen_evaluators: set[str] = set()
+    seen_selector_paths: set[str] = set()
+    leaf_count = 0
+
+    for selector, evaluator in condition.iter_leaf_parts():
+        leaf_count += 1
+        selector_path = selector.path or "*"
+
+        if evaluator.name not in seen_evaluators:
+            seen_evaluators.add(evaluator.name)
+            all_evaluators.append(evaluator.name)
+
+        if selector_path not in seen_selector_paths:
+            seen_selector_paths.add(selector_path)
+            all_selector_paths.append(selector_path)
+
+    return ControlObservabilityIdentity(
+        selector_path=all_selector_paths[0] if all_selector_paths else None,
+        evaluator_name=all_evaluators[0] if all_evaluators else None,
+        leaf_count=leaf_count,
+        all_evaluators=all_evaluators,
+        all_selector_paths=all_selector_paths,
+    )
+
+
+class _ConditionBackedControlMixin:
+    """Shared helpers for control models backed by a condition tree."""
+
+    condition: ConditionNode
+
+    def iter_condition_leaves(self) -> Iterator[ConditionNode]:
+        """Yield leaf conditions in evaluation order."""
+        yield from self.condition.iter_leaves()
+
+    def iter_condition_leaf_parts(self) -> Iterator[ConditionLeafParts]:
+        """Yield leaf selector/evaluator pairs in evaluation order."""
+        yield from self.condition.iter_leaf_parts()
+
+    def observability_identity(self) -> ControlObservabilityIdentity:
+        """Return a deterministic representative identity for observability."""
+        return _build_observability_identity(self.condition)
+
+
+class ControlDefinition(_ConditionBackedControlMixin, BaseModel):
     """A control definition to evaluate agent interactions.
 
     This model contains only the logic and configuration.
@@ -725,52 +811,11 @@ class ControlDefinition(BaseModel):
             template_values=dict(self.template_values),
         )
 
-    def iter_condition_leaves(self) -> Iterator[ConditionNode]:
-        """Yield leaf conditions in evaluation order."""
-        yield from self.condition.iter_leaves()
-
-    def iter_condition_leaf_parts(self) -> Iterator[ConditionLeafParts]:
-        """Yield leaf selector/evaluator pairs in evaluation order."""
-        yield from self.condition.iter_leaf_parts()
-
     def primary_leaf(self) -> ConditionNode | None:
         """Return the single leaf node when the whole condition is just one leaf."""
         if self.condition.is_leaf():
             return self.condition
         return None
-
-    def observability_identity(self) -> ControlObservabilityIdentity:
-        """Return a deterministic representative identity for observability.
-
-        The representative selector/evaluator comes from the first leaf in
-        evaluation order so composite trees still populate top-level event
-        dimensions. The full ordered, deduped leaf context is also returned.
-        """
-        all_evaluators: list[str] = []
-        all_selector_paths: list[str] = []
-        seen_evaluators: set[str] = set()
-        seen_selector_paths: set[str] = set()
-        leaf_count = 0
-
-        for selector, evaluator in self.iter_condition_leaf_parts():
-            leaf_count += 1
-            selector_path = selector.path or "*"
-
-            if evaluator.name not in seen_evaluators:
-                seen_evaluators.add(evaluator.name)
-                all_evaluators.append(evaluator.name)
-
-            if selector_path not in seen_selector_paths:
-                seen_selector_paths.add(selector_path)
-                all_selector_paths.append(selector_path)
-
-        return ControlObservabilityIdentity(
-            selector_path=all_selector_paths[0] if all_selector_paths else None,
-            evaluator_name=all_evaluators[0] if all_evaluators else None,
-            leaf_count=leaf_count,
-            all_evaluators=all_evaluators,
-            all_selector_paths=all_selector_paths,
-        )
 
     model_config = {
         "json_schema_extra": {
@@ -799,7 +844,7 @@ class ControlDefinition(BaseModel):
     }
 
 
-class ControlDefinitionRuntime(BaseModel):
+class ControlDefinitionRuntime(_ConditionBackedControlMixin, BaseModel):
     """Slim runtime control model that ignores template authoring metadata."""
 
     model_config = ConfigDict(extra="ignore")
@@ -835,41 +880,6 @@ class ControlDefinitionRuntime(BaseModel):
         _validate_common_control_constraints(self.condition, self.action)
         return self
 
-    def iter_condition_leaves(self) -> Iterator[ConditionNode]:
-        """Yield leaf conditions in evaluation order."""
-        yield from self.condition.iter_leaves()
-
-    def iter_condition_leaf_parts(self) -> Iterator[ConditionLeafParts]:
-        """Yield leaf selector/evaluator pairs in evaluation order."""
-        yield from self.condition.iter_leaf_parts()
-
-    def observability_identity(self) -> ControlObservabilityIdentity:
-        """Return a deterministic representative identity for observability."""
-        all_evaluators: list[str] = []
-        all_selector_paths: list[str] = []
-        seen_evaluators: set[str] = set()
-        seen_selector_paths: set[str] = set()
-        leaf_count = 0
-
-        for selector, evaluator in self.iter_condition_leaf_parts():
-            leaf_count += 1
-            selector_path = selector.path or "*"
-
-            if evaluator.name not in seen_evaluators:
-                seen_evaluators.add(evaluator.name)
-                all_evaluators.append(evaluator.name)
-
-            if selector_path not in seen_selector_paths:
-                seen_selector_paths.add(selector_path)
-                all_selector_paths.append(selector_path)
-
-        return ControlObservabilityIdentity(
-            selector_path=all_selector_paths[0] if all_selector_paths else None,
-            evaluator_name=all_evaluators[0] if all_evaluators else None,
-            leaf_count=leaf_count,
-            all_evaluators=all_evaluators,
-            all_selector_paths=all_selector_paths,
-        )
 
 class EvaluatorResult(BaseModel):
     """Result from a control evaluator.

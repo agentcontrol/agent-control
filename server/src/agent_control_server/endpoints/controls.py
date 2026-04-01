@@ -1,7 +1,5 @@
-from collections.abc import Iterator
-
 from agent_control_engine import list_evaluators
-from agent_control_models import ConditionNode, ControlDefinition, TemplateControlInput
+from agent_control_models import ControlDefinition, TemplateControlInput
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentRef,
@@ -39,6 +37,7 @@ from ..errors import (
 )
 from ..logging_utils import get_logger
 from ..models import Agent, AgentData, Control, agent_controls, agent_policies, policy_controls
+from ..services.condition_traversal import iter_condition_leaves_with_paths
 from ..services.control_definitions import parse_control_definition_or_api_error
 from ..services.control_templates import remap_template_api_error, render_template_control_input
 from ..services.evaluator_utils import (
@@ -59,32 +58,6 @@ router = APIRouter(prefix="/controls", tags=["controls"])
 template_router = APIRouter(prefix="/control-templates", tags=["controls"])
 
 _logger = get_logger(__name__)
-
-
-def _iter_condition_leaves(
-    node: ConditionNode,
-    *,
-    path: str = "data.condition",
-) -> Iterator[tuple[str, ConditionNode]]:
-    """Yield each leaf condition with its dot/bracket field path."""
-    if node.is_leaf():
-        yield path, node
-        return
-
-    if node.and_ is not None:
-        for index, child in enumerate(node.and_):
-            yield from _iter_condition_leaves(child, path=f"{path}.and[{index}]")
-        return
-
-    if node.or_ is not None:
-        for index, child in enumerate(node.or_):
-            yield from _iter_condition_leaves(child, path=f"{path}.or[{index}]")
-        return
-
-    if node.not_ is not None:
-        yield from _iter_condition_leaves(node.not_, path=f"{path}.not")
-
-
 def _serialize_control_definition(control_def: ControlDefinition) -> dict[str, object]:
     """Serialize control data for storage while omitting null scope fields."""
     data_json = control_def.model_dump(
@@ -130,7 +103,10 @@ async def _validate_control_definition(
     """Validate evaluator config for a control definition."""
     available_evaluators = list_evaluators()
     agent_data_by_name: dict[str, AgentData] = {}
-    for field_prefix, leaf in _iter_condition_leaves(control_def.condition):
+    for field_prefix, leaf in iter_condition_leaves_with_paths(
+        control_def.condition,
+        path="data.condition",
+    ):
         leaf_parts = leaf.leaf_parts()
         if leaf_parts is None:
             continue

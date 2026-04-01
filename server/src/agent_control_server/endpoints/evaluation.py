@@ -1,12 +1,12 @@
 """Evaluation analysis endpoints."""
 
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
-    ControlDefinition,
     ControlDefinitionRuntime,
     ControlExecutionEvent,
     ControlMatch,
@@ -41,18 +41,13 @@ SAFE_INVALID_STEP_REGEX_ERROR = "Control configuration error: invalid step name 
 SAFE_ENGINE_VALIDATION_MESSAGE = "Invalid evaluation request or control configuration."
 
 
+@dataclass
 class ControlAdapter:
     """Adapts API Control to Engine ControlWithIdentity protocol."""
 
-    def __init__(
-        self,
-        id: int,
-        name: str,
-        control: ControlDefinition | ControlDefinitionRuntime,
-    ):
-        self.id = id
-        self.name = name
-        self.control = control
+    id: int
+    name: str
+    control: ControlDefinitionRuntime
 
 
 def _sanitize_evaluator_error(error_message: str) -> str:
@@ -133,7 +128,7 @@ def _sanitize_evaluation_response(response: EvaluationResponse) -> EvaluationRes
 
 
 def _observability_metadata(
-    control_def: ControlDefinition,
+    control_def: ControlDefinitionRuntime,
 ) -> tuple[str | None, str | None, dict[str, object]]:
     """Return representative event fields plus full composite context."""
     identity = control_def.observability_identity()
