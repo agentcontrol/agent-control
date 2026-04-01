@@ -5,7 +5,13 @@ from pydantic import BeforeValidator, ConfigDict, Field, StringConstraints, Type
 
 from .agent import Agent, StepSchema
 from .base import BaseModel
-from .controls import ControlDefinition, TemplateControlInput, TemplateDefinition, TemplateValue
+from .controls import (
+    ControlDefinition,
+    TemplateControlInput,
+    TemplateDefinition,
+    TemplateValue,
+    UnrenderedTemplateControl,
+)
 from .policy import Control
 
 
@@ -302,8 +308,13 @@ class GetControlResponse(BaseModel):
 
     id: int = Field(..., description="Control ID")
     name: str = Field(..., description="Control name")
-    data: ControlDefinition | None = Field(
-        None, description="Control configuration data (None if not yet configured)"
+    data: ControlDefinition | UnrenderedTemplateControl | None = Field(
+        None,
+        description=(
+            "Control configuration data. A ControlDefinition for raw/rendered "
+            "controls, an UnrenderedTemplateControl for unrendered templates, "
+            "or None if not yet configured."
+        ),
     )
 
 
@@ -332,7 +343,9 @@ class RemoveAgentControlResponse(BaseModel):
 
 
 class GetControlDataResponse(BaseModel):
-    data: ControlDefinition = Field(description="Control data payload")
+    data: ControlDefinition | UnrenderedTemplateControl = Field(
+        description="Control data payload (rendered control or unrendered template)"
+    )
 
 
 class SetControlDataRequest(BaseModel):
@@ -468,6 +481,14 @@ class ControlSummary(BaseModel):
     template_backed: bool = Field(
         False,
         description="Whether the control was created from a template",
+    )
+    template_rendered: bool | None = Field(
+        None,
+        description=(
+            "Whether a template-backed control has been rendered. "
+            "True for rendered templates, False for unrendered templates, "
+            "None for non-template controls."
+        ),
     )
     used_by_agent: AgentRef | None = Field(None, description="Agent using this control")
     # TODO: Follow-up with full `used_by_agents` list for richer attribution.

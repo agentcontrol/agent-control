@@ -26,6 +26,24 @@ from .validation_paths import format_field_path
 _TEMPLATE_VALUE_MISSING = object()
 
 
+def can_render_template(template_input: TemplateControlInput) -> bool:
+    """Return whether the template input has enough values to render.
+
+    True when every required parameter (that has no default) has a value in
+    ``template_values``.  Used to decide between rendered and unrendered
+    persistence.
+    """
+    template = template_input.template
+    for name, param in template.parameters.items():
+        if not param.required:
+            continue
+        has_value = name in template_input.template_values
+        has_default = getattr(param, "default", None) is not None
+        if not has_value and not has_default:
+            return False
+    return True
+
+
 @dataclass(frozen=True)
 class RenderedTemplateControl:
     """Rendered template result plus reverse mapping for validation errors."""
@@ -504,6 +522,48 @@ def _reject_agent_scoped_evaluators(
             resource="Control",
             hint="Use a built-in or package-scoped evaluator in template-backed controls.",
             errors=[remapped_error],
+        )
+
+
+def validate_template_structure(template: TemplateDefinition) -> None:
+    """Validate a template definition's structure without rendering.
+
+    Checks forbidden top-level keys, legacy format, and that ``definition_template``
+    is a dict.  Used for unrendered template creation where parameter values are
+    not yet available.
+    """
+    definition_template = template.definition_template
+    if not isinstance(definition_template, dict):
+        raise _render_error(
+            detail="Templates must define a top-level control object",
+            field="template.definition_template",
+            code="invalid_definition_template_type",
+            message="definition_template must be a JSON object representing a control definition.",
+        )
+
+    for forbidden_key in ("enabled", "name"):
+        if forbidden_key in definition_template:
+            raise _render_error(
+                detail=f"Templates must not define top-level '{forbidden_key}'",
+                field=forbidden_key,
+                code="forbidden_template_field",
+                message=(
+                    f"Templates must not define top-level '{forbidden_key}'. "
+                    "Manage it outside the template."
+                ),
+            )
+
+    if "condition" not in definition_template and (
+        "selector" in definition_template or "evaluator" in definition_template
+    ):
+        raise _render_error(
+            detail="Templates must use the canonical 'condition' format",
+            field="condition",
+            code="legacy_condition_format_not_supported",
+            message=(
+                "Templates must use the canonical 'condition' wrapper instead of "
+                "top-level selector/evaluator fields."
+            ),
         )
 
 

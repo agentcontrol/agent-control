@@ -466,6 +466,27 @@ class TemplateControlInput(BaseModel):
     )
 
 
+class UnrenderedTemplateControl(BaseModel):
+    """Stored state of a template control that hasn't been rendered yet.
+
+    An unrendered template has a template definition and possibly partial
+    parameter values, but no concrete condition/action/execution fields.
+    It is always ``enabled=False`` and excluded from evaluation.
+    """
+
+    template: TemplateDefinition = Field(
+        ..., description="Template definition awaiting parameter values"
+    )
+    template_values: dict[str, TemplateValue] = Field(
+        default_factory=dict,
+        description="Partial or empty parameter values",
+    )
+    enabled: Literal[False] = Field(
+        False,
+        description="Unrendered templates are always disabled",
+    )
+
+
 class ControlAction(BaseModel):
     """What to do when control matches."""
 

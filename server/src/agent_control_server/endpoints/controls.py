@@ -1,5 +1,5 @@
 from agent_control_engine import list_evaluators
-from agent_control_models import ControlDefinition, TemplateControlInput
+from agent_control_models import ControlDefinition, TemplateControlInput, UnrenderedTemplateControl
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentRef,
@@ -39,7 +39,12 @@ from ..logging_utils import get_logger
 from ..models import Agent, AgentData, Control, agent_controls, agent_policies, policy_controls
 from ..services.condition_traversal import iter_condition_leaves_with_paths
 from ..services.control_definitions import parse_control_definition_or_api_error
-from ..services.control_templates import remap_template_api_error, render_template_control_input
+from ..services.control_templates import (
+    can_render_template,
+    remap_template_api_error,
+    render_template_control_input,
+    validate_template_structure,
+)
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
@@ -60,9 +65,11 @@ template_router = APIRouter(prefix="/control-templates", tags=["controls"])
 _logger = get_logger(__name__)
 
 
-def _serialize_control_definition(control_def: ControlDefinition) -> dict[str, object]:
-    """Serialize control data for storage while omitting null scope fields."""
-    data_json = control_def.model_dump(
+def _serialize_control_data(
+    control_data: ControlDefinition | UnrenderedTemplateControl,
+) -> dict[str, object]:
+    """Serialize control data for JSONB storage."""
+    data_json = control_data.model_dump(
         mode="json",
         by_alias=True,
         exclude_none=True,
@@ -72,12 +79,43 @@ def _serialize_control_definition(control_def: ControlDefinition) -> dict[str, o
         data_json["scope"] = {
             k: v for k, v in data_json["scope"].items() if v is not None
         }
+    # Always persist enabled explicitly so _enabled_from_stored_payload reads
+    # the correct value (especially for unrendered templates where enabled=False).
+    if "enabled" not in data_json:
+        data_json["enabled"] = control_data.enabled
     return data_json
 
 
 def _is_template_backed_payload(data: object) -> bool:
     """Return whether stored control JSON contains template metadata."""
     return isinstance(data, dict) and data.get("template") is not None
+
+
+def _is_unrendered_template(data: object) -> bool:
+    """Return whether stored control JSON is an unrendered template."""
+    return (
+        isinstance(data, dict)
+        and data.get("template") is not None
+        and data.get("condition") is None
+    )
+
+
+def _parse_stored_control_data(
+    data: dict[str, object],
+    *,
+    control_name: str,
+    control_id: int,
+) -> ControlDefinition | UnrenderedTemplateControl:
+    """Parse stored JSONB into the appropriate model type."""
+    if _is_unrendered_template(data):
+        return UnrenderedTemplateControl.model_validate(data)
+
+    return parse_control_definition_or_api_error(
+        data,
+        detail=f"Control '{control_name}' has invalid data",
+        hint=f"Update the control data using PUT /api/v1/controls/{control_id}/data.",
+        field_prefix=None,
+    )
 
 
 def _enabled_from_stored_payload(data: object) -> bool:
@@ -135,16 +173,25 @@ async def _materialize_control_input(
     db: AsyncSession,
     current_payload: object | None = None,
     control_id: int | None = None,
-) -> ControlDefinition:
-    """Resolve raw or template-backed input into a validated control definition."""
+) -> ControlDefinition | UnrenderedTemplateControl:
+    """Resolve raw or template-backed input into a validated control or unrendered template."""
     if isinstance(control_input, TemplateControlInput):
-        enabled = (
-            True if current_payload is None else _enabled_from_stored_payload(current_payload)
-        )
-        return await _render_and_validate_template_input(
-            control_input,
-            db=db,
-            enabled=enabled,
+        if can_render_template(control_input):
+            enabled = (
+                True if current_payload is None else _enabled_from_stored_payload(current_payload)
+            )
+            return await _render_and_validate_template_input(
+                control_input,
+                db=db,
+                enabled=enabled,
+            )
+
+        # Incomplete values — store as unrendered template.
+        validate_template_structure(control_input.template)
+        return UnrenderedTemplateControl(
+            template=control_input.template,
+            template_values=dict(control_input.template_values),
+            enabled=False,
         )
 
     if current_payload is not None and _is_template_backed_payload(current_payload):
@@ -381,7 +428,7 @@ async def create_control(
         )
 
     control_def = await _materialize_control_input(request.data, db=db)
-    control_data = _serialize_control_definition(control_def)
+    control_data = _serialize_control_data(control_def)
 
     control = Control(name=request.name, data=control_data)
     db.add(control)
@@ -445,11 +492,15 @@ async def get_control(
         )
 
     # Parse data if present and non-empty
-    control_data: ControlDefinition | None = None
+    control_data: ControlDefinition | UnrenderedTemplateControl | None = None
     if control.data:
         try:
-            control_data = ControlDefinition.model_validate(control.data)
-        except ValidationError:
+            control_data = _parse_stored_control_data(
+                control.data,
+                control_name=control.name,
+                control_id=control_id,
+            )
+        except Exception:
             # Data exists but is corrupted - log and return None
             _logger.warning(
                 "Control '%s' (id=%s) has corrupted data that failed validation",
@@ -502,13 +553,12 @@ async def get_control_data(
             resource_id=str(control_id),
             hint="Verify the control ID is correct and the control has been created.",
         )
-    control_def = parse_control_definition_or_api_error(
+    control_data = _parse_stored_control_data(
         control.data,
-        detail=f"Control '{control.name}' has invalid data",
-        hint="Update the control data using PUT /{control_id}/data.",
-        field_prefix=None,
+        control_name=control.name,
+        control_id=control_id,
     )
-    return GetControlDataResponse(data=control_def)
+    return GetControlDataResponse(data=control_data)
 
 
 @router.put(
@@ -559,7 +609,7 @@ async def set_control_data(
         control_id=control_id,
     )
 
-    control.data = _serialize_control_definition(control_def)
+    control.data = _serialize_control_data(control_def)
     try:
         await db.commit()
     except Exception:
@@ -595,7 +645,12 @@ async def validate_control_data(
     Returns:
         ValidateControlDataResponse with success=True if valid
     """
-    await _materialize_control_input(request.data, db=db)
+    if isinstance(request.data, TemplateControlInput):
+        # Validate always attempts full rendering, even if values are incomplete.
+        # This differs from create/update which allow unrendered storage.
+        await _render_and_validate_template_input(request.data, db=db, enabled=True)
+    else:
+        await _validate_control_definition(request.data, db)
     return ValidateControlDataResponse(success=True)
 
 
@@ -809,6 +864,9 @@ async def list_controls(
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
                 template_backed="template" in data,
+                template_rendered=(
+                    "condition" in data if "template" in data else None
+                ),
                 used_by_agent=control_agent_map.get(ctrl.id),
                 used_by_agents_count=len(control_agent_names_map.get(ctrl.id, set())),
             )
@@ -1055,6 +1113,28 @@ async def patch_control(
                         field="enabled",
                         code="no_data_configured",
                         message="Control must have data configured before enabling/disabling",
+                    )
+                ],
+            )
+
+        if request.enabled and _is_unrendered_template(control.data):
+            raise APIValidationError(
+                error_code=ErrorCode.VALIDATION_ERROR,
+                detail=(
+                    f"Cannot enable control '{control.name}': "
+                    "unrendered template controls must be rendered first"
+                ),
+                resource="Control",
+                hint=(
+                    f"Provide complete parameter values via PUT /api/v1/controls/{control_id}/data "
+                    "to render the template before enabling."
+                ),
+                errors=[
+                    ValidationErrorItem(
+                        resource="Control",
+                        field="enabled",
+                        code="unrendered_template_cannot_enable",
+                        message="Provide parameter values to render the template before enabling.",
                     )
                 ],
             )

@@ -39,6 +39,7 @@ from .controls import (
     TemplateParameterBase,
     TemplateParameterDefinition,
     TemplateValue,
+    UnrenderedTemplateControl,
 )
 from .errors import (
     ERROR_TITLES,
@@ -133,6 +134,7 @@ __all__ = [
     "TemplateParameterDefinition",
     "TemplateDefinition",
     "TemplateControlInput",
+    "UnrenderedTemplateControl",
     # Error models
     "ProblemDetail",
     "ErrorCode",

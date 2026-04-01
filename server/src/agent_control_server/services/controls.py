@@ -83,6 +83,18 @@ async def list_controls_for_agent(
     # Map DB Control to API Control, raising on invalid definitions
     api_controls: list[APIControl] = []
     for c in db_controls:
+        # Unrendered template controls are returned with their template metadata
+        if (
+            isinstance(c.data, dict)
+            and c.data.get("template") is not None
+            and c.data.get("condition") is None
+        ):
+            from agent_control_models import UnrenderedTemplateControl
+
+            unrendered = UnrenderedTemplateControl.model_validate(c.data)
+            api_controls.append(APIControl(id=c.id, name=c.name, control=unrendered))
+            continue
+
         context = (
             {"allow_invalid_step_name_regex": True}
             if allow_invalid_step_name_regex
@@ -111,6 +123,14 @@ async def list_runtime_controls_for_agent(
 
     runtime_controls: list[RuntimeControl] = []
     for c in db_controls:
+        # Skip unrendered template controls — they have no condition to evaluate.
+        if (
+            isinstance(c.data, dict)
+            and c.data.get("template") is not None
+            and c.data.get("condition") is None
+        ):
+            continue
+
         context = (
             {"allow_invalid_step_name_regex": True}
             if allow_invalid_step_name_regex

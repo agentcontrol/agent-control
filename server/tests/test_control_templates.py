@@ -1456,3 +1456,223 @@ def test_render_control_template_keeps_non_parameterized_errors_on_rendered_fiel
         and err.get("rendered_field") == "action.decision"
         for err in body.get("errors", [])
     )
+
+
+# =============================================================================
+# Unrendered template control flows
+# =============================================================================
+
+
+def _unrendered_template_payload() -> dict[str, object]:
+    """Template payload with no template_values — creates an unrendered control."""
+    return {
+        "template": {
+            "description": "Regex denial template",
+            "parameters": {
+                "pattern": {
+                    "type": "regex_re2",
+                    "label": "Pattern",
+                },
+            },
+            "definition_template": {
+                "description": "Template-backed control",
+                "execution": "server",
+                "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {
+                        "name": "regex",
+                        "config": {"pattern": {"$param": "pattern"}},
+                    },
+                },
+                "action": {"decision": "deny"},
+            },
+        },
+        "template_values": {},
+    }
+
+
+def _create_unrendered_control(client: TestClient) -> tuple[int, str]:
+    control_name = f"unrendered-control-{uuid.uuid4()}"
+    response = client.put(
+        "/api/v1/controls",
+        json={"name": control_name, "data": _unrendered_template_payload()},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["control_id"], control_name
+
+
+def test_create_unrendered_template_control_without_values(client: TestClient) -> None:
+    # Given: a template payload with no template_values
+
+    # When: creating a control
+    control_id, _ = _create_unrendered_control(client)
+
+    # Then: the control is created and stored as unrendered
+    get_response = client.get(f"/api/v1/controls/{control_id}/data")
+    assert get_response.status_code == 200, get_response.text
+    data = get_response.json()["data"]
+    assert data["template"]["description"] == "Regex denial template"
+    assert data["template_values"] == {}
+    assert data["enabled"] is False
+
+    # And: the stored data has no rendered fields
+    assert "condition" not in data
+    assert "action" not in data
+    assert "execution" not in data
+
+
+def test_get_control_returns_unrendered_template_metadata(client: TestClient) -> None:
+    # Given: an unrendered template control
+    control_id, control_name = _create_unrendered_control(client)
+
+    # When: getting the control by ID
+    response = client.get(f"/api/v1/controls/{control_id}")
+
+    # Then: the response includes template metadata but no rendered fields
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["name"] == control_name
+    assert body["data"]["template"]["parameters"]["pattern"]["type"] == "regex_re2"
+    assert body["data"]["enabled"] is False
+    assert "condition" not in body["data"]
+
+
+def test_update_unrendered_template_with_complete_values_renders(client: TestClient) -> None:
+    # Given: an unrendered template control
+    control_id, _ = _create_unrendered_control(client)
+
+    # When: updating with complete template values
+    rendered_payload = _template_payload()
+    put_response = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": rendered_payload},
+    )
+
+    # Then: the control is now rendered
+    assert put_response.status_code == 200, put_response.text
+    get_response = client.get(f"/api/v1/controls/{control_id}/data")
+    assert get_response.status_code == 200, get_response.text
+    data = get_response.json()["data"]
+    assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"
+    assert data["template_values"]["pattern"] == "hello"
+    # And: enabled remains false (preserved from unrendered state)
+    assert data["enabled"] is False
+
+
+def test_update_unrendered_template_with_still_incomplete_values_stays_unrendered(
+    client: TestClient,
+) -> None:
+    # Given: an unrendered template control
+    control_id, _ = _create_unrendered_control(client)
+
+    # When: updating with still-empty values
+    put_response = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": _unrendered_template_payload()},
+    )
+
+    # Then: the control stays unrendered
+    assert put_response.status_code == 200, put_response.text
+    get_response = client.get(f"/api/v1/controls/{control_id}/data")
+    data = get_response.json()["data"]
+    assert data["enabled"] is False
+    assert "condition" not in data
+
+
+def test_patch_enable_on_unrendered_template_is_rejected(client: TestClient) -> None:
+    # Given: an unrendered template control
+    control_id, _ = _create_unrendered_control(client)
+
+    # When: trying to enable it
+    response = client.patch(
+        f"/api/v1/controls/{control_id}",
+        json={"enabled": True},
+    )
+
+    # Then: the server rejects with 422
+    assert response.status_code == 422
+    body = response.json()
+    assert any(
+        err.get("code") == "unrendered_template_cannot_enable"
+        for err in body.get("errors", [])
+    )
+
+
+def test_patch_name_on_unrendered_template_works(client: TestClient) -> None:
+    # Given: an unrendered template control
+    control_id, _ = _create_unrendered_control(client)
+    new_name = f"renamed-unrendered-{uuid.uuid4()}"
+
+    # When: renaming it
+    response = client.patch(
+        f"/api/v1/controls/{control_id}",
+        json={"name": new_name},
+    )
+
+    # Then: the rename succeeds
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == new_name
+
+
+def test_unrendered_template_excluded_from_evaluation(client: TestClient) -> None:
+    # Given: an unrendered template control attached to an agent
+    control_id, _ = _create_unrendered_control(client)
+    agent_name = _assign_control_to_agent(client, control_id)
+
+    # When: evaluating a step
+    eval_response = _evaluate_step(
+        client, agent_name, step_name="any-step", input_value="hello",
+    )
+
+    # Then: evaluation succeeds (unrendered control is skipped)
+    assert eval_response.status_code == 200, eval_response.text
+    assert eval_response.json()["is_safe"] is True
+
+
+def test_unrendered_template_shows_in_list_with_correct_flags(client: TestClient) -> None:
+    # Given: an unrendered template control
+    control_id, _ = _create_unrendered_control(client)
+
+    # When: listing controls
+    response = client.get("/api/v1/controls", params={"template_backed": True})
+
+    # Then: the control appears with template_backed=True and template_rendered=False
+    assert response.status_code == 200, response.text
+    controls = response.json()["controls"]
+    unrendered = next((c for c in controls if c["id"] == control_id), None)
+    assert unrendered is not None
+    assert unrendered["template_backed"] is True
+    assert unrendered["template_rendered"] is False
+
+
+def test_unrendered_template_can_be_deleted(client: TestClient) -> None:
+    # Given: an unrendered template control
+    control_id, _ = _create_unrendered_control(client)
+
+    # When: deleting it
+    response = client.delete(f"/api/v1/controls/{control_id}", params={"force": True})
+
+    # Then: deletion succeeds
+    assert response.status_code == 200, response.text
+    assert response.json()["success"] is True
+
+
+def test_rendered_template_then_update_to_unrendered_stays_rendered(
+    client: TestClient,
+) -> None:
+    # Given: a rendered template control
+    control_id = _create_template_control(client)
+
+    # When: updating with empty values (attempting to "un-render")
+    put_response = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": _unrendered_template_payload()},
+    )
+
+    # Then: the control becomes unrendered (stored without rendered fields)
+    assert put_response.status_code == 200, put_response.text
+    get_response = client.get(f"/api/v1/controls/{control_id}/data")
+    data = get_response.json()["data"]
+    assert data["enabled"] is False
+    assert "condition" not in data

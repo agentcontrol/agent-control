@@ -4,7 +4,7 @@ from typing import Any
 from agent_control_engine import list_evaluators
 from agent_control_models.agent import Agent as APIAgent
 from agent_control_models.agent import StepSchema
-from agent_control_models.controls import ControlDefinitionRuntime
+from agent_control_models.controls import ControlDefinition, ControlDefinitionRuntime
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.policy import Control as APIControl
 from agent_control_models.server import (
@@ -112,6 +112,14 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
         if not control.data:
             continue
 
+        # Skip unrendered template controls — they have no evaluators to validate.
+        if (
+            isinstance(control.data, dict)
+            and control.data.get("template") is not None
+            and control.data.get("condition") is None
+        ):
+            continue
+
         try:
             control_definition = ControlDefinitionRuntime.model_validate(control.data)
         except ValidationError:
@@ -167,6 +175,8 @@ def _find_referencing_controls_for_removed_evaluators(
     referencing_control_set: set[tuple[str, str]] = set()
 
     for ctrl in controls:
+        if not isinstance(ctrl.control, ControlDefinition):
+            continue  # Skip unrendered template controls
         for _, evaluator_spec in ctrl.control.iter_condition_leaf_parts():
             evaluator_ref = evaluator_spec.name
             if ":" not in evaluator_ref:
@@ -228,6 +238,8 @@ async def _build_overwrite_evaluator_removals(
 
     references_by_evaluator: dict[str, set[tuple[int, str]]] = {}
     for control in controls:
+        if not isinstance(control.control, ControlDefinition):
+            continue  # Skip unrendered template controls
         for _, evaluator_spec in control.control.iter_condition_leaf_parts():
             evaluator_ref = evaluator_spec.name
             parsed = parse_evaluator_ref_full(evaluator_ref)
