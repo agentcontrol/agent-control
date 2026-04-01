@@ -127,12 +127,12 @@ def build_control_execution_events(
 ) -> list[ControlExecutionEvent]:
     """Reconstruct control execution events from an evaluation response.
 
-    This is the shared reconstruction step used by both supported ingestion
-    styles:
+    This is the shared reconstruction step used by both supported event
+    creation styles:
     - the default SDK observability path, where reconstructed local events are
       queued into the existing SDK batcher
     - the merged-event path, where local and server events are reconstructed in
-      the SDK and emitted together through a registered sink
+      the SDK and queued together through the existing SDK batcher
 
     Args:
         response: Evaluation response containing matches, errors, and
@@ -194,8 +194,8 @@ def build_control_execution_events(
 def enqueue_observability_events(events: list[ControlExecutionEvent]) -> None:
     """Enqueue reconstructed events through the existing SDK observability path.
 
-    This preserves the default SDK behavior of forwarding local events through
-    the existing observability batcher rather than a custom merged-event sink.
+    This preserves the built-in SDK behavior of forwarding events through the
+    existing observability batcher.
 
     Args:
         events: Reconstructed control execution events to enqueue.

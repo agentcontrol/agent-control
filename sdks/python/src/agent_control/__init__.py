@@ -95,12 +95,8 @@ from .observability import (
     sync_shutdown_observability,
 )
 from .telemetry import (
-    clear_control_event_sink,
     clear_trace_context_provider,
-    emit_control_events,
     get_trace_context_from_provider,
-    has_control_event_sink,
-    set_control_event_sink,
     set_trace_context_provider,
 )
 from .tracing import (
@@ -400,6 +396,7 @@ def init(
     observability_enabled: bool | None = None,
     log_config: dict[str, Any] | None = None,
     policy_refresh_interval_seconds: int = 60,
+    merge_events: bool = False,
     **kwargs: object
 ) -> Agent:
     """
@@ -430,6 +427,9 @@ def init(
                {"enabled": True, "span_start": True, "span_end": True, "control_eval": True}
         policy_refresh_interval_seconds: Interval for background policy refresh loop.
             Defaults to 60 seconds. Set to 0 to disable background refresh.
+        merge_events: Whether to merge local and server event creation in the
+            SDK before enqueueing through the built-in observability path.
+            Defaults to False.
         **kwargs: Additional metadata to store with the agent
 
     Returns:
@@ -477,7 +477,6 @@ def init(
 
     # Re-init behavior: always stop existing loop before mutating shared agent/session globals.
     _stop_policy_refresh_loop()
-    clear_control_event_sink()
 
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
@@ -501,6 +500,7 @@ def init(
         state.current_agent = next_agent
         state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
         state.api_key = api_key
+        state.merge_events = merge_events
 
     # Merge auto-discovered steps from @control() decorators with explicit steps.
     # Explicit steps take precedence when (type, name) collides.
@@ -648,7 +648,7 @@ def _reset_state() -> None:
         state.server_controls = None
         state.server_url = None
         state.api_key = None
-        clear_control_event_sink()
+        state.merge_events = False
 
 
 async def ashutdown() -> None:
@@ -1313,10 +1313,6 @@ __all__ = [
     "set_trace_context_provider",
     "get_trace_context_from_provider",
     "clear_trace_context_provider",
-    "set_control_event_sink",
-    "has_control_event_sink",
-    "emit_control_events",
-    "clear_control_event_sink",
     # Observability
     "init_observability",
     "add_event",

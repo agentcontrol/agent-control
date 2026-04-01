@@ -191,6 +191,29 @@ def test_init_logs_agent_updated_when_registration_already_exists(
     assert agent_name in caplog.text
 
 
+def test_init_sets_merge_events_session_flag() -> None:
+    # Given: a normal init path with registration mocked out.
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+
+    with patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=health_check_mock,
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=register_agent_mock,
+    ):
+        # When: init() enables merged event creation for the session.
+        agent_control.init(
+            agent_name=f"agent-{uuid4().hex[:12]}",
+            policy_refresh_interval_seconds=0,
+            merge_events=True,
+        )
+
+    # Then: the session state remembers that merged event creation is enabled.
+    assert agent_control.state.merge_events is True
+
+
 @pytest.mark.asyncio
 async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
     # Given: an initialized SDK agent session with network-facing calls mocked.

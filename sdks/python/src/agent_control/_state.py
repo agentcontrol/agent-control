@@ -24,6 +24,7 @@ class _StateContainer:
         self.server_controls: list[dict[str, Any]] | None = None
         self.server_url: str | None = None
         self.api_key: str | None = None
+        self.merge_events: bool = False
 
 
 # Singleton state instance

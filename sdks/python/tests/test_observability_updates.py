@@ -14,10 +14,6 @@ from agent_control.telemetry.trace_context import (
     clear_trace_context_provider,
     set_trace_context_provider,
 )
-from agent_control.telemetry.trace_context import (
-    clear_trace_context_provider,
-    set_trace_context_provider,
-)
 from agent_control_models import ControlDefinition
 
 
@@ -212,9 +208,6 @@ class TestCheckEvaluationWithLocal:
     def teardown_method(self) -> None:
         clear_trace_context_provider()
 
-    def teardown_method(self) -> None:
-        clear_trace_context_provider()
-
     @pytest.mark.asyncio
     async def test_delivers_local_events_in_oss_mode(self):
         from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
@@ -253,6 +246,7 @@ class TestCheckEvaluationWithLocal:
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
+             patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation_with_local(
                 client=client,
@@ -311,6 +305,7 @@ class TestCheckEvaluationWithLocal:
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
+             patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             await evaluation.check_evaluation_with_local(
                 client=client,
@@ -399,7 +394,7 @@ class TestCheckEvaluation:
         step = Step(type="llm", name="test-step", input="hello")
 
         with patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=False), \
-             patch("agent_control.evaluation.emit_control_events") as mock_emit:
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation(
                 client=client,
                 agent_name="agent-000000000001",
@@ -409,12 +404,12 @@ class TestCheckEvaluation:
 
         call_kwargs = client.http_client.post.call_args.kwargs
         assert call_kwargs["headers"] is None
-        mock_emit.assert_not_called()
+        mock_enqueue.assert_not_called()
         assert result.is_safe is True
         assert result.confidence == 0.9
 
     @pytest.mark.asyncio
-    async def test_merged_event_sink_emits_reconstructed_server_events(self):
+    async def test_merged_event_mode_enqueues_reconstructed_server_events(self):
         from agent_control_models import Step
 
         controls = [
@@ -457,7 +452,7 @@ class TestCheckEvaluation:
 
         with patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=True), \
              patch("agent_control.evaluation.get_trace_and_span_ids", return_value=("a" * 32, "b" * 16)), \
-             patch("agent_control.evaluation.emit_control_events") as mock_emit, \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue, \
              patch.object(evaluation.state, "server_controls", controls):
             result = await evaluation.check_evaluation(
                 client=client,
@@ -471,8 +466,8 @@ class TestCheckEvaluation:
         assert headers["X-Span-Id"] == "b" * 16
         assert headers["X-Agent-Control-Merge-Events"] == "true"
 
-        mock_emit.assert_called_once()
-        emitted_events = mock_emit.call_args.args[0]
+        mock_enqueue.assert_called_once()
+        emitted_events = mock_enqueue.call_args.args[0]
         assert len(emitted_events) == 1
         assert emitted_events[0].control_id == 2
         assert emitted_events[0].trace_id == "a" * 32
@@ -544,8 +539,8 @@ class TestCheckEvaluation:
         client.http_client.post = AsyncMock(return_value=mock_http_response)
         step = Step(type="llm", name="test-step", input="hello")
 
-        with patch("agent_control.evaluation.has_control_event_sink", return_value=True), \
-             patch("agent_control.evaluation.emit_control_events") as mock_emit, \
+        with patch.object(evaluation.state, "merge_events", True), \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue, \
              patch.object(evaluation.state, "current_agent", MagicMock(agent_name="agent-000000000002")), \
              patch.object(evaluation.state, "server_controls", []):
             result = await evaluation.check_evaluation(
@@ -557,21 +552,63 @@ class TestCheckEvaluation:
 
         call_kwargs = client.http_client.post.call_args.kwargs
         assert call_kwargs["headers"] is None
-        mock_emit.assert_not_called()
+        mock_enqueue.assert_not_called()
+        assert result.is_safe is True
+        assert result.confidence == 0.9
+
+    @pytest.mark.asyncio
+    async def test_check_evaluation_falls_back_when_client_targets_different_server(self):
+        from agent_control_models import Step
+
+        mock_http_response = MagicMock()
+        mock_http_response.raise_for_status = MagicMock()
+        mock_http_response.json.return_value = {
+            "is_safe": True,
+            "confidence": 0.9,
+            "matches": None,
+            "errors": None,
+            "non_matches": None,
+        }
+
+        client = MagicMock()
+        client.base_url = "http://different-server:8000"
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_http_response)
+        step = Step(type="llm", name="test-step", input="hello")
+
+        with patch.object(evaluation.state, "merge_events", True), \
+             patch.object(evaluation.state, "server_url", "http://localhost:8000"), \
+             patch.object(
+                 evaluation.state,
+                 "current_agent",
+                 MagicMock(agent_name="agent-000000000001"),
+             ), \
+             patch.object(evaluation.state, "server_controls", [{"id": 1, "name": "ctrl"}]), \
+             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+            result = await evaluation.check_evaluation(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+            )
+
+        call_kwargs = client.http_client.post.call_args.kwargs
+        assert call_kwargs["headers"] is None
+        mock_enqueue.assert_not_called()
         assert result.is_safe is True
         assert result.confidence == 0.9
 
 
 # =============================================================================
-# control_decorators non_matches dict conversion
+# Merged Event Creation
 # =============================================================================
 
 
-class TestControlDecoratorsNonMatches:
-    """Tests for non_matches dict conversion in control_decorators._evaluate."""
+class TestMergedEventCreation:
+    """Tests for SDK-side merged event reconstruction and enqueueing."""
 
     @pytest.mark.asyncio
-    async def test_merged_event_sink_emits_reconstructed_local_and_server_events_once(self):
+    async def test_merged_event_mode_enqueues_reconstructed_local_and_server_events_once(self):
         from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
 
         local_response = EvaluationResponse(
@@ -643,7 +680,7 @@ class TestControlDecoratorsNonMatches:
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
              patch("agent_control.evaluation._is_merged_event_mode_enabled", return_value=True), \
-             patch("agent_control.evaluation.emit_control_events") as mock_emit, \
+             patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation_with_local(
                 client=client,
@@ -655,10 +692,8 @@ class TestControlDecoratorsNonMatches:
                 span_id="def456",
                 event_agent_name="test-agent",
             )
-
-        mock_enqueue.assert_not_called()
-        mock_emit.assert_called_once()
-        merged_events = mock_emit.call_args.args[0]
+        mock_enqueue.assert_called_once()
+        merged_events = mock_enqueue.call_args.args[0]
         assert len(merged_events) == 2
         assert {event.control_id for event in merged_events} == {1, 2}
         headers = client.http_client.post.call_args.kwargs["headers"]

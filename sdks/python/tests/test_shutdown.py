@@ -15,7 +15,6 @@ import agent_control
 import agent_control.observability as obs_mod
 from agent_control._state import state
 from agent_control.observability import EventBatcher
-from agent_control.telemetry.event_sink import has_control_event_sink, set_control_event_sink
 
 
 def _make_started_batcher() -> EventBatcher:
@@ -65,7 +64,7 @@ class TestShutdownSync:
         state.server_controls = [{"name": "test"}]
         state.server_url = "http://localhost:8000"
         state.api_key = "key"
-        set_control_event_sink(lambda events: None)
+        state.merge_events = True
 
         agent_control.shutdown()
 
@@ -74,7 +73,7 @@ class TestShutdownSync:
         assert state.server_controls is None
         assert state.server_url is None
         assert state.api_key is None
-        assert has_control_event_sink() is False
+        assert state.merge_events is False
 
     def test_shutdown_idempotent(self):
         agent_control.shutdown()

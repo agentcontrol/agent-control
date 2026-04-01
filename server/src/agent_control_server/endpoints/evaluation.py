@@ -240,20 +240,21 @@ async def evaluate(
     total_duration_ms = (time.perf_counter() - start_time) * 1000
 
     merge_events_requested = (x_merge_events or "").lower() == "true"
-    response_events = _build_observability_events(
-        response=raw_response,
-        request=request,
-        trace_id=trace_id,
-        span_id=span_id,
-        agent_name=agent_name,
-        applies_to=applies_to,
-        control_lookup=control_lookup,
-        total_duration_ms=total_duration_ms,
-    )
 
-    # OSS keeps server-side ingestion as the default. Enterprise merged mode
-    # returns events to the SDK and skips this server-side delivery step.
+    # Default mode keeps server-side ingestion as-is. Merged event creation
+    # skips this server-side delivery step so the SDK can reconstruct and
+    # enqueue the combined batch itself.
     if observability_settings.enabled and not merge_events_requested:
+        response_events = _build_observability_events(
+            response=raw_response,
+            request=request,
+            trace_id=trace_id,
+            span_id=span_id,
+            agent_name=agent_name,
+            applies_to=applies_to,
+            control_lookup=control_lookup,
+            total_duration_ms=total_duration_ms,
+        )
         # Get ingestor from app.state (None if not initialized)
         try:
             ingestor = get_event_ingestor(req)
@@ -273,7 +274,7 @@ def _build_observability_events(
     applies_to: Literal["llm_call", "tool_call"],
     control_lookup: dict,
     total_duration_ms: float,
-    ) -> list[ControlExecutionEvent]:
+) -> list[ControlExecutionEvent]:
     """Build observability events for all evaluated controls.
 
     This preserves the existing server-side event shape while allowing the

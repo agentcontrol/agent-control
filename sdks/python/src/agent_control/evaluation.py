@@ -19,7 +19,6 @@ from ._state import state
 from .client import AgentControlClient
 from .evaluation_events import build_control_execution_events, enqueue_observability_events
 from .observability import is_observability_enabled
-from .telemetry import emit_control_events, has_control_event_sink
 from .tracing import get_trace_and_span_ids
 from .validation import ensure_agent_name
 
@@ -117,28 +116,39 @@ def _has_applicable_prefiltered_server_controls(
     )
 
 
-def _is_merged_event_mode_enabled(agent_name: str) -> bool:
-    """Return whether SDK-side merged event emission is safe for this request.
+def _is_merged_event_mode_enabled(
+    agent_name: str,
+    client: AgentControlClient | None = None,
+) -> bool:
+    """Return whether SDK-side merged event creation is safe for this request.
 
-    Merged reconstruction depends on initialized SDK session state:
-    a registered sink, an initialized agent, and a cached server-control
-    snapshot for the same agent. If any of those prerequisites are missing,
-    evaluation falls back to the default behavior where the server remains the
-    final emitter for server-side events.
+    Merged event creation is a session-scoped option that depends on
+    initialized SDK state: an initialized agent, cached server controls for the
+    same agent, and observability enabled so the merged batch will actually be
+    consumed by the built-in queue/Postgres path.
 
     Args:
         agent_name: Normalized agent name for the current request.
+        client: Optional client used for the current request. When provided,
+            merged mode is allowed only if it targets the active initialized
+            session server.
 
     Returns:
         ``True`` when the current SDK session has enough state to reconstruct
-        and emit merged events safely.
+        and enqueue merged events safely.
     """
-    if not has_control_event_sink():
+    if not state.merge_events or not is_observability_enabled():
         return False
 
     current_agent = state.current_agent
     if current_agent is None or current_agent.agent_name != agent_name:
         return False
+
+    if client is not None and state.server_url is not None:
+        normalized_state_server_url = state.server_url.rstrip("/")
+        normalized_client_server_url = client.base_url.rstrip("/")
+        if normalized_client_server_url != normalized_state_server_url:
+            return False
 
     return state.server_controls is not None
 
@@ -202,11 +212,12 @@ async def check_evaluation(
 ) -> EvaluationResult:
     """Check if agent interaction is safe through the public SDK helper.
 
-    This helper preserves the default server-only evaluation path, but it also
-    participates in the optional merged-event flow when a control event sink is
-    registered. In that mode, the SDK asks the server to skip final event
-    ingestion, reconstructs server events from the lightweight response, and
-    emits them through the registered sink before returning the parsed result.
+    This helper preserves the default server-only evaluation path, but it can
+    also participate in merged event creation when the initialized SDK session
+    has ``merge_events`` enabled. In that mode, the SDK asks the server to skip
+    final event ingestion, reconstructs server events from the lightweight
+    response, and enqueues them through the existing observability pipeline
+    before returning the parsed result.
 
     Args:
         client: Configured AgentControl client.
@@ -218,7 +229,7 @@ async def check_evaluation(
         The parsed evaluation result returned by the server.
     """
     normalized_name = ensure_agent_name(agent_name)
-    merged_emission_enabled = _is_merged_event_mode_enabled(normalized_name)
+    merged_emission_enabled = _is_merged_event_mode_enabled(normalized_name, client)
     trace_id = None
     span_id = None
     headers: dict[str, str] | None = None
@@ -257,7 +268,7 @@ async def check_evaluation(
             span_id,
             normalized_name,
         )
-        emit_control_events(server_events)
+        enqueue_observability_events(server_events)
 
     return cast(EvaluationResult, EvaluationResult.from_dict(evaluation_response.model_dump()))
 
@@ -275,11 +286,11 @@ async def check_evaluation_with_local(
     """Evaluate controls with local-first execution and configurable event flow.
 
     This is the main decision boundary between the two supported event
-    ingestion styles:
+    creation styles:
     - default behavior: local events are reconstructed and queued immediately in
       the SDK, while server-side events are still emitted by the server
     - merged-event behavior: local and server events are reconstructed in the
-      SDK and emitted once through a registered sink
+      SDK and enqueued once through the built-in observability path
 
     In both cases, the evaluation result itself stays lightweight and event
     reconstruction happens after evaluation completes.
@@ -377,8 +388,8 @@ async def check_evaluation_with_local(
         combined_errors = (result.errors or []) + parse_errors
         return result.model_copy(update={"errors": combined_errors})
 
-    merged_emission_enabled = _is_merged_event_mode_enabled(normalized_name)
-    should_reconstruct_local_events = merged_emission_enabled or is_observability_enabled()
+    merged_emission_enabled = _is_merged_event_mode_enabled(normalized_name, client)
+    should_reconstruct_local_events = is_observability_enabled()
 
     local_result: EvaluationResponse | None = None
     local_events = []
@@ -409,7 +420,7 @@ async def check_evaluation_with_local(
         if not local_result.is_safe:
             result = _with_parse_errors(EvaluationResult.model_validate(local_result.model_dump()))
             if merged_emission_enabled:
-                emit_control_events(local_events)
+                enqueue_observability_events(local_events)
             return result
 
     if _has_applicable_prefiltered_server_controls(server_control_payloads, request):
@@ -444,18 +455,18 @@ async def check_evaluation_with_local(
         if local_result is not None:
             result = _with_parse_errors(_merge_results(local_result, server_result))
             if merged_emission_enabled:
-                emit_control_events(local_events + server_events)
+                enqueue_observability_events(local_events + server_events)
             return result
 
         result = _with_parse_errors(EvaluationResult.model_validate(server_result.model_dump()))
         if merged_emission_enabled:
-            emit_control_events(server_events)
+            enqueue_observability_events(server_events)
         return result
 
     if local_result is not None:
         result = _with_parse_errors(EvaluationResult.model_validate(local_result.model_dump()))
         if merged_emission_enabled:
-            emit_control_events(local_events)
+            enqueue_observability_events(local_events)
         return result
 
     return _with_parse_errors(EvaluationResult(is_safe=True, confidence=1.0))

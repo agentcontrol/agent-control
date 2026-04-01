@@ -421,3 +421,26 @@ def test_evaluation_skips_ingest_for_merge_mode(
     body = resp.json()
     assert "events" not in body
     ingest_mock.assert_not_awaited()
+
+
+def test_evaluation_skips_build_and_ingest_when_observability_disabled(
+    client: TestClient, monkeypatch
+) -> None:
+    """Observability-disabled requests should not build or ingest events."""
+    agent_name, _ = create_and_assign_policy(client)
+
+    import agent_control_server.endpoints.evaluation as evaluation_module
+
+    build_mock = MagicMock()
+    ingest_mock = AsyncMock()
+    monkeypatch.setattr(evaluation_module, "_build_observability_events", build_mock)
+    monkeypatch.setattr(evaluation_module, "_ingest_observability_events", ingest_mock)
+    monkeypatch.setattr(evaluation_module.observability_settings, "enabled", False)
+
+    payload = Step(type="llm", name="test-step", input="x", output=None)
+    req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
+    resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+
+    assert resp.status_code == 200
+    build_mock.assert_not_called()
+    ingest_mock.assert_not_awaited()
