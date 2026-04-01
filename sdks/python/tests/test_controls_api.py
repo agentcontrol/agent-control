@@ -271,3 +271,37 @@ def test_to_template_control_input_rejects_raw_control_data() -> None:
             }
         )
     # Then: the helper rejects the raw control data
+
+
+def test_to_template_control_input_accepts_unrendered_template_data() -> None:
+    # Given: unrendered template data (template + template_values, no condition)
+    template_input = agent_control.controls.to_template_control_input(
+        {
+            "template": {
+                "parameters": {
+                    "pattern": {
+                        "type": "regex_re2",
+                        "label": "Pattern",
+                    }
+                },
+                "definition_template": {
+                    "execution": "server",
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {"pattern": {"$param": "pattern"}},
+                        },
+                    },
+                    "action": {"decision": "deny"},
+                },
+            },
+            "template_values": {},
+            "enabled": False,
+        }
+    )
+
+    # When/Then: the helper extracts template + values successfully
+    assert isinstance(template_input, TemplateControlInput)
+    assert template_input.template_values == {}
+    assert "pattern" in template_input.template.parameters

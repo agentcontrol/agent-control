@@ -120,6 +120,37 @@ def add_template_metadata(control: dict[str, Any], *, pattern: str = "test") -> 
     return control
 
 
+def make_unrendered_template_control(
+    control_id: int, name: str
+) -> dict[str, Any]:
+    """Build a cached control payload that represents an unrendered template."""
+    return {
+        "id": control_id,
+        "name": name,
+        "control": {
+            "template": {
+                "parameters": {
+                    "pattern": {"type": "regex_re2", "label": "Pattern"},
+                },
+                "definition_template": {
+                    "execution": "server",
+                    "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {"pattern": {"$param": "pattern"}},
+                        },
+                    },
+                    "action": {"decision": "deny"},
+                },
+            },
+            "template_values": {},
+            "enabled": False,
+        },
+    }
+
+
 NON_APPLICABLE_CONTROL_CASES = [
     pytest.param({"enabled": False}, id="disabled"),
     pytest.param({"stage": "post"}, id="stage_mismatch"),
@@ -542,6 +573,34 @@ class TestCheckEvaluationWithLocal:
         assert result.matches is not None
         assert len(result.matches) == 1
         assert result.matches[0].control_name == "templated_local_ctrl"
+
+    @pytest.mark.asyncio
+    async def test_unrendered_template_does_not_trigger_server_fallback(
+        self,
+        agent_name,
+        llm_payload,
+    ):
+        """Unrendered templates must be skipped, not treated as parse failures."""
+        # Given: only an unrendered template control (no rendered controls)
+        controls = [make_unrendered_template_control(1, "unrendered_ctrl")]
+
+        client = MagicMock(spec=AgentControlClient)
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock()
+
+        # When: evaluating with local controls
+        result = await check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+        )
+
+        # Then: no server call is made (unrendered control skipped, not a fallback trigger)
+        client.http_client.post.assert_not_called()
+        # And: result is safe since no evaluable controls exist
+        assert result.is_safe is True
 
     @pytest.mark.asyncio
     async def test_local_deny_short_circuits(self, agent_name, llm_payload):

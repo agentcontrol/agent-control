@@ -7,6 +7,7 @@ from agent_control_models import (
     TemplateControlInput,
     TemplateDefinition,
     TemplateValue,
+    UnrenderedTemplateControl,
 )
 
 from .client import AgentControlClient
@@ -266,18 +267,36 @@ async def render_control_template(
 
 
 def to_template_control_input(
-    data: dict[str, Any] | ControlDefinition,
+    data: dict[str, Any] | ControlDefinition | UnrenderedTemplateControl,
 ) -> TemplateControlInput:
     """Convert stored control data into template authoring input.
 
     This is the supported reshape path for template-backed controls returned by
     ``GET /controls/{id}`` or ``GET /controls/{id}/data`` before submitting them
-    back to ``set_control_data``.
+    back to ``set_control_data``.  Accepts both rendered (``ControlDefinition``)
+    and unrendered (``UnrenderedTemplateControl``) shapes.
     """
+    if isinstance(data, UnrenderedTemplateControl):
+        return TemplateControlInput(
+            template=data.template,
+            template_values=dict(data.template_values),
+        )
     if isinstance(data, ControlDefinition):
-        control_def = data
-    else:
-        control_def = ControlDefinition.model_validate(data)
+        return data.to_template_control_input()
+
+    # Raw dict — detect unrendered vs rendered by checking for condition key.
+    if (
+        isinstance(data, dict)
+        and data.get("template") is not None
+        and data.get("condition") is None
+    ):
+        unrendered = UnrenderedTemplateControl.model_validate(data)
+        return TemplateControlInput(
+            template=unrendered.template,
+            template_values=dict(unrendered.template_values),
+        )
+
+    control_def = ControlDefinition.model_validate(data)
     return control_def.to_template_control_input()
 
 

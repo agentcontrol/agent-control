@@ -193,8 +193,18 @@ def _has_applicable_prefiltered_server_controls(
     parsed_server_controls: list[_ControlAdapter] = []
 
     for control in server_control_payloads:
+        # Skip unrendered template controls — they have no condition to evaluate
+        # and should not trigger the server-call fallback.
+        ctrl_data = control.get("control", {})
+        if (
+            isinstance(ctrl_data, dict)
+            and ctrl_data.get("template") is not None
+            and ctrl_data.get("condition") is None
+        ):
+            continue
+
         try:
-            control_def = ControlDefinitionRuntime.model_validate(control["control"])
+            control_def = ControlDefinitionRuntime.model_validate(ctrl_data)
             parsed_server_controls.append(
                 _ControlAdapter(
                     id=control["id"],
@@ -308,6 +318,15 @@ async def check_evaluation_with_local(
 
     for control in controls:
         control_data = control.get("control", {})
+
+        # Skip unrendered template controls — they cannot be evaluated.
+        if (
+            isinstance(control_data, dict)
+            and control_data.get("template") is not None
+            and control_data.get("condition") is None
+        ):
+            continue
+
         execution = control_data.get("execution", "server")
         is_local = execution == "sdk"
 
