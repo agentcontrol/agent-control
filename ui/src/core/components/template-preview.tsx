@@ -94,7 +94,7 @@ export function TemplatePreview({
           <Text size="sm" fw={500}>
             Preview rendered control
           </Text>
-          {renderTemplate.isPending && <Loader size={14} />}
+          {renderTemplate.isPending ? <Loader size={14} /> : null}
         </Group>
       </UnstyledButton>
 

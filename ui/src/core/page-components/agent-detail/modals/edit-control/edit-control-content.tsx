@@ -74,6 +74,7 @@ export const EditControlContent = (props: EditControlContentProps) => {
   if (props.mode !== 'create' && isTemplateBacked(props.control)) {
     return (
       <TemplateEditContent
+        key={props.control.id}
         control={props.control}
         agentId={props.agentId}
         onClose={props.onClose}

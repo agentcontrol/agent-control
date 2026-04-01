@@ -14,7 +14,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { isApiError } from '@/core/api/errors';
 import type {
@@ -75,20 +75,6 @@ export function TemplateEditContent({
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
   const isPending = updateControl.isPending || updateControlMetadata.isPending;
-
-  // Reset state when control changes
-  useEffect(() => {
-    setControlName(control.name);
-    const raw = control.control as Record<string, unknown>;
-    const vals = raw.template_values as Record<string, TemplateValue> | undefined;
-    setTemplateValues(vals ?? {});
-    setParamErrors({});
-    setApiError(null);
-    setNameError(null);
-    setEditorMode('params');
-    setJsonText('');
-    setJsonError(null);
-  }, [control]);
 
   const handlePreviewErrors = useCallback(
     (errors: Record<string, string>) => {

@@ -15,8 +15,8 @@ import type {
 } from '@/core/api/types';
 
 import {
-  LabelWithTooltip,
   labelPropsInline,
+  LabelWithTooltip,
 } from './label-with-tooltip';
 
 type TemplateParamFormProps = {
