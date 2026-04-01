@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v7.3.1 (2026-04-01)
+
+### Bug Fixes
+
+- **server**: Omit null fields in control JSON editor
+  ([#157](https://github.com/agentcontrol/agent-control/pull/157),
+  [`0aa2f3c`](https://github.com/agentcontrol/agent-control/commit/0aa2f3c83fa8b74947a516025995ba1c49855e4e))
+
+
 ## v7.3.0 (2026-03-30)
 
 ### Bug Fixes
