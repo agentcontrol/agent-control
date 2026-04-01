@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 
+from agent_control_models import EvaluationRequest, Step
 from fastapi.testclient import TestClient
 
 
@@ -46,6 +47,49 @@ def _template_payload() -> dict[str, object]:
     }
 
 
+def _defaults_only_template_payload() -> dict[str, object]:
+    return {
+        "template": {
+            "description": "List evaluator template",
+            "parameters": {
+                "values": {
+                    "type": "string_list",
+                    "label": "Values",
+                    "default": ["secret", "blocked"],
+                },
+                "logic": {
+                    "type": "enum",
+                    "label": "Logic",
+                    "allowed_values": ["any", "all"],
+                    "default": "any",
+                },
+                "case_sensitive": {
+                    "type": "boolean",
+                    "label": "Case Sensitive",
+                    "default": False,
+                },
+            },
+            "definition_template": {
+                "description": "Defaulted list control",
+                "execution": "server",
+                "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {
+                        "name": "list",
+                        "config": {
+                            "values": {"$param": "values"},
+                            "logic": {"$param": "logic"},
+                            "case_sensitive": {"$param": "case_sensitive"},
+                        },
+                    },
+                },
+                "action": {"decision": "deny"},
+            },
+        }
+    }
+
+
 def _raw_control_payload(pattern: str = "raw") -> dict[str, object]:
     return {
         "description": "Raw control",
@@ -64,15 +108,46 @@ def _raw_control_payload(pattern: str = "raw") -> dict[str, object]:
 
 
 def _create_template_control(client: TestClient) -> int:
+    control_id, _ = _create_template_control_with_name(client)
+    return control_id
+
+
+def _create_template_control_with_name(client: TestClient) -> tuple[int, str]:
+    control_name = f"template-control-{uuid.uuid4()}"
     response = client.put(
         "/api/v1/controls",
         json={
-            "name": f"template-control-{uuid.uuid4()}",
+            "name": control_name,
             "data": _template_payload(),
         },
     )
     assert response.status_code == 200, response.text
-    return response.json()["control_id"]
+    return response.json()["control_id"], control_name
+
+
+def _assign_control_to_agent(
+    client: TestClient,
+    control_id: int,
+    *,
+    agent_name: str | None = None,
+) -> str:
+    policy_response = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
+    assert policy_response.status_code == 200, policy_response.text
+    policy_id = policy_response.json()["policy_id"]
+
+    add_control_response = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert add_control_response.status_code == 200, add_control_response.text
+
+    effective_agent_name = agent_name or f"template-agent-{uuid.uuid4().hex[:12]}"
+    init_response = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": effective_agent_name}, "steps": []},
+    )
+    assert init_response.status_code == 200, init_response.text
+
+    assign_response = client.post(f"/api/v1/agents/{effective_agent_name}/policy/{policy_id}")
+    assert assign_response.status_code == 200, assign_response.text
+    return effective_agent_name
 
 
 def _create_raw_control(client: TestClient) -> int:
@@ -102,6 +177,26 @@ def test_render_control_template_preview_returns_rendered_control(client: TestCl
     assert control["scope"]["step_names"] == ["templated-step"]
 
 
+def test_render_control_template_preview_uses_defaults_when_values_omitted(
+    client: TestClient,
+) -> None:
+    response = client.post("/api/v1/control-templates/render", json=_defaults_only_template_payload())
+
+    assert response.status_code == 200, response.text
+    control = response.json()["control"]
+    assert control["template_values"] == {
+        "values": ["secret", "blocked"],
+        "logic": "any",
+        "case_sensitive": False,
+    }
+    assert control["condition"]["evaluator"]["name"] == "list"
+    assert control["condition"]["evaluator"]["config"] == {
+        "values": ["secret", "blocked"],
+        "logic": "any",
+        "case_sensitive": False,
+    }
+
+
 def test_create_template_backed_control_persists_template_metadata(client: TestClient) -> None:
     control_id = _create_template_control(client)
 
@@ -109,8 +204,36 @@ def test_create_template_backed_control_persists_template_metadata(client: TestC
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["template"]["description"] == "Regex denial template"
-    assert data["template_values"]["pattern"] == "hello"
+    assert data["template_values"] == {
+        "pattern": "hello",
+        "step_name": "templated-step",
+    }
     assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"
+
+
+def test_template_backed_control_evaluates_after_policy_attachment(client: TestClient) -> None:
+    control_id, control_name = _create_template_control_with_name(client)
+    agent_name = _assign_control_to_agent(client, control_id)
+
+    safe_request = EvaluationRequest(
+        agent_name=agent_name,
+        step=Step(type="llm", name="other-step", input="hello", output=None),
+        stage="pre",
+    )
+    safe_response = client.post("/api/v1/evaluation", json=safe_request.model_dump(mode="json"))
+    assert safe_response.status_code == 200, safe_response.text
+    assert safe_response.json()["is_safe"] is True
+
+    deny_request = EvaluationRequest(
+        agent_name=agent_name,
+        step=Step(type="llm", name="templated-step", input="hello", output=None),
+        stage="pre",
+    )
+    deny_response = client.post("/api/v1/evaluation", json=deny_request.model_dump(mode="json"))
+    assert deny_response.status_code == 200, deny_response.text
+    body = deny_response.json()
+    assert body["is_safe"] is False
+    assert body["matches"][0]["control_name"] == control_name
 
 
 def test_raw_control_can_be_replaced_with_template_backed_control(client: TestClient) -> None:
@@ -174,6 +297,22 @@ def test_template_validate_maps_missing_parameter_error(client: TestClient) -> N
     assert any(
         err.get("field") == "template_values.pattern"
         and err.get("parameter") == "pattern"
+        for err in body.get("errors", [])
+    )
+
+
+def test_render_control_template_rejects_unknown_template_value_key(client: TestClient) -> None:
+    payload = _template_payload()
+    payload["template_values"] = {"pattern": "hello", "unknown": "value"}
+
+    response = client.post("/api/v1/control-templates/render", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
+    assert any(
+        err.get("field") == "template_values.unknown"
+        and err.get("code") == "unknown_parameter"
         for err in body.get("errors", [])
     )
 
@@ -284,6 +423,27 @@ def test_render_control_template_rejects_non_string_param_reference(client: Test
     assert any(err.get("code") == "invalid_param_binding" for err in body.get("errors", []))
 
 
+def test_render_control_template_rejects_unused_parameter(client: TestClient) -> None:
+    payload = _template_payload()
+    payload["template"] = deepcopy(payload["template"])
+    payload["template"]["parameters"]["unused"] = {  # type: ignore[index]
+        "type": "string",
+        "label": "Unused",
+        "default": "still-unused",
+    }
+
+    response = client.post("/api/v1/control-templates/render", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
+    assert any(
+        err.get("field") == "template.parameters.unused"
+        and err.get("code") == "unused_template_parameter"
+        for err in body.get("errors", [])
+    )
+
+
 def test_render_control_template_rejects_agent_scoped_evaluator(client: TestClient) -> None:
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
@@ -298,6 +458,25 @@ def test_render_control_template_rejects_agent_scoped_evaluator(client: TestClie
         err.get("code") == "agent_scoped_evaluator_not_supported"
         for err in body.get("errors", [])
     )
+
+
+def test_render_control_template_rejects_forbidden_top_level_template_fields(
+    client: TestClient,
+) -> None:
+    for forbidden_field, value in (("enabled", True), ("name", "templated-name")):
+        payload = _template_payload()
+        payload["template"] = deepcopy(payload["template"])
+        payload["template"]["definition_template"][forbidden_field] = value  # type: ignore[index]
+
+        response = client.post("/api/v1/control-templates/render", json=payload)
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
+        assert any(
+            err.get("field") == forbidden_field and err.get("code") == "forbidden_template_field"
+            for err in body.get("errors", [])
+        )
 
 
 def test_render_control_template_rejects_legacy_flat_format(client: TestClient) -> None:
@@ -341,3 +520,22 @@ def test_render_control_template_rejects_invalid_parameter_name_at_api_boundary(
 
     assert response.status_code == 422
     assert response.json()["error_code"] == "VALIDATION_ERROR"
+
+
+def test_render_control_template_keeps_non_parameterized_errors_on_rendered_fields(
+    client: TestClient,
+) -> None:
+    payload = _template_payload()
+    payload["template"] = deepcopy(payload["template"])
+    payload["template"]["definition_template"]["action"]["decision"] = "block"  # type: ignore[index]
+
+    response = client.post("/api/v1/control-templates/render", json=payload)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
+    assert any(
+        err.get("field") == "action.decision"
+        and err.get("rendered_field") == "action.decision"
+        for err in body.get("errors", [])
+    )
