@@ -257,6 +257,7 @@ const controlSummariesList: (ControlSummary & {
 
 const templateControlSummary: ControlSummary & {
   used_by_agent?: { agent_name: string } | null;
+  template_backed?: boolean;
 } = {
   id: 10,
   name: 'Template Regex Guard',
