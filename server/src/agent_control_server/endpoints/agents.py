@@ -28,14 +28,14 @@ from agent_control_models.server import (
     SetPolicyResponse,
     StepKey,
 )
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete, func, or_, select, union_all
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import require_admin_key
+from ..auth import RequireAPIKey, require_admin_key
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
@@ -45,6 +45,7 @@ from ..errors import (
     NotFoundError,
 )
 from ..logging_utils import get_logger
+from ..merge_event_sessions import set_merge_events_enabled
 from ..models import (
     Agent,
     AgentData,
@@ -447,7 +448,10 @@ async def list_agents(
     response_description="Agent registration status with active controls",
 )
 async def init_agent(
-    request: InitAgentRequest, db: AsyncSession = Depends(get_async_db)
+    request: InitAgentRequest,
+    client: RequireAPIKey,
+    db: AsyncSession = Depends(get_async_db),
+    x_merge_session: str | None = Header(default=None, alias="X-Agent-Control-Merge-Session"),
 ) -> InitAgentResponse:
     """
     Register a new agent or update an existing agent's steps and metadata.
@@ -547,6 +551,11 @@ async def init_agent(
                 resource="Agent",
                 operation="create",
             )
+        set_merge_events_enabled(
+            client,
+            request.agent.agent_name,
+            enabled=(x_merge_session or "").lower() == "true",
+        )
         return InitAgentResponse(created=created, controls=[])
 
     # Parse existing data via AgentData Pydantic model
@@ -797,6 +806,11 @@ async def init_agent(
             )
 
     controls = await list_controls_for_agent(existing.name, db)
+    set_merge_events_enabled(
+        client,
+        existing.name,
+        enabled=(x_merge_session or "").lower() == "true",
+    )
 
     return InitAgentResponse(
         created=created,

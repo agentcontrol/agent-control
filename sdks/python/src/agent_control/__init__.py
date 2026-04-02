@@ -552,6 +552,7 @@ def init(
                         state.current_agent,
                         steps=registration_steps,
                         conflict_mode=conflict_mode,
+                        merge_events=merge_events,
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])

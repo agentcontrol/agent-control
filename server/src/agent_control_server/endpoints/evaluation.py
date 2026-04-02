@@ -17,10 +17,12 @@ from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import AuthenticatedClient, RequireAPIKey
 from ..config import observability_settings
 from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
+from ..merge_event_sessions import is_merge_events_enabled
 from ..models import Agent
 from ..observability.ingest.base import EventIngestor
 from ..services.controls import list_controls_for_agent
@@ -144,6 +146,23 @@ def _observability_metadata(
     )
 
 
+def _is_trusted_sdk_merge_request(
+    x_merge_events: str | None,
+    client: AuthenticatedClient,
+    agent_name: str,
+) -> bool:
+    """Return whether merged delivery is enabled for this init-scoped session.
+
+    A request must explicitly ask for merged delivery, and the same
+    authenticated client must previously have initialized this agent with
+    merge-events enabled.
+    """
+    if (x_merge_events or "").lower() != "true":
+        return False
+
+    return is_merge_events_enabled(client, agent_name)
+
+
 @router.post(
     "",
     response_model=EvaluationResponse,
@@ -153,6 +172,7 @@ def _observability_metadata(
 async def evaluate(
     request: EvaluationRequest,
     req: Request,
+    client: RequireAPIKey,
     db: AsyncSession = Depends(get_async_db),
     x_trace_id: str | None = Header(default=None, alias="X-Trace-Id"),
     x_span_id: str | None = Header(default=None, alias="X-Span-Id"),
@@ -239,7 +259,11 @@ async def evaluate(
     # Calculate total execution time
     total_duration_ms = (time.perf_counter() - start_time) * 1000
 
-    merge_events_requested = (x_merge_events or "").lower() == "true"
+    merge_events_requested = _is_trusted_sdk_merge_request(
+        x_merge_events=x_merge_events,
+        client=client,
+        agent_name=agent_name,
+    )
 
     # Default mode keeps server-side ingestion as-is. Merged event creation
     # skips this server-side delivery step so the SDK can reconstruct and

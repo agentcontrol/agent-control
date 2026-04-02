@@ -388,6 +388,15 @@ def test_evaluation_skips_ingest_for_merge_mode(
 ) -> None:
     """Merged-event mode should skip server-side observability ingestion."""
     agent_name, _ = create_and_assign_policy(client)
+    client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {"agent_name": agent_name},
+            "steps": [],
+            "evaluators": [],
+        },
+        headers={"X-Agent-Control-Merge-Session": "true"},
+    )
 
     import agent_control_server.endpoints.evaluation as evaluation_module
 
@@ -421,6 +430,45 @@ def test_evaluation_skips_ingest_for_merge_mode(
     body = resp.json()
     assert "events" not in body
     ingest_mock.assert_not_awaited()
+
+
+def test_evaluation_merge_header_alone_does_not_skip_ingest(
+    client: TestClient, monkeypatch
+) -> None:
+    """Untrusted callers should not suppress server-side observability ingestion."""
+    agent_name, _ = create_and_assign_policy(client)
+
+    import agent_control_server.endpoints.evaluation as evaluation_module
+
+    event = ControlExecutionEvent(
+        trace_id="a" * 32,
+        span_id="b" * 16,
+        agent_name=agent_name,
+        control_id=1,
+        control_name="test-control",
+        check_stage="pre",
+        applies_to="llm_call",
+        action="deny",
+        matched=True,
+        confidence=0.9,
+    )
+    build_mock = MagicMock(return_value=[event])
+    ingest_mock = AsyncMock()
+    monkeypatch.setattr(evaluation_module, "_build_observability_events", build_mock)
+    monkeypatch.setattr(evaluation_module, "_ingest_observability_events", ingest_mock)
+    monkeypatch.setattr(evaluation_module.observability_settings, "enabled", True)
+
+    payload = Step(type="llm", name="test-step", input="x", output=None)
+    req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
+    resp = client.post(
+        "/api/v1/evaluation",
+        json=req.model_dump(mode="json"),
+        headers={"X-Agent-Control-Merge-Events": "true"},
+    )
+
+    assert resp.status_code == 200
+    build_mock.assert_called_once()
+    ingest_mock.assert_awaited_once()
 
 
 def test_evaluation_skips_build_and_ingest_when_observability_disabled(

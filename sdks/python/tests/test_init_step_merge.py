@@ -212,6 +212,8 @@ def test_init_sets_merge_events_session_flag() -> None:
 
     # Then: the session state remembers that merged event creation is enabled.
     assert agent_control.state.merge_events is True
+    assert register_agent_mock.await_args is not None
+    assert register_agent_mock.await_args.kwargs["merge_events"] is True
 
 
 @pytest.mark.asyncio
