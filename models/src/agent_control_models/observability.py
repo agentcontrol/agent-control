@@ -17,7 +17,6 @@ from pydantic import Field, field_validator
 from .actions import (
     ActionDecision,
     normalize_action,
-    normalize_action_list,
     validate_action_list,
 )
 from .agent import AGENT_NAME_MIN_LENGTH, AGENT_NAME_PATTERN, normalize_agent_name
