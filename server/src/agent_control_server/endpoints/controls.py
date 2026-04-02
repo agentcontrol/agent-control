@@ -212,7 +212,25 @@ async def _validate_control_definition(
 
         evaluator_cls = available_evaluators.get(parsed.name)
         if evaluator_cls is None:
-            continue
+            available = list(available_evaluators.keys())
+            raise APIValidationError(
+                error_code=ErrorCode.EVALUATOR_NOT_FOUND,
+                detail=f"Evaluator '{parsed.name}' is not registered",
+                resource="Evaluator",
+                hint=(
+                    f"Check evaluator '{evaluator_ref}'. "
+                    f"Available evaluators: {available or 'none'}."
+                ),
+                errors=[
+                    ValidationErrorItem(
+                        resource="Control",
+                        field=f"{field_prefix}.evaluator.name",
+                        code="evaluator_not_found",
+                        message=f"Evaluator '{parsed.name}' not found",
+                        value=evaluator_ref,
+                    )
+                ],
+            )
 
         try:
             evaluator_cls.config_model(**evaluator_spec.config)

@@ -318,3 +318,33 @@ def test_validation_nested_agent_scoped_evaluator_error_uses_bracketed_field_pat
         and err.get("code") == "evaluator_not_found"
         for err in body.get("errors", [])
     )
+
+
+def test_validation_standalone_evaluator_error_uses_bracketed_field_path(
+    client: TestClient,
+):
+    """Standalone evaluator failures should identify the exact nested leaf path."""
+    control_id = create_control(client)
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"] = {
+        "or": [
+            {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "missing-evaluator",
+                    "config": {},
+                },
+            }
+        ]
+    }
+
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "EVALUATOR_NOT_FOUND"
+    assert any(
+        err.get("field") == "data.condition.or[0].evaluator.name"
+        and err.get("code") == "evaluator_not_found"
+        for err in body.get("errors", [])
+    )
