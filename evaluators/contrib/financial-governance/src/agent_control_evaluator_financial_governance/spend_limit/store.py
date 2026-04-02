@@ -191,8 +191,13 @@ class InMemorySpendStore:
             Defaults to 7 days (604 800 s).
     """
 
-    def __init__(self, max_age_seconds: int = 604_800) -> None:
-        self._max_age_seconds = max_age_seconds
+    def __init__(self, max_age_seconds: int | None = None) -> None:
+        # Default retention: 31 days (covers the longest possible calendar
+        # month).  Callers can override for shorter windows.  The previous
+        # default of 7 days (604 800 s) silently broke ``fixed month`` budgets
+        # by pruning records before the month ended, causing undercounting
+        # and budget overshoot after day 8.
+        self._max_age_seconds = max_age_seconds if max_age_seconds is not None else 2_678_400
         self._records: deque[_SpendRecord] = deque()
         self._lock = Lock()
 

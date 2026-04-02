@@ -144,14 +144,21 @@ evaluator = SpendLimitEvaluator(config)
 
 ### scope_by semantics
 
-`scope_by` lists the context dimension keys to isolate spend buckets. Each dimension is **independent**:
+`scope_by` lists the context dimension keys to isolate spend buckets.
 
 - `scope_by=()` (default) — global budget: all spend in that currency shares one counter
 - `scope_by=("channel",)` — one counter per unique `channel` value
 - `scope_by=("agent_id",)` — one counter per unique `agent_id`
-- `scope_by=("channel", "agent_id")` — one counter per unique `(channel, agent_id)` pair
+- `scope_by=("channel", "agent_id")` — one counter per unique `(channel, agent_id)` **composite** pair
 
 Spend in `channel-A` does **not** count against `channel-B`'s budget.
+
+**Strict tuple matching (v0.1.1):** ALL dimensions in `scope_by` must be present
+in the transaction data for a limit to apply. A transaction carrying only
+`channel` will NOT match a limit scoped to `("channel", "agent_id")` — the
+missing `agent_id` dimension means this limit is skipped entirely for that
+transaction. This prevents unintentional scope widening where a partially
+populated context inherits a broader budget than intended.
 
 ## Context-Aware Limits
 
@@ -277,9 +284,10 @@ pytest tests/ -v
 
 1. **Decimal for money** — All monetary amounts use `Decimal`, never `float`. Floating-point arithmetic is unsuitable for financial calculations.
 2. **BudgetLimit + BudgetWindow models** — Expressive, composable budget definitions that replace the previous flat config. Each limit is independent; first violation wins.
-3. **Independent scope dimensions** — `scope_by=("channel",)` creates a separate counter for each channel value. Spend in one channel is completely isolated from another.
+3. **Strict tuple scope matching** — `scope_by=("channel",)` creates a separate counter for each channel value. A limit scoped to `("channel", "agent_id")` only applies to transactions that carry BOTH dimensions. Missing dimensions cause the limit to be skipped, not widened.
 4. **Atomic check_and_record()** — Eliminates the TOCTOU race of separate `get_spend()` + `record_spend()` calls. Single-process safe with `threading.Lock`; production stores should use DB-level atomics.
-5. **Decoupled from data source** — The `SpendStore` protocol means no new tables in core Agent Control. Bring your own persistence.
+5. **InMemorySpendStore retention** — Default retention is 31 days (covers the longest calendar month). Previous 7-day default caused undercounting for `fixed month` budgets after day 8. Production deployments with monthly windows should use a persistent store.
+6. **Decoupled from data source** — The `SpendStore` protocol means no new tables in core Agent Control. Bring your own persistence.
 6. **Fail-open on malformed input** — Missing or malformed data returns `matched=False, error=None`, following Agent Control conventions. The `error` field is reserved for evaluator crashes, not policy decisions.
 
 ## Related Projects

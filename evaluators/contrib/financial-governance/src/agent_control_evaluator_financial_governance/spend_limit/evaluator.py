@@ -17,6 +17,10 @@ from agent_control_models import EvaluatorResult
 from .config import BudgetLimit, SpendLimitConfig
 from .store import InMemorySpendStore, SpendStore
 
+# Sentinel value returned by _build_scope when a required scope dimension is
+# missing from the transaction data.  Distinct from None (which means global).
+_SCOPE_INCOMPLETE = object()
+
 
 def _extract_decimal(data: dict[str, Any], key: str) -> Decimal | None:
     """Safely extract a Decimal value from *data* by *key*.
@@ -193,9 +197,16 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
     ) -> dict[str, str] | None:
         """Build the scope filter for *limit* from transaction *data*.
 
-        For each key in ``limit.scope_by``, extract the value from ``data``
-        (if present).  Returns ``None`` (global query) when scope_by is empty
-        or none of the specified keys are present in data.
+        For each key in ``limit.scope_by``, extract the value from ``data``.
+        Returns ``None`` (global query) when scope_by is empty.
+
+        **Strict tuple matching (v0.1.1):**
+        ALL dimensions in ``scope_by`` must be present in the transaction data.
+        If any dimension is missing, this limit does not apply to this
+        transaction — returns a sentinel ``_SCOPE_INCOMPLETE`` instead of a
+        partial scope dict.  This prevents a transaction with only ``channel``
+        from matching a ``(channel, agent_id)`` limit via subset matching,
+        which would widen the effective scope.
         """
         if not limit.scope_by:
             return None
@@ -203,10 +214,12 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
         scope: dict[str, str] = {}
         for k in limit.scope_by:
             val = data.get(k)
-            if val is not None:
-                scope[k] = str(val)
+            if val is None:
+                # Missing dimension — this limit cannot apply to this transaction
+                return _SCOPE_INCOMPLETE
+            scope[k] = str(val)
 
-        return scope if scope else None
+        return scope
 
     async def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate a transaction against all configured spend limits.
@@ -286,8 +299,15 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
         # We collect limits that apply to this transaction (matching currency)
         # and also track which limits need to be recorded after all checks pass.
 
-        period_limits_to_record: list[tuple[BudgetLimit, dict[str, str] | None, float]] = []
-        # ^ (limit, scope, window_start)
+        # Build metadata to attach to the spend record
+        spend_metadata: dict[str, Any] = {
+            k: data[k]
+            for k in ("channel", "agent_id", "session_id")
+            if k in data and data[k] is not None
+        }
+        spend_metadata["recipient"] = recipient
+
+        has_period_limits = False
 
         for limit in self.config.limits:
             # Skip limits for other currencies
@@ -295,6 +315,12 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
                 continue
 
             scope = self._build_scope(data, limit)
+
+            # Incomplete scope — this limit does not apply to this transaction.
+            # A transaction missing a required scope dimension is unconstrained
+            # by that limit (strict tuple semantics).
+            if scope is _SCOPE_INCOMPLETE:
+                continue
 
             # Per-transaction cap (window=None)
             if limit.window is None:
@@ -314,17 +340,25 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
                             "recipient": recipient,
                         },
                     )
-                # Per-tx cap passes → no need to "record" a cap (it's per-call)
+                # Per-tx cap passes — no need to "record" a cap (it's per-call)
 
             else:
-                # Rolling / fixed period budget
+                # Rolling / fixed period budget — use atomic check_and_record
+                # to eliminate the TOCTOU race between get_spend + record_spend.
+                has_period_limits = True
                 win_start = _window_start(limit)
-                period_limits_to_record.append((limit, scope, win_start))
 
-                period_spend = self._store.get_spend(tx_currency, win_start, scope=scope)
-                projected = period_spend + amount
+                accepted, current_spend = self._store.check_and_record(
+                    amount=amount,
+                    currency=tx_currency,
+                    limit=limit.amount,
+                    start=win_start,
+                    scope=scope,
+                    metadata=spend_metadata if spend_metadata else None,
+                )
 
-                if projected > limit.amount:
+                if not accepted:
+                    projected = current_spend + amount
                     return EvaluatorResult(
                         matched=True,
                         confidence=1.0,
@@ -332,12 +366,12 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
                             f"Transaction would bring period spend to "
                             f"{projected} {tx_currency}, exceeding the "
                             f"{limit.window.kind} budget of {limit.amount} {tx_currency} "
-                            f"(current period spend: {period_spend})"
+                            f"(current period spend: {current_spend})"
                         ),
                         metadata={
                             "violation": "period_budget",
                             "amount": float(amount),
-                            "current_period_spend": float(period_spend),
+                            "current_period_spend": float(current_spend),
                             "projected_period_spend": float(projected),
                             "max_per_period": float(limit.amount),
                             "currency": tx_currency,
@@ -345,18 +379,12 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
                         },
                     )
 
-        # ---- All limits passed — record the spend ----
-        # Build metadata to attach to the spend record
-        spend_metadata: dict[str, Any] = {
-            k: data[k]
-            for k in ("channel", "agent_id", "session_id")
-            if k in data and data[k] is not None
-        }
-        spend_metadata["recipient"] = recipient
-
-        # Record once per transaction (not once per limit — the store is a ledger)
-        # We only need one record; all scope queries will find it via their filters.
-        if period_limits_to_record:
+        # ---- All limits passed ----
+        # If there were no period limits, record_spend for audit trail
+        # (check_and_record already recorded for period limits above)
+        if not has_period_limits and any(
+            limit.currency == tx_currency for limit in self.config.limits
+        ):
             self._store.record_spend(
                 amount=amount,
                 currency=tx_currency,
