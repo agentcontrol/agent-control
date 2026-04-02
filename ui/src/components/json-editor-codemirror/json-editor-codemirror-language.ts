@@ -4,6 +4,7 @@ export {
   buildCodeMirrorJsonExtensions,
   buildCodeMirrorRefactorLightbulbExtension,
   buildCodeMirrorStandaloneDebugExtensions,
+  caretAfterPrettyJsonReplace,
   computeAutoEdit,
   extractEvaluatorNames,
   fixJsonCommas,

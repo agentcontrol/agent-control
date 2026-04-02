@@ -9,4 +9,9 @@ export {
   shouldTriggerEvaluatorNameCompletion,
   triggerRefactorActionsDropdown,
 } from './extensions';
-export { fixJsonCommas, normalizeOnBlur, tryFormat } from './format';
+export {
+  caretAfterPrettyJsonReplace,
+  fixJsonCommas,
+  normalizeOnBlur,
+  tryFormat,
+} from './format';

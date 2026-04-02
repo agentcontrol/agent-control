@@ -1,9 +1,12 @@
 import {
   acceptCompletion,
   autocompletion,
+  closeCompletion,
   type Completion,
   completionKeymap,
+  insertCompletionText,
   moveCompletionSelection,
+  pickedCompletion,
   snippetCompletion,
   startCompletion,
 } from '@codemirror/autocomplete';
@@ -21,6 +24,7 @@ import {
   hoverTooltip,
   keymap,
   ViewPlugin,
+  type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
 import {
@@ -157,12 +161,16 @@ function getValueSuggestions(
       info: item.description ?? undefined,
       apply: (
         view: EditorView,
-        _completion: Completion,
+        completion: Completion,
         from: number,
         to: number
       ) => {
         const insert = isStringValueContext ? item.id : JSON.stringify(item.id);
-        view.dispatch({ changes: { from, to, insert } });
+        view.dispatch({
+          ...insertCompletionText(view.state, insert, from, to),
+          annotations: pickedCompletion.of(completion),
+        });
+        closeCompletion(view);
       },
     }));
   }
@@ -196,7 +204,20 @@ function getValueSuggestions(
           type: 'variable' as const,
           detail: item.detail,
           info: item.detail,
-          apply: isStringValueContext ? item.label : JSON.stringify(item.label),
+          apply: (
+            view: EditorView,
+            completion: Completion,
+            from: number,
+            to: number
+          ) => {
+            const insert = isStringValueContext
+              ? item.label
+              : JSON.stringify(item.label);
+            view.dispatch({
+              ...insertCompletionText(view.state, insert, from, to),
+              annotations: pickedCompletion.of(completion),
+            });
+          },
         }))
     );
   }
@@ -211,7 +232,7 @@ function getValueSuggestions(
     info: typeof value === 'string' ? `Enum value: ${value}` : 'Enum value',
     apply: (
       view: EditorView,
-      _completion: Completion,
+      completion: Completion,
       from: number,
       to: number
     ) => {
@@ -219,7 +240,10 @@ function getValueSuggestions(
         isStringValueContext && typeof value === 'string'
           ? value
           : toJsonLiteral(value);
-      view.dispatch({ changes: { from, to, insert } });
+      view.dispatch({
+        ...insertCompletionText(view.state, insert, from, to),
+        annotations: pickedCompletion.of(completion),
+      });
     },
   }));
 }
@@ -432,7 +456,10 @@ function _toRefactorCompletions(actions: RefactorAction[]): Completion[] {
   return actions.map((action) => ({
     label: action.label,
     type: 'method',
-    apply: (view) => action.apply(view),
+    apply: (view) => {
+      action.apply(view);
+      closeCompletion(view);
+    },
   }));
 }
 
@@ -494,6 +521,23 @@ function getHintForPath(
   path: Array<string | number>,
   context: JsonEditorCodeMirrorContext
 ): string | null {
+  // Avoid showing hint widgets for fields that already have a good dropdown UX.
+  if (isEvaluatorNameLocation(path)) {
+    return null;
+  }
+
+  // Avoid showing the enum value hint widget for action decision because it
+  // duplicates/competes with the dropdown UI (user-reported).
+  // This hint widget is only shown for empty string values (see _createHintsExtension).
+  const last = path[path.length - 1];
+  if (
+    context.mode === 'control' &&
+    last === 'decision' &&
+    path.includes('action')
+  ) {
+    return null;
+  }
+
   const tree = parseJsonTree(text);
   if (isEvaluatorNameLocation(path) && context.evaluators?.length) {
     const display = context.evaluators
@@ -513,6 +557,87 @@ function getHintForPath(
     return `  ${enumValues.map(String).join('  |  ')}`;
   }
   return null;
+}
+
+/**
+ * `activateOnTyping` often does not reopen completions after Backspace.
+ * Also reopen when the user edits inside a JSON string that has value
+ * suggestions (enums, evaluator name, selector path), including partial text
+ * like `"s"` after deleting `"sdk"`.
+ *
+ * Only runs for direct typing/paste/delete — not programmatic doc updates
+ * (for example default `config` injection after an evaluator rename).
+ */
+function _createAutocompleteOpenWhenValueSuggestionsAfterEditExtension(
+  context: JsonEditorCodeMirrorContext
+): Extension {
+  return ViewPlugin.fromClass(
+    class {
+      private openQueued = false;
+
+      update(update: ViewUpdate) {
+        if (!update.docChanged) return;
+        if (
+          update.transactions.some((tr) => tr.isUserEvent('input.complete'))
+        ) {
+          return;
+        }
+        // Ignore programmatic doc changes (e.g. evaluator `config` auto-fill); those
+        // must not queue another completion — the dropdown would pop right back.
+        if (
+          !update.transactions.some(
+            (tr) =>
+              tr.isUserEvent('input.type') ||
+              tr.isUserEvent('input.paste') ||
+              tr.isUserEvent('input.drop') ||
+              tr.isUserEvent('delete')
+          )
+        ) {
+          return;
+        }
+
+        const view = update.view;
+        const pos = view.state.selection.main.head;
+        const text = view.state.doc.toString();
+
+        const location = getLocation(text, pos);
+        if (!location.path.length || location.isAtPropertyKey) return;
+
+        const tree = parseTree(text);
+        if (!tree) return;
+
+        const valueNode = findNodeAtLocation(tree, location.path);
+        if (!valueNode || valueNode.type !== 'string') return;
+        if (typeof valueNode.value !== 'string') return;
+
+        // Ensure the cursor is inside the editable portion of the string
+        // (between the quotes) before opening.
+        const innerFrom = valueNode.offset + 1;
+        const innerTo = valueNode.offset + Math.max(valueNode.length - 1, 1);
+        if (pos < innerFrom || pos > innerTo) return;
+
+        const options = getValueSuggestions(
+          text,
+          context,
+          location.path,
+          true /* isStringValueContext */
+        );
+        if (!options || options.length === 0) return;
+
+        // CodeMirror forbids dispatching while an update is in progress.
+        // Queue the completion open to the next tick.
+        if (this.openQueued) return;
+        this.openQueued = true;
+        window.setTimeout(() => {
+          try {
+            startCompletion(view);
+          } finally {
+            this.openQueued = false;
+          }
+        }, 0);
+      }
+    }
+  );
 }
 
 function _createHintsExtension(
@@ -641,11 +766,13 @@ const completionNavigationKeymap = Prec.highest(
 export function buildCodeMirrorJsonExtensions(
   context: JsonEditorCodeMirrorContext,
   options?: {
-    enableHoverAndHintsExtensions?: boolean;
+    enableHoverExtension?: boolean;
+    enableHintsExtension?: boolean;
   }
 ): Extension[] {
-  const enableHoverAndHintsExtensions =
-    options?.enableHoverAndHintsExtensions ?? true;
+  const enableHoverExtension = options?.enableHoverExtension ?? true;
+  // Hints are intentionally off by default — dropdown completions cover the UX.
+  const enableHintsExtension = options?.enableHintsExtension ?? false;
 
   return [
     autocompletion({
@@ -710,17 +837,10 @@ export function buildCodeMirrorJsonExtensions(
             return null;
           }
 
-          // CodeMirror's built-in filtering can re-rank completions while the user is
-          // actively typing. For enums with exactly 2 options (where we previously hit
-          // a keyboard-only inversion bug), we keep filtering disabled to preserve
-          // correct insertion. For 3+ options we allow filtering so the dropdown
-          // narrows as expected.
-          const filter = options.length <= 2 ? false : true;
-
           return {
             from: range.from,
             to: range.to,
-            filter,
+            filter: true,
             options,
           };
         },
@@ -728,10 +848,12 @@ export function buildCodeMirrorJsonExtensions(
     }),
     completionNavigationKeymap,
     keymap.of(completionKeymap),
+    // Backspace/delete often does not re-trigger `activateOnTyping`; reopen
+    // completions whenever we are editing a string that has value suggestions.
+    _createAutocompleteOpenWhenValueSuggestionsAfterEditExtension(context),
     buildCodeMirrorRefactorLightbulbExtension(context),
-    ...(enableHoverAndHintsExtensions
-      ? [_createHoverExtension(context), _createHintsExtension(context)]
-      : []),
+    ...(enableHoverExtension ? [_createHoverExtension(context)] : []),
+    ...(enableHintsExtension ? [_createHintsExtension(context)] : []),
   ];
 }
 
@@ -764,7 +886,18 @@ export function buildCodeMirrorStandaloneDebugExtensions(): Extension[] {
               options: rootKeys.map((key) => ({
                 label: key,
                 type: 'property',
-                apply: `"${key}"`,
+                apply: (
+                  view: EditorView,
+                  completion: Completion,
+                  from: number,
+                  to: number
+                ) => {
+                  const insert = `"${key}"`;
+                  view.dispatch({
+                    ...insertCompletionText(view.state, insert, from, to),
+                    annotations: pickedCompletion.of(completion),
+                  });
+                },
               })),
             };
           }
@@ -792,12 +925,25 @@ export function buildCodeMirrorStandaloneDebugExtensions(): Extension[] {
           return {
             from: range.from,
             to: range.to,
-            filter: false,
+            filter: true,
             options: values.map((value) => ({
               label: value,
               type: 'enum',
               info: `Enum value: ${value}`,
-              apply: isStringValueContext ? value : JSON.stringify(value),
+              apply: (
+                view: EditorView,
+                completion: Completion,
+                from: number,
+                to: number
+              ) => {
+                const insert = isStringValueContext
+                  ? value
+                  : JSON.stringify(value);
+                view.dispatch({
+                  ...insertCompletionText(view.state, insert, from, to),
+                  annotations: pickedCompletion.of(completion),
+                });
+              },
             })),
           };
         },

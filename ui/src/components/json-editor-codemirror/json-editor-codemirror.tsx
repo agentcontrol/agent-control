@@ -1,6 +1,7 @@
+import { closeCompletion } from '@codemirror/autocomplete';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { type Diagnostic, linter, lintGutter } from '@codemirror/lint';
-import { type Extension } from '@codemirror/state';
+import { EditorSelection, type Extension } from '@codemirror/state';
 import { EditorView, type ViewUpdate } from '@codemirror/view';
 import {
   ActionIcon,
@@ -44,6 +45,7 @@ import {
   buildCodeMirrorInlineServerValidationErrorsExtension,
   buildCodeMirrorJsonExtensions,
   buildCodeMirrorStandaloneDebugExtensions,
+  caretAfterPrettyJsonReplace,
   computeAutoEdit,
   extractEvaluatorNames,
   fixJsonCommas,
@@ -242,7 +244,6 @@ export function JsonEditorCodeMirror({
       if (!effectiveDebugFlags.enableAutoEdits) return;
       if (!update.docChanged) return;
       if (autoEditInProgressRef.current) {
-        autoEditInProgressRef.current = false;
         return;
       }
 
@@ -262,19 +263,48 @@ export function JsonEditorCodeMirror({
       if (!edit) return;
 
       autoEditInProgressRef.current = true;
-      view.dispatch({
-        changes: {
-          from: edit.offset,
-          to: edit.offset + edit.length,
-          insert: edit.newText,
-        },
-      });
+      try {
+        view.dispatch({
+          changes: {
+            from: edit.offset,
+            to: edit.offset + edit.length,
+            insert: edit.newText,
+          },
+        });
+        closeCompletion(view);
 
-      const nextText = view.state.doc.toString();
-      previousEvaluatorNamesRef.current = extractEvaluatorNames(nextText);
-      previousDecisionRef.current = parseDecision(nextText);
-      internalChangeRef.current = true;
-      handleJsonChange(nextText);
+        let nextText = view.state.doc.toString();
+        // `JSON.stringify(..., 2)` for new config starts at column 0; re-format the
+        // whole document so nesting matches the editor (same as the Prettify action).
+        const commaFixed = fixJsonCommas(nextText);
+        const formatted = tryFormat(commaFixed);
+        const pretty =
+          formatted && formatted !== nextText ? formatted : commaFixed;
+        if (pretty !== nextText) {
+          const caretBeforeFormat = view.state.selection.main.head;
+          const mappedCaret = caretAfterPrettyJsonReplace(
+            nextText,
+            caretBeforeFormat,
+            pretty
+          );
+          view.dispatch({
+            changes: { from: 0, to: nextText.length, insert: pretty },
+            selection:
+              mappedCaret != null
+                ? EditorSelection.single(mappedCaret)
+                : undefined,
+            scrollIntoView: true,
+          });
+          nextText = view.state.doc.toString();
+        }
+
+        previousEvaluatorNamesRef.current = extractEvaluatorNames(nextText);
+        previousDecisionRef.current = parseDecision(nextText);
+        internalChangeRef.current = true;
+        handleJsonChange(nextText);
+      } finally {
+        autoEditInProgressRef.current = false;
+      }
     },
     [
       editorMode,
