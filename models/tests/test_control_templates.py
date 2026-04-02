@@ -130,6 +130,27 @@ def test_template_definition_rejects_excessive_nesting() -> None:
     # Then: the model rejects the deeply nested template
 
 
+def test_template_definition_allows_flat_arrays_at_depth() -> None:
+    # Given: a template at nesting depth 11 (just under the limit) that
+    # contains a flat list of strings — arrays should not count as depth.
+    deep = _nested_template_value(11)
+    # Inject a list at the deepest dict level
+    node = deep
+    while isinstance(node, dict) and "nested" in node:
+        if not isinstance(node["nested"], dict):
+            break
+        node = node["nested"]
+    node["items"] = ["a", "b", "c", "d", "e"]
+
+    # When: validating the template definition
+    result = TemplateDefinition.model_validate(
+        {"parameters": {}, "definition_template": deep}
+    )
+
+    # Then: it succeeds (list elements don't count as additional depth)
+    assert result.definition_template is not None
+
+
 def test_template_definition_rejects_excessive_size() -> None:
     # Given: a template definition whose structure exceeds the size limit
     with pytest.raises(

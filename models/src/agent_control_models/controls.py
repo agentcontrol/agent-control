@@ -305,7 +305,9 @@ def _validate_template_definition_structure(value: JsonValue) -> JsonValue:
         if isinstance(node, dict):
             stack.extend((nested_value, depth + 1) for nested_value in node.values())
         elif isinstance(node, list):
-            stack.extend((nested_value, depth + 1) for nested_value in node)
+            # List elements inherit parent depth — a flat array of strings is
+            # not structurally deeper than a single value.
+            stack.extend((nested_value, depth) for nested_value in node)
 
     return value
 
