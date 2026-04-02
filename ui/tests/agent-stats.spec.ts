@@ -73,7 +73,7 @@ test.describe('Agent Monitor Tab', () => {
       mockedPage.getByText('Observe', { exact: true })
     ).toBeVisible();
     await expect(mockedPage.getByText('Deny', { exact: true })).toBeVisible();
-    await expect(mockedPage.getByText('Steer', { exact: true })).toBeVisible();
+    await expect(mockedPage.getByText('Steer', { exact: true })).toHaveCount(0);
   });
 
   test('should display per-control statistics table', async ({
