@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v7.3.2 (2026-04-02)
+
+### Bug Fixes
+
+- **server**: Update docker-compose.dev.yml to use different container name
+  ([`14d4c87`](https://github.com/agentcontrol/agent-control/commit/14d4c87130bbfceac0576b383abbd67fd3b63ac2))
+
+### Refactoring
+
+- **server, sdk, ui**: Collapse advisory control actions to observe
+  ([#161](https://github.com/agentcontrol/agent-control/pull/161),
+  [`8c25090`](https://github.com/agentcontrol/agent-control/commit/8c2509026c060d4a7ba92cd3b543c8d28e09f6a0))
+
+
 ## v7.3.1 (2026-04-01)
 
 ### Bug Fixes

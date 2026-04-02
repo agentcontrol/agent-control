@@ -25,7 +25,7 @@ Tool executes (LLM call, DB query, etc.)
 CrewAI Guardrails (quality retries)  <- LAYER 3: CrewAI validates quality
     |
     v
-Return to user (or block / steer / warn)
+Return to user (or block / steer / observe)
 ```
 
 **Agent Control** blocks or steers immediately (security). **CrewAI Guardrails** retry with feedback (quality). Controls are defined on the **server** -- update rules without redeploying agents.
@@ -77,7 +77,7 @@ uv run --active python -m secure_research_crew.main
 
 ## Examples
 
-### 1. [Steering Financial Agent](./steering_financial_agent/) -- Deny, Steer & Warn
+### 1. [Steering Financial Agent](./steering_financial_agent/) -- Deny, Steer & Observe
 
 Demonstrates all three Agent Control action types in a wire-transfer scenario:
 
@@ -85,7 +85,7 @@ Demonstrates all three Agent Control action types in a wire-transfer scenario:
 |--------|----------|---------|
 | **DENY** | Hard block, no recovery | Sanctioned country, fraud detected |
 | **STEER** | Pause, guide agent to correct, retry | 2FA required, manager approval needed |
-| **WARN** | Log for audit, no blocking | New recipient, unusual activity |
+| **OBSERVE** | Record for audit, no blocking | New recipient, unusual activity |
 
 ```bash
 cd examples/crewai/steering_financial_agent
@@ -131,7 +131,7 @@ A production-quality **3-agent sequential crew** (Researcher, Analyst, Writer) w
 
 | # | Scenario | Agent | Evaluator | Action | Result |
 |---|----------|-------|-----------|--------|--------|
-| 1 | Happy path | All 3 | All | allow | Report generated with sources |
+| 1 | Happy path | All 3 | All | observe | Report generated with sources |
 | 2 | SQL injection | Researcher | SQL | deny | "Multiple SQL statements not allowed" |
 | 3 | Restricted table | Researcher | LIST | deny | salary_data access blocked |
 | 4 | Missing methodology | Analyst | JSON Schema | steer | Auto-corrected, passes on retry |
@@ -189,7 +189,7 @@ uv run --active python -m content_publishing_flow.main
 | POST-execution checks | Yes | Yes | Yes | Yes |
 | **deny** action | Yes | Yes | Yes | Yes |
 | **steer** action | Yes | Yes | Yes | Yes |
-| **warn** action | Yes | | | |
+| **observe** action | Yes | | | |
 | Regex evaluator | | Yes | Yes | Yes |
 | List evaluator | Yes | Yes | Yes | Yes |
 | JSON evaluator | Yes | Yes | Yes | Yes |

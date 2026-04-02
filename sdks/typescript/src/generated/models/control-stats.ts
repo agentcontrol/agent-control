@@ -20,20 +20,17 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  *     execution_count: Total number of executions
  *     match_count: Number of times the control matched
  *     non_match_count: Number of times the control did not match
- *     allow_count: Number of allow actions
  *     deny_count: Number of deny actions
  *     steer_count: Number of steer actions
- *     warn_count: Number of warn actions
- *     log_count: Number of log actions
+ *     observe_count: Number of observe actions
  *     error_count: Number of errors during evaluation
  *     avg_confidence: Average confidence score
  *     avg_duration_ms: Average execution duration in milliseconds
+ *
+ * Invariant:
+ *     deny_count + steer_count + observe_count == match_count
  */
 export type ControlStats = {
-  /**
-   * Allow actions
-   */
-  allowCount: number;
   /**
    * Average confidence
    */
@@ -63,10 +60,6 @@ export type ControlStats = {
    */
   executionCount: number;
   /**
-   * Log actions
-   */
-  logCount: number;
-  /**
    * Total matches
    */
   matchCount: number;
@@ -75,20 +68,19 @@ export type ControlStats = {
    */
   nonMatchCount: number;
   /**
+   * Observe actions
+   */
+  observeCount: number;
+  /**
    * Steer actions
    */
   steerCount: number;
-  /**
-   * Warn actions
-   */
-  warnCount: number;
 };
 
 /** @internal */
 export const ControlStats$inboundSchema: z.ZodMiniType<ControlStats, unknown> =
   z.pipe(
     z.object({
-      allow_count: types.number(),
       avg_confidence: types.number(),
       avg_duration_ms: z.optional(z.nullable(types.number())),
       control_id: types.number(),
@@ -96,15 +88,13 @@ export const ControlStats$inboundSchema: z.ZodMiniType<ControlStats, unknown> =
       deny_count: types.number(),
       error_count: types.number(),
       execution_count: types.number(),
-      log_count: types.number(),
       match_count: types.number(),
       non_match_count: types.number(),
+      observe_count: types.number(),
       steer_count: types.number(),
-      warn_count: types.number(),
     }),
     z.transform((v) => {
       return remap$(v, {
-        "allow_count": "allowCount",
         "avg_confidence": "avgConfidence",
         "avg_duration_ms": "avgDurationMs",
         "control_id": "controlId",
@@ -112,11 +102,10 @@ export const ControlStats$inboundSchema: z.ZodMiniType<ControlStats, unknown> =
         "deny_count": "denyCount",
         "error_count": "errorCount",
         "execution_count": "executionCount",
-        "log_count": "logCount",
         "match_count": "matchCount",
         "non_match_count": "nonMatchCount",
+        "observe_count": "observeCount",
         "steer_count": "steerCount",
-        "warn_count": "warnCount",
       });
     }),
   );

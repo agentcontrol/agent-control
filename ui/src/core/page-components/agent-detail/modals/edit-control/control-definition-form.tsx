@@ -95,16 +95,14 @@ export const ControlDefinitionForm = ({
         label={
           <LabelWithTooltip
             label="Action"
-            tooltip="What action to take when the control matches"
+            tooltip="What action to take when the control matches. Observe records a non-blocking advisory match."
           />
         }
         labelProps={labelPropsInline}
         data={[
-          { value: 'allow', label: 'Allow' },
           { value: 'deny', label: 'Deny' },
           { value: 'steer', label: 'Steer' },
-          { value: 'warn', label: 'Warn' },
-          { value: 'log', label: 'Log' },
+          { value: 'observe', label: 'Observe' },
         ]}
         size="sm"
         {...form.getInputProps('action_decision')}

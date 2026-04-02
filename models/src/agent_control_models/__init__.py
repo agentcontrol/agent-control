@@ -7,6 +7,12 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0.dev"
 
+from .actions import (
+    ActionDecision,
+    expand_action_filter,
+    normalize_action,
+    normalize_action_list,
+)
 from .agent import (
     BUILTIN_STEP_TYPES,
     STEP_TYPE_LLM,
@@ -106,6 +112,7 @@ __all__ = [
     "STEP_TYPE_TOOL",
     "STEP_TYPE_LLM",
     "BUILTIN_STEP_TYPES",
+    "ActionDecision",
     # Policy
     "Policy",
     # Evaluation
@@ -135,6 +142,9 @@ __all__ = [
     "TemplateDefinition",
     "TemplateControlInput",
     "UnrenderedTemplateControl",
+    "normalize_action",
+    "normalize_action_list",
+    "expand_action_filter",
     # Error models
     "ProblemDetail",
     "ErrorCode",

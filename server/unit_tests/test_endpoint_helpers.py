@@ -75,7 +75,7 @@ async def test_emit_observability_events_uses_representative_leaf_for_composites
                     },
                 ]
             },
-            action={"decision": "allow"},
+            action={"decision": "observe"},
         ),
     )
     response = EvaluationResponse(
@@ -85,7 +85,7 @@ async def test_emit_observability_events_uses_representative_leaf_for_composites
             ControlMatch(
                 control_id=1,
                 control_name="composite-ctrl",
-                action="allow",
+                action="observe",
                 result=EvaluatorResult(
                     matched=False,
                     confidence=0.9,

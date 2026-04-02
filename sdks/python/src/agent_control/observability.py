@@ -928,7 +928,7 @@ def log_span_end(
         matches: Number of controls that matched
         non_matches: Number of controls that didn't match
         errors: Number of errors during evaluation
-        actions: Dict of action counts (e.g., {"deny": 2, "warn": 1})
+        actions: Dict of action counts (e.g., {"deny": 2, "observe": 1})
     """
     if not _should_log("span_end"):
         return
@@ -965,7 +965,7 @@ def log_control_evaluation(
         span_id: Span ID (full 16-char hex)
         control_name: Name of the control that was evaluated
         matched: Whether the control matched
-        action: Action taken (allow, deny, warn, log)
+        action: Action taken (deny, steer, observe)
         confidence: Confidence score (0.0-1.0)
         duration_ms: Evaluation duration in milliseconds
         control_execution_id: Unique ID for this control execution

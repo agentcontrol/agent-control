@@ -5,15 +5,10 @@
 import * as z from "zod/v4-mini";
 import { remap as remap$ } from "../lib/primitives.js";
 import { ClosedEnum } from "../types/enums.js";
-
-export const Actions = {
-  Allow: "allow",
-  Deny: "deny",
-  Steer: "steer",
-  Warn: "warn",
-  Log: "log",
-} as const;
-export type Actions = ClosedEnum<typeof Actions>;
+import {
+  ActionDecision,
+  ActionDecision$outboundSchema,
+} from "./action-decision.js";
 
 export const AppliesTo = {
   LlmCall: "llm_call",
@@ -40,7 +35,7 @@ export type CheckStages = ClosedEnum<typeof CheckStages>;
  *     control_execution_id: Filter by specific event ID
  *     agent_name: Filter by agent identifier
  *     control_ids: Filter by control IDs
- *     actions: Filter by actions (allow, deny, steer, warn, log)
+ *     actions: Filter by actions (deny, steer, observe)
  *     matched: Filter by matched status
  *     check_stages: Filter by check stages (pre, post)
  *     applies_to: Filter by call type (llm_call, tool_call)
@@ -53,7 +48,7 @@ export type EventQueryRequest = {
   /**
    * Filter by actions
    */
-  actions?: Array<Actions> | null | undefined;
+  actions?: Array<ActionDecision> | null | undefined;
   /**
    * Filter by agent identifier
    */
@@ -105,11 +100,6 @@ export type EventQueryRequest = {
 };
 
 /** @internal */
-export const Actions$outboundSchema: z.ZodMiniEnum<typeof Actions> = z.enum(
-  Actions,
-);
-
-/** @internal */
 export const AppliesTo$outboundSchema: z.ZodMiniEnum<typeof AppliesTo> = z.enum(
   AppliesTo,
 );
@@ -141,7 +131,7 @@ export const EventQueryRequest$outboundSchema: z.ZodMiniType<
   EventQueryRequest
 > = z.pipe(
   z.object({
-    actions: z.optional(z.nullable(z.array(Actions$outboundSchema))),
+    actions: z.optional(z.nullable(z.array(ActionDecision$outboundSchema))),
     agentName: z.optional(z.nullable(z.string())),
     appliesTo: z.optional(z.nullable(z.array(AppliesTo$outboundSchema))),
     checkStages: z.optional(z.nullable(z.array(CheckStages$outboundSchema))),

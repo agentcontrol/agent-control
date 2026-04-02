@@ -113,9 +113,9 @@ def test_action_error_with_no_blocking_match():
     """Test _action_error returns None when no blocking matches."""
     from agent_control.integrations.strands.plugin import _action_error
 
-    # Create a mock match with allow action
+    # Create a mock match with observe action
     mock_match = MagicMock()
-    mock_match.action = "allow"
+    mock_match.action = "observe"
 
     # Create a mock result
     result = MagicMock(spec=EvaluationResult)
@@ -286,7 +286,7 @@ async def test_evaluate_and_enforce_unsafe_result(agent_control_hook):
 
         # Mock an unsafe result
         mock_match = MagicMock()
-        mock_match.action = "log"
+        mock_match.action = "observe"
         mock_match.control_name = "test_control"
         mock_match.result.message = "Unsafe"
 
@@ -530,7 +530,7 @@ async def test_evaluate_and_enforce_unsafe_no_reason_with_match(agent_control_ho
 
         # Mock an unsafe result with no reason but with a match that has a message
         mock_match = MagicMock()
-        mock_match.action = "log"
+        mock_match.action = "observe"
         mock_match.control_name = "test_control"
         mock_match.result.message = "Match message"
 

@@ -208,15 +208,15 @@ def test_evaluation_tool_step_nested(client: TestClient):
 
 def test_evaluation_deny_precedence(client: TestClient):
     """Test that Deny takes precedence over other controls."""
-    # Given: A policy with two controls: one Warn, one Deny
+    # Given: A policy with two controls: one Observe, one Deny
     control_warn = {
-        "description": "Warn on keyword",
+        "description": "Observe on keyword",
         "enabled": True,
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
         "evaluator": {"name": "regex", "config": {"pattern": "keyword"}},
-        "action": {"decision": "warn"}
+        "action": {"decision": "observe"}
     }
     # Use helper to setup agent with first control
     agent_name, warn_control_name = create_and_assign_policy(client, control_warn, agent_name="PrecedenceAgent")
@@ -263,7 +263,7 @@ def test_evaluation_deny_precedence(client: TestClient):
     assert len(data["matches"]) == 2
     actions = {m["action"] for m in data["matches"]}
     assert "deny" in actions
-    assert "warn" in actions
+    assert "observe" in actions
 
 
 def test_evaluation_stage_filtering(client: TestClient):

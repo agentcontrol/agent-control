@@ -494,9 +494,9 @@ async def run_tool_control_tests(agent: CustomerSupportAgent):
     print(f"  Result: {response}")
     print()
 
-    # Test 5: High priority ticket (warn-high-priority-ticket)
+    # Test 5: High priority ticket (observe-high-priority-ticket)
     print("Test 5: High priority ticket creation")
-    print("  Control: warn-high-priority-ticket (scope.step_name_regex + selector path: input.priority)")
+    print("  Control: observe-high-priority-ticket (scope.step_name_regex + selector path: input.priority)")
     print("  Priority: critical")
     response = await agent.create_support_ticket(
         subject="Urgent issue",
@@ -506,8 +506,8 @@ async def run_tool_control_tests(agent: CustomerSupportAgent):
     print(f"  Result: {response}")
     print()
 
-    # Test 6: Low priority ticket (should not trigger warn)
-    print("Test 6: Low priority ticket creation (should not warn)")
+    # Test 6: Low priority ticket (should not trigger observe)
+    print("Test 6: Low priority ticket creation (should not observe)")
     print("  Priority: low")
     response = await agent.create_support_ticket(
         subject="Question",
@@ -519,7 +519,7 @@ async def run_tool_control_tests(agent: CustomerSupportAgent):
 
     # Test 7: PII in ticket description
     print("Test 7: Email in ticket description")
-    print("  Control: block-pii-in-ticket-description (scope.step_names + selector path: input.description)")
+    print("  Control: observe-pii-in-ticket-description (scope.step_names + selector path: input.description)")
     response = await agent.create_support_ticket(
         subject="Contact request",
         description="Please email me at secret@company.com",

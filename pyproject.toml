@@ -9,7 +9,7 @@
 
 [project]
 name = "agent-control"
-version = "7.3.1"
+version = "7.3.2"
 description = "Agent Control - protect your AI agents with controls"
 requires-python = ">=3.12"
 

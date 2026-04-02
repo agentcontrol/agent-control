@@ -137,7 +137,7 @@ async def test_evaluate_and_enforce_raises_steer():
 async def test_evaluate_and_enforce_fallback_violation_includes_control_id():
     result = MagicMock(spec=EvaluationResult)
     result.is_safe = False
-    result.matches = [_match(action="warn", control_id=42, message="unsafe")]
+    result.matches = [_match(action="observe", control_id=42, message="unsafe")]
     result.errors = []
     result.reason = None
 

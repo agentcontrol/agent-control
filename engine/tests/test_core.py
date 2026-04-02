@@ -266,9 +266,9 @@ class TestParallelExecution:
         """Test that all controls start before any complete (parallel, not sequential)."""
         # Given: 3 slow controls
         controls = [
-            make_control(1, "slow1", "test-slow", action="log", config_value="1"),
-            make_control(2, "slow2", "test-slow", action="log", config_value="2"),
-            make_control(3, "slow3", "test-slow", action="log", config_value="3"),
+            make_control(1, "slow1", "test-slow", action="observe", config_value="1"),
+            make_control(2, "slow2", "test-slow", action="observe", config_value="2"),
+            make_control(3, "slow3", "test-slow", action="observe", config_value="3"),
         ]
         engine = ControlEngine(controls)
 
@@ -298,9 +298,9 @@ class TestParallelExecution:
 
         # Given: 3 slow controls (each takes ~50ms)
         controls = [
-            make_control(1, "slow1", "test-slow", action="log", config_value="1"),
-            make_control(2, "slow2", "test-slow", action="log", config_value="2"),
-            make_control(3, "slow3", "test-slow", action="log", config_value="3"),
+            make_control(1, "slow1", "test-slow", action="observe", config_value="1"),
+            make_control(2, "slow2", "test-slow", action="observe", config_value="2"),
+            make_control(3, "slow3", "test-slow", action="observe", config_value="3"),
         ]
         engine = ControlEngine(controls)
 
@@ -334,7 +334,7 @@ class TestCancelOnDeny:
         """Test that blocking tasks are cancelled when another control denies."""
         # Given: A blocker (waits forever) and a denier (returns immediately)
         controls = [
-            make_control(1, "blocker", "test-blocker", action="log", config_value="b"),
+            make_control(1, "blocker", "test-blocker", action="observe", config_value="b"),
             make_control(2, "denier", "test-deny", action="deny", config_value="d"),
         ]
         engine = ControlEngine(controls)
@@ -367,10 +367,10 @@ class TestCancelOnDeny:
         """Test that multiple blocking tasks are all cancelled."""
         # Given: Multiple blockers and one denier
         controls = [
-            make_control(1, "blocker1", "test-blocker", action="log", config_value="1"),
-            make_control(2, "blocker2", "test-blocker", action="log", config_value="2"),
+            make_control(1, "blocker1", "test-blocker", action="observe", config_value="1"),
+            make_control(2, "blocker2", "test-blocker", action="observe", config_value="2"),
             make_control(3, "denier", "test-deny", action="deny", config_value="d"),
-            make_control(4, "blocker3", "test-blocker", action="log", config_value="3"),
+            make_control(4, "blocker3", "test-blocker", action="observe", config_value="3"),
         ]
         engine = ControlEngine(controls)
 
@@ -392,11 +392,11 @@ class TestCancelOnDeny:
 
     @pytest.mark.asyncio
     async def test_no_cancel_on_non_deny_match(self):
-        """Test that 'log' action match doesn't cancel other tasks."""
-        # Given: A slow task and a matcher with action=log (not deny)
+        """Test that an observe action match doesn't cancel other tasks."""
+        # Given: A slow task and a matcher with action=observe (not deny)
         controls = [
-            make_control(1, "slow", "test-slow", action="log", config_value="s"),
-            make_control(2, "matcher", "test-deny", action="log", config_value="m"),
+            make_control(1, "slow", "test-slow", action="observe", config_value="s"),
+            make_control(2, "matcher", "test-deny", action="observe", config_value="m"),
         ]
         engine = ControlEngine(controls)
 
@@ -408,10 +408,10 @@ class TestCancelOnDeny:
         )
         result = await engine.process(request)
 
-        # Then: Slow task should complete (not cancelled) because action was 'log'
+        # Then: Slow task should complete (not cancelled) because action was observe
         assert "slow:s:end" in _execution_log, "Slow task should complete for non-deny match"
 
-        # And: Result should still be safe (log doesn't make it unsafe)
+        # And: Result should still be safe (observe doesn't make it unsafe)
         assert result.is_safe is True
         assert result.matches is not None
         assert len(result.matches) == 1
@@ -454,9 +454,9 @@ class TestResultCollection:
         """Test that all completed results are collected."""
         # Given: Multiple quick controls
         controls = [
-            make_control(1, "allow1", "test-allow", action="log", config_value="1"),
-            make_control(2, "deny1", "test-deny", action="log", config_value="d"),
-            make_control(3, "allow2", "test-allow", action="log", config_value="2"),
+            make_control(1, "allow1", "test-allow", action="observe", config_value="1"),
+            make_control(2, "deny1", "test-deny", action="observe", config_value="d"),
+            make_control(3, "allow2", "test-allow", action="observe", config_value="2"),
         ]
         engine = ControlEngine(controls)
 
@@ -595,15 +595,15 @@ class TestErrorHandling:
     async def test_error_does_not_affect_other_controls(self):
         """Test that one control's error doesn't affect others.
 
-        Given: Multiple controls, one (log action) throws an error
+        Given: Multiple controls, one (observe action) throws an error
         When: The engine processes the request
         Then: Other controls still execute and their results are collected
         """
-        # Given: A mix of error and working controls (error has log action)
+        # Given: A mix of error and working controls (error has observe action)
         controls = [
-            make_control(1, "allow1", "test-allow", action="log", config_value="a1"),
-            make_control(2, "error_control", "test-error", action="log", config_value="err"),
-            make_control(3, "deny1", "test-deny", action="log", config_value="d1"),
+            make_control(1, "allow1", "test-allow", action="observe", config_value="a1"),
+            make_control(2, "error_control", "test-error", action="observe", config_value="err"),
+            make_control(3, "deny1", "test-deny", action="observe", config_value="d1"),
         ]
         engine = ControlEngine(controls)
 
@@ -621,7 +621,7 @@ class TestErrorHandling:
         assert "deny:d1:start" in _execution_log
         assert "deny:d1:end" in _execution_log
 
-        # And: Should be safe (log action fails open)
+        # And: Should be safe (observe action fails open)
         assert result.is_safe is True
         # Confidence is 2/3 (two successful, one errored)
         assert abs(result.confidence - 2/3) < 0.01
@@ -632,16 +632,16 @@ class TestErrorHandling:
         assert result.matches[0].control_name == "deny1"
 
     @pytest.mark.asyncio
-    async def test_error_with_log_action_fails_open(self):
-        """Test that errored control with log action fails open.
+    async def test_error_with_observe_action_fails_open(self):
+        """Test that errored control with observe action fails open.
 
-        Given: A control with action=log that throws an error
+        Given: A control with action=observe that throws an error
         When: The engine processes the request
         Then: The request is safe (fail-open for non-deny actions)
         """
-        # Given: Error control with log action (non-deny)
+        # Given: Error control with observe action (non-deny)
         controls = [
-            make_control(1, "error_log", "test-error", action="log", config_value="el"),
+            make_control(1, "error_log", "test-error", action="observe", config_value="el"),
         ]
         engine = ControlEngine(controls)
 
@@ -653,7 +653,7 @@ class TestErrorHandling:
         )
         result = await engine.process(request)
 
-        # Then: Should be safe - log action fails open
+        # Then: Should be safe - observe action fails open
         assert result.is_safe is True
         # But confidence is 0 (no successful evaluations)
         assert result.confidence == 0.0
@@ -740,12 +740,12 @@ class TestErrorHandling:
         When: The engine processes the request
         Then: All errored evaluations are in the errors array, deny errors fail closed
         """
-        # Given: Mix of working and errored controls (error1 is deny, error2 is log)
+        # Given: Mix of working and errored controls (error1 is deny, error2 is observe)
         controls = [
-            make_control(1, "allow1", "test-allow", action="log", config_value="a1"),
+            make_control(1, "allow1", "test-allow", action="observe", config_value="a1"),
             make_control(2, "error1", "test-error", action="deny", config_value="e1"),
-            make_control(3, "deny1", "test-deny", action="warn", config_value="d1"),
-            make_control(4, "error2", "test-error", action="log", config_value="e2"),
+            make_control(3, "deny1", "test-deny", action="observe", config_value="d1"),
+            make_control(4, "error2", "test-error", action="observe", config_value="e2"),
         ]
         engine = ControlEngine(controls)
 
@@ -790,8 +790,8 @@ class TestErrorHandling:
         """
         # Given: All working controls
         controls = [
-            make_control(1, "allow1", "test-allow", action="log", config_value="a1"),
-            make_control(2, "deny1", "test-deny", action="warn", config_value="d1"),
+            make_control(1, "allow1", "test-allow", action="observe", config_value="a1"),
+            make_control(2, "deny1", "test-deny", action="observe", config_value="d1"),
         ]
         engine = ControlEngine(controls)
 
@@ -831,7 +831,7 @@ class TestConfidenceCalculation:
         controls = [
             make_control(1, "denier", "test-deny", action="deny", config_value="d"),
         ] + [
-            make_control(i + 2, f"blocker{i}", "test-blocker", action="log", config_value=str(i))
+            make_control(i + 2, f"blocker{i}", "test-blocker", action="observe", config_value=str(i))
             for i in range(9)
         ]
         engine = ControlEngine(controls)
@@ -862,10 +862,10 @@ class TestConfidenceCalculation:
         # Given: 2 quick allow controls and 2 blockers, plus 1 deny
         # The deny will cancel the blockers, but allow controls complete
         controls = [
-            make_control(1, "allow1", "test-allow", action="log", config_value="a1"),
-            make_control(2, "allow2", "test-allow", action="log", config_value="a2"),
-            make_control(3, "blocker1", "test-blocker", action="log", config_value="b1"),
-            make_control(4, "blocker2", "test-blocker", action="log", config_value="b2"),
+            make_control(1, "allow1", "test-allow", action="observe", config_value="a1"),
+            make_control(2, "allow2", "test-allow", action="observe", config_value="a2"),
+            make_control(3, "blocker1", "test-blocker", action="observe", config_value="b1"),
+            make_control(4, "blocker2", "test-blocker", action="observe", config_value="b2"),
             make_control(5, "denier", "test-deny", action="deny", config_value="d"),
         ]
         engine = ControlEngine(controls)
@@ -894,11 +894,11 @@ class TestConfidenceCalculation:
         When: Some controls error but none match with deny
         Then: Confidence is successful/evaluated ratio
         """
-        # Given: 2 successful log controls, 1 errored log control
+        # Given: 2 successful observe controls, 1 errored observe control
         controls = [
-            make_control(1, "allow1", "test-allow", action="log", config_value="a1"),
-            make_control(2, "allow2", "test-allow", action="log", config_value="a2"),
-            make_control(3, "error1", "test-error", action="log", config_value="e1"),
+            make_control(1, "allow1", "test-allow", action="observe", config_value="a1"),
+            make_control(2, "allow2", "test-allow", action="observe", config_value="a2"),
+            make_control(3, "error1", "test-error", action="observe", config_value="e1"),
         ]
         engine = ControlEngine(controls)
 
@@ -924,9 +924,9 @@ class TestConfidenceCalculation:
         """
         # Given: 3 successful controls + 1 deny that errors
         controls = [
-            make_control(1, "allow1", "test-allow", action="log", config_value="a1"),
-            make_control(2, "allow2", "test-allow", action="log", config_value="a2"),
-            make_control(3, "allow3", "test-allow", action="log", config_value="a3"),
+            make_control(1, "allow1", "test-allow", action="observe", config_value="a1"),
+            make_control(2, "allow2", "test-allow", action="observe", config_value="a2"),
+            make_control(3, "allow3", "test-allow", action="observe", config_value="a3"),
             make_control(4, "deny_error", "test-error", action="deny", config_value="de"),
         ]
         engine = ControlEngine(controls)
@@ -1003,7 +1003,7 @@ class TestSelectorStepScoping:
                 1,
                 "allow_copy",
                 "test-allow",
-                action="log",
+                action="observe",
                 config_value="copy",
                 step_types=["tool"],
                 path="input",
@@ -1013,7 +1013,7 @@ class TestSelectorStepScoping:
                 2,
                 "allow_aws",
                 "test-allow",
-                action="log",
+                action="observe",
                 config_value="aws",
                 step_types=["tool"],
                 path="input",
@@ -1040,7 +1040,7 @@ class TestSelectorStepScoping:
                 1,
                 "allow_db",
                 "test-allow",
-                action="log",
+                action="observe",
                 config_value="db",
                 step_types=["tool"],
                 path="input",
@@ -1050,7 +1050,7 @@ class TestSelectorStepScoping:
                 2,
                 "allow_web",
                 "test-allow",
-                action="log",
+                action="observe",
                 config_value="web",
                 step_types=["tool"],
                 path="input",
@@ -1076,7 +1076,7 @@ class TestSelectorStepScoping:
                 1,
                 "allow_mixed",
                 "test-allow",
-                action="log",
+                action="observe",
                 config_value="mixed",
                 step_types=["tool"],
                 path="input",
@@ -1103,7 +1103,7 @@ class TestSelectorStepScoping:
                 1,
                 "payload_echo",
                 "test-payload-echo",
-                action="log",
+                action="observe",
                 config_value="p",
                 step_types=["tool"],
                 path=None,  # omit path to use "*"
@@ -1131,7 +1131,7 @@ class TestSelectorStepScoping:
                     "selector": {"path": "input"},
                     "evaluator": EvaluatorSpec(name="test-allow", config={"value": "x"}),
                 },
-                action={"decision": "log"},
+                action={"decision": "observe"},
             )
 
 
@@ -1217,7 +1217,7 @@ class TestTimeoutEnforcement:
         """
         # Given: One fast allow and one slow timeout
         controls = [
-            make_control(1, "fast", "test-allow", action="log", config_value="f1"),
+            make_control(1, "fast", "test-allow", action="observe", config_value="f1"),
             MockControlWithIdentity(
                 id=2,
                 name="slow_timeout",
@@ -1233,7 +1233,7 @@ class TestTimeoutEnforcement:
                             config={"value": "slow", "timeout_ms": 100},
                         ),
                     },
-                    action={"decision": "log"},  # Log, not deny - so fails open
+                    action={"decision": "observe"},  # Observe, not deny - so fails open
                 ),
             ),
         ]
@@ -1260,7 +1260,7 @@ class TestTimeoutEnforcement:
         assert len(result.errors) == 1
         assert result.errors[0].control_name == "slow_timeout"
 
-        # And: Should be safe (log action fails open)
+        # And: Should be safe (observe action fails open)
         assert result.is_safe is True
         # Confidence is 0.5 (1 success, 1 error out of 2)
         assert result.confidence == 0.5
@@ -1319,7 +1319,7 @@ class TestConcurrencyLimit:
 
         # Given: 6 controls (more than the limit of 2)
         controls = [
-            make_control(i, f"ctrl{i}", "test-concurrency", action="log", config_value=str(i))
+            make_control(i, f"ctrl{i}", "test-concurrency", action="observe", config_value=str(i))
             for i in range(6)
         ]
         engine = ControlEngine(controls)
@@ -1377,7 +1377,7 @@ class TestConditionTrees:
                             },
                         ]
                     },
-                    action={"decision": "log"},
+                    action={"decision": "observe"},
                 ),
             )
         ]
@@ -1444,7 +1444,7 @@ class TestConditionTrees:
                             },
                         ]
                     },
-                    action={"decision": "log"},
+                    action={"decision": "observe"},
                 ),
             )
         ]
@@ -1492,7 +1492,7 @@ class TestConditionTrees:
                             },
                         ]
                     },
-                    action={"decision": "log"},
+                    action={"decision": "observe"},
                 ),
             )
         ]
@@ -1537,7 +1537,7 @@ class TestConditionTrees:
                             "evaluator": {"name": "test-allow", "config": {"value": "child"}},
                         }
                     },
-                    action={"decision": "log"},
+                    action={"decision": "observe"},
                 ),
             )
         ]
@@ -1579,7 +1579,7 @@ class TestConditionTrees:
                             "evaluator": {"name": "test-error", "config": {"value": "boom"}},
                         }
                     },
-                    action={"decision": "log"},
+                    action={"decision": "observe"},
                 ),
             )
         ]
@@ -1628,7 +1628,7 @@ class TestConditionTrees:
                             },
                         ]
                     },
-                    action={"decision": "log"},
+                    action={"decision": "observe"},
                 ),
             )
         ]
@@ -1679,7 +1679,7 @@ class TestConditionTrees:
                             },
                         ]
                     },
-                    action={"decision": "log"},
+                    action={"decision": "observe"},
                 ),
             )
         ]
@@ -1735,7 +1735,7 @@ class TestConditionTrees:
                             },
                         ]
                     },
-                    action={"decision": "log"},
+                    action={"decision": "observe"},
                 ),
             )
         ]
@@ -1830,10 +1830,10 @@ class TestContextFiltering:
         """
         controls = [
             make_control_with_execution(
-                1, "local_ctrl", "test-allow", action="log", config_value="loc", execution="sdk"
+                1, "local_ctrl", "test-allow", action="observe", config_value="loc", execution="sdk"
             ),
             make_control_with_execution(
-                2, "server_ctrl", "test-allow", action="log", config_value="srv", execution="server"
+                2, "server_ctrl", "test-allow", action="observe", config_value="srv", execution="server"
             ),
         ]
         engine = ControlEngine(controls, context="server")
@@ -1860,10 +1860,10 @@ class TestContextFiltering:
         """
         controls = [
             make_control_with_execution(
-                1, "local_ctrl", "test-allow", action="log", config_value="loc", execution="sdk"
+                1, "local_ctrl", "test-allow", action="observe", config_value="loc", execution="sdk"
             ),
             make_control_with_execution(
-                2, "server_ctrl", "test-allow", action="log", config_value="srv", execution="server"
+                2, "server_ctrl", "test-allow", action="observe", config_value="srv", execution="server"
             ),
         ]
         engine = ControlEngine(controls, context="sdk")
@@ -1890,10 +1890,10 @@ class TestContextFiltering:
         """
         controls = [
             make_control_with_execution(
-                1, "local_ctrl", "test-allow", action="log", config_value="loc", execution="sdk"
+                1, "local_ctrl", "test-allow", action="observe", config_value="loc", execution="sdk"
             ),
             make_control_with_execution(
-                2, "server_ctrl", "test-allow", action="log", config_value="srv", execution="server"
+                2, "server_ctrl", "test-allow", action="observe", config_value="srv", execution="server"
             ),
         ]
         engine = ControlEngine(controls)  # No context param
@@ -2015,7 +2015,7 @@ class TestContextFiltering:
         controls = [
             make_control_with_execution(
                 1, "local_copy", "test-allow",
-                action="log",
+                action="observe",
                 config_value="lc",
                 execution="sdk",
                 step_types=["tool"],
@@ -2023,7 +2023,7 @@ class TestContextFiltering:
             ),
             make_control_with_execution(
                 2, "server_copy", "test-allow",
-                action="log",
+                action="observe",
                 config_value="sc",
                 execution="server",
                 step_types=["tool"],
