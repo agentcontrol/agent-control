@@ -69,7 +69,9 @@ test.describe('Agent Monitor Tab', () => {
     await expect(mockedPage.getByText('Actions Distribution')).toBeVisible();
 
     // Check action types are displayed (use exact match to avoid matching badges)
-    await expect(mockedPage.getByText('Observe', { exact: true })).toBeVisible();
+    await expect(
+      mockedPage.getByText('Observe', { exact: true })
+    ).toBeVisible();
     await expect(mockedPage.getByText('Deny', { exact: true })).toBeVisible();
     await expect(mockedPage.getByText('Steer', { exact: true })).toBeVisible();
   });
