@@ -376,6 +376,17 @@ const RawEditControlContent = ({
         return;
       }
 
+      // Template payloads cannot be edited in Form mode — they use $param
+      // bindings that the form editor doesn't understand.
+      const raw = parsedDefinition as Record<string, unknown>;
+      if (raw.template != null) {
+        setDefinitionJsonError(
+          'Template-backed controls cannot be edited in Form mode. ' +
+            'Save from JSON to create the control, then edit it to get the parameter form.'
+        );
+        return;
+      }
+
       try {
         await validateControlDataAsync({ definition: parsedDefinition });
       } catch (error) {
