@@ -1,6 +1,6 @@
 # CrewAI Financial Agent with Steering Controls
 
-Demonstrates all Agent Control action types in a realistic wire-transfer scenario using CrewAI.
+Demonstrates Agent Control actions in a realistic wire-transfer scenario using CrewAI.
 
 ## Action Types
 
@@ -8,15 +8,15 @@ Demonstrates all Agent Control action types in a realistic wire-transfer scenari
 |--------|----------|---------|
 | **DENY** | Hard block, agent cannot recover | Sanctioned country, fraud detected |
 | **STEER** | Pause execution, guide agent to correct and retry | 2FA required, manager approval needed |
-| **WARN** | Log for audit, agent continues uninterrupted | New recipient, unusual activity |
+| **OBSERVE** | Record for audit, agent continues uninterrupted | New recipient, unusual activity |
 
-The key difference: **DENY** raises `ControlViolationError` (permanent), **STEER** raises `ControlSteerError` (recoverable), and **WARN** logs silently.
+The key difference: **DENY** raises `ControlViolationError` (permanent), **STEER** raises `ControlSteerError` (recoverable), and **OBSERVE** records a non-blocking advisory event.
 
 ## Scenarios
 
 | # | Scenario | Amount | Controls Triggered | Outcome |
 |---|----------|--------|--------------------|---------|
-| 1 | Small transfer to new vendor | $2,500 | warn (new recipient) | ALLOWED + audit log |
+| 1 | Small transfer to new vendor | $2,500 | observe (new recipient) | ALLOWED + audit trail |
 | 2 | Transfer to North Korea | $500 | deny (sanctioned country) | BLOCKED |
 | 3 | Large transfer | $15,000 | steer (2FA required) | STEERED -> verified -> ALLOWED |
 | 4 | Very large transfer | $75,000 | steer (2FA + manager) | STEERED -> approved -> ALLOWED |
@@ -28,8 +28,8 @@ The key difference: **DENY** raises `ControlViolationError` (permanent), **STEER
 - `deny-high-fraud-score` — JSON evaluator, blocks fraud_score > 0.8
 - `steer-require-2fa` — JSON evaluator with oneOf schema, steers for 2FA
 - `steer-require-manager-approval` — JSON evaluator, steers for approval
-- `warn-new-recipient` — LIST evaluator, logs unknown recipients
-- `warn-pii-in-confirmation` — REGEX evaluator, logs PII in output
+- `observe-new-recipient` — LIST evaluator, records unknown recipients
+- `observe-pii-in-confirmation` — REGEX evaluator, records PII in output
 
 ## Prerequisites
 

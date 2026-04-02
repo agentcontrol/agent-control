@@ -482,7 +482,6 @@ def init(
 
     # Re-init behavior: always stop existing loop before mutating shared agent/session globals.
     _stop_policy_refresh_loop()
-    clear_control_event_sink()
 
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
@@ -558,6 +557,7 @@ def init(
                         state.current_agent,
                         steps=registration_steps,
                         conflict_mode=conflict_mode,
+                        merge_events=merge_events,
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])

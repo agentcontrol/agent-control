@@ -1,10 +1,10 @@
 """
 Setup script for the CrewAI Financial Agent steering example.
 
-Creates controls that demonstrate all three non-blocking action types:
+Creates controls that demonstrate the three supported action types:
 - DENY:  Hard-block sanctioned countries and fraud (no recovery)
 - STEER: Guide the agent through 2FA and manager approval workflows
-- WARN:  Flag new recipients and unusual hours for audit (no blocking)
+- OBSERVE: Flag new recipients and unusual hours for audit (no blocking)
 
 Run once before running the agent:
     uv run --active python setup_controls.py
@@ -222,15 +222,15 @@ async def setup():
                 },
             ),
             # ┌─────────────────────────────────────────────────────────┐
-            # │  WARN: New Recipient                                    │
+            # │  OBSERVE: New Recipient                                 │
             # │  Uses LIST evaluator with "not in" logic.              │
-            # │  Logs a warning when recipient is unknown — but does   │
-            # │  NOT block the transfer. Useful for audit trails.      │
+            # │  Records an advisory event when recipient is unknown   │
+            # │  but does NOT block the transfer. Useful for audit.    │
             # └─────────────────────────────────────────────────────────┘
             (
-                "warn-new-recipient",
+                "observe-new-recipient",
                 {
-                    "description": "Log warning for transfers to unknown recipients",
+                    "description": "Observe transfers to unknown recipients",
                     "enabled": True,
                     "execution": "server",
                     "scope": {
@@ -251,18 +251,18 @@ async def setup():
                             "case_sensitive": False,
                         },
                     },
-                    "action": {"decision": "warn"},
+                    "action": {"decision": "observe"},
                 },
             ),
             # ┌─────────────────────────────────────────────────────────┐
-            # │  WARN: PII in Output                                    │
+            # │  OBSERVE: PII in Output                                 │
             # │  Uses REGEX evaluator to detect leaked PII in the      │
-            # │  transfer confirmation. Logs for compliance review.    │
+            # │  transfer confirmation. Records for compliance review. │
             # └─────────────────────────────────────────────────────────┘
             (
-                "warn-pii-in-confirmation",
+                "observe-pii-in-confirmation",
                 {
-                    "description": "Log warning if transfer confirmation contains PII patterns",
+                    "description": "Observe PII patterns in transfer confirmation output",
                     "enabled": True,
                     "execution": "server",
                     "scope": {
@@ -277,7 +277,7 @@ async def setup():
                             "pattern": r"(?:\b\d{3}-\d{2}-\d{4}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b)"
                         },
                     },
-                    "action": {"decision": "warn"},
+                    "action": {"decision": "observe"},
                 },
             ),
         ]
@@ -322,7 +322,7 @@ async def setup():
         print("    - 2FA required for >= $10k (json evaluator)")
         print("    - Manager approval for >= $50k (json evaluator)")
         print()
-        print("  WARN  (log for audit, no blocking):")
+        print("  OBSERVE (audit trail, no blocking):")
         print("    - New/unknown recipient (list evaluator)")
         print("    - PII in confirmation output (regex evaluator)")
         print()

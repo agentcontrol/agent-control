@@ -53,7 +53,7 @@ class TestControlExecutionEvent:
                 control_name="test",
                 check_stage="pre",
                 applies_to="llm_call",
-                action="allow",
+                action="observe",
                 matched=False,
                 confidence=0.5,
             )
@@ -70,7 +70,7 @@ class TestControlExecutionEvent:
             control_name="test",
             check_stage="pre",
             applies_to="llm_call",
-            action="allow",
+            action="observe",
             matched=False,
             confidence=0.5,
         )
@@ -88,7 +88,7 @@ class TestControlExecutionEvent:
                 control_name="test",
                 check_stage="pre",
                 applies_to="llm_call",
-                action="allow",
+                action="observe",
                 matched=False,
                 confidence=0.5,
             )
@@ -105,7 +105,7 @@ class TestControlExecutionEvent:
                 control_name="test",
                 check_stage="pre",
                 applies_to="llm_call",
-                action="allow",
+                action="observe",
                 matched=False,
                 confidence=1.5,  # > 1.0
             )
@@ -121,14 +121,22 @@ class TestControlExecutionEvent:
                 control_name="test",
                 check_stage="invalid",  # invalid
                 applies_to="llm_call",
-                action="allow",
+                action="observe",
                 matched=False,
                 confidence=0.5,
             )
 
     def test_action_values(self):
-        """Test valid action values."""
-        for action in ["allow", "deny", "steer", "warn", "log"]:
+        """Test canonical actions and legacy advisory normalization."""
+        expected_actions = {
+            "allow": "observe",
+            "deny": "deny",
+            "steer": "steer",
+            "warn": "observe",
+            "log": "observe",
+            "observe": "observe",
+        }
+        for action, expected in expected_actions.items():
             event = ControlExecutionEvent(
                 trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
                 span_id="00f067aa0ba902b7",
@@ -141,7 +149,7 @@ class TestControlExecutionEvent:
                 matched=True,
                 confidence=0.9,
             )
-            assert event.action == action
+            assert event.action == expected
 
     def test_timestamp_default(self):
         """Test that timestamp defaults to now (UTC)."""
@@ -153,7 +161,7 @@ class TestControlExecutionEvent:
             control_name="test",
             check_stage="pre",
             applies_to="llm_call",
-            action="allow",
+            action="observe",
             matched=False,
             confidence=0.5,
         )
@@ -171,7 +179,7 @@ class TestControlExecutionEvent:
             control_name="test",
             check_stage="pre",
             applies_to="llm_call",
-            action="allow",
+            action="observe",
             matched=False,
             confidence=0.5,
             execution_duration_ms=15.3,
@@ -196,7 +204,7 @@ class TestControlExecutionEvent:
             control_name="test",
             check_stage="pre",
             applies_to="llm_call",
-            action="allow",
+            action="observe",
             matched=False,
             confidence=0.5,
         )
@@ -220,7 +228,7 @@ class TestBatchEventsRequest:
                 control_name=f"control-{i}",
                 check_stage="pre",
                 applies_to="llm_call",
-                action="allow",
+                action="observe",
                 matched=False,
                 confidence=0.5,
             )
@@ -245,7 +253,7 @@ class TestBatchEventsRequest:
                 control_name=f"control-{i}",
                 check_stage="pre",
                 applies_to="llm_call",
-                action="allow",
+                action="observe",
                 matched=False,
                 confidence=0.5,
             )
@@ -301,7 +309,7 @@ class TestEventQueryRequest:
     def test_filter_by_actions(self):
         """Test filtering by actions."""
         query = EventQueryRequest(actions=["deny", "warn"])
-        assert query.actions == ["deny", "warn"]
+        assert query.actions == ["deny", "observe"]
 
     def test_limit_bounds(self):
         """Test limit bounds."""
@@ -322,11 +330,9 @@ class TestControlStats:
             execution_count=1000,
             match_count=50,
             non_match_count=950,
-            allow_count=950,
             deny_count=45,
             steer_count=0,
-            warn_count=5,
-            log_count=0,
+            observe_count=5,
             error_count=0,
             avg_confidence=0.95,
         )
@@ -355,6 +361,5 @@ class TestStatsRequest:
                 time_range=time_range,
             )
             assert request.time_range == time_range
-
 
 

@@ -129,7 +129,7 @@ Agent Control works at the **tool boundary** within each flow stage:
 3. The server evaluates controls matching the step name and stage (pre/post)
 4. On **deny**: `ControlViolationError` is raised, the stage handles it
 5. On **steer**: `ControlSteerError` provides corrective guidance for retry
-6. On **allow**: execution proceeds normally
+6. On **observe** or no match: execution proceeds normally
 
 This pattern means controls are defined on the **server** (not in code), so you can update rules, add new controls, or change actions without redeploying the agent.
 

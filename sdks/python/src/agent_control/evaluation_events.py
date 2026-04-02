@@ -70,6 +70,7 @@ def _build_events_for_matches(
     matches: list[ControlMatch] | None,
     *,
     matched: bool,
+    include_error_message: bool,
     request: EvaluationRequest,
     control_lookup: dict[int, ControlDefinition],
     trace_id: str,
@@ -109,7 +110,7 @@ def _build_events_for_matches(
                 timestamp=now,
                 evaluator_name=evaluator_name,
                 selector_path=selector_path,
-                error_message=match.result.error if not matched else None,
+                error_message=match.result.error if include_error_message else None,
                 metadata=event_metadata,
             )
         )
@@ -156,6 +157,7 @@ def build_control_execution_events(
         _build_events_for_matches(
             response.matches,
             matched=True,
+            include_error_message=True,
             request=request,
             control_lookup=control_lookup,
             trace_id=resolved_trace_id,
@@ -168,6 +170,7 @@ def build_control_execution_events(
         _build_events_for_matches(
             response.errors,
             matched=False,
+            include_error_message=True,
             request=request,
             control_lookup=control_lookup,
             trace_id=resolved_trace_id,
@@ -180,6 +183,7 @@ def build_control_execution_events(
         _build_events_for_matches(
             response.non_matches,
             matched=False,
+            include_error_message=False,
             request=request,
             control_lookup=control_lookup,
             trace_id=resolved_trace_id,

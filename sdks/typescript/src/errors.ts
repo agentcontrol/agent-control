@@ -1,4 +1,4 @@
-export type ControlAction = "allow" | "deny";
+export type ControlAction = "deny" | "steer" | "observe";
 
 export interface EvaluationResult {
   isSafe: boolean;

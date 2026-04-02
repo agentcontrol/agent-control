@@ -90,7 +90,7 @@ class TestShutdownSync:
 
         agent_control.shutdown()
 
-    def test_init_clears_previously_registered_control_event_sink(self):
+    def test_init_preserves_previously_registered_control_event_sink(self):
         set_control_event_sink(lambda events: None)
 
         with patch("agent_control._stop_policy_refresh_loop"), \
@@ -102,7 +102,7 @@ class TestShutdownSync:
             mock_merge.return_value = MagicMock(steps=[], overridden_keys=[])
             agent_control.init(agent_name="agent-000000000001")
 
-        assert has_control_event_sink() is False
+        assert has_control_event_sink() is True
 
 
 class TestAshutdownAsync:

@@ -212,6 +212,29 @@ def test_init_sets_merge_events_session_flag() -> None:
 
     # Then: the session state remembers that merged event creation is enabled.
     assert agent_control.state.merge_events is True
+    assert register_agent_mock.await_args is not None
+    assert register_agent_mock.await_args.kwargs["merge_events"] is True
+
+
+def test_init_defaults_merge_events_session_flag_to_false() -> None:
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+
+    with patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=health_check_mock,
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=register_agent_mock,
+    ):
+        agent_control.init(
+            agent_name=f"agent-{uuid4().hex[:12]}",
+            policy_refresh_interval_seconds=0,
+        )
+
+    assert agent_control.state.merge_events is False
+    assert register_agent_mock.await_args is not None
+    assert register_agent_mock.await_args.kwargs["merge_events"] is False
 
 
 @pytest.mark.asyncio

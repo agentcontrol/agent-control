@@ -231,7 +231,7 @@ Blocked: block-ssn-demo
 Explore working examples for popular frameworks.
 
 - [Customer Support Agent](examples/customer_support_agent/) - PII protection, prompt injection defense, and tool controls
-- [Steer Action Demo](examples/steer_action_demo/) - allow, deny, warn, and steer decisions in one workflow
+- [Steer Action Demo](examples/steer_action_demo/) - observe, deny, and steer decisions in one workflow
 - [LangChain](examples/langchain/) - protect a SQL agent from dangerous queries
 - [CrewAI](examples/crewai/) - combine Agent Control with CrewAI guardrails
 - [AWS Strands](examples/strands_agents/) - protect Strands workflows and tool calls

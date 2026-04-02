@@ -226,14 +226,9 @@ async def check_evaluation(
 ) -> EvaluationResult:
     """Check if agent interaction is safe through the public SDK helper.
 
-    This helper preserves the default server-only evaluation path, but it can
-    also participate in merged event creation when the initialized SDK session
-    has ``merge_events`` enabled. In that mode, the SDK asks the server to skip
-    final event ingestion, reconstructs server events from the lightweight
-    response, and delivers them before returning the parsed result. Final
-    delivery uses the configured event ingestion path: the existing built-in
-    queue by default or a registered custom sink. Event creation and delivery
-    are both gated on observability being enabled.
+    This helper always uses the default server-only evaluation path. It does
+    not participate in merged event creation, so server-side observability
+    ingestion remains enabled and the SDK simply returns the parsed result.
 
     Args:
         client: Configured AgentControl client.
@@ -245,19 +240,6 @@ async def check_evaluation(
         The parsed evaluation result returned by the server.
     """
     normalized_name = ensure_agent_name(agent_name)
-    merged_emission_enabled = _is_merged_event_mode_enabled(normalized_name, client)
-    trace_id = None
-    span_id = None
-    headers: dict[str, str] | None = None
-
-    if merged_emission_enabled:
-        trace_id, span_id = get_trace_and_span_ids()
-        headers = {
-            "X-Trace-Id": trace_id,
-            "X-Span-Id": span_id,
-            "X-Agent-Control-Merge-Events": "true",
-        }
-
     request = EvaluationRequest(
         agent_name=normalized_name,
         step=step,
@@ -268,23 +250,11 @@ async def check_evaluation(
     response = await client.http_client.post(
         "/api/v1/evaluation",
         json=request_payload,
-        headers=headers,
+        headers=None,
     )
     response.raise_for_status()
 
     evaluation_response = EvaluationResponse.model_validate(response.json())
-
-    if merged_emission_enabled:
-        server_control_lookup = _build_server_control_lookup(state.server_controls or [])
-        server_events = build_control_execution_events(
-            evaluation_response,
-            request,
-            server_control_lookup,
-            trace_id,
-            span_id,
-            normalized_name,
-        )
-        emit_control_events(server_events)
 
     return cast(EvaluationResult, EvaluationResult.from_dict(evaluation_response.model_dump()))
 
@@ -383,7 +353,7 @@ async def check_evaluation_with_local(
                 ControlMatch(
                     control_id=control_id,
                     control_name=control_name,
-                    action="log",
+                    action="observe",
                     result=EvaluatorResult(
                         matched=False,
                         confidence=0.0,
@@ -450,13 +420,18 @@ async def check_evaluation_with_local(
         if merged_emission_enabled:
             headers["X-Agent-Control-Merge-Events"] = "true"
 
-        response = await client.http_client.post(
-            "/api/v1/evaluation",
-            json=request_payload,
-            headers=headers,
-        )
-        response.raise_for_status()
-        server_result = EvaluationResponse.model_validate(response.json())
+        try:
+            response = await client.http_client.post(
+                "/api/v1/evaluation",
+                json=request_payload,
+                headers=headers,
+            )
+            response.raise_for_status()
+            server_result = EvaluationResponse.model_validate(response.json())
+        except Exception:
+            if merged_emission_enabled and local_events:
+                enqueue_observability_events(local_events)
+            raise
         server_events = []
         if merged_emission_enabled:
             server_control_lookup = _build_server_control_lookup(server_control_payloads)

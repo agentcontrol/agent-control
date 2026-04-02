@@ -601,8 +601,8 @@ class TestCheckEvaluationWithLocal:
     async def test_mixed_controls_merged_results(self, agent_name, llm_payload):
         """Results from local and server should be merged."""
         controls = [
-            # Local control (action=log, will match but not deny)
-            make_control_dict(1, "local_log", execution="sdk", pattern=r"test", action="log"),
+            # Local control (action=observe, will match but not deny)
+            make_control_dict(1, "local_log", execution="sdk", pattern=r"test", action="observe"),
             # Server control
             make_control_dict(2, "server_ctrl", execution="server"),
         ]
@@ -611,7 +611,7 @@ class TestCheckEvaluationWithLocal:
         server_match = {
             "control_id": 2,
             "control_name": "server_ctrl",
-            "action": "log",
+            "action": "observe",
             "result": {"matched": True, "confidence": 1.0},
         }
         client = MagicMock(spec=AgentControlClient)
@@ -665,7 +665,7 @@ class TestCheckEvaluationWithLocal:
                 "server_tool_ctrl",
                 execution="server",
                 pattern=r"test",
-                action="log",
+                action="observe",
                 step_type="tool",
             ),
         ]
@@ -674,7 +674,7 @@ class TestCheckEvaluationWithLocal:
         server_match = {
             "control_id": 2,
             "control_name": "server_tool_ctrl",
-            "action": "log",
+            "action": "observe",
             "result": {"matched": True, "confidence": 1.0},
         }
         client = MagicMock(spec=AgentControlClient)

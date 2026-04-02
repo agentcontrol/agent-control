@@ -9,24 +9,12 @@ import * as openEnums from "../types/enums.js";
 import { OpenEnum } from "../types/enums.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
+import {
+  ActionDecision,
+  ActionDecision$inboundSchema,
+  ActionDecision$outboundSchema,
+} from "./action-decision.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
-
-/**
- * Action taken by the control
- */
-export const ControlExecutionEventAction = {
-  Allow: "allow",
-  Deny: "deny",
-  Steer: "steer",
-  Warn: "warn",
-  Log: "log",
-} as const;
-/**
- * Action taken by the control
- */
-export type ControlExecutionEventAction = OpenEnum<
-  typeof ControlExecutionEventAction
->;
 
 /**
  * Type of call: 'llm_call' or 'tool_call'
@@ -75,7 +63,7 @@ export type CheckStage = OpenEnum<typeof CheckStage>;
  *     control_name: Name of the control (denormalized for queries)
  *     check_stage: "pre" (before execution) or "post" (after execution)
  *     applies_to: "llm_call" or "tool_call"
- *     action: The action taken (allow, deny, warn, log)
+ *     action: The action taken (deny, steer, observe)
  *     matched: Whether the control evaluator matched
  *     confidence: Confidence score from the evaluator (0.0-1.0)
  *     timestamp: When the control was executed (UTC)
@@ -86,10 +74,7 @@ export type CheckStage = OpenEnum<typeof CheckStage>;
  *     metadata: Additional metadata for extensibility
  */
 export type ControlExecutionEvent = {
-  /**
-   * Action taken by the control
-   */
-  action: ControlExecutionEventAction;
+  action: ActionDecision;
   /**
    * Identifier of the agent
    */
@@ -157,17 +142,6 @@ export type ControlExecutionEvent = {
 };
 
 /** @internal */
-export const ControlExecutionEventAction$inboundSchema: z.ZodMiniType<
-  ControlExecutionEventAction,
-  unknown
-> = openEnums.inboundSchema(ControlExecutionEventAction);
-/** @internal */
-export const ControlExecutionEventAction$outboundSchema: z.ZodMiniType<
-  string,
-  ControlExecutionEventAction
-> = openEnums.outboundSchema(ControlExecutionEventAction);
-
-/** @internal */
 export const ControlExecutionEventAppliesTo$inboundSchema: z.ZodMiniType<
   ControlExecutionEventAppliesTo,
   unknown
@@ -191,7 +165,7 @@ export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    action: ControlExecutionEventAction$inboundSchema,
+    action: ActionDecision$inboundSchema,
     agent_name: types.string(),
     applies_to: ControlExecutionEventAppliesTo$inboundSchema,
     check_stage: CheckStage$inboundSchema,
@@ -253,7 +227,7 @@ export const ControlExecutionEvent$outboundSchema: z.ZodMiniType<
   ControlExecutionEvent
 > = z.pipe(
   z.object({
-    action: ControlExecutionEventAction$outboundSchema,
+    action: ActionDecision$outboundSchema,
     agentName: z.string(),
     appliesTo: ControlExecutionEventAppliesTo$outboundSchema,
     checkStage: CheckStage$outboundSchema,

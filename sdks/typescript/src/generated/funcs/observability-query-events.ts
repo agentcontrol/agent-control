@@ -38,7 +38,7 @@ import { Result } from "../types/fp.js";
  * - control_execution_id: Get a specific event
  * - agent_name: Filter by agent
  * - control_ids: Filter by controls
- * - actions: Filter by actions (allow, deny, warn, log)
+ * - actions: Filter by actions (deny, steer, observe)
  * - matched: Filter by matched status
  * - check_stages: Filter by check stage (pre, post)
  * - applies_to: Filter by call type (llm_call, tool_call)

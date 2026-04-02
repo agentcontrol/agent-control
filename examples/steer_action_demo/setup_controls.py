@@ -1,8 +1,8 @@
 """
 Setup script for Banking Transaction Agent controls.
 
-Demonstrates all AgentControl action types in a realistic banking scenario:
-- ALLOW: Simple transfers that satisfy controls
+Demonstrates the Agent Control action types in a realistic banking scenario:
+- OBSERVE: Simple transfers that trigger non-blocking audit controls
 - DENY: Compliance violations (sanctioned countries, fraud)
 - STEER: Large transfers requiring verification and approval
 
@@ -19,7 +19,7 @@ SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 
 async def setup_banking_controls():
-    """Create banking controls demonstrating allow, deny, and steer actions."""
+    """Create banking controls demonstrating observe, deny, and steer actions."""
     async with AgentControlClient(base_url=SERVER_URL) as client:
         # 1. Register Agent
         agent = Agent(
@@ -100,12 +100,12 @@ async def setup_banking_controls():
         }
 
         # ============================================================================
-        # WARN CONTROLS - Log suspicious activity without blocking
+        # OBSERVE CONTROLS - Record suspicious activity without blocking
         # ============================================================================
 
-        # Control 3: New Recipient Warning (WARN)
+        # Control 3: New Recipient Audit (OBSERVE)
         new_recipient_control = {
-            "description": "Log warning when transferring to a new recipient",
+            "description": "Observe transfers to new recipients for audit review",
             "enabled": True,
             "execution": "server",
             "scope": {
@@ -129,7 +129,7 @@ async def setup_banking_controls():
                 },
             },
             "action": {
-                "decision": "warn"
+                "decision": "observe"
             }
         }
 
@@ -211,7 +211,7 @@ async def setup_banking_controls():
         control_configs = [
             ("deny-sanctioned-countries", sanctioned_countries_control),
             ("deny-high-fraud-risk", fraud_risk_control),
-            ("warn-new-recipient", new_recipient_control),
+            ("observe-new-recipient", new_recipient_control),
             ("steer-large-transfer-verification", large_transfer_control),
             ("steer-manager-approval-required", manager_approval_control),
         ]
@@ -269,6 +269,8 @@ async def setup_banking_controls():
         print("  DENY:")
         print("    • Sanctioned countries (OFAC compliance)")
         print("    • High fraud risk (score > 0.8)")
+        print("  OBSERVE:")
+        print("    • New recipient audit trail (non-blocking)")
         print("  STEER:")
         print("    • Large transfer 2FA verification (>$10k)")
         print("    • Manager approval for over-limit transfers")

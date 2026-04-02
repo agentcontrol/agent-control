@@ -63,3 +63,14 @@ def test_get_trace_context_from_provider_returns_none_for_empty_ids() -> None:
     )
 
     assert get_trace_context_from_provider() is None
+
+
+def test_get_trace_context_from_provider_returns_none_for_non_string_ids() -> None:
+    set_trace_context_provider(  # type: ignore[arg-type]
+        lambda: {
+            "trace_id": 123,
+            "span_id": b"abc",
+        }
+    )
+
+    assert get_trace_context_from_provider() is None

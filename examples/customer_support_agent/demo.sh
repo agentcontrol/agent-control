@@ -247,7 +247,7 @@ show_observability_stats() {
     echo "Last 5 minutes:"
     echo "---------------"
     local stats_5m=$(curl -s "${server_url}/api/v1/observability/stats?agent_name=${agent_name}&time_range=5m")
-    if echo "$stats_5m" | python3 -c "import sys, json; d=json.load(sys.stdin); print(f\"  Total executions: {d.get('total_executions', 0)}\"); print(f\"  Matches: {d.get('total_matches', 0)}\"); print(f\"  Non-matches: {d.get('total_non_matches', 0)}\"); print(f\"  Errors: {d.get('total_errors', 0)}\"); actions=d.get('action_counts', {}); print(f\"  Actions: allow={actions.get('allow', 0)}, deny={actions.get('deny', 0)}, warn={actions.get('warn', 0)}, log={actions.get('log', 0)}\")" 2>/dev/null; then
+    if echo "$stats_5m" | python3 -c "import sys, json; d=json.load(sys.stdin); print(f\"  Total executions: {d.get('total_executions', 0)}\"); print(f\"  Matches: {d.get('total_matches', 0)}\"); print(f\"  Non-matches: {d.get('total_non_matches', 0)}\"); print(f\"  Errors: {d.get('total_errors', 0)}\"); actions=d.get('action_counts', {}); print(f\"  Actions: observe={actions.get('observe', 0)}, deny={actions.get('deny', 0)}, steer={actions.get('steer', 0)}\")" 2>/dev/null; then
         :
     else
         echo "  No data or error fetching stats"
@@ -259,7 +259,7 @@ show_observability_stats() {
     echo "Last 1 hour:"
     echo "------------"
     local stats_1h=$(curl -s "${server_url}/api/v1/observability/stats?agent_name=${agent_name}&time_range=1h")
-    if echo "$stats_1h" | python3 -c "import sys, json; d=json.load(sys.stdin); print(f\"  Total executions: {d.get('total_executions', 0)}\"); print(f\"  Matches: {d.get('total_matches', 0)}\"); print(f\"  Non-matches: {d.get('total_non_matches', 0)}\"); print(f\"  Errors: {d.get('total_errors', 0)}\"); actions=d.get('action_counts', {}); print(f\"  Actions: allow={actions.get('allow', 0)}, deny={actions.get('deny', 0)}, warn={actions.get('warn', 0)}, log={actions.get('log', 0)}\")" 2>/dev/null; then
+    if echo "$stats_1h" | python3 -c "import sys, json; d=json.load(sys.stdin); print(f\"  Total executions: {d.get('total_executions', 0)}\"); print(f\"  Matches: {d.get('total_matches', 0)}\"); print(f\"  Non-matches: {d.get('total_non_matches', 0)}\"); print(f\"  Errors: {d.get('total_errors', 0)}\"); actions=d.get('action_counts', {}); print(f\"  Actions: observe={actions.get('observe', 0)}, deny={actions.get('deny', 0)}, steer={actions.get('steer', 0)}\")" 2>/dev/null; then
         :
     else
         echo "  No data or error fetching stats"

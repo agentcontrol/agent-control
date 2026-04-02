@@ -69,10 +69,11 @@ test.describe('Agent Monitor Tab', () => {
     await expect(mockedPage.getByText('Actions Distribution')).toBeVisible();
 
     // Check action types are displayed (use exact match to avoid matching badges)
-    await expect(mockedPage.getByText('Allow', { exact: true })).toBeVisible();
+    await expect(
+      mockedPage.getByText('Observe', { exact: true })
+    ).toBeVisible();
     await expect(mockedPage.getByText('Deny', { exact: true })).toBeVisible();
-    await expect(mockedPage.getByText('Warn', { exact: true })).toBeVisible();
-    await expect(mockedPage.getByText('Log', { exact: true })).toBeVisible();
+    await expect(mockedPage.getByText('Steer', { exact: true })).toHaveCount(0);
   });
 
   test('should display per-control statistics table', async ({
@@ -189,11 +190,9 @@ test.describe('Agent Monitor Tab - Refetch Flow', () => {
           execution_count: 100,
           match_count: 10,
           non_match_count: 90,
-          allow_count: 5,
+          observe_count: 5,
           deny_count: 5,
           steer_count: 0,
-          warn_count: 0,
-          log_count: 0,
           error_count: 0,
           avg_confidence: 0.85,
           avg_duration_ms: 40,
@@ -216,11 +215,9 @@ test.describe('Agent Monitor Tab - Refetch Flow', () => {
           execution_count: 250,
           match_count: 35,
           non_match_count: 215,
-          allow_count: 15,
+          observe_count: 15,
           deny_count: 20,
           steer_count: 0,
-          warn_count: 0,
-          log_count: 0,
           error_count: 1,
           avg_confidence: 0.91,
           avg_duration_ms: 38,
