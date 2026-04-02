@@ -12,6 +12,8 @@ from .actions import (
     expand_action_filter,
     normalize_action,
     normalize_action_list,
+    validate_action,
+    validate_action_list,
 )
 from .agent import (
     BUILTIN_STEP_TYPES,
@@ -116,6 +118,8 @@ __all__ = [
     "SteeringContext",
     "normalize_action",
     "normalize_action_list",
+    "validate_action",
+    "validate_action_list",
     "expand_action_filter",
     # Error models
     "ProblemDetail",

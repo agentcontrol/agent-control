@@ -307,9 +307,14 @@ class TestEventQueryRequest:
         assert query.trace_id == "4bf92f3577b34da6a3ce929d0e0e4736"
 
     def test_filter_by_actions(self):
-        """Test filtering by actions."""
-        query = EventQueryRequest(actions=["deny", "warn"])
+        """Test filtering by canonical actions."""
+        query = EventQueryRequest(actions=["deny", "observe"])
         assert query.actions == ["deny", "observe"]
+
+    def test_filter_by_actions_rejects_legacy(self):
+        """Test that legacy action values are rejected in query filters."""
+        with pytest.raises(ValidationError, match="Invalid action"):
+            EventQueryRequest(actions=["deny", "warn"])
 
     def test_limit_bounds(self):
         """Test limit bounds."""
