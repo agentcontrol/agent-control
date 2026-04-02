@@ -296,5 +296,53 @@ test.describe('Control Templates', () => {
         mockedPage.getByTestId('control-json-textarea')
       ).toBeVisible();
     });
+
+    test('switching to Form mode is blocked when JSON contains a template payload', async ({
+      mockedPage,
+    }) => {
+      // Given: the JSON editor is open with a template payload pasted
+      await mockedPage.goto(controlsUrl);
+      await mockedPage.getByTestId('add-control-button').click();
+      await mockedPage.getByRole('button', { name: 'Create Control' }).click();
+      await mockedPage.getByTestId('from-json-button').click();
+
+      const jsonEditor = mockedPage.getByTestId('control-json-textarea');
+      await expect(jsonEditor).toBeVisible();
+
+      const templateJson = JSON.stringify({
+        template: {
+          parameters: {
+            pattern: { type: 'regex_re2', label: 'Pattern' },
+          },
+          definition_template: {
+            execution: 'server',
+            scope: { stages: ['pre'] },
+            condition: {
+              selector: { path: 'input' },
+              evaluator: {
+                name: 'regex',
+                config: { pattern: { $param: 'pattern' } },
+              },
+            },
+            action: { decision: 'deny' },
+          },
+        },
+        template_values: {},
+      });
+      await jsonEditor.fill(templateJson);
+
+      // When: attempting to switch to Form mode
+      await mockedPage.locator('label').getByText('Form').click();
+
+      // Then: an error message is shown explaining templates can't use Form mode
+      await expect(
+        mockedPage.getByText(
+          'Template-backed controls cannot be edited in Form mode'
+        )
+      ).toBeVisible();
+
+      // And: the JSON editor is still visible (did not switch)
+      await expect(jsonEditor).toBeVisible();
+    });
   });
 });
