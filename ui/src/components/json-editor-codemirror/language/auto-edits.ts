@@ -207,11 +207,13 @@ export function computeAutoEdit(
   nextDecision: string | null;
 } {
   const nextEvaluatorNames = extractEvaluatorNames(text);
-  let nextDecision: string | null = null;
+  let nextDecision: string | null = previousDecision;
   try {
-    nextDecision =
-      (JSON.parse(text) as { action?: { decision?: string } })?.action
-        ?.decision ?? null;
+    const tree = parseTree(text);
+    if (tree) {
+      const node = findNodeAtLocation(tree, ['action', 'decision']);
+      nextDecision = typeof node?.value === 'string' ? node.value : null;
+    }
   } catch {
     nextDecision = previousDecision;
   }

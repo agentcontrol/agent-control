@@ -11,14 +11,16 @@ import {
   Tooltip,
   useMantineColorScheme,
 } from '@mantine/core';
-import { useClipboard } from '@mantine/hooks';
+import { useClipboard, useDebouncedValue } from '@mantine/hooks';
 import {
   IconClipboardCheck,
   IconClipboardCopy,
   IconCode,
 } from '@tabler/icons-react';
+import { findNodeAtLocation, parseTree } from 'jsonc-parser';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { isApiError } from '@/core/api/errors';
 import type { ProblemDetail, StepSchema } from '@/core/api/types';
 import { LabelWithTooltip } from '@/core/components/label-with-tooltip';
 import { ApiErrorAlert } from '@/core/page-components/agent-detail/modals/edit-control/api-error-alert';
@@ -43,6 +45,8 @@ import {
   buildCodeMirrorStandaloneDebugExtensions,
   computeAutoEdit,
   extractEvaluatorNames,
+  fixJsonCommas,
+  tryFormat,
 } from './json-editor-codemirror-language';
 
 type JsonEditorTestElement = HTMLDivElement & {
@@ -62,6 +66,7 @@ const DEFAULT_HEIGHT = 400;
 const DEFAULT_LABEL = 'Configuration (JSON)';
 const DEFAULT_TOOLTIP = 'Raw JSON configuration';
 const DEFAULT_TEST_ID = 'raw-json-textarea';
+const DEFAULT_VALIDATE_DEBOUNCE_MS = 500;
 
 const DENSITY_THEME = EditorView.theme({
   '&': {
@@ -117,6 +122,11 @@ export function JsonEditorCodeMirror({
   handleJsonChange,
   jsonError,
   validationError,
+  onValidateConfig,
+  onValidationStatusChange,
+  setJsonError,
+  setValidationError,
+  validateDebounceMs,
   height = DEFAULT_HEIGHT,
   label = DEFAULT_LABEL,
   tooltip = DEFAULT_TOOLTIP,
@@ -169,10 +179,18 @@ export function JsonEditorCodeMirror({
         Object.prototype.hasOwnProperty.call(
           CODE_MIRROR_DARK_THEME_PRESETS,
           prev.dark
+        ) ||
+        Object.prototype.hasOwnProperty.call(
+          CODE_MIRROR_LIGHT_THEME_PRESETS,
+          prev.dark
         );
       const lightOk =
         Object.prototype.hasOwnProperty.call(
           CODE_MIRROR_LIGHT_THEME_PRESETS,
+          prev.light
+        ) ||
+        Object.prototype.hasOwnProperty.call(
+          CODE_MIRROR_DARK_THEME_PRESETS,
           prev.light
         );
       if (darkOk && lightOk) return prev;
@@ -206,14 +224,10 @@ export function JsonEditorCodeMirror({
   ]);
 
   const parseDecision = useCallback((text: string): string | null => {
-    try {
-      return (
-        (JSON.parse(text) as { action?: { decision?: string } })?.action
-          ?.decision ?? null
-      );
-    } catch {
-      return null;
-    }
+    const tree = parseTree(text);
+    if (!tree) return null;
+    const node = findNodeAtLocation(tree, ['action', 'decision']);
+    return typeof node?.value === 'string' ? node.value : null;
   }, []);
 
   useEffect(() => {
@@ -286,6 +300,67 @@ export function JsonEditorCodeMirror({
     ]
   );
 
+  const [debouncedJsonText] = useDebouncedValue(
+    jsonText,
+    validateDebounceMs ?? DEFAULT_VALIDATE_DEBOUNCE_MS
+  );
+
+  const validationAbortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!onValidateConfig) return;
+    if (!debouncedJsonText) {
+      setJsonError?.(null);
+      setValidationError?.(null);
+      onValidationStatusChange?.('idle');
+      return;
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(debouncedJsonText) as Record<string, unknown>;
+    } catch {
+      setJsonError?.('Invalid JSON');
+      setValidationError?.(null);
+      onValidationStatusChange?.('invalid');
+      return;
+    }
+
+    validationAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    validationAbortControllerRef.current = controller;
+
+    setJsonError?.(null);
+    setValidationError?.(null);
+    onValidationStatusChange?.('validating');
+
+    onValidateConfig(parsed, { signal: controller.signal })
+      .then(() => {
+        if (controller.signal.aborted) return;
+        setValidationError?.(null);
+        onValidationStatusChange?.('valid');
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        if (isApiError(error)) {
+          setValidationError?.(error.problemDetail);
+          onValidationStatusChange?.('invalid');
+          return;
+        }
+        setJsonError?.('Validation failed.');
+        setValidationError?.(null);
+        onValidationStatusChange?.('invalid');
+      });
+
+    return () => controller.abort();
+  }, [
+    onValidateConfig,
+    debouncedJsonText,
+    onValidationStatusChange,
+    setJsonError,
+    setValidationError,
+  ]);
+
   const onEditorChange = useCallback(
     (value: string) => {
       internalChangeRef.current = true;
@@ -293,6 +368,23 @@ export function JsonEditorCodeMirror({
     },
     [handleJsonChange]
   );
+
+  const formatJson = useCallback(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+
+    const current = view.state.doc.toString();
+    const commaFixed = fixJsonCommas(current);
+    const formatted = tryFormat(commaFixed);
+
+    const next = formatted && formatted !== current ? formatted : commaFixed;
+    if (next === current) return;
+
+    internalChangeRef.current = true;
+    view.dispatch({
+      changes: { from: 0, to: current.length, insert: next },
+    });
+  }, []);
 
   // Keep this block to test parent->editor sync behavior.
   useEffect(() => {
@@ -321,37 +413,39 @@ export function JsonEditorCodeMirror({
   }, [lintErrors, validationError]);
 
   const codeMirrorTheme = useMemo(() => {
-    if (isDarkMode) {
-      return (
-        CODE_MIRROR_DARK_THEME_PRESETS[cmThemePrefs.dark]?.extension ??
-        CODE_MIRROR_DARK_THEME_PRESETS[DEFAULT_DARK_THEME_ID].extension
-      );
-    }
-    return (
-      CODE_MIRROR_LIGHT_THEME_PRESETS[cmThemePrefs.light]?.extension ??
-      mantineLightCodeMirrorTheme
-    );
+    const selectedId = isDarkMode ? cmThemePrefs.dark : cmThemePrefs.light;
+    const selectedExtension =
+      CODE_MIRROR_DARK_THEME_PRESETS[selectedId]?.extension ??
+      CODE_MIRROR_LIGHT_THEME_PRESETS[selectedId]?.extension ??
+      (isDarkMode
+        ? CODE_MIRROR_DARK_THEME_PRESETS[DEFAULT_DARK_THEME_ID].extension
+        : mantineLightCodeMirrorTheme);
+    return selectedExtension;
   }, [isDarkMode, cmThemePrefs.dark, cmThemePrefs.light]);
 
   const cmThemeSelectData = useMemo(
     () =>
-      Object.entries(
-        isDarkMode
-          ? CODE_MIRROR_DARK_THEME_PRESETS
-          : CODE_MIRROR_LIGHT_THEME_PRESETS
-      ).map(([value, { label: optionLabel }]) => ({
+      [
+        ...Object.entries(CODE_MIRROR_DARK_THEME_PRESETS),
+        ...Object.entries(CODE_MIRROR_LIGHT_THEME_PRESETS),
+      ].map(([value, { label: optionLabel }]) => ({
         value,
         label: optionLabel,
       })),
-    [isDarkMode]
+    []
   );
 
   const cmThemeSelectValue = useMemo(() => {
     const raw = isDarkMode ? cmThemePrefs.dark : cmThemePrefs.light;
-    const presets = isDarkMode
-      ? CODE_MIRROR_DARK_THEME_PRESETS
-      : CODE_MIRROR_LIGHT_THEME_PRESETS;
-    if (raw in presets) return raw;
+    const inDark = Object.prototype.hasOwnProperty.call(
+      CODE_MIRROR_DARK_THEME_PRESETS,
+      raw
+    );
+    const inLight = Object.prototype.hasOwnProperty.call(
+      CODE_MIRROR_LIGHT_THEME_PRESETS,
+      raw
+    );
+    if (inDark || inLight) return raw;
     return isDarkMode ? DEFAULT_DARK_THEME_ID : DEFAULT_LIGHT_THEME_ID;
   }, [isDarkMode, cmThemePrefs.dark, cmThemePrefs.light]);
 
@@ -385,6 +479,7 @@ export function JsonEditorCodeMirror({
               color="gray"
               size="sm"
               aria-label="Format document"
+              onClick={formatJson}
             >
               <IconCode size={14} />
             </ActionIcon>

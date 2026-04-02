@@ -8,7 +8,6 @@ import {
   startCompletion,
 } from '@codemirror/autocomplete';
 import {
-  EditorSelection,
   type Extension,
   Prec,
   type Range,
@@ -673,9 +672,13 @@ export function buildCodeMirrorJsonExtensions(
               context.mode
             );
             if (refactorContext) {
+              // Keep the completion UI anchored at the caret line.
+              // The actual refactor actions rewrite the whole document,
+              // so `from/to` here only controls dropdown placement.
+              const anchor = completionContext.pos;
               return {
-                from: refactorContext.from,
-                to: refactorContext.to,
+                from: anchor,
+                to: anchor,
                 filter: false,
                 options: _toRefactorCompletions(refactorContext.actions),
               };
@@ -702,10 +705,17 @@ export function buildCodeMirrorJsonExtensions(
             return null;
           }
 
+          // CodeMirror's built-in filtering can re-rank completions while the user is
+          // actively typing. For enums with exactly 2 options (where we previously hit
+          // a keyboard-only inversion bug), we keep filtering disabled to preserve
+          // correct insertion. For 3+ options we allow filtering so the dropdown
+          // narrows as expected.
+          const filter = options.length <= 2 ? false : true;
+
           return {
             from: range.from,
             to: range.to,
-            filter: false,
+            filter,
             options,
           };
         },
@@ -825,15 +835,12 @@ export function buildCodeMirrorRefactorLightbulbExtension(
       return builder.finish();
     },
     domEventHandlers: {
-      mousedown(view, line) {
+      mousedown(view, _line) {
         const text = view.state.doc.toString();
-        const offset = line.from;
+        const offset = view.state.selection.main.head;
         const refactorContext = getRefactorContext(text, offset, context.mode);
         if (!refactorContext) return false;
-        view.dispatch({
-          selection: EditorSelection.single(offset),
-          scrollIntoView: true,
-        });
+        // Don't move the caret (keep bulb aligned with the user's caret line).
         window.setTimeout(() => {
           triggerRefactorActionsDropdown(view, context.mode);
         }, 0);
