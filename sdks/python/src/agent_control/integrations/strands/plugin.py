@@ -250,7 +250,7 @@ class AgentControlPlugin(Plugin):
 
     async def check_after_tool(self, event: AfterToolCallEvent) -> None:
         tool_name, tool_output = self._extract_tool_data(event)
-        tool_input = event.tool_use.get("input", {}) if event.tool_use else {}
+        tool_input: Any = event.tool_use.get("input", {}) if event.tool_use else {}
         context = self._extract_context(event)
         await self._evaluate_and_enforce(
             step_name=tool_name,
@@ -357,6 +357,7 @@ class AgentControlPlugin(Plugin):
         else:
             tool_name = event.tool_use.get("name", "unknown-tool")
 
+        tool_data: Any
         if isinstance(event, BeforeToolCallEvent):
             tool_data = event.tool_use.get("input", {})
         else:

@@ -5,9 +5,12 @@
 import * as z from "zod/v4-mini";
 import { remap as remap$ } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
-import * as openEnums from "../types/enums.js";
-import { OpenEnum } from "../types/enums.js";
 import { Result as SafeParseResult } from "../types/fp.js";
+import {
+  ActionDecision,
+  ActionDecision$inboundSchema,
+  ActionDecision$outboundSchema,
+} from "./action-decision.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
   SteeringContext,
@@ -17,28 +20,10 @@ import {
 } from "./steering-context.js";
 
 /**
- * Action to take when control is triggered
- */
-export const Decision = {
-  Allow: "allow",
-  Deny: "deny",
-  Steer: "steer",
-  Warn: "warn",
-  Log: "log",
-} as const;
-/**
- * Action to take when control is triggered
- */
-export type Decision = OpenEnum<typeof Decision>;
-
-/**
  * What to do when control matches.
  */
 export type ControlAction = {
-  /**
-   * Action to take when control is triggered
-   */
-  decision: Decision;
+  decision: ActionDecision;
   /**
    * Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
    */
@@ -46,19 +31,12 @@ export type ControlAction = {
 };
 
 /** @internal */
-export const Decision$inboundSchema: z.ZodMiniType<Decision, unknown> =
-  openEnums.inboundSchema(Decision);
-/** @internal */
-export const Decision$outboundSchema: z.ZodMiniType<string, Decision> =
-  openEnums.outboundSchema(Decision);
-
-/** @internal */
 export const ControlAction$inboundSchema: z.ZodMiniType<
   ControlAction,
   unknown
 > = z.pipe(
   z.object({
-    decision: Decision$inboundSchema,
+    decision: ActionDecision$inboundSchema,
     steering_context: z.optional(z.nullable(SteeringContext$inboundSchema)),
   }),
   z.transform((v) => {
@@ -79,7 +57,7 @@ export const ControlAction$outboundSchema: z.ZodMiniType<
   ControlAction
 > = z.pipe(
   z.object({
-    decision: Decision$outboundSchema,
+    decision: ActionDecision$outboundSchema,
     steeringContext: z.optional(z.nullable(SteeringContext$outboundSchema)),
   }),
   z.transform((v) => {

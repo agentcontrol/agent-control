@@ -218,10 +218,8 @@ def _handle_result(result: Any) -> None:
         )
 
     for match in matches:
-        if match.action == "warn":
-            print(f"Agent Control warning [{match.control_name}]: {match.result.message}")
-        elif match.action == "log":
-            print(f"Agent Control log [{match.control_name}]: {match.result.message}")
+        if match.action == "observe":
+            print(f"Agent Control observe [{match.control_name}]: {match.result.message}")
 
 
 def _resolve_agent_step_name(callback_context: CallbackContext) -> str:

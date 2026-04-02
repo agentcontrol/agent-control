@@ -24,7 +24,7 @@ Usage:
     # - stage: "pre" or "post"
     # - selector.path: "input" or "output"
     # - evaluator: regex, list, Luna2 evaluator, etc.
-    # - action: deny, warn, or log
+    # - action: deny, steer, or observe
 """
 
 import asyncio
@@ -35,7 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from agent_control_models import Step
+from agent_control_models import Step, normalize_action
 
 from agent_control import AgentControlClient
 from agent_control.evaluation import check_evaluation_with_local
@@ -125,7 +125,7 @@ class ControlContext:
         # Log each control evaluation
         _log_control_evaluations(result, self.trace_id, self.span_id, check_stage)
 
-        # Handle deny/steer/warn/log actions (may raise ControlViolationError, ControlSteerError)
+        # Handle deny/steer/observe actions (may raise ControlViolationError, ControlSteerError)
         _handle_evaluation_result(result)
 
         # Update stats in place
@@ -144,7 +144,7 @@ class ControlContext:
         for match in result.get("matches") or []:
             self.total_executions += 1
             self.total_matches += 1
-            action = match.get("action", "allow")
+            action = normalize_action(str(match.get("action", "observe")))
             self.actions[action] = self.actions.get(action, 0) + 1
 
         # Process non-matches (controls evaluated but didn't match)
@@ -521,8 +521,8 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
             f"Errors: {'; '.join(error_messages)}"
         )
 
-    # CRITICAL: Handle actions in priority order: deny > steer > warn > log
-    # Check blocking actions first (deny/steer), then always log warn/log
+    # CRITICAL: Handle actions in priority order: deny > steer > observe
+    # Check blocking actions first (deny/steer), then log observe matches.
 
     if not is_safe:
         # Pass 1: Check for deny actions (highest priority - blocks immediately)
@@ -577,13 +577,13 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
                 steering_context=steering_context
             )
 
-    # Log warn and log actions (non-blocking, always processed)
+    # Log observe actions (non-blocking, always processed)
     for match in matches:
         if not isinstance(match, dict):
             continue
 
-        action = match.get("action", "deny")
-        if action not in ("warn", "log"):
+        action = normalize_action(str(match.get("action", "observe")))
+        if action != "observe":
             continue
 
         result_data = match.get("result") or {}
@@ -594,10 +594,7 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
         )
         control_name = match.get("control_name", "unknown")
 
-        if action == "warn":
-            logger.warning(f"⚠️ Control [{control_name}]: {message}")
-        else:  # action == "log"
-            logger.info(f"ℹ️ Control [{control_name}]: {message}")
+        logger.info(f"Control observe [{control_name}]: {message}")
 
 
 def _log_control_evaluations(
@@ -633,7 +630,7 @@ def _log_single_control(
         span_id=span_id,
         control_name=control_data.get("control_name", "unknown"),
         matched=matched,
-        action=control_data.get("action", "allow"),
+        action=normalize_action(str(control_data.get("action", "observe"))),
         confidence=control_data.get("result", {}).get("confidence", 0.0),
         duration_ms=control_data.get("result", {}).get("execution_duration_ms"),
         control_execution_id=control_data.get("control_execution_id"),

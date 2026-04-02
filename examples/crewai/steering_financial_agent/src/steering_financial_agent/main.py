@@ -1,5 +1,5 @@
 """
-CrewAI Financial Agent with Steering, Deny, and Warn actions.
+CrewAI Financial Agent with Steering, Deny, and Observe actions.
 
 Demonstrates the three key Agent Control action types in a realistic
 wire-transfer scenario using a CrewAI crew:
@@ -7,8 +7,8 @@ wire-transfer scenario using a CrewAI crew:
   DENY  - Sanctioned country or fraud score blocks the transfer immediately.
   STEER - Large transfers pause execution and guide the agent through
           2FA verification or manager approval before retrying.
-  WARN  - New recipients and PII in output are logged for audit
-          without blocking the transfer.
+  OBSERVE - New recipients and PII in output are recorded for audit
+            without blocking the transfer.
 
 PREREQUISITE:
     Run setup_controls.py first:
@@ -20,7 +20,7 @@ PREREQUISITE:
         $ uv run --active steering_financial_agent
 
 Scenarios:
-    1. Small legitimate transfer     -> ALLOW (warn on new recipient)
+    1. Small legitimate transfer     -> OBSERVE (new recipient)
     2. Sanctioned country            -> DENY  (hard block)
     3. Large transfer ($15k)         -> STEER (2FA required, then allowed)
     4. Very large transfer ($75k)    -> STEER (manager approval, then allowed)
@@ -67,7 +67,7 @@ def verify_server():
             "deny-high-fraud-score",
             "steer-require-2fa",
             "steer-require-manager-approval",
-            "warn-new-recipient",
+            "observe-new-recipient",
         ]
         missing = [n for n in required if n not in names]
         if missing:
@@ -104,7 +104,7 @@ def run_scenario(crew, number, title, request, expected):
 def main():
     print("=" * 60)
     print("  CrewAI Financial Agent")
-    print("  Steering, Deny & Warn with Agent Control")
+    print("  Steering, Deny & Observe with Agent Control")
     print("=" * 60)
     print()
 
@@ -118,19 +118,19 @@ def main():
     crew = create_financial_crew()
 
     # ── Scenario 1: Small Legitimate Transfer ───────────────────────
-    # Amount < $10k, known country, low fraud → ALLOW
-    # Unknown recipient → WARN (logged, not blocked)
+    # Amount < $10k, known country, low fraud → OBSERVE only
+    # Unknown recipient → OBSERVE (recorded, not blocked)
     run_scenario(
         crew,
         1,
-        "Small Legitimate Transfer (ALLOW + WARN)",
+        "Small Legitimate Transfer (OBSERVE)",
         {
             "amount": 2500,
             "recipient": "New Vendor XYZ",
             "destination_country": "Germany",
             "fraud_score": 0.1,
         },
-        "ALLOWED with warning (new recipient logged for audit)",
+        "Allowed with an observe event (new recipient recorded for audit)",
     )
 
     # ── Scenario 2: Sanctioned Country ──────────────────────────────
@@ -149,26 +149,26 @@ def main():
     )
 
     # ── Scenario 3: Large Transfer Requiring 2FA ────────────────────
-    # Amount $15k → STEER (2FA required), agent verifies, retries → ALLOW
+    # Amount $15k → STEER (2FA required), agent verifies, retries successfully
     run_scenario(
         crew,
         3,
-        "Large Transfer - 2FA Steering (STEER then ALLOW)",
+        "Large Transfer - 2FA Steering (STEER then success)",
         {
             "amount": 15000,
             "recipient": "Acme Corp",
             "destination_country": "United Kingdom",
             "fraud_score": 0.2,
         },
-        "STEERED (2FA), then ALLOWED after verification",
+        "STEERED (2FA), then succeeded after verification",
     )
 
     # ── Scenario 4: Very Large Transfer Requiring Manager Approval ──
-    # Amount $75k → STEER (2FA + manager approval), agent handles both → ALLOW
+    # Amount $75k → STEER (2FA + manager approval), agent handles both successfully
     run_scenario(
         crew,
         4,
-        "Very Large Transfer - Manager Approval (STEER then ALLOW)",
+        "Very Large Transfer - Manager Approval (STEER then success)",
         {
             "amount": 75000,
             "recipient": "Global Suppliers Inc",
@@ -206,13 +206,13 @@ def main():
     STEER  2FA verification (Scenario 3)   - pause, verify, retry
            Manager approval (Scenario 4)   - pause, collect + approve, retry
 
-    WARN   New recipient (Scenario 1)      - logged for audit, not blocked
-           PII in output (if triggered)     - logged for compliance, not blocked
+    OBSERVE New recipient (Scenario 1)      - recorded for audit, not blocked
+            PII in output (if triggered)    - recorded for compliance, not blocked
 
   Key Differences:
     DENY  = ControlViolationError (agent cannot recover)
     STEER = ControlSteerError     (agent corrects and retries)
-    WARN  = Logged silently       (agent continues uninterrupted)
+    OBSERVE = Recorded silently   (agent continues uninterrupted)
 """)
 
 
