@@ -8,10 +8,6 @@ import {
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { isApiError } from '@/core/api/errors';
-import { LabelWithTooltip } from '@/core/components/label-with-tooltip';
-
-import { ApiErrorAlert } from './api-error-alert';
 import {
   extractEvaluatorNames,
   findEvaluatorConfigEdit,
@@ -20,7 +16,11 @@ import {
   getEmptyValueHints,
   getJsonEditorCompletionItems,
   setupJsonEditorLanguageSupport,
-} from './json-editor-language';
+} from '@/components/json-editor-monaco/json-editor-monaco-language';
+import { isApiError } from '@/core/api/errors';
+import { LabelWithTooltip } from '@/core/components/label-with-tooltip';
+
+import { ApiErrorAlert } from './api-error-alert';
 import type { JsonEditorViewProps } from './types';
 
 const MonacoEditor = dynamic(
@@ -376,7 +376,7 @@ export const JsonEditorView = ({
       });
     };
 
-    const disposable = editor.onDidChangeModelContent((e) => {
+    const disposable = editor.onDidChangeModelContent((_e) => {
       if (isProgrammaticEdit) {
         isProgrammaticEdit = false;
         return;

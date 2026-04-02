@@ -39,7 +39,13 @@
     "prettify:check": "Check formatting with Prettier without changing files"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.1",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lint": "^6.9.5",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.40.0",
     "@emotion/is-prop-valid": "^1.4.0",
+    "@lezer/highlight": "^1.2.3",
     "@mantine/charts": "^7.17.8",
     "@mantine/code-highlight": "7.17.5",
     "@mantine/core": "7.17.5",
@@ -56,6 +62,9 @@
     "@tanstack/react-query": "5.74.4",
     "@tanstack/react-query-devtools": "5.72.2",
     "@tanstack/react-table": "8.20.5",
+    "@uiw/codemirror-extensions-basic-setup": "^4.25.9",
+    "@uiw/codemirror-themes": "^4.25.9",
+    "@uiw/react-codemirror": "^4.25.9",
     "axios": "1.12.0",
     "classix": "2.2.0",
     "date-fns": "4.1.0",
