@@ -120,10 +120,10 @@ DEMO_CONTROLS = [
         },
     },
     {
-        "name": "log-ticket-creation",
-        "description": "Logs all ticket creation for audit (scope.step_names: exact match)",
+        "name": "observe-ticket-creation",
+        "description": "Observes all ticket creation for audit (scope.step_names: exact match)",
         "definition": {
-            "description": "Logs all ticket creation for audit (scope.step_names: exact match)",
+            "description": "Observes all ticket creation for audit (scope.step_names: exact match)",
             "enabled": True,
             "execution": "server",
             "scope": {
@@ -133,14 +133,14 @@ DEMO_CONTROLS = [
             },
             "condition": {
                 "selector": {
-                    "path": "*",  # Log entire payload
+                    "path": "*",  # Observe entire payload
                 },
                 "evaluator": {
                     "name": "regex",
                     "config": {"pattern": r".*"},  # Always matches
                 },
             },
-            "action": {"decision": "log"},
+            "action": {"decision": "observe"},
         },
     },
     # ==========================================================================
@@ -174,10 +174,10 @@ DEMO_CONTROLS = [
         },
     },
     {
-        "name": "warn-high-priority-ticket",
-        "description": "Warns on high priority tickets (path: arguments.priority)",
+        "name": "observe-high-priority-ticket",
+        "description": "Observes high priority tickets (path: arguments.priority)",
         "definition": {
-            "description": "Warns on high priority tickets (path: input.priority)",
+            "description": "Observes high priority tickets (path: input.priority)",
             "enabled": True,
             "execution": "server",
             "scope": {
@@ -200,17 +200,17 @@ DEMO_CONTROLS = [
                     },
                 },
             },
-            "action": {"decision": "warn"},
+            "action": {"decision": "observe"},
         },
     },
     # ==========================================================================
     # TOOL CALL CONTROLS - using 'path' with nested arguments
     # ==========================================================================
     {
-        "name": "block-pii-in-ticket-description",
-        "description": "Blocks PII in ticket descriptions (path: arguments.description)",
+        "name": "observe-pii-in-ticket-description",
+        "description": "Observes PII in ticket descriptions (path: arguments.description)",
         "definition": {
-            "description": "Blocks PII in ticket descriptions (path: input.description)",
+            "description": "Observes PII in ticket descriptions (path: input.description)",
             "enabled": True,
             "execution": "server",
             "scope": {
@@ -230,7 +230,7 @@ DEMO_CONTROLS = [
                     },
                 },
             },
-            "action": {"decision": "warn"},
+            "action": {"decision": "observe"},
         },
     },
 ]

@@ -354,7 +354,7 @@ async def check_evaluation_with_local(
                 ControlMatch(
                     control_id=control_id,
                     control_name=control_name,
-                    action="log",
+                    action="observe",
                     result=EvaluatorResult(
                         matched=False,
                         confidence=0.0,

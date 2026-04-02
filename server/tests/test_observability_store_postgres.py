@@ -65,7 +65,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
         _event(
             agent_name=agent_name,
             control_id=1,
-            action="allow",
+            action="observe",
             matched=True,
             timestamp=now - timedelta(seconds=10),
             trace_id="a" * 32,
@@ -81,7 +81,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
         _event(
             agent_name=agent_name,
             control_id=1,
-            action="allow",
+            action="observe",
             matched=True,
             timestamp=now,
             trace_id="a" * 32,
@@ -112,7 +112,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
     assert stats.total_matches == 2
     assert stats.total_non_matches == 1
     assert stats.total_errors == 0
-    assert stats.action_counts == {"allow": 2}
+    assert stats.action_counts == {"observe": 2}
 
     # When: querying stats with a control filter
     filtered_stats = await store.query_stats(agent_name, timedelta(hours=1), control_id=1)
@@ -160,7 +160,7 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
         _event(
             agent_name=agent_name,
             control_id=1,
-            action="allow",
+            action="observe",
             matched=True,
             timestamp=now - timedelta(seconds=1),
             trace_id=target_trace_id,
@@ -194,7 +194,7 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
         trace_id=target_trace_id,
         span_id=target_span_id,
         control_ids=[1],
-        actions=["allow"],
+        actions=["observe"],
         matched=True,
         check_stages=["pre"],
         applies_to=["llm_call"],
@@ -209,8 +209,8 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
 
 
 @pytest.mark.asyncio
-async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() -> None:
-    # Given: a Postgres-backed store with steer and warn events
+async def test_postgres_event_store_timeseries_includes_steer_and_observe_counts() -> None:
+    # Given: a Postgres-backed store with steer and advisory events
     session_maker = async_sessionmaker(
         bind=async_engine,
         class_=AsyncSession,
@@ -233,7 +233,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
         _event(
             agent_name=agent_name,
             control_id=2,
-            action="warn",
+            action="observe",
             matched=True,
             timestamp=now - timedelta(seconds=5),
             trace_id="b" * 32,
@@ -241,7 +241,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
         _event(
             agent_name=agent_name,
             control_id=3,
-            action="allow",
+            action="observe",
             matched=True,
             timestamp=now,
             trace_id="c" * 32,
@@ -259,12 +259,11 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
         bucket_size=timedelta(minutes=1),
     )
 
-    # Then: action counts include steer and warn
+    # Then: action counts include steer and observe
     assert stats.action_counts["steer"] == 1
-    assert stats.action_counts["warn"] == 1
-    assert stats.action_counts["allow"] == 1
+    assert stats.action_counts["observe"] == 2
 
-    # Then: timeseries buckets include steer and warn in their action_counts
+    # Then: timeseries buckets include steer and observe in their action_counts
     assert stats.timeseries is not None
     all_bucket_actions = [
         action
@@ -272,7 +271,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
         for action in bucket.action_counts.keys()
     ]
     assert "steer" in all_bucket_actions
-    assert "warn" in all_bucket_actions
+    assert "observe" in all_bucket_actions
 
 
 @pytest.mark.asyncio
@@ -286,7 +285,7 @@ async def test_postgres_event_store_parses_string_json_rows() -> None:
         control_name="control-1",
         check_stage="pre",
         applies_to="llm_call",
-        action="allow",
+        action="observe",
         matched=True,
         confidence=0.9,
         timestamp=datetime.now(UTC),

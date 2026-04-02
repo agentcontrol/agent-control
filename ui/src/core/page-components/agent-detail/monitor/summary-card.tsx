@@ -319,17 +319,6 @@ export function SummaryCard({
                     sections={[
                       {
                         value:
-                          summary.actionCounts?.allow !== undefined
-                            ? (summary.actionCounts.allow /
-                                summary.totalMatches) *
-                              100 *
-                              ringAnimationProgress
-                            : 0,
-                        color: 'var(--mantine-color-green-4)',
-                        tooltip: `Allow: ${summary.actionCounts?.allow || 0}`,
-                      },
-                      {
-                        value:
                           summary.actionCounts?.deny !== undefined
                             ? (summary.actionCounts.deny /
                                 summary.totalMatches) *
@@ -352,25 +341,14 @@ export function SummaryCard({
                       },
                       {
                         value:
-                          summary.actionCounts?.warn !== undefined
-                            ? (summary.actionCounts.warn /
-                                summary.totalMatches) *
-                              100 *
-                              ringAnimationProgress
-                            : 0,
-                        color: 'var(--mantine-color-yellow-4)',
-                        tooltip: `Warn: ${summary.actionCounts?.warn || 0}`,
-                      },
-                      {
-                        value:
-                          summary.actionCounts?.log !== undefined
-                            ? (summary.actionCounts.log /
+                          summary.actionCounts?.observe !== undefined
+                            ? (summary.actionCounts.observe /
                                 summary.totalMatches) *
                               100 *
                               ringAnimationProgress
                             : 0,
                         color: 'var(--mantine-color-blue-4)',
-                        tooltip: `Log: ${summary.actionCounts?.log || 0}`,
+                        tooltip: `Observe: ${summary.actionCounts?.observe || 0}`,
                       },
                     ]}
                     label={
@@ -388,11 +366,9 @@ export function SummaryCard({
                   {/* Legend - horizontal layout */}
                   <Group gap="md" justify="center" wrap="wrap">
                     {[
-                      { key: 'allow', label: 'Allow', color: 'green' },
                       { key: 'deny', label: 'Deny', color: 'red' },
                       { key: 'steer', label: 'Steer', color: 'cyan' },
-                      { key: 'warn', label: 'Warn', color: 'yellow' },
-                      { key: 'log', label: 'Log', color: 'blue' },
+                      { key: 'observe', label: 'Observe', color: 'blue' },
                     ].map(({ key, label, color }) => {
                       const count = summary.actionCounts?.[key] ?? 0;
                       if (count === 0) return null;

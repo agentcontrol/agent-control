@@ -50,7 +50,7 @@ async def test_direct_ingestor_drops_on_store_error() -> None:
             control_name="c",
             check_stage="pre",
             applies_to="llm_call",
-            action="allow",
+            action="observe",
             matched=True,
             confidence=0.9,
         )
@@ -78,7 +78,7 @@ async def test_direct_ingestor_logs_when_enabled(caplog: pytest.LogCaptureFixtur
         control_name="c",
         check_stage="pre",
         applies_to="llm_call",
-        action="allow",
+        action="observe",
         matched=True,
         confidence=0.9,
     )

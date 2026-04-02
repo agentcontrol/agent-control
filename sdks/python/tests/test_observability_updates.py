@@ -58,7 +58,7 @@ class TestMergeResults:
         defaults.update(kwargs)
         return EvaluationResponse(**defaults)
 
-    def _make_match(self, control_id, control_name="ctrl", action="allow", matched=True):
+    def _make_match(self, control_id, control_name="ctrl", action="observe", matched=True):
         from agent_control_models import ControlMatch, EvaluatorResult
         return ControlMatch(
             control_id=control_id,
@@ -273,10 +273,10 @@ class TestEmitLocalEvents:
                         },
                     ]
                 },
-                action={"decision": "allow"},
+                action={"decision": "observe"},
             ),
         )
-        non_match = self._make_match(1, "composite-ctrl", action="allow", matched=False)
+        non_match = self._make_match(1, "composite-ctrl", action="observe", matched=False)
         response = self._make_response(non_matches=[non_match])
         request = self._make_request()
 
@@ -352,7 +352,7 @@ class TestCheckEvaluationWithLocal:
                 ControlMatch(
                     control_id=1,
                     control_name="test-ctrl",
-                    action="allow",
+                    action="observe",
                     result=EvaluatorResult(matched=False, confidence=0.1),
                 )
             ],
@@ -369,7 +369,7 @@ class TestCheckEvaluationWithLocal:
                     "evaluator": {"name": "regex", "config": {"pattern": "test"}},
                     "selector": {"path": "input"},
                 },
-                "action": {"decision": "allow"},
+                "action": {"decision": "observe"},
                 "execution": "sdk",
             },
         }]
@@ -423,7 +423,7 @@ class TestCheckEvaluationWithLocal:
                     "evaluator": {"name": "regex", "config": {"pattern": "test"}},
                     "selector": {"path": "input"},
                 },
-                "action": {"decision": "allow"},
+                "action": {"decision": "observe"},
                 "execution": "sdk",
             },
         }]
@@ -582,7 +582,7 @@ class TestControlDecoratorsNonMatches:
                 {
                     "control_id": 1,
                     "control_name": "ctrl-1",
-                    "action": "allow",
+                    "action": "observe",
                     "result": {"matched": False, "confidence": 0.1},
                 },
                 {

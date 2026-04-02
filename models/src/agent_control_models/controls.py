@@ -10,6 +10,7 @@ from uuid import uuid4
 import re2
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
+from .actions import ActionDecision, normalize_action
 from .base import BaseModel
 
 
@@ -265,7 +266,7 @@ class SteeringContext(BaseModel):
 class ControlAction(BaseModel):
     """What to do when control matches."""
 
-    decision: Literal["allow", "deny", "steer", "warn", "log"] = Field(
+    decision: ActionDecision = Field(
         ..., description="Action to take when control is triggered"
     )
     steering_context: SteeringContext | None = Field(
@@ -276,6 +277,11 @@ class ControlAction(BaseModel):
             "evaluator result message will be used as fallback."
         )
     )
+
+    @field_validator("decision", mode="before")
+    @classmethod
+    def normalize_decision(cls, value: str) -> ActionDecision:
+        return normalize_action(value)
 
 
 MAX_CONDITION_DEPTH = 6
@@ -649,7 +655,7 @@ class ControlMatch(BaseModel):
     )
     control_id: int = Field(..., description="Database ID of the control")
     control_name: str = Field(..., description="Name of the control")
-    action: Literal["allow", "deny", "steer", "warn", "log"] = Field(
+    action: ActionDecision = Field(
         ..., description="Action configured for this control"
     )
     result: EvaluatorResult = Field(
@@ -659,3 +665,8 @@ class ControlMatch(BaseModel):
         None,
         description="Steering context for steer actions if configured"
     )
+
+    @field_validator("action", mode="before")
+    @classmethod
+    def normalize_action_value(cls, value: str) -> ActionDecision:
+        return normalize_action(value)

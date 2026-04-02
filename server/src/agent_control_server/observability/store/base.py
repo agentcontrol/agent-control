@@ -37,7 +37,7 @@ class StatsResult(BaseModel):
 
     Invariant: total_executions = total_matches + total_non_matches + total_errors
 
-    Matches have actions (allow, deny, warn, log) tracked in action_counts.
+    Matches have actions (deny, steer, observe) tracked in action_counts.
     sum(action_counts.values()) == total_matches
 
     Attributes:
@@ -57,7 +57,7 @@ class StatsResult(BaseModel):
     total_errors: int = Field(default=0, ge=0, description="Total errors")
     action_counts: dict[str, int] = Field(
         default_factory=dict,
-        description="Action breakdown for matches: {allow, deny, warn, log}",
+        description="Action breakdown for matches: {deny, steer, observe}",
     )
     timeseries: list[TimeseriesBucket] | None = Field(
         default=None,

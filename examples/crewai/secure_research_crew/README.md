@@ -46,7 +46,7 @@ Each tool's `step_name` matches the `step_names` in its corresponding control sc
 
 | # | Scenario | Agent | Control | Evaluator | Action | Expected |
 |---|----------|-------|---------|-----------|--------|----------|
-| 1 | Happy path | All | All | All | allow | Report generated |
+| 1 | Happy path | All | All | All | observe | Report generated |
 | 2 | SQL injection | Researcher | researcher-sql-safety | SQL | deny | Query blocked |
 | 3 | Restricted table | Researcher | researcher-restricted-tables | LIST | deny | Query blocked |
 | 4 | Missing methodology | Analyst | analyst-methodology-check | JSON Schema | steer | Auto-corrected, then passes |

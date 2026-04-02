@@ -210,12 +210,12 @@ async def test_steer_after_model_no_matches(steering_handler, mock_strands_steer
 
 
 @pytest.mark.asyncio
-async def test_steer_after_model_allow_match(steering_handler, mock_strands_steering_modules):
-    """Test steer_after_model returns Proceed for allow action."""
+async def test_steer_after_model_observe_match(steering_handler, mock_strands_steering_modules):
+    """Test steer_after_model returns Proceed for observe action."""
     with patch("agent_control.integrations.strands.steering.agent_control.evaluate_controls") as mock_evaluate:  # noqa: E501
-        # Mock an allow match
+        # Mock an observe match
         mock_match = MagicMock()
-        mock_match.action = "allow"
+        mock_match.action = "observe"
         mock_match.control_name = "test_control"
 
         mock_result = MagicMock(spec=EvaluationResult)

@@ -34,7 +34,7 @@ def create_mock_event():
         "control_name": "test-control",
         "check_stage": "pre",
         "applies_to": "llm_call",
-        "action": "allow",
+        "action": "observe",
         "matched": False,
         "confidence": 0.95,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -818,7 +818,7 @@ class TestSpanLogging:
             matches=1,
             non_matches=2,
             errors=0,
-            actions={"allow": 1},
+            actions={"observe": 1},
         )
 
         # Check that logging occurred

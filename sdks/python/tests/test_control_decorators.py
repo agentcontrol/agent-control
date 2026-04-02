@@ -52,16 +52,16 @@ def mock_unsafe_response():
 
 
 @pytest.fixture
-def mock_warn_response():
-    """Response when evaluation triggers warning."""
+def mock_observe_response():
+    """Response when evaluation triggers a non-blocking observe action."""
     return {
         "is_safe": False,
         "confidence": 0.7,
         "matches": [
             {
                 "control_id": 1,
-                "control_name": "warn-control",
-                "action": "warn",
+                "control_name": "observe-control",
+                "action": "observe",
                 "result": {
                     "matched": True,
                     "message": "Potential issue detected"
@@ -132,10 +132,10 @@ class TestControl:
             assert "toxicity" in exc_info.value.message.lower()
 
     @pytest.mark.asyncio
-    async def test_warns_without_blocking(self, mock_agent, mock_warn_response, caplog):
-        """Test that warn action logs but allows execution."""
+    async def test_observes_without_blocking(self, mock_agent, mock_observe_response, caplog):
+        """Test that observe action logs but allows execution."""
         with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
-             patch("agent_control.control_decorators._evaluate", return_value=mock_warn_response):
+             patch("agent_control.control_decorators._evaluate", return_value=mock_observe_response):
 
             @control()
             async def chat(message: str) -> str:
