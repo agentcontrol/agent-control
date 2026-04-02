@@ -2,14 +2,21 @@ import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { type Diagnostic, linter, lintGutter } from '@codemirror/lint';
 import { type Extension } from '@codemirror/state';
 import { EditorView, type ViewUpdate } from '@codemirror/view';
-import { ActionIcon, Box, Group, Text, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Box,
+  Group,
+  NativeSelect,
+  Text,
+  Tooltip,
+  useMantineColorScheme,
+} from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import {
   IconClipboardCheck,
   IconClipboardCopy,
   IconCode,
 } from '@tabler/icons-react';
-import createTheme from '@uiw/codemirror-themes';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ProblemDetail, StepSchema } from '@/core/api/types';
@@ -21,6 +28,16 @@ import type {
   JsonSchema,
 } from '@/core/page-components/agent-detail/modals/edit-control/types';
 
+import {
+  CODE_MIRROR_DARK_THEME_PRESETS,
+  CODE_MIRROR_LIGHT_THEME_PRESETS,
+  DEFAULT_DARK_THEME_ID,
+  DEFAULT_LIGHT_THEME_ID,
+  mantineLightCodeMirrorTheme,
+  readStoredCodeMirrorThemePrefs,
+  type StoredCodeMirrorThemePrefs,
+  writeStoredCodeMirrorThemePrefs,
+} from './codemirror-theme-presets';
 import {
   buildCodeMirrorJsonExtensions,
   buildCodeMirrorStandaloneDebugExtensions,
@@ -45,19 +62,6 @@ const DEFAULT_HEIGHT = 400;
 const DEFAULT_LABEL = 'Configuration (JSON)';
 const DEFAULT_TOOLTIP = 'Raw JSON configuration';
 const DEFAULT_TEST_ID = 'raw-json-textarea';
-
-const theme = createTheme({
-  theme: 'light',
-  settings: {
-    background: 'var(--mantine-color-body)',
-    foreground: 'var(--mantine-color-text)',
-    caret: 'var(--mantine-color-text)',
-    gutterBackground: 'var(--mantine-color-body)',
-    gutterBorder: 'var(--mantine-color-body)',
-    gutterForeground: 'var(--mantine-color-dimmed)',
-  },
-  styles: [],
-});
 
 const DENSITY_THEME = EditorView.theme({
   '&': {
@@ -127,7 +131,11 @@ export function JsonEditorCodeMirror({
 }: JsonEditorCodeMirrorProps) {
   const [CodeMirrorComponent, setCodeMirrorComponent] =
     useState<CodeMirrorComponentType | null>(null);
-  const [isDarkMode] = useState(false);
+  const { colorScheme } = useMantineColorScheme();
+  const isDarkMode = colorScheme === 'dark';
+  const [cmThemePrefs, setCmThemePrefs] = useState<StoredCodeMirrorThemePrefs>(
+    () => readStoredCodeMirrorThemePrefs()
+  );
   const [isReady, setIsReady] = useState(false);
   const [lintErrors, setLintErrors] = useState<string[]>([]);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -155,20 +163,27 @@ export function JsonEditorCodeMirror({
     void loadModules();
   }, []);
 
-  // useEffect(() => {
-  //   const detect = () =>
-  //     setIsDarkMode(
-  //       document.documentElement.getAttribute('data-mantine-color-scheme') ===
-  //         'dark'
-  //     );
-  //   detect();
-  //   const obs = new MutationObserver(detect);
-  //   obs.observe(document.documentElement, {
-  //     attributes: true,
-  //     attributeFilter: ['data-mantine-color-scheme'],
-  //   });
-  //   return () => obs.disconnect();
-  // }, []);
+  useEffect(() => {
+    setCmThemePrefs((prev) => {
+      const darkOk =
+        Object.prototype.hasOwnProperty.call(
+          CODE_MIRROR_DARK_THEME_PRESETS,
+          prev.dark
+        );
+      const lightOk =
+        Object.prototype.hasOwnProperty.call(
+          CODE_MIRROR_LIGHT_THEME_PRESETS,
+          prev.light
+        );
+      if (darkOk && lightOk) return prev;
+      const next: StoredCodeMirrorThemePrefs = {
+        dark: darkOk ? prev.dark : DEFAULT_DARK_THEME_ID,
+        light: lightOk ? prev.light : DEFAULT_LIGHT_THEME_ID,
+      };
+      writeStoredCodeMirrorThemePrefs(next);
+      return next;
+    });
+  }, []);
 
   const domainExtensions = useMemo<Extension[]>(() => {
     if (effectiveDebugFlags.useStandaloneCompletionSource) {
@@ -264,7 +279,11 @@ export function JsonEditorCodeMirror({
       ...domainExtensions,
       EditorView.updateListener.of(handleAutoEdits),
     ],
-    [domainExtensions, effectiveDebugFlags.enableLintExtensions, handleAutoEdits]
+    [
+      domainExtensions,
+      effectiveDebugFlags.enableLintExtensions,
+      handleAutoEdits,
+    ]
   );
 
   const onEditorChange = useCallback(
@@ -301,11 +320,65 @@ export function JsonEditorCodeMirror({
     if (!validationError && lintErrors.length === 0) return;
   }, [lintErrors, validationError]);
 
+  const codeMirrorTheme = useMemo(() => {
+    if (isDarkMode) {
+      return (
+        CODE_MIRROR_DARK_THEME_PRESETS[cmThemePrefs.dark]?.extension ??
+        CODE_MIRROR_DARK_THEME_PRESETS[DEFAULT_DARK_THEME_ID].extension
+      );
+    }
+    return (
+      CODE_MIRROR_LIGHT_THEME_PRESETS[cmThemePrefs.light]?.extension ??
+      mantineLightCodeMirrorTheme
+    );
+  }, [isDarkMode, cmThemePrefs.dark, cmThemePrefs.light]);
+
+  const cmThemeSelectData = useMemo(
+    () =>
+      Object.entries(
+        isDarkMode
+          ? CODE_MIRROR_DARK_THEME_PRESETS
+          : CODE_MIRROR_LIGHT_THEME_PRESETS
+      ).map(([value, { label: optionLabel }]) => ({
+        value,
+        label: optionLabel,
+      })),
+    [isDarkMode]
+  );
+
+  const cmThemeSelectValue = useMemo(() => {
+    const raw = isDarkMode ? cmThemePrefs.dark : cmThemePrefs.light;
+    const presets = isDarkMode
+      ? CODE_MIRROR_DARK_THEME_PRESETS
+      : CODE_MIRROR_LIGHT_THEME_PRESETS;
+    if (raw in presets) return raw;
+    return isDarkMode ? DEFAULT_DARK_THEME_ID : DEFAULT_LIGHT_THEME_ID;
+  }, [isDarkMode, cmThemePrefs.dark, cmThemePrefs.light]);
+
   return (
     <Box>
-      <Group justify="space-between" align="center" gap="xs">
+      <Group justify="space-between" align="center" gap="xs" wrap="nowrap">
         <LabelWithTooltip label={label} tooltip={tooltip} />
-        <Group gap={4}>
+        <Group gap="xs" wrap="nowrap" justify="flex-end" style={{ flex: 1 }}>
+          <NativeSelect
+            size="xs"
+            title="Editor color theme"
+            aria-label="CodeMirror editor color theme"
+            style={{ flex: '0 1 220px', maxWidth: 260 }}
+            data={cmThemeSelectData}
+            value={cmThemeSelectValue}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              setCmThemePrefs((prev) => {
+                const next: StoredCodeMirrorThemePrefs = isDarkMode
+                  ? { ...prev, dark: value }
+                  : { ...prev, light: value };
+                writeStoredCodeMirrorThemePrefs(next);
+                return next;
+              });
+            }}
+          />
+          <Group gap={4}>
           <Tooltip label="Format JSON" openDelay={400}>
             <ActionIcon
               variant="subtle"
@@ -334,6 +407,7 @@ export function JsonEditorCodeMirror({
               )}
             </ActionIcon>
           </Tooltip>
+          </Group>
         </Group>
       </Group>
 
@@ -346,7 +420,7 @@ export function JsonEditorCodeMirror({
               effectiveDebugFlags.enableLintExtensions ? handleLint : undefined
             }
             extensions={extensions}
-            theme={isDarkMode ? 'dark' : theme}
+            theme={codeMirrorTheme}
             basicSetup={
               effectiveDebugFlags.enableBasicSetupExtension
                 ? {
