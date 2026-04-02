@@ -145,6 +145,39 @@ class TestControl:
             assert result == "Response to: Questionable message"
 
     @pytest.mark.asyncio
+    async def test_legacy_warn_action_observes_without_blocking(self, mock_agent):
+        """Legacy advisory actions from older servers should be treated as observe."""
+        legacy_observe_response = {
+            "is_safe": False,
+            "confidence": 0.7,
+            "matches": [
+                {
+                    "control_id": 1,
+                    "control_name": "legacy-observe-control",
+                    "action": "warn",
+                    "result": {
+                        "matched": True,
+                        "message": "Potential issue detected"
+                    }
+                }
+            ]
+        }
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=legacy_observe_response), \
+             patch("agent_control.control_decorators.logger") as mock_logger:
+
+            @control()
+            async def chat(message: str) -> str:
+                return f"Response to: {message}"
+
+            result = await chat("Questionable legacy message")
+
+            assert result == "Response to: Questionable legacy message"
+            mock_logger.info.assert_any_call(
+                "Control observe [legacy-observe-control]: Potential issue detected"
+            )
+
+    @pytest.mark.asyncio
     async def test_no_agent_runs_without_protection(self):
         """Test that decorator passes through if no agent initialized."""
         with patch("agent_control.control_decorators._get_current_agent", return_value=None):

@@ -610,3 +610,58 @@ class TestControlDecoratorsNonMatches:
         assert ctx.total_non_matches == 2
         assert ctx.total_matches == 0
         assert ctx.total_errors == 0
+
+    def test_legacy_advisory_matches_collapse_into_observe_stats(self):
+        """Legacy advisory action names should not leak into local action counters."""
+        from agent_control.control_decorators import ControlContext
+
+        result = {
+            "is_safe": True,
+            "confidence": 1.0,
+            "matches": [
+                {
+                    "control_id": 1,
+                    "control_name": "ctrl-allow",
+                    "action": "allow",
+                    "result": {"matched": True, "confidence": 0.3},
+                },
+                {
+                    "control_id": 2,
+                    "control_name": "ctrl-warn",
+                    "action": "warn",
+                    "result": {"matched": True, "confidence": 0.4},
+                },
+                {
+                    "control_id": 3,
+                    "control_name": "ctrl-log",
+                    "action": "log",
+                    "result": {"matched": True, "confidence": 0.5},
+                },
+                {
+                    "control_id": 4,
+                    "control_name": "ctrl-observe",
+                    "action": "observe",
+                    "result": {"matched": True, "confidence": 0.6},
+                },
+            ],
+            "errors": None,
+            "non_matches": None,
+        }
+
+        ctx = ControlContext(
+            agent_name="test-agent",
+            server_url="http://localhost:8000",
+            func=lambda: None,
+            args=(),
+            kwargs={},
+            trace_id="trace123",
+            span_id="span456",
+            start_time=0,
+        )
+
+        ctx._update_stats(result)
+        assert ctx.total_executions == 4
+        assert ctx.total_matches == 4
+        assert ctx.total_non_matches == 0
+        assert ctx.total_errors == 0
+        assert ctx.actions == {"observe": 4}

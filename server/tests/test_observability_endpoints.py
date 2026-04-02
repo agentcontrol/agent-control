@@ -1,10 +1,12 @@
 """Tests for observability API endpoints."""
 
+import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from agent_control_models import (
     BatchEventsRequest,
@@ -620,6 +622,51 @@ class TestControlStats:
         assert data["stats"]["execution_count"] == 0
         assert data["stats"]["match_count"] == 0
 
+    @pytest.mark.asyncio
+    async def test_control_stats_normalize_historical_legacy_advisory_rows(
+        self, client: TestClient, setup_observability
+    ):
+        """Historical advisory rows are normalized to observe in control stats responses."""
+        store = setup_observability
+        agent_name = f"agent-{uuid4().hex[:12]}"
+        event = create_test_event(
+            control_id=11,
+            agent_name=agent_name,
+            matched=True,
+            action="observe",
+        )
+        legacy_payload = event.model_dump(mode="json")
+        legacy_payload["action"] = "log"
+
+        async with store.session_maker() as session:
+            await session.execute(
+                text("""
+                    INSERT INTO control_execution_events (
+                        control_execution_id, timestamp, agent_name, data
+                    ) VALUES (
+                        :control_execution_id, :timestamp, :agent_name, CAST(:data AS JSONB)
+                    )
+                """),
+                {
+                    "control_execution_id": event.control_execution_id,
+                    "timestamp": event.timestamp,
+                    "agent_name": event.agent_name,
+                    "data": json.dumps(legacy_payload),
+                },
+            )
+            await session.commit()
+
+        response = client.get(
+            "/api/v1/observability/stats/controls/11",
+            params={"agent_name": str(agent_name), "time_range": "1h"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stats"]["execution_count"] == 1
+        assert data["stats"]["match_count"] == 1
+        assert data["stats"]["action_counts"] == {"observe": 1}
+
 
 class TestObservabilityQueries:
     """Tests for observability query endpoints."""
@@ -701,6 +748,48 @@ class TestObservabilityQueries:
         assert body["totals"]["match_count"] == 2
         # And per-control breakdown exists
         assert len(body["controls"]) == 2
+
+    def test_ingest_query_and_stats_accept_legacy_advisory_actions(
+        self, client: TestClient, setup_observability
+    ):
+        """Legacy advisory actions remain accepted at the API boundary for one release cycle."""
+        agent_name = f"agent-{uuid4().hex[:12]}"
+        legacy_event = create_test_event(
+            control_id=7,
+            agent_name=agent_name,
+            action="observe",
+            matched=True,
+        ).model_dump(mode="json")
+        legacy_event["action"] = "warn"
+
+        ingest_resp = client.post(
+            "/api/v1/observability/events",
+            json={"events": [legacy_event]},
+        )
+        assert ingest_resp.status_code == 202
+
+        query_resp = client.post(
+            "/api/v1/observability/events/query",
+            json=EventQueryRequest(
+                agent_name=agent_name,
+                actions=["observe"],
+                limit=10,
+                offset=0,
+            ).model_dump(mode="json"),
+        )
+        assert query_resp.status_code == 200
+        query_body = query_resp.json()
+        assert query_body["total"] == 1
+        assert query_body["events"][0]["control_id"] == 7
+        assert query_body["events"][0]["action"] == "observe"
+
+        stats_resp = client.get(
+            "/api/v1/observability/stats",
+            params={"agent_name": str(agent_name), "time_range": "1h"},
+        )
+        assert stats_resp.status_code == 200
+        stats_body = stats_resp.json()
+        assert stats_body["totals"]["action_counts"] == {"observe": 1}
 
 
 class TestObservabilityIngestStatus:
