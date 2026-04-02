@@ -18,23 +18,25 @@ export type InitAgentApiV1AgentsInitAgentPostRequest$Outbound = {
 };
 
 /** @internal */
-export const InitAgentApiV1AgentsInitAgentPostRequest$outboundSchema: z.ZodMiniType<
-  InitAgentApiV1AgentsInitAgentPostRequest$Outbound,
-  InitAgentApiV1AgentsInitAgentPostRequest
-> = z.pipe(
-  z.object({
-    xAgentControlMergeSession: z.optional(z.nullable(z.string())),
-    body: models.InitAgentRequest$outboundSchema,
-  }),
-  z.transform((v) => {
-    return remap$(v, {
-      xAgentControlMergeSession: "X-Agent-Control-Merge-Session",
-    });
-  }),
-);
+export const InitAgentApiV1AgentsInitAgentPostRequest$outboundSchema:
+  z.ZodMiniType<
+    InitAgentApiV1AgentsInitAgentPostRequest$Outbound,
+    InitAgentApiV1AgentsInitAgentPostRequest
+  > = z.pipe(
+    z.object({
+      xAgentControlMergeSession: z.optional(z.nullable(z.string())),
+      body: models.InitAgentRequest$outboundSchema,
+    }),
+    z.transform((v) => {
+      return remap$(v, {
+        xAgentControlMergeSession: "X-Agent-Control-Merge-Session",
+      });
+    }),
+  );
 
 export function initAgentApiV1AgentsInitAgentPostRequestToJSON(
-  initAgentApiV1AgentsInitAgentPostRequest: InitAgentApiV1AgentsInitAgentPostRequest,
+  initAgentApiV1AgentsInitAgentPostRequest:
+    InitAgentApiV1AgentsInitAgentPostRequest,
 ): string {
   return JSON.stringify(
     InitAgentApiV1AgentsInitAgentPostRequest$outboundSchema.parse(
