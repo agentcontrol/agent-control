@@ -1,5 +1,6 @@
 export {
   applyTextEdit,
+  buildCodeMirrorInlineServerValidationErrorsExtension,
   buildCodeMirrorJsonExtensions,
   buildCodeMirrorRefactorLightbulbExtension,
   buildCodeMirrorStandaloneDebugExtensions,
@@ -8,6 +9,7 @@ export {
   fixJsonCommas,
   getCodeMirrorCompletionItems,
   normalizeOnBlur,
+  setInlineServerValidationErrorsEffect,
   shouldTriggerEvaluatorNameCompletion,
   triggerRefactorActionsDropdown,
   tryFormat,

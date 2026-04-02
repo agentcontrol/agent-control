@@ -41,11 +41,13 @@ import {
   writeStoredCodeMirrorThemePrefs,
 } from './codemirror-theme-presets';
 import {
+  buildCodeMirrorInlineServerValidationErrorsExtension,
   buildCodeMirrorJsonExtensions,
   buildCodeMirrorStandaloneDebugExtensions,
   computeAutoEdit,
   extractEvaluatorNames,
   fixJsonCommas,
+  setInlineServerValidationErrorsEffect,
   tryFormat,
 } from './json-editor-codemirror-language';
 
@@ -283,6 +285,11 @@ export function JsonEditorCodeMirror({
     ]
   );
 
+  const inlineServerValidationExtension = useMemo(
+    () => buildCodeMirrorInlineServerValidationErrorsExtension(),
+    []
+  );
+
   const extensions = useMemo<Extension[]>(
     () => [
       json(),
@@ -292,11 +299,13 @@ export function JsonEditorCodeMirror({
       DENSITY_THEME,
       ...domainExtensions,
       EditorView.updateListener.of(handleAutoEdits),
+      inlineServerValidationExtension,
     ],
     [
       domainExtensions,
       effectiveDebugFlags.enableLintExtensions,
       handleAutoEdits,
+      inlineServerValidationExtension,
     ]
   );
 
@@ -331,7 +340,6 @@ export function JsonEditorCodeMirror({
     validationAbortControllerRef.current = controller;
 
     setJsonError?.(null);
-    setValidationError?.(null);
     onValidationStatusChange?.('validating');
 
     onValidateConfig(parsed, { signal: controller.signal })
@@ -408,9 +416,28 @@ export function JsonEditorCodeMirror({
     setLintErrors(diagnostics.map((d) => d.message));
   }, []);
 
+  // Push latest server validation errors into a CodeMirror state field,
+  // avoiding a full editor reconfigure on each validation response.
+  useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+
+    const errors = validationError?.errors ?? [];
+    view.dispatch({
+      effects: setInlineServerValidationErrorsEffect.of({ errors }),
+    });
+  }, [validationError]);
+
   useEffect(() => {
     if (!validationError && lintErrors.length === 0) return;
   }, [lintErrors, validationError]);
+
+  const unmappedValidationErrors = useMemo(() => {
+    const errors = validationError?.errors ?? [];
+    return errors
+      .filter((e) => e.field == null)
+      .map((e) => ({ field: e.field, message: e.message }));
+  }, [validationError]);
 
   const codeMirrorTheme = useMemo(() => {
     const selectedId = isDarkMode ? cmThemePrefs.dark : cmThemePrefs.light;
@@ -551,9 +578,14 @@ export function JsonEditorCodeMirror({
         </Text>
       ) : null}
       {validationError ? (
-        <Box mt="sm">
-          <ApiErrorAlert error={validationError} unmappedErrors={[]} />
-        </Box>
+        unmappedValidationErrors.length > 0 ? (
+          <Box mt="sm">
+            <ApiErrorAlert
+              error={validationError}
+              unmappedErrors={unmappedValidationErrors}
+            />
+          </Box>
+        ) : null
       ) : null}
       <Box
         data-testid={`${testId}-codemirror-ready`}

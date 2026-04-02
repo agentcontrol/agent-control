@@ -15,7 +15,7 @@ import {
 } from '@codemirror/state';
 import {
   Decoration,
-  type EditorView,
+  EditorView,
   gutter,
   GutterMarker,
   hoverTooltip,
@@ -29,6 +29,11 @@ import {
   type Node as JsonNode,
   parseTree,
 } from 'jsonc-parser';
+
+export {
+  buildCodeMirrorInlineServerValidationErrorsExtension,
+  setInlineServerValidationErrorsEffect,
+} from './inline-server-validation';
 
 import {
   getEnumValues,
