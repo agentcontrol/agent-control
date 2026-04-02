@@ -11,8 +11,8 @@ from uuid import uuid4
 import re2
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from .agent import JSONValue
 from .actions import ActionDecision, normalize_action
+from .agent import JSONValue
 from .base import BaseModel
 
 

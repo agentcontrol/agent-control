@@ -629,10 +629,10 @@ def test_template_backed_control_supports_direct_agent_attachment(client: TestCl
     assert body["matches"][0]["control_name"] == control_name
 
 
-def test_template_backed_warn_control_evaluates_as_safe_with_warn_match(
+def test_template_backed_warn_control_evaluates_as_safe_with_observe_match(
     client: TestClient,
 ) -> None:
-    # Given: a template-backed control whose rendered action is warn
+    # Given: a template-backed control whose rendered action uses the legacy warn alias
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"]["action"]["decision"] = "warn"  # type: ignore[index]
@@ -651,13 +651,13 @@ def test_template_backed_warn_control_evaluates_as_safe_with_warn_match(
         input_value="hello",
     )
 
-    # Then: the evaluation remains safe while returning a warn match
+    # Then: the evaluation remains safe and returns the canonical observe action
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["is_safe"] is True
     assert len(body["matches"]) == 1
     assert body["matches"][0]["control_name"] == control_name
-    assert body["matches"][0]["action"] == "warn"
+    assert body["matches"][0]["action"] == "observe"
 
 
 def test_template_backed_control_preserves_falsey_values_and_uses_them_in_behavior(
@@ -746,7 +746,7 @@ def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
         input_value="hello",
     )
 
-    # Then: both matches are returned and deny precedence makes the result unsafe
+    # Then: both matches are returned, advisory actions are canonicalized, and deny wins
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["is_safe"] is False
@@ -754,7 +754,7 @@ def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
     names = {match["control_name"] for match in body["matches"]}
     actions = {match["action"] for match in body["matches"]}
     assert names == {template_control_name, raw_warn_name}
-    assert actions == {"deny", "warn"}
+    assert actions == {"deny", "observe"}
 
 
 def test_raw_control_can_be_replaced_with_template_backed_control(client: TestClient) -> None:
