@@ -28,14 +28,18 @@ Usage:
 """
 
 import asyncio
+import copy
 import functools
 import inspect
+import json
+import math
 import time
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator, Callable, Mapping
+from contextlib import aclosing
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, TypeVar
 
-from agent_control_models import Step
+from agent_control_models import JSONValue, Step
 
 from agent_control import AgentControlClient
 from agent_control.evaluation import check_evaluation_with_local
@@ -51,6 +55,7 @@ from agent_control.tracing import _generate_span_id, get_current_trace_id, get_t
 logger = get_logger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
+_ASYNC_GEN_ASEND_ERROR = "Decorated @control() async generators do not support asend(non-None)."
 
 
 @dataclass
@@ -210,6 +215,94 @@ class ControlSteerError(Exception):
         )
 
 
+@dataclass
+class _BufferedStreamCapture:
+    """Buffer streamed chunks for post-check evaluation before replay."""
+
+    max_chunks: int
+    max_bytes: int
+    replay_chunks: list[Any] = field(default_factory=list)
+    normalized_chunks: list[JSONValue] = field(default_factory=list)
+    chunk_item_bytes: int = 0
+    text_content_bytes: int = 0
+    string_chunk_count: int = 0
+    has_non_string_chunk: bool = False
+
+    def add(self, chunk: Any) -> None:
+        next_chunk_count = len(self.replay_chunks) + 1
+        if next_chunk_count > self.max_chunks:
+            raise RuntimeError(
+                "Buffered async generator output exceeded the configured chunk limit. "
+                "Failing closed."
+            )
+
+        normalized_chunk = _normalize_json_value(chunk)
+        normalized_chunk_bytes = _json_value_size(normalized_chunk)
+        next_chunk_item_bytes = self.chunk_item_bytes + normalized_chunk_bytes
+        next_text_content_bytes = self.text_content_bytes
+        next_string_chunk_count = self.string_chunk_count
+        next_has_non_string_chunk = self.has_non_string_chunk
+        if isinstance(normalized_chunk, str):
+            next_text_content_bytes += normalized_chunk_bytes - 2
+            next_string_chunk_count += 1
+        else:
+            next_has_non_string_chunk = True
+
+        next_payload_bytes = self._payload_size(
+            chunk_count=next_chunk_count,
+            chunk_item_bytes=next_chunk_item_bytes,
+            text_content_bytes=next_text_content_bytes,
+            string_chunk_count=next_string_chunk_count,
+            has_non_string_chunk=next_has_non_string_chunk,
+        )
+        if next_payload_bytes > self.max_bytes:
+            raise RuntimeError(
+                "Buffered async generator output exceeded the configured size limit. "
+                "Failing closed."
+            )
+
+        self.replay_chunks.append(_freeze_replay_chunk(chunk))
+        self.normalized_chunks.append(normalized_chunk)
+        self.chunk_item_bytes = next_chunk_item_bytes
+        self.text_content_bytes = next_text_content_bytes
+        self.string_chunk_count = next_string_chunk_count
+        self.has_non_string_chunk = next_has_non_string_chunk
+
+    def _payload_size(
+        self,
+        *,
+        chunk_count: int,
+        chunk_item_bytes: int,
+        text_content_bytes: int,
+        string_chunk_count: int,
+        has_non_string_chunk: bool,
+    ) -> int:
+        chunk_list_size = 2 + chunk_item_bytes + max(0, chunk_count - 1)
+        joined_text_size = 0 if string_chunk_count == 0 else 2 + text_content_bytes
+
+        if not has_non_string_chunk:
+            return joined_text_size
+
+        payload_size = _json_value_size("chunks") + chunk_list_size + 3
+        if string_chunk_count:
+            payload_size += _json_value_size("text") + joined_text_size + 2
+        return payload_size
+
+    def output_payload(self) -> JSONValue:
+        if not self.normalized_chunks:
+            return ""
+
+        text_chunks = [chunk for chunk in self.normalized_chunks if isinstance(chunk, str)]
+        if len(text_chunks) == len(self.normalized_chunks):
+            return "".join(text_chunks)
+
+        output: dict[str, JSONValue] = {"chunks": list(self.normalized_chunks)}
+        text_output = "".join(text_chunks)
+        if text_output:
+            output["text"] = text_output
+        return output
+
+
 def _get_current_agent() -> Any | None:
     """Get the current agent from agent_control module."""
     try:
@@ -222,6 +315,178 @@ def _get_current_agent() -> Any | None:
 def _get_server_url() -> str:
     """Get the server URL from settings."""
     return get_settings().url
+
+
+def _copy_public_attributes(source: Any, target: Any) -> None:
+    """Copy public function attributes onto a wrapped callable."""
+    for attr in dir(source):
+        if not attr.startswith("_") and attr not in ("__call__", "__wrapped__"):
+            try:
+                setattr(target, attr, getattr(source, attr))
+            except (AttributeError, TypeError):
+                pass
+
+
+def _safe_stringify(value: Any) -> str:
+    """Stringify a value without letting representation errors escape."""
+    try:
+        return str(value)
+    except Exception:
+        return f"<unprintable {type(value).__name__}>"
+
+
+def _freeze_replay_chunk(chunk: Any) -> Any:
+    """Freeze a replayed chunk so later mutations cannot bypass the post-check."""
+    if isinstance(chunk, (str, bool, int, float, bytes, type(None))):
+        return chunk
+
+    try:
+        return copy.deepcopy(chunk)
+    except Exception as exc:
+        raise RuntimeError(
+            "Buffered async generator produced a chunk that could not be safely "
+            "snapshotted for replay. Failing closed."
+        ) from exc
+
+
+def _validate_async_gen_send(value: Any) -> None:
+    """Reject interactive sends for decorated async generators."""
+    if value is not None:
+        raise TypeError(_ASYNC_GEN_ASEND_ERROR)
+
+
+def _json_value_size(value: JSONValue) -> int:
+    """Estimate normalized JSON payload size in bytes for buffered streams."""
+    try:
+        return len(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                allow_nan=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+    except (TypeError, ValueError):
+        return len(_safe_stringify(value).encode("utf-8"))
+
+
+def _normalize_json_value(value: Any, *, _seen: set[int] | None = None) -> JSONValue:
+    """Convert runtime values into JSON-safe data for evaluation payloads."""
+    if isinstance(value, str) or value is None:
+        return value
+
+    if isinstance(value, bool | int):
+        return value
+
+    if isinstance(value, float):
+        return value if math.isfinite(value) else _safe_stringify(value)
+
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("utf-8", errors="replace")
+
+    seen = set() if _seen is None else _seen
+    value_id = id(value)
+    if value_id in seen:
+        return _safe_stringify(value)
+
+    try:
+        model_dump = getattr(value, "model_dump", None)
+        if callable(model_dump):
+            seen.add(value_id)
+            try:
+                return _normalize_json_value(model_dump(mode="json"), _seen=seen)
+            except Exception:
+                return _safe_stringify(value)
+            finally:
+                seen.remove(value_id)
+
+        dict_method = getattr(value, "dict", None)
+        if callable(dict_method) and hasattr(value, "__fields__"):
+            seen.add(value_id)
+            try:
+                return _normalize_json_value(dict_method(), _seen=seen)
+            except Exception:
+                return _safe_stringify(value)
+            finally:
+                seen.remove(value_id)
+
+        if isinstance(value, Mapping):
+            seen.add(value_id)
+            try:
+                return {
+                    str(key): _normalize_json_value(item, _seen=seen)
+                    for key, item in value.items()
+                }
+            finally:
+                seen.remove(value_id)
+
+        if isinstance(value, (list, tuple, set, frozenset)):
+            seen.add(value_id)
+            try:
+                return [_normalize_json_value(item, _seen=seen) for item in value]
+            finally:
+                seen.remove(value_id)
+
+        if is_dataclass(value) and not isinstance(value, type):
+            seen.add(value_id)
+            try:
+                return {
+                    field_info.name: _normalize_json_value(
+                        getattr(value, field_info.name),
+                        _seen=seen,
+                    )
+                    for field_info in fields(value)
+                }
+            finally:
+                seen.remove(value_id)
+    except Exception:
+        return _safe_stringify(value)
+
+    return _safe_stringify(value)
+
+
+def _normalized_output_value(output: Any) -> JSONValue | None:
+    """Return normalized output for a post-check payload."""
+    if output is None:
+        return None
+    return _normalize_json_value(output)
+
+
+def _build_control_context(
+    func: Callable,
+    args: tuple,
+    kwargs: dict,
+    step_name: str | None,
+) -> tuple[ControlContext, list[dict[str, Any]] | None] | None:
+    """Create the shared control context for a protected invocation."""
+    agent = _get_current_agent()
+    if agent is None:
+        return None
+
+    controls = _get_server_controls()
+
+    existing_trace_id = get_current_trace_id()
+    if existing_trace_id:
+        trace_id = existing_trace_id
+        span_id = _generate_span_id()
+    else:
+        trace_id, span_id = get_trace_and_span_ids()
+
+    return (
+        ControlContext(
+            agent_name=agent.agent_name,
+            server_url=_get_server_url(),
+            func=func,
+            args=args,
+            kwargs=kwargs,
+            trace_id=trace_id,
+            span_id=span_id,
+            start_time=time.perf_counter(),
+            step_name=step_name,
+        ),
+        controls,
+    )
 
 
 async def _evaluate(
@@ -480,9 +745,7 @@ def _create_evaluation_payload(
             "type": "tool",
             "name": determined_name,
             "input": dict(bound.arguments),
-            "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
-                None if output is None else str(output)
-            ),
+            "output": _normalized_output_value(output),
         }
 
     # This is an LLM step
@@ -491,9 +754,7 @@ def _create_evaluation_payload(
         "type": "llm",
         "name": determined_name,
         "input": input_data,
-        "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
-            None if output is None else str(output)
-        ),
+        "output": _normalized_output_value(output),
     }
 
 
@@ -687,8 +948,8 @@ async def _execute_with_control(
         ControlSteerError: If any control triggers with "steer" action
         RuntimeError: If control evaluation fails unexpectedly
     """
-    agent = _get_current_agent()
-    if agent is None:
+    context = _build_control_context(func, args, kwargs, step_name)
+    if context is None:
         logger.warning(
             "No agent initialized. Call agent_control.init() first. "
             "Running without protection."
@@ -697,29 +958,7 @@ async def _execute_with_control(
             return await func(*args, **kwargs)
         return func(*args, **kwargs)
 
-    # Get cached controls for local evaluation support
-    controls = _get_server_controls()
-
-    # Get trace context: inherit trace_id if set, always generate new span_id
-    # This allows multiple @control() calls to share the same trace but have unique spans
-    existing_trace_id = get_current_trace_id()
-    if existing_trace_id:
-        trace_id = existing_trace_id
-        span_id = _generate_span_id()  # New span for this function
-    else:
-        trace_id, span_id = get_trace_and_span_ids()  # New trace and span
-
-    ctx = ControlContext(
-        agent_name=agent.agent_name,
-        server_url=_get_server_url(),
-        func=func,
-        args=args,
-        kwargs=kwargs,
-        trace_id=trace_id,
-        span_id=span_id,
-        start_time=time.perf_counter(),
-        step_name=step_name,
-    )
+    ctx, controls = context
     ctx.log_start()
 
     try:
@@ -768,6 +1007,16 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         3. After function execution: Calls server with stage="post"
            - Server evaluates all matching "post" controls for the agent
 
+        Async generator note:
+        - When an agent is initialized, decorated async generators are buffered
+          before replay.
+        - The post-check runs on the full buffered output.
+        - Chunks are yielded to the caller only after the post-check passes.
+        - stream_buffer_max_bytes limits the normalized post-check payload size,
+          not the in-memory size of replayed chunks.
+        - Decorated async generators are pull-only and do not preserve
+          interactive asend()/athrow() semantics against the source generator.
+
     Example:
         import agent_control
 
@@ -814,18 +1063,68 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         register(func, policy)
 
         @functools.wraps(func)
+        async def async_gen_wrapper(
+            *args: Any,
+            **kwargs: Any,
+        ) -> AsyncGenerator[Any, None]:
+            context = _build_control_context(func, args, kwargs, step_name)
+            if context is None:
+                logger.warning(
+                    "No agent initialized. Call agent_control.init() first. "
+                    "Running without protection."
+                )
+                async with aclosing(func(*args, **kwargs)) as stream:
+                    while True:
+                        try:
+                            chunk = await anext(stream)
+                        except StopAsyncIteration:
+                            return
+
+                        sent = yield chunk
+                        _validate_async_gen_send(sent)
+                return
+
+            ctx, controls = context
+            ctx.log_start()
+            span_open = True
+            settings = get_settings()
+            capture = _BufferedStreamCapture(
+                max_chunks=settings.stream_buffer_max_chunks,
+                max_bytes=settings.stream_buffer_max_bytes,
+            )
+
+            try:
+                await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
+
+                async with aclosing(func(*args, **kwargs)) as stream:
+                    async for chunk in stream:
+                        capture.add(chunk)
+
+                    await _run_control_check(
+                        ctx,
+                        "post",
+                        ctx.post_payload(capture.output_payload()),
+                        controls,
+                    )
+
+                ctx.log_end()
+                span_open = False
+
+                for chunk in capture.replay_chunks:
+                    sent = yield chunk
+                    _validate_async_gen_send(sent)
+            finally:
+                if span_open:
+                    ctx.log_end()
+
+        @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             return await _execute_with_control(
                 func, args, kwargs, is_async=True, step_name=step_name
             )
 
-        # Copy over ALL attributes from the original function (important for LangChain tools)
-        for attr in dir(func):
-            if not attr.startswith('_') and attr not in ('__call__', '__wrapped__'):
-                try:
-                    setattr(async_wrapper, attr, getattr(func, attr))
-                except (AttributeError, TypeError):
-                    pass
+        _copy_public_attributes(func, async_gen_wrapper)
+        _copy_public_attributes(func, async_wrapper)
 
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -833,6 +1132,10 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                 _execute_with_control(func, args, kwargs, is_async=False, step_name=step_name)
             )
 
+        _copy_public_attributes(func, sync_wrapper)
+
+        if inspect.isasyncgenfunction(func):
+            return async_gen_wrapper  # type: ignore
         if inspect.iscoroutinefunction(func):
             return async_wrapper  # type: ignore
         return sync_wrapper  # type: ignore

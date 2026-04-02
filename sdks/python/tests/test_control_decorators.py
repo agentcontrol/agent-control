@@ -1,10 +1,13 @@
 """Tests for @control decorator."""
 
+import inspect
+from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from agent_control.control_decorators import ControlViolationError, ControlSteerError, control
+from agent_control.settings import get_settings
 
 
 # =============================================================================
@@ -315,6 +318,76 @@ class TestPrePostExecution:
 
             assert "output" in captured_step
             assert "Generated response" in captured_step["output"]
+
+    @pytest.mark.asyncio
+    async def test_post_check_serializer_failure_falls_back_to_string(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that serializer hook failures do not escape the post-check path."""
+        captured_step = {}
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                captured_step.update(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def chat(message: str) -> _ExplodingModelDumpChunk:
+                return _ExplodingModelDumpChunk()
+
+            result = await chat("Hello!")
+
+            assert isinstance(result, _ExplodingModelDumpChunk)
+            assert captured_step["output"] == "exploding-model-dump"
+
+    @pytest.mark.asyncio
+    async def test_post_check_non_finite_float_is_stringified(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that non-finite floats are normalized to JSON-safe strings."""
+        captured_step = {}
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                captured_step.update(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def chat(message: str) -> float:
+                return float("inf")
+
+            result = await chat("Hello!")
+
+            assert result == float("inf")
+            assert captured_step["output"] == "inf"
 
 
 # =============================================================================
@@ -786,6 +859,677 @@ class TestSteeringContextHandling:
 
             # Should fall back to evaluator message
             assert exc_info.value.steering_context == "Default evaluator message"
+
+
+# =============================================================================
+# ASYNC GENERATOR TESTS
+# =============================================================================
+
+
+@dataclass
+class _StructuredChunk:
+    value: str
+
+
+class _RecursiveModelDumpChunk:
+    def model_dump(self, mode: str = "json") -> dict[str, object]:
+        _ = mode
+        return {"self": self}
+
+    def __str__(self) -> str:
+        return "recursive-model-dump"
+
+
+class _ExplodingModelDumpChunk:
+    def model_dump(self, mode: str = "json") -> dict[str, object]:
+        _ = mode
+        raise RuntimeError("model_dump exploded")
+
+    def __str__(self) -> str:
+        return "exploding-model-dump"
+
+
+class _PlainObjectChunk:
+    def __init__(self) -> None:
+        self.secret = "top-secret"
+
+    def __str__(self) -> str:
+        return "plain-object"
+
+
+class _DuckDictChunk:
+    def dict(self) -> dict[str, str]:
+        return {"secret": "top-secret"}
+
+    def __str__(self) -> str:
+        return "duck-dict"
+
+
+class _UndeepcopyableChunk:
+    def __deepcopy__(self, memo: dict[int, object]) -> "_UndeepcopyableChunk":
+        _ = memo
+        raise RuntimeError("cannot deepcopy")
+
+    def __str__(self) -> str:
+        return "undeepcopyable"
+
+
+class TestAsyncGeneratorControl:
+    """Tests for buffered async-generator support in @control()."""
+
+    @pytest.mark.asyncio
+    async def test_preserves_async_generator_identity(self, mock_agent, mock_safe_response):
+        """Test that decorating an async generator preserves its async-gen type."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            @control()
+            async def stream(message: str):
+                yield "hello"
+
+            assert inspect.isasyncgenfunction(stream)
+
+    @pytest.mark.asyncio
+    async def test_buffers_stream_until_post_check_passes(self, mock_agent, mock_safe_response):
+        """Test that async-generator output is buffered before replay."""
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+                yield "chunk3"
+
+            collected = []
+            async for chunk in stream("test"):
+                collected.append(chunk)
+                break
+
+            assert collected == ["chunk1"]
+            assert call_stages == ["pre", "post"]
+
+    @pytest.mark.asyncio
+    async def test_post_check_receives_joined_text_output_for_string_chunks(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that string chunks are joined for the buffered post-check payload."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "hello "
+                yield "world"
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert chunks == ["hello ", "world"]
+            assert post_steps[0]["output"] == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_structured_chunks_are_normalized_without_lossy_repr(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that structured chunks are normalized into JSON-safe post payloads."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield {"kind": "json"}
+                yield _StructuredChunk(value="structured")
+                yield b"tail"
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert chunks == [{"kind": "json"}, _StructuredChunk(value="structured"), b"tail"]
+            assert post_steps[0]["output"] == {
+                "chunks": [
+                    {"kind": "json"},
+                    {"value": "structured"},
+                    "tail",
+                ],
+                "text": "tail",
+            }
+
+    @pytest.mark.asyncio
+    async def test_model_dump_cycle_is_guarded_during_chunk_normalization(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that self-referential model_dump payloads do not recurse forever."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _RecursiveModelDumpChunk()
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert len(chunks) == 1
+            assert post_steps[0]["output"] == {
+                "chunks": [{"self": "recursive-model-dump"}]
+            }
+
+    @pytest.mark.asyncio
+    async def test_chunk_serializer_failure_falls_back_to_string(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that serializer hook failures on streamed chunks fall back to strings."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _ExplodingModelDumpChunk()
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert len(chunks) == 1
+            assert post_steps[0]["output"] == "exploding-model-dump"
+
+    @pytest.mark.asyncio
+    async def test_plain_object_chunk_falls_back_to_string(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that plain objects are stringified instead of expanding __dict__."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _PlainObjectChunk()
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert len(chunks) == 1
+            assert post_steps[0]["output"] == "plain-object"
+
+    @pytest.mark.asyncio
+    async def test_duck_typed_dict_chunk_falls_back_to_string(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that arbitrary objects with dict() do not take the Pydantic v1 path."""
+        post_steps = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            if stage == "post":
+                post_steps.append(step)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _DuckDictChunk()
+
+            chunks = [chunk async for chunk in stream("test")]
+            assert len(chunks) == 1
+            assert post_steps[0]["output"] == "duck-dict"
+
+    @pytest.mark.asyncio
+    async def test_post_check_block_happens_before_any_chunk_is_replayed(
+        self,
+        mock_agent,
+        mock_safe_response,
+        mock_unsafe_response,
+    ):
+        """Test that a post-stage deny blocks the buffered stream before replay starts."""
+        call_count = 0
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_safe_response
+            return mock_unsafe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+
+            collected = []
+            with pytest.raises(ControlViolationError):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+
+    @pytest.mark.asyncio
+    async def test_stream_buffer_chunk_limit_fails_closed_before_replay(
+        self,
+        mock_agent,
+        mock_safe_response,
+        monkeypatch,
+    ):
+        """Test that exceeding the configured chunk cap blocks buffered replay."""
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        monkeypatch.setattr(get_settings(), "stream_buffer_max_chunks", 2)
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+                yield "chunk3"
+
+            collected = []
+            with pytest.raises(RuntimeError, match="chunk limit"):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+            assert call_stages == ["pre"]
+
+    @pytest.mark.asyncio
+    async def test_stream_buffer_byte_limit_accounts_for_mixed_text_duplication(
+        self,
+        mock_agent,
+        mock_safe_response,
+        monkeypatch,
+    ):
+        """Test that mixed streams count duplicated text toward the byte cap."""
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        monkeypatch.setattr(get_settings(), "stream_buffer_max_bytes", 15)
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "a"
+                yield {"kind": "json"}
+                yield "b"
+
+            collected = []
+            with pytest.raises(RuntimeError, match="size limit"):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+            assert call_stages == ["pre"]
+
+    @pytest.mark.asyncio
+    async def test_generator_failure_skips_post_check_and_replays_nothing(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that a source stream failure propagates before any replay or post-check."""
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                raise RuntimeError("stream failed")
+
+            collected = []
+            with pytest.raises(RuntimeError, match="stream failed"):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+            assert call_stages == ["pre"]
+
+    @pytest.mark.asyncio
+    async def test_mutable_chunk_is_replayed_from_captured_snapshot(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that later chunk mutation cannot change buffered replay output."""
+        original_chunks = []
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            @control()
+            async def stream(message: str):
+                chunk = {"text": "safe"}
+                original_chunks.append(chunk)
+                yield chunk
+                chunk["text"] = "unsafe"
+
+            chunks = [chunk async for chunk in stream("test")]
+
+            assert chunks == [{"text": "safe"}]
+            assert chunks[0] is not original_chunks[0]
+            assert original_chunks[0] == {"text": "unsafe"}
+
+    @pytest.mark.asyncio
+    async def test_stream_span_ends_before_buffered_replay_begins(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that control tracing ends before replay is yielded to the caller."""
+        end_events = []
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response), \
+             patch(
+                 "agent_control.control_decorators.log_span_end",
+                 side_effect=lambda *args, **kwargs: end_events.append("ended"),
+             ):
+
+            @control()
+            async def stream(message: str):
+                yield "chunk1"
+                yield "chunk2"
+
+            agen = stream("test")
+            first = await anext(agen)
+            rest = [chunk async for chunk in agen]
+
+            assert first == "chunk1"
+            assert rest == ["chunk2"]
+            assert end_events == ["ended"]
+
+    @pytest.mark.asyncio
+    async def test_stream_is_closed_when_buffering_fails(
+        self,
+        mock_agent,
+        mock_safe_response,
+        monkeypatch,
+    ):
+        """Test that buffering failures still close the source async generator."""
+        closed = False
+
+        async def stream(message: str):
+            nonlocal closed
+            try:
+                yield "chunk1"
+                yield "chunk2"
+            finally:
+                closed = True
+
+        monkeypatch.setattr(get_settings(), "stream_buffer_max_chunks", 1)
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            wrapped = control()(stream)
+
+            with pytest.raises(RuntimeError, match="chunk limit"):
+                async for _ in wrapped("test"):
+                    pass
+
+            assert closed is True
+
+    @pytest.mark.asyncio
+    async def test_non_none_asend_is_rejected_without_agent(self):
+        """Test that no-agent async generators reject interactive sends consistently."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=None):
+
+            @control()
+            async def stream(message: str):
+                received = yield "chunk1"
+                yield f"received={received}"
+
+            agen = stream("hello")
+            first = await agen.__anext__()
+            assert first == "chunk1"
+
+            with pytest.raises(TypeError, match="asend\\(non-None\\)"):
+                await agen.asend("interactive-input")
+
+    @pytest.mark.asyncio
+    async def test_async_generator_without_agent_passthrough(self):
+        """Test that async generators pass through unchanged without an initialized agent."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=None):
+
+            @control()
+            async def stream(message: str):
+                yield "a"
+                yield "b"
+
+            chunks = [chunk async for chunk in stream("hello")]
+            assert chunks == ["a", "b"]
+
+    @pytest.mark.asyncio
+    async def test_asend_non_none_is_rejected_for_buffered_replay(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that buffered replay rejects interactive sends."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            @control()
+            async def stream(message: str):
+                received = yield "chunk1"
+                yield f"received={received}"
+
+            agen = stream("hello")
+            first = await agen.__anext__()
+            assert first == "chunk1"
+
+            with pytest.raises(TypeError, match="asend\\(non-None\\)"):
+                await agen.asend("interactive-input")
+
+    @pytest.mark.asyncio
+    async def test_non_deepcopyable_chunk_fails_closed_before_replay(
+        self,
+        mock_agent,
+        mock_safe_response,
+    ):
+        """Test that replay snapshot failures raise instead of substituting types."""
+        call_stages = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            call_stages.append(stage)
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control()
+            async def stream(message: str):
+                yield _UndeepcopyableChunk()
+
+            collected = []
+            with pytest.raises(RuntimeError, match="safely snapshotted for replay"):
+                async for chunk in stream("test"):
+                    collected.append(chunk)
+
+            assert collected == []
+            assert call_stages == ["pre"]
+
+    def test_sync_wrapper_copies_public_attributes(self, mock_agent, mock_safe_response):
+        """Test that sync wrappers preserve custom public attributes."""
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", return_value=mock_safe_response):
+
+            def process(input: str) -> str:
+                return input.upper()
+
+            process.description = "Uppercases the input"
+
+            wrapped = control()(process)
+
+            assert wrapped.description == "Uppercases the input"
 
 
 # =============================================================================
