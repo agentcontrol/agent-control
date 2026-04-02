@@ -389,6 +389,9 @@ class ControlStats(BaseModel):
         error_count: Number of errors during evaluation
         avg_confidence: Average confidence score
         avg_duration_ms: Average execution duration in milliseconds
+
+    Invariant:
+        deny_count + steer_count + observe_count == match_count
     """
 
     control_id: int = Field(..., description="Control ID")

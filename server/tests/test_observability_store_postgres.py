@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -206,6 +207,59 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
     # Then: only the matching event is returned
     assert resp.total == 1
     assert resp.events[0].control_execution_id == target_exec_id
+
+
+@pytest.mark.asyncio
+async def test_postgres_event_store_normalizes_legacy_advisory_rows() -> None:
+    # Given: a historical event row stored with a legacy advisory action name
+    session_maker = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    store = PostgresEventStore(session_maker)
+
+    agent_name = f"agent-{uuid4().hex[:12]}"
+    now = datetime.now(UTC)
+    event = _event(
+        agent_name=agent_name,
+        control_id=7,
+        action="observe",
+        matched=True,
+        timestamp=now,
+        trace_id="d" * 32,
+    )
+    legacy_payload = event.model_dump(mode="json")
+    legacy_payload["action"] = "warn"
+
+    async with session_maker() as session:
+        await session.execute(
+            text("""
+                INSERT INTO control_execution_events (
+                    control_execution_id, timestamp, agent_name, data
+                ) VALUES (
+                    :control_execution_id, :timestamp, :agent_name, CAST(:data AS JSONB)
+                )
+            """),
+            {
+                "control_execution_id": event.control_execution_id,
+                "timestamp": event.timestamp,
+                "agent_name": event.agent_name,
+                "data": json.dumps(legacy_payload),
+            },
+        )
+        await session.commit()
+
+    # When: querying with the canonical observe filter
+    resp = await store.query_events(
+        EventQueryRequest(agent_name=agent_name, actions=["observe"], limit=10, offset=0)
+    )
+    stats = await store.query_stats(agent_name, timedelta(hours=1))
+
+    # Then: the legacy row is returned and normalized to observe
+    assert resp.total == 1
+    assert resp.events[0].action == "observe"
+    assert stats.action_counts == {"observe": 1}
 
 
 @pytest.mark.asyncio

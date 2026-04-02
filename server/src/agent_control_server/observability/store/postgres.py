@@ -13,7 +13,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
-from agent_control_models.actions import expand_action_filter
+from agent_control_models.actions import ActionDecision, expand_action_filter
 from agent_control_models.observability import (
     ControlExecutionEvent,
     ControlStats,
@@ -47,6 +47,14 @@ SQL_NON_MATCH_COUNT = """SUM(CASE WHEN NOT (data->>'matched')::boolean
 SQL_ERROR_COUNT = """SUM(CASE WHEN data->>'error_message' IS NOT NULL
     THEN 1 ELSE 0 END)"""
 
+# Historical event rows intentionally preserve legacy advisory action names
+# (`allow`, `warn`, `log`). Query-time reads normalize those stored values into the
+# canonical `observe` bucket instead of rewriting past event payloads in-place.
+_OBSERVE_ACTION_FILTER: tuple[ActionDecision, ...] = ("observe",)
+_OBSERVE_ACTION_SQL_VALUES = ", ".join(
+    f"'{action}'" for action in expand_action_filter(_OBSERVE_ACTION_FILTER)
+)
+
 # Action count expressions (only count when matched)
 SQL_DENY_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
     AND data->>'action' = 'deny' THEN 1 ELSE 0 END)"""
@@ -54,8 +62,8 @@ SQL_DENY_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
 SQL_STEER_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
     AND data->>'action' = 'steer' THEN 1 ELSE 0 END)"""
 
-SQL_OBSERVE_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
-    AND data->>'action' IN ('observe', 'allow', 'warn', 'log') THEN 1 ELSE 0 END)"""
+SQL_OBSERVE_COUNT = f"""SUM(CASE WHEN (data->>'matched')::boolean
+    AND data->>'action' IN ({_OBSERVE_ACTION_SQL_VALUES}) THEN 1 ELSE 0 END)"""
 
 # Average expressions
 SQL_AVG_CONFIDENCE = "AVG((data->>'confidence')::float)"
