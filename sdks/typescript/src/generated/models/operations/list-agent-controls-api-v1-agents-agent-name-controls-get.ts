@@ -4,25 +4,59 @@
 
 import * as z from "zod/v4-mini";
 import { remap as remap$ } from "../../lib/primitives.js";
-import * as models from "../index.js";
+import { ClosedEnum } from "../../types/enums.js";
+
+/**
+ * Rendered-state filter. Default 'rendered' returns runtime-shaped controls only. Because filters intersect, include template drafts by combining 'unrendered' with enabled_state='all' or 'disabled'.
+ */
+export const RenderedState = {
+  Rendered: "rendered",
+  Unrendered: "unrendered",
+  All: "all",
+} as const;
+/**
+ * Rendered-state filter. Default 'rendered' returns runtime-shaped controls only. Because filters intersect, include template drafts by combining 'unrendered' with enabled_state='all' or 'disabled'.
+ */
+export type RenderedState = ClosedEnum<typeof RenderedState>;
+
+/**
+ * Enabled-state filter. Default 'enabled' returns controls currently active for enforcement. Use 'disabled' or 'all' for broader associated views.
+ */
+export const EnabledState = {
+  Enabled: "enabled",
+  Disabled: "disabled",
+  All: "all",
+} as const;
+/**
+ * Enabled-state filter. Default 'enabled' returns controls currently active for enforcement. Use 'disabled' or 'all' for broader associated views.
+ */
+export type EnabledState = ClosedEnum<typeof EnabledState>;
 
 export type ListAgentControlsApiV1AgentsAgentNameControlsGetRequest = {
   agentName: string;
   /**
    * Rendered-state filter. Default 'rendered' returns runtime-shaped controls only. Because filters intersect, include template drafts by combining 'unrendered' with enabled_state='all' or 'disabled'.
    */
-  renderedState?: models.AgentControlRenderedState | undefined;
+  renderedState?: RenderedState | undefined;
   /**
    * Enabled-state filter. Default 'enabled' returns controls currently active for enforcement. Use 'disabled' or 'all' for broader associated views.
    */
-  enabledState?: models.AgentControlEnabledState | undefined;
+  enabledState?: EnabledState | undefined;
 };
+
+/** @internal */
+export const RenderedState$outboundSchema: z.ZodMiniEnum<typeof RenderedState> =
+  z.enum(RenderedState);
+
+/** @internal */
+export const EnabledState$outboundSchema: z.ZodMiniEnum<typeof EnabledState> = z
+  .enum(EnabledState);
 
 /** @internal */
 export type ListAgentControlsApiV1AgentsAgentNameControlsGetRequest$Outbound = {
   agent_name: string;
-  rendered_state?: string | undefined;
-  enabled_state?: string | undefined;
+  rendered_state: string;
+  enabled_state: string;
 };
 
 /** @internal */
@@ -33,10 +67,8 @@ export const ListAgentControlsApiV1AgentsAgentNameControlsGetRequest$outboundSch
   > = z.pipe(
     z.object({
       agentName: z.string(),
-      renderedState: z.optional(
-        models.AgentControlRenderedState$outboundSchema,
-      ),
-      enabledState: z.optional(models.AgentControlEnabledState$outboundSchema),
+      renderedState: z._default(RenderedState$outboundSchema, "rendered"),
+      enabledState: z._default(EnabledState$outboundSchema, "enabled"),
     }),
     z.transform((v) => {
       return remap$(v, {
