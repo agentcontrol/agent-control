@@ -15,9 +15,10 @@ async def register_agent(
     agent: Agent,
     steps: list[dict[str, Any]] | None = None,
     conflict_mode: Literal["strict", "overwrite"] = "overwrite",
-    merge_events: bool = False,
 ) -> dict[str, Any]:
-    """Register an agent with the server via /initAgent endpoint."""
+    """Register an agent with the server via /initAgent endpoint.
+
+    """
     ensure_evaluators_discovered()
 
     agent_dict = agent.to_dict()
@@ -28,7 +29,7 @@ async def register_agent(
         "conflict_mode": conflict_mode,
     }
 
-    headers = {"X-Agent-Control-Merge-Session": "true"} if merge_events else None
+    headers = None
     response = await client.http_client.post(
         "/api/v1/agents/initAgent",
         json=payload,

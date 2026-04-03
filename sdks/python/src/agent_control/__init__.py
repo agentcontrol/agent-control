@@ -396,7 +396,6 @@ def init(
     observability_enabled: bool | None = None,
     log_config: dict[str, Any] | None = None,
     policy_refresh_interval_seconds: int = 60,
-    merge_events: bool = False,
     **kwargs: object
 ) -> Agent:
     """
@@ -427,9 +426,6 @@ def init(
                {"enabled": True, "span_start": True, "span_end": True, "control_eval": True}
         policy_refresh_interval_seconds: Interval for background policy refresh loop.
             Defaults to 60 seconds. Set to 0 to disable background refresh.
-        merge_events: Whether to merge local and server event creation in the
-            SDK before enqueueing through the built-in observability path.
-            Defaults to False.
         **kwargs: Additional metadata to store with the agent
 
     Returns:
@@ -500,7 +496,6 @@ def init(
         state.current_agent = next_agent
         state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
         state.api_key = api_key
-        state.merge_events = merge_events
 
     # Merge auto-discovered steps from @control() decorators with explicit steps.
     # Explicit steps take precedence when (type, name) collides.
@@ -552,7 +547,6 @@ def init(
                         state.current_agent,
                         steps=registration_steps,
                         conflict_mode=conflict_mode,
-                        merge_events=merge_events,
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])
@@ -649,7 +643,6 @@ def _reset_state() -> None:
         state.server_controls = None
         state.server_url = None
         state.api_key = None
-        state.merge_events = False
 
 
 async def ashutdown() -> None:
