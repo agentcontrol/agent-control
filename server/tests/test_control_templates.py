@@ -1673,6 +1673,89 @@ def test_unrendered_template_excluded_from_evaluation(client: TestClient) -> Non
     assert eval_response.json()["is_safe"] is True
 
 
+def test_agent_controls_endpoint_defaults_to_active_and_supports_state_filters(
+    client: TestClient,
+) -> None:
+    # Given: an agent with active, disabled, and unrendered associated controls
+    active_control_id = _create_raw_control(client)
+    disabled_control_id = _create_raw_control(client)
+    disable_response = client.patch(
+        f"/api/v1/controls/{disabled_control_id}",
+        json={"enabled": False},
+    )
+    assert disable_response.status_code == 200, disable_response.text
+
+    unrendered_control_id, _ = _create_unrendered_control(client)
+    agent_name = _assign_control_to_agent(client, active_control_id, via_policy=False)
+    _assign_control_to_agent(
+        client,
+        disabled_control_id,
+        agent_name=agent_name,
+        via_policy=False,
+    )
+    _assign_control_to_agent(
+        client,
+        unrendered_control_id,
+        agent_name=agent_name,
+        via_policy=False,
+    )
+
+    # When: listing controls with no explicit state filters
+    default_response = client.get(f"/api/v1/agents/{agent_name}/controls")
+
+    # Then: only active controls are returned
+    assert default_response.status_code == 200, default_response.text
+    assert {control["id"] for control in default_response.json()["controls"]} == {active_control_id}
+
+    # When: requesting disabled rendered controls
+    disabled_response = client.get(
+        f"/api/v1/agents/{agent_name}/controls",
+        params={"enabled_state": "disabled"},
+    )
+
+    # Then: the disabled rendered control is returned
+    assert disabled_response.status_code == 200, disabled_response.text
+    assert {control["id"] for control in disabled_response.json()["controls"]} == {
+        disabled_control_id
+    }
+
+    # When: requesting unrendered controls
+    unrendered_response = client.get(
+        f"/api/v1/agents/{agent_name}/controls",
+        params={"rendered_state": "unrendered", "enabled_state": "all"},
+    )
+
+    # Then: only the unrendered template draft is returned
+    assert unrendered_response.status_code == 200, unrendered_response.text
+    assert {control["id"] for control in unrendered_response.json()["controls"]} == {
+        unrendered_control_id
+    }
+
+    # When: requesting unrendered and enabled controls simultaneously
+    impossible_response = client.get(
+        f"/api/v1/agents/{agent_name}/controls",
+        params={"rendered_state": "unrendered", "enabled_state": "enabled"},
+    )
+
+    # Then: the impossible intersection yields an empty list
+    assert impossible_response.status_code == 200, impossible_response.text
+    assert impossible_response.json()["controls"] == []
+
+    # When: requesting all rendered and enabled states
+    all_response = client.get(
+        f"/api/v1/agents/{agent_name}/controls",
+        params={"rendered_state": "all", "enabled_state": "all"},
+    )
+
+    # Then: the full associated set is returned
+    assert all_response.status_code == 200, all_response.text
+    assert {control["id"] for control in all_response.json()["controls"]} == {
+        active_control_id,
+        disabled_control_id,
+        unrendered_control_id,
+    }
+
+
 def test_create_unrendered_template_rejects_unknown_value_key(
     client: TestClient,
 ) -> None:

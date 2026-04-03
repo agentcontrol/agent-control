@@ -295,7 +295,10 @@ class DeletePolicyResponse(BaseModel):
 
 class AgentControlsResponse(BaseModel):
     controls: list[Control] = Field(
-        description="List of active controls associated with the agent"
+        description=(
+            "List of agent-associated controls matching the requested state filters "
+            "(active controls by default)"
+        )
     )
 
 

@@ -29,7 +29,7 @@ from agent_control_models.server import (
     SetPolicyResponse,
     StepKey,
 )
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete, func, or_, select, union_all
@@ -56,7 +56,12 @@ from ..models import (
     policy_controls,
 )
 from ..services.agent_names import normalize_agent_name_or_422
-from ..services.controls import list_controls_for_agent, list_controls_for_policy
+from ..services.controls import (
+    AgentControlEnabledState,
+    AgentControlRenderedState,
+    list_controls_for_agent,
+    list_controls_for_policy,
+)
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
@@ -471,7 +476,8 @@ async def init_agent(
         db: Database session (injected)
 
     Returns:
-        InitAgentResponse with created flag and active controls (policy-derived + direct)
+        InitAgentResponse with created flag and active controls currently associated
+        through policies or direct links
     """
     # Check for evaluator name collisions with built-in evaluators
     builtin_names = _get_builtin_evaluator_names()
@@ -1375,28 +1381,58 @@ async def remove_agent_control(
     response_model=AgentControlsResponse,
     response_model_exclude_none=True,
     summary="List agent's active controls",
-    response_description="List of controls from agent policy and direct associations",
+    response_description=(
+        "List of active controls by default, with optional filters for broader "
+        "associated views"
+    ),
 )
 async def list_agent_controls(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    rendered_state: AgentControlRenderedState = Query(
+        "rendered",
+        description=(
+            "Rendered-state filter. Default 'rendered' returns runtime-shaped controls only. "
+            "Because filters intersect, include template drafts by combining "
+            "'unrendered' with enabled_state='all' or 'disabled'."
+        ),
+    ),
+    enabled_state: AgentControlEnabledState = Query(
+        "enabled",
+        description=(
+            "Enabled-state filter. Default 'enabled' returns controls currently active for "
+            "enforcement. Use 'disabled' or 'all' for broader associated views."
+        ),
+    ),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AgentControlsResponse:
     """
-    List all protection controls active for an agent.
+    List protection controls associated with an agent.
 
-    Controls include the union of policy-derived and directly associated controls.
+    By default, the endpoint returns active controls only. "Active" means
+    associated, rendered, and enabled. Callers can broaden the response to
+    include disabled controls and unrendered template drafts via the state
+    filters on this endpoint. Filters intersect, so unrendered drafts require
+    rendered_state='unrendered' together with enabled_state='all' or 'disabled'.
 
     Args:
         agent_name: Agent identifier
+        rendered_state: Whether to return rendered controls, unrendered drafts, or both
+        enabled_state: Whether to return enabled controls, disabled controls, or both
         db: Database session (injected)
 
     Returns:
-        AgentControlsResponse with list of active controls
+        AgentControlsResponse with controls matching the requested state filters
 
     Raises:
         HTTPException 404: Agent not found
     """
     agent = await _get_agent_or_404(agent_name, db)
-    controls = await list_controls_for_agent(agent.name, db)
+    controls = await list_controls_for_agent(
+        agent.name,
+        db,
+        rendered_state=rendered_state,
+        enabled_state=enabled_state,
+    )
     return AgentControlsResponse(controls=controls)
 
 
