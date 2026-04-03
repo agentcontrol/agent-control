@@ -14,15 +14,10 @@ export class Evaluation extends ClientSDK {
    * @remarks
    * Analyze content for safety and control violations.
    *
-   * Runs all controls assigned to the agent via policy through the
-   * evaluation engine. Controls are evaluated in parallel with
-   * cancel-on-deny for efficiency.
-   *
-   * Custom evaluators must be deployed as Evaluator classes
-   * with the engine. Their schemas are registered via initAgent.
-   *
-   * Optionally accepts X-Trace-Id and X-Span-Id headers for
-   * OpenTelemetry-compatible distributed tracing.
+   * This endpoint is intentionally evaluation-only. It returns the semantic
+   * ``EvaluationResponse`` and does not build or ingest observability events
+   * on the server; SDKs reconstruct and emit those events separately through
+   * the observability ingestion endpoint.
    */
   async evaluate(
     request: models.EvaluationRequest,
