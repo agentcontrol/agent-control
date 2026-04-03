@@ -7,7 +7,6 @@ export * from "./add-agent-policy-api-v1-agents-agent-name-policies-policy-id-po
 export * from "./add-control-to-policy-api-v1-policies-policy-id-controls-control-id-post.js";
 export * from "./delete-agent-policy-api-v1-agents-agent-name-policy-delete.js";
 export * from "./delete-control-api-v1-controls-control-id-delete.js";
-export * from "./evaluate-api-v1-evaluation-post.js";
 export * from "./get-agent-api-v1-agents-agent-name-get.js";
 export * from "./get-agent-evaluator-api-v1-agents-agent-name-evaluators-evaluator-name-get.js";
 export * from "./get-agent-policies-api-v1-agents-agent-name-policies-get.js";
