@@ -5,7 +5,6 @@
 import { evaluationEvaluate } from "../funcs/evaluation-evaluate.js";
 import { ClientSDK, RequestOptions } from "../lib/sdks.js";
 import * as models from "../models/index.js";
-import * as operations from "../models/operations/index.js";
 import { unwrapAsync } from "../types/fp.js";
 
 export class Evaluation extends ClientSDK {
@@ -26,7 +25,7 @@ export class Evaluation extends ClientSDK {
    * OpenTelemetry-compatible distributed tracing.
    */
   async evaluate(
-    request: operations.EvaluateApiV1EvaluationPostRequest,
+    request: models.EvaluationRequest,
     options?: RequestOptions,
   ): Promise<models.EvaluationResponse> {
     return unwrapAsync(evaluationEvaluate(
