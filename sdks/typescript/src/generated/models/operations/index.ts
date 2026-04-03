@@ -15,7 +15,6 @@ export * from "./get-control-api-v1-controls-control-id-get.js";
 export * from "./get-control-data-api-v1-controls-control-id-data-get.js";
 export * from "./get-control-stats-api-v1-observability-stats-controls-control-id-get.js";
 export * from "./get-stats-api-v1-observability-stats-get.js";
-export * from "./init-agent-api-v1-agents-init-agent-post.js";
 export * from "./list-agent-controls-api-v1-agents-agent-name-controls-get.js";
 export * from "./list-agent-evaluators-api-v1-agents-agent-name-evaluators-get.js";
 export * from "./list-agents-api-v1-agents-get.js";

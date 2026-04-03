@@ -30,6 +30,8 @@ import { Result } from "../types/fp.js";
  * Analyze content safety
  *
  * @remarks
+ * Analyze content for safety and control violations.
+ *
  * This endpoint is intentionally evaluation-only. It returns the semantic
  * ``EvaluationResponse`` and does not build or ingest observability events
  * on the server; SDKs reconstruct and emit those events separately through
