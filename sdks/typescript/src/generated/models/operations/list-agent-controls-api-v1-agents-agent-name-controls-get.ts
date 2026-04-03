@@ -4,14 +4,25 @@
 
 import * as z from "zod/v4-mini";
 import { remap as remap$ } from "../../lib/primitives.js";
+import * as models from "../index.js";
 
 export type ListAgentControlsApiV1AgentsAgentNameControlsGetRequest = {
   agentName: string;
+  /**
+   * Rendered-state filter. Default 'rendered' returns runtime-shaped controls only. Because filters intersect, include template drafts by combining 'unrendered' with enabled_state='all' or 'disabled'.
+   */
+  renderedState?: models.AgentControlRenderedState | undefined;
+  /**
+   * Enabled-state filter. Default 'enabled' returns controls currently active for enforcement. Use 'disabled' or 'all' for broader associated views.
+   */
+  enabledState?: models.AgentControlEnabledState | undefined;
 };
 
 /** @internal */
 export type ListAgentControlsApiV1AgentsAgentNameControlsGetRequest$Outbound = {
   agent_name: string;
+  rendered_state?: string | undefined;
+  enabled_state?: string | undefined;
 };
 
 /** @internal */
@@ -22,10 +33,16 @@ export const ListAgentControlsApiV1AgentsAgentNameControlsGetRequest$outboundSch
   > = z.pipe(
     z.object({
       agentName: z.string(),
+      renderedState: z.optional(
+        models.AgentControlRenderedState$outboundSchema,
+      ),
+      enabledState: z.optional(models.AgentControlEnabledState$outboundSchema),
     }),
     z.transform((v) => {
       return remap$(v, {
         agentName: "agent_name",
+        renderedState: "rendered_state",
+        enabledState: "enabled_state",
       });
     }),
   );
