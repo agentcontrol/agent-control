@@ -65,7 +65,6 @@ class TestShutdownSync:
         state.server_controls = [{"name": "test"}]
         state.server_url = "http://localhost:8000"
         state.api_key = "key"
-        state.merge_events = True
         set_control_event_sink(lambda events: None)
 
         agent_control.shutdown()
@@ -75,7 +74,6 @@ class TestShutdownSync:
         assert state.server_controls is None
         assert state.server_url is None
         assert state.api_key is None
-        assert state.merge_events is False
         assert has_control_event_sink() is False
 
     def test_shutdown_idempotent(self):

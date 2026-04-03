@@ -75,7 +75,7 @@ export class Agents extends ClientSDK {
    *     InitAgentResponse with created flag and active controls (policy-derived + direct)
    */
   async init(
-    request: operations.InitAgentApiV1AgentsInitAgentPostRequest,
+    request: models.InitAgentRequest,
     options?: RequestOptions,
   ): Promise<models.InitAgentResponse> {
     return unwrapAsync(agentsInit(

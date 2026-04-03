@@ -7,13 +7,11 @@ import { remap as remap$ } from "../../lib/primitives.js";
 import * as models from "../index.js";
 
 export type InitAgentApiV1AgentsInitAgentPostRequest = {
-  xAgentControlMergeSession?: string | null | undefined;
   body: models.InitAgentRequest;
 };
 
 /** @internal */
 export type InitAgentApiV1AgentsInitAgentPostRequest$Outbound = {
-  "X-Agent-Control-Merge-Session"?: string | null | undefined;
   body: models.InitAgentRequest$Outbound;
 };
 
@@ -24,14 +22,9 @@ export const InitAgentApiV1AgentsInitAgentPostRequest$outboundSchema:
     InitAgentApiV1AgentsInitAgentPostRequest
   > = z.pipe(
     z.object({
-      xAgentControlMergeSession: z.optional(z.nullable(z.string())),
       body: models.InitAgentRequest$outboundSchema,
     }),
-    z.transform((v) => {
-      return remap$(v, {
-        xAgentControlMergeSession: "X-Agent-Control-Merge-Session",
-      });
-    }),
+    z.transform((v) => remap$(v, {})),
   );
 
 export function initAgentApiV1AgentsInitAgentPostRequestToJSON(

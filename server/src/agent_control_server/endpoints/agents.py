@@ -28,7 +28,7 @@ from agent_control_models.server import (
     SetPolicyResponse,
     StepKey,
 )
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete, func, or_, select, union_all
@@ -45,7 +45,6 @@ from ..errors import (
     NotFoundError,
 )
 from ..logging_utils import get_logger
-from ..merge_event_sessions import set_merge_events_enabled
 from ..models import (
     Agent,
     AgentData,
@@ -451,7 +450,6 @@ async def init_agent(
     request: InitAgentRequest,
     client: RequireAPIKey,
     db: AsyncSession = Depends(get_async_db),
-    x_merge_session: str | None = Header(default=None, alias="X-Agent-Control-Merge-Session"),
 ) -> InitAgentResponse:
     """
     Register a new agent or update an existing agent's steps and metadata.
@@ -551,11 +549,6 @@ async def init_agent(
                 resource="Agent",
                 operation="create",
             )
-        set_merge_events_enabled(
-            client,
-            request.agent.agent_name,
-            enabled=(x_merge_session or "").lower() == "true",
-        )
         return InitAgentResponse(created=created, controls=[])
 
     # Parse existing data via AgentData Pydantic model
@@ -806,11 +799,6 @@ async def init_agent(
             )
 
     controls = await list_controls_for_agent(existing.name, db)
-    set_merge_events_enabled(
-        client,
-        existing.name,
-        enabled=(x_merge_session or "").lower() == "true",
-    )
 
     return InitAgentResponse(
         created=created,

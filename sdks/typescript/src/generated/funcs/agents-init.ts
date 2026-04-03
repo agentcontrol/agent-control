@@ -4,7 +4,7 @@
 
 import * as z from "zod/v4-mini";
 import { AgentControlSDKCore } from "../core.js";
-import { encodeJSON, encodeSimple } from "../lib/encodings.js";
+import { encodeJSON } from "../lib/encodings.js";
 import * as M from "../lib/matchers.js";
 import { compactMap } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
@@ -23,7 +23,6 @@ import * as errors from "../models/errors/index.js";
 import { ResponseValidationError } from "../models/errors/response-validation-error.js";
 import { SDKValidationError } from "../models/errors/sdk-validation-error.js";
 import * as models from "../models/index.js";
-import * as operations from "../models/operations/index.js";
 import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
@@ -50,7 +49,7 @@ import { Result } from "../types/fp.js";
  */
 export function agentsInit(
   client: AgentControlSDKCore,
-  request: operations.InitAgentApiV1AgentsInitAgentPostRequest,
+  request: models.InitAgentRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -75,7 +74,7 @@ export function agentsInit(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.InitAgentApiV1AgentsInitAgentPostRequest,
+  request: models.InitAgentRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -96,29 +95,20 @@ async function $do(
 > {
   const parsed = safeParse(
     request,
-    (value) =>
-      z.parse(
-        operations.InitAgentApiV1AgentsInitAgentPostRequest$outboundSchema,
-        value,
-      ),
+    (value) => z.parse(models.InitAgentRequest$outboundSchema, value),
     "Input validation failed",
   );
   if (!parsed.ok) {
     return [parsed, { status: "invalid" }];
   }
   const payload = parsed.value;
-  const body = encodeJSON("body", payload.body, { explode: true });
+  const body = encodeJSON("body", payload, { explode: true });
 
   const path = pathToFunc("/api/v1/agents/initAgent")();
 
   const headers = new Headers(compactMap({
     "Content-Type": "application/json",
     Accept: "application/json",
-    "X-Agent-Control-Merge-Session": encodeSimple(
-      "X-Agent-Control-Merge-Session",
-      payload["X-Agent-Control-Merge-Session"],
-      { explode: false, charEncoding: "none" },
-    ),
   }));
 
   const secConfig = await extractSecurity(client._options.apiKeyHeader);

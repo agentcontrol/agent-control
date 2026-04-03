@@ -9,7 +9,6 @@ import * as models from "../index.js";
 export type EvaluateApiV1EvaluationPostRequest = {
   xTraceId?: string | null | undefined;
   xSpanId?: string | null | undefined;
-  xAgentControlMergeEvents?: string | null | undefined;
   body: models.EvaluationRequest;
 };
 
@@ -17,7 +16,6 @@ export type EvaluateApiV1EvaluationPostRequest = {
 export type EvaluateApiV1EvaluationPostRequest$Outbound = {
   "X-Trace-Id"?: string | null | undefined;
   "X-Span-Id"?: string | null | undefined;
-  "X-Agent-Control-Merge-Events"?: string | null | undefined;
   body: models.EvaluationRequest$Outbound;
 };
 
@@ -29,14 +27,12 @@ export const EvaluateApiV1EvaluationPostRequest$outboundSchema: z.ZodMiniType<
   z.object({
     xTraceId: z.optional(z.nullable(z.string())),
     xSpanId: z.optional(z.nullable(z.string())),
-    xAgentControlMergeEvents: z.optional(z.nullable(z.string())),
     body: models.EvaluationRequest$outboundSchema,
   }),
   z.transform((v) => {
     return remap$(v, {
       xTraceId: "X-Trace-Id",
       xSpanId: "X-Span-Id",
-      xAgentControlMergeEvents: "X-Agent-Control-Merge-Events",
     });
   }),
 );

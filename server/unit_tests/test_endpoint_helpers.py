@@ -1,22 +1,14 @@
 """Unit tests for endpoint helpers that don't require the DB test fixture."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
-import pytest
-from agent_control_models import (
-    ControlDefinition,
-    ControlMatch,
-    EvaluationRequest,
-    EvaluationResponse,
-    EvaluatorResult,
-)
+from agent_control_models import ControlDefinition, ControlMatch, EvaluatorResult
 from agent_control_server.endpoints.agents import (
     _find_referencing_controls_for_removed_evaluators,
 )
 from agent_control_server.endpoints.evaluation import (
     ControlAdapter,
-    _emit_observability_events,
+    _sanitize_control_match,
 )
 
 
@@ -55,10 +47,9 @@ def test_find_referencing_controls_dedupes_composite_matches() -> None:
     assert referencing_controls == [("composite-ctrl", "custom")]
 
 
-@pytest.mark.asyncio
-async def test_emit_observability_events_uses_representative_leaf_for_composites() -> None:
-    # Given: a composite control with two leaves and existing condition metadata
-    control = ControlAdapter(
+def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
+    # Given: a composite control whose condition trace includes a raw evaluator error
+    _ = ControlAdapter(
         id=1,
         name="composite-ctrl",
         control=ControlDefinition(
@@ -78,53 +69,36 @@ async def test_emit_observability_events_uses_representative_leaf_for_composites
             action={"decision": "observe"},
         ),
     )
-    response = EvaluationResponse(
-        is_safe=True,
-        confidence=1.0,
-        non_matches=[
-            ControlMatch(
-                control_id=1,
-                control_name="composite-ctrl",
-                action="observe",
-                result=EvaluatorResult(
-                    matched=False,
-                    confidence=0.9,
-                    metadata={"condition_trace": {"kind": "and"}},
-                ),
-            )
-        ],
-    )
-    request = EvaluationRequest(
-        agent_name="agent-000000000001",
-        step={"type": "llm", "name": "test-step", "input": "hello"},
-        stage="pre",
-    )
-    ingestor = SimpleNamespace(
-        ingest=AsyncMock(return_value=SimpleNamespace(dropped=0, processed=1))
+    match = ControlMatch(
+        control_id=1,
+        control_name="composite-ctrl",
+        action="observe",
+        result=EvaluatorResult(
+            matched=False,
+            confidence=0.9,
+            error="RuntimeError: secret evaluator failure",
+            metadata={
+                "condition_trace": {
+                    "type": "and",
+                    "children": [
+                        {
+                            "type": "leaf",
+                            "error": "RuntimeError: secret evaluator failure",
+                            "message": "Evaluation failed: RuntimeError: secret evaluator failure",
+                        }
+                    ],
+                }
+            },
+        ),
     )
 
-    # When: emitting observability events
-    await _emit_observability_events(
-        response=response,
-        request=request,
-        trace_id="trace123",
-        span_id="span456",
-        agent_name="agent-000000000001",
-        applies_to="llm_call",
-        control_lookup={1: control},
-        total_duration_ms=5.0,
-        ingestor=ingestor,
-    )
+    # When: sanitizing the control match for API output
+    sanitized = _sanitize_control_match(match)
 
-    # Then: the first leaf becomes the event identity and full context is retained
-    events = ingestor.ingest.await_args.args[0]
-    assert len(events) == 1
-    event = events[0]
-    assert event.evaluator_name == "regex"
-    assert event.selector_path == "input"
-    assert event.metadata["condition_trace"] == {"kind": "and"}
-    assert event.metadata["primary_evaluator"] == "regex"
-    assert event.metadata["primary_selector_path"] == "input"
-    assert event.metadata["leaf_count"] == 2
-    assert event.metadata["all_evaluators"] == ["regex", "list"]
-    assert event.metadata["all_selector_paths"] == ["input", "output"]
+    # Then: top-level and nested errors are redacted to the safe public message
+    assert sanitized.result.error is not None
+    assert "secret evaluator failure" not in sanitized.result.error
+    trace = sanitized.result.metadata["condition_trace"]
+    child = trace["children"][0]
+    assert child["error"] == sanitized.result.error
+    assert child["message"] == sanitized.result.error
