@@ -20,9 +20,11 @@ if TYPE_CHECKING:
 @pytest.fixture(autouse=True)
 def _clean_registry() -> Generator[None, None, None]:
     """Ensure each test starts with an empty step registry."""
+    agent_control._reset_state()
     clear()
     yield
     clear()
+    agent_control._reset_state()
 
 
 def test_init_passes_merged_steps_to_register_agent(
@@ -187,6 +189,34 @@ def test_init_logs_agent_updated_when_registration_already_exists(
     # Then the SDK emits the "updated" log branch.
     assert "Agent updated" in caplog.text
     assert agent_name in caplog.text
+
+
+def test_init_registers_agent_without_merge_events_arg() -> None:
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+
+    with patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=health_check_mock,
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=register_agent_mock,
+    ):
+        agent_control.init(
+            agent_name=f"agent-{uuid4().hex[:12]}",
+            policy_refresh_interval_seconds=0,
+        )
+
+    assert register_agent_mock.await_args is not None
+    assert "merge_events" not in register_agent_mock.await_args.kwargs
+
+
+def test_init_omits_merge_events_from_public_signature() -> None:
+    import inspect
+
+    signature = inspect.signature(agent_control.init)
+
+    assert "merge_events" not in signature.parameters
 
 
 @pytest.mark.asyncio
