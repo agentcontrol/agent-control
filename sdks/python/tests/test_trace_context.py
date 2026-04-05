@@ -1,6 +1,6 @@
 """Tests for the telemetry trace context provider interface."""
 
-from agent_control.telemetry.trace_context import (
+from agent_control_telemetry.trace_context import (
     clear_trace_context_provider,
     get_trace_context_from_provider,
     set_trace_context_provider,

@@ -3,7 +3,8 @@ name = "agent-control-server"
 version = "7.3.2"
 description = "Server for Agent Control - manage and evaluate controls for AI agents"
 requires-python = ">=3.12"
-# Note: agent-control-models and agent-control-engine are bundled at build time
+# Note: agent-control-models, agent-control-engine, and agent-control-telemetry
+#       are bundled at build time
 # Note: agent-control-evaluators is a runtime dependency (NOT vendored) to avoid
 #       duplicate module conflict when galileo extras are installed
 dependencies = [
@@ -43,6 +44,7 @@ dev = [
     "types-jsonschema>=4.23.0",
     "agent-control-models",
     "agent-control-engine",
+    "agent-control-telemetry",
     "agent-control-evaluators",
 ]
 
@@ -56,9 +58,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# Note: agent_control_models and agent_control_engine are copied by scripts/build.py
+# Note: agent_control_models, agent_control_engine, and agent_control_telemetry
+# are copied by scripts/build.py
 # Note: agent_control_evaluators is a runtime dep, not vendored
-packages = ["src/agent_control_server", "src/agent_control_models", "src/agent_control_engine"]
+packages = [
+    "src/agent_control_server",
+    "src/agent_control_models",
+    "src/agent_control_engine",
+    "src/agent_control_telemetry",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -87,6 +95,7 @@ known-first-party = ["agent_control_server"]
 [tool.uv.sources]
 agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
+agent-control-telemetry = { workspace = true }
 agent-control-evaluators = { workspace = true }
 # For local dev: use local galileo package instead of PyPI
 agent-control-evaluator-galileo = { path = "../evaluators/contrib/galileo", editable = true }

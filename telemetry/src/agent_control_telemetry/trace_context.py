@@ -30,7 +30,6 @@ def get_trace_context_from_provider() -> TraceContext | None:
     try:
         trace_context = _trace_context_provider()
     except Exception:
-        # Provider failures should not break control evaluation.
         return None
 
     if trace_context is None:

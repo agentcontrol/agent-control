@@ -18,6 +18,7 @@ members = [
     "models",
     "server",
     "sdks/python",
+    "telemetry",
     "engine",
     "evaluators/builtin",
     # NOTE: evaluators/contrib/* excluded - install separately when needed
@@ -36,6 +37,7 @@ required-environments = [
 agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
 agent-control-evaluators = { workspace = true }
+agent-control-telemetry = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -68,6 +70,7 @@ version_toml = [
     "models/pyproject.toml:project.version",
     "engine/pyproject.toml:project.version",
     "sdks/python/pyproject.toml:project.version",
+    "telemetry/pyproject.toml:project.version",
     "server/pyproject.toml:project.version",
     "evaluators/builtin/pyproject.toml:project.version",
     "evaluators/contrib/galileo/pyproject.toml:project.version",

@@ -15,7 +15,7 @@ from agent_control.evaluation_events import (
     enqueue_observability_events,
     map_applies_to,
 )
-from agent_control.telemetry.trace_context import (
+from agent_control_telemetry.trace_context import (
     clear_trace_context_provider,
     set_trace_context_provider,
 )
@@ -322,10 +322,10 @@ class TestBuildControlExecutionEvents:
         ]
 
         with patch("agent_control.evaluation_events.is_observability_enabled", return_value=True), \
-             patch("agent_control.evaluation_events.add_event") as mock_add:
+             patch("agent_control.evaluation_events.write_events") as mock_write:
             enqueue_observability_events(events)
 
-        mock_add.assert_called_once_with(events[0])
+        mock_write.assert_called_once_with(events)
 
 
 class TestCheckEvaluationWithLocal:

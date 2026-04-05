@@ -2,7 +2,10 @@
 
 import pytest
 
-from agent_control.telemetry.trace_context import clear_trace_context_provider, set_trace_context_provider
+from agent_control_telemetry.trace_context import (
+    clear_trace_context_provider,
+    set_trace_context_provider,
+)
 from agent_control.tracing import (
     _generate_span_id,
     _generate_trace_id,

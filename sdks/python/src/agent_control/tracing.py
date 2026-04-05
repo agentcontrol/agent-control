@@ -31,7 +31,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 
-from .telemetry.trace_context import get_trace_context_from_provider
+from agent_control_telemetry.trace_context import get_trace_context_from_provider
 
 # Context variables for trace/span propagation
 _trace_id_var: ContextVar[str | None] = ContextVar("trace_id", default=None)

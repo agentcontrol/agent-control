@@ -68,6 +68,11 @@ from agent_control_models import (
     Step,
     StepSchema,
 )
+from agent_control_telemetry.trace_context import (
+    clear_trace_context_provider,
+    get_trace_context_from_provider,
+    set_trace_context_provider,
+)
 
 from . import agents, controls, evaluation, evaluators, policies
 from ._control_registry import (
@@ -86,6 +91,7 @@ from .observability import (
     add_event,
     configure_logging,
     get_event_batcher,
+    get_event_sink,
     get_log_config,
     get_logger,
     init_observability,
@@ -93,11 +99,7 @@ from .observability import (
     log_control_evaluation,
     shutdown_observability,
     sync_shutdown_observability,
-)
-from .telemetry import (
-    clear_trace_context_provider,
-    get_trace_context_from_provider,
-    set_trace_context_provider,
+    write_events,
 )
 from .tracing import (
     get_current_span_id,
@@ -1310,9 +1312,11 @@ __all__ = [
     # Observability
     "init_observability",
     "add_event",
+    "write_events",
     "shutdown_observability",
     "is_observability_enabled",
     "get_event_batcher",
+    "get_event_sink",
     "configure_logging",
     "get_log_config",
     "log_control_evaluation",

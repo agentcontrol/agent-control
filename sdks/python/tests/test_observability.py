@@ -13,6 +13,7 @@ from agent_control.observability import (
     EventBatcher,
     add_event,
     get_event_batcher,
+    get_event_sink,
     init_observability,
     is_observability_enabled,
     log_span_end,
@@ -605,35 +606,58 @@ class TestGlobalBatcher:
         # Reset global state
         import agent_control.observability as obs
         old_batcher = obs._batcher
+        old_sink = obs._event_sink
         obs._batcher = None
+        obs._event_sink = None
 
         try:
             assert get_event_batcher() is None
         finally:
             obs._batcher = old_batcher
+            obs._event_sink = old_sink
+
+    def test_get_event_sink_not_initialized(self):
+        """Test get_event_sink returns None when not initialized."""
+        import agent_control.observability as obs
+        old_batcher = obs._batcher
+        old_sink = obs._event_sink
+        obs._batcher = None
+        obs._event_sink = None
+
+        try:
+            assert get_event_sink() is None
+        finally:
+            obs._batcher = old_batcher
+            obs._event_sink = old_sink
 
     def test_is_observability_enabled_false(self):
         """Test is_observability_enabled returns False when not initialized."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
+        old_sink = obs._event_sink
         obs._batcher = None
+        obs._event_sink = None
 
         try:
             assert is_observability_enabled() is False
         finally:
             obs._batcher = old_batcher
+            obs._event_sink = old_sink
 
     def test_add_event_without_batcher(self):
         """Test add_event returns False when batcher not initialized."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
+        old_sink = obs._event_sink
         obs._batcher = None
+        obs._event_sink = None
 
         try:
             result = add_event(create_mock_event())
             assert result is False
         finally:
             obs._batcher = old_batcher
+            obs._event_sink = old_sink
 
 
 class TestInitObservability:
@@ -643,19 +667,24 @@ class TestInitObservability:
         """Test that init_observability returns None when explicitly disabled."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
+        old_sink = obs._event_sink
         obs._batcher = None
+        obs._event_sink = None
 
         try:
             result = init_observability(enabled=False)
             assert result is None
         finally:
             obs._batcher = old_batcher
+            obs._event_sink = old_sink
 
     def test_init_enabled_creates_batcher(self):
         """Test that init_observability creates batcher when enabled."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
+        old_sink = obs._event_sink
         obs._batcher = None
+        obs._event_sink = None
 
         try:
             result = init_observability(
@@ -666,17 +695,21 @@ class TestInitObservability:
             assert result is not None
             assert isinstance(result, EventBatcher)
             assert result._running is True
+            assert get_event_sink() is not None
 
             # Cleanup
-            result.stop()
+            obs.sync_shutdown_observability()
         finally:
             obs._batcher = old_batcher
+            obs._event_sink = old_sink
 
     def test_init_idempotent(self):
         """Test that init_observability is idempotent."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
+        old_sink = obs._event_sink
         obs._batcher = None
+        obs._event_sink = None
 
         try:
             batcher1 = init_observability(enabled=True)
@@ -684,9 +717,10 @@ class TestInitObservability:
 
             assert batcher1 is batcher2
 
-            batcher1.stop()
+            obs.sync_shutdown_observability()
         finally:
             obs._batcher = old_batcher
+            obs._event_sink = old_sink
 
 
 class TestShutdownObservability:
@@ -697,6 +731,7 @@ class TestShutdownObservability:
         """Test that shutdown flushes remaining events and stops batcher."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
+        old_sink = obs._event_sink
 
         try:
             batcher = init_observability(enabled=True)
@@ -710,20 +745,25 @@ class TestShutdownObservability:
 
             # Batcher should be stopped and cleared
             assert obs._batcher is None
+            assert obs._event_sink is None
         finally:
             obs._batcher = old_batcher
+            obs._event_sink = old_sink
 
     @pytest.mark.asyncio
     async def test_shutdown_without_batcher(self):
         """Test that shutdown is safe when batcher not initialized."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
+        old_sink = obs._event_sink
         obs._batcher = None
+        obs._event_sink = None
 
         try:
             await shutdown_observability()  # Should not raise
         finally:
             obs._batcher = old_batcher
+            obs._event_sink = old_sink
 
 
 class TestEventBatcherShutdownConfig:

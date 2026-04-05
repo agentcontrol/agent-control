@@ -11,7 +11,7 @@ from agent_control_models import (
     EvaluationResponse,
 )
 
-from .observability import add_event, get_logger, is_observability_enabled
+from .observability import get_logger, is_observability_enabled, write_events
 
 _logger = get_logger(__name__)
 
@@ -210,5 +210,4 @@ def enqueue_observability_events(events: list[ControlExecutionEvent]) -> None:
     if not is_observability_enabled():
         return
 
-    for event in events:
-        add_event(event)
+    write_events(events)
