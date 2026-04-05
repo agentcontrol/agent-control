@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Awaitable, Protocol, Sequence, TypeAlias
 
 from agent_control_models import ControlExecutionEvent
 
@@ -21,10 +22,13 @@ class SinkResult:
         return self.accepted > 0
 
 
+SinkWriteResult: TypeAlias = SinkResult | Awaitable[SinkResult]
+
+
 class ControlEventSink(Protocol):
     """Write-side abstraction for delivering control execution events."""
 
-    def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkResult:
+    def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkWriteResult:
         """Write a batch of control execution events."""
 
 
@@ -44,3 +48,10 @@ class BaseControlEventSink(ControlEventSink):
             accepted += result.accepted
             dropped += result.dropped
         return SinkResult(accepted=accepted, dropped=dropped)
+
+
+async def resolve_sink_result(result: SinkWriteResult) -> SinkResult:
+    """Resolve a sync or async sink result into a SinkResult."""
+    if inspect.isawaitable(result):
+        return await result
+    return result

@@ -7,6 +7,7 @@ import pytest
 from uuid import uuid4
 
 from agent_control_models.observability import ControlExecutionEvent
+from agent_control_telemetry.sinks import SinkResult
 from agent_control_server.observability.ingest.direct import DirectEventIngestor
 from agent_control_server.observability.store.base import EventStore
 
@@ -35,6 +36,15 @@ class CountingStore(EventStore):
 
     async def query_events(self, query):  # pragma: no cover - not used
         raise NotImplementedError
+
+
+class CountingSink:
+    def __init__(self) -> None:
+        self.calls: list[list[ControlExecutionEvent]] = []
+
+    async def write_events(self, events: list[ControlExecutionEvent]) -> SinkResult:
+        self.calls.append(events)
+        return SinkResult(accepted=len(events), dropped=0)
 
 
 @pytest.mark.asyncio
@@ -117,3 +127,30 @@ async def test_direct_ingestor_flush_noop() -> None:
 
     # Then: no error is raised
     assert True
+
+
+@pytest.mark.asyncio
+async def test_direct_ingestor_accepts_control_event_sink() -> None:
+    sink = CountingSink()
+    ingestor = DirectEventIngestor(sink)
+    events = [
+        ControlExecutionEvent(
+            trace_id="a" * 32,
+            span_id="b" * 16,
+            agent_name="agent-test-01",
+            control_id=1,
+            control_name="c",
+            check_stage="pre",
+            applies_to="llm_call",
+            action="observe",
+            matched=True,
+            confidence=0.9,
+        )
+    ]
+
+    result = await ingestor.ingest(events)
+
+    assert result.received == 1
+    assert result.processed == 1
+    assert result.dropped == 0
+    assert sink.calls == [events]

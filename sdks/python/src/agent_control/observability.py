@@ -54,7 +54,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import httpx
-from agent_control_telemetry.sinks import BaseControlEventSink, ControlEventSink, SinkResult
+from agent_control_telemetry.sinks import (
+    BaseControlEventSink,
+    ControlEventSink,
+    SinkResult,
+)
 
 from agent_control.settings import configure_settings, get_settings
 
@@ -888,7 +892,10 @@ def write_events(events: Sequence[ControlExecutionEvent]) -> SinkResult:
     """Write events through the active global sink."""
     if _event_sink is None:
         return SinkResult(accepted=0, dropped=len(events))
-    return _event_sink.write_events(events)
+    result = _event_sink.write_events(events)
+    if isinstance(result, SinkResult):
+        return result
+    raise RuntimeError("SDK observability sink must return a synchronous SinkResult.")
 
 
 def sync_shutdown_observability() -> None:
