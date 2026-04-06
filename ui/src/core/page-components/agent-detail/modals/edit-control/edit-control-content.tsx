@@ -778,13 +778,14 @@ export const EditControlContent = ({
         ),
         confirmLabel: 'Discard',
         onConfirm: () => {
-          // Clear the ref so the parent's onClose won't re-enter handleClose.
           if (onCloseRef) onCloseRef.current = null;
           onClose();
         },
       });
       return;
     }
+    // Clear the ref so the parent's onClose won't re-enter handleClose.
+    if (onCloseRef) onCloseRef.current = null;
     onClose();
   }, [isDirty, onClose, isCreating, onCloseRef]);
 
