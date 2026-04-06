@@ -646,7 +646,7 @@ function buildSchemaValueSnippet(
       if (typeof preferredValue === 'string' && preferredValue.length > 0) {
         return `"${escapeSnippetValue(preferredValue)}"`;
       }
-      return '""';
+      return `"${nextSnippetTabStop(snippetState)}"`;
     }
     default: {
       if (preferredValue !== undefined) {
