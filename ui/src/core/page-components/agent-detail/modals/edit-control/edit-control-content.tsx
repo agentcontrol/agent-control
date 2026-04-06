@@ -92,6 +92,12 @@ export type EditControlContentProps = {
   onSuccess?: () => void;
   /** Initial editor mode */
   initialEditorMode?: ControlEditorMode;
+  /**
+   * Mutable ref that receives the close handler (with unsaved-changes check).
+   * The parent Modal can use this ref for its own onClose so the X button
+   * also triggers the dirty check.
+   */
+  onCloseRef?: React.MutableRefObject<(() => void) | null>;
 };
 
 export const EditControlContent = ({
@@ -101,6 +107,7 @@ export const EditControlContent = ({
   onClose,
   onSuccess,
   initialEditorMode = 'form',
+  onCloseRef,
 }: EditControlContentProps) => {
   const { data: agentResponse } = useAgent(agentId);
   const { data: controlSchemaResponse } = useControlSchema();
@@ -772,7 +779,15 @@ export const EditControlContent = ({
       return;
     }
     onClose();
-  }, [isDirty, definitionForm, onClose]);
+  }, [isDirty, definitionForm, onClose, isCreating]);
+
+  // Expose handleClose to the parent so the Modal X button also checks dirty state.
+  useEffect(() => {
+    if (onCloseRef) onCloseRef.current = handleClose;
+    return () => {
+      if (onCloseRef) onCloseRef.current = null;
+    };
+  }, [handleClose, onCloseRef]);
 
   const formComponent = evaluator?.FormComponent;
   const definitionStatusLabel = (() => {
