@@ -29,6 +29,7 @@ import {
 } from '@codemirror/view';
 import {
   findNodeAtLocation,
+  findNodeAtOffset,
   getLocation,
   type Node as JsonNode,
   parseTree,
@@ -49,6 +50,7 @@ import {
   resolveSchemaAtJsonPath,
 } from './context';
 import {
+  getJsonInsertTextForSchemaPropertyValue,
   getSchemaAtProperty,
   getSchemaDescription,
   getSchemaProperties,
@@ -61,6 +63,38 @@ import {
   MAX_HINT_VALUES,
   ROOT_SELECTOR_PATHS,
 } from './types';
+
+/**
+ * CodeMirror uses `state.sliceDoc(from, to)` as the fuzzy-filter query.
+ * Property-key contexts used `from === to === pos`, so the query was always
+ * empty and every completion matched (see FuzzyMatcher empty pattern).
+ */
+function getCompletionFilterRange(
+  text: string,
+  pos: number,
+  location: { isAtPropertyKey: boolean },
+  valueNode: JsonNode | undefined
+): { from: number; to: number } {
+  const tree = parseTree(text);
+  const isStringValueContext =
+    !location.isAtPropertyKey && valueNode?.type === 'string';
+
+  if (isStringValueContext && valueNode) {
+    return {
+      from: valueNode.offset + 1,
+      to: valueNode.offset + Math.max(valueNode.length - 1, 1),
+    };
+  }
+
+  if (location.isAtPropertyKey && tree && pos > 0) {
+    const keyNode = findNodeAtOffset(tree, pos - 1, true);
+    if (keyNode?.type === 'string' && pos >= keyNode.offset + 1) {
+      return { from: keyNode.offset + 1, to: pos };
+    }
+  }
+
+  return { from: pos, to: pos };
+}
 
 function dedupeCompletions(items: Completion[]): Completion[] {
   const seen = new Set<string>();
@@ -89,11 +123,91 @@ function toJsonLiteral(value: unknown): string {
   return typeof value === 'string' ? JSON.stringify(value) : String(value);
 }
 
+/** Escape `$`, `}`, `\` for CodeMirror snippet templates (see Monaco `escapeSnippetValue`). */
+function escapeCodeMirrorSnippetText(s: string): string {
+  return s.replace(/[\\$}]/g, '\\$&');
+}
+
+/**
+ * When the user already typed the opening `"` of a property key, inserts must not
+ * include another leading `"` or acceptance produces `""json_schema": …`.
+ */
+function isInsideQuotedPropertyKey(
+  text: string,
+  pos: number,
+  isAtPropertyKey: boolean
+): boolean {
+  if (!isAtPropertyKey || pos <= 0) return false;
+  const tree = parseTree(text);
+  if (!tree) return false;
+  const node = findNodeAtOffset(tree, pos - 1, true);
+  return node?.type === 'string' && pos >= node.offset + 1;
+}
+
+/**
+ * - Eat a typed closing `"` after a partial property key (filter range ends at cursor).
+ * - Optionally insert `,` before the next sibling when the inserted value is single-line
+ *   (skip multiline object/array snippets so we don't break cursor/snippet fields).
+ */
+function wrapPropertyCompletionApply(
+  completion: Completion,
+  options: { insideQuotedKey: boolean; autoCommaAfter: boolean }
+): Completion {
+  if (typeof completion.apply !== 'function') {
+    return completion;
+  }
+  const innerApply = completion.apply;
+  return {
+    ...completion,
+    apply: (view, comp, from, to) => {
+      let end = to;
+      if (
+        options.insideQuotedKey &&
+        view.state.sliceDoc(to, to + 1) === '"'
+      ) {
+        end = to + 1;
+      }
+      const docLenBefore = view.state.doc.length;
+      const replacedLen = end - from;
+      innerApply(view, comp, from, end);
+
+      if (!options.autoCommaAfter) return;
+
+      // Snippet apply can leave main selection at the replace start (`from`) instead
+      // of after the inserted text — inserting `,` at `main.head` then yields `",enabled`.
+      const docLenAfter = view.state.doc.length;
+      const insertLen = docLenAfter - docLenBefore + replacedLen;
+      const valueEnd = from + insertLen;
+
+      let scan = valueEnd;
+      const doc = view.state.doc;
+      while (scan < doc.length) {
+        const ch = doc.sliceString(scan, scan + 1);
+        if (!/\s/.test(ch)) break;
+        scan += 1;
+      }
+      const next = scan < doc.length ? doc.sliceString(scan, scan + 1) : '';
+      if (
+        next &&
+        next !== '}' &&
+        next !== ']' &&
+        next !== ','
+      ) {
+        view.dispatch({
+          changes: { from: valueEnd, to: valueEnd, insert: ',' },
+          selection: { anchor: valueEnd + 1 },
+        });
+      }
+    },
+  };
+}
+
 function getPropertySuggestions(
   text: string,
   context: JsonEditorCodeMirrorContext,
   path: Array<string | number>,
-  offset: number
+  offset: number,
+  isAtPropertyKey: boolean
 ): Completion[] {
   const tree = parseJsonTree(text);
   const activeEvaluator = resolveActiveEvaluator(context, tree, path);
@@ -123,22 +237,36 @@ function getPropertySuggestions(
     }
   }
 
+  const insideQuotedKey = isInsideQuotedPropertyKey(
+    text,
+    offset,
+    isAtPropertyKey
+  );
+
   const suggestions: Completion[] = [];
   const properties = getSchemaProperties(schemaCursor.schema);
   for (const [propertyName, rawSchema] of Object.entries(properties)) {
     if (existingKeys.has(propertyName)) continue;
     const normalized = normalizeSchema(rawSchema, schemaCursor.rootSchema);
     const type = getSchemaType(normalized) ?? 'string';
-    let defaultValue = '""';
-    if (type === 'number' || type === 'integer') defaultValue = '0';
-    if (type === 'boolean') defaultValue = 'false';
-    if (type === 'array') defaultValue = '[]';
-    if (type === 'object') defaultValue = '{}';
+    const valueInsert = getJsonInsertTextForSchemaPropertyValue(
+      rawSchema,
+      schemaCursor.rootSchema
+    );
+    const escapedName = escapeCodeMirrorSnippetText(propertyName);
+    const snippetBody = insideQuotedKey
+      ? `${escapedName}": ${valueInsert}`
+      : `"${escapedName}": ${valueInsert}`;
+    const base = snippetCompletion(snippetBody, {
+      label: propertyName,
+      type: 'property',
+      detail: type,
+    });
+    const autoCommaAfter = !valueInsert.includes('\n');
     suggestions.push({
-      ...snippetCompletion(`"${propertyName}": ${defaultValue}`, {
-        label: propertyName,
-        type: 'property',
-        detail: type,
+      ...wrapPropertyCompletionApply(base, {
+        insideQuotedKey,
+        autoCommaAfter,
       }),
       info: getSchemaDescription(normalized) ?? undefined,
     } as Completion);
@@ -788,12 +916,12 @@ export function buildCodeMirrorJsonExtensions(
           const isStringValueContext =
             !location.isAtPropertyKey && valueNode?.type === 'string';
 
-          const range = isStringValueContext
-            ? {
-                from: valueNode.offset + 1,
-                to: valueNode.offset + Math.max(valueNode.length - 1, 1),
-              }
-            : { from: completionContext.pos, to: completionContext.pos };
+          const range = getCompletionFilterRange(
+            text,
+            completionContext.pos,
+            location,
+            valueNode
+          );
 
           const view = completionContext.view;
           if (view && refactorCompletionArmed.get(view)) {
@@ -823,7 +951,8 @@ export function buildCodeMirrorJsonExtensions(
                   text,
                   context,
                   location.path,
-                  completionContext.pos
+                  completionContext.pos,
+                  location.isAtPropertyKey
                 )
               : getValueSuggestions(
                   text,
@@ -872,12 +1001,12 @@ export function buildCodeMirrorStandaloneDebugExtensions(): Extension[] {
             : undefined;
           const isStringValueContext =
             !location.isAtPropertyKey && valueNode?.type === 'string';
-          const range = isStringValueContext
-            ? {
-                from: valueNode.offset + 1,
-                to: valueNode.offset + Math.max(valueNode.length - 1, 1),
-              }
-            : { from: completionContext.pos, to: completionContext.pos };
+          const range = getCompletionFilterRange(
+            text,
+            completionContext.pos,
+            location,
+            valueNode
+          );
 
           if (location.isAtPropertyKey) {
             return {
@@ -1012,7 +1141,13 @@ export function getCodeMirrorCompletionItems(
   const isStringValueContext =
     !location.isAtPropertyKey && valueNode?.type === 'string';
   const options = location.isAtPropertyKey
-    ? getPropertySuggestions(text, context, location.path, position)
+    ? getPropertySuggestions(
+        text,
+        context,
+        location.path,
+        position,
+        location.isAtPropertyKey
+      )
     : getValueSuggestions(text, context, location.path, isStringValueContext);
 
   return dedupeCompletions(options).map((item) => ({

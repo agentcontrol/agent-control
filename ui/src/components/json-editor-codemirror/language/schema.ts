@@ -166,3 +166,126 @@ export function getSchemaAtProperty(
 
   return null;
 }
+
+function isSchemaWithProperties(
+  schema: JsonSchema,
+  propertyNames: readonly string[]
+): boolean {
+  const properties = getSchemaProperties(schema);
+  return propertyNames.every((name) => name in properties);
+}
+
+function getSchemaExamples(schema: unknown): unknown[] {
+  return isObject(schema) && Array.isArray(schema.examples)
+    ? schema.examples
+    : [];
+}
+
+function jsonStringifyForInsert(value: unknown): string {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return JSON.stringify(value);
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+/**
+ * JSON text inserted when completing a property key. Mirrors Monaco
+ * `buildSchemaValueSnippet` so control scaffolding (selector, evaluator,
+ * action, scope) matches the original editor.
+ */
+export function getJsonInsertTextForSchemaPropertyValue(
+  rawSchema: unknown,
+  rootSchema: JsonSchema | null
+): string {
+  const normalized = normalizeSchema(rawSchema, rootSchema);
+  if (!normalized) {
+    return 'null';
+  }
+
+  const enumValues = getSchemaEnumValues(normalized);
+  if (enumValues.length > 0) {
+    return jsonStringifyForInsert(enumValues[0]);
+  }
+
+  const examples = getSchemaExamples(normalized);
+  const defaultValue = getSchemaDefault(normalized);
+  const preferredValue =
+    defaultValue !== undefined ? defaultValue : examples[0];
+  const schemaTitle = getSchemaTitle(normalized);
+
+  if (
+    schemaTitle === 'ControlSelector' ||
+    isSchemaWithProperties(normalized, ['path'])
+  ) {
+    return '{\n  "path": "*"\n}';
+  }
+
+  if (
+    schemaTitle === 'EvaluatorSpec' ||
+    isSchemaWithProperties(normalized, ['name', 'config'])
+  ) {
+    return '{\n  "name": "",\n  "config": {}\n}';
+  }
+
+  if (
+    schemaTitle === 'ControlAction' ||
+    isSchemaWithProperties(normalized, ['decision', 'steering_context'])
+  ) {
+    return '{\n  "decision": "deny"\n}';
+  }
+
+  if (
+    schemaTitle === 'ControlScope' ||
+    isSchemaWithProperties(normalized, ['step_types', 'stages'])
+  ) {
+    return '{\n  "step_types": ["llm"],\n  "stages": ["post"]\n}';
+  }
+
+  if (
+    schemaTitle === 'ConditionNode' ||
+    isSchemaWithProperties(normalized, [
+      'selector',
+      'evaluator',
+      'and',
+      'or',
+      'not',
+    ])
+  ) {
+    return '{}';
+  }
+
+  switch (getSchemaType(normalized)) {
+    case 'object': {
+      return '{}';
+    }
+    case 'array': {
+      return '[]';
+    }
+    case 'boolean': {
+      return String(
+        typeof preferredValue === 'boolean' ? preferredValue : true
+      );
+    }
+    case 'integer':
+    case 'number': {
+      return String(typeof preferredValue === 'number' ? preferredValue : 0);
+    }
+    case 'string': {
+      if (typeof preferredValue === 'string' && preferredValue.length > 0) {
+        return JSON.stringify(preferredValue);
+      }
+      return '""';
+    }
+    default: {
+      if (preferredValue !== undefined) {
+        return jsonStringifyForInsert(preferredValue);
+      }
+      return 'null';
+    }
+  }
+}

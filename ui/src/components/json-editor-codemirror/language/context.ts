@@ -77,20 +77,47 @@ export function resolveActiveEvaluator(
   return context.evaluators?.find((item) => item.id === value) ?? null;
 }
 
+/**
+ * True when `path[index]` is the `config` property of an `evaluator` object.
+ * Matches Monaco `isEvaluatorConfigSegment` — used to swap the schema root to
+ * the active evaluator's configSchema while editing control JSON.
+ */
+function isEvaluatorConfigSegment(path: JsonPath, index: number): boolean {
+  return (
+    typeof path[index] === 'string' &&
+    path[index] === 'config' &&
+    index > 0 &&
+    path[index - 1] === 'evaluator'
+  );
+}
+
 export function resolveSchemaAtJsonPath(
   context: JsonEditorCodeMirrorContext,
   activeEvaluator: JsonEditorEvaluatorOption | null,
   path: JsonPath
 ): SchemaCursor {
-  let rootSchema = asSchema(context.schema) ?? null;
+  const controlRoot = asSchema(context.schema) ?? null;
+  let rootSchema = controlRoot;
   if (context.mode === 'evaluator-config' && activeEvaluator?.configSchema) {
     rootSchema = asSchema(activeEvaluator.configSchema) ?? rootSchema;
   }
   if (!rootSchema) return { schema: null, rootSchema: null };
 
   let cursor = normalizeSchema(rootSchema, rootSchema);
-  for (const segment of path) {
+
+  for (let index = 0; index < path.length; index += 1) {
+    const segment = path[index];
     if (cursor === null) break;
+
+    if (context.mode === 'control' && isEvaluatorConfigSegment(path, index)) {
+      const configRoot = asSchema(activeEvaluator?.configSchema ?? null);
+      if (configRoot) {
+        rootSchema = configRoot;
+        cursor = normalizeSchema(rootSchema, rootSchema);
+        continue;
+      }
+    }
+
     if (typeof segment === 'number') {
       const normalized = normalizeSchema(cursor, rootSchema);
       cursor = normalizeSchema(normalized?.items, rootSchema);

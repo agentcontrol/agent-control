@@ -85,6 +85,14 @@ const DENSITY_THEME = EditorView.theme({
   },
 });
 
+/** Default @codemirror/autocomplete uses maxHeight ~10em; long lists clip the last items. */
+const AUTOCOMPLETE_LIST_THEME = EditorView.theme({
+  '.cm-tooltip.cm-tooltip-autocomplete > ul': {
+    maxHeight: 'min(24em, 55vh)',
+    scrollbarGutter: 'stable',
+  },
+});
+
 type CodeMirrorComponentType = typeof import('@uiw/react-codemirror').default;
 
 export type JsonEditorCodeMirrorProps = {
@@ -328,6 +336,7 @@ export function JsonEditorCodeMirror({
         : []),
       DENSITY_THEME,
       ...domainExtensions,
+      AUTOCOMPLETE_LIST_THEME,
       EditorView.updateListener.of(handleAutoEdits),
       inlineServerValidationExtension,
     ],
