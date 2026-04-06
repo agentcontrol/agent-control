@@ -54,7 +54,7 @@ function getDefaultConfigForEvaluator(
 function buildJsonDraftControl(agentName: string) {
   return {
     id: 0,
-    name: `json-control-for-${sanitizeControlNamePart(agentName)}`,
+    name: 'new-json-control',
     control: {
       description: '',
       enabled: true,
@@ -144,7 +144,7 @@ export function AddNewControlModal({
 
   const draftControl = useMemo(() => {
     if (selectedEvaluator) {
-      const name = `${sanitizeControlNamePart(selectedEvaluator.name)}-control-for-${sanitizeControlNamePart(agentName)}`;
+      const name = `new-${sanitizeControlNamePart(selectedEvaluator.name)}-control`;
       return {
         id: 0,
         name,

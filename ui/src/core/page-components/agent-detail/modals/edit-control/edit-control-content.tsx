@@ -9,6 +9,7 @@ import {
   Stack,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
@@ -30,7 +31,10 @@ import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
-import { openActionConfirmModal } from '@/core/utils/modals';
+import {
+  openActionConfirmModal,
+  openDestructiveConfirmModal,
+} from '@/core/utils/modals';
 
 import { ApiErrorAlert } from './api-error-alert';
 import {
@@ -121,6 +125,7 @@ export const EditControlContent = ({
     useState<ProblemDetail | null>(null);
   const [definitionValidationStatus, setDefinitionValidationStatus] =
     useState<ValidationStatus>('idle');
+  const [isDirty, setIsDirty] = useState(false);
 
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
@@ -131,6 +136,7 @@ export const EditControlContent = ({
     ? addControlToAgent.isPending
     : updateControl.isPending || updateControlMetadata.isPending;
 
+  const formRef = useRef<HTMLFormElement>(null);
   const formInitializedForEvaluator = useRef<string>('');
   const { leafCondition, evaluatorId, evaluator, canEditLeafCondition } =
     useMemo(
@@ -354,6 +360,7 @@ export const EditControlContent = ({
     setDefinitionJsonText(value);
     setDefinitionJsonError(null);
     setDefinitionValidationError(null);
+    setIsDirty(true);
   }, []);
 
   const getJsonDefinition = useCallback((): ControlDefinition | null => {
@@ -464,6 +471,7 @@ export const EditControlContent = ({
     setDefinitionJsonError(null);
     setDefinitionValidationError(null);
     setDefinitionValidationStatus('idle');
+    setIsDirty(false);
   }, [control.control, initialEditorMode]);
 
   useEffect(() => {
@@ -737,6 +745,35 @@ export const EditControlContent = ({
     });
   };
 
+  // --- Cmd+S / Ctrl+S shortcut to trigger Save ---
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        formRef.current?.requestSubmit();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    if (!isCreating && (isDirty || definitionForm.isDirty())) {
+      openDestructiveConfirmModal({
+        title: 'Discard unsaved changes?',
+        children: (
+          <Text size="sm" c="dimmed">
+            You have unsaved changes. Are you sure you want to close?
+          </Text>
+        ),
+        confirmLabel: 'Discard',
+        onConfirm: onClose,
+      });
+      return;
+    }
+    onClose();
+  }, [isDirty, definitionForm, onClose]);
+
   const formComponent = evaluator?.FormComponent;
   const definitionStatusLabel = (() => {
     if (editorMode !== 'json') return null;
@@ -761,7 +798,7 @@ export const EditControlContent = ({
 
   return (
     <Box>
-      <form noValidate onSubmit={definitionForm.onSubmit(handleSubmit)}>
+      <form ref={formRef} noValidate onSubmit={definitionForm.onSubmit(handleSubmit)}>
         <Stack gap="md" mb="lg">
           <Group justify="space-between" align="flex-end" wrap="nowrap">
             <Box
@@ -784,16 +821,21 @@ export const EditControlContent = ({
                   {definitionStatusLabel}
                 </Text>
               ) : null}
-              <SegmentedControl
-                value={editorMode}
-                onChange={handleEditorModeChange}
-                disabled={isDefinitionJsonParseError}
-                data={[
-                  { value: 'form', label: 'Form' },
-                  { value: 'json', label: 'Full JSON' },
-                ]}
-                size="xs"
-              />
+              <Tooltip
+                label="Form: guided editing. Full JSON: direct control over the definition."
+                openDelay={600}
+              >
+                <SegmentedControl
+                  value={editorMode}
+                  onChange={handleEditorModeChange}
+                  disabled={isDefinitionJsonParseError}
+                  data={[
+                    { value: 'form', label: 'Form' },
+                    { value: 'json', label: 'Full JSON' },
+                  ]}
+                  size="xs"
+                />
+              </Tooltip>
             </Group>
           </Group>
 
@@ -881,7 +923,7 @@ export const EditControlContent = ({
         <Group justify="flex-end">
           <Button
             variant="outline"
-            onClick={onClose}
+            onClick={handleClose}
             type="button"
             data-testid="cancel-button"
           >
