@@ -144,7 +144,6 @@ export const EditControlContent = ({
     : updateControl.isPending || updateControlMetadata.isPending;
 
   const formRef = useRef<HTMLFormElement>(null);
-  const formSyncedRef = useRef(false);
   const formInitializedForEvaluator = useRef<string>('');
   const { leafCondition, evaluatorId, evaluator, canEditLeafCondition } =
     useMemo(
@@ -185,9 +184,6 @@ export const EditControlContent = ({
   );
 
   const definitionForm = useForm<ControlDefinitionFormValues>({
-    onValuesChange: () => {
-      if (formSyncedRef.current) setIsDirty(true);
-    },
     initialValues: {
       name: '',
       description: '',
@@ -483,7 +479,6 @@ export const EditControlContent = ({
     setDefinitionValidationError(null);
     setDefinitionValidationStatus('idle');
     setIsDirty(false);
-    formSyncedRef.current = false;
   }, [control.control, initialEditorMode]);
 
   useEffect(() => {
@@ -525,11 +520,6 @@ export const EditControlContent = ({
     };
     definitionForm.setValues(syncedValues);
     definitionForm.resetDirty(syncedValues);
-    // Delay enabling dirty tracking until after all initial effects
-    // (including the steering_context cleanup) have settled.
-    requestAnimationFrame(() => {
-      formSyncedRef.current = true;
-    });
 
     if (leafCondition && evaluator) {
       evaluatorForm.setValues(
@@ -833,6 +823,7 @@ export const EditControlContent = ({
       <form
         ref={formRef}
         noValidate
+        onChange={() => setIsDirty(true)}
         onSubmit={definitionForm.onSubmit(handleSubmit)}
       >
         <Stack gap="md" mb="lg">
