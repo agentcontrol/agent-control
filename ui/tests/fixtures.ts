@@ -929,114 +929,12 @@ export async function mockApiRoutesWithAuthRequired(page: Page) {
   await mockRoutes.stats(page);
 }
 
-export async function setJsonEditorValue(
-  page: Page,
-  testId: string,
-  value: string
-) {
-  const locator = page.getByTestId(testId);
-  await expect(locator).toBeVisible();
-  await page.waitForFunction((selector) => {
-    const element = document.querySelector(`[data-testid="${selector}"]`) as {
-      __setJsonEditorValue?: (nextValue: string) => void;
-    } | null;
-
-    return typeof element?.__setJsonEditorValue === 'function';
-  }, testId);
-
-  await locator.evaluate((element, nextValue) => {
-    const target = element as {
-      __setJsonEditorValue?: (value: string) => void;
-    };
-
-    if (!target.__setJsonEditorValue) {
-      throw new Error('JSON editor bridge not available');
-    }
-
-    target.__setJsonEditorValue(nextValue);
-  }, value);
-}
-
-export async function getJsonEditorSuggestions(
-  page: Page,
-  testId: string,
-  lineNumber: number,
-  column: number
-) {
-  const locator = page.getByTestId(testId);
-  await expect(locator).toBeVisible();
-  await page.waitForFunction((selector) => {
-    const element = document.querySelector(`[data-testid="${selector}"]`) as {
-      __isJsonEditorReady?: () => boolean;
-      __getJsonEditorSuggestions?: (
-        line: number,
-        column: number
-      ) => Array<{ label: string; detail?: string }>;
-    } | null;
-
-    return (
-      typeof element?.__getJsonEditorSuggestions === 'function' &&
-      element.__isJsonEditorReady?.() === true
-    );
-  }, testId);
-
-  return locator.evaluate(
-    (element, params) => {
-      const target = element as {
-        __getJsonEditorSuggestions?: (
-          line: number,
-          column: number
-        ) => Array<{ label: string; detail?: string }>;
-      };
-
-      if (!target.__getJsonEditorSuggestions) {
-        throw new Error('JSON editor suggestions bridge not available');
-      }
-
-      return target.__getJsonEditorSuggestions(
-        params.lineNumber,
-        params.column
-      );
-    },
-    { lineNumber, column }
-  );
-}
-
-export async function focusJsonEditorAt(
-  page: Page,
-  testId: string,
-  lineNumber: number,
-  column: number
-) {
-  const locator = page.getByTestId(testId);
-  await expect(locator).toBeVisible();
-  await page.waitForFunction((selector) => {
-    const element = document.querySelector(`[data-testid="${selector}"]`) as {
-      __isJsonEditorReady?: () => boolean;
-      __focusJsonEditorAt?: (line: number, column: number) => void;
-    } | null;
-
-    return (
-      typeof element?.__focusJsonEditorAt === 'function' &&
-      element.__isJsonEditorReady?.() === true
-    );
-  }, testId);
-
-  await locator.evaluate(
-    (element, params) => {
-      const target = element as {
-        __focusJsonEditorAt?: (line: number, column: number) => void;
-      };
-
-      if (!target.__focusJsonEditorAt) {
-        throw new Error('JSON editor focus bridge not available');
-      }
-
-      target.__focusJsonEditorAt(params.lineNumber, params.column);
-    },
-    { lineNumber, column }
-  );
-}
+export {
+  focusJsonEditorAt,
+  getJsonEditorSuggestions,
+  getJsonEditorValue,
+  setJsonEditorValue,
+} from './json-editor-bridge';
 
 /**
  * Extended test with mocked API

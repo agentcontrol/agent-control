@@ -100,7 +100,11 @@ def _serialize_control_definition(control_def: ControlDefinition) -> dict[str, o
 async def _validate_control_definition(
     control_def: ControlDefinition, db: AsyncSession
 ) -> None:
-    """Validate evaluator config for a control definition."""
+    """Validate evaluator config for definitions referencing known global evaluators.
+
+    Agent-scoped evaluators must exist on the referenced agent. Builtin and external
+    names that are not loaded in this process are accepted without config checks.
+    """
     available_evaluators = list_evaluators()
     agent_data_by_name: dict[str, AgentData] = {}
     for field_prefix, leaf in _iter_condition_leaves(control_def.condition):
@@ -212,25 +216,10 @@ async def _validate_control_definition(
 
         evaluator_cls = available_evaluators.get(parsed.name)
         if evaluator_cls is None:
-            available = list(available_evaluators.keys())
-            raise APIValidationError(
-                error_code=ErrorCode.EVALUATOR_NOT_FOUND,
-                detail=f"Evaluator '{parsed.name}' is not registered",
-                resource="Evaluator",
-                hint=(
-                    f"Check evaluator '{evaluator_ref}'. "
-                    f"Available evaluators: {available or 'none'}."
-                ),
-                errors=[
-                    ValidationErrorItem(
-                        resource="Control",
-                        field=f"{field_prefix}.evaluator.name",
-                        code="evaluator_not_found",
-                        message=f"Evaluator '{parsed.name}' not found",
-                        value=evaluator_ref,
-                    )
-                ],
-            )
+            # Global (builtin / external) evaluators may be absent from this runtime
+            # (optional packages, forward compatibility). Store the definition without
+            # config validation; evaluation will fail later if the evaluator is missing.
+            continue
 
         try:
             evaluator_cls.config_model(**evaluator_spec.config)

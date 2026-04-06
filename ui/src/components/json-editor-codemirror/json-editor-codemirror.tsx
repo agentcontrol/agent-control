@@ -1,4 +1,4 @@
-import { closeCompletion } from '@codemirror/autocomplete';
+import { closeCompletion, startCompletion } from '@codemirror/autocomplete';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { type Diagnostic, linter, lintGutter } from '@codemirror/lint';
 import { EditorSelection, type Extension } from '@codemirror/state';
@@ -49,9 +49,11 @@ import {
   computeAutoEdit,
   extractEvaluatorNames,
   fixJsonCommas,
+  getCodeMirrorCompletionItems,
   setInlineServerValidationErrorsEffect,
   tryFormat,
 } from './json-editor-codemirror-language';
+import type { JsonEditorCodeMirrorContext } from './language/types';
 
 type JsonEditorTestElement = HTMLDivElement & {
   __getJsonEditorValue?: () => string;
@@ -347,6 +349,81 @@ export function JsonEditorCodeMirror({
       inlineServerValidationExtension,
     ]
   );
+
+  const completionContext = useMemo<JsonEditorCodeMirrorContext>(
+    () => ({
+      mode: editorMode,
+      schema,
+      evaluators,
+      activeEvaluatorId,
+      steps,
+    }),
+    [activeEvaluatorId, editorMode, evaluators, schema, steps]
+  );
+
+  useEffect(() => {
+    const root = editorRootRef.current;
+    if (!root) return;
+
+    const lineColumnToPosition = (lineNumber: number, column: number): number => {
+      const view = editorViewRef.current;
+      if (!view) return 0;
+      const doc = view.state.doc;
+      const ln = Math.min(Math.max(lineNumber, 1), doc.lines);
+      const line = doc.line(ln);
+      const col = Math.max(1, column);
+      return Math.min(line.from + (col - 1), line.to);
+    };
+
+    root.__getJsonEditorValue = () =>
+      editorViewRef.current?.state.doc.toString() ?? '';
+    root.__getJsonEditorLanguageId = () => 'json';
+    root.__isJsonEditorReady = () =>
+      Boolean(CodeMirrorComponent && isReady && editorViewRef.current);
+    root.__focusJsonEditorAt = (lineNumber, column) => {
+      const view = editorViewRef.current;
+      if (!view) return;
+      const pos = lineColumnToPosition(lineNumber, column);
+      view.dispatch({
+        selection: EditorSelection.single(pos),
+        scrollIntoView: true,
+      });
+      view.focus();
+    };
+    root.__setJsonEditorValue = (nextValue) => {
+      const view = editorViewRef.current;
+      if (!view) return;
+      internalChangeRef.current = true;
+      const len = view.state.doc.length;
+      view.dispatch({
+        changes: { from: 0, to: len, insert: nextValue },
+      });
+      handleJsonChange(nextValue);
+      view.focus();
+    };
+    root.__triggerJsonEditorSuggest = () => {
+      const view = editorViewRef.current;
+      if (!view) return;
+      view.focus();
+      void startCompletion(view);
+    };
+    root.__getJsonEditorSuggestions = (lineNumber, column) => {
+      const view = editorViewRef.current;
+      if (!view) return [];
+      const pos = lineColumnToPosition(lineNumber, column);
+      const text = view.state.doc.toString();
+      return getCodeMirrorCompletionItems(text, pos, completionContext);
+    };
+    return () => {
+      delete root.__getJsonEditorValue;
+      delete root.__getJsonEditorLanguageId;
+      delete root.__isJsonEditorReady;
+      delete root.__focusJsonEditorAt;
+      delete root.__setJsonEditorValue;
+      delete root.__triggerJsonEditorSuggest;
+      delete root.__getJsonEditorSuggestions;
+    };
+  }, [CodeMirrorComponent, completionContext, handleJsonChange, isReady]);
 
   const [debouncedJsonText] = useDebouncedValue(
     jsonText,

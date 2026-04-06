@@ -323,7 +323,7 @@ def test_validation_nested_agent_scoped_evaluator_error_uses_bracketed_field_pat
 def test_validation_standalone_evaluator_error_uses_bracketed_field_path(
     client: TestClient,
 ):
-    """Standalone evaluator failures should identify the exact nested leaf path."""
+    """Nested standalone (global) evaluator config errors use bracketed leaf paths."""
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
     payload["condition"] = {
@@ -331,7 +331,7 @@ def test_validation_standalone_evaluator_error_uses_bracketed_field_path(
             {
                 "selector": {"path": "input"},
                 "evaluator": {
-                    "name": "missing-evaluator",
+                    "name": "regex",
                     "config": {},
                 },
             }
@@ -342,9 +342,8 @@ def test_validation_standalone_evaluator_error_uses_bracketed_field_path(
 
     assert resp.status_code == 422
     body = resp.json()
-    assert body["error_code"] == "EVALUATOR_NOT_FOUND"
+    assert body["error_code"] == "VALIDATION_ERROR"
     assert any(
-        err.get("field") == "data.condition.or[0].evaluator.name"
-        and err.get("code") == "evaluator_not_found"
+        err.get("field", "").startswith("data.condition.or[0].evaluator")
         for err in body.get("errors", [])
     )
