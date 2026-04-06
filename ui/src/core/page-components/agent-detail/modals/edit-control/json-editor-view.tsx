@@ -5,6 +5,7 @@ import {
   IconClipboardCopy,
   IconCode,
 } from '@tabler/icons-react';
+import { findNodeAtLocation, parseTree } from 'jsonc-parser';
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -59,6 +60,18 @@ const HINT_DEBOUNCE_MS = 300;
 const COMMA_FIX_DEBOUNCE_MS = 800;
 const CURSOR_TRIGGER_DEBOUNCE_MS = 50;
 const HINT_CSS_CLASS = 'json-editor-value-hint';
+const VALIDATION_ERROR_CSS_CLASS = 'json-editor-validation-error';
+
+// Inject validation error highlighting styles once.
+if (typeof document !== 'undefined') {
+  const id = 'json-editor-validation-error-styles';
+  if (!document.getElementById(id)) {
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `.${VALIDATION_ERROR_CSS_CLASS} { background-color: rgba(255, 0, 0, 0.15); border-bottom: 2px wavy rgba(255, 0, 0, 0.6); }`;
+    document.head.appendChild(style);
+  }
+}
 
 // Dynamic hint styles — each unique hint text gets a CSS class with ::after content.
 // Monaco 0.55 doesn't support `after.content` in decorations, so we use
@@ -609,6 +622,80 @@ export const JsonEditorView = ({
     setValidationError,
   ]);
 
+  // --- Inline validation error decorations ---
+  const validationDecorationIds = useRef<string[]>([]);
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+
+    if (!validationError?.errors?.length) {
+      validationDecorationIds.current = editor.deltaDecorations(
+        validationDecorationIds.current,
+        []
+      );
+      return;
+    }
+
+    const text = editor.getValue();
+    const tree = parseTree(text);
+    if (!tree) return;
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    const decorations: import('monaco-editor').editor.IModelDeltaDecoration[] =
+      [];
+    for (const err of validationError.errors) {
+      if (!err.field) continue;
+      // Convert API field path (e.g. "data.action.decision") to JSON path
+      let field = err.field.trim();
+      if (field.startsWith('data.')) field = field.slice(5);
+      const segments: Array<string | number> = [];
+      for (const seg of field.split('.')) {
+        if (!seg) continue;
+        const m = seg.match(/^([^[]+)\[(\d+)]$/);
+        if (m) {
+          segments.push(m[1]);
+          segments.push(Number(m[2]));
+        } else {
+          segments.push(seg);
+        }
+      }
+      if (segments.length === 0) continue;
+
+      // Find the value node at this path
+      const valueNode = findNodeAtLocation(tree, segments);
+      if (!valueNode) continue;
+
+      const startPos = model.getPositionAt(valueNode.offset);
+      const endPos = model.getPositionAt(
+        valueNode.offset + valueNode.length
+      );
+      decorations.push({
+        range: new monaco.Range(
+          startPos.lineNumber,
+          startPos.column,
+          endPos.lineNumber,
+          endPos.column
+        ),
+        options: {
+          inlineClassName: 'json-editor-validation-error',
+          hoverMessage: { value: err.message },
+          overviewRuler: {
+            color: 'rgba(255, 0, 0, 0.7)',
+            position: monaco.editor.OverviewRulerLane.Right,
+          },
+        },
+      });
+    }
+
+    validationDecorationIds.current = editor.deltaDecorations(
+      validationDecorationIds.current,
+      decorations
+    );
+  }, [validationError]);
+
   // --- Render ---
   return (
     <Box>
@@ -646,6 +733,11 @@ export const JsonEditorView = ({
           </Tooltip>
         </Group>
       </Group>
+      {validationError ? (
+        <Box mt="xs" mb="xs">
+          <ApiErrorAlert error={validationError} unmappedErrors={[]} />
+        </Box>
+      ) : null}
       <Box
         ref={editorRootRef}
         mt={4}
@@ -682,11 +774,6 @@ export const JsonEditorView = ({
         <Text size="xs" c="dimmed" mt="xs">
           {helperText}
         </Text>
-      ) : null}
-      {validationError ? (
-        <Box mt="sm">
-          <ApiErrorAlert error={validationError} unmappedErrors={[]} />
-        </Box>
       ) : null}
     </Box>
   );

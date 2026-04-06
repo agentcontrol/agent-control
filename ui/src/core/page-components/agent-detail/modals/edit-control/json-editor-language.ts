@@ -1009,7 +1009,8 @@ function buildSchemaValueSuggestions(
   monaco: MonacoModule,
   range: import('monaco-editor').IRange,
   schemaCursor: SchemaCursor,
-  isStringValueContext: boolean
+  isStringValueContext: boolean,
+  currentValue?: string
 ) {
   const schema = schemaCursor.schema;
   if (!schema) {
@@ -1026,6 +1027,10 @@ function buildSchemaValueSuggestions(
         kind: monaco.languages.CompletionItemKind.Value,
         detail: getSchemaTitle(schema) ?? getSchemaDescription(schema),
         insertText: buildValueInsertText(value, isStringValueContext),
+        // Show all enum options regardless of the current value. Monaco
+        // fuzzy-matches text between range start and cursor, so setting
+        // filterText to the current string value makes every item pass.
+        filterText: currentValue ?? undefined,
         range,
         sortText: `!2${index.toString().padStart(3, '0')}`,
       }))
@@ -1213,7 +1218,8 @@ function buildCompletionSuggestions(
         monaco,
         valueRange,
         valueSchemaCursor,
-        isStringValueContext
+        isStringValueContext,
+        typeof node?.value === 'string' ? node.value : undefined
       )
     );
   }

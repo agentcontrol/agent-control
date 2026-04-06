@@ -1009,7 +1009,8 @@ function buildSchemaValueSuggestions(
   monaco: MonacoModule,
   range: import('monaco-editor').IRange,
   schemaCursor: SchemaCursor,
-  isStringValueContext: boolean
+  isStringValueContext: boolean,
+  currentValue?: string
 ) {
   const schema = schemaCursor.schema;
   if (!schema) {
@@ -1026,6 +1027,7 @@ function buildSchemaValueSuggestions(
         kind: monaco.languages.CompletionItemKind.Value,
         detail: getSchemaTitle(schema) ?? getSchemaDescription(schema),
         insertText: buildValueInsertText(value, isStringValueContext),
+        filterText: currentValue ?? undefined,
         range,
         sortText: `!2${index.toString().padStart(3, '0')}`,
       }))
@@ -1213,7 +1215,8 @@ function buildCompletionSuggestions(
         monaco,
         valueRange,
         valueSchemaCursor,
-        isStringValueContext
+        isStringValueContext,
+        typeof node?.value === 'string' ? node.value : undefined
       )
     );
   }
