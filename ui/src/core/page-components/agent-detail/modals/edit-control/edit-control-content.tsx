@@ -144,6 +144,7 @@ export const EditControlContent = ({
     : updateControl.isPending || updateControlMetadata.isPending;
 
   const formRef = useRef<HTMLFormElement>(null);
+  const formSyncedRef = useRef(false);
   const formInitializedForEvaluator = useRef<string>('');
   const { leafCondition, evaluatorId, evaluator, canEditLeafCondition } =
     useMemo(
@@ -184,6 +185,9 @@ export const EditControlContent = ({
   );
 
   const definitionForm = useForm<ControlDefinitionFormValues>({
+    onValuesChange: () => {
+      if (formSyncedRef.current) setIsDirty(true);
+    },
     initialValues: {
       name: '',
       description: '',
@@ -479,6 +483,7 @@ export const EditControlContent = ({
     setDefinitionValidationError(null);
     setDefinitionValidationStatus('idle');
     setIsDirty(false);
+    formSyncedRef.current = false;
   }, [control.control, initialEditorMode]);
 
   useEffect(() => {
@@ -519,9 +524,9 @@ export const EditControlContent = ({
       execution: workingDefinition.execution ?? 'server',
     };
     definitionForm.setValues(syncedValues);
-    // Mark synced values as the clean baseline so isDirty() returns false
-    // until the user actually edits something.
     definitionForm.resetDirty(syncedValues);
+    // Allow the sync to settle before tracking user edits as dirty.
+    formSyncedRef.current = true;
 
     if (leafCondition && evaluator) {
       evaluatorForm.setValues(
@@ -770,7 +775,7 @@ export const EditControlContent = ({
   }, []);
 
   const handleClose = useCallback(() => {
-    if (!isCreating && (isDirty || definitionForm.isDirty())) {
+    if (!isCreating && isDirty) {
       openDestructiveConfirmModal({
         title: 'Discard unsaved changes?',
         children: (
@@ -788,7 +793,7 @@ export const EditControlContent = ({
       return;
     }
     onClose();
-  }, [isDirty, definitionForm, onClose, isCreating, onCloseRef]);
+  }, [isDirty, onClose, isCreating, onCloseRef]);
 
   // Expose handleClose to the parent so the Modal X button also checks dirty state.
   useEffect(() => {
