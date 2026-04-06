@@ -171,6 +171,12 @@ function shouldAutoTriggerSuggest(
   // Blank / comma-only line — always trigger (even after Enter)
   if (/^\s*,?\s*$/.test(line)) return true;
 
+  // Typing `"` at a property-key position (whitespace + optional comma + `"`)
+  // should trigger property name suggestions immediately.
+  if (/^\s*,?\s*"$/.test(beforeCursor) && !afterCursor.includes(':')) {
+    return true;
+  }
+
   // Don't trigger string suggestions after typing
   if (skipStringTrigger) return false;
 

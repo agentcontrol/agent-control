@@ -1564,15 +1564,32 @@ export function setupJsonEditorLanguageSupport(
     }
   ).jsonDefaults;
 
-  // Validate JSON syntax only — don't pass schema to avoid Monaco's built-in
-  // completions duplicating our custom suggestions. Monaco 0.55's
-  // setModeConfiguration({ completionItems: false }) doesn't reliably disable
-  // the built-in provider. Server-side validation handles schema errors.
+  // Validate JSON syntax only and suppress Monaco's built-in completions.
+  // Passing a restrictive schema (type:object + additionalProperties:true)
+  // prevents the worker-based provider from suggesting "$schema" and other
+  // JSON meta-keywords. Our custom provider handles all domain completions.
   jsonDefaults?.setDiagnosticsOptions({
     validate: true,
     allowComments: false,
-    schemas: [],
+    schemas: [
+      {
+        uri: 'internal://control-definition/schema.json',
+        fileMatch: ['*'],
+        schema: { type: 'object', additionalProperties: true },
+      },
+    ],
   });
+
+  const jsonMode = (
+    monaco.languages.json as unknown as {
+      jsonDefaults?: {
+        setModeConfiguration?: (config: {
+          completionItems?: { enable?: boolean };
+        }) => void;
+      };
+    }
+  ).jsonDefaults;
+  jsonMode?.setModeConfiguration?.({ completionItems: { enable: false } });
 
   const hoverDisposable = monaco.languages.registerHoverProvider('json', {
     provideHover(model, position) {
