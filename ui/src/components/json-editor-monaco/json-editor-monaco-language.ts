@@ -8,6 +8,7 @@ import {
 } from 'jsonc-parser';
 
 import type { StepSchema } from '@/core/api/types';
+import { removeTrailingCommasOutsideStrings } from '@/components/json-editor-shared/fix-json-commas';
 import type {
   JsonEditorEvaluatorOption,
   JsonEditorMode,
@@ -1221,8 +1222,8 @@ function buildCompletionSuggestions(
 }
 
 export function fixJsonCommas(text: string): string {
-  // 1. Remove trailing commas before } or ]
-  let fixed = text.replace(/,(\s*[}\]])/g, '$1');
+  // 1. Remove trailing commas before } or ] without touching string literals.
+  let fixed = removeTrailingCommasOutsideStrings(text);
 
   // 2. Insert missing commas (detected by jsonc-parser)
   const errors: ParseError[] = [];

@@ -5,6 +5,8 @@ import {
   parseTree,
 } from 'jsonc-parser';
 
+import { removeTrailingCommasOutsideStrings } from '@/components/json-editor-shared/fix-json-commas';
+
 /**
  * Map a caret offset from JSON before a full-doc pretty-print to the matching
  * offset after, using the JSON value at `getLocation(textBefore, caretBefore).path`.
@@ -65,7 +67,7 @@ export function tryFormat(text: string): string | null {
 }
 
 export function fixJsonCommas(text: string): string {
-  let fixed = text.replace(/,(\s*[}\]])/g, '$1');
+  let fixed = removeTrailingCommasOutsideStrings(text);
   const errors: ParseError[] = [];
   parseTree(fixed, errors);
   const commaErrors = errors

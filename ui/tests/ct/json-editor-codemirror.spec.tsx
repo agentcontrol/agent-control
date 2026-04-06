@@ -102,6 +102,36 @@ test.describe('JsonEditorCodeMirror (component)', () => {
     expect(JSON.parse(after)).toEqual(JSON.parse(before));
   });
 
+  test('format preserves commas that are part of string values', async ({
+    mount,
+    page,
+  }) => {
+    await mount(<JsonEditorCodeMirrorCtHost mode="control" />);
+    const before = JSON.stringify(
+      {
+        execution: 'server',
+        condition: {
+          selector: { path: 'output' },
+          evaluator: {
+            name: 'regex',
+            config: { pattern: 'a,}' },
+          },
+        },
+        action: { decision: 'deny' },
+      },
+      null,
+      2
+    );
+
+    await setJsonEditorValue(page, EDITOR, before);
+    await page.getByRole('button', { name: 'Format document' }).click();
+
+    const after = JSON.parse(await getJsonEditorValue(page, EDITOR)) as {
+      condition: { evaluator: { config: { pattern: string } } };
+    };
+    expect(after.condition.evaluator.config.pattern).toBe('a,}');
+  });
+
   test('toggle jsonError shows parent message', async ({ mount, page }) => {
     await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
     await page.getByTestId('ct-toggle-json-error').click();

@@ -163,6 +163,47 @@ def test_validation_empty_string_path_rejected(client: TestClient):
     assert any("empty string" in e.get("message", "") for e in errors)
 
 
+def test_validation_empty_evaluator_name_rejected(client: TestClient):
+    """Test that empty evaluator names are rejected at the request boundary."""
+    control_id = create_control(client)
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["evaluator"] = {"name": "", "config": {"pattern": "x"}}
+
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "VALIDATION_ERROR"
+    assert any(
+        "evaluator.name" in str(err.get("field", ""))
+        for err in body.get("errors", [])
+    )
+    assert any(
+        "empty or whitespace-only" in err.get("message", "").lower()
+        for err in body.get("errors", [])
+    )
+
+
+def test_validate_endpoint_whitespace_evaluator_name_rejected(client: TestClient):
+    """Whitespace-only evaluator names are rejected during validate-without-save too."""
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["evaluator"] = {"name": "   ", "config": {"pattern": "x"}}
+
+    resp = client.post("/api/v1/controls/validate", json={"data": payload})
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "VALIDATION_ERROR"
+    assert any(
+        "evaluator.name" in str(err.get("field", ""))
+        for err in body.get("errors", [])
+    )
+    assert any(
+        "empty or whitespace-only" in err.get("message", "").lower()
+        for err in body.get("errors", [])
+    )
+
+
 def test_validation_none_path_defaults_to_star(client: TestClient):
     """Test that None/missing path defaults to '*'."""
     # Given: a control and payload without path in selector (None)

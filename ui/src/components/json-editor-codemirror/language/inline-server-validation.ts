@@ -182,6 +182,26 @@ function computeInlineValidationDecorations(
   return Decoration.set(ranges, true);
 }
 
+export function canRenderInlineServerValidationError(
+  text: string,
+  error: Pick<ValidationErrorItem, 'field'>
+): boolean {
+  if (!error.field) return false;
+
+  const tree = parseTree(text);
+  if (!tree) return false;
+
+  const jsonPath = apiFieldToJsonPath(error.field);
+  if (!jsonPath) return false;
+
+  const { keyRange, valueRange } = findKeyAndValueRangesForJsonPath(
+    tree,
+    jsonPath
+  );
+
+  return Boolean(keyRange || valueRange);
+}
+
 export function buildCodeMirrorInlineServerValidationErrorsExtension(): Extension {
   return [
     INLINE_VALIDATION_ERROR_THEME,

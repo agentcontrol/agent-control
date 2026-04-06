@@ -45,6 +45,7 @@ import {
   buildCodeMirrorInlineServerValidationErrorsExtension,
   buildCodeMirrorJsonExtensions,
   buildCodeMirrorStandaloneDebugExtensions,
+  canRenderInlineServerValidationError,
   caretAfterPrettyJsonReplace,
   computeAutoEdit,
   extractEvaluatorNames,
@@ -554,9 +555,9 @@ export function JsonEditorCodeMirror({
   const unmappedValidationErrors = useMemo(() => {
     const errors = validationError?.errors ?? [];
     return errors
-      .filter((e) => e.field == null)
+      .filter((error) => !canRenderInlineServerValidationError(jsonText, error))
       .map((e) => ({ field: e.field, message: e.message }));
-  }, [validationError]);
+  }, [jsonText, validationError]);
 
   const codeMirrorTheme = useMemo(() => {
     const selectedId = isDarkMode ? cmThemePrefs.dark : cmThemePrefs.light;

@@ -8,6 +8,7 @@ export {
   buildCodeMirrorJsonExtensions,
   buildCodeMirrorRefactorLightbulbExtension,
   buildCodeMirrorStandaloneDebugExtensions,
+  canRenderInlineServerValidationError,
   getCodeMirrorCompletionItems,
   setInlineServerValidationErrorsEffect,
   shouldTriggerEvaluatorNameCompletion,

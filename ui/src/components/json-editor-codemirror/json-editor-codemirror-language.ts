@@ -1,6 +1,7 @@
 export {
   applyTextEdit,
   buildCodeMirrorInlineServerValidationErrorsExtension,
+  canRenderInlineServerValidationError,
   buildCodeMirrorJsonExtensions,
   buildCodeMirrorRefactorLightbulbExtension,
   buildCodeMirrorStandaloneDebugExtensions,

@@ -37,6 +37,7 @@ import {
 
 export {
   buildCodeMirrorInlineServerValidationErrorsExtension,
+  canRenderInlineServerValidationError,
   setInlineServerValidationErrorsEffect,
 } from './inline-server-validation';
 
