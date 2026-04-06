@@ -7,8 +7,8 @@ import {
   parseTree,
 } from 'jsonc-parser';
 
-import type { StepSchema } from '@/core/api/types';
 import { removeTrailingCommasOutsideStrings } from '@/components/json-editor-shared/fix-json-commas';
+import type { StepSchema } from '@/core/api/types';
 import type {
   JsonEditorEvaluatorOption,
   JsonEditorMode,
