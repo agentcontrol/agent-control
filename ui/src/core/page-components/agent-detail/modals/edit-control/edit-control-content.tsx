@@ -15,6 +15,8 @@ import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { JsonEditorCodeMirror } from '@/components/json-editor-codemirror';
+import { JsonEditorMonaco } from '@/components/json-editor-monaco';
 import { isApiError } from '@/core/api/errors';
 import type {
   Control,
@@ -37,7 +39,6 @@ import {
 } from './control-condition';
 import { ControlDefinitionForm } from './control-definition-form';
 import { EvaluatorConfigSection } from './evaluator-config-section';
-import { JsonEditorView } from './json-editor-view';
 import type {
   ControlDefinitionFormValues,
   ControlEditorMode,
@@ -50,6 +51,8 @@ import { applyApiErrorsToForms } from './utils';
 const EVALUATOR_CONFIG_HEIGHT = 450;
 const JSON_EDITOR_HEIGHT = 520;
 type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
+type JsonEditorEngine = 'monaco' | 'codemirror';
+const JSON_EDITOR_ENGINE_STORAGE_KEY = 'editControl.jsonEditorEngine';
 
 const DEFAULT_CONTROL_TEMPLATE = JSON.stringify(
   {
@@ -120,6 +123,8 @@ export const EditControlContent = ({
     useState<ProblemDetail | null>(null);
   const [definitionValidationStatus, setDefinitionValidationStatus] =
     useState<ValidationStatus>('idle');
+  const [jsonEditorEngine, setJsonEditorEngine] =
+    useState<JsonEditorEngine>('monaco');
 
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
@@ -466,6 +471,22 @@ export const EditControlContent = ({
   }, [control.control, initialEditorMode]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(JSON_EDITOR_ENGINE_STORAGE_KEY);
+    if (stored === 'monaco' || stored === 'codemirror') {
+      setJsonEditorEngine(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      JSON_EDITOR_ENGINE_STORAGE_KEY,
+      jsonEditorEngine
+    );
+  }, [jsonEditorEngine]);
+
+  useEffect(() => {
     reset();
     setApiError(null);
     setUnmappedErrors([]);
@@ -770,6 +791,19 @@ export const EditControlContent = ({
                 ]}
                 size="xs"
               />
+              {editorMode === 'json' ? (
+                <SegmentedControl
+                  value={jsonEditorEngine}
+                  onChange={(value) =>
+                    setJsonEditorEngine(value as JsonEditorEngine)
+                  }
+                  data={[
+                    { value: 'monaco', label: 'Monaco' },
+                    { value: 'codemirror', label: 'CodeMirror' },
+                  ]}
+                  size="xs"
+                />
+              ) : null}
             </Group>
           </Group>
 
@@ -790,25 +824,47 @@ export const EditControlContent = ({
 
         {editorMode === 'json' ? (
           <Paper withBorder radius="sm" p={16}>
-            <JsonEditorView
-              jsonText={definitionJsonText}
-              handleJsonChange={handleDefinitionJsonChange}
-              jsonError={definitionJsonError}
-              setJsonError={setDefinitionJsonError}
-              validationError={definitionValidationError}
-              setValidationError={setDefinitionValidationError}
-              onValidateConfig={validateDefinitionJson}
-              onValidationStatusChange={setDefinitionValidationStatus}
-              height={JSON_EDITOR_HEIGHT}
-              label="Control definition (JSON)"
-              tooltip="Edit the raw control definition as JSON. Control name remains outside this editor."
-              helperText="Enter the raw control definition only. Do not wrap it in data, name, id, or control objects."
-              testId="control-json-textarea"
-              editorMode="control"
-              schema={controlSchemaResponse?.schema ?? null}
-              evaluators={availableEvaluators}
-              steps={steps}
-            />
+            {jsonEditorEngine === 'monaco' ? (
+              <JsonEditorMonaco
+                jsonText={definitionJsonText}
+                handleJsonChange={handleDefinitionJsonChange}
+                jsonError={definitionJsonError}
+                setJsonError={setDefinitionJsonError}
+                validationError={definitionValidationError}
+                setValidationError={setDefinitionValidationError}
+                onValidateConfig={validateDefinitionJson}
+                onValidationStatusChange={setDefinitionValidationStatus}
+                height={JSON_EDITOR_HEIGHT}
+                label="Control definition (JSON)"
+                tooltip="Edit the raw control definition as JSON. Control name remains outside this editor."
+                helperText="Enter the raw control definition only. Do not wrap it in data, name, id, or control objects."
+                testId="control-json-textarea"
+                editorMode="control"
+                schema={controlSchemaResponse?.schema ?? null}
+                evaluators={availableEvaluators}
+                steps={steps}
+              />
+            ) : (
+              <JsonEditorCodeMirror
+                jsonText={definitionJsonText}
+                handleJsonChange={handleDefinitionJsonChange}
+                jsonError={definitionJsonError}
+                setJsonError={setDefinitionJsonError}
+                validationError={definitionValidationError}
+                setValidationError={setDefinitionValidationError}
+                onValidateConfig={validateDefinitionJson}
+                onValidationStatusChange={setDefinitionValidationStatus}
+                height={JSON_EDITOR_HEIGHT}
+                label="Control definition (JSON)"
+                tooltip="Edit the raw control definition as JSON. Control name remains outside this editor."
+                helperText="Enter the raw control definition only. Do not wrap it in data, name, id, or control objects."
+                testId="control-json-textarea"
+                editorMode="control"
+                schema={controlSchemaResponse?.schema ?? null}
+                evaluators={availableEvaluators}
+                steps={steps}
+              />
+            )}
           </Paper>
         ) : (
           <Grid gutter="xl">

@@ -143,6 +143,10 @@ jobs:
           # Use production build for faster startup
           NODE_ENV: production
 
+      - name: Run component tests
+        working-directory: ./ui
+        run: pnpm run test:ct
+
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: failure()
