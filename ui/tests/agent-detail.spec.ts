@@ -820,10 +820,7 @@ test.describe('Agent Detail Page', () => {
     const control = mockData.controls.controls[0]!;
 
     await mockedPage.addInitScript(() => {
-      window.localStorage.setItem(
-        'editControl.jsonEditorEngine',
-        'codemirror'
-      );
+      window.localStorage.setItem('editControl.jsonEditorEngine', 'codemirror');
     });
 
     await mockedPage.goto(
@@ -834,9 +831,7 @@ test.describe('Agent Detail Page', () => {
     await expect(modal).toBeVisible();
     await modal.getByText('Full JSON', { exact: true }).click();
 
-    await expect(
-      modal.getByText('CodeMirror', { exact: true })
-    ).toHaveCount(0);
+    await expect(modal.getByText('CodeMirror', { exact: true })).toHaveCount(0);
 
     const editor = modal.getByTestId('control-json-textarea');
     await expect(editor).toBeVisible();

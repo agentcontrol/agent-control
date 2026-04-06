@@ -798,7 +798,11 @@ export const EditControlContent = ({
 
   return (
     <Box>
-      <form ref={formRef} noValidate onSubmit={definitionForm.onSubmit(handleSubmit)}>
+      <form
+        ref={formRef}
+        noValidate
+        onSubmit={definitionForm.onSubmit(handleSubmit)}
+      >
         <Stack gap="md" mb="lg">
           <Group justify="space-between" align="flex-end" wrap="nowrap">
             <Box

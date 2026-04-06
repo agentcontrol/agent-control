@@ -669,9 +669,7 @@ export const JsonEditorView = ({
       if (!valueNode) continue;
 
       const startPos = model.getPositionAt(valueNode.offset);
-      const endPos = model.getPositionAt(
-        valueNode.offset + valueNode.length
-      );
+      const endPos = model.getPositionAt(valueNode.offset + valueNode.length);
       decorations.push({
         range: new monaco.Range(
           startPos.lineNumber,
