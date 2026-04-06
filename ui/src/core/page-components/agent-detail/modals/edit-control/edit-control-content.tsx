@@ -492,7 +492,8 @@ export const EditControlContent = ({
     const scope = workingDefinition.scope ?? {};
     const stepNamesValue = (scope.step_names ?? []).join(', ');
     const stepRegexValue = scope.step_name_regex ?? '';
-    const stepNameMode = stepRegexValue && !stepNamesValue ? 'regex' : 'names';
+    const stepNameMode: 'regex' | 'names' =
+      stepRegexValue && !stepNamesValue ? 'regex' : 'names';
 
     // Preserve the user-edited control name. The name lives outside the JSON
     // definition, so syncing workingDefinition→form should not overwrite it.
@@ -500,7 +501,7 @@ export const EditControlContent = ({
     // control.control reset effect).
     const currentName = definitionForm.values.name;
 
-    definitionForm.setValues({
+    const syncedValues = {
       name: currentName || control.name,
       description: workingDefinition.description ?? '',
       enabled: workingDefinition.enabled,
@@ -516,7 +517,11 @@ export const EditControlContent = ({
           ? (workingDefinition.action.steering_context?.message ?? '')
           : '',
       execution: workingDefinition.execution ?? 'server',
-    });
+    };
+    definitionForm.setValues(syncedValues);
+    // Mark synced values as the clean baseline so isDirty() returns false
+    // until the user actually edits something.
+    definitionForm.resetDirty(syncedValues);
 
     if (leafCondition && evaluator) {
       evaluatorForm.setValues(
