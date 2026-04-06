@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from pydantic import Field, field_validator
 
+from .actions import ActionDecision, normalize_action, normalize_action_list
 from .agent import AGENT_NAME_MIN_LENGTH, AGENT_NAME_PATTERN, normalize_agent_name
 from .base import BaseModel
 
@@ -42,7 +43,7 @@ class ControlExecutionEvent(BaseModel):
         control_name: Name of the control (denormalized for queries)
         check_stage: "pre" (before execution) or "post" (after execution)
         applies_to: "llm_call" or "tool_call"
-        action: The action taken (allow, deny, warn, log)
+        action: The action taken (deny, steer, observe)
         matched: Whether the control evaluator matched
         confidence: Confidence score from the evaluator (0.0-1.0)
         timestamp: When the control was executed (UTC)
@@ -90,7 +91,7 @@ class ControlExecutionEvent(BaseModel):
     )
 
     # Result
-    action: Literal["allow", "deny", "steer", "warn", "log"] = Field(
+    action: ActionDecision = Field(
         ..., description="Action taken by the control"
     )
     matched: bool = Field(
@@ -159,6 +160,11 @@ class ControlExecutionEvent(BaseModel):
     @classmethod
     def validate_and_normalize_agent_name(cls, value: str) -> str:
         return normalize_agent_name(str(value))
+
+    @field_validator("action", mode="before")
+    @classmethod
+    def normalize_event_action(cls, value: str) -> ActionDecision:
+        return normalize_action(value)
 
     model_config = {
         "json_schema_extra": {
@@ -265,7 +271,7 @@ class EventQueryRequest(BaseModel):
         control_execution_id: Filter by specific event ID
         agent_name: Filter by agent identifier
         control_ids: Filter by control IDs
-        actions: Filter by actions (allow, deny, steer, warn, log)
+        actions: Filter by actions (deny, steer, observe)
         matched: Filter by matched status
         check_stages: Filter by check stages (pre, post)
         applies_to: Filter by call type (llm_call, tool_call)
@@ -293,7 +299,7 @@ class EventQueryRequest(BaseModel):
     control_ids: list[int] | None = Field(
         default=None, description="Filter by control IDs"
     )
-    actions: list[Literal["allow", "deny", "steer", "warn", "log"]] | None = Field(
+    actions: list[ActionDecision] | None = Field(
         default=None, description="Filter by actions"
     )
     matched: bool | None = Field(default=None, description="Filter by matched status")
@@ -318,7 +324,7 @@ class EventQueryRequest(BaseModel):
                 {"trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"},
                 {
                     "agent_name": "my-agent",
-                    "actions": ["deny", "warn"],
+                    "actions": ["deny", "observe"],
                     "start_time": "2025-01-09T00:00:00Z",
                     "limit": 50,
                 },
@@ -334,6 +340,15 @@ class EventQueryRequest(BaseModel):
         if value is None:
             return None
         return normalize_agent_name(str(value))
+
+    @field_validator("actions", mode="before")
+    @classmethod
+    def normalize_actions_filter(
+        cls, value: list[str] | None
+    ) -> list[ActionDecision] | None:
+        if value is None:
+            return None
+        return normalize_action_list(value)
 
 
 class EventQueryResponse(BaseModel):
@@ -368,14 +383,15 @@ class ControlStats(BaseModel):
         execution_count: Total number of executions
         match_count: Number of times the control matched
         non_match_count: Number of times the control did not match
-        allow_count: Number of allow actions
         deny_count: Number of deny actions
         steer_count: Number of steer actions
-        warn_count: Number of warn actions
-        log_count: Number of log actions
+        observe_count: Number of observe actions
         error_count: Number of errors during evaluation
         avg_confidence: Average confidence score
         avg_duration_ms: Average execution duration in milliseconds
+
+    Invariant:
+        deny_count + steer_count + observe_count == match_count
     """
 
     control_id: int = Field(..., description="Control ID")
@@ -383,11 +399,9 @@ class ControlStats(BaseModel):
     execution_count: int = Field(..., ge=0, description="Total executions")
     match_count: int = Field(..., ge=0, description="Total matches")
     non_match_count: int = Field(..., ge=0, description="Total non-matches")
-    allow_count: int = Field(..., ge=0, description="Allow actions")
     deny_count: int = Field(..., ge=0, description="Deny actions")
     steer_count: int = Field(..., ge=0, description="Steer actions")
-    warn_count: int = Field(..., ge=0, description="Warn actions")
-    log_count: int = Field(..., ge=0, description="Log actions")
+    observe_count: int = Field(..., ge=0, description="Observe actions")
     error_count: int = Field(..., ge=0, description="Evaluation errors")
     avg_confidence: float = Field(..., ge=0.0, le=1.0, description="Average confidence")
     avg_duration_ms: float | None = Field(
@@ -460,7 +474,7 @@ class TimeseriesBucket(BaseModel):
     error_count: int = Field(..., ge=0, description="Errors in bucket")
     action_counts: dict[str, int] = Field(
         default_factory=dict,
-        description="Action breakdown: {allow, deny, steer, warn, log}",
+        description="Action breakdown: {deny, steer, observe}",
     )
     avg_confidence: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Average confidence score"
@@ -476,7 +490,7 @@ class StatsTotals(BaseModel):
 
     Invariant: execution_count = match_count + non_match_count + error_count
 
-    Matches have actions (allow, deny, steer, warn, log) tracked in action_counts.
+    Matches have actions (deny, steer, observe) tracked in action_counts.
     sum(action_counts.values()) == match_count
 
     Attributes:
@@ -494,7 +508,7 @@ class StatsTotals(BaseModel):
     error_count: int = Field(default=0, ge=0, description="Total errors")
     action_counts: dict[str, int] = Field(
         default_factory=dict,
-        description="Action breakdown for matches: {allow, deny, steer, warn, log}",
+        description="Action breakdown for matches: {deny, steer, observe}",
     )
     timeseries: list[TimeseriesBucket] | None = Field(
         default=None,

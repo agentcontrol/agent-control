@@ -35,7 +35,7 @@ from sqlalchemy import delete, func, or_, select, union_all
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import require_admin_key
+from ..auth import RequireAPIKey, require_admin_key
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
@@ -447,7 +447,9 @@ async def list_agents(
     response_description="Agent registration status with active controls",
 )
 async def init_agent(
-    request: InitAgentRequest, db: AsyncSession = Depends(get_async_db)
+    request: InitAgentRequest,
+    client: RequireAPIKey,
+    db: AsyncSession = Depends(get_async_db),
 ) -> InitAgentResponse:
     """
     Register a new agent or update an existing agent's steps and metadata.
@@ -1367,6 +1369,7 @@ async def remove_agent_control(
 @router.get(
     "/{agent_name}/controls",
     response_model=AgentControlsResponse,
+    response_model_exclude_none=True,
     summary="List agent's active controls",
     response_description="List of controls from agent policy and direct associations",
 )

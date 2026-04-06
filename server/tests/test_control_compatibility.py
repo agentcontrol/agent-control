@@ -144,6 +144,78 @@ def test_list_agent_controls_returns_canonical_shape_for_legacy_stored_payload(
     assert control["condition"]["evaluator"]["name"] == "regex"
 
 
+def test_list_agent_controls_omits_null_condition_fields_in_response(
+    client: TestClient,
+) -> None:
+    # Given: an agent assigned a policy whose control uses a composite condition tree
+    agent_name = _init_agent(client)
+    policy_id = _create_policy(client)
+
+    composite_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    composite_payload["condition"] = {
+        "and": [
+            {
+                "not": {
+                    "selector": {"path": "context.channel.scope"},
+                    "evaluator": {
+                        "name": "list",
+                        "config": {
+                            "values": ["slack:direct:U123"],
+                            "logic": "any",
+                            "match_on": "match",
+                        },
+                    },
+                }
+            },
+            {
+                "or": [
+                    {
+                        "selector": {"path": "name"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {"pattern": r"(^|\.)(read|memory_search|memory_get)$"},
+                        },
+                    }
+                ]
+            },
+        ]
+    }
+
+    control_resp = client.put(
+        "/api/v1/controls",
+        json={"name": f"control-{uuid.uuid4()}", "data": composite_payload},
+    )
+    assert control_resp.status_code == 200
+    control_id = control_resp.json()["control_id"]
+
+    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert assoc.status_code == 200
+    assign = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+    assert assign.status_code == 200
+
+    # When: listing active controls for the agent
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+
+    # Then: composite nodes omit synthetic null siblings in the response payload
+    assert resp.status_code == 200
+    control = resp.json()["controls"][0]["control"]
+    condition = control["condition"]
+
+    assert set(condition.keys()) == {"and"}
+    assert len(condition["and"]) == 2
+
+    first_child = condition["and"][0]
+    assert set(first_child.keys()) == {"not"}
+    assert first_child["not"]["selector"]["path"] == "context.channel.scope"
+    assert first_child["not"]["evaluator"]["name"] == "list"
+
+    second_child = condition["and"][1]
+    assert set(second_child.keys()) == {"or"}
+    assert len(second_child["or"]) == 1
+    assert second_child["or"][0]["selector"]["path"] == "name"
+    assert second_child["or"][0]["evaluator"]["name"] == "regex"
+
+
 def test_get_control_data_rejects_partial_legacy_stored_payload(
     client: TestClient,
 ) -> None:

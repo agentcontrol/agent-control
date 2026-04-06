@@ -78,11 +78,7 @@ from ._control_registry import (
 from ._control_registry import (
     clear as clear_step_registry,
 )
-
-# Import client and operations modules
 from .client import AgentControlClient
-
-# Import control decorator
 from .control_decorators import ControlSteerError, ControlViolationError, control
 from .evaluation import check_evaluation_with_local, evaluate_controls
 from .observability import (
@@ -98,8 +94,11 @@ from .observability import (
     shutdown_observability,
     sync_shutdown_observability,
 )
-
-# Import tracing and observability
+from .telemetry import (
+    clear_trace_context_provider,
+    get_trace_context_from_provider,
+    set_trace_context_provider,
+)
 from .tracing import (
     get_current_span_id,
     get_current_trace_id,
@@ -1305,6 +1304,9 @@ __all__ = [
     "get_current_span_id",
     "with_trace",
     "is_otel_available",
+    "set_trace_context_provider",
+    "get_trace_context_from_provider",
+    "clear_trace_context_provider",
     # Observability
     "init_observability",
     "add_event",

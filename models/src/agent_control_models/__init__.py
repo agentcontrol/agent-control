@@ -7,6 +7,12 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0.dev"
 
+from .actions import (
+    ActionDecision,
+    expand_action_filter,
+    normalize_action,
+    normalize_action_list,
+)
 from .agent import (
     BUILTIN_STEP_TYPES,
     STEP_TYPE_LLM,
@@ -64,22 +70,17 @@ from .server import (
     AgentSummary,
     ConflictMode,
     ControlSummary,
-    CreateEvaluatorConfigRequest,
     DeleteControlResponse,
-    DeleteEvaluatorConfigResponse,
-    EvaluatorConfigItem,
     EvaluatorSchema,
     GetPolicyControlsResponse,
     InitAgentEvaluatorRemoval,
     InitAgentOverwriteChanges,
     ListAgentsResponse,
     ListControlsResponse,
-    ListEvaluatorConfigsResponse,
     PaginationInfo,
     PatchControlRequest,
     PatchControlResponse,
     StepKey,
-    UpdateEvaluatorConfigRequest,
     ValidateControlDataRequest,
     ValidateControlDataResponse,
 )
@@ -96,6 +97,7 @@ __all__ = [
     "STEP_TYPE_TOOL",
     "STEP_TYPE_LLM",
     "BUILTIN_STEP_TYPES",
+    "ActionDecision",
     # Policy
     "Policy",
     # Evaluation
@@ -112,6 +114,9 @@ __all__ = [
     "EvaluatorSpec",
     "EvaluatorResult",
     "SteeringContext",
+    "normalize_action",
+    "normalize_action_list",
+    "expand_action_filter",
     # Error models
     "ProblemDetail",
     "ErrorCode",
@@ -127,22 +132,17 @@ __all__ = [
     "AgentSummary",
     "ConflictMode",
     "ControlSummary",
-    "CreateEvaluatorConfigRequest",
-    "DeleteEvaluatorConfigResponse",
     "DeleteControlResponse",
-    "EvaluatorConfigItem",
     "EvaluatorSchema",
     "GetPolicyControlsResponse",
     "InitAgentEvaluatorRemoval",
     "InitAgentOverwriteChanges",
     "ListAgentsResponse",
     "ListControlsResponse",
-    "ListEvaluatorConfigsResponse",
     "PaginationInfo",
     "PatchControlRequest",
     "PatchControlResponse",
     "StepKey",
-    "UpdateEvaluatorConfigRequest",
     "ValidateControlDataRequest",
     "ValidateControlDataResponse",
     # Observability models

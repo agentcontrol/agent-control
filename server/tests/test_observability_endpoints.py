@@ -1,10 +1,12 @@
 """Tests for observability API endpoints."""
 
+import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from agent_control_models import (
     BatchEventsRequest,
@@ -18,7 +20,7 @@ from agent_control_server.observability.ingest.base import IngestResult
 def create_test_event(
     control_id: int = 1,
     agent_name: str | UUID | None = None,
-    action: str = "allow",
+    action: str = "observe",
     matched: bool = False,
     timestamp: datetime | None = None,
     execution_duration_ms: float | None = None,
@@ -108,7 +110,7 @@ class TestEventQueryRequest:
             trace_id="a" * 32,
             agent_name=f"agent-{uuid4().hex[:12]}",
             control_ids=[1, 2, 3],
-            actions=["allow", "deny"],
+            actions=["observe", "deny"],
             matched=True,
             check_stages=["pre", "post"],
             applies_to=["llm_call"],
@@ -117,6 +119,7 @@ class TestEventQueryRequest:
         )
         assert request.trace_id == "a" * 32
         assert len(request.control_ids) == 3
+        assert request.actions == ["observe", "deny"]
         assert request.limit == 50
 
 
@@ -273,7 +276,7 @@ class TestStatsTimeseries:
             create_test_event(
                 agent_name=agent_name,
                 matched=True,
-                action="allow",
+                action="observe",
                 timestamp=now - timedelta(minutes=30),
                 execution_duration_ms=10.0,
             ),
@@ -395,7 +398,7 @@ class TestStatsTimeseries:
             create_test_event(
                 agent_name=agent_name,
                 matched=True,
-                action="allow",
+                action="observe",
                 timestamp=base_time + timedelta(seconds=30),
                 execution_duration_ms=10.0,
             ),
@@ -438,13 +441,15 @@ class TestStatsTimeseries:
         total_exec = sum(b["execution_count"] for b in buckets_with_events)
         total_match = sum(b["match_count"] for b in buckets_with_events)
         total_non_match = sum(b["non_match_count"] for b in buckets_with_events)
-        total_allow = sum(b["action_counts"].get("allow", 0) for b in buckets_with_events)
+        total_observe = sum(
+            b["action_counts"].get("observe", 0) for b in buckets_with_events
+        )
         total_deny = sum(b["action_counts"].get("deny", 0) for b in buckets_with_events)
 
         assert total_exec == 3
         assert total_match == 2
         assert total_non_match == 1
-        assert total_allow == 1
+        assert total_observe == 1
         assert total_deny == 1
 
     @pytest.mark.asyncio
@@ -507,9 +512,9 @@ class TestControlStats:
 
         # Create events for multiple controls
         events = [
-            create_test_event(control_id=1, agent_name=agent_name, matched=True, action="allow"),
+            create_test_event(control_id=1, agent_name=agent_name, matched=True, action="observe"),
             create_test_event(control_id=1, agent_name=agent_name, matched=True, action="deny"),
-            create_test_event(control_id=2, agent_name=agent_name, matched=True, action="warn"),
+            create_test_event(control_id=2, agent_name=agent_name, matched=True, action="observe"),
         ]
         await store.store(events)
 
@@ -532,7 +537,7 @@ class TestControlStats:
         # Verify only control 1's stats
         assert data["stats"]["execution_count"] == 2
         assert data["stats"]["match_count"] == 2
-        assert data["stats"]["action_counts"]["allow"] == 1
+        assert data["stats"]["action_counts"]["observe"] == 1
         assert data["stats"]["action_counts"]["deny"] == 1
 
     @pytest.mark.asyncio
@@ -548,7 +553,7 @@ class TestControlStats:
                 control_id=1,
                 agent_name=agent_name,
                 matched=True,
-                action="allow",
+                action="observe",
                 timestamp=now - timedelta(minutes=30),
             ),
             create_test_event(
@@ -563,7 +568,7 @@ class TestControlStats:
                 control_id=2,
                 agent_name=agent_name,
                 matched=True,
-                action="warn",
+                action="observe",
                 timestamp=now - timedelta(minutes=20),
             ),
         ]
@@ -617,6 +622,51 @@ class TestControlStats:
         assert data["stats"]["execution_count"] == 0
         assert data["stats"]["match_count"] == 0
 
+    @pytest.mark.asyncio
+    async def test_control_stats_normalize_historical_legacy_advisory_rows(
+        self, client: TestClient, setup_observability
+    ):
+        """Historical advisory rows are normalized to observe in control stats responses."""
+        store = setup_observability
+        agent_name = f"agent-{uuid4().hex[:12]}"
+        event = create_test_event(
+            control_id=11,
+            agent_name=agent_name,
+            matched=True,
+            action="observe",
+        )
+        legacy_payload = event.model_dump(mode="json")
+        legacy_payload["action"] = "log"
+
+        async with store.session_maker() as session:
+            await session.execute(
+                text("""
+                    INSERT INTO control_execution_events (
+                        control_execution_id, timestamp, agent_name, data
+                    ) VALUES (
+                        :control_execution_id, :timestamp, :agent_name, CAST(:data AS JSONB)
+                    )
+                """),
+                {
+                    "control_execution_id": event.control_execution_id,
+                    "timestamp": event.timestamp,
+                    "agent_name": event.agent_name,
+                    "data": json.dumps(legacy_payload),
+                },
+            )
+            await session.commit()
+
+        response = client.get(
+            "/api/v1/observability/stats/controls/11",
+            params={"agent_name": str(agent_name), "time_range": "1h"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stats"]["execution_count"] == 1
+        assert data["stats"]["match_count"] == 1
+        assert data["stats"]["action_counts"] == {"observe": 1}
+
 
 class TestObservabilityQueries:
     """Tests for observability query endpoints."""
@@ -624,11 +674,11 @@ class TestObservabilityQueries:
     def test_query_events_filters_and_pagination(self, client: TestClient, setup_observability):
         """Test POST /events/query with filters and pagination."""
         # Given: multiple events ingested into the store
-        event1 = create_test_event(control_id=1, action="allow", matched=True)
+        event1 = create_test_event(control_id=1, action="observe", matched=True)
         event2 = create_test_event(control_id=2, action="deny", matched=False).model_copy(
             update={"trace_id": "c" * 32}
         )
-        event3 = create_test_event(control_id=1, action="allow", matched=True).model_copy(
+        event3 = create_test_event(control_id=1, action="observe", matched=True).model_copy(
             update={"span_id": "d" * 16}
         )
 
@@ -667,14 +717,14 @@ class TestObservabilityQueries:
         """Test GET /stats aggregates events for an agent."""
         # Given: events for a specific agent and one other agent
         agent_name = f"agent-{uuid4().hex[:12]}"
-        event1 = create_test_event(control_id=1, action="allow", matched=True).model_copy(
+        event1 = create_test_event(control_id=1, action="observe", matched=True).model_copy(
             update={"agent_name": agent_name}
         )
         event2 = create_test_event(control_id=2, action="deny", matched=True).model_copy(
             update={"agent_name": agent_name, "trace_id": "c" * 32}
         )
         # Event from different agent (should not be counted)
-        event3 = create_test_event(control_id=1, action="warn", matched=True).model_copy(
+        event3 = create_test_event(control_id=1, action="observe", matched=True).model_copy(
             update={"trace_id": "d" * 32}
         )
 
@@ -698,6 +748,48 @@ class TestObservabilityQueries:
         assert body["totals"]["match_count"] == 2
         # And per-control breakdown exists
         assert len(body["controls"]) == 2
+
+    def test_ingest_query_and_stats_accept_legacy_advisory_actions(
+        self, client: TestClient, setup_observability
+    ):
+        """Legacy advisory actions remain accepted at the API boundary for one release cycle."""
+        agent_name = f"agent-{uuid4().hex[:12]}"
+        legacy_event = create_test_event(
+            control_id=7,
+            agent_name=agent_name,
+            action="observe",
+            matched=True,
+        ).model_dump(mode="json")
+        legacy_event["action"] = "warn"
+
+        ingest_resp = client.post(
+            "/api/v1/observability/events",
+            json={"events": [legacy_event]},
+        )
+        assert ingest_resp.status_code == 202
+
+        query_resp = client.post(
+            "/api/v1/observability/events/query",
+            json=EventQueryRequest(
+                agent_name=agent_name,
+                actions=["observe"],
+                limit=10,
+                offset=0,
+            ).model_dump(mode="json"),
+        )
+        assert query_resp.status_code == 200
+        query_body = query_resp.json()
+        assert query_body["total"] == 1
+        assert query_body["events"][0]["control_id"] == 7
+        assert query_body["events"][0]["action"] == "observe"
+
+        stats_resp = client.get(
+            "/api/v1/observability/stats",
+            params={"agent_name": str(agent_name), "time_range": "1h"},
+        )
+        assert stats_resp.status_code == 200
+        stats_body = stats_resp.json()
+        assert stats_body["totals"]["action_counts"] == {"observe": 1}
 
 
 class TestObservabilityIngestStatus:

@@ -1,6 +1,10 @@
 """Tests for agent_control.shutdown() and agent_control.ashutdown()."""
 
 import asyncio
+import os
+import subprocess
+import sys
+import textwrap
 import threading
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -259,3 +263,130 @@ class TestManualRefreshLifecycleRace:
 
         assert refreshed_snapshot is None
         assert state.server_controls is None
+
+
+class TestAtexitShutdownFallback:
+    """Regression tests for short-lived processes relying on atexit shutdown."""
+
+    @pytest.mark.asyncio
+    async def test_short_lived_process_flushes_sdk_events_on_exit(
+        self,
+        client: agent_control.AgentControlClient,
+        test_agent: dict[str, Any],
+        unique_name: str,
+        server_url: str,
+        api_key: str | None,
+        tmp_path,
+    ) -> None:
+        """SDK-evaluated observability events should survive process exit."""
+        control_name = f"sdk-shutdown-{unique_name}"
+        control = await agent_control.controls.create_control(
+            client,
+            control_name,
+            {
+                "description": "Flush observability on short-lived script shutdown",
+                "enabled": True,
+                "execution": "sdk",
+                "scope": {"stages": ["post"]},
+                "condition": {
+                    "selector": {"path": "output"},
+                    "evaluator": {
+                        "name": "regex",
+                        "config": {"pattern": r"\b123-45-6789\b"},
+                    },
+                },
+                "action": {"decision": "deny"},
+            },
+        )
+
+        await agent_control.agents.add_agent_control(
+            client,
+            agent_name=test_agent["agent_name"],
+            control_id=control["control_id"],
+        )
+
+        script_path = tmp_path / "short_lived_agent.py"
+        script_path.write_text(
+            textwrap.dedent(
+                f"""
+                import asyncio
+                import agent_control
+                from agent_control import ControlViolationError, control
+
+
+                @control()
+                async def chat(message: str) -> str:
+                    return "SSN 123-45-6789"
+
+
+                agent_control.init(
+                    agent_name={test_agent["agent_name"]!r},
+                    agent_description="atexit shutdown flush regression",
+                    observability_enabled=True,
+                    policy_refresh_interval_seconds=0,
+                )
+
+
+                async def main() -> None:
+                    try:
+                        await chat("test")
+                    except ControlViolationError:
+                        pass
+
+
+                if __name__ == "__main__":
+                    asyncio.run(main())
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+
+        env = os.environ.copy()
+        env["AGENT_CONTROL_URL"] = server_url
+        env["AGENT_CONTROL_OBSERVABILITY_ENABLED"] = "true"
+        if api_key:
+            env["AGENT_CONTROL_API_KEY"] = api_key
+        else:
+            env.pop("AGENT_CONTROL_API_KEY", None)
+
+        result = subprocess.run(
+            [sys.executable, str(script_path)],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+        assert result.returncode == 0, (
+            f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
+        )
+
+        events: list[dict[str, Any]] = []
+        for _ in range(20):
+            response = await client.http_client.post(
+                "/api/v1/observability/events/query",
+                json={
+                    "agent_name": test_agent["agent_name"],
+                    "control_ids": [control["control_id"]],
+                    "limit": 10,
+                    "offset": 0,
+                },
+            )
+            response.raise_for_status()
+            events = response.json()["events"]
+            if events:
+                break
+            await asyncio.sleep(0.1)
+
+        assert events, (
+            "Expected at least one observability event from the short-lived process.\n"
+            f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
+        )
+        assert events[0]["control_id"] == control["control_id"]
+        assert events[0]["control_name"] == control_name
+        assert events[0]["check_stage"] == "post"
+        assert events[0]["matched"] is True
+        assert events[0]["action"] == "deny"

@@ -9,7 +9,7 @@ in real-world scenarios with compliance, fraud detection, and approval workflows
 This agent processes wire transfers while AgentControl enforces:
 - DENY actions for hard compliance violations (OFAC sanctions, high fraud)
 - STEER actions for approval workflows (2FA verification, manager approval)
-- ALLOW actions for simple, low-risk transfers
+- OBSERVE actions for simple, low-risk transfer audit trails
 
 ## The Experience
 
@@ -353,14 +353,14 @@ async def process_transfer_node(state: AgentState) -> AgentState:
         print(f"   ✓ ${result['amount']:,.2f} sent to {result['recipient']}")
         log_trace("audit", f"Transaction logged: ID={result['transaction_id']}, Amount=${result['amount']:,.2f}")
 
-        # Note: Warn actions (if any) are logged but don't block execution
-        # Check if this was a new recipient (which triggers warn control)
+        # Note: Observe actions (if any) are recorded but don't block execution
+        # Check if this was a new recipient (which triggers observe control)
         if request["recipient_name"] not in ["John Smith", "Acme Corp", "Global Suppliers Inc"]:
-            print(f"\n   ⚠️  \033[33mWARN: New recipient detected\033[0m")
-            print(f"   Control: warn-new-recipient")
+            print(f"\n   ℹ️  \033[34mOBSERVE: New recipient detected\033[0m")
+            print(f"   Control: observe-new-recipient")
             print(f"   Note: Transfer to '{request['recipient_name']}' is not in known recipient list")
-            print(f"   Action: Logged for review (non-blocking)")
-            log_trace("warn", f"New recipient logged for review: {request['recipient_name']}")
+            print(f"   Action: Recorded for review (non-blocking)")
+            log_trace("observe", f"New recipient recorded for review: {request['recipient_name']}")
 
         return {
             **state,

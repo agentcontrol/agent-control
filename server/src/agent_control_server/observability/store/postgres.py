@@ -13,6 +13,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
+from agent_control_models.actions import ActionDecision, expand_action_filter
 from agent_control_models.observability import (
     ControlExecutionEvent,
     ControlStats,
@@ -46,21 +47,23 @@ SQL_NON_MATCH_COUNT = """SUM(CASE WHEN NOT (data->>'matched')::boolean
 SQL_ERROR_COUNT = """SUM(CASE WHEN data->>'error_message' IS NOT NULL
     THEN 1 ELSE 0 END)"""
 
-# Action count expressions (only count when matched)
-SQL_ALLOW_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
-    AND data->>'action' = 'allow' THEN 1 ELSE 0 END)"""
+# Historical event rows intentionally preserve legacy advisory action names
+# (`allow`, `warn`, `log`). Query-time reads normalize those stored values into the
+# canonical `observe` bucket instead of rewriting past event payloads in-place.
+_OBSERVE_ACTION_FILTER: tuple[ActionDecision, ...] = ("observe",)
+_OBSERVE_ACTION_SQL_VALUES = ", ".join(
+    f"'{action}'" for action in expand_action_filter(_OBSERVE_ACTION_FILTER)
+)
 
+# Action count expressions (only count when matched)
 SQL_DENY_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
     AND data->>'action' = 'deny' THEN 1 ELSE 0 END)"""
 
 SQL_STEER_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
     AND data->>'action' = 'steer' THEN 1 ELSE 0 END)"""
 
-SQL_WARN_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
-    AND data->>'action' = 'warn' THEN 1 ELSE 0 END)"""
-
-SQL_LOG_COUNT = """SUM(CASE WHEN (data->>'matched')::boolean
-    AND data->>'action' = 'log' THEN 1 ELSE 0 END)"""
+SQL_OBSERVE_COUNT = f"""SUM(CASE WHEN (data->>'matched')::boolean
+    AND data->>'action' IN ({_OBSERVE_ACTION_SQL_VALUES}) THEN 1 ELSE 0 END)"""
 
 # Average expressions
 SQL_AVG_CONFIDENCE = "AVG((data->>'confidence')::float)"
@@ -74,11 +77,9 @@ SQL_STATS_AGGREGATIONS = f"""
     {SQL_MATCH_COUNT} as match_count,
     {SQL_NON_MATCH_COUNT} as non_match_count,
     {SQL_ERROR_COUNT} as error_count,
-    {SQL_ALLOW_COUNT} as allow_count,
     {SQL_DENY_COUNT} as deny_count,
     {SQL_STEER_COUNT} as steer_count,
-    {SQL_WARN_COUNT} as warn_count,
-    {SQL_LOG_COUNT} as log_count,
+    {SQL_OBSERVE_COUNT} as observe_count,
     {SQL_AVG_CONFIDENCE} as avg_confidence,
     {SQL_AVG_DURATION} as avg_duration_ms"""
 
@@ -249,11 +250,9 @@ class PostgresEventStore(EventStore):
                         COALESCE(bs.match_count, 0) as match_count,
                         COALESCE(bs.non_match_count, 0) as non_match_count,
                         COALESCE(bs.error_count, 0) as error_count,
-                        COALESCE(bs.allow_count, 0) as allow_count,
                         COALESCE(bs.deny_count, 0) as deny_count,
                         COALESCE(bs.steer_count, 0) as steer_count,
-                        COALESCE(bs.warn_count, 0) as warn_count,
-                        COALESCE(bs.log_count, 0) as log_count,
+                        COALESCE(bs.observe_count, 0) as observe_count,
                         bs.avg_confidence,
                         bs.avg_duration_ms
                     FROM all_buckets ab
@@ -296,7 +295,7 @@ class PostgresEventStore(EventStore):
         total_matches = 0
         total_non_matches = 0
         total_errors = 0
-        action_counts: dict[str, int] = {"allow": 0, "deny": 0, "steer": 0, "warn": 0, "log": 0}
+        action_counts: dict[str, int] = {"deny": 0, "steer": 0, "observe": 0}
 
         for row in rows:
             if row.query_type == "control":
@@ -307,11 +306,9 @@ class PostgresEventStore(EventStore):
                     match_count=row.match_count,
                     non_match_count=row.non_match_count,
                     error_count=row.error_count,
-                    allow_count=row.allow_count,
                     deny_count=row.deny_count,
                     steer_count=row.steer_count,
-                    warn_count=row.warn_count,
-                    log_count=row.log_count,
+                    observe_count=row.observe_count,
                     avg_confidence=row.avg_confidence or 0.0,
                     avg_duration_ms=row.avg_duration_ms,
                 )
@@ -321,27 +318,21 @@ class PostgresEventStore(EventStore):
                 total_matches += row.match_count
                 total_non_matches += row.non_match_count
                 total_errors += row.error_count
-                action_counts["allow"] += row.allow_count
                 action_counts["deny"] += row.deny_count
                 action_counts["steer"] += row.steer_count
-                action_counts["warn"] += row.warn_count
-                action_counts["log"] += row.log_count
+                action_counts["observe"] += row.observe_count
 
             elif row.query_type == "timeseries":
                 if timeseries is None:
                     timeseries = []
 
                 bucket_action_counts: dict[str, int] = {}
-                if row.allow_count > 0:
-                    bucket_action_counts["allow"] = row.allow_count
                 if row.deny_count > 0:
                     bucket_action_counts["deny"] = row.deny_count
                 if row.steer_count > 0:
                     bucket_action_counts["steer"] = row.steer_count
-                if row.warn_count > 0:
-                    bucket_action_counts["warn"] = row.warn_count
-                if row.log_count > 0:
-                    bucket_action_counts["log"] = row.log_count
+                if row.observe_count > 0:
+                    bucket_action_counts["observe"] = row.observe_count
 
                 timeseries.append(TimeseriesBucket(
                     timestamp=row.bucket,
@@ -440,7 +431,7 @@ class PostgresEventStore(EventStore):
 
         if query.actions:
             where_clauses.append("data->>'action' = ANY(:actions)")
-            params["actions"] = query.actions
+            params["actions"] = expand_action_filter(query.actions)
 
         if query.matched is not None:
             where_clauses.append("(data->>'matched')::boolean = :matched")

@@ -1,9 +1,10 @@
 # Steer Action Demo
 
-Banking transfer agent showcasing allow, deny, warn, and steer actions.
+Banking transfer agent showcasing observe, deny, and steer actions.
 
 ## What this example shows
 
+- Observe actions for non-blocking audit trails
 - Steer actions with corrective guidance
 - Multi-step approval workflows
 - Deterministic retry behavior

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -65,7 +66,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
         _event(
             agent_name=agent_name,
             control_id=1,
-            action="allow",
+            action="observe",
             matched=True,
             timestamp=now - timedelta(seconds=10),
             trace_id="a" * 32,
@@ -81,7 +82,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
         _event(
             agent_name=agent_name,
             control_id=1,
-            action="allow",
+            action="observe",
             matched=True,
             timestamp=now,
             trace_id="a" * 32,
@@ -112,7 +113,7 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
     assert stats.total_matches == 2
     assert stats.total_non_matches == 1
     assert stats.total_errors == 0
-    assert stats.action_counts == {"allow": 2}
+    assert stats.action_counts == {"observe": 2}
 
     # When: querying stats with a control filter
     filtered_stats = await store.query_stats(agent_name, timedelta(hours=1), control_id=1)
@@ -160,7 +161,7 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
         _event(
             agent_name=agent_name,
             control_id=1,
-            action="allow",
+            action="observe",
             matched=True,
             timestamp=now - timedelta(seconds=1),
             trace_id=target_trace_id,
@@ -194,7 +195,7 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
         trace_id=target_trace_id,
         span_id=target_span_id,
         control_ids=[1],
-        actions=["allow"],
+        actions=["observe"],
         matched=True,
         check_stages=["pre"],
         applies_to=["llm_call"],
@@ -209,8 +210,61 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
 
 
 @pytest.mark.asyncio
-async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() -> None:
-    # Given: a Postgres-backed store with steer and warn events
+async def test_postgres_event_store_normalizes_legacy_advisory_rows() -> None:
+    # Given: a historical event row stored with a legacy advisory action name
+    session_maker = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    store = PostgresEventStore(session_maker)
+
+    agent_name = f"agent-{uuid4().hex[:12]}"
+    now = datetime.now(UTC)
+    event = _event(
+        agent_name=agent_name,
+        control_id=7,
+        action="observe",
+        matched=True,
+        timestamp=now,
+        trace_id="d" * 32,
+    )
+    legacy_payload = event.model_dump(mode="json")
+    legacy_payload["action"] = "warn"
+
+    async with session_maker() as session:
+        await session.execute(
+            text("""
+                INSERT INTO control_execution_events (
+                    control_execution_id, timestamp, agent_name, data
+                ) VALUES (
+                    :control_execution_id, :timestamp, :agent_name, CAST(:data AS JSONB)
+                )
+            """),
+            {
+                "control_execution_id": event.control_execution_id,
+                "timestamp": event.timestamp,
+                "agent_name": event.agent_name,
+                "data": json.dumps(legacy_payload),
+            },
+        )
+        await session.commit()
+
+    # When: querying with the canonical observe filter
+    resp = await store.query_events(
+        EventQueryRequest(agent_name=agent_name, actions=["observe"], limit=10, offset=0)
+    )
+    stats = await store.query_stats(agent_name, timedelta(hours=1))
+
+    # Then: the legacy row is returned and normalized to observe
+    assert resp.total == 1
+    assert resp.events[0].action == "observe"
+    assert stats.action_counts == {"observe": 1}
+
+
+@pytest.mark.asyncio
+async def test_postgres_event_store_timeseries_includes_steer_and_observe_counts() -> None:
+    # Given: a Postgres-backed store with steer and advisory events
     session_maker = async_sessionmaker(
         bind=async_engine,
         class_=AsyncSession,
@@ -233,7 +287,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
         _event(
             agent_name=agent_name,
             control_id=2,
-            action="warn",
+            action="observe",
             matched=True,
             timestamp=now - timedelta(seconds=5),
             trace_id="b" * 32,
@@ -241,7 +295,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
         _event(
             agent_name=agent_name,
             control_id=3,
-            action="allow",
+            action="observe",
             matched=True,
             timestamp=now,
             trace_id="c" * 32,
@@ -259,12 +313,11 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
         bucket_size=timedelta(minutes=1),
     )
 
-    # Then: action counts include steer and warn
+    # Then: action counts include steer and observe
     assert stats.action_counts["steer"] == 1
-    assert stats.action_counts["warn"] == 1
-    assert stats.action_counts["allow"] == 1
+    assert stats.action_counts["observe"] == 2
 
-    # Then: timeseries buckets include steer and warn in their action_counts
+    # Then: timeseries buckets include steer and observe in their action_counts
     assert stats.timeseries is not None
     all_bucket_actions = [
         action
@@ -272,7 +325,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_warn_counts() 
         for action in bucket.action_counts.keys()
     ]
     assert "steer" in all_bucket_actions
-    assert "warn" in all_bucket_actions
+    assert "observe" in all_bucket_actions
 
 
 @pytest.mark.asyncio
@@ -286,7 +339,7 @@ async def test_postgres_event_store_parses_string_json_rows() -> None:
         control_name="control-1",
         check_stage="pre",
         applies_to="llm_call",
-        action="allow",
+        action="observe",
         matched=True,
         confidence=0.9,
         timestamp=datetime.now(UTC),

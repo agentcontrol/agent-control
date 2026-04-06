@@ -2,6 +2,56 @@
 
 <!-- version list -->
 
+## v7.3.2 (2026-04-02)
+
+### Bug Fixes
+
+- **server**: Update docker-compose.dev.yml to use different container name
+  ([`14d4c87`](https://github.com/agentcontrol/agent-control/commit/14d4c87130bbfceac0576b383abbd67fd3b63ac2))
+
+### Refactoring
+
+- **server, sdk, ui**: Collapse advisory control actions to observe
+  ([#161](https://github.com/agentcontrol/agent-control/pull/161),
+  [`8c25090`](https://github.com/agentcontrol/agent-control/commit/8c2509026c060d4a7ba92cd3b543c8d28e09f6a0))
+
+
+## v7.3.1 (2026-04-01)
+
+### Bug Fixes
+
+- **server**: Omit null fields in control JSON editor
+  ([#157](https://github.com/agentcontrol/agent-control/pull/157),
+  [`0aa2f3c`](https://github.com/agentcontrol/agent-control/commit/0aa2f3c83fa8b74947a516025995ba1c49855e4e))
+
+
+## v7.3.0 (2026-03-30)
+
+### Bug Fixes
+
+- **docs**: Add explicit shutdown to quickstart example
+  ([#149](https://github.com/agentcontrol/agent-control/pull/149),
+  [`b76014f`](https://github.com/agentcontrol/agent-control/commit/b76014f1132218448b93169b3c6350f62bac49ac))
+
+- **sdk**: Use sync shutdown flush fallback
+  ([#150](https://github.com/agentcontrol/agent-control/pull/150),
+  [`90265ba`](https://github.com/agentcontrol/agent-control/commit/90265ba79132d8a8669f92948cf73568eb38fd5a))
+
+- **server**: Remove unused evaluator config store
+  ([#152](https://github.com/agentcontrol/agent-control/pull/152),
+  [`dea2873`](https://github.com/agentcontrol/agent-control/commit/dea2873241004c9398909609d4b665808270290e))
+
+### Features
+
+- **evaluators**: Add starts_with/ends_with mode to list evaluator
+  ([#154](https://github.com/agentcontrol/agent-control/pull/154),
+  [`bf1f7d7`](https://github.com/agentcontrol/agent-control/commit/bf1f7d7cf271a231a165699d44f726467b49bd50))
+
+- **sdk**: [Enterprise Integration]: Add provider agnostic traceing
+  ([#145](https://github.com/agentcontrol/agent-control/pull/145),
+  [`f1ca27c`](https://github.com/agentcontrol/agent-control/commit/f1ca27ccac5f6666f997c876598ef1bcbbae0b6d))
+
+
 ## v7.2.0 (2026-03-26)
 
 ### Bug Fixes

@@ -221,7 +221,7 @@ async def test_convenience_agent_association_functions(
                 "config": {"pattern": ".*"},
             },
         },
-        "action": {"decision": "allow"},
+        "action": {"decision": "observe"},
         "tags": ["test"],
     }
 

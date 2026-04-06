@@ -9,8 +9,8 @@ export type ListFormValues = {
   logic: 'any' | 'all';
   /** When to trigger: on match or no match */
   match_on: 'match' | 'no_match';
-  /** Match mode: exact or contains */
-  match_mode: 'exact' | 'contains';
+  /** Match mode: exact, contains, starts_with, or ends_with */
+  match_mode: 'exact' | 'contains' | 'starts_with' | 'ends_with';
   /** Whether matching is case sensitive */
   case_sensitive: boolean;
 };

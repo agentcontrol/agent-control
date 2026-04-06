@@ -1,7 +1,7 @@
 [project]
 name = "steering-financial-agent"
 version = "0.1.0"
-description = "CrewAI financial agent with steering, deny, and warn actions via Agent Control"
+description = "CrewAI financial agent with steering, deny, and observe actions via Agent Control"
 requires-python = ">=3.12"
 dependencies = [
     "agent-control-sdk>=6.3.0",

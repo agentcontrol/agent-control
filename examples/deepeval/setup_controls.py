@@ -133,7 +133,7 @@ DEEPEVAL_CONTROLS = [
                     },
                 },
             },
-            "action": {"decision": "warn"},
+            "action": {"decision": "observe"},
         },
     },
 ]

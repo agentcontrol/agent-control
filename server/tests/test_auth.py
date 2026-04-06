@@ -177,27 +177,6 @@ class TestAdminWriteEndpointAuthorization:
             ("PUT", "/api/v1/policies", {"name": "policy-authz-blocked"}),
             ("POST", "/api/v1/policies/1/controls/1", None),
             ("DELETE", "/api/v1/policies/1/controls/1", None),
-            (
-                "POST",
-                "/api/v1/evaluator-configs",
-                {
-                    "name": "cfg-authz-blocked",
-                    "description": None,
-                    "evaluator": "regex",
-                    "config": {"pattern": "blocked"},
-                },
-            ),
-            (
-                "PUT",
-                "/api/v1/evaluator-configs/1",
-                {
-                    "name": "cfg-authz-blocked-update",
-                    "description": None,
-                    "evaluator": "regex",
-                    "config": {"pattern": "blocked"},
-                },
-            ),
-            ("DELETE", "/api/v1/evaluator-configs/1", None),
             ("POST", "/api/v1/agents/agent-authz-test01/policies/1", None),
             ("POST", "/api/v1/agents/agent-authz-test01/policy/1", None),
             ("DELETE", "/api/v1/agents/agent-authz-test01/policies/1", None),
@@ -289,17 +268,6 @@ class TestAdminWriteEndpointAuthorization:
             f"/api/v1/agents/{agent_name}/policy/{policy_id}"
         )
         assert set_policy_response.status_code == 200
-
-        evaluator_config_response = admin_client.post(
-            "/api/v1/evaluator-configs",
-            json={
-                "name": f"cfg-authz-{uuid.uuid4().hex[:8]}",
-                "description": None,
-                "evaluator": "regex",
-                "config": {"pattern": "allowed"},
-            },
-        )
-        assert evaluator_config_response.status_code == 201
 
 
 class TestMultipleApiKeys:
