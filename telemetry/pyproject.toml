@@ -9,7 +9,7 @@ dependencies = [
 authors = [
     {name = "Agent Control Team"}
 ]
-readme = "../README.md"
+readme = "README.md"
 license = {text = "Apache-2.0"}
 
 [dependency-groups]
