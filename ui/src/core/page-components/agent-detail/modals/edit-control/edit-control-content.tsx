@@ -823,7 +823,6 @@ export const EditControlContent = ({
       <form
         ref={formRef}
         noValidate
-        onChange={() => setIsDirty(true)}
         onSubmit={definitionForm.onSubmit(handleSubmit)}
       >
         <Stack gap="md" mb="lg">
