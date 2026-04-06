@@ -774,12 +774,16 @@ export const EditControlContent = ({
           </Text>
         ),
         confirmLabel: 'Discard',
-        onConfirm: onClose,
+        onConfirm: () => {
+          // Clear the ref so the parent's onClose won't re-enter handleClose.
+          if (onCloseRef) onCloseRef.current = null;
+          onClose();
+        },
       });
       return;
     }
     onClose();
-  }, [isDirty, definitionForm, onClose, isCreating]);
+  }, [isDirty, definitionForm, onClose, isCreating, onCloseRef]);
 
   // Expose handleClose to the parent so the Modal X button also checks dirty state.
   useEffect(() => {
