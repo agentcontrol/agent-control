@@ -11,11 +11,11 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { JsonEditorCodeMirror } from '@/components/json-editor-codemirror';
 import { JsonEditorMonaco } from '@/components/json-editor-monaco';
 import { isApiError } from '@/core/api/errors';
 import type {
@@ -51,8 +51,6 @@ import { applyApiErrorsToForms } from './utils';
 const EVALUATOR_CONFIG_HEIGHT = 450;
 const JSON_EDITOR_HEIGHT = 520;
 type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
-type JsonEditorEngine = 'monaco' | 'codemirror';
-const JSON_EDITOR_ENGINE_STORAGE_KEY = 'editControl.jsonEditorEngine';
 
 const DEFAULT_CONTROL_TEMPLATE = JSON.stringify(
   {
@@ -123,8 +121,6 @@ export const EditControlContent = ({
     useState<ProblemDetail | null>(null);
   const [definitionValidationStatus, setDefinitionValidationStatus] =
     useState<ValidationStatus>('idle');
-  const [jsonEditorEngine, setJsonEditorEngine] =
-    useState<JsonEditorEngine>('monaco');
 
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
@@ -471,22 +467,6 @@ export const EditControlContent = ({
   }, [control.control, initialEditorMode]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(JSON_EDITOR_ENGINE_STORAGE_KEY);
-    if (stored === 'monaco' || stored === 'codemirror') {
-      setJsonEditorEngine(stored);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(
-      JSON_EDITOR_ENGINE_STORAGE_KEY,
-      jsonEditorEngine
-    );
-  }, [jsonEditorEngine]);
-
-  useEffect(() => {
     reset();
     setApiError(null);
     setUnmappedErrors([]);
@@ -499,8 +479,14 @@ export const EditControlContent = ({
     const stepRegexValue = scope.step_name_regex ?? '';
     const stepNameMode = stepRegexValue && !stepNamesValue ? 'regex' : 'names';
 
+    // Preserve the user-edited control name. The name lives outside the JSON
+    // definition, so syncing workingDefinition→form should not overwrite it.
+    // control.name is only used as the initial value (set in the earlier
+    // control.control reset effect).
+    const currentName = definitionForm.values.name;
+
     definitionForm.setValues({
-      name: control.name,
+      name: currentName || control.name,
       description: workingDefinition.description ?? '',
       enabled: workingDefinition.enabled,
       step_types: scope.step_types ?? [],
@@ -531,6 +517,14 @@ export const EditControlContent = ({
     setUnmappedErrors([]);
     definitionForm.clearErrors();
     evaluatorForm.clearErrors();
+
+    // Bug fix #1: Explicitly validate the name before opening the confirm
+    // dialog. The HTML5 `required` attribute may silently block submission
+    // without showing a visible Mantine error message.
+    const nameValidation = definitionForm.validateField('name');
+    if (nameValidation.hasError) {
+      return;
+    }
 
     if (
       editorMode === 'form' &&
@@ -724,7 +718,7 @@ export const EditControlContent = ({
       }
     };
 
-    openActionConfirmModal({
+    const modalId = openActionConfirmModal({
       title: isCreating ? 'Create control?' : 'Save changes?',
       children: (
         <Text size="sm" c="dimmed">
@@ -733,7 +727,13 @@ export const EditControlContent = ({
             : 'This will update the control configuration.'}
         </Text>
       ),
-      onConfirm: runSave,
+      onConfirm: () => {
+        // Close the confirm modal immediately so a second click cannot
+        // fire another request (the Save button's `loading` state handles
+        // the rest of the pending UX).
+        modals.close(modalId);
+        runSave();
+      },
     });
   };
 
@@ -752,9 +752,12 @@ export const EditControlContent = ({
       : definitionValidationStatus === 'invalid'
         ? 'red'
         : 'dimmed';
-  const isDefinitionJsonInvalid =
-    editorMode === 'json' &&
-    (definitionJsonError !== null || definitionValidationError !== null);
+  // Only disable the mode toggle for JSON *parse* errors (broken syntax the
+  // user must fix in JSON mode). Server-side validation errors (missing fields,
+  // bad values) should NOT lock the toggle — the user may want to switch to
+  // Form mode to fix them more easily.
+  const isDefinitionJsonParseError =
+    editorMode === 'json' && definitionJsonError !== null;
 
   return (
     <Box>
@@ -784,26 +787,13 @@ export const EditControlContent = ({
               <SegmentedControl
                 value={editorMode}
                 onChange={handleEditorModeChange}
-                disabled={isDefinitionJsonInvalid}
+                disabled={isDefinitionJsonParseError}
                 data={[
                   { value: 'form', label: 'Form' },
                   { value: 'json', label: 'Full JSON' },
                 ]}
                 size="xs"
               />
-              {editorMode === 'json' ? (
-                <SegmentedControl
-                  value={jsonEditorEngine}
-                  onChange={(value) =>
-                    setJsonEditorEngine(value as JsonEditorEngine)
-                  }
-                  data={[
-                    { value: 'monaco', label: 'Monaco' },
-                    { value: 'codemirror', label: 'CodeMirror' },
-                  ]}
-                  size="xs"
-                />
-              ) : null}
             </Group>
           </Group>
 
@@ -824,47 +814,25 @@ export const EditControlContent = ({
 
         {editorMode === 'json' ? (
           <Paper withBorder radius="sm" p={16}>
-            {jsonEditorEngine === 'monaco' ? (
-              <JsonEditorMonaco
-                jsonText={definitionJsonText}
-                handleJsonChange={handleDefinitionJsonChange}
-                jsonError={definitionJsonError}
-                setJsonError={setDefinitionJsonError}
-                validationError={definitionValidationError}
-                setValidationError={setDefinitionValidationError}
-                onValidateConfig={validateDefinitionJson}
-                onValidationStatusChange={setDefinitionValidationStatus}
-                height={JSON_EDITOR_HEIGHT}
-                label="Control definition (JSON)"
-                tooltip="Edit the raw control definition as JSON. Control name remains outside this editor."
-                helperText="Enter the raw control definition only. Do not wrap it in data, name, id, or control objects."
-                testId="control-json-textarea"
-                editorMode="control"
-                schema={controlSchemaResponse?.schema ?? null}
-                evaluators={availableEvaluators}
-                steps={steps}
-              />
-            ) : (
-              <JsonEditorCodeMirror
-                jsonText={definitionJsonText}
-                handleJsonChange={handleDefinitionJsonChange}
-                jsonError={definitionJsonError}
-                setJsonError={setDefinitionJsonError}
-                validationError={definitionValidationError}
-                setValidationError={setDefinitionValidationError}
-                onValidateConfig={validateDefinitionJson}
-                onValidationStatusChange={setDefinitionValidationStatus}
-                height={JSON_EDITOR_HEIGHT}
-                label="Control definition (JSON)"
-                tooltip="Edit the raw control definition as JSON. Control name remains outside this editor."
-                helperText="Enter the raw control definition only. Do not wrap it in data, name, id, or control objects."
-                testId="control-json-textarea"
-                editorMode="control"
-                schema={controlSchemaResponse?.schema ?? null}
-                evaluators={availableEvaluators}
-                steps={steps}
-              />
-            )}
+            <JsonEditorMonaco
+              jsonText={definitionJsonText}
+              handleJsonChange={handleDefinitionJsonChange}
+              jsonError={definitionJsonError}
+              setJsonError={setDefinitionJsonError}
+              validationError={definitionValidationError}
+              setValidationError={setDefinitionValidationError}
+              onValidateConfig={validateDefinitionJson}
+              onValidationStatusChange={setDefinitionValidationStatus}
+              height={JSON_EDITOR_HEIGHT}
+              label="Control definition (JSON)"
+              tooltip="Edit the raw control definition as JSON. Control name remains outside this editor."
+              helperText="Enter the raw control definition only. Do not wrap it in data, name, id, or control objects."
+              testId="control-json-textarea"
+              editorMode="control"
+              schema={controlSchemaResponse?.schema ?? null}
+              evaluators={availableEvaluators}
+              steps={steps}
+            />
           </Paper>
         ) : (
           <Grid gutter="xl">

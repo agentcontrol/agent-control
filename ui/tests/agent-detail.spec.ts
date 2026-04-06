@@ -816,56 +816,15 @@ test.describe('Agent Detail Page', () => {
     expect(after.condition.evaluator.config.pattern).toBe('a,}');
   });
 
-  test('full JSON CodeMirror shows missing-field validation errors below the editor', async ({
-    mockedPage,
-  }) => {
+  test('full JSON editor always uses Monaco', async ({ mockedPage }) => {
     const control = mockData.controls.controls[0]!;
 
-    await mockedPage.route(
-      '**/api/v1/controls/validate',
-      async (route, request) => {
-        const body = (await request.postDataJSON()) as {
-          data?: {
-            condition?: {
-              evaluator?: {
-                config?: Record<string, unknown>;
-              };
-            };
-          };
-        };
-
-        const pattern = body.data?.condition?.evaluator?.config?.pattern;
-        if (typeof pattern === 'string' && pattern.length > 0) {
-          await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({ success: true }),
-          });
-          return;
-        }
-
-        await route.fulfill({
-          status: 422,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            type: 'about:blank',
-            title: 'Validation Error',
-            status: 422,
-            detail: 'Config validation failed',
-            error_code: 'VALIDATION_ERROR',
-            reason: 'ValidationError',
-            errors: [
-              {
-                resource: 'Control',
-                field: 'data.condition.evaluator.config.pattern',
-                code: 'missing',
-                message: 'Field required',
-              },
-            ],
-          }),
-        });
-      }
-    );
+    await mockedPage.addInitScript(() => {
+      window.localStorage.setItem(
+        'editControl.jsonEditorEngine',
+        'codemirror'
+      );
+    });
 
     await mockedPage.goto(
       getAgentControlsUrl({ modal: 'edit', controlId: String(control.id) })
@@ -874,30 +833,34 @@ test.describe('Agent Detail Page', () => {
     const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
     await expect(modal).toBeVisible();
     await modal.getByText('Full JSON', { exact: true }).click();
-    await modal.getByText('CodeMirror', { exact: true }).click();
 
-    await setJsonEditorValue(
-      mockedPage,
-      'control-json-textarea',
-      JSON.stringify(
-        {
-          ...control.control,
-          condition: {
-            selector: { path: 'output' },
-            evaluator: {
-              name: 'regex',
-              config: {},
-            },
-          },
-        },
-        null,
-        2
-      )
-    );
+    await expect(
+      modal.getByText('CodeMirror', { exact: true })
+    ).toHaveCount(0);
 
-    await expect(modal.getByText('Field required')).toBeVisible({
-      timeout: 5000,
+    const editor = modal.getByTestId('control-json-textarea');
+    await expect(editor).toBeVisible();
+    await mockedPage.waitForFunction((selector) => {
+      const element = document.querySelector(`[data-testid="${selector}"]`) as {
+        __getJsonEditorLanguageId?: () => string | null;
+        __isJsonEditorReady?: () => boolean;
+      } | null;
+
+      return (
+        typeof element?.__getJsonEditorLanguageId === 'function' &&
+        element.__isJsonEditorReady?.() === true
+      );
+    }, 'control-json-textarea');
+
+    const languageId = await editor.evaluate((element) => {
+      const target = element as {
+        __getJsonEditorLanguageId?: () => string | null;
+      };
+
+      return target.__getJsonEditorLanguageId?.() ?? null;
     });
+
+    expect(languageId).toBe('json');
   });
 
   test('full JSON editor suggests recursive condition keys', async ({
