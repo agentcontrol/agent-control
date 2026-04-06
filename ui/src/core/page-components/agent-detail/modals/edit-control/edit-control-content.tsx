@@ -525,8 +525,11 @@ export const EditControlContent = ({
     };
     definitionForm.setValues(syncedValues);
     definitionForm.resetDirty(syncedValues);
-    // Allow the sync to settle before tracking user edits as dirty.
-    formSyncedRef.current = true;
+    // Delay enabling dirty tracking until after all initial effects
+    // (including the steering_context cleanup) have settled.
+    requestAnimationFrame(() => {
+      formSyncedRef.current = true;
+    });
 
     if (leafCondition && evaluator) {
       evaluatorForm.setValues(
