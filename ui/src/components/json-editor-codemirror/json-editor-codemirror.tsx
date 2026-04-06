@@ -365,7 +365,10 @@ export function JsonEditorCodeMirror({
     const root = editorRootRef.current;
     if (!root) return;
 
-    const lineColumnToPosition = (lineNumber: number, column: number): number => {
+    const lineColumnToPosition = (
+      lineNumber: number,
+      column: number
+    ): number => {
       const view = editorViewRef.current;
       if (!view) return 0;
       const doc = view.state.doc;
@@ -616,35 +619,35 @@ export function JsonEditorCodeMirror({
             }}
           />
           <Group gap={4}>
-          <Tooltip label="Format JSON" openDelay={400}>
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="sm"
-              aria-label="Format document"
-              onClick={formatJson}
+            <Tooltip label="Format JSON" openDelay={400}>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="sm"
+                aria-label="Format document"
+                onClick={formatJson}
+              >
+                <IconCode size={14} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip
+              label={clipboard.copied ? 'Copied!' : 'Copy JSON'}
+              openDelay={clipboard.copied ? 0 : 400}
             >
-              <IconCode size={14} />
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip
-            label={clipboard.copied ? 'Copied!' : 'Copy JSON'}
-            openDelay={clipboard.copied ? 0 : 400}
-          >
-            <ActionIcon
-              variant="subtle"
-              color={clipboard.copied ? 'teal' : 'gray'}
-              size="sm"
-              onClick={() => clipboard.copy(jsonText)}
-              aria-label="Copy JSON to clipboard"
-            >
-              {clipboard.copied ? (
-                <IconClipboardCheck size={14} />
-              ) : (
-                <IconClipboardCopy size={14} />
-              )}
-            </ActionIcon>
-          </Tooltip>
+              <ActionIcon
+                variant="subtle"
+                color={clipboard.copied ? 'teal' : 'gray'}
+                size="sm"
+                onClick={() => clipboard.copy(jsonText)}
+                aria-label="Copy JSON to clipboard"
+              >
+                {clipboard.copied ? (
+                  <IconClipboardCheck size={14} />
+                ) : (
+                  <IconClipboardCopy size={14} />
+                )}
+              </ActionIcon>
+            </Tooltip>
           </Group>
         </Group>
       </Group>

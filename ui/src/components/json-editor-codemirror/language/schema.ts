@@ -14,7 +14,9 @@ export function getSchemaTypes(schema: unknown): string[] {
   if (!isObject(schema)) return [];
   if (typeof schema.type === 'string') return [schema.type];
   if (!Array.isArray(schema.type)) return [];
-  return schema.type.filter((value): value is string => typeof value === 'string');
+  return schema.type.filter(
+    (value): value is string => typeof value === 'string'
+  );
 }
 
 export function getSchemaType(schema: unknown): string | null {
@@ -49,14 +51,19 @@ export function getSchemaProperties(schema: unknown): Record<string, unknown> {
 
 export function getSchemaRequiredProperties(schema: unknown): string[] {
   if (!isObject(schema) || !Array.isArray(schema.required)) return [];
-  return schema.required.filter((value): value is string => typeof value === 'string');
+  return schema.required.filter(
+    (value): value is string => typeof value === 'string'
+  );
 }
 
 function unescapeJsonPointerSegment(segment: string): string {
   return segment.replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
-function resolveJsonPointer(rootSchema: JsonSchema | null, ref: string): JsonSchema | null {
+function resolveJsonPointer(
+  rootSchema: JsonSchema | null,
+  ref: string
+): JsonSchema | null {
   if (!rootSchema || !ref.startsWith('#/')) return null;
   let current: unknown = rootSchema;
   for (const segment of ref
@@ -77,7 +84,10 @@ function stripCompositionKeys(schema: JsonSchema): JsonSchema {
   return stripped;
 }
 
-function mergeSchemas(schemas: JsonSchema[], baseSchema?: JsonSchema | null): JsonSchema {
+function mergeSchemas(
+  schemas: JsonSchema[],
+  baseSchema?: JsonSchema | null
+): JsonSchema {
   const merged: JsonSchema = baseSchema ? stripCompositionKeys(baseSchema) : {};
   const properties: Record<string, unknown> = {};
   const required = new Set<string>();
@@ -95,7 +105,8 @@ function mergeSchemas(schemas: JsonSchema[], baseSchema?: JsonSchema | null): Js
         enumValues.push(value);
       }
     }
-    if (isObject(schema.properties)) Object.assign(properties, schema.properties);
+    if (isObject(schema.properties))
+      Object.assign(properties, schema.properties);
     if (Array.isArray(schema.required)) {
       for (const key of schema.required) {
         if (typeof key === 'string') required.add(key);
@@ -113,7 +124,8 @@ function mergeSchemas(schemas: JsonSchema[], baseSchema?: JsonSchema | null): Js
   if (types.size === 1) merged.type = [...types][0];
   if (types.size > 1) merged.type = [...types];
   if (items !== undefined) merged.items = items;
-  if (additionalProperties !== undefined) merged.additionalProperties = additionalProperties;
+  if (additionalProperties !== undefined)
+    merged.additionalProperties = additionalProperties;
 
   return merged;
 }
@@ -160,7 +172,10 @@ export function getSchemaAtProperty(
     return normalizeSchema(properties[property], rootSchema);
   }
 
-  if (normalized.additionalProperties && isObject(normalized.additionalProperties)) {
+  if (
+    normalized.additionalProperties &&
+    isObject(normalized.additionalProperties)
+  ) {
     return normalizeSchema(normalized.additionalProperties, rootSchema);
   }
 

@@ -43,8 +43,8 @@ const CT_EVALUATORS: JsonEditorEvaluatorOption[] = [
 
 /** Host for Playwright component tests only (see `tests/ct/json-editor-codemirror.spec.tsx`). */
 export function JsonEditorCodeMirrorCtHost({ mode }: { mode: JsonEditorMode }) {
-  const [jsonText, setJsonText] = useState(
-    () => (mode === 'control' ? DEFAULT_CONTROL_JSON : '{}')
+  const [jsonText, setJsonText] = useState(() =>
+    mode === 'control' ? DEFAULT_CONTROL_JSON : '{}'
   );
   const [jsonError, setJsonError] = useState<string | null>(null);
 

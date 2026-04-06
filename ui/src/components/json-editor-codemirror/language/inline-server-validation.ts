@@ -1,4 +1,9 @@
-import { type Extension, type Range, StateEffect, StateField } from '@codemirror/state';
+import {
+  type Extension,
+  type Range,
+  StateEffect,
+  StateField,
+} from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
@@ -7,7 +12,11 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { findNodeAtLocation, type Node as JsonNode, parseTree } from 'jsonc-parser';
+import {
+  findNodeAtLocation,
+  type Node as JsonNode,
+  parseTree,
+} from 'jsonc-parser';
 
 import type { ValidationErrorItem } from '@/core/api/types';
 
@@ -108,9 +117,7 @@ function findKeyAndValueRangesForJsonPath(
   if (typeof keySegment === 'string') {
     const parentPath = path.slice(0, -1);
     const parentNode =
-      parentPath.length > 0
-        ? findNodeAtLocation(tree, parentPath)
-        : tree;
+      parentPath.length > 0 ? findNodeAtLocation(tree, parentPath) : tree;
 
     if (parentNode?.type === 'object' && parentNode.children) {
       for (const prop of parentNode.children) {
@@ -214,4 +221,3 @@ export function buildCodeMirrorInlineServerValidationErrorsExtension(): Extensio
     ),
   ];
 }
-

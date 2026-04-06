@@ -31,7 +31,9 @@ test.describe('JsonEditorCodeMirror (component)', () => {
     page,
   }) => {
     await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
-    await expect(page.getByTestId('json-editor-codemirror-ct-host')).toBeVisible();
+    await expect(
+      page.getByTestId('json-editor-codemirror-ct-host')
+    ).toBeVisible();
     const raw = await getJsonEditorValue(page, EDITOR);
     expect(JSON.parse(raw)).toEqual({});
   });
@@ -133,7 +135,9 @@ test.describe('JsonEditorCodeMirror (component)', () => {
   });
 
   test('remounting host switches mode document', async ({ mount, page }) => {
-    let host = await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
+    let host = await mount(
+      <JsonEditorCodeMirrorCtHost mode="evaluator-config" />
+    );
     expect(JSON.parse(await getJsonEditorValue(page, EDITOR))).toEqual({});
 
     await host.unmount();

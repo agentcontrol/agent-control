@@ -1,4 +1,8 @@
-export { applyTextEdit, computeAutoEdit, extractEvaluatorNames } from './auto-edits';
+export {
+  applyTextEdit,
+  computeAutoEdit,
+  extractEvaluatorNames,
+} from './auto-edits';
 export {
   buildCodeMirrorInlineServerValidationErrorsExtension,
   buildCodeMirrorJsonExtensions,

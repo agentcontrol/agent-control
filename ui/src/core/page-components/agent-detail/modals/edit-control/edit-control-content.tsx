@@ -480,7 +480,10 @@ export const EditControlContent = ({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(JSON_EDITOR_ENGINE_STORAGE_KEY, jsonEditorEngine);
+    window.localStorage.setItem(
+      JSON_EDITOR_ENGINE_STORAGE_KEY,
+      jsonEditorEngine
+    );
   }, [jsonEditorEngine]);
 
   useEffect(() => {

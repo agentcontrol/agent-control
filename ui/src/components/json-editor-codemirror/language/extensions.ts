@@ -161,10 +161,7 @@ function wrapPropertyCompletionApply(
     ...completion,
     apply: (view, comp, from, to) => {
       let end = to;
-      if (
-        options.insideQuotedKey &&
-        view.state.sliceDoc(to, to + 1) === '"'
-      ) {
+      if (options.insideQuotedKey && view.state.sliceDoc(to, to + 1) === '"') {
         end = to + 1;
       }
       const docLenBefore = view.state.doc.length;
@@ -187,12 +184,7 @@ function wrapPropertyCompletionApply(
         scan += 1;
       }
       const next = scan < doc.length ? doc.sliceString(scan, scan + 1) : '';
-      if (
-        next &&
-        next !== '}' &&
-        next !== ']' &&
-        next !== ','
-      ) {
+      if (next && next !== '}' && next !== ']' && next !== ',') {
         view.dispatch({
           changes: { from: valueEnd, to: valueEnd, insert: ',' },
           selection: { anchor: valueEnd + 1 },
