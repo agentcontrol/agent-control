@@ -12,21 +12,21 @@ Tracked improvements for the control editor UI. Check off items as they're compl
 
 ## Medium Impact
 
-- [ ] **D. No unsaved changes warning** — Clicking X or Cancel with unsaved changes silently discards everything. **Fix:** Show a "Discard unsaved changes?" confirm dialog if the user made edits.
+- [x] **D. No unsaved changes warning** — Cancel in edit mode now shows "Discard unsaved changes?" confirmation if the user made edits. Tracks dirty state via `isDirty` flag and `definitionForm.isDirty()`.
 
 - [ ] **E. Editor height is fixed at 520px** — Short controls waste space; long controls require internal scrolling + dialog scrolling (double scroll). **Fix:** Consider auto-sizing the editor to content (with min/max), or making the dialog full-height with the editor taking remaining space.
 
-- [ ] **F. No keyboard shortcut for Save** — Must click the button or tab to it. **Fix:** Cmd+S / Ctrl+S should trigger Save from within the editor.
+- [x] **F. Cmd+S / Ctrl+S keyboard shortcut** — Triggers Save from anywhere in the edit dialog via `formRef.requestSubmit()`.
 
-- [ ] **G. Step name dropdown says "No steps available"** — The agent has no registered steps, so the dropdown is empty and disabled. **Fix:** Show a more helpful message like "Register steps via SDK to filter by name" or link to docs.
+- [x] **G. Step name placeholder** — Changed from "No steps available" to "No steps registered via SDK" for better guidance.
 
 ## Polish
 
-- [ ] **H. Form/JSON radio labels are small** — The toggle is a tiny segmented control in the corner. Could benefit from a tooltip explaining Form = guided editing, JSON = full control.
+- [x] **H. Form/JSON toggle tooltip** — Added tooltip: "Form: guided editing. Full JSON: direct control over the definition."
 
 - [ ] **I. No undo/redo buttons** — Only keyboard shortcuts work (Ctrl+Z). Toolbar redo/undo icons would improve discoverability.
 
-- [ ] **J. Auto-generated control names are long** — `json-control-for-test-agent-break-ui` is 37 chars. Consider shorter defaults like `list-control-1`.
+- [x] **J. Shorter default control names** — Changed from `list-control-for-agent-name` to `new-list-control`.
 
 ## Completed
 
