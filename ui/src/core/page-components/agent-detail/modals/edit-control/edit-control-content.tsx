@@ -36,6 +36,7 @@ import {
 import { ControlDefinitionForm } from './control-definition-form';
 import { EvaluatorConfigSection } from './evaluator-config-section';
 import { JsonEditorView } from './json-editor-view';
+import { TemplateEditContent } from './template-edit-content';
 import type {
   ControlDefinitionFormValues,
   ControlEditorMode,
@@ -43,6 +44,11 @@ import type {
 } from './types';
 import { useEvaluatorConfigState } from './use-evaluator-config-state';
 import { applyApiErrorsToForms } from './utils';
+
+function isTemplateBacked(control: Control): boolean {
+  const def = control.control as Record<string, unknown> | undefined;
+  return def?.template != null && def?.template_values != null;
+}
 
 const EVALUATOR_CONFIG_HEIGHT = 450;
 const JSON_EDITOR_HEIGHT = 520;
@@ -63,7 +69,24 @@ export type EditControlContentProps = {
   initialEditorMode?: ControlEditorMode;
 };
 
-export const EditControlContent = ({
+export const EditControlContent = (props: EditControlContentProps) => {
+  // Template-backed controls use a dedicated editor in edit mode
+  if (props.mode !== 'create' && isTemplateBacked(props.control)) {
+    return (
+      <TemplateEditContent
+        key={props.control.id}
+        control={props.control}
+        agentId={props.agentId}
+        onClose={props.onClose}
+        onSuccess={props.onSuccess}
+      />
+    );
+  }
+
+  return <RawEditControlContent {...props} />;
+};
+
+const RawEditControlContent = ({
   control,
   agentId,
   mode = 'edit',
@@ -350,6 +373,17 @@ export const EditControlContent = ({
 
       const parsedDefinition = getJsonDefinition();
       if (!parsedDefinition) {
+        return;
+      }
+
+      // Template payloads cannot be edited in Form mode — they use $param
+      // bindings that the form editor doesn't understand.
+      const raw = parsedDefinition as Record<string, unknown>;
+      if (raw.template != null) {
+        setDefinitionJsonError(
+          'Template-backed controls cannot be edited in Form mode. ' +
+            'Save from JSON to create the control, then edit it to get the parameter form.'
+        );
         return;
       }
 
