@@ -13,7 +13,7 @@ import {
 import { Button, TimeRangeSwitch } from '@rungalileo/jupiter-ds';
 import { IconAlertCircle, IconChartBar, IconShield } from '@tabler/icons-react';
 import { useRouter } from 'next/router';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
 import type { Control } from '@/core/api/types';
@@ -68,11 +68,16 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     });
 
   const updateControl = useUpdateControl();
+  const editCloseRef = useRef<(() => void) | null>(null);
 
   const handleCloseEditModal = () => {
+    // If EditControlContent has registered a close handler (with dirty check),
+    // use it. Otherwise close directly.
+    if (editCloseRef.current) {
+      editCloseRef.current();
+      return;
+    }
     closeModal();
-    // Do not clear selectedControl here so modal content stays mounted during
-    // the close animation; the effect syncs selectedControl when the modal opens.
   };
 
   const { handleDeleteControl, removeControlFromAgent } = useDeleteControlFlow({
@@ -200,6 +205,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           agentId={agentId}
           onClose={handleCloseEditModal}
           onSuccess={handleEditControlSuccess}
+          onCloseRef={editCloseRef}
         />
       );
     }
@@ -372,6 +378,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         onClose={handleCloseEditModal}
         title="Edit Control"
         size="xl"
+        closeOnEscape={false}
         styles={{
           title: { fontSize: '18px', fontWeight: 600 },
           content: { maxWidth: '1500px', width: '95vw' },

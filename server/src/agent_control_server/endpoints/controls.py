@@ -11,6 +11,7 @@ from agent_control_models.server import (
     DeleteControlResponse,
     GetControlDataResponse,
     GetControlResponse,
+    GetControlSchemaResponse,
     ListControlsResponse,
     PaginationInfo,
     PatchControlRequest,
@@ -99,7 +100,11 @@ def _serialize_control_definition(control_def: ControlDefinition) -> dict[str, o
 async def _validate_control_definition(
     control_def: ControlDefinition, db: AsyncSession
 ) -> None:
-    """Validate evaluator config for a control definition."""
+    """Validate evaluator config for definitions referencing known global evaluators.
+
+    Agent-scoped evaluators must exist on the referenced agent. Builtin and external
+    names that are not loaded in this process are accepted without config checks.
+    """
     available_evaluators = list_evaluators()
     agent_data_by_name: dict[str, AgentData] = {}
     for field_prefix, leaf in _iter_condition_leaves(control_def.condition):
@@ -211,6 +216,9 @@ async def _validate_control_definition(
 
         evaluator_cls = available_evaluators.get(parsed.name)
         if evaluator_cls is None:
+            # Global (builtin / external) evaluators may be absent from this runtime
+            # (optional packages, forward compatibility). Store the definition without
+            # config validation; evaluation will fail later if the evaluator is missing.
             continue
 
         try:
@@ -323,6 +331,19 @@ async def create_control(
             operation="create",
         )
     return CreateControlResponse(control_id=control.id)
+
+
+@router.get(
+    "/schema",
+    response_model=GetControlSchemaResponse,
+    summary="Get control definition JSON schema",
+    response_description="JSON schema for ControlDefinition",
+)
+async def get_control_schema() -> GetControlSchemaResponse:
+    """Return the canonical JSON schema for ControlDefinition."""
+    return GetControlSchemaResponse(
+        schema=ControlDefinition.model_json_schema(by_alias=True)
+    )
 
 
 @router.get(

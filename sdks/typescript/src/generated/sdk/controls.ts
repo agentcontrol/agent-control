@@ -5,6 +5,7 @@
 import { controlsCreate } from "../funcs/controls-create.js";
 import { controlsDelete } from "../funcs/controls-delete.js";
 import { controlsGetData } from "../funcs/controls-get-data.js";
+import { controlsGetSchema } from "../funcs/controls-get-schema.js";
 import { controlsGet } from "../funcs/controls-get.js";
 import { controlsList } from "../funcs/controls-list.js";
 import { controlsUpdateData } from "../funcs/controls-update-data.js";
@@ -79,6 +80,21 @@ export class Controls extends ClientSDK {
     return unwrapAsync(controlsCreate(
       this,
       request,
+      options,
+    ));
+  }
+
+  /**
+   * Get control definition JSON schema
+   *
+   * @remarks
+   * Return the canonical JSON schema for ControlDefinition.
+   */
+  async getSchema(
+    options?: RequestOptions,
+  ): Promise<models.GetControlSchemaResponse> {
+    return unwrapAsync(controlsGetSchema(
+      this,
       options,
     ));
   }

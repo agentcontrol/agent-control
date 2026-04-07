@@ -100,6 +100,8 @@ export type SetControlDataResponse =
   components['schemas']['SetControlDataResponse'];
 export type GetControlDataResponse =
   components['schemas']['GetControlDataResponse'];
+export type GetControlSchemaResponse =
+  components['schemas']['GetControlSchemaResponse'];
 
 export type ValidateControlDataRequest =
   components['schemas']['ValidateControlDataRequest'];

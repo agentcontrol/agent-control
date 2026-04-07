@@ -45,6 +45,7 @@ export * from "./get-agent-policies-response.js";
 export * from "./get-agent-response.js";
 export * from "./get-control-data-response.js";
 export * from "./get-control-response.js";
+export * from "./get-control-schema-response.js";
 export * from "./get-policy-controls-response.js";
 export * from "./get-policy-response.js";
 export * from "./health-response.js";

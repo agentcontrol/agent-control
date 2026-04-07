@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Awaitable, Protocol, Sequence, TypeAlias
 
@@ -55,3 +56,27 @@ async def resolve_sink_result(result: SinkWriteResult) -> SinkResult:
     if inspect.isawaitable(result):
         return await result
     return result
+
+class AsyncControlEventSink(Protocol):
+    """Async write-side abstraction for delivering control execution events."""
+
+    async def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkResult:
+        """Write a batch of control execution events."""
+
+
+class BaseAsyncControlEventSink(AsyncControlEventSink):
+    """Minimal async helper base for sink implementations."""
+
+    async def write_event(self, event: ControlExecutionEvent) -> SinkResult:
+        """Write a single control execution event."""
+        return await self.write_events([event])
+
+    async def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkResult:
+        """Write a batch of control execution events."""
+        accepted = 0
+        dropped = 0
+        for event in events:
+            result = await self.write_event(event)
+            accepted += result.accepted
+            dropped += result.dropped
+        return SinkResult(accepted=accepted, dropped=dropped)

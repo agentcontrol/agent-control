@@ -110,6 +110,11 @@ actions:
       x-speakeasy-group: controls
       x-speakeasy-name-override: create
 
+  - target: $["paths"]["/api/v1/controls/schema"]["get"]
+    update:
+      x-speakeasy-group: controls
+      x-speakeasy-name-override: getSchema
+
   - target: $["paths"]["/api/v1/controls/validate"]["post"]
     update:
       x-speakeasy-group: controls

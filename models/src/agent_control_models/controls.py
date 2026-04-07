@@ -74,6 +74,7 @@ class ControlScope(BaseModel):
             "Step types this control applies to (omit to apply to all types). "
             "Built-in types are 'tool' and 'llm'."
         ),
+        examples=[["llm"], ["tool"], ["llm", "tool"]],
     )
     step_names: list[str] | None = Field(
         default=None,
@@ -172,6 +173,7 @@ class EvaluatorSpec(BaseModel):
 
     name: str = Field(
         ...,
+        min_length=1,
         description="Evaluator name or agent-scoped reference (agent:evaluator)",
         examples=["regex", "list", "my-agent:pii-detector"],
     )
@@ -183,6 +185,17 @@ class EvaluatorSpec(BaseModel):
             {"values": ["admin"], "logic": "any"},
         ],
     )
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Evaluator name cannot be empty or whitespace-only.")
+        return normalized
 
     @model_validator(mode="after")
     def validate_evaluator_config(self) -> Self:

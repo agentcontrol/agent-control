@@ -15,6 +15,7 @@ import type { ProblemDetail } from '@/core/api/types';
 
 import { JsonEditorView } from './json-editor-view';
 import type { ConfigViewMode } from './types';
+import type { JsonSchema } from './types';
 
 const DEFAULT_HEIGHT = 450;
 const CONTENT_MIN_HEIGHT_EXTRA = 60;
@@ -39,6 +40,8 @@ type EvaluatorConfigSectionProps = {
   evaluatorForm: UseFormReturnType<any>;
   formComponent?: React.ComponentType<{ form: UseFormReturnType<any> }>;
   height?: number;
+  activeEvaluatorId?: string;
+  activeEvaluatorSchema?: JsonSchema | null;
 };
 
 export function EvaluatorConfigSection({
@@ -47,6 +50,8 @@ export function EvaluatorConfigSection({
   evaluatorForm,
   formComponent: FormComponent,
   height = DEFAULT_HEIGHT,
+  activeEvaluatorId,
+  activeEvaluatorSchema,
 }: EvaluatorConfigSectionProps) {
   const [validationStatus, setValidationStatus] =
     useState<ValidationStatus>('idle');
@@ -131,6 +136,9 @@ export function EvaluatorConfigSection({
               label="Configuration (JSON)"
               tooltip="Raw evaluator configuration in JSON format"
               testId="raw-json-textarea"
+              editorMode="evaluator-config"
+              activeEvaluatorId={activeEvaluatorId}
+              schema={activeEvaluatorSchema}
               {...jsonViewProps}
             />
           )}

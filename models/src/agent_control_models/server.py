@@ -293,6 +293,16 @@ class GetControlDataResponse(BaseModel):
     data: ControlDefinition = Field(description="Control data payload")
 
 
+class GetControlSchemaResponse(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    schema_: dict[str, Any] = Field(
+        alias="schema",
+        serialization_alias="schema",
+        description="JSON Schema for a full ControlDefinition payload",
+    )
+
+
 class SetControlDataRequest(BaseModel):
     """Request to update control configuration data."""
     data: ControlDefinition = Field(

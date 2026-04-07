@@ -465,6 +465,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/controls/schema': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get control definition JSON schema
+     * @description Return the canonical JSON schema for ControlDefinition.
+     */
+    get: operations['get_control_schema_api_v1_controls_schema_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/controls/validate': {
     parameters: {
       query?: never;
@@ -2443,6 +2463,16 @@ export interface components {
        */
       name: string;
     };
+    /** GetControlSchemaResponse */
+    GetControlSchemaResponse: {
+      /**
+       * Schema
+       * @description JSON Schema for a full ControlDefinition payload
+       */
+      schema: {
+        [key: string]: unknown;
+      };
+    };
     /**
      * GetPolicyControlsResponse
      * @description Response containing control IDs associated with a policy.
@@ -3833,6 +3863,26 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_control_schema_api_v1_controls_schema_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON schema for ControlDefinition */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GetControlSchemaResponse'];
         };
       };
     };

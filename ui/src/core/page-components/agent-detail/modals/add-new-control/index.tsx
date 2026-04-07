@@ -54,7 +54,7 @@ function getDefaultConfigForEvaluator(
 function buildJsonDraftControl(agentName: string) {
   return {
     id: 0,
-    name: `json-control-for-${sanitizeControlNamePart(agentName)}`,
+    name: 'new-json-control',
     control: {
       description: '',
       enabled: true,
@@ -144,7 +144,7 @@ export function AddNewControlModal({
 
   const draftControl = useMemo(() => {
     if (selectedEvaluator) {
-      const name = `${sanitizeControlNamePart(selectedEvaluator.name)}-control-for-${sanitizeControlNamePart(agentName)}`;
+      const name = `new-${sanitizeControlNamePart(selectedEvaluator.name)}-control`;
       return {
         id: 0,
         name,
@@ -232,6 +232,7 @@ export function AddNewControlModal({
       size="xxl"
       padding={0}
       withCloseButton={false}
+      closeOnEscape={false}
       styles={{
         body: {
           padding: 0,
@@ -283,7 +284,7 @@ export function AddNewControlModal({
                   data-testid="from-json-button"
                   onClick={handleFromJsonClick}
                 >
-                  From JSON
+                  Write your own
                 </Button>
                 <Text size="sm" c="dimmed">
                   Learn here on how to add new type of evaluator.{' '}
@@ -342,6 +343,7 @@ export function AddNewControlModal({
         title="Create Control"
         size="xl"
         keepMounted={false}
+        closeOnEscape={false}
         styles={{
           title: { fontSize: '18px', fontWeight: 600 },
           content: { maxWidth: '1500px', width: '90vw' },
