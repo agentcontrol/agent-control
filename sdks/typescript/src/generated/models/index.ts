@@ -3,8 +3,6 @@
  */
 
 export * from "./action-decision.js";
-export * from "./agent-control-enabled-state.js";
-export * from "./agent-control-rendered-state.js";
 export * from "./agent-controls-response.js";
 export * from "./agent-ref.js";
 export * from "./agent-summary.js";
