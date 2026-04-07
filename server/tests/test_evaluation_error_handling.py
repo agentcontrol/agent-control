@@ -1,9 +1,13 @@
 """End-to-end tests for evaluator error handling."""
-import logging
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
-from agent_control_models import ControlMatch, EvaluationRequest, EvaluatorResult, Step
+from agent_control_models import (
+    ControlMatch,
+    EvaluationRequest,
+    EvaluatorResult,
+    Step,
+)
 from fastapi.testclient import TestClient
 
 from agent_control_server.endpoints.evaluation import (
@@ -11,7 +15,6 @@ from agent_control_server.endpoints.evaluation import (
     SAFE_EVALUATOR_TIMEOUT_ERROR,
     _sanitize_control_match,
 )
-from agent_control_server.observability.ingest.base import IngestResult
 
 from .utils import create_and_assign_policy
 
@@ -165,12 +168,11 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     assert data["matches"] is None or len(data["matches"]) == 0
 
 
-def test_evaluation_observability_receives_raw_errors_while_api_response_is_sanitized(
+def test_evaluation_response_is_sanitized_without_server_side_observability(
     client: TestClient,
     monkeypatch,
 ) -> None:
-    """Observability should ingest raw evaluator diagnostics while API clients see safe text."""
-    # Given: an agent with a deny control and an evaluator that crashes at runtime
+    """Evaluation stays pure and returns only sanitized semantics."""
     control_data = {
         "description": "Test control",
         "enabled": True,
@@ -190,7 +192,6 @@ def test_evaluation_observability_receives_raw_errors_while_api_response_is_sani
     mock_evaluator.get_timeout_seconds = MagicMock(return_value=30.0)
 
     import agent_control_engine.core as core_module
-    import agent_control_server.endpoints.evaluation as evaluation_module
 
     monkeypatch.setattr(
         core_module,
@@ -198,11 +199,6 @@ def test_evaluation_observability_receives_raw_errors_while_api_response_is_sani
         lambda _config: mock_evaluator,
     )
 
-    emit_mock = AsyncMock()
-    monkeypatch.setattr(evaluation_module, "_emit_observability_events", emit_mock)
-    monkeypatch.setattr(evaluation_module.observability_settings, "enabled", True)
-
-    # When: sending an evaluation request
     payload = Step(type="llm", name="test-step", input="test content", output=None)
     req = EvaluationRequest(
         agent_name=agent_name,
@@ -211,24 +207,12 @@ def test_evaluation_observability_receives_raw_errors_while_api_response_is_sani
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
 
-    # Then: the API response remains sanitized
     assert resp.status_code == 200
     data = resp.json()
     assert data["errors"] is not None
     assert len(data["errors"]) == 1
     assert data["errors"][0]["control_name"] == control_name
     assert data["errors"][0]["result"]["error"] == SAFE_EVALUATOR_ERROR
-
-    # And: observability receives the raw engine response with unsanitized diagnostics
-    emit_mock.assert_awaited_once()
-    raw_response = emit_mock.await_args.kwargs["response"]
-    assert raw_response.errors is not None
-    raw_error = raw_response.errors[0]
-    assert raw_error.control_name == control_name
-    assert raw_error.result.error == "RuntimeError: Simulated evaluator crash"
-    raw_trace = raw_error.result.metadata["condition_trace"]
-    assert raw_trace["error"] == "RuntimeError: Simulated evaluator crash"
-    assert raw_trace["message"] == "Evaluation failed: RuntimeError: Simulated evaluator crash"
 
 
 def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
@@ -343,32 +327,24 @@ def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypat
     assert body["errors"][0]["message"] == "Invalid evaluation request or control configuration."
 
 
-def test_evaluation_warns_when_observability_drops_events(
-    client: TestClient, app, caplog
-) -> None:
-    # Given: an agent with a control that will match
+
+def test_evaluation_ignores_merge_headers_and_remains_pure(client: TestClient) -> None:
+    """/evaluation should return only semantic results regardless of merge headers."""
     agent_name, _ = create_and_assign_policy(client)
 
-    class DroppingIngestor:
-        async def ingest(self, events):  # type: ignore[no-untyped-def]
-            return IngestResult(received=len(events), processed=0, dropped=len(events))
+    payload = Step(type="llm", name="test-step", input="x", output=None)
+    req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
+    resp = client.post(
+        "/api/v1/evaluation",
+        json=req.model_dump(mode="json"),
+        headers={
+            "X-Agent-Control-Merge-Events": "true",
+            "X-Trace-Id": "a" * 32,
+            "X-Span-Id": "b" * 16,
+        },
+    )
 
-    previous_ingestor = getattr(app.state, "event_ingestor", None)
-    app.state.event_ingestor = DroppingIngestor()
-    try:
-        # And: a log capture for the evaluation warning
-        caplog.set_level(logging.WARNING, logger="agent_control_server.endpoints.evaluation")
-
-        # When: sending an evaluation request
-        payload = Step(type="llm", name="test-step", input="x", output=None)
-        req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
-        resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
-
-        # Then: the evaluation succeeds but logs a dropped-events warning
-        assert resp.status_code == 200
-        assert any("Dropped" in record.message for record in caplog.records)
-    finally:
-        if previous_ingestor is None:
-            del app.state.event_ingestor
-        else:
-            app.state.event_ingestor = previous_ingestor
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "events" not in body
+    assert body["is_safe"] is False

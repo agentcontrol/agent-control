@@ -1,6 +1,6 @@
 """Tests for the telemetry trace context provider interface."""
 
-from agent_control.telemetry.trace_context import (
+from agent_control_telemetry.trace_context import (
     clear_trace_context_provider,
     get_trace_context_from_provider,
     set_trace_context_provider,
@@ -59,6 +59,17 @@ def test_get_trace_context_from_provider_returns_none_for_empty_ids() -> None:
         lambda: {
             "trace_id": "",
             "span_id": "",
+        }
+    )
+
+    assert get_trace_context_from_provider() is None
+
+
+def test_get_trace_context_from_provider_returns_none_for_non_string_ids() -> None:
+    set_trace_context_provider(  # type: ignore[arg-type]
+        lambda: {
+            "trace_id": 123,
+            "span_id": b"abc",
         }
     )
 

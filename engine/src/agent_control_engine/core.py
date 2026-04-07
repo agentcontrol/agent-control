@@ -15,8 +15,9 @@ import re2
 from agent_control_evaluators import get_evaluator_instance
 from agent_control_models import (
     ConditionNode,
-    ControlDefinition,
+    ControlAction,
     ControlMatch,
+    ControlScope,
     EvaluationRequest,
     EvaluationResponse,
     EvaluatorResult,
@@ -42,12 +43,30 @@ def _compile_regex(pattern: str) -> Any:
     return re2.compile(pattern)
 
 
+class ControlDefinitionLike(Protocol):
+    """Runtime control shape required by the engine."""
+
+    enabled: bool
+    execution: Literal["server", "sdk"]
+    scope: ControlScope
+    condition: ConditionNode
+    action: ControlAction
+
+
 class ControlWithIdentity(Protocol):
     """Protocol for a control with identity information."""
 
-    id: int
-    name: str
-    control: ControlDefinition
+    @property
+    def id(self) -> int:
+        """Database identity for the control."""
+
+    @property
+    def name(self) -> str:
+        """Human-readable name for the control."""
+
+    @property
+    def control(self) -> ControlDefinitionLike:
+        """Runtime control payload used during evaluation."""
 
 
 @dataclass

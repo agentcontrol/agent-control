@@ -4,7 +4,7 @@
 
 import * as z from "zod/v4-mini";
 import { AgentControlSDKCore } from "../core.js";
-import { encodeSimple } from "../lib/encodings.js";
+import { encodeFormQuery, encodeSimple } from "../lib/encodings.js";
 import * as M from "../lib/matchers.js";
 import { compactMap } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
@@ -28,19 +28,25 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * List agent's active controls
+ * List agent's associated controls
  *
  * @remarks
- * List all protection controls active for an agent.
+ * List protection controls associated with an agent.
  *
- * Controls include the union of policy-derived and directly associated controls.
+ * By default, the endpoint returns all associated controls, including rendered
+ * controls, disabled controls, and unrendered template drafts. Callers can
+ * narrow the response via the state filters on this endpoint. Filters
+ * intersect, so unrendered drafts require rendered_state='unrendered'
+ * together with enabled_state='all' or 'disabled'.
  *
  * Args:
  *     agent_name: Agent identifier
+ *     rendered_state: Whether to return rendered controls, unrendered drafts, or both
+ *     enabled_state: Whether to return enabled controls, disabled controls, or both
  *     db: Database session (injected)
  *
  * Returns:
- *     AgentControlsResponse with list of active controls
+ *     AgentControlsResponse with controls matching the requested state filters
  *
  * Raises:
  *     HTTPException 404: Agent not found
@@ -116,6 +122,11 @@ async function $do(
 
   const path = pathToFunc("/api/v1/agents/{agent_name}/controls")(pathParams);
 
+  const query = encodeFormQuery({
+    "enabled_state": payload.enabled_state,
+    "rendered_state": payload.rendered_state,
+  });
+
   const headers = new Headers(compactMap({
     Accept: "application/json",
   }));
@@ -145,6 +156,7 @@ async function $do(
     baseURL: options?.serverURL,
     path: path,
     headers: headers,
+    query: query,
     body: body,
     userAgent: client._options.userAgent,
     timeoutMs: options?.timeoutMs || client._options.timeoutMs || -1,

@@ -2,8 +2,8 @@
 """Build packages for PyPI distribution.
 
 This script builds all publishable packages. For SDK and server, it copies internal
-packages (models, engine) into the source directories before building, then cleans up
-afterward. This allows the published wheels to be self-contained.
+packages (models, engine, telemetry) into the source directories before building,
+then cleans up afterward. This allows the published wheels to be self-contained.
 
 Usage:
     python scripts/build.py [models|evaluators|sdk|server|galileo|all]
@@ -81,7 +81,7 @@ def build_sdk() -> None:
     print(f"Building agent-control-sdk v{version}")
 
     # Clean previous builds and vendored code
-    for pkg in ["agent_control_models", "agent_control_engine"]:
+    for pkg in ["agent_control_models", "agent_control_engine", "agent_control_telemetry"]:
         target = sdk_src / pkg
         if target.exists():
             shutil.rmtree(target)
@@ -99,6 +99,10 @@ def build_sdk() -> None:
         ROOT / "engine" / "src" / "agent_control_engine",
         sdk_src / "agent_control_engine",
     )
+    shutil.copytree(
+        ROOT / "telemetry" / "src" / "agent_control_telemetry",
+        sdk_src / "agent_control_telemetry",
+    )
 
     # Inject bundle metadata for conflict detection
     inject_bundle_metadata(
@@ -111,6 +115,11 @@ def build_sdk() -> None:
         "agent-control-sdk",
         version,
     )
+    inject_bundle_metadata(
+        sdk_src / "agent_control_telemetry" / "__init__.py",
+        "agent-control-sdk",
+        version,
+    )
 
     # Set version
     set_package_version(sdk_dir / "pyproject.toml", version)
@@ -120,7 +129,7 @@ def build_sdk() -> None:
         print(f"  Built agent-control-sdk v{version}")
     finally:
         # Clean up vendored code (don't commit it)
-        for pkg in ["agent_control_models", "agent_control_engine"]:
+        for pkg in ["agent_control_models", "agent_control_engine", "agent_control_telemetry"]:
             target = sdk_src / pkg
             if target.exists():
                 shutil.rmtree(target)
@@ -139,7 +148,7 @@ def build_server() -> None:
     print(f"Building agent-control-server v{version}")
 
     # Clean previous builds and vendored code
-    for pkg in ["agent_control_models", "agent_control_engine"]:
+    for pkg in ["agent_control_models", "agent_control_engine", "agent_control_telemetry"]:
         target = server_src / pkg
         if target.exists():
             shutil.rmtree(target)
@@ -148,7 +157,7 @@ def build_server() -> None:
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
 
-    # Copy vendored packages (models and engine only, NOT evaluators)
+    # Copy vendored packages (models, engine, and telemetry only, NOT evaluators)
     shutil.copytree(
         ROOT / "models" / "src" / "agent_control_models",
         server_src / "agent_control_models",
@@ -156,6 +165,10 @@ def build_server() -> None:
     shutil.copytree(
         ROOT / "engine" / "src" / "agent_control_engine",
         server_src / "agent_control_engine",
+    )
+    shutil.copytree(
+        ROOT / "telemetry" / "src" / "agent_control_telemetry",
+        server_src / "agent_control_telemetry",
     )
 
     # Inject bundle metadata for conflict detection
@@ -169,6 +182,11 @@ def build_server() -> None:
         "agent-control-server",
         version,
     )
+    inject_bundle_metadata(
+        server_src / "agent_control_telemetry" / "__init__.py",
+        "agent-control-server",
+        version,
+    )
 
     # Set version
     set_package_version(server_dir / "pyproject.toml", version)
@@ -178,7 +196,7 @@ def build_server() -> None:
         print(f"  Built agent-control-server v{version}")
     finally:
         # Clean up vendored code (don't commit it)
-        for pkg in ["agent_control_models", "agent_control_engine"]:
+        for pkg in ["agent_control_models", "agent_control_engine", "agent_control_telemetry"]:
             target = server_src / pkg
             if target.exists():
                 shutil.rmtree(target)

@@ -1,6 +1,6 @@
 {
   "name": "agent-control",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": false,
   "description": "TypeScript SDK for Agent Control",
   "license": "Apache-2.0",

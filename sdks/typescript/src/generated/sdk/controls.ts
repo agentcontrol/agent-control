@@ -5,8 +5,10 @@
 import { controlsCreate } from "../funcs/controls-create.js";
 import { controlsDelete } from "../funcs/controls-delete.js";
 import { controlsGetData } from "../funcs/controls-get-data.js";
+import { controlsGetSchema } from "../funcs/controls-get-schema.js";
 import { controlsGet } from "../funcs/controls-get.js";
 import { controlsList } from "../funcs/controls-list.js";
+import { controlsRenderTemplate } from "../funcs/controls-render-template.js";
 import { controlsUpdateData } from "../funcs/controls-update-data.js";
 import { controlsUpdateMetadata } from "../funcs/controls-update-metadata.js";
 import { controlsValidateData } from "../funcs/controls-validate-data.js";
@@ -16,6 +18,23 @@ import * as operations from "../models/operations/index.js";
 import { unwrapAsync } from "../types/fp.js";
 
 export class Controls extends ClientSDK {
+  /**
+   * Render a control template preview
+   *
+   * @remarks
+   * Render a template-backed control without persisting it.
+   */
+  async renderTemplate(
+    request: models.RenderControlTemplateRequest,
+    options?: RequestOptions,
+  ): Promise<models.RenderControlTemplateResponse> {
+    return unwrapAsync(controlsRenderTemplate(
+      this,
+      request,
+      options,
+    ));
+  }
+
   /**
    * List all controls
    *
@@ -29,6 +48,7 @@ export class Controls extends ClientSDK {
    *     limit: Maximum number of controls to return (default 20, max 100)
    *     name: Optional filter by name (partial, case-insensitive match)
    *     enabled: Optional filter by enabled status
+   *     template_backed: Optional filter by whether the control is template-backed
    *     step_type: Optional filter by step type (built-ins: 'tool', 'llm')
    *     stage: Optional filter by stage ('pre' or 'post')
    *     execution: Optional filter by execution ('server' or 'sdk')
@@ -79,6 +99,21 @@ export class Controls extends ClientSDK {
     return unwrapAsync(controlsCreate(
       this,
       request,
+      options,
+    ));
+  }
+
+  /**
+   * Get control definition JSON schema
+   *
+   * @remarks
+   * Return the canonical JSON schema for ControlDefinition.
+   */
+  async getSchema(
+    options?: RequestOptions,
+  ): Promise<models.GetControlSchemaResponse> {
+    return unwrapAsync(controlsGetSchema(
+      this,
       options,
     ));
   }

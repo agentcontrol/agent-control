@@ -3,30 +3,60 @@
  */
 
 import * as z from "zod/v4-mini";
+import { smartUnion } from "../types/smart-union.js";
 import {
   ControlDefinitionInput,
   ControlDefinitionInput$Outbound,
   ControlDefinitionInput$outboundSchema,
 } from "./control-definition-input.js";
+import {
+  TemplateControlInput,
+  TemplateControlInput$Outbound,
+  TemplateControlInput$outboundSchema,
+} from "./template-control-input.js";
+
+/**
+ * Control configuration data (replaces existing)
+ */
+export type SetControlDataRequestData =
+  | ControlDefinitionInput
+  | TemplateControlInput;
 
 /**
  * Request to update control configuration data.
  */
 export type SetControlDataRequest = {
   /**
-   * A control definition to evaluate agent interactions.
-   *
-   * @remarks
-   *
-   * This model contains only the logic and configuration.
-   * Identity fields (id, name) are managed by the database.
+   * Control configuration data (replaces existing)
    */
-  data: ControlDefinitionInput;
+  data: ControlDefinitionInput | TemplateControlInput;
 };
 
 /** @internal */
+export type SetControlDataRequestData$Outbound =
+  | ControlDefinitionInput$Outbound
+  | TemplateControlInput$Outbound;
+
+/** @internal */
+export const SetControlDataRequestData$outboundSchema: z.ZodMiniType<
+  SetControlDataRequestData$Outbound,
+  SetControlDataRequestData
+> = smartUnion([
+  ControlDefinitionInput$outboundSchema,
+  TemplateControlInput$outboundSchema,
+]);
+
+export function setControlDataRequestDataToJSON(
+  setControlDataRequestData: SetControlDataRequestData,
+): string {
+  return JSON.stringify(
+    SetControlDataRequestData$outboundSchema.parse(setControlDataRequestData),
+  );
+}
+
+/** @internal */
 export type SetControlDataRequest$Outbound = {
-  data: ControlDefinitionInput$Outbound;
+  data: ControlDefinitionInput$Outbound | TemplateControlInput$Outbound;
 };
 
 /** @internal */
@@ -34,7 +64,10 @@ export const SetControlDataRequest$outboundSchema: z.ZodMiniType<
   SetControlDataRequest$Outbound,
   SetControlDataRequest
 > = z.object({
-  data: ControlDefinitionInput$outboundSchema,
+  data: smartUnion([
+    ControlDefinitionInput$outboundSchema,
+    TemplateControlInput$outboundSchema,
+  ]),
 });
 
 export function setControlDataRequestToJSON(

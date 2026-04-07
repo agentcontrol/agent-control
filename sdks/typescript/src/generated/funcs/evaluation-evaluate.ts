@@ -4,7 +4,7 @@
 
 import * as z from "zod/v4-mini";
 import { AgentControlSDKCore } from "../core.js";
-import { encodeJSON, encodeSimple } from "../lib/encodings.js";
+import { encodeJSON } from "../lib/encodings.js";
 import * as M from "../lib/matchers.js";
 import { compactMap } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
@@ -23,7 +23,6 @@ import * as errors from "../models/errors/index.js";
 import { ResponseValidationError } from "../models/errors/response-validation-error.js";
 import { SDKValidationError } from "../models/errors/sdk-validation-error.js";
 import * as models from "../models/index.js";
-import * as operations from "../models/operations/index.js";
 import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
@@ -33,19 +32,14 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Analyze content for safety and control violations.
  *
- * Runs all controls assigned to the agent via policy through the
- * evaluation engine. Controls are evaluated in parallel with
- * cancel-on-deny for efficiency.
- *
- * Custom evaluators must be deployed as Evaluator classes
- * with the engine. Their schemas are registered via initAgent.
- *
- * Optionally accepts X-Trace-Id and X-Span-Id headers for
- * OpenTelemetry-compatible distributed tracing.
+ * This endpoint is intentionally evaluation-only. It returns the semantic
+ * ``EvaluationResponse`` and does not build or ingest observability events
+ * on the server; SDKs reconstruct and emit those events separately through
+ * the observability ingestion endpoint.
  */
 export function evaluationEvaluate(
   client: AgentControlSDKCore,
-  request: operations.EvaluateApiV1EvaluationPostRequest,
+  request: models.EvaluationRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -70,7 +64,7 @@ export function evaluationEvaluate(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.EvaluateApiV1EvaluationPostRequest,
+  request: models.EvaluationRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -91,32 +85,20 @@ async function $do(
 > {
   const parsed = safeParse(
     request,
-    (value) =>
-      z.parse(
-        operations.EvaluateApiV1EvaluationPostRequest$outboundSchema,
-        value,
-      ),
+    (value) => z.parse(models.EvaluationRequest$outboundSchema, value),
     "Input validation failed",
   );
   if (!parsed.ok) {
     return [parsed, { status: "invalid" }];
   }
   const payload = parsed.value;
-  const body = encodeJSON("body", payload.body, { explode: true });
+  const body = encodeJSON("body", payload, { explode: true });
 
   const path = pathToFunc("/api/v1/evaluation")();
 
   const headers = new Headers(compactMap({
     "Content-Type": "application/json",
     Accept: "application/json",
-    "X-Span-Id": encodeSimple("X-Span-Id", payload["X-Span-Id"], {
-      explode: false,
-      charEncoding: "none",
-    }),
-    "X-Trace-Id": encodeSimple("X-Trace-Id", payload["X-Trace-Id"], {
-      explode: false,
-      charEncoding: "none",
-    }),
   }));
 
   const secConfig = await extractSecurity(client._options.apiKeyHeader);

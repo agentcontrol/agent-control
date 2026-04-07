@@ -15,7 +15,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: agent_control_postgres_dev
     ports:
       - "${AGENT_CONTROL_DB_HOST_PORT:-5432}:5432"
     environment:

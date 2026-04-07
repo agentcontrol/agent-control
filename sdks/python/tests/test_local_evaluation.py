@@ -93,6 +93,64 @@ def make_control_dict(
     }
 
 
+def add_template_metadata(control: dict[str, Any], *, pattern: str = "test") -> dict[str, Any]:
+    """Attach realistic template metadata to a cached control payload."""
+    control["control"]["template"] = {
+        "parameters": {
+            "pattern": {
+                "type": "regex_re2",
+                "label": "Pattern",
+            }
+        },
+        "definition_template": {
+            "description": "Template-backed control",
+            "execution": control["control"]["execution"],
+            "scope": control["control"]["scope"],
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {"pattern": {"$param": "pattern"}},
+                },
+            },
+            "action": control["control"]["action"],
+        },
+    }
+    control["control"]["template_values"] = {"pattern": pattern}
+    return control
+
+
+def make_unrendered_template_control(
+    control_id: int, name: str
+) -> dict[str, Any]:
+    """Build a cached control payload that represents an unrendered template."""
+    return {
+        "id": control_id,
+        "name": name,
+        "control": {
+            "template": {
+                "parameters": {
+                    "pattern": {"type": "regex_re2", "label": "Pattern"},
+                },
+                "definition_template": {
+                    "execution": "server",
+                    "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {"pattern": {"$param": "pattern"}},
+                        },
+                    },
+                    "action": {"decision": "deny"},
+                },
+            },
+            "template_values": {},
+            "enabled": False,
+        },
+    }
+
+
 NON_APPLICABLE_CONTROL_CASES = [
     pytest.param({"enabled": False}, id="disabled"),
     pytest.param({"stage": "post"}, id="stage_mismatch"),
@@ -272,6 +330,41 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
 
     @pytest.mark.asyncio
+    async def test_server_only_template_backed_controls_still_call_server(
+        self,
+        agent_name,
+        llm_payload,
+    ):
+        """Template metadata must not break routing for server-executed cached controls."""
+        # Given: a cached server-executed control that includes template metadata
+        controls = [
+            add_template_metadata(
+                make_control_dict(1, "templated_server_ctrl", execution="server"),
+            ),
+        ]
+
+        # Given: a client stub that returns a safe server evaluation response
+        client = MagicMock(spec=AgentControlClient)
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"is_safe": True, "confidence": 1.0}
+        mock_response.raise_for_status = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock(return_value=mock_response)
+
+        # When: evaluating with local controls enabled
+        result = await check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+        )
+
+        # Then: the SDK still routes evaluation to the server
+        client.http_client.post.assert_called_once()
+        assert result.is_safe is True
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "control_kwargs",
         NON_APPLICABLE_CONTROL_CASES,
@@ -446,6 +539,68 @@ class TestCheckEvaluationWithLocal:
         assert result.matches is not None
         assert len(result.matches) == 1
         assert result.matches[0].control_name == "legacy_local_ctrl"
+
+    @pytest.mark.asyncio
+    async def test_template_backed_local_control_executes_locally(
+        self,
+        agent_name,
+        llm_payload,
+    ):
+        """Template metadata should be ignored by runtime parsing in local evaluation."""
+        # Given: a cached SDK-executed control that includes template metadata
+        controls = [
+            add_template_metadata(
+                make_control_dict(1, "templated_local_ctrl", execution="sdk", pattern=r"test"),
+            ),
+        ]
+        # Given: a client stub that would allow server calls if routing were wrong
+        client = MagicMock(spec=AgentControlClient)
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock()
+
+        # When: evaluating with local controls enabled
+        result = await check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+        )
+
+        # Then: local evaluation succeeds and no server call is made
+        client.http_client.post.assert_not_called()
+        assert result.is_safe is False
+        assert result.matches is not None
+        assert len(result.matches) == 1
+        assert result.matches[0].control_name == "templated_local_ctrl"
+
+    @pytest.mark.asyncio
+    async def test_unrendered_template_does_not_trigger_server_fallback(
+        self,
+        agent_name,
+        llm_payload,
+    ):
+        """Unrendered templates must be skipped, not treated as parse failures."""
+        # Given: only an unrendered template control (no rendered controls)
+        controls = [make_unrendered_template_control(1, "unrendered_ctrl")]
+
+        client = MagicMock(spec=AgentControlClient)
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock()
+
+        # When: evaluating with local controls
+        result = await check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+        )
+
+        # Then: no server call is made (unrendered control skipped, not a fallback trigger)
+        client.http_client.post.assert_not_called()
+        # And: result is safe since no evaluable controls exist
+        assert result.is_safe is True
 
     @pytest.mark.asyncio
     async def test_local_deny_short_circuits(self, agent_name, llm_payload):

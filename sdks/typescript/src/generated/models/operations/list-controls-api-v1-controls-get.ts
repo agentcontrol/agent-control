@@ -20,6 +20,10 @@ export type ListControlsApiV1ControlsGetRequest = {
    */
   enabled?: boolean | null | undefined;
   /**
+   * Filter by whether the control is template-backed
+   */
+  templateBacked?: boolean | null | undefined;
+  /**
    * Filter by step type (built-ins: 'tool', 'llm')
    */
   stepType?: string | null | undefined;
@@ -43,6 +47,7 @@ export type ListControlsApiV1ControlsGetRequest$Outbound = {
   limit: number;
   name?: string | null | undefined;
   enabled?: boolean | null | undefined;
+  template_backed?: boolean | null | undefined;
   step_type?: string | null | undefined;
   stage?: string | null | undefined;
   execution?: string | null | undefined;
@@ -59,6 +64,7 @@ export const ListControlsApiV1ControlsGetRequest$outboundSchema: z.ZodMiniType<
     limit: z._default(z.int(), 20),
     name: z.optional(z.nullable(z.string())),
     enabled: z.optional(z.nullable(z.boolean())),
+    templateBacked: z.optional(z.nullable(z.boolean())),
     stepType: z.optional(z.nullable(z.string())),
     stage: z.optional(z.nullable(z.string())),
     execution: z.optional(z.nullable(z.string())),
@@ -66,6 +72,7 @@ export const ListControlsApiV1ControlsGetRequest$outboundSchema: z.ZodMiniType<
   }),
   z.transform((v) => {
     return remap$(v, {
+      templateBacked: "template_backed",
       stepType: "step_type",
     });
   }),

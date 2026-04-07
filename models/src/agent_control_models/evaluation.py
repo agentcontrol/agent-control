@@ -127,8 +127,6 @@ class EvaluationResponse(BaseModel):
         default=None,
         description="List of controls that were evaluated but did not match (if any)",
     )
-
-
 class EvaluationResult(EvaluationResponse):
     """
     Client-side result model for evaluation analysis.

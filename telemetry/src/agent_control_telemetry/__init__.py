@@ -1,5 +1,12 @@
-"""Telemetry interfaces for provider-agnostic tracing."""
+"""Shared telemetry contracts for Agent Control."""
 
+from .sinks import (
+    AsyncControlEventSink,
+    BaseAsyncControlEventSink,
+    BaseControlEventSink,
+    ControlEventSink,
+    SinkResult,
+)
 from .trace_context import (
     TraceContext,
     TraceContextProvider,
@@ -9,6 +16,11 @@ from .trace_context import (
 )
 
 __all__ = [
+    "AsyncControlEventSink",
+    "BaseAsyncControlEventSink",
+    "BaseControlEventSink",
+    "ControlEventSink",
+    "SinkResult",
     "TraceContext",
     "TraceContextProvider",
     "clear_trace_context_provider",

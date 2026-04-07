@@ -50,6 +50,46 @@ def _create_control_with_data(client: TestClient, data: dict) -> int:
     return resp.json()["control_id"]
 
 
+def _create_template_control_with_data(client: TestClient, data: dict) -> int:
+    resp = client.put(
+        "/api/v1/controls",
+        json={
+            "name": f"control-{uuid.uuid4()}",
+            "data": data,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["control_id"]
+
+
+def _unrendered_template_payload() -> dict:
+    return {
+        "template": {
+            "description": "Regex denial template",
+            "parameters": {
+                "pattern": {
+                    "type": "regex_re2",
+                    "label": "Pattern",
+                },
+            },
+            "definition_template": {
+                "description": "Template-backed control",
+                "execution": "server",
+                "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {
+                        "name": "regex",
+                        "config": {"pattern": {"$param": "pattern"}},
+                    },
+                },
+                "action": {"decision": "deny"},
+            },
+        },
+        "template_values": {},
+    }
+
+
 def _insert_unconfigured_control() -> int:
     control = Control(name=f"control-{uuid.uuid4()}", data={})
     with Session(engine) as session:
@@ -381,6 +421,30 @@ def test_list_agent_controls_corrupted_control_data_returns_422(
     resp = client.get(f"/api/v1/agents/{agent_name}/controls")
 
     # Then: corrupted data error is returned
+    assert resp.status_code == 422
+    assert resp.json()["error_code"] == "CORRUPTED_DATA"
+
+
+def test_list_agent_controls_corrupted_unrendered_control_data_returns_422(
+    client: TestClient,
+) -> None:
+    # Given: an agent with a directly associated unrendered template control
+    agent_name, _ = _init_agent(client)
+    control_id = _create_template_control_with_data(client, _unrendered_template_payload())
+    assign = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert assign.status_code == 200
+
+    # And: the unrendered template data becomes corrupted in the DB
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
+            {"data": "{\"template\": {\"description\": \"bad\"}}", "id": control_id},
+        )
+
+    # When: listing agent controls with the default active-only view
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+
+    # Then: the excluded-by-default corrupted row still fails fast
     assert resp.status_code == 422
     assert resp.json()["error_code"] == "CORRUPTED_DATA"
 
@@ -837,6 +901,66 @@ def test_init_agent_returns_controls_when_policy_assigned(client: TestClient) ->
     controls = resp.json()["controls"]
     assert len(controls) == 1
     assert controls[0]["id"] == control_id
+
+
+def test_init_agent_returns_only_active_controls_by_default(client: TestClient) -> None:
+    # Given: an agent with active, disabled, and unrendered associated controls
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {
+                "agent_name": agent_name,
+                "agent_name": agent_name,
+                "agent_description": "desc",
+                "agent_version": "1.0",
+            },
+            "steps": [],
+            "evaluators": [],
+        },
+    )
+    assert init_resp.status_code == 200
+
+    policy_id = _create_policy(client)
+    active_control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
+    disabled_control_id = _create_control_with_data(client, VALID_CONTROL_PAYLOAD)
+    disable_resp = client.patch(
+        f"/api/v1/controls/{disabled_control_id}",
+        json={"enabled": False},
+    )
+    assert disable_resp.status_code == 200
+    unrendered_control_id = _create_template_control_with_data(
+        client,
+        _unrendered_template_payload(),
+    )
+
+    assoc = client.post(f"/api/v1/policies/{policy_id}/controls/{active_control_id}")
+    assert assoc.status_code == 200
+    assign_policy = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+    assert assign_policy.status_code == 200
+    assign_disabled = client.post(f"/api/v1/agents/{agent_name}/controls/{disabled_control_id}")
+    assert assign_disabled.status_code == 200
+    assign_unrendered = client.post(f"/api/v1/agents/{agent_name}/controls/{unrendered_control_id}")
+    assert assign_unrendered.status_code == 200
+
+    # When: re-initializing the existing agent
+    resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {
+                "agent_name": agent_name,
+                "agent_name": agent_name,
+                "agent_description": "desc",
+                "agent_version": "1.0",
+            },
+            "steps": [],
+            "evaluators": [],
+        },
+    )
+
+    # Then: only active controls are returned in the init response
+    assert resp.status_code == 200
+    assert {control["id"] for control in resp.json()["controls"]} == {active_control_id}
 
 
 def test_patch_agent_corrupted_data_returns_422(client: TestClient) -> None:

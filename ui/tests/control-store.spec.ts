@@ -2,7 +2,13 @@ import type { Page } from '@playwright/test';
 
 import { getAgentRoute } from '@/core/constants/agent-routes';
 
-import { expect, mockData, mockRoutes, test } from './fixtures';
+import {
+  expect,
+  mockData,
+  mockRoutes,
+  setJsonEditorValue,
+  test,
+} from './fixtures';
 
 const agentUrl = getAgentRoute('agent-1', { tab: 'controls' });
 const getAgentControlsUrl = (
@@ -392,8 +398,8 @@ test.describe('Modal Routing', () => {
     });
     await expect(createModal).toBeVisible();
 
-    // Close the create modal (press Escape or click close)
-    await mockedPage.keyboard.press('Escape');
+    // Close the create modal via Cancel button
+    await createModal.getByRole('button', { name: 'Cancel' }).click();
 
     // Wait for create modal to close
     await expect(createModal).not.toBeVisible();
@@ -429,8 +435,8 @@ test.describe('Modal Routing', () => {
     });
     await expect(editModal).toBeVisible();
 
-    // Close the edit modal (press Escape)
-    await mockedPage.keyboard.press('Escape');
+    // Close the edit modal via Cancel button
+    await editModal.getByRole('button', { name: 'Cancel' }).click();
 
     // Wait for edit modal to close
     await expect(editModal).not.toBeVisible();
@@ -584,9 +590,11 @@ test.describe('Modal Routing', () => {
     await createModal
       .getByPlaceholder('Enter control name')
       .fill('json-created-control');
-    await createModal
-      .getByTestId('control-json-textarea')
-      .fill(JSON.stringify(jsonDefinition, null, 2));
+    await setJsonEditorValue(
+      mockedPage,
+      'control-json-textarea',
+      JSON.stringify(jsonDefinition, null, 2)
+    );
 
     await createModal.getByRole('button', { name: /Save|Create/i }).click();
 

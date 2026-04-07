@@ -3,30 +3,62 @@
  */
 
 import * as z from "zod/v4-mini";
+import { smartUnion } from "../types/smart-union.js";
 import {
   ControlDefinitionInput,
   ControlDefinitionInput$Outbound,
   ControlDefinitionInput$outboundSchema,
 } from "./control-definition-input.js";
+import {
+  TemplateControlInput,
+  TemplateControlInput$Outbound,
+  TemplateControlInput$outboundSchema,
+} from "./template-control-input.js";
+
+/**
+ * Control configuration data to validate
+ */
+export type ValidateControlDataRequestData =
+  | ControlDefinitionInput
+  | TemplateControlInput;
 
 /**
  * Request to validate control configuration data without saving.
  */
 export type ValidateControlDataRequest = {
   /**
-   * A control definition to evaluate agent interactions.
-   *
-   * @remarks
-   *
-   * This model contains only the logic and configuration.
-   * Identity fields (id, name) are managed by the database.
+   * Control configuration data to validate
    */
-  data: ControlDefinitionInput;
+  data: ControlDefinitionInput | TemplateControlInput;
 };
 
 /** @internal */
+export type ValidateControlDataRequestData$Outbound =
+  | ControlDefinitionInput$Outbound
+  | TemplateControlInput$Outbound;
+
+/** @internal */
+export const ValidateControlDataRequestData$outboundSchema: z.ZodMiniType<
+  ValidateControlDataRequestData$Outbound,
+  ValidateControlDataRequestData
+> = smartUnion([
+  ControlDefinitionInput$outboundSchema,
+  TemplateControlInput$outboundSchema,
+]);
+
+export function validateControlDataRequestDataToJSON(
+  validateControlDataRequestData: ValidateControlDataRequestData,
+): string {
+  return JSON.stringify(
+    ValidateControlDataRequestData$outboundSchema.parse(
+      validateControlDataRequestData,
+    ),
+  );
+}
+
+/** @internal */
 export type ValidateControlDataRequest$Outbound = {
-  data: ControlDefinitionInput$Outbound;
+  data: ControlDefinitionInput$Outbound | TemplateControlInput$Outbound;
 };
 
 /** @internal */
@@ -34,7 +66,10 @@ export const ValidateControlDataRequest$outboundSchema: z.ZodMiniType<
   ValidateControlDataRequest$Outbound,
   ValidateControlDataRequest
 > = z.object({
-  data: ControlDefinitionInput$outboundSchema,
+  data: smartUnion([
+    ControlDefinitionInput$outboundSchema,
+    TemplateControlInput$outboundSchema,
+  ]),
 });
 
 export function validateControlDataRequestToJSON(

@@ -30,7 +30,6 @@ def get_trace_context_from_provider() -> TraceContext | None:
     try:
         trace_context = _trace_context_provider()
     except Exception:
-        # Provider failures should not break control evaluation.
         return None
 
     if trace_context is None:
@@ -40,7 +39,7 @@ def get_trace_context_from_provider() -> TraceContext | None:
     span_id = trace_context.get("span_id")
     if not isinstance(trace_id, str) or not isinstance(span_id, str):
         return None
-    if not trace_id or not span_id:
+    if not trace_id.strip() or not span_id.strip():
         return None
 
     return {

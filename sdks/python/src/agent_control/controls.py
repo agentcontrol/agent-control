@@ -2,7 +2,13 @@
 
 from typing import Any, Literal, cast
 
-from agent_control_models import ControlDefinition
+from agent_control_models import (
+    ControlDefinition,
+    TemplateControlInput,
+    TemplateDefinition,
+    TemplateValue,
+    UnrenderedTemplateControl,
+)
 
 from .client import AgentControlClient
 
@@ -13,6 +19,7 @@ async def list_controls(
     limit: int = 20,
     name: str | None = None,
     enabled: bool | None = None,
+    template_backed: bool | None = None,
     step_type: str | None = None,
     stage: Literal["pre", "post"] | None = None,
     execution: Literal["server", "sdk"] | None = None,
@@ -29,6 +36,7 @@ async def list_controls(
         limit: Maximum number of controls to return (default 20, max 100)
         name: Optional filter by name (partial, case-insensitive match)
         enabled: Optional filter by enabled status
+        template_backed: Optional filter by whether the control is template-backed
         step_type: Optional filter by step type (built-ins: 'tool', 'llm')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
@@ -68,6 +76,8 @@ async def list_controls(
         params["name"] = name
     if enabled is not None:
         params["enabled"] = enabled
+    if template_backed is not None:
+        params["template_backed"] = template_backed
     if step_type is not None:
         params["step_type"] = step_type
     if stage is not None:
@@ -118,7 +128,7 @@ async def get_control(
 async def create_control(
     client: AgentControlClient,
     name: str,
-    data: dict[str, Any] | ControlDefinition,
+    data: dict[str, Any] | ControlDefinition | TemplateControlInput,
 ) -> dict[str, Any]:
     """
     Create a new control with a unique name and configuration.
@@ -129,7 +139,7 @@ async def create_control(
     Args:
         client: AgentControlClient instance
         name: Unique name for the control
-        data: Control definition (condition tree, action, scope, etc.)
+        data: Raw control definition or template-backed control input
 
     Returns:
         Dictionary containing:
@@ -163,7 +173,7 @@ async def create_control(
             print(f"Created and configured control: {result['control_id']}")
     """
     payload: dict[str, Any] = {"name": name}
-    if isinstance(data, ControlDefinition):
+    if isinstance(data, (ControlDefinition, TemplateControlInput)):
         payload["data"] = data.model_dump(mode="json", exclude_none=True)
     else:
         payload["data"] = cast(dict[str, Any], data)
@@ -182,7 +192,7 @@ async def create_control(
 async def set_control_data(
     client: AgentControlClient,
     control_id: int,
-    data: dict[str, Any] | ControlDefinition
+    data: dict[str, Any] | ControlDefinition | TemplateControlInput
 ) -> dict[str, Any]:
     """
     Set the configuration data for a control.
@@ -192,7 +202,7 @@ async def set_control_data(
     Args:
         client: AgentControlClient instance
         control_id: ID of the control
-        data: Control definition dictionary or Pydantic model
+        data: Raw control definition or template-backed control input
 
     Returns:
         Dictionary containing success flag
@@ -201,7 +211,7 @@ async def set_control_data(
         httpx.HTTPError: If request fails
         HTTPException 422: If data doesn't match schema
     """
-    if isinstance(data, ControlDefinition):
+    if isinstance(data, (ControlDefinition, TemplateControlInput)):
         # Convert model to dict, excluding None to keep payload clean
         payload: dict[str, Any] = data.model_dump(mode="json", exclude_none=True)
     else:
@@ -214,6 +224,80 @@ async def set_control_data(
     )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
+
+
+async def validate_control_data(
+    client: AgentControlClient,
+    data: dict[str, Any] | ControlDefinition | TemplateControlInput,
+) -> dict[str, Any]:
+    """Validate raw or template-backed control data without saving it."""
+    if isinstance(data, (ControlDefinition, TemplateControlInput)):
+        payload: dict[str, Any] = data.model_dump(mode="json", exclude_none=True)
+    else:
+        payload = cast(dict[str, Any], data)
+
+    response = await client.http_client.post(
+        "/api/v1/controls/validate",
+        json={"data": payload},
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
+async def render_control_template(
+    client: AgentControlClient,
+    template: dict[str, Any] | TemplateDefinition,
+    template_values: dict[str, TemplateValue],
+) -> dict[str, Any]:
+    """Render a control template preview without persisting it."""
+    if isinstance(template, TemplateDefinition):
+        serialized_template = template.model_dump(mode="json", exclude_none=True)
+    else:
+        serialized_template = cast(dict[str, Any], template)
+
+    response = await client.http_client.post(
+        "/api/v1/control-templates/render",
+        json={
+            "template": serialized_template,
+            "template_values": template_values,
+        },
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
+def to_template_control_input(
+    data: dict[str, Any] | ControlDefinition | UnrenderedTemplateControl,
+) -> TemplateControlInput:
+    """Convert stored control data into template authoring input.
+
+    This is the supported reshape path for template-backed controls returned by
+    ``GET /controls/{id}`` or ``GET /controls/{id}/data`` before submitting them
+    back to ``set_control_data``.  Accepts both rendered (``ControlDefinition``)
+    and unrendered (``UnrenderedTemplateControl``) shapes.
+    """
+    if isinstance(data, UnrenderedTemplateControl):
+        return TemplateControlInput(
+            template=data.template,
+            template_values=dict(data.template_values),
+        )
+    if isinstance(data, ControlDefinition):
+        return data.to_template_control_input()
+
+    # Raw dict — detect unrendered vs rendered by checking for condition key.
+    if (
+        isinstance(data, dict)
+        and data.get("template") is not None
+        and data.get("condition") is None
+    ):
+        unrendered = UnrenderedTemplateControl.model_validate(data)
+        return TemplateControlInput(
+            template=unrendered.template,
+            template_values=dict(unrendered.template_values),
+        )
+
+    control_def = ControlDefinition.model_validate(data)
+    return control_def.to_template_control_input()
 
 
 async def add_rule_to_control(

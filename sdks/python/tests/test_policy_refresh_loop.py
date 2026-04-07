@@ -6,11 +6,10 @@ import asyncio
 import threading
 import time
 from collections.abc import Generator
-from unittest.mock import AsyncMock, call, patch
-
-import pytest
+from unittest.mock import ANY, AsyncMock, call, patch
 
 import agent_control
+import pytest
 from agent_control._state import state
 
 
@@ -296,7 +295,12 @@ def test_refresh_controls_sync_without_running_loop_uses_refresh_endpoint() -> N
 
     # THEN: the endpoint is called and refreshed snapshot is returned.
     assert refreshed_snapshot == refreshed_controls
-    assert list_agent_controls_mock.await_count == 1
+    list_agent_controls_mock.assert_awaited_once_with(
+        ANY,
+        "sync-refresh-agent",
+        rendered_state="rendered",
+        enabled_state="enabled",
+    )
 
 
 @pytest.mark.asyncio
@@ -327,7 +331,12 @@ async def test_refresh_controls_sync_with_running_loop_uses_worker_thread() -> N
 
     # THEN: refresh still succeeds and returns the server snapshot.
     assert refreshed_snapshot == refreshed_controls
-    assert list_agent_controls_mock.await_count == 1
+    list_agent_controls_mock.assert_awaited_once_with(
+        ANY,
+        "async-refresh-agent",
+        rendered_state="rendered",
+        enabled_state="enabled",
+    )
 
 
 @pytest.mark.asyncio

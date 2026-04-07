@@ -49,10 +49,12 @@ import atexit
 import logging
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from agent_control_telemetry.sinks import BaseControlEventSink, ControlEventSink, SinkResult
 
 from agent_control.settings import configure_settings, get_settings
 
@@ -791,6 +793,24 @@ class EventBatcher:
 
 # Global batcher instance
 _batcher: EventBatcher | None = None
+_event_sink: ControlEventSink | None = None
+
+
+class _BatcherControlEventSink(BaseControlEventSink):
+    """Default SDK sink backed by the existing queue-based EventBatcher."""
+
+    def __init__(self, batcher: EventBatcher):
+        self._batcher = batcher
+
+    def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkResult:
+        accepted = 0
+        dropped = 0
+        for event in events:
+            if self._batcher.add_event(event):
+                accepted += 1
+            else:
+                dropped += 1
+        return SinkResult(accepted=accepted, dropped=dropped)
 
 
 def get_event_batcher() -> EventBatcher | None:
@@ -801,6 +821,11 @@ def get_event_batcher() -> EventBatcher | None:
         EventBatcher if observability is enabled, None otherwise
     """
     return _batcher
+
+
+def get_event_sink() -> ControlEventSink | None:
+    """Get the active global control-event sink."""
+    return _event_sink
 
 
 def init_observability(
@@ -821,7 +846,7 @@ def init_observability(
     Returns:
         EventBatcher instance if enabled, None otherwise
     """
-    global _batcher
+    global _batcher, _event_sink
 
     # Check if enabled
     is_enabled = enabled if enabled is not None else get_settings().observability_enabled
@@ -830,13 +855,14 @@ def init_observability(
         logger.debug("Observability disabled")
         return None
 
-    if _batcher is not None:
+    if _event_sink is not None:
         logger.debug("Observability already initialized")
         return _batcher
 
     # Create batcher
     _batcher = EventBatcher(server_url=server_url, api_key=api_key)
     _batcher.start()
+    _event_sink = _BatcherControlEventSink(_batcher)
 
     # Register shutdown handler
     atexit.register(_batcher.shutdown)
@@ -855,17 +881,23 @@ def add_event(event: ControlExecutionEvent) -> bool:
     Returns:
         True if added, False if observability disabled or event dropped
     """
-    if _batcher is None:
-        return False
-    return _batcher.add_event(event)
+    return write_events([event]).accepted == 1
+
+
+def write_events(events: Sequence[ControlExecutionEvent]) -> SinkResult:
+    """Write events through the active global sink."""
+    if _event_sink is None:
+        return SinkResult(accepted=0, dropped=len(events))
+    return _event_sink.write_events(events)
 
 
 def sync_shutdown_observability() -> None:
     """Synchronously shut down observability and flush remaining events."""
-    global _batcher
+    global _batcher, _event_sink
     if _batcher is not None:
         _batcher.shutdown()
         _batcher = None
+    _event_sink = None
 
 
 async def shutdown_observability() -> None:
@@ -880,7 +912,7 @@ async def shutdown_observability() -> None:
 
 def is_observability_enabled() -> bool:
     """Check if observability is enabled and initialized."""
-    return _batcher is not None
+    return _event_sink is not None
 
 
 def log_span_start(

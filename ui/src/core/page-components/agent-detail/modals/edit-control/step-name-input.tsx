@@ -194,7 +194,7 @@ export function StepNameInput({ form, steps = [] }: StepNameInputProps) {
           <MultiSelect
             data-testid="step-name-select"
             size="sm"
-            placeholder={steps.length > 0 ? '' : 'No steps available'}
+            placeholder={steps.length > 0 ? '' : 'No steps registered via SDK'}
             data={stepOptions}
             value={selectedStepNames}
             onChange={handleStepNamesChange}

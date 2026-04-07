@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 from uuid import uuid4
 
 import agent_control
@@ -20,9 +20,11 @@ if TYPE_CHECKING:
 @pytest.fixture(autouse=True)
 def _clean_registry() -> Generator[None, None, None]:
     """Ensure each test starts with an empty step registry."""
+    agent_control._reset_state()
     clear()
     yield
     clear()
+    agent_control._reset_state()
 
 
 def test_init_passes_merged_steps_to_register_agent(
@@ -189,6 +191,34 @@ def test_init_logs_agent_updated_when_registration_already_exists(
     assert agent_name in caplog.text
 
 
+def test_init_registers_agent_without_merge_events_arg() -> None:
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+
+    with patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=health_check_mock,
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=register_agent_mock,
+    ):
+        agent_control.init(
+            agent_name=f"agent-{uuid4().hex[:12]}",
+            policy_refresh_interval_seconds=0,
+        )
+
+    assert register_agent_mock.await_args is not None
+    assert "merge_events" not in register_agent_mock.await_args.kwargs
+
+
+def test_init_omits_merge_events_from_public_signature() -> None:
+    import inspect
+
+    signature = inspect.signature(agent_control.init)
+
+    assert "merge_events" not in signature.parameters
+
+
 @pytest.mark.asyncio
 async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
     # Given: an initialized SDK agent session with network-facing calls mocked.
@@ -217,5 +247,10 @@ async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
         await agent_control.refresh_controls_async()
 
     # Then: refresh calls list_agent_controls and does not re-register the agent.
-    assert list_agent_controls_mock.await_count == 1
+    list_agent_controls_mock.assert_awaited_once_with(
+        ANY,
+        agent_control.state.current_agent.agent_name,
+        rendered_state="rendered",
+        enabled_state="enabled",
+    )
     assert register_agent_mock.await_count == 0

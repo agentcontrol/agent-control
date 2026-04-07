@@ -1,4 +1,4 @@
-import { type Page, test as base } from '@playwright/test';
+import { expect, type Page, test as base } from '@playwright/test';
 
 import type {
   AgentControlsResponse,
@@ -7,6 +7,7 @@ import type {
   ControlSummary,
   EvaluatorsResponse,
   GetAgentResponse,
+  GetControlSchemaResponse,
   ListAgentsResponse,
   ListControlsResponse,
 } from '@/core/api/types';
@@ -72,11 +73,119 @@ const agentResponse: GetAgentResponse = {
 const agentWithStepsResponse: GetAgentResponse = {
   ...agentResponse,
   steps: [
-    { type: 'tool', name: 'search_db' },
-    { type: 'tool', name: 'fetch_user' },
-    { type: 'tool', name: 'database_query' },
-    { type: 'llm', name: 'support-answer' },
+    {
+      type: 'tool',
+      name: 'search_db',
+      input_schema: {
+        query: { type: 'string' },
+      },
+      output_schema: {
+        results: {
+          type: 'array',
+          items: { type: 'object' },
+        },
+      },
+    },
+    {
+      type: 'tool',
+      name: 'fetch_user',
+      input_schema: {
+        user_id: { type: 'string' },
+      },
+      output_schema: {
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            email: { type: 'string' },
+          },
+        },
+      },
+    },
+    {
+      type: 'tool',
+      name: 'database_query',
+      input_schema: {
+        query: { type: 'string' },
+        limit: { type: 'integer' },
+      },
+      output_schema: {
+        rows: {
+          type: 'array',
+          items: { type: 'object' },
+        },
+      },
+    },
+    {
+      type: 'llm',
+      name: 'support-answer',
+      input_schema: {
+        messages: {
+          type: 'array',
+          items: { type: 'object' },
+        },
+      },
+      output_schema: {
+        text: { type: 'string' },
+      },
+    },
   ],
+};
+
+const templateBackedControl: Control = {
+  id: 10,
+  name: 'Template Regex Guard',
+  control: {
+    description: 'Deny when input matches pattern',
+    enabled: true,
+    execution: 'server',
+    scope: { step_names: ['chat-completion'], stages: ['pre'] },
+    condition: {
+      selector: { path: 'input' },
+      evaluator: {
+        name: 'regex',
+        config: { pattern: '\\b(SSN|social.security)\\b' },
+      },
+    },
+    action: { decision: 'deny' },
+    tags: [],
+    template: {
+      description: 'Regex denial template',
+      parameters: {
+        pattern: {
+          type: 'regex_re2',
+          label: 'Regex Pattern',
+          description: 'RE2 pattern to match against input',
+        },
+        step_name: {
+          type: 'string',
+          label: 'Step Name',
+          required: false,
+          default: 'chat-completion',
+        },
+      },
+      definition_template: {
+        description: 'Deny when input matches pattern',
+        execution: 'server',
+        scope: {
+          step_names: [{ $param: 'step_name' }],
+          stages: ['pre'],
+        },
+        condition: {
+          selector: { path: 'input' },
+          evaluator: {
+            name: 'regex',
+            config: { pattern: { $param: 'pattern' } },
+          },
+        },
+        action: { decision: 'deny' },
+      },
+    },
+    template_values: {
+      pattern: '\\b(SSN|social.security)\\b',
+      step_name: 'chat-completion',
+    },
+  } as Control['control'],
 };
 
 const controlsList: Control[] = [
@@ -144,8 +253,17 @@ const controlsList: Control[] = [
   },
 ];
 
+const controlsWithTemplateList: Control[] = [
+  ...controlsList,
+  templateBackedControl,
+];
+
 const controlsResponse: AgentControlsResponse = {
   controls: controlsList,
+};
+
+const controlsWithTemplateResponse: AgentControlsResponse = {
+  controls: controlsWithTemplateList,
 };
 
 // Control summaries for GET /api/v1/controls (list all controls)
@@ -189,6 +307,23 @@ const controlSummariesList: (ControlSummary & {
     used_by_agents_count: 0,
   },
 ];
+
+const templateControlSummary: ControlSummary & {
+  used_by_agent?: { agent_name: string } | null;
+  template_backed?: boolean;
+} = {
+  id: 10,
+  name: 'Template Regex Guard',
+  description: 'Deny when input matches pattern',
+  enabled: true,
+  execution: 'server',
+  step_types: null,
+  stages: ['pre'],
+  tags: [],
+  template_backed: true,
+  used_by_agent: { agent_name: 'customer-support-bot' },
+  used_by_agents_count: 1,
+};
 
 const listControlsResponse: ListControlsResponse = {
   controls: controlSummariesList,
@@ -273,6 +408,140 @@ const evaluatorsResponse: EvaluatorsResponse = {
   },
 };
 
+const controlSchemaResponse: GetControlSchemaResponse = {
+  schema: {
+    $defs: {
+      ControlSelector: {
+        type: 'object',
+        properties: {
+          path: {
+            anyOf: [{ type: 'string' }, { type: 'null' }],
+            default: '*',
+            examples: ['output', 'context.user_id', '*'],
+          },
+        },
+      },
+      EvaluatorSpec: {
+        type: 'object',
+        required: ['name', 'config'],
+        properties: {
+          name: {
+            type: 'string',
+            examples: ['regex', 'list', 'customer-support-bot:risk-threshold'],
+          },
+          config: {
+            type: 'object',
+            additionalProperties: true,
+          },
+        },
+      },
+      ConditionNode: {
+        type: 'object',
+        properties: {
+          selector: {
+            anyOf: [{ $ref: '#/$defs/ControlSelector' }, { type: 'null' }],
+          },
+          evaluator: {
+            anyOf: [{ $ref: '#/$defs/EvaluatorSpec' }, { type: 'null' }],
+          },
+          and: {
+            anyOf: [
+              {
+                type: 'array',
+                items: { $ref: '#/$defs/ConditionNode' },
+              },
+              { type: 'null' },
+            ],
+          },
+          or: {
+            anyOf: [
+              {
+                type: 'array',
+                items: { $ref: '#/$defs/ConditionNode' },
+              },
+              { type: 'null' },
+            ],
+          },
+          not: {
+            anyOf: [{ $ref: '#/$defs/ConditionNode' }, { type: 'null' }],
+          },
+        },
+      },
+      ControlScope: {
+        type: 'object',
+        properties: {
+          step_types: {
+            anyOf: [
+              { type: 'array', items: { type: 'string' } },
+              { type: 'null' },
+            ],
+          },
+          step_names: {
+            anyOf: [
+              { type: 'array', items: { type: 'string' } },
+              { type: 'null' },
+            ],
+          },
+          step_name_regex: {
+            anyOf: [{ type: 'string' }, { type: 'null' }],
+          },
+          stages: {
+            anyOf: [
+              {
+                type: 'array',
+                items: { type: 'string', enum: ['pre', 'post'] },
+              },
+              { type: 'null' },
+            ],
+          },
+        },
+      },
+      SteeringContext: {
+        type: 'object',
+        required: ['message'],
+        properties: {
+          message: { type: 'string' },
+        },
+      },
+      ControlAction: {
+        type: 'object',
+        required: ['decision'],
+        properties: {
+          decision: {
+            type: 'string',
+            enum: ['allow', 'deny', 'steer', 'warn', 'log'],
+          },
+          steering_context: {
+            anyOf: [{ $ref: '#/$defs/SteeringContext' }, { type: 'null' }],
+          },
+        },
+      },
+    },
+    type: 'object',
+    required: ['execution', 'condition', 'action'],
+    properties: {
+      description: {
+        anyOf: [{ type: 'string' }, { type: 'null' }],
+      },
+      enabled: { type: 'boolean' },
+      execution: { type: 'string', enum: ['server', 'sdk'] },
+      scope: {
+        $ref: '#/$defs/ControlScope',
+      },
+      condition: {
+        $ref: '#/$defs/ConditionNode',
+      },
+      action: {
+        $ref: '#/$defs/ControlAction',
+      },
+      tags: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+  },
+};
+
 const statsResponse: StatsResponse = {
   agent_name: 'customer-support-bot',
   time_range: '1h',
@@ -351,8 +620,12 @@ export const mockData = {
   agent: agentResponse,
   agentWithSteps: agentWithStepsResponse,
   controls: controlsResponse,
+  controlsWithTemplate: controlsWithTemplateResponse,
+  templateControl: templateBackedControl,
   listControls: listControlsResponse,
+  templateControlSummary: templateControlSummary,
   evaluators: evaluatorsResponse,
+  controlSchema: controlSchemaResponse,
   stats: statsResponse,
   emptyStats: emptyStatsResponse,
 } as const;
@@ -539,6 +812,18 @@ export const mockRoutes = {
     });
   },
 
+  /** Mock GET /api/v1/controls/schema */
+  controlSchema: async (
+    page: Page,
+    options: MockResponseOptions<GetControlSchemaResponse> = {
+      data: mockData.controlSchema,
+    }
+  ) => {
+    await page.route('**/api/v1/controls/schema', async (route) => {
+      await fulfillRoute(route, options, mockData.controlSchema);
+    });
+  },
+
   /** Mock GET /api/v1/controls (list all controls) and PUT /api/v1/controls (create) */
   controlsList: async (
     page: Page,
@@ -668,6 +953,63 @@ export const mockRoutes = {
     // No-op - handled by controlGetData
   },
 
+  /** Mock POST /api/v1/control-templates/render */
+  controlRenderTemplate: async (page: Page) => {
+    await page.route('**/api/v1/control-templates/render', async (route) => {
+      const body = await route.request().postDataJSON();
+      // Return the template + values back as a rendered control preview
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          control: {
+            ...templateBackedControl.control,
+            template: body.template,
+            template_values: body.template_values,
+          },
+        }),
+      });
+    });
+  },
+
+  /** Mock PATCH /api/v1/controls/:id */
+  controlPatch: async (page: Page) => {
+    await page.route('**/api/v1/controls/*', async (route, request) => {
+      if (request.method() !== 'PATCH') {
+        await route.fallback();
+        return;
+      }
+      const body = await request.postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          name: body.name ?? 'Template Regex Guard',
+          enabled: body.enabled ?? true,
+        }),
+      });
+    });
+  },
+
+  /** Mock POST /api/v1/agents/:name/controls/:id (attach control) */
+  agentAddControl: async (page: Page) => {
+    await page.route(
+      '**/api/v1/agents/*/controls/*',
+      async (route, request) => {
+        if (request.method() !== 'POST') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
+      }
+    );
+  },
+
   /** Mock GET /api/v1/observability/stats */
   stats: async (
     page: Page,
@@ -687,6 +1029,7 @@ export async function mockApiRoutes(page: Page) {
   await mockRoutes.agents(page);
   await mockRoutes.agent(page);
   await mockRoutes.evaluators(page);
+  await mockRoutes.controlSchema(page);
   await mockRoutes.controlsList(page);
   await mockRoutes.controlGetData(page);
   await mockRoutes.controlValidate(page);
@@ -711,6 +1054,7 @@ export async function mockApiRoutesWithAuthRequired(page: Page) {
   await mockRoutes.agents(page);
   await mockRoutes.agent(page);
   await mockRoutes.evaluators(page);
+  await mockRoutes.controlSchema(page);
   await mockRoutes.controlsList(page);
   await mockRoutes.controlGetData(page);
   await mockRoutes.controlValidate(page);
@@ -718,6 +1062,13 @@ export async function mockApiRoutesWithAuthRequired(page: Page) {
   await mockRoutes.controlUpdate(page);
   await mockRoutes.stats(page);
 }
+
+export {
+  focusJsonEditorAt,
+  getJsonEditorSuggestions,
+  getJsonEditorValue,
+  setJsonEditorValue,
+} from './json-editor-bridge';
 
 /**
  * Extended test with mocked API

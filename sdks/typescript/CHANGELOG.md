@@ -1,3 +1,27 @@
+## [2.2.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.1.0...ts-sdk-v2.2.0) (2026-04-07)
+
+### Features
+
+* **evaluators:** add starts_with/ends_with mode to list evaluator ([#154](https://github.com/agentcontrol/agent-control/issues/154)) ([bf1f7d7](https://github.com/agentcontrol/agent-control/commit/bf1f7d7cf271a231a165699d44f726467b49bd50))
+* **sdk:** [Enterprise Integration]: Add provider agnostic traceing ([#145](https://github.com/agentcontrol/agent-control/issues/145)) ([f1ca27c](https://github.com/agentcontrol/agent-control/commit/f1ca27ccac5f6666f997c876598ef1bcbbae0b6d))
+* **sdk:** Add telemetry package to support sinks ([#164](https://github.com/agentcontrol/agent-control/issues/164)) ([2186ba1](https://github.com/agentcontrol/agent-control/commit/2186ba18bfd7f61d96d2af455f34a29addc7b125))
+* **sdk:** default merge events in SDK ([#155](https://github.com/agentcontrol/agent-control/issues/155)) ([5984a60](https://github.com/agentcontrol/agent-control/commit/5984a6065ebf63c638ab9249b15b20bdc43464cf))
+* **server,sdk, ui:** Control Templates ([#158](https://github.com/agentcontrol/agent-control/issues/158)) ([78bb538](https://github.com/agentcontrol/agent-control/commit/78bb5381c7b33a400a79310a4070feb2ca959752))
+* **server:** Override PG password in dockerfile ([#148](https://github.com/agentcontrol/agent-control/issues/148)) ([5d70c7d](https://github.com/agentcontrol/agent-control/commit/5d70c7dc756e3dc99ec7f0a3703039add8792ad8))
+* **server:** Remove container name for dev postgres ([92b2d13](https://github.com/agentcontrol/agent-control/commit/92b2d1374fc5fc57c3708b16c1bd7f85c5efe4f1))
+* **server:** Start local dev pg under docker compose project endign with dev ([88bee63](https://github.com/agentcontrol/agent-control/commit/88bee63d0a6901fed100d31223c70c553c50b036))
+* **ui, server:** Intuitive JSON editing for Controls ([#151](https://github.com/agentcontrol/agent-control/issues/151)) ([8c23cef](https://github.com/agentcontrol/agent-control/commit/8c23cef2e8cf53d583c9b2425d6576a321061e57))
+* **ui:** add full control JSON editing and create-from-JSON ([#147](https://github.com/agentcontrol/agent-control/issues/147)) ([e685ed0](https://github.com/agentcontrol/agent-control/commit/e685ed0cf21325b637647a4b61ac0b0c31fbb539))
+
+### Bug Fixes
+
+* **docs:** add explicit shutdown to quickstart example ([#149](https://github.com/agentcontrol/agent-control/issues/149)) ([b76014f](https://github.com/agentcontrol/agent-control/commit/b76014f1132218448b93169b3c6350f62bac49ac))
+* **sdk:** use sync shutdown flush fallback ([#150](https://github.com/agentcontrol/agent-control/issues/150)) ([90265ba](https://github.com/agentcontrol/agent-control/commit/90265ba79132d8a8669f92948cf73568eb38fd5a))
+* **server:**  remove unused evaluator config store ([#152](https://github.com/agentcontrol/agent-control/issues/152)) ([dea2873](https://github.com/agentcontrol/agent-control/commit/dea2873241004c9398909609d4b665808270290e))
+* **server:** Omit null fields in control JSON editor ([#157](https://github.com/agentcontrol/agent-control/issues/157)) ([0aa2f3c](https://github.com/agentcontrol/agent-control/commit/0aa2f3c83fa8b74947a516025995ba1c49855e4e))
+* **server:** Update docker-compose.dev.yml to use different container name ([14d4c87](https://github.com/agentcontrol/agent-control/commit/14d4c87130bbfceac0576b383abbd67fd3b63ac2))
+* **ui:** improve edit control ux, no layout shift, consistent spacing ([#122](https://github.com/agentcontrol/agent-control/issues/122)) ([76d67b9](https://github.com/agentcontrol/agent-control/commit/76d67b9c99ff34497ccd38ec3b7a78f9c09f41d4))
+
 ## [2.1.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.0.0...ts-sdk-v2.1.0) (2026-03-20)
 
 ### Features

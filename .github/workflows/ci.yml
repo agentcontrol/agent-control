@@ -62,7 +62,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: coverage-models.xml,coverage-engine.xml,coverage-server.xml,coverage-sdk.xml
+          files: coverage-models.xml,coverage-engine.xml,coverage-telemetry.xml,coverage-server.xml,coverage-sdk.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -142,6 +142,10 @@ jobs:
         env:
           # Use production build for faster startup
           NODE_ENV: production
+
+      - name: Run component tests
+        working-directory: ./ui
+        run: pnpm run test:ct
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4

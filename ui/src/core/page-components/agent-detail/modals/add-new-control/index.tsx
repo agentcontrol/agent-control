@@ -19,7 +19,6 @@ import { useMemo, useState } from 'react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import type { EvaluatorInfo } from '@/core/api/types';
 import { MODAL_NAMES, SUBMODAL_NAMES } from '@/core/constants/modal-routes';
-import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
 import { useModalRoute } from '@/core/hooks/use-modal-route';
 
@@ -51,10 +50,10 @@ function getDefaultConfigForEvaluator(
   return DEFAULT_EVALUATOR_CONFIGS[evaluatorId] ?? {};
 }
 
-function buildJsonDraftControl(agentName: string) {
+function buildJsonDraftControl() {
   return {
     id: 0,
-    name: `json-control-for-${sanitizeControlNamePart(agentName)}`,
+    name: 'new-json-control',
     control: {
       description: '',
       enabled: true,
@@ -93,8 +92,6 @@ export function AddNewControlModal({
   const { submodal, evaluator, openModal, closeSubmodal, closeModal } =
     useModalRoute();
   const { data: evaluatorsData, isLoading, error } = useEvaluators();
-  const { data: agent } = useAgent(agentId);
-  const agentName = agent?.agent?.agent_name ?? agentId;
 
   // Derive submodal open state from URL
   const editModalOpened = submodal === SUBMODAL_NAMES.CREATE;
@@ -144,7 +141,7 @@ export function AddNewControlModal({
 
   const draftControl = useMemo(() => {
     if (selectedEvaluator) {
-      const name = `${sanitizeControlNamePart(selectedEvaluator.name)}-control-for-${sanitizeControlNamePart(agentName)}`;
+      const name = `new-${sanitizeControlNamePart(selectedEvaluator.name)}-control`;
       return {
         id: 0,
         name,
@@ -170,8 +167,8 @@ export function AddNewControlModal({
       };
     }
 
-    return buildJsonDraftControl(agentName);
-  }, [selectedEvaluator, agentName]);
+    return buildJsonDraftControl();
+  }, [selectedEvaluator]);
 
   const columns: ColumnDef<EvaluatorInfo & { id: string }>[] = [
     {
@@ -232,6 +229,7 @@ export function AddNewControlModal({
       size="xxl"
       padding={0}
       withCloseButton={false}
+      closeOnEscape={false}
       styles={{
         body: {
           padding: 0,
@@ -283,7 +281,7 @@ export function AddNewControlModal({
                   data-testid="from-json-button"
                   onClick={handleFromJsonClick}
                 >
-                  From JSON
+                  Write your own
                 </Button>
                 <Text size="sm" c="dimmed">
                   Learn here on how to add new type of evaluator.{' '}
@@ -342,6 +340,7 @@ export function AddNewControlModal({
         title="Create Control"
         size="xl"
         keepMounted={false}
+        closeOnEscape={false}
         styles={{
           title: { fontSize: '18px', fontWeight: 600 },
           content: { maxWidth: '1500px', width: '90vw' },
