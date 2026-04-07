@@ -3,4 +3,5 @@ fixes:
   - "agent_control_engine/::engine/src/agent_control_engine/"
   - "agent_control_models/::models/src/agent_control_models/"
   - "agent_control_evaluators/::evaluators/builtin/src/agent_control_evaluators/"
+  - "agent_control_telemetry/::telemetry/src/agent_control_telemetry/"
   - "agent_control/::sdks/python/src/agent_control/"
