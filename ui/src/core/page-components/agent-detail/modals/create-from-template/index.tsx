@@ -81,12 +81,6 @@ function buildDefaultValues(
       defaults[name] = param.default as TemplateValue;
     } else if (param.type === 'boolean') {
       defaults[name] = false;
-    } else if (param.type === 'string_list') {
-      defaults[name] = [];
-    } else if (param.type === 'string' || param.type === 'regex_re2') {
-      defaults[name] = '';
-    } else if (param.type === 'enum' && param.allowed_values.length > 0) {
-      defaults[name] = param.allowed_values[0];
     }
   }
   return defaults;
