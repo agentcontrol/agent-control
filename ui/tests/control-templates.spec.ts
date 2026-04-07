@@ -4,6 +4,7 @@ import { getAgentRoute } from '@/core/constants/agent-routes';
 
 import {
   expect,
+  getJsonEditorValue,
   mockData,
   mockRoutes,
   setJsonEditorValue,
@@ -144,10 +145,13 @@ test.describe('Control Templates', () => {
       // When: switching to Full JSON mode
       await dialog.locator('label').getByText('Full JSON').click();
 
-      // Then: the JSON textarea shows the full TemplateControlInput with template structure
+      // Then: the JSON editor shows the full TemplateControlInput with template structure
       const jsonEditor = dialog.getByTestId('template-json-textarea');
       await expect(jsonEditor).toBeVisible();
-      const jsonContent = await jsonEditor.inputValue();
+      const jsonContent = await getJsonEditorValue(
+        mockedPage,
+        'template-json-textarea'
+      );
       expect(jsonContent).toContain('"template"');
       expect(jsonContent).toContain('"template_values"');
       expect(jsonContent).toContain('"definition_template"');
