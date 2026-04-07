@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Awaitable, Protocol, Sequence, TypeAlias
+from typing import Awaitable, Protocol, TypeAlias
 
 from agent_control_models import ControlExecutionEvent
 
@@ -56,6 +56,7 @@ async def resolve_sink_result(result: SinkWriteResult) -> SinkResult:
     if inspect.isawaitable(result):
         return await result
     return result
+
 
 class AsyncControlEventSink(Protocol):
     """Async write-side abstraction for delivering control execution events."""
