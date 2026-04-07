@@ -1088,7 +1088,9 @@ function buildTemplateValueKeySuggestions(
   if (!parameterNames?.length) return [];
 
   // Find which keys already exist in template_values
-  const tvNode = tree ? findNodeAtLocation(tree, ['template_values']) : undefined;
+  const tvNode = tree
+    ? findNodeAtLocation(tree, ['template_values'])
+    : undefined;
   const existingKeys = new Set<string>();
   if (tvNode?.type === 'object' && tvNode.children) {
     for (const prop of tvNode.children) {
@@ -1102,9 +1104,7 @@ function buildTemplateValueKeySuggestions(
   return parameterNames
     .filter((name) => !existingKeys.has(name))
     .map((name, index) => {
-      const insertText = replaceExistingKey
-        ? name
-        : `"${name}": `;
+      const insertText = replaceExistingKey ? name : `"${name}": `;
       return {
         label: name,
         kind: monaco.languages.CompletionItemKind.Property,
@@ -1305,7 +1305,7 @@ function buildCompletionSuggestions(
   // Use the relative path for location checks in template mode, otherwise
   // use the original path.
   const effectivePath = isTemplate
-    ? relativePath ?? location.path
+    ? (relativePath ?? location.path)
     : location.path;
 
   const activeEvaluator = resolveActiveEvaluator(context, tree, location.path);
@@ -1778,10 +1778,7 @@ export function getEmptyValueHints(
       location.path
     );
 
-    if (
-      isEvaluatorNameLocation(effectivePath) &&
-      context.evaluators?.length
-    ) {
+    if (isEvaluatorNameLocation(effectivePath) && context.evaluators?.length) {
       const names = context.evaluators.map((e) => e.id);
       const display = names.slice(0, MAX_HINT_VALUES);
       const hint =
@@ -2112,10 +2109,7 @@ function registerConditionCodeActions(
       if (!tree) return { actions: [], dispose() {} };
 
       const offset = model.getOffsetAt(range.getStartPosition());
-      const conditionPath = [
-        ...(context.definitionPrefix ?? []),
-        'condition',
-      ];
+      const conditionPath = [...(context.definitionPrefix ?? []), 'condition'];
       const condCtx = findConditionNodeAtOffset(tree, offset, conditionPath);
       if (!condCtx) return { actions: [], dispose() {} };
 

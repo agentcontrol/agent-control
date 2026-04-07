@@ -376,9 +376,10 @@ export const JsonEditorView = ({
     let prevDecision: string | null = null;
     try {
       const initTree = parseTree(editor.getValue());
-      const initSubtree = definitionPrefix && initTree
-        ? findNodeAtLocation(initTree, definitionPrefix)
-        : initTree;
+      const initSubtree =
+        definitionPrefix && initTree
+          ? findNodeAtLocation(initTree, definitionPrefix)
+          : initTree;
       const decisionNode = initSubtree
         ? findNodeAtLocation(initSubtree, ['action', 'decision'])
         : null;
@@ -501,7 +502,14 @@ export const JsonEditorView = ({
       disposable.dispose();
       editor.deltaDecorations(decorationIds, []);
     };
-  }, [mounted, autocompleteContext, definitionPrefix, editorMode, evaluators, handleJsonChange]);
+  }, [
+    mounted,
+    autocompleteContext,
+    definitionPrefix,
+    editorMode,
+    evaluators,
+    handleJsonChange,
+  ]);
 
   // --- Cursor auto-trigger ---
   useEffect(() => {

@@ -149,16 +149,16 @@ export class Agents extends ClientSDK {
   }
 
   /**
-   * List agent's active controls
+   * List agent's associated controls
    *
    * @remarks
    * List protection controls associated with an agent.
    *
-   * By default, the endpoint returns active controls only. "Active" means
-   * associated, rendered, and enabled. Callers can broaden the response to
-   * include disabled controls and unrendered template drafts via the state
-   * filters on this endpoint. Filters intersect, so unrendered drafts require
-   * rendered_state='unrendered' together with enabled_state='all' or 'disabled'.
+   * By default, the endpoint returns all associated controls, including rendered
+   * controls, disabled controls, and unrendered template drafts. Callers can
+   * narrow the response via the state filters on this endpoint. Filters
+   * intersect, so unrendered drafts require rendered_state='unrendered'
+   * together with enabled_state='all' or 'disabled'.
    *
    * Args:
    *     agent_name: Agent identifier
