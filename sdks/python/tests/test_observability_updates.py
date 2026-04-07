@@ -136,7 +136,7 @@ class TestBuildControlExecutionEvents:
             control=ControlDefinition(
                 execution="sdk",
                 condition=condition,
-                action={"decision": "allow"},
+                action={"decision": "observe"},
             ),
         )
 
@@ -150,7 +150,7 @@ class TestBuildControlExecutionEvents:
             stage="pre",
         )
 
-    def _make_match(self, control_id, control_name="ctrl", action="allow", matched=True):
+    def _make_match(self, control_id, control_name="ctrl", action="observe", matched=True):
         from agent_control_models import ControlMatch, EvaluatorResult
 
         return ControlMatch(
@@ -264,7 +264,7 @@ class TestBuildControlExecutionEvents:
                 ControlMatch(
                     control_id=1,
                     control_name="ctrl-1",
-                    action="allow",
+                    action="observe",
                     result=EvaluatorResult(
                         matched=True,
                         confidence=0.9,
@@ -276,7 +276,7 @@ class TestBuildControlExecutionEvents:
                 ControlMatch(
                     control_id=1,
                     control_name="ctrl-1",
-                    action="allow",
+                    action="observe",
                     result=EvaluatorResult(matched=False, confidence=0.2, error="eval-error"),
                 )
             ],
@@ -284,7 +284,7 @@ class TestBuildControlExecutionEvents:
                 ControlMatch(
                     control_id=1,
                     control_name="ctrl-1",
-                    action="allow",
+                    action="observe",
                     result=EvaluatorResult(matched=False, confidence=0.1, error="ignored-error"),
                 )
             ],
@@ -547,15 +547,15 @@ class TestCheckEvaluation:
         controls = [{
             "id": 1,
             "name": "local-ctrl",
-            "control": {
-                "condition": {
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
-                    "selector": {"path": "input"},
+                "control": {
+                    "condition": {
+                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "selector": {"path": "input"},
+                    },
+                    "action": {"decision": "observe"},
+                    "execution": "sdk",
                 },
-                "action": {"decision": "allow"},
-                "execution": "sdk",
-            },
-        }]
+            }]
 
         mock_response = EvaluationResponse(is_safe=True, confidence=1.0)
         mock_engine = MagicMock()
@@ -633,7 +633,7 @@ class TestMergedEventCreation:
                 ControlMatch(
                     control_id=1,
                     control_name="local-ctrl",
-                    action="allow",
+                    action="observe",
                     result=EvaluatorResult(matched=False, confidence=0.8),
                 )
             ],
@@ -645,7 +645,7 @@ class TestMergedEventCreation:
                 {
                     "control_id": 2,
                     "control_name": "server-ctrl",
-                    "action": "allow",
+                    "action": "observe",
                     "control_execution_id": "ce-server",
                     "result": {"matched": False, "confidence": 0.4},
                 }
@@ -663,7 +663,7 @@ class TestMergedEventCreation:
                         "evaluator": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
-                    "action": {"decision": "allow"},
+                    "action": {"decision": "observe"},
                     "execution": "sdk",
                 },
             },
@@ -675,7 +675,7 @@ class TestMergedEventCreation:
                         "evaluator": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
-                    "action": {"decision": "allow"},
+                    "action": {"decision": "observe"},
                     "execution": "server",
                 },
             },
@@ -724,7 +724,7 @@ class TestMergedEventCreation:
                 ControlMatch(
                     control_id=1,
                     control_name="local-ctrl",
-                    action="allow",
+                    action="observe",
                     result=EvaluatorResult(matched=False, confidence=0.8),
                 )
             ],
@@ -739,7 +739,7 @@ class TestMergedEventCreation:
                         "evaluator": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
-                    "action": {"decision": "allow"},
+                    "action": {"decision": "observe"},
                     "execution": "sdk",
                 },
             },
@@ -751,7 +751,7 @@ class TestMergedEventCreation:
                         "evaluator": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
-                    "action": {"decision": "allow"},
+                    "action": {"decision": "observe"},
                     "execution": "server",
                 },
             },
@@ -796,7 +796,7 @@ class TestMergedEventCreation:
                 ControlMatch(
                     control_id=1,
                     control_name="local-ctrl",
-                    action="allow",
+                    action="observe",
                     result=EvaluatorResult(matched=True, confidence=0.8),
                 )
             ],
@@ -810,7 +810,7 @@ class TestMergedEventCreation:
                         "evaluator": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
-                    "action": {"decision": "allow"},
+                    "action": {"decision": "observe"},
                     "execution": "sdk",
                 },
             }
