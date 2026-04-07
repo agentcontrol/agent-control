@@ -9,14 +9,15 @@ import {
   SegmentedControl,
   Stack,
   Text,
-  Textarea,
   TextInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
-import { isApiError } from '@/core/api/errors';
+import { JsonEditorMonaco } from '@/components/json-editor-monaco';
+import { api } from '@/core/api/client';
+import { isApiError, parseApiError } from '@/core/api/errors';
 import type {
   Control,
   ProblemDetail,
@@ -25,11 +26,15 @@ import type {
 } from '@/core/api/types';
 import { TemplateParamForm } from '@/core/components/template-param-form';
 import { TemplatePreview } from '@/core/components/template-preview';
+import { useAgent } from '@/core/hooks/query-hooks/use-agent';
+import { useControlSchema } from '@/core/hooks/query-hooks/use-control-schema';
+import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { openActionConfirmModal } from '@/core/utils/modals';
 
 import { ApiErrorAlert } from './api-error-alert';
+import type { JsonEditorEvaluatorOption } from './types';
 
 type TemplateEditContentProps = {
   control: Control;
@@ -70,10 +75,75 @@ export function TemplateEditContent({
   // JSON editor state
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [templateValidationError, setTemplateValidationError] =
+    useState<ProblemDetail | null>(null);
 
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
   const isPending = updateControl.isPending || updateControlMetadata.isPending;
+
+  // Hooks for smart JSON editor features
+  const { data: controlSchemaResponse } = useControlSchema();
+  const { data: globalEvaluators } = useEvaluators();
+  const { data: agentResponse } = useAgent(agentId);
+  const steps = agentResponse?.steps ?? [];
+  const agentName = agentResponse?.agent?.agent_name ?? agentId;
+
+  const availableEvaluators = useMemo<JsonEditorEvaluatorOption[]>(() => {
+    const merged = new Map<string, JsonEditorEvaluatorOption>();
+    for (const [id, evaluatorInfo] of Object.entries(globalEvaluators ?? {})) {
+      merged.set(id, {
+        id,
+        label: evaluatorInfo.name,
+        description: evaluatorInfo.description,
+        source: 'global',
+        configSchema: evaluatorInfo.config_schema,
+      });
+    }
+    for (const evaluatorSchema of agentResponse?.evaluators ?? []) {
+      const id = `${agentName}:${evaluatorSchema.name}`;
+      merged.set(id, {
+        id,
+        label: evaluatorSchema.name,
+        description: evaluatorSchema.description,
+        source: 'agent',
+        configSchema: evaluatorSchema.config_schema,
+      });
+    }
+    return [...merged.values()];
+  }, [agentName, agentResponse?.evaluators, globalEvaluators]);
+
+  // Dynamically extract parameter names from the current JSON text so
+  // completions update as the user edits the parameters block.
+  const templateParameterNames = useMemo(() => {
+    if (editorMode !== 'json') return Object.keys(template.parameters);
+    try {
+      const parsed = JSON.parse(jsonText) as TemplateControlInput;
+      return Object.keys(parsed?.template?.parameters ?? {});
+    } catch {
+      return Object.keys(template.parameters);
+    }
+  }, [editorMode, jsonText, template.parameters]);
+
+  const validateTemplateJson = useCallback(
+    async (parsed: Record<string, unknown>) => {
+      const input = parsed as TemplateControlInput;
+      if (!input.template?.definition_template) return;
+
+      const { error, response } = await api.controlTemplates.render({
+        template: input.template,
+        template_values: input.template_values ?? {},
+      });
+      if (error) {
+        throw parseApiError(
+          error,
+          'Template validation failed',
+          response?.status
+        );
+      }
+    },
+    []
+  );
 
   const handlePreviewErrors = useCallback((errors: Record<string, string>) => {
     setParamErrors(errors);
@@ -279,27 +349,30 @@ export function TemplateEditContent({
       </Stack>
 
       {editorMode === 'json' ? (
-        <Stack gap="md">
-          <Text size="sm" c="dimmed">
-            Edit the full template input JSON below. Control name stays
-            separate.
-          </Text>
-          <Textarea
-            value={jsonText}
-            onChange={(e) => {
-              setJsonText(e.currentTarget.value);
+        <Paper withBorder radius="sm" p={16}>
+          <JsonEditorMonaco
+            jsonText={jsonText}
+            handleJsonChange={(text) => {
+              setJsonText(text);
               setJsonError(null);
             }}
-            error={jsonError}
-            autosize
-            minRows={16}
-            maxRows={28}
-            styles={{
-              input: { fontFamily: 'monospace', fontSize: 12 },
-            }}
-            data-testid="template-json-textarea"
+            jsonError={jsonError}
+            setJsonError={setJsonError}
+            validationError={templateValidationError}
+            setValidationError={setTemplateValidationError}
+            onValidateConfig={validateTemplateJson}
+            height={520}
+            label="Template definition (JSON)"
+            tooltip="Edit the full template input JSON. Control name stays separate."
+            helperText="Edit template parameters, definition_template, and template_values."
+            testId="template-json-textarea"
+            editorMode="template"
+            schema={controlSchemaResponse?.schema ?? null}
+            evaluators={availableEvaluators}
+            steps={steps}
+            templateParameterNames={templateParameterNames}
           />
-        </Stack>
+        </Paper>
       ) : (
         <Grid gutter="xl">
           {/* Left panel: read-only summary */}
