@@ -545,24 +545,6 @@ function nextSnippetTabStop(
   return `\${${tabStop}}`;
 }
 
-function getSuggestedObjectPropertyNames(schema: JsonSchema): string[] {
-  const properties = Object.keys(getSchemaProperties(schema));
-  if (properties.length === 0) {
-    return [];
-  }
-
-  const required = getSchemaRequiredProperties(schema);
-  if (required.length > 0) {
-    return required.filter((propertyName) => properties.includes(propertyName));
-  }
-
-  if (properties.length === 1) {
-    return properties;
-  }
-
-  return [];
-}
-
 function buildSchemaValueSnippet(
   schema: JsonSchema | null,
   rootSchema: JsonSchema | null,
@@ -1203,7 +1185,6 @@ function buildCompletionSuggestions(
 
   // Only show value suggestions at actual value positions — not on blank lines,
   // closing brackets, or property key positions where they're confusing noise.
-  const lineText = model.getLineContent(position.lineNumber);
   const isValuePosition =
     !propertyKeyContext && !location.isAtPropertyKey && isStringValueContext;
   if (isValuePosition) {
@@ -1467,15 +1448,6 @@ export function findSteeringContextEdit(
 
 const MAX_HINT_VALUES = 6;
 
-function getStringValueAtPath(
-  tree: JsonNode | undefined,
-  path: JsonPath
-): string | null {
-  if (!tree) return null;
-  const node = findNodeAtLocation(tree, path);
-  return typeof node?.value === 'string' ? node.value : null;
-}
-
 export function getEmptyValueHints(
   monaco: MonacoModule,
   model: import('monaco-editor').editor.ITextModel,
@@ -1608,7 +1580,6 @@ export function setupJsonEditorLanguageSupport(
       const location = getLocation(text, offset);
       if (!location.path.length) return null;
 
-      const rootSchema = asSchema(context.schema);
       const activeEvaluator = resolveActiveEvaluator(
         context,
         tree,

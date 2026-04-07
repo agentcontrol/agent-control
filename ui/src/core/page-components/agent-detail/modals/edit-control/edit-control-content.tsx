@@ -43,7 +43,6 @@ import {
 } from './control-condition';
 import { ControlDefinitionForm } from './control-definition-form';
 import { EvaluatorConfigSection } from './evaluator-config-section';
-import { JsonEditorView } from './json-editor-view';
 import { TemplateEditContent } from './template-edit-content';
 import type {
   ControlDefinitionFormValues,
@@ -514,7 +513,7 @@ const RawEditControlContent = ({
     setDefinitionValidationError(null);
     setDefinitionValidationStatus('idle');
     setIsDirty(false);
-  }, [control.control, initialEditorMode]);
+  }, [control.control, initialEditorMode, mode]);
 
   useEffect(() => {
     reset();

@@ -16,6 +16,7 @@ import {
   IconSun,
 } from '@tabler/icons-react';
 import { AnimatePresence, motion } from 'motion/react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { type ReactNode, useState } from 'react';
@@ -177,17 +178,21 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <Group gap="xs">
                     <Box className={classes.logoIcon} component="span">
                       <span className={classes.lightIcon}>
-                        <img
+                        <Image
                           src="/ac-logo-light.svg"
                           alt="Agent Control"
+                          width={32}
                           height={32}
+                          unoptimized
                         />
                       </span>
                       <span className={classes.darkIcon}>
-                        <img
+                        <Image
                           src="/ac-logo-dark.svg"
                           alt="Agent Control"
+                          width={32}
                           height={32}
+                          unoptimized
                         />
                       </span>
                     </Box>

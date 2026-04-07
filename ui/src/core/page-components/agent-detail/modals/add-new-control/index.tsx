@@ -19,7 +19,6 @@ import { useMemo, useState } from 'react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import type { EvaluatorInfo } from '@/core/api/types';
 import { MODAL_NAMES, SUBMODAL_NAMES } from '@/core/constants/modal-routes';
-import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
 import { useModalRoute } from '@/core/hooks/use-modal-route';
 
@@ -51,7 +50,7 @@ function getDefaultConfigForEvaluator(
   return DEFAULT_EVALUATOR_CONFIGS[evaluatorId] ?? {};
 }
 
-function buildJsonDraftControl(agentName: string) {
+function buildJsonDraftControl() {
   return {
     id: 0,
     name: 'new-json-control',
@@ -93,8 +92,6 @@ export function AddNewControlModal({
   const { submodal, evaluator, openModal, closeSubmodal, closeModal } =
     useModalRoute();
   const { data: evaluatorsData, isLoading, error } = useEvaluators();
-  const { data: agent } = useAgent(agentId);
-  const agentName = agent?.agent?.agent_name ?? agentId;
 
   // Derive submodal open state from URL
   const editModalOpened = submodal === SUBMODAL_NAMES.CREATE;
@@ -170,8 +167,8 @@ export function AddNewControlModal({
       };
     }
 
-    return buildJsonDraftControl(agentName);
-  }, [selectedEvaluator, agentName]);
+    return buildJsonDraftControl();
+  }, [selectedEvaluator]);
 
   const columns: ColumnDef<EvaluatorInfo & { id: string }>[] = [
     {
