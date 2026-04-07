@@ -1382,27 +1382,27 @@ async def remove_agent_control(
     "/{agent_name}/controls",
     response_model=AgentControlsResponse,
     response_model_exclude_none=True,
-    summary="List agent's active controls",
+    summary="List agent's associated controls",
     response_description=(
-        "List of active controls by default, with optional filters for broader "
-        "associated views"
+        "List of associated controls by default, including rendered, unrendered, "
+        "enabled, and disabled controls"
     ),
 )
 async def list_agent_controls(
     agent_name: str,
     rendered_state: AgentControlRenderedState = Query(
-        "rendered",
+        "all",
         description=(
-            "Rendered-state filter. Default 'rendered' returns runtime-shaped controls only. "
-            "Because filters intersect, include template drafts by combining "
-            "'unrendered' with enabled_state='all' or 'disabled'."
+            "Rendered-state filter. Default 'all' returns both rendered controls "
+            "and unrendered template drafts."
         ),
     ),
     enabled_state: AgentControlEnabledState = Query(
-        "enabled",
+        "all",
         description=(
-            "Enabled-state filter. Default 'enabled' returns controls currently active for "
-            "enforcement. Use 'disabled' or 'all' for broader associated views."
+            "Enabled-state filter. Default 'all' returns both enabled and disabled "
+            "associated controls. Unrendered template drafts are disabled, so "
+            "combine with rendered_state='rendered' to exclude them."
         ),
     ),
     db: AsyncSession = Depends(get_async_db),
@@ -1410,11 +1410,11 @@ async def list_agent_controls(
     """
     List protection controls associated with an agent.
 
-    By default, the endpoint returns active controls only. "Active" means
-    associated, rendered, and enabled. Callers can broaden the response to
-    include disabled controls and unrendered template drafts via the state
-    filters on this endpoint. Filters intersect, so unrendered drafts require
-    rendered_state='unrendered' together with enabled_state='all' or 'disabled'.
+    By default, the endpoint returns all associated controls, including rendered
+    controls, disabled controls, and unrendered template drafts. Callers can
+    narrow the response via the state filters on this endpoint. Filters
+    intersect, so unrendered drafts require rendered_state='unrendered'
+    together with enabled_state='all' or 'disabled'.
 
     Args:
         agent_name: Agent identifier

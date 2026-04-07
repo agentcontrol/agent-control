@@ -182,13 +182,14 @@ async def list_agent_controls(
     rendered_state: Literal["rendered", "unrendered", "all"] | None = None,
     enabled_state: Literal["enabled", "disabled", "all"] | None = None,
 ) -> dict[str, Any]:
-    """List agent controls, returning active controls by default.
+    """List agent controls, returning all associated controls by default.
 
-    When state filters are omitted, the server returns active controls only:
-    associated, rendered, and enabled. Callers can request broader associated
-    views by passing rendered_state and/or enabled_state. Filters intersect, so
-    unrendered drafts require rendered_state="unrendered" together with
-    enabled_state="all" or enabled_state="disabled".
+    When state filters are omitted, the server returns all associated controls,
+    including rendered controls, disabled controls, and unrendered template
+    drafts. Callers can narrow that view by passing rendered_state and/or
+    enabled_state. Filters intersect, so unrendered drafts require
+    rendered_state="unrendered" together with enabled_state="all" or
+    enabled_state="disabled".
     """
     normalized_name = ensure_agent_name(agent_name)
     params = _agent_controls_query_params(
@@ -213,7 +214,7 @@ async def list_agent_controls_typed(
     rendered_state: Literal["rendered", "unrendered", "all"] | None = None,
     enabled_state: Literal["enabled", "disabled", "all"] | None = None,
 ) -> AgentControlsResponse:
-    """List agent controls with a typed response, returning active controls by default.
+    """List agent controls with a typed response, returning all associated controls by default.
 
     Filters intersect, so unrendered drafts require rendered_state="unrendered"
     together with enabled_state="all" or enabled_state="disabled".

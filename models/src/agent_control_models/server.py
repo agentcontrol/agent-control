@@ -297,7 +297,7 @@ class AgentControlsResponse(BaseModel):
     controls: list[Control] = Field(
         description=(
             "List of agent-associated controls matching the requested state filters "
-            "(active controls by default)"
+            "(all associated controls by default, including disabled and unrendered controls)"
         )
     )
 

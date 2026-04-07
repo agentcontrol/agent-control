@@ -223,7 +223,12 @@ async def _fetch_controls_for_context_async(context: _RefreshContext) -> list[di
         base_url=context.server_url,
         api_key=context.api_key,
     ) as client:
-        response = await agents.list_agent_controls(client, context.agent_name)
+        response = await agents.list_agent_controls(
+            client,
+            context.agent_name,
+            rendered_state="rendered",
+            enabled_state="enabled",
+        )
         controls: list[dict[str, Any]] = response.get("controls", [])
         return controls
 

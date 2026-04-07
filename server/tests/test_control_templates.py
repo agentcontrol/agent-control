@@ -214,13 +214,19 @@ def _assign_control_to_agent(
         assert policy_response.status_code == 200, policy_response.text
         policy_id = policy_response.json()["policy_id"]
 
-        add_control_response = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+        add_control_response = client.post(
+            f"/api/v1/policies/{policy_id}/controls/{control_id}"
+        )
         assert add_control_response.status_code == 200, add_control_response.text
 
-        assign_response = client.post(f"/api/v1/agents/{effective_agent_name}/policy/{policy_id}")
+        assign_response = client.post(
+            f"/api/v1/agents/{effective_agent_name}/policy/{policy_id}"
+        )
         assert assign_response.status_code == 200, assign_response.text
     else:
-        assign_response = client.post(f"/api/v1/agents/{effective_agent_name}/controls/{control_id}")
+        assign_response = client.post(
+            f"/api/v1/agents/{effective_agent_name}/controls/{control_id}"
+        )
         assert assign_response.status_code == 200, assign_response.text
 
     return effective_agent_name
@@ -278,7 +284,10 @@ def test_render_control_template_preview_uses_defaults_when_values_omitted(
 ) -> None:
     # Given: a template whose defaults fully satisfy all parameters
     # When: rendering a template preview without explicit template values
-    response = client.post("/api/v1/control-templates/render", json=_defaults_only_template_payload())
+    response = client.post(
+        "/api/v1/control-templates/render",
+        json=_defaults_only_template_payload(),
+    )
 
     # Then: the rendered control uses the parameter defaults
     assert response.status_code == 200, response.text
@@ -735,7 +744,9 @@ def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
     assert raw_warn_response.status_code == 200, raw_warn_response.text
     raw_warn_control_id = raw_warn_response.json()["control_id"]
 
-    add_control_response = client.post(f"/api/v1/policies/{policy_id}/controls/{raw_warn_control_id}")
+    add_control_response = client.post(
+        f"/api/v1/policies/{policy_id}/controls/{raw_warn_control_id}"
+    )
     assert add_control_response.status_code == 200, add_control_response.text
 
     # When: evaluating a step that matches both controls
@@ -1673,7 +1684,7 @@ def test_unrendered_template_excluded_from_evaluation(client: TestClient) -> Non
     assert eval_response.json()["is_safe"] is True
 
 
-def test_agent_controls_endpoint_defaults_to_active_and_supports_state_filters(
+def test_agent_controls_endpoint_defaults_to_all_and_supports_state_filters(
     client: TestClient,
 ) -> None:
     # Given: an agent with active, disabled, and unrendered associated controls
@@ -1703,14 +1714,18 @@ def test_agent_controls_endpoint_defaults_to_active_and_supports_state_filters(
     # When: listing controls with no explicit state filters
     default_response = client.get(f"/api/v1/agents/{agent_name}/controls")
 
-    # Then: only active controls are returned
+    # Then: the full associated set is returned by default
     assert default_response.status_code == 200, default_response.text
-    assert {control["id"] for control in default_response.json()["controls"]} == {active_control_id}
+    assert {control["id"] for control in default_response.json()["controls"]} == {
+        active_control_id,
+        disabled_control_id,
+        unrendered_control_id,
+    }
 
     # When: requesting disabled rendered controls
     disabled_response = client.get(
         f"/api/v1/agents/{agent_name}/controls",
-        params={"enabled_state": "disabled"},
+        params={"rendered_state": "rendered", "enabled_state": "disabled"},
     )
 
     # Then: the disabled rendered control is returned
