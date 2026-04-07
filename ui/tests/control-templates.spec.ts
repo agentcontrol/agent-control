@@ -2,7 +2,13 @@ import type { Page } from '@playwright/test';
 
 import { getAgentRoute } from '@/core/constants/agent-routes';
 
-import { expect, mockData, mockRoutes, setJsonEditorValue, test } from './fixtures';
+import {
+  expect,
+  mockData,
+  mockRoutes,
+  setJsonEditorValue,
+  test,
+} from './fixtures';
 
 /** Set up mocks for template-backed control flows. */
 async function setupTemplateMocks(page: Page) {
