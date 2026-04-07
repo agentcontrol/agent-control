@@ -7,6 +7,7 @@ import { useMemo } from 'react';
 import type { Control } from '@/core/api/types';
 import type { useRemoveControlFromAgent } from '@/core/hooks/query-hooks/use-remove-control-from-agent';
 import type { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
+import type { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { openActionConfirmModal } from '@/core/utils/modals';
 
 import { getStepTypeLabelAndColor } from './utils';
@@ -14,6 +15,7 @@ import { getStepTypeLabelAndColor } from './utils';
 type UseControlsTableColumnsParams = {
   agentId: string;
   updateControl: ReturnType<typeof useUpdateControl>;
+  updateControlMetadata: ReturnType<typeof useUpdateControlMetadata>;
   removeControlFromAgent: ReturnType<typeof useRemoveControlFromAgent>;
   onEditControl: (control: Control) => void;
   onDeleteControl: (control: Control) => void;
@@ -22,6 +24,7 @@ type UseControlsTableColumnsParams = {
 export function useControlsTableColumns({
   agentId,
   updateControl,
+  updateControlMetadata,
   removeControlFromAgent,
   onEditControl,
   onDeleteControl,
@@ -35,6 +38,8 @@ export function useControlsTableColumns({
         cell: ({ row }: { row: { original: Control } }) => {
           const control = row.original;
           const enabled = control.control?.enabled ?? false;
+          const ctrl = control.control as Record<string, unknown> | undefined;
+          const isTemplate = ctrl?.template != null;
           return (
             <Switch
               checked={enabled}
@@ -50,38 +55,51 @@ export function useControlsTableColumns({
                         : `Disable "${control.name}"?`}
                     </Text>
                   ),
-                  onConfirm: () =>
-                    updateControl.mutate(
-                      {
-                        agentId,
-                        controlId: control.id,
-                        definition: {
-                          ...control.control,
-                          enabled: newEnabled,
-                        },
+                  onConfirm: () => {
+                    const callbacks = {
+                      onSuccess: () => {
+                        notifications.show({
+                          title: newEnabled
+                            ? 'Control enabled'
+                            : 'Control disabled',
+                          message: `"${control.name}" has been ${newEnabled ? 'enabled' : 'disabled'}.`,
+                          color: 'green',
+                        });
                       },
-                      {
-                        onSuccess: () => {
-                          notifications.show({
-                            title: newEnabled
-                              ? 'Control enabled'
-                              : 'Control disabled',
-                            message: `"${control.name}" has been ${newEnabled ? 'enabled' : 'disabled'}.`,
-                            color: 'green',
-                          });
+                      onError: (error: Error) => {
+                        notifications.show({
+                          title: 'Failed to update control',
+                          message:
+                            error.message || 'An unexpected error occurred',
+                          color: 'red',
+                        });
+                      },
+                    };
+
+                    if (isTemplate) {
+                      // Template-backed controls use PATCH to avoid 409 on PUT /data
+                      updateControlMetadata.mutate(
+                        {
+                          agentId,
+                          controlId: control.id,
+                          data: { enabled: newEnabled },
                         },
-                        onError: (error) => {
-                          notifications.show({
-                            title: 'Failed to update control',
-                            message:
-                              error instanceof Error
-                                ? error.message
-                                : 'An unexpected error occurred',
-                            color: 'red',
-                          });
+                        callbacks
+                      );
+                    } else {
+                      updateControl.mutate(
+                        {
+                          agentId,
+                          controlId: control.id,
+                          definition: {
+                            ...control.control,
+                            enabled: newEnabled,
+                          },
                         },
-                      }
-                    ),
+                        callbacks
+                      );
+                    }
+                  },
                 });
               }}
             />
@@ -93,11 +111,24 @@ export function useControlsTableColumns({
         header: 'Control',
         accessorKey: 'name',
         size: 280,
-        cell: ({ row }: { row: { original: Control } }) => (
-          <Text size="sm" fw={500}>
-            {row.original.name}
-          </Text>
-        ),
+        cell: ({ row }: { row: { original: Control } }) => {
+          const ctrl = row.original.control as
+            | Record<string, unknown>
+            | undefined;
+          const isTemplate = ctrl?.template != null;
+          return (
+            <Group gap={6} wrap="nowrap">
+              <Text size="sm" fw={500}>
+                {row.original.name}
+              </Text>
+              {isTemplate ? (
+                <Badge variant="light" color="blue" size="xs">
+                  Template
+                </Badge>
+              ) : null}
+            </Group>
+          );
+        },
       },
       {
         id: 'step_types',
@@ -205,6 +236,7 @@ export function useControlsTableColumns({
     [
       agentId,
       updateControl,
+      updateControlMetadata,
       removeControlFromAgent.isPending,
       removeControlFromAgent.variables?.controlId,
       onEditControl,

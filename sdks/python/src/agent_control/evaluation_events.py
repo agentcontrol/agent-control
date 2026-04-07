@@ -1,10 +1,12 @@
 """Derived control-execution event reconstruction for SDK evaluation flows."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Literal
 
 from agent_control_models import (
     ControlDefinition,
+    ControlDefinitionRuntime,
     ControlExecutionEvent,
     ControlMatch,
     EvaluationRequest,
@@ -23,7 +25,7 @@ _trace_warning_logged = False
 
 
 def observability_metadata(
-    control_def: ControlDefinition,
+    control_def: ControlDefinition | ControlDefinitionRuntime,
 ) -> tuple[str | None, str | None, dict[str, object]]:
     """Return representative event fields plus full composite context."""
     identity = control_def.observability_identity()
@@ -72,7 +74,7 @@ def _build_events_for_matches(
     matched: bool,
     include_error_message: bool,
     request: EvaluationRequest,
-    control_lookup: dict[int, ControlDefinition],
+    control_lookup: Mapping[int, ControlDefinition | ControlDefinitionRuntime],
     trace_id: str,
     span_id: str,
     agent_name: str,
@@ -121,7 +123,7 @@ def _build_events_for_matches(
 def build_control_execution_events(
     response: EvaluationResponse,
     request: EvaluationRequest,
-    control_lookup: dict[int, ControlDefinition],
+    control_lookup: Mapping[int, ControlDefinition | ControlDefinitionRuntime],
     trace_id: str | None,
     span_id: str | None,
     agent_name: str | None,

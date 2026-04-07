@@ -17,6 +17,7 @@ import {
   getEmptyValueHints,
   getJsonEditorCompletionItems,
   setupJsonEditorLanguageSupport,
+  TEMPLATE_DEFINITION_PREFIX,
 } from '@/components/json-editor-monaco/json-editor-monaco-language';
 import { isApiError } from '@/core/api/errors';
 import { LabelWithTooltip } from '@/core/components/label-with-tooltip';
@@ -240,6 +241,7 @@ export const JsonEditorView = ({
   evaluators,
   activeEvaluatorId,
   steps,
+  templateParameterNames,
 }: JsonEditorViewProps) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [debouncedJsonText] = useDebouncedValue(jsonText, validateDebounceMs);
@@ -249,6 +251,9 @@ export const JsonEditorView = ({
   const monacoRef = useRef<MonacoModule | null>(null);
   const editorRootRef = useRef<JsonEditorTestElement | null>(null);
   const cleanupLanguageRef = useRef<(() => void) | null>(null);
+
+  const definitionPrefix =
+    editorMode === 'template' ? TEMPLATE_DEFINITION_PREFIX : undefined;
 
   const modelUri = useMemo(
     () => `inmemory://agent-control/${testId}.json`,
@@ -262,8 +267,19 @@ export const JsonEditorView = ({
       evaluators,
       activeEvaluatorId,
       steps,
+      definitionPrefix,
+      templateParameterNames,
     }),
-    [activeEvaluatorId, editorMode, evaluators, modelUri, schema, steps]
+    [
+      activeEvaluatorId,
+      definitionPrefix,
+      editorMode,
+      evaluators,
+      modelUri,
+      schema,
+      steps,
+      templateParameterNames,
+    ]
   );
 
   const clipboard = useClipboard({ timeout: 1500 });
@@ -353,10 +369,22 @@ export const JsonEditorView = ({
     };
     updateHints();
 
-    let prevEvalNames = extractEvaluatorNames(editor.getValue());
+    let prevEvalNames = extractEvaluatorNames(
+      editor.getValue(),
+      definitionPrefix
+    );
     let prevDecision: string | null = null;
     try {
-      prevDecision = JSON.parse(editor.getValue())?.action?.decision ?? null;
+      const initTree = parseTree(editor.getValue());
+      const initSubtree =
+        definitionPrefix && initTree
+          ? findNodeAtLocation(initTree, definitionPrefix)
+          : initTree;
+      const decisionNode = initSubtree
+        ? findNodeAtLocation(initSubtree, ['action', 'decision'])
+        : null;
+      prevDecision =
+        typeof decisionNode?.value === 'string' ? decisionNode.value : null;
     } catch {
       /* ignore */
     }
@@ -429,22 +457,36 @@ export const JsonEditorView = ({
         }
       }, COMMA_FIX_DEBOUNCE_MS);
 
-      // Immediate: dependent field updates (control mode only)
-      if (editorMode === 'control') {
+      // Immediate: dependent field updates (control & template modes)
+      if (editorMode === 'control' || editorMode === 'template') {
         const evalEdit = findEvaluatorConfigEdit(
           text,
           prevEvalNames,
-          evaluators
+          evaluators,
+          definitionPrefix
         );
-        prevEvalNames = extractEvaluatorNames(text);
+        prevEvalNames = extractEvaluatorNames(text, definitionPrefix);
         if (evalEdit) {
           applyEdit(evalEdit, 'evaluator-config-update');
           return;
         }
 
-        const steerEdit = findSteeringContextEdit(text, prevDecision);
+        const steerEdit = findSteeringContextEdit(
+          text,
+          prevDecision,
+          definitionPrefix
+        );
         try {
-          prevDecision = JSON.parse(text)?.action?.decision ?? null;
+          const steerTree = parseTree(text);
+          const steerSubtree =
+            definitionPrefix && steerTree
+              ? findNodeAtLocation(steerTree, definitionPrefix)
+              : steerTree;
+          const decNode = steerSubtree
+            ? findNodeAtLocation(steerSubtree, ['action', 'decision'])
+            : null;
+          prevDecision =
+            typeof decNode?.value === 'string' ? decNode.value : null;
         } catch {
           /* ignore */
         }
@@ -460,7 +502,14 @@ export const JsonEditorView = ({
       disposable.dispose();
       editor.deltaDecorations(decorationIds, []);
     };
-  }, [mounted, autocompleteContext, editorMode, evaluators, handleJsonChange]);
+  }, [
+    mounted,
+    autocompleteContext,
+    definitionPrefix,
+    editorMode,
+    evaluators,
+    handleJsonChange,
+  ]);
 
   // --- Cursor auto-trigger ---
   useEffect(() => {

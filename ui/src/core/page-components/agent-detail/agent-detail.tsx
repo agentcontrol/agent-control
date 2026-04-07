@@ -24,6 +24,7 @@ import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useAgentControls } from '@/core/hooks/query-hooks/use-agent-controls';
 import { useHasMonitorData } from '@/core/hooks/query-hooks/use-has-monitor-data';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
+import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { useModalRoute } from '@/core/hooks/use-modal-route';
 import { useQueryParam } from '@/core/hooks/use-query-param';
 import { useTimeRangePreference } from '@/core/hooks/use-time-range-preference';
@@ -68,6 +69,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     });
 
   const updateControl = useUpdateControl();
+  const updateControlMetadata = useUpdateControlMetadata();
   const editCloseRef = useRef<(() => void) | null>(null);
 
   const handleCloseEditModal = () => {
@@ -147,6 +149,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   const columns = useControlsTableColumns({
     agentId,
     updateControl,
+    updateControlMetadata,
     removeControlFromAgent,
     onEditControl: handleEditControl,
     onDeleteControl: handleDeleteControl,

@@ -113,6 +113,75 @@ export type ListControlsResponse =
 
 export type AgentRef = components['schemas']['AgentRef'];
 
+// =============================================================================
+// Template Types (manual until API types are regenerated)
+// =============================================================================
+
+export type TemplateValue = string | boolean | string[];
+
+export type TemplateParameterBase = {
+  label: string;
+  description?: string | null;
+  required?: boolean;
+  ui_hint?: string | null;
+};
+
+export type StringTemplateParameter = TemplateParameterBase & {
+  type: 'string';
+  default?: string | null;
+  placeholder?: string | null;
+};
+
+export type StringListTemplateParameter = TemplateParameterBase & {
+  type: 'string_list';
+  default?: string[] | null;
+  placeholder?: string[] | null;
+};
+
+export type EnumTemplateParameter = TemplateParameterBase & {
+  type: 'enum';
+  allowed_values: string[];
+  default?: string | null;
+};
+
+export type BooleanTemplateParameter = TemplateParameterBase & {
+  type: 'boolean';
+  default?: boolean | null;
+};
+
+export type RegexTemplateParameter = TemplateParameterBase & {
+  type: 'regex_re2';
+  default?: string | null;
+  placeholder?: string | null;
+};
+
+export type TemplateParameterDefinition =
+  | StringTemplateParameter
+  | StringListTemplateParameter
+  | EnumTemplateParameter
+  | BooleanTemplateParameter
+  | RegexTemplateParameter;
+
+export type TemplateDefinition = {
+  description?: string | null;
+  parameters: Record<string, TemplateParameterDefinition>;
+  definition_template: unknown;
+};
+
+export type TemplateControlInput = {
+  template: TemplateDefinition;
+  template_values: Record<string, TemplateValue>;
+};
+
+export type RenderControlTemplateRequest = {
+  template: TemplateDefinition;
+  template_values: Record<string, TemplateValue>;
+};
+
+export type RenderControlTemplateResponse = {
+  control: ControlDefinition;
+};
+
 // Helper type to extract query parameters from operations
 type ExtractQueryParams<T> = T extends { parameters: { query?: infer Q } }
   ? Q

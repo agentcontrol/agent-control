@@ -2,6 +2,38 @@
 
 <!-- version list -->
 
+## v7.4.0 (2026-04-07)
+
+### Chores
+
+- **release**: Ts sdk v2.2.0 [skip ci]
+  ([`fde5179`](https://github.com/agentcontrol/agent-control/commit/fde5179316d4c7892f9be54613edc2a1e5762c1c))
+
+### Features
+
+- **sdk**: Add telemetry package to support sinks
+  ([#164](https://github.com/agentcontrol/agent-control/pull/164),
+  [`2186ba1`](https://github.com/agentcontrol/agent-control/commit/2186ba18bfd7f61d96d2af455f34a29addc7b125))
+
+- **sdk**: Default merge events in SDK
+  ([#155](https://github.com/agentcontrol/agent-control/pull/155),
+  [`5984a60`](https://github.com/agentcontrol/agent-control/commit/5984a6065ebf63c638ab9249b15b20bdc43464cf))
+
+- **server**: Remove container name for dev postgres
+  ([`92b2d13`](https://github.com/agentcontrol/agent-control/commit/92b2d1374fc5fc57c3708b16c1bd7f85c5efe4f1))
+
+- **server**: Start local dev pg under docker compose project endign with dev
+  ([`88bee63`](https://github.com/agentcontrol/agent-control/commit/88bee63d0a6901fed100d31223c70c553c50b036))
+
+- **server,sdk, ui**: Control Templates
+  ([#158](https://github.com/agentcontrol/agent-control/pull/158),
+  [`78bb538`](https://github.com/agentcontrol/agent-control/commit/78bb5381c7b33a400a79310a4070feb2ca959752))
+
+- **ui, server**: Intuitive JSON editing for Controls
+  ([#151](https://github.com/agentcontrol/agent-control/pull/151),
+  [`8c23cef`](https://github.com/agentcontrol/agent-control/commit/8c23cef2e8cf53d583c9b2425d6576a321061e57))
+
+
 ## v7.3.2 (2026-04-02)
 
 ### Bug Fixes

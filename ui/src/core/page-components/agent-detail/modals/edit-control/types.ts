@@ -24,7 +24,7 @@ export type { SqlFormValues } from '@/core/evaluators/sql/types';
 
 export type ConfigViewMode = 'form' | 'json';
 export type ControlEditorMode = 'form' | 'json';
-export type JsonEditorMode = 'control' | 'evaluator-config';
+export type JsonEditorMode = 'control' | 'evaluator-config' | 'template';
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -109,6 +109,8 @@ export type JsonEditorViewProps = {
   activeEvaluatorId?: string | null;
   /** Agent step schemas used for selector path suggestions */
   steps?: StepSchema[];
+  /** Parameter names from the template (for template mode $param completions) */
+  templateParameterNames?: string[];
 };
 
 export type ControlDefinitionFormProps = {

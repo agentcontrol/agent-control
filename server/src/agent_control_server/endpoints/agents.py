@@ -1,11 +1,12 @@
 from collections.abc import Sequence
-from typing import Any, Protocol
+from typing import Any
 
 from agent_control_engine import list_evaluators
 from agent_control_models.agent import Agent as APIAgent
 from agent_control_models.agent import StepSchema
-from agent_control_models.controls import ControlDefinition
+from agent_control_models.controls import ControlDefinition, ControlDefinitionRuntime
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
+from agent_control_models.policy import Control as APIControl
 from agent_control_models.server import (
     AgentControlsResponse,
     AgentSummary,
@@ -28,7 +29,7 @@ from agent_control_models.server import (
     SetPolicyResponse,
     StepKey,
 )
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete, func, or_, select, union_all
@@ -55,7 +56,12 @@ from ..models import (
     policy_controls,
 )
 from ..services.agent_names import normalize_agent_name_or_422
-from ..services.controls import list_controls_for_agent, list_controls_for_policy
+from ..services.controls import (
+    AgentControlEnabledState,
+    AgentControlRenderedState,
+    list_controls_for_agent,
+    list_controls_for_policy,
+)
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
@@ -80,13 +86,6 @@ _MAX_PAGINATION_LIMIT = 100
 _CORRUPTED_AGENT_DATA_MESSAGE = "Stored agent data is corrupted and cannot be parsed."
 
 type StepKeyTuple = tuple[str, str]
-
-
-class _ControlWithDefinition(Protocol):
-    """Minimal control shape needed for evaluator dependency scans."""
-
-    name: str
-    control: ControlDefinition
 
 
 # =============================================================================
@@ -118,8 +117,16 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
         if not control.data:
             continue
 
+        # Skip unrendered template controls — they have no evaluators to validate.
+        if (
+            isinstance(control.data, dict)
+            and control.data.get("template") is not None
+            and control.data.get("condition") is None
+        ):
+            continue
+
         try:
-            control_definition = ControlDefinition.model_validate(control.data)
+            control_definition = ControlDefinitionRuntime.model_validate(control.data)
         except ValidationError:
             errors.append(f"Control '{control.name}' has corrupted data")
             continue
@@ -165,7 +172,7 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
 
 
 def _find_referencing_controls_for_removed_evaluators(
-    controls: Sequence[_ControlWithDefinition],
+    controls: Sequence[APIControl],
     agent_name: str,
     remove_evaluator_set: set[str],
 ) -> list[tuple[str, str]]:
@@ -173,6 +180,8 @@ def _find_referencing_controls_for_removed_evaluators(
     referencing_control_set: set[tuple[str, str]] = set()
 
     for ctrl in controls:
+        if not isinstance(ctrl.control, ControlDefinition):
+            continue  # Skip unrendered template controls
         for _, evaluator_spec in ctrl.control.iter_condition_leaf_parts():
             evaluator_ref = evaluator_spec.name
             if ":" not in evaluator_ref:
@@ -234,6 +243,8 @@ async def _build_overwrite_evaluator_removals(
 
     references_by_evaluator: dict[str, set[tuple[int, str]]] = {}
     for control in controls:
+        if not isinstance(control.control, ControlDefinition):
+            continue  # Skip unrendered template controls
         for _, evaluator_spec in control.control.iter_condition_leaf_parts():
             evaluator_ref = evaluator_spec.name
             parsed = parse_evaluator_ref_full(evaluator_ref)
@@ -467,7 +478,8 @@ async def init_agent(
         db: Database session (injected)
 
     Returns:
-        InitAgentResponse with created flag and active controls (policy-derived + direct)
+        InitAgentResponse with created flag and active controls currently associated
+        through policies or direct links
     """
     # Check for evaluator name collisions with built-in evaluators
     builtin_names = _get_builtin_evaluator_names()
@@ -1370,29 +1382,59 @@ async def remove_agent_control(
     "/{agent_name}/controls",
     response_model=AgentControlsResponse,
     response_model_exclude_none=True,
-    summary="List agent's active controls",
-    response_description="List of controls from agent policy and direct associations",
+    summary="List agent's associated controls",
+    response_description=(
+        "List of associated controls by default, including rendered, unrendered, "
+        "enabled, and disabled controls"
+    ),
 )
 async def list_agent_controls(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    rendered_state: AgentControlRenderedState = Query(
+        "all",
+        description=(
+            "Rendered-state filter. Default 'all' returns both rendered controls "
+            "and unrendered template drafts."
+        ),
+    ),
+    enabled_state: AgentControlEnabledState = Query(
+        "all",
+        description=(
+            "Enabled-state filter. Default 'all' returns both enabled and disabled "
+            "associated controls. Unrendered template drafts are disabled, so "
+            "combine with rendered_state='rendered' to exclude them."
+        ),
+    ),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AgentControlsResponse:
     """
-    List all protection controls active for an agent.
+    List protection controls associated with an agent.
 
-    Controls include the union of policy-derived and directly associated controls.
+    By default, the endpoint returns all associated controls, including rendered
+    controls, disabled controls, and unrendered template drafts. Callers can
+    narrow the response via the state filters on this endpoint. Filters
+    intersect, so unrendered drafts require rendered_state='unrendered'
+    together with enabled_state='all' or 'disabled'.
 
     Args:
         agent_name: Agent identifier
+        rendered_state: Whether to return rendered controls, unrendered drafts, or both
+        enabled_state: Whether to return enabled controls, disabled controls, or both
         db: Database session (injected)
 
     Returns:
-        AgentControlsResponse with list of active controls
+        AgentControlsResponse with controls matching the requested state filters
 
     Raises:
         HTTPException 404: Agent not found
     """
     agent = await _get_agent_or_404(agent_name, db)
-    controls = await list_controls_for_agent(agent.name, db)
+    controls = await list_controls_for_agent(
+        agent.name,
+        db,
+        rendered_state=rendered_state,
+        enabled_state=enabled_state,
+    )
     return AgentControlsResponse(controls=controls)
 
 

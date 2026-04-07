@@ -20,6 +20,7 @@ from .config import observability_settings, settings
 from .db import AsyncSessionLocal
 from .endpoints.agents import router as agent_router
 from .endpoints.controls import router as control_router
+from .endpoints.controls import template_router as control_template_router
 from .endpoints.evaluation import router as evaluation_router
 from .endpoints.evaluators import router as evaluator_router
 from .endpoints.observability import router as observability_router
@@ -142,7 +143,8 @@ Agent → Policy → Control(s)
 2. Create configured controls with `/api/v1/controls`
 3. Create a policy and add controls to it
 4. Assign the policy to your agent
-5. Query agent's active controls with `/api/v1/agents/{agent_name}/controls`
+5. Query agent controls with `/api/v1/agents/{agent_name}/controls`
+   (use state filters on the same endpoint for disabled or unrendered associated controls)
     """,
     version=server_version,
     lifespan=lifespan,
@@ -203,6 +205,11 @@ app.include_router(
 )
 app.include_router(
     control_router,
+    prefix=api_v1_prefix,
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    control_template_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(require_api_key)],
 )

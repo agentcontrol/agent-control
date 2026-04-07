@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 from uuid import uuid4
 
 import agent_control
@@ -247,5 +247,10 @@ async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
         await agent_control.refresh_controls_async()
 
     # Then: refresh calls list_agent_controls and does not re-register the agent.
-    assert list_agent_controls_mock.await_count == 1
+    list_agent_controls_mock.assert_awaited_once_with(
+        ANY,
+        agent_control.state.current_agent.agent_name,
+        rendered_state="rendered",
+        enabled_state="enabled",
+    )
     assert register_agent_mock.await_count == 0

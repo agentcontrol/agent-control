@@ -9,6 +9,8 @@ import type {
   InitAgentRequestBody,
   ListAgentsQueryParams,
   PatchControlRequest,
+  RenderControlTemplateRequest,
+  RenderControlTemplateResponse,
   SetControlDataRequest,
   ValidateControlDataRequest,
   ValidateControlDataResponse,
@@ -212,6 +214,23 @@ export const api = {
             options?.force !== undefined ? { force: options.force } : undefined,
         },
       }),
+  },
+  controlTemplates: {
+    render: async (data: RenderControlTemplateRequest) => {
+      const res = await fetch(`${API_URL}/api/v1/control-templates/render`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const body = await res.json();
+      if (!res.ok) return { data: undefined, error: body, response: res };
+      return {
+        data: body as RenderControlTemplateResponse,
+        error: undefined,
+        response: res,
+      };
+    },
   },
   policies: {
     create: (name: string) =>

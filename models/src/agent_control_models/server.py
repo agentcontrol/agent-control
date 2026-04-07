@@ -1,17 +1,60 @@
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BeforeValidator, Field, StringConstraints
+from pydantic import BeforeValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 
 from .agent import Agent, StepSchema
 from .base import BaseModel
-from .controls import ControlDefinition
+from .controls import (
+    ControlDefinition,
+    TemplateControlInput,
+    TemplateDefinition,
+    TemplateValue,
+    UnrenderedTemplateControl,
+)
 from .policy import Control
 
 
 def _strip_slug_name(v: str) -> str:
     """Strip leading/trailing whitespace for slug-style names."""
     return v.strip() if isinstance(v, str) else v
+
+
+_CONTROL_DEFINITION_ADAPTER = TypeAdapter(ControlDefinition)
+_TEMPLATE_CONTROL_INPUT_ADAPTER = TypeAdapter(TemplateControlInput)
+_TEMPLATE_ONLY_CONTROL_FIELDS = frozenset({"template", "template_values"})
+_RAW_CONTROL_INPUT_FIELDS = (
+    frozenset(ControlDefinition.model_fields) - _TEMPLATE_ONLY_CONTROL_FIELDS
+)
+_RAW_CONTROL_INPUT_FIELDS = _RAW_CONTROL_INPUT_FIELDS.union(
+    {
+        # Legacy flat leaf fields still accepted for raw controls.
+        "selector",
+        "evaluator",
+    }
+)
+
+
+def _parse_control_input(v: Any) -> Any:
+    """Discriminate raw control inputs from template-backed inputs.
+
+    A non-null ``template`` key means template-backed input and must be parsed
+    strictly as ``TemplateControlInput`` so mixed payloads are rejected.
+    """
+    if isinstance(v, (ControlDefinition, TemplateControlInput)):
+        return v
+    if not isinstance(v, dict):
+        return v
+
+    if v.get("template") is not None:
+        mixed_fields = sorted(field for field in v if field in _RAW_CONTROL_INPUT_FIELDS)
+        if mixed_fields:
+            raise ValueError(
+                "Template-backed control input cannot mix template fields with rendered control "
+                f"fields. Remove raw fields: {', '.join(mixed_fields)}."
+            )
+        return _TEMPLATE_CONTROL_INPUT_ADAPTER.validate_python(v)
+    return _CONTROL_DEFINITION_ADAPTER.validate_python(v)
 
 
 # Canonicalization at the API boundary: all SlugName fields are trimmed before
@@ -24,6 +67,11 @@ SlugName = Annotated[
         max_length=255,
         pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
     ),
+]
+
+ControlInput = Annotated[
+    ControlDefinition | TemplateControlInput,
+    BeforeValidator(_parse_control_input),
 ]
 
 
@@ -119,7 +167,7 @@ class CreateControlRequest(BaseModel):
         ...,
         description="Unique control name (letters, numbers, hyphens, underscores)",
     )
-    data: ControlDefinition = Field(
+    data: ControlInput = Field(
         ...,
         description="Control definition to validate and store during creation",
     )
@@ -247,7 +295,10 @@ class DeletePolicyResponse(BaseModel):
 
 class AgentControlsResponse(BaseModel):
     controls: list[Control] = Field(
-        description="List of active controls associated with the agent"
+        description=(
+            "List of agent-associated controls matching the requested state filters "
+            "(all associated controls by default, including disabled and unrendered controls)"
+        )
     )
 
 
@@ -260,8 +311,13 @@ class GetControlResponse(BaseModel):
 
     id: int = Field(..., description="Control ID")
     name: str = Field(..., description="Control name")
-    data: ControlDefinition | None = Field(
-        None, description="Control configuration data (None if not yet configured)"
+    data: ControlDefinition | UnrenderedTemplateControl | None = Field(
+        None,
+        description=(
+            "Control configuration data. A ControlDefinition for raw/rendered "
+            "controls, an UnrenderedTemplateControl for unrendered templates, "
+            "or None if not yet configured."
+        ),
     )
 
 
@@ -290,7 +346,9 @@ class RemoveAgentControlResponse(BaseModel):
 
 
 class GetControlDataResponse(BaseModel):
-    data: ControlDefinition = Field(description="Control data payload")
+    data: ControlDefinition | UnrenderedTemplateControl = Field(
+        description="Control data payload (rendered control or unrendered template)"
+    )
 
 
 class GetControlSchemaResponse(BaseModel):
@@ -305,7 +363,7 @@ class GetControlSchemaResponse(BaseModel):
 
 class SetControlDataRequest(BaseModel):
     """Request to update control configuration data."""
-    data: ControlDefinition = Field(
+    data: ControlInput = Field(
         ...,
         description="Control configuration data (replaces existing)",
     )
@@ -314,7 +372,7 @@ class SetControlDataRequest(BaseModel):
 class ValidateControlDataRequest(BaseModel):
     """Request to validate control configuration data without saving."""
 
-    data: ControlDefinition = Field(
+    data: ControlInput = Field(
         ...,
         description="Control configuration data to validate",
     )
@@ -326,6 +384,27 @@ class SetControlDataResponse(BaseModel):
 
 class ValidateControlDataResponse(BaseModel):
     success: bool = Field(description="Whether the control data is valid")
+
+
+class RenderControlTemplateRequest(BaseModel):
+    """Request to render a template-backed control without persisting it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template: TemplateDefinition = Field(..., description="Template definition to render")
+    template_values: dict[str, TemplateValue] = Field(
+        default_factory=dict,
+        description="Template parameter values used during rendering",
+    )
+
+
+class RenderControlTemplateResponse(BaseModel):
+    """Rendered template preview response."""
+
+    control: ControlDefinition = Field(
+        ...,
+        description="Rendered control definition including template metadata",
+    )
 
 
 class StepKey(BaseModel):
@@ -412,6 +491,18 @@ class ControlSummary(BaseModel):
     step_types: list[str] | None = Field(None, description="Step types in scope")
     stages: list[str] | None = Field(None, description="Evaluation stages in scope")
     tags: list[str] = Field(default_factory=list, description="Control tags")
+    template_backed: bool = Field(
+        False,
+        description="Whether the control was created from a template",
+    )
+    template_rendered: bool | None = Field(
+        None,
+        description=(
+            "Whether a template-backed control has been rendered. "
+            "True for rendered templates, False for unrendered templates, "
+            "None for non-template controls."
+        ),
+    )
     used_by_agent: AgentRef | None = Field(None, description="Agent using this control")
     # TODO: Follow-up with full `used_by_agents` list for richer attribution.
     used_by_agents_count: int = Field(
@@ -462,4 +553,3 @@ class PatchControlResponse(BaseModel):
     enabled: bool | None = Field(
         None, description="Current enabled status (if control has data configured)"
     )
-

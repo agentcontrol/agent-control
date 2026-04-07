@@ -31,6 +31,31 @@ async def test_list_agent_controls_typed_calls_controls_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_agent_controls_forwards_state_filters() -> None:
+    # GIVEN: a successful HTTP response payload for controls.
+    response_payload = {"controls": []}
+    response = Mock()
+    response.raise_for_status = Mock()
+    response.json = Mock(return_value=response_payload)
+    client = SimpleNamespace(http_client=SimpleNamespace(get=AsyncMock(return_value=response)))
+    agent_name = str(uuid4())
+
+    # WHEN: unrendered and disabled state filters are requested.
+    await agent_control.agents.list_agent_controls(
+        client,
+        agent_name,
+        rendered_state="all",
+        enabled_state="disabled",
+    )
+
+    # THEN: wrapper forwards the query params to the endpoint.
+    client.http_client.get.assert_awaited_once_with(
+        f"/api/v1/agents/{agent_name}/controls",
+        params={"rendered_state": "all", "enabled_state": "disabled"},
+    )
+
+
+@pytest.mark.asyncio
 async def test_list_agent_controls_typed_validates_server_payload() -> None:
     # GIVEN: a successful HTTP response with an invalid payload shape.
     invalid_response = Mock()

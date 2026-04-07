@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import uuid4
 
 import re2
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from .actions import ActionDecision, normalize_action
+from .agent import JSONValue
 from .base import BaseModel
 
 
@@ -276,6 +278,231 @@ class SteeringContext(BaseModel):
     }
 
 
+type TemplateValue = str | bool | list[str]
+type JsonValue = JSONValue
+
+_TEMPLATE_PARAMETER_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+MAX_TEMPLATE_DEFINITION_DEPTH = 12
+MAX_TEMPLATE_DEFINITION_NODES = 1000
+
+
+def _validate_re2_value(value: str, *, field_name: str) -> str:
+    """Validate that a string is a valid RE2 expression."""
+    try:
+        re2.compile(value)
+    except re2.error as exc:
+        raise ValueError(f"Invalid {field_name}: {exc}") from exc
+    return value
+
+
+def _validate_template_definition_structure(value: JsonValue) -> JsonValue:
+    """Validate template definition nesting and overall size."""
+    stack: list[tuple[JsonValue, int]] = [(value, 1)]
+    node_count = 0
+
+    while stack:
+        node, depth = stack.pop()
+        node_count += 1
+
+        if depth > MAX_TEMPLATE_DEFINITION_DEPTH:
+            raise ValueError(
+                "definition_template nesting depth exceeds maximum of "
+                f"{MAX_TEMPLATE_DEFINITION_DEPTH}"
+            )
+
+        if node_count > MAX_TEMPLATE_DEFINITION_NODES:
+            raise ValueError(
+                "definition_template size exceeds maximum of "
+                f"{MAX_TEMPLATE_DEFINITION_NODES} JSON nodes"
+            )
+
+        if isinstance(node, dict):
+            stack.extend((nested_value, depth + 1) for nested_value in node.values())
+        elif isinstance(node, list):
+            # List elements inherit parent depth — a flat array of strings is
+            # not structurally deeper than a single value.
+            stack.extend((nested_value, depth) for nested_value in node)
+
+    return value
+
+
+class TemplateParameterBase(BaseModel):
+    """Base definition for a template parameter."""
+
+    label: str = Field(..., min_length=1, description="Human-readable parameter label")
+    description: str | None = Field(
+        None,
+        description="Optional description of what the parameter controls",
+    )
+    required: bool = Field(
+        True,
+        description="Whether the caller must provide a value when no default exists",
+    )
+    ui_hint: str | None = Field(
+        None,
+        description="Optional UI hint for rendering the parameter input",
+    )
+
+
+class StringTemplateParameter(TemplateParameterBase):
+    """String-valued template parameter."""
+
+    type: Literal["string"] = "string"
+    default: str | None = Field(None, description="Optional default value")
+    placeholder: str | None = Field(None, description="Optional placeholder text")
+
+
+class StringListTemplateParameter(TemplateParameterBase):
+    """List-of-strings template parameter."""
+
+    type: Literal["string_list"] = "string_list"
+    default: list[str] | None = Field(None, description="Optional default value")
+    placeholder: list[str] | None = Field(
+        None,
+        description="Optional placeholder/example list",
+    )
+
+    @field_validator("default", "placeholder")
+    @classmethod
+    def validate_string_lists(
+        cls, value: list[str] | None
+    ) -> list[str] | None:
+        if value is None:
+            return value
+        if any((not isinstance(item, str)) for item in value):
+            raise ValueError("Values must be strings")
+        return value
+
+
+class EnumTemplateParameter(TemplateParameterBase):
+    """String enum template parameter."""
+
+    type: Literal["enum"] = "enum"
+    allowed_values: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Allowed string values for the parameter",
+    )
+    default: str | None = Field(None, description="Optional default value")
+
+    @field_validator("allowed_values")
+    @classmethod
+    def validate_allowed_values(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("allowed_values must not be empty")
+        if any(not item for item in value):
+            raise ValueError("allowed_values must contain non-empty strings")
+        if len(set(value)) != len(value):
+            raise ValueError("allowed_values must not contain duplicates")
+        return value
+
+    @model_validator(mode="after")
+    def validate_default(self) -> Self:
+        if self.default is not None and self.default not in self.allowed_values:
+            raise ValueError("Default must be one of allowed_values")
+        return self
+
+
+class BooleanTemplateParameter(TemplateParameterBase):
+    """Boolean template parameter."""
+
+    type: Literal["boolean"] = "boolean"
+    default: bool | None = Field(None, description="Optional default value")
+
+
+class RegexTemplateParameter(TemplateParameterBase):
+    """RE2 regex template parameter."""
+
+    type: Literal["regex_re2"] = "regex_re2"
+    default: str | None = Field(None, description="Optional default regex pattern")
+    placeholder: str | None = Field(None, description="Optional placeholder regex")
+
+    @field_validator("default", "placeholder")
+    @classmethod
+    def validate_regex_values(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return _validate_re2_value(value, field_name="regex pattern")
+
+
+type TemplateParameterDefinition = Annotated[
+    StringTemplateParameter
+    | StringListTemplateParameter
+    | EnumTemplateParameter
+    | BooleanTemplateParameter
+    | RegexTemplateParameter,
+    Field(discriminator="type"),
+]
+
+
+class TemplateDefinition(BaseModel):
+    """Reusable template with typed parameters and a JSON definition template."""
+
+    description: str | None = Field(
+        None,
+        description="Metadata describing the template itself",
+    )
+    parameters: dict[str, TemplateParameterDefinition] = Field(
+        default_factory=dict,
+        description="Typed parameter definitions keyed by parameter name",
+    )
+    definition_template: JsonValue = Field(
+        ...,
+        description="Template payload containing $param binding objects",
+    )
+
+    @field_validator("parameters")
+    @classmethod
+    def validate_parameter_names(
+        cls, value: dict[str, TemplateParameterDefinition]
+    ) -> dict[str, TemplateParameterDefinition]:
+        for name in value:
+            if not _TEMPLATE_PARAMETER_NAME_RE.fullmatch(name):
+                raise ValueError(
+                    "Parameter names must match [a-zA-Z_][a-zA-Z0-9_]*"
+                )
+        return value
+
+    @field_validator("definition_template")
+    @classmethod
+    def validate_definition_template_structure(cls, value: JsonValue) -> JsonValue:
+        """Limit template nesting and size to keep rendering bounded."""
+        return _validate_template_definition_structure(value)
+
+
+class TemplateControlInput(BaseModel):
+    """Template-backed input payload for control create/update requests."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template: TemplateDefinition = Field(..., description="Template definition to render")
+    template_values: dict[str, TemplateValue] = Field(
+        default_factory=dict,
+        description="Template parameter values keyed by parameter name",
+    )
+
+
+class UnrenderedTemplateControl(BaseModel):
+    """Stored state of a template control that hasn't been rendered yet.
+
+    An unrendered template has a template definition and possibly partial
+    parameter values, but no concrete condition/action/execution fields.
+    It is always ``enabled=False`` and excluded from evaluation.
+    """
+
+    template: TemplateDefinition = Field(
+        ..., description="Template definition awaiting parameter values"
+    )
+    template_values: dict[str, TemplateValue] = Field(
+        default_factory=dict,
+        description="Partial or empty parameter values",
+    )
+    enabled: Literal[False] = Field(
+        False,
+        description="Unrendered templates are always disabled",
+    )
+
+
 class ControlAction(BaseModel):
     """What to do when control matches."""
 
@@ -298,6 +525,24 @@ class ControlAction(BaseModel):
 
 
 MAX_CONDITION_DEPTH = 6
+
+
+def _validate_common_control_constraints(
+    condition: ConditionNode,
+    action: ControlAction,
+) -> None:
+    """Validate control constraints shared by authoring and runtime models."""
+    if condition.max_depth() > MAX_CONDITION_DEPTH:
+        raise ValueError(
+            f"Condition nesting depth exceeds maximum of {MAX_CONDITION_DEPTH}"
+        )
+
+    if (
+        action.decision == "steer"
+        and not condition.is_leaf()
+        and action.steering_context is None
+    ):
+        raise ValueError("Composite steer controls require action.steering_context")
 
 
 class ConditionNode(BaseModel):
@@ -460,7 +705,56 @@ class ConditionNode(BaseModel):
 ConditionNode.model_rebuild()
 
 
-class ControlDefinition(BaseModel):
+def _build_observability_identity(
+    condition: ConditionNode,
+) -> ControlObservabilityIdentity:
+    """Build a stable selector/evaluator identity for a condition tree."""
+    all_evaluators: list[str] = []
+    all_selector_paths: list[str] = []
+    seen_evaluators: set[str] = set()
+    seen_selector_paths: set[str] = set()
+    leaf_count = 0
+
+    for selector, evaluator in condition.iter_leaf_parts():
+        leaf_count += 1
+        selector_path = selector.path or "*"
+
+        if evaluator.name not in seen_evaluators:
+            seen_evaluators.add(evaluator.name)
+            all_evaluators.append(evaluator.name)
+
+        if selector_path not in seen_selector_paths:
+            seen_selector_paths.add(selector_path)
+            all_selector_paths.append(selector_path)
+
+    return ControlObservabilityIdentity(
+        selector_path=all_selector_paths[0] if all_selector_paths else None,
+        evaluator_name=all_evaluators[0] if all_evaluators else None,
+        leaf_count=leaf_count,
+        all_evaluators=all_evaluators,
+        all_selector_paths=all_selector_paths,
+    )
+
+
+class _ConditionBackedControlMixin:
+    """Shared helpers for control models backed by a condition tree."""
+
+    condition: ConditionNode
+
+    def iter_condition_leaves(self) -> Iterator[ConditionNode]:
+        """Yield leaf conditions in evaluation order."""
+        yield from self.condition.iter_leaves()
+
+    def iter_condition_leaf_parts(self) -> Iterator[ConditionLeafParts]:
+        """Yield leaf selector/evaluator pairs in evaluation order."""
+        yield from self.condition.iter_leaf_parts()
+
+    def observability_identity(self) -> ControlObservabilityIdentity:
+        """Return a deterministic representative identity for observability."""
+        return _build_observability_identity(self.condition)
+
+
+class ControlDefinition(_ConditionBackedControlMixin, BaseModel):
     """A control definition to evaluate agent interactions.
 
     This model contains only the logic and configuration.
@@ -493,6 +787,14 @@ class ControlDefinition(BaseModel):
 
     # Metadata
     tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+    template: TemplateDefinition | None = Field(
+        None,
+        description="Template metadata for template-backed controls",
+    )
+    template_values: dict[str, TemplateValue] | None = Field(
+        None,
+        description="Resolved parameter values for template-backed controls",
+    )
 
     @classmethod
     def canonicalize_payload(cls, data: Any) -> Any:
@@ -533,67 +835,29 @@ class ControlDefinition(BaseModel):
     @model_validator(mode="after")
     def validate_condition_constraints(self) -> Self:
         """Validate cross-field control constraints."""
-        if self.condition.max_depth() > MAX_CONDITION_DEPTH:
+        _validate_common_control_constraints(self.condition, self.action)
+        has_template = self.template is not None
+        has_template_values = self.template_values is not None
+        if has_template != has_template_values:
             raise ValueError(
-                f"Condition nesting depth exceeds maximum of {MAX_CONDITION_DEPTH}"
-            )
-
-        if (
-            self.action.decision == "steer"
-            and not self.condition.is_leaf()
-            and self.action.steering_context is None
-        ):
-            raise ValueError(
-                "Composite steer controls require action.steering_context"
+                "template and template_values must both be present or both absent"
             )
         return self
 
-    def iter_condition_leaves(self) -> Iterator[ConditionNode]:
-        """Yield leaf conditions in evaluation order."""
-        yield from self.condition.iter_leaves()
-
-    def iter_condition_leaf_parts(self) -> Iterator[ConditionLeafParts]:
-        """Yield leaf selector/evaluator pairs in evaluation order."""
-        yield from self.condition.iter_leaf_parts()
+    def to_template_control_input(self) -> TemplateControlInput:
+        """Extract template-backed authoring input from a stored control definition."""
+        if self.template is None or self.template_values is None:
+            raise ValueError("Control definition is not template-backed")
+        return TemplateControlInput(
+            template=self.template,
+            template_values=dict(self.template_values),
+        )
 
     def primary_leaf(self) -> ConditionNode | None:
         """Return the single leaf node when the whole condition is just one leaf."""
         if self.condition.is_leaf():
             return self.condition
         return None
-
-    def observability_identity(self) -> ControlObservabilityIdentity:
-        """Return a deterministic representative identity for observability.
-
-        The representative selector/evaluator comes from the first leaf in
-        evaluation order so composite trees still populate top-level event
-        dimensions. The full ordered, deduped leaf context is also returned.
-        """
-        all_evaluators: list[str] = []
-        all_selector_paths: list[str] = []
-        seen_evaluators: set[str] = set()
-        seen_selector_paths: set[str] = set()
-        leaf_count = 0
-
-        for selector, evaluator in self.iter_condition_leaf_parts():
-            leaf_count += 1
-            selector_path = selector.path or "*"
-
-            if evaluator.name not in seen_evaluators:
-                seen_evaluators.add(evaluator.name)
-                all_evaluators.append(evaluator.name)
-
-            if selector_path not in seen_selector_paths:
-                seen_selector_paths.add(selector_path)
-                all_selector_paths.append(selector_path)
-
-        return ControlObservabilityIdentity(
-            selector_path=all_selector_paths[0] if all_selector_paths else None,
-            evaluator_name=all_evaluators[0] if all_evaluators else None,
-            leaf_count=leaf_count,
-            all_evaluators=all_evaluators,
-            all_selector_paths=all_selector_paths,
-        )
 
     model_config = {
         "json_schema_extra": {
@@ -620,6 +884,43 @@ class ControlDefinition(BaseModel):
             ]
         }
     }
+
+
+class ControlDefinitionRuntime(_ConditionBackedControlMixin, BaseModel):
+    """Slim runtime control model that ignores template authoring metadata."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    description: str | None = Field(None, description="Detailed description of the control")
+    enabled: bool = Field(True, description="Whether this control is active")
+    execution: Literal["server", "sdk"] = Field(
+        ..., description="Where this control executes"
+    )
+    scope: ControlScope = Field(
+        default_factory=ControlScope,
+        description="Which steps and stages this control applies to",
+    )
+    condition: ConditionNode = Field(
+        ...,
+        description=(
+            "Recursive boolean condition tree. Leaf nodes contain selector + evaluator; "
+            "composite nodes contain and/or/not."
+        ),
+    )
+    action: ControlAction = Field(..., description="What action to take when control matches")
+    tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+
+    @model_validator(mode="before")
+    @classmethod
+    def canonicalize_legacy_condition_shape(cls, data: Any) -> Any:
+        """Accept legacy flat leaf payloads during runtime parsing."""
+        return ControlDefinition.canonicalize_payload(data)
+
+    @model_validator(mode="after")
+    def validate_condition_constraints(self) -> Self:
+        """Validate runtime-relevant control constraints."""
+        _validate_common_control_constraints(self.condition, self.action)
+        return self
 
 
 class EvaluatorResult(BaseModel):

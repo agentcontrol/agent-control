@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-models"
-version = "7.3.2"
+version = "7.4.0"
 description = "Shared data models for Agent Control server and SDK"
 requires-python = ">=3.12"
 dependencies = [

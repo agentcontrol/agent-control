@@ -6,7 +6,7 @@ from typing import Any, Literal, cast
 from agent_control_engine import list_evaluators
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
-    ControlDefinition,
+    ControlDefinitionRuntime,
     ControlMatch,
     EvaluationRequest,
     EvaluationResponse,
@@ -29,7 +29,7 @@ class _ControlAdapter:
 
     id: int
     name: str
-    control: ControlDefinition
+    control: ControlDefinitionRuntime
 
 
 def _get_applicable_controls(
@@ -48,13 +48,21 @@ def _get_applicable_controls(
 
 def _build_server_control_lookup(
     server_control_payloads: list[dict[str, Any]],
-) -> dict[int, ControlDefinition]:
+) -> dict[int, ControlDefinitionRuntime]:
     """Build a best-effort lookup of server control definitions."""
-    control_lookup: dict[int, ControlDefinition] = {}
+    control_lookup: dict[int, ControlDefinitionRuntime] = {}
 
     for control in server_control_payloads:
+        ctrl_data = control.get("control", {})
+        if (
+            isinstance(ctrl_data, dict)
+            and ctrl_data.get("template") is not None
+            and ctrl_data.get("condition") is None
+        ):
+            continue
+
         try:
-            control_lookup[control["id"]] = ControlDefinition.model_validate(control["control"])
+            control_lookup[control["id"]] = ControlDefinitionRuntime.model_validate(ctrl_data)
         except Exception:
             continue
 
@@ -69,8 +77,18 @@ def _has_applicable_prefiltered_server_controls(
     parsed_server_controls: list[_ControlAdapter] = []
 
     for control in server_control_payloads:
+        # Skip unrendered template controls — they have no condition to evaluate
+        # and should not trigger the server-call fallback.
+        ctrl_data = control.get("control", {})
+        if (
+            isinstance(ctrl_data, dict)
+            and ctrl_data.get("template") is not None
+            and ctrl_data.get("condition") is None
+        ):
+            continue
+
         try:
-            control_def = ControlDefinition.model_validate(control["control"])
+            control_def = ControlDefinitionRuntime.model_validate(ctrl_data)
             parsed_server_controls.append(
                 _ControlAdapter(
                     id=control["id"],
@@ -134,7 +152,7 @@ def _merge_results(
 def _cached_server_control_lookup(
     agent_name: str,
     client: AgentControlClient,
-) -> dict[int, ControlDefinition]:
+) -> dict[int, ControlDefinitionRuntime]:
     """Return cached server controls for the active session when they are trustworthy."""
     current_agent = state.current_agent
     if current_agent is None or current_agent.agent_name != agent_name:
@@ -217,6 +235,15 @@ async def check_evaluation_with_local(
 
     for control in controls:
         control_data = control.get("control", {})
+
+        # Skip unrendered template controls — they cannot be evaluated.
+        if (
+            isinstance(control_data, dict)
+            and control_data.get("template") is not None
+            and control_data.get("condition") is None
+        ):
+            continue
+
         execution = control_data.get("execution", "server")
         is_local = execution == "sdk"
 
@@ -225,7 +252,7 @@ async def check_evaluation_with_local(
             continue
 
         try:
-            control_def = ControlDefinition.model_validate(control_data)
+            control_def = ControlDefinitionRuntime.model_validate(control_data)
             for _, evaluator_spec in control_def.iter_condition_leaf_parts():
                 evaluator_name = evaluator_spec.name
 

@@ -10,6 +10,20 @@ from .client import AgentControlClient
 from .validation import ensure_agent_name
 
 
+def _agent_controls_query_params(
+    *,
+    rendered_state: Literal["rendered", "unrendered", "all"] | None = None,
+    enabled_state: Literal["enabled", "disabled", "all"] | None = None,
+) -> dict[str, str] | None:
+    """Build optional query params for the agent-controls endpoint."""
+    params: dict[str, str] = {}
+    if rendered_state is not None:
+        params["rendered_state"] = rendered_state
+    if enabled_state is not None:
+        params["enabled_state"] = enabled_state
+    return params or None
+
+
 async def register_agent(
     client: AgentControlClient,
     agent: Agent,
@@ -164,10 +178,31 @@ async def remove_agent_control(
 async def list_agent_controls(
     client: AgentControlClient,
     agent_name: str,
+    *,
+    rendered_state: Literal["rendered", "unrendered", "all"] | None = None,
+    enabled_state: Literal["enabled", "disabled", "all"] | None = None,
 ) -> dict[str, Any]:
-    """List active controls associated with an agent."""
+    """List agent controls, returning all associated controls by default.
+
+    When state filters are omitted, the server returns all associated controls,
+    including rendered controls, disabled controls, and unrendered template
+    drafts. Callers can narrow that view by passing rendered_state and/or
+    enabled_state. Filters intersect, so unrendered drafts require
+    rendered_state="unrendered" together with enabled_state="all" or
+    enabled_state="disabled".
+    """
     normalized_name = ensure_agent_name(agent_name)
-    response = await client.http_client.get(f"/api/v1/agents/{normalized_name}/controls")
+    params = _agent_controls_query_params(
+        rendered_state=rendered_state,
+        enabled_state=enabled_state,
+    )
+    if params is None:
+        response = await client.http_client.get(f"/api/v1/agents/{normalized_name}/controls")
+    else:
+        response = await client.http_client.get(
+            f"/api/v1/agents/{normalized_name}/controls",
+            params=params,
+        )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 
@@ -175,9 +210,26 @@ async def list_agent_controls(
 async def list_agent_controls_typed(
     client: AgentControlClient,
     agent_name: str,
+    *,
+    rendered_state: Literal["rendered", "unrendered", "all"] | None = None,
+    enabled_state: Literal["enabled", "disabled", "all"] | None = None,
 ) -> AgentControlsResponse:
-    """List active controls associated with an agent (typed response)."""
+    """List agent controls with a typed response, returning all associated controls by default.
+
+    Filters intersect, so unrendered drafts require rendered_state="unrendered"
+    together with enabled_state="all" or enabled_state="disabled".
+    """
     normalized_name = ensure_agent_name(agent_name)
-    response = await client.http_client.get(f"/api/v1/agents/{normalized_name}/controls")
+    params = _agent_controls_query_params(
+        rendered_state=rendered_state,
+        enabled_state=enabled_state,
+    )
+    if params is None:
+        response = await client.http_client.get(f"/api/v1/agents/{normalized_name}/controls")
+    else:
+        response = await client.http_client.get(
+            f"/api/v1/agents/{normalized_name}/controls",
+            params=params,
+        )
     response.raise_for_status()
     return AgentControlsResponse.model_validate(response.json())

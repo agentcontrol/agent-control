@@ -132,6 +132,62 @@ const agentWithStepsResponse: GetAgentResponse = {
   ],
 };
 
+const templateBackedControl: Control = {
+  id: 10,
+  name: 'Template Regex Guard',
+  control: {
+    description: 'Deny when input matches pattern',
+    enabled: true,
+    execution: 'server',
+    scope: { step_names: ['chat-completion'], stages: ['pre'] },
+    condition: {
+      selector: { path: 'input' },
+      evaluator: {
+        name: 'regex',
+        config: { pattern: '\\b(SSN|social.security)\\b' },
+      },
+    },
+    action: { decision: 'deny' },
+    tags: [],
+    template: {
+      description: 'Regex denial template',
+      parameters: {
+        pattern: {
+          type: 'regex_re2',
+          label: 'Regex Pattern',
+          description: 'RE2 pattern to match against input',
+        },
+        step_name: {
+          type: 'string',
+          label: 'Step Name',
+          required: false,
+          default: 'chat-completion',
+        },
+      },
+      definition_template: {
+        description: 'Deny when input matches pattern',
+        execution: 'server',
+        scope: {
+          step_names: [{ $param: 'step_name' }],
+          stages: ['pre'],
+        },
+        condition: {
+          selector: { path: 'input' },
+          evaluator: {
+            name: 'regex',
+            config: { pattern: { $param: 'pattern' } },
+          },
+        },
+        action: { decision: 'deny' },
+      },
+    },
+    template_values: {
+      pattern: '\\b(SSN|social.security)\\b',
+      step_name: 'chat-completion',
+    },
+  } as Control['control'],
+};
+
 const controlsList: Control[] = [
   {
     id: 1,
@@ -197,8 +253,17 @@ const controlsList: Control[] = [
   },
 ];
 
+const controlsWithTemplateList: Control[] = [
+  ...controlsList,
+  templateBackedControl,
+];
+
 const controlsResponse: AgentControlsResponse = {
   controls: controlsList,
+};
+
+const controlsWithTemplateResponse: AgentControlsResponse = {
+  controls: controlsWithTemplateList,
 };
 
 // Control summaries for GET /api/v1/controls (list all controls)
@@ -242,6 +307,23 @@ const controlSummariesList: (ControlSummary & {
     used_by_agents_count: 0,
   },
 ];
+
+const templateControlSummary: ControlSummary & {
+  used_by_agent?: { agent_name: string } | null;
+  template_backed?: boolean;
+} = {
+  id: 10,
+  name: 'Template Regex Guard',
+  description: 'Deny when input matches pattern',
+  enabled: true,
+  execution: 'server',
+  step_types: null,
+  stages: ['pre'],
+  tags: [],
+  template_backed: true,
+  used_by_agent: { agent_name: 'customer-support-bot' },
+  used_by_agents_count: 1,
+};
 
 const listControlsResponse: ListControlsResponse = {
   controls: controlSummariesList,
@@ -538,7 +620,10 @@ export const mockData = {
   agent: agentResponse,
   agentWithSteps: agentWithStepsResponse,
   controls: controlsResponse,
+  controlsWithTemplate: controlsWithTemplateResponse,
+  templateControl: templateBackedControl,
   listControls: listControlsResponse,
+  templateControlSummary: templateControlSummary,
   evaluators: evaluatorsResponse,
   controlSchema: controlSchemaResponse,
   stats: statsResponse,
@@ -866,6 +951,63 @@ export const mockRoutes = {
   /** @deprecated Use controlGetData which now handles both GET and PUT */
   controlUpdate: async (_page: Page) => {
     // No-op - handled by controlGetData
+  },
+
+  /** Mock POST /api/v1/control-templates/render */
+  controlRenderTemplate: async (page: Page) => {
+    await page.route('**/api/v1/control-templates/render', async (route) => {
+      const body = await route.request().postDataJSON();
+      // Return the template + values back as a rendered control preview
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          control: {
+            ...templateBackedControl.control,
+            template: body.template,
+            template_values: body.template_values,
+          },
+        }),
+      });
+    });
+  },
+
+  /** Mock PATCH /api/v1/controls/:id */
+  controlPatch: async (page: Page) => {
+    await page.route('**/api/v1/controls/*', async (route, request) => {
+      if (request.method() !== 'PATCH') {
+        await route.fallback();
+        return;
+      }
+      const body = await request.postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          name: body.name ?? 'Template Regex Guard',
+          enabled: body.enabled ?? true,
+        }),
+      });
+    });
+  },
+
+  /** Mock POST /api/v1/agents/:name/controls/:id (attach control) */
+  agentAddControl: async (page: Page) => {
+    await page.route(
+      '**/api/v1/agents/*/controls/*',
+      async (route, request) => {
+        if (request.method() !== 'POST') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true }),
+        });
+      }
+    );
   },
 
   /** Mock GET /api/v1/observability/stats */

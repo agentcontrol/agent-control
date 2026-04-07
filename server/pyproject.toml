@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-server"
-version = "7.3.2"
+version = "7.4.0"
 description = "Server for Agent Control - manage and evaluate controls for AI agents"
 requires-python = ">=3.12"
 # Note: agent-control-models, agent-control-engine, and agent-control-telemetry

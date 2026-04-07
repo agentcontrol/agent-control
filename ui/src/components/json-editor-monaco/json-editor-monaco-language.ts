@@ -25,6 +25,10 @@ type JsonEditorAutocompleteContext = {
   evaluators?: JsonEditorEvaluatorOption[];
   activeEvaluatorId?: string | null;
   steps?: StepSchema[];
+  /** For template mode: path prefix under which the ControlDefinition lives */
+  definitionPrefix?: JsonPath;
+  /** For template mode: parameter names for $param completions */
+  templateParameterNames?: string[];
 };
 
 type SelectorPathSuggestion = {
@@ -60,6 +64,57 @@ const RESERVED_SCHEMA_KEYS = new Set([
   'type',
 ]);
 
+// ---------------------------------------------------------------------------
+// Template mode: path-prefix helpers
+// ---------------------------------------------------------------------------
+
+export const TEMPLATE_DEFINITION_PREFIX: JsonPath = [
+  'template',
+  'definition_template',
+];
+
+/**
+ * Strip the definition prefix from a full JSON path.
+ * Returns the relative path inside the definition, or null if the path is
+ * not inside the definition subtree.
+ */
+function stripDefinitionPrefix(
+  path: JsonPath,
+  prefix: JsonPath | undefined
+): JsonPath | null {
+  if (!prefix || prefix.length === 0) return path;
+  if (path.length < prefix.length) return null;
+  for (let i = 0; i < prefix.length; i++) {
+    if (path[i] !== prefix[i]) return null;
+  }
+  return path.slice(prefix.length);
+}
+
+/**
+ * Navigate to the definition subtree within a parsed JSON tree.
+ */
+function getDefinitionSubtree(
+  tree: JsonNode | undefined,
+  prefix: JsonPath | undefined
+): JsonNode | undefined {
+  if (!tree || !prefix || prefix.length === 0) return tree;
+  return findNodeAtLocation(tree, prefix) ?? undefined;
+}
+
+/**
+ * Check whether a path is inside the template_values object.
+ */
+function isInsideTemplateValues(path: JsonPath): boolean {
+  return path.length >= 1 && path[0] === 'template_values';
+}
+
+/**
+ * Detect cursor at a $param string value: {"$param": "<cursor>"}
+ */
+function isParamRefValueLocation(path: JsonPath): boolean {
+  return path.length >= 1 && path[path.length - 1] === '$param';
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -82,13 +137,17 @@ function getStringArrayAtPath(
     .filter((value): value is string => value !== null);
 }
 
-function getScopeFilters(tree: JsonNode | undefined): {
+function getScopeFilters(
+  tree: JsonNode | undefined,
+  definitionPrefix?: JsonPath
+): {
   stepTypes: string[];
   stepNames: string[];
 } {
+  const subtree = getDefinitionSubtree(tree, definitionPrefix);
   return {
-    stepTypes: getStringArrayAtPath(tree, ['scope', 'step_types']),
-    stepNames: getStringArrayAtPath(tree, ['scope', 'step_names']),
+    stepTypes: getStringArrayAtPath(subtree, ['scope', 'step_types']),
+    stepNames: getStringArrayAtPath(subtree, ['scope', 'step_names']),
   };
 }
 
@@ -545,24 +604,6 @@ function nextSnippetTabStop(
   return `\${${tabStop}}`;
 }
 
-function getSuggestedObjectPropertyNames(schema: JsonSchema): string[] {
-  const properties = Object.keys(getSchemaProperties(schema));
-  if (properties.length === 0) {
-    return [];
-  }
-
-  const required = getSchemaRequiredProperties(schema);
-  if (required.length > 0) {
-    return required.filter((propertyName) => properties.includes(propertyName));
-  }
-
-  if (properties.length === 1) {
-    return properties;
-  }
-
-  return [];
-}
-
 function buildSchemaValueSnippet(
   schema: JsonSchema | null,
   rootSchema: JsonSchema | null,
@@ -758,10 +799,11 @@ function walkSchemaPaths(
 
 function buildSelectorPathSuggestions(
   steps: StepSchema[] | undefined,
-  tree: JsonNode | undefined
+  tree: JsonNode | undefined,
+  definitionPrefix?: JsonPath
 ): SelectorPathSuggestion[] {
   const suggestions = new Map<string, SelectorPathSuggestion>();
-  const { stepTypes, stepNames } = getScopeFilters(tree);
+  const { stepTypes, stepNames } = getScopeFilters(tree, definitionPrefix);
   const rankedSteps = steps ?? [];
 
   for (const rootPath of ROOT_SELECTOR_PATHS) {
@@ -835,13 +877,24 @@ function resolveActiveEvaluator(
     return findEvaluatorById(context.evaluators, context.activeEvaluatorId);
   }
 
-  const evaluatorIndex = getJsonPathFieldIndex(path, 'evaluator');
+  // For template mode, strip the definition prefix so that the evaluator
+  // index lookup works on relative paths, then reconstruct the absolute
+  // tree path for the node lookup.
+  const relativePath =
+    context.mode === 'template'
+      ? stripDefinitionPrefix(path, context.definitionPrefix)
+      : path;
+  if (!relativePath) return null;
+
+  const evaluatorIndex = getJsonPathFieldIndex(relativePath, 'evaluator');
   if (!tree || evaluatorIndex < 0) {
     return null;
   }
 
+  const prefix = context.definitionPrefix ?? [];
   const evaluatorNamePath = [
-    ...path.slice(0, evaluatorIndex),
+    ...prefix,
+    ...relativePath.slice(0, evaluatorIndex),
     'evaluator',
     'name',
   ];
@@ -887,15 +940,29 @@ function resolveSchemaAtJsonPath(
   activeEvaluator: JsonEditorEvaluatorOption | null,
   path: JsonPath
 ): SchemaCursor {
+  // For template mode, only provide schema resolution inside definition_template.
+  // Outside of it (envelope level), return null schema.
+  let effectivePath = path;
+  if (context.mode === 'template') {
+    const relative = stripDefinitionPrefix(path, context.definitionPrefix);
+    if (relative === null) {
+      return { schema: null, rootSchema: null };
+    }
+    effectivePath = relative;
+  }
+
   let cursor = getInitialSchemaCursor(context, activeEvaluator);
 
-  for (let index = 0; index < path.length; index += 1) {
-    const segment = path[index];
+  for (let index = 0; index < effectivePath.length; index += 1) {
+    const segment = effectivePath[index];
     if (!cursor.schema) {
       return cursor;
     }
 
-    if (context.mode === 'control' && isEvaluatorConfigSegment(path, index)) {
+    if (
+      (context.mode === 'control' || context.mode === 'template') &&
+      isEvaluatorConfigSegment(effectivePath, index)
+    ) {
       const rootSchema = asSchema(activeEvaluator?.configSchema ?? null);
       cursor = {
         schema: normalizeSchema(rootSchema, rootSchema),
@@ -946,16 +1013,107 @@ function buildSelectorSuggestions(
   range: import('monaco-editor').IRange,
   steps: StepSchema[] | undefined,
   tree: JsonNode | undefined,
-  isStringValueContext: boolean
+  isStringValueContext: boolean,
+  definitionPrefix?: JsonPath
 ) {
-  return buildSelectorPathSuggestions(steps, tree).map((suggestion, index) => ({
-    label: suggestion.label,
-    kind: monaco.languages.CompletionItemKind.Value,
-    detail: suggestion.detail,
-    insertText: buildValueInsertText(suggestion.label, isStringValueContext),
+  return buildSelectorPathSuggestions(steps, tree, definitionPrefix).map(
+    (suggestion, index) => ({
+      label: suggestion.label,
+      kind: monaco.languages.CompletionItemKind.Value,
+      detail: suggestion.detail,
+      insertText: buildValueInsertText(suggestion.label, isStringValueContext),
+      range,
+      sortText: `!${suggestion.rank}${index.toString().padStart(3, '0')}`,
+    })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Template mode: $param and template_values completions
+// ---------------------------------------------------------------------------
+
+/**
+ * Build completion items for $param references inside definition_template.
+ * Offered at value positions as {"$param": "name"} object snippets.
+ */
+function buildParamRefObjectSuggestions(
+  monaco: MonacoModule,
+  range: import('monaco-editor').IRange,
+  parameterNames: string[] | undefined,
+  isStringValueContext: boolean
+): import('monaco-editor').languages.CompletionItem[] {
+  if (!parameterNames?.length || isStringValueContext) return [];
+  return parameterNames.map((name, index) => ({
+    label: { label: `\$param: ${name}`, description: 'Template parameter' },
+    kind: monaco.languages.CompletionItemKind.Reference,
+    detail: 'Insert template parameter reference',
+    insertText: `{"\\$param": "${name}"}`,
     range,
-    sortText: `!${suggestion.rank}${index.toString().padStart(3, '0')}`,
+    sortText: `!0${index.toString().padStart(3, '0')}`,
   }));
+}
+
+/**
+ * Build completion items for parameter names inside a {"$param": ""} value.
+ */
+function buildParamNameSuggestions(
+  monaco: MonacoModule,
+  range: import('monaco-editor').IRange,
+  parameterNames: string[] | undefined,
+  isStringValueContext: boolean
+): import('monaco-editor').languages.CompletionItem[] {
+  if (!parameterNames?.length) return [];
+  return parameterNames.map((name, index) => ({
+    label: name,
+    kind: monaco.languages.CompletionItemKind.Variable,
+    detail: 'Template parameter',
+    insertText: buildValueInsertText(name, isStringValueContext),
+    range,
+    sortText: `!0${index.toString().padStart(3, '0')}`,
+  }));
+}
+
+/**
+ * Build property-key completions for template_values (suggest parameter names).
+ */
+function buildTemplateValueKeySuggestions(
+  monaco: MonacoModule,
+  range: import('monaco-editor').IRange,
+  parameterNames: string[] | undefined,
+  tree: JsonNode | undefined,
+  replaceExistingKey: boolean,
+  _text: string,
+  _offset: number
+): import('monaco-editor').languages.CompletionItem[] {
+  if (!parameterNames?.length) return [];
+
+  // Find which keys already exist in template_values
+  const tvNode = tree
+    ? findNodeAtLocation(tree, ['template_values'])
+    : undefined;
+  const existingKeys = new Set<string>();
+  if (tvNode?.type === 'object' && tvNode.children) {
+    for (const prop of tvNode.children) {
+      const key = prop.children?.[0];
+      if (key && typeof key.value === 'string') {
+        existingKeys.add(key.value);
+      }
+    }
+  }
+
+  return parameterNames
+    .filter((name) => !existingKeys.has(name))
+    .map((name, index) => {
+      const insertText = replaceExistingKey ? name : `"${name}": `;
+      return {
+        label: name,
+        kind: monaco.languages.CompletionItemKind.Property,
+        detail: 'Template parameter',
+        insertText,
+        range,
+        sortText: `!0${index.toString().padStart(3, '0')}`,
+      };
+    });
 }
 
 function buildSchemaPropertySuggestions(
@@ -1135,90 +1293,176 @@ function buildCompletionSuggestions(
     node?.type === 'string' && !location.isAtPropertyKey;
   const suggestions: import('monaco-editor').languages.CompletionItem[] = [];
 
+  // For template mode, compute the relative path inside definition_template.
+  // When the cursor is outside definition_template, we provide envelope-level
+  // completions (template_values keys, $param names) instead.
+  const isTemplate = context.mode === 'template';
+  const relativePath = isTemplate
+    ? stripDefinitionPrefix(location.path, context.definitionPrefix)
+    : null;
+  const insideDefinition = isTemplate ? relativePath !== null : true;
+
+  // Use the relative path for location checks in template mode, otherwise
+  // use the original path.
+  const effectivePath = isTemplate
+    ? (relativePath ?? location.path)
+    : location.path;
+
   const activeEvaluator = resolveActiveEvaluator(context, tree, location.path);
 
-  if (isEvaluatorNameLocation(location.path)) {
+  // --- $param name completions (inside {"$param": ""}) ---
+  if (isTemplate && isParamRefValueLocation(effectivePath)) {
     suggestions.push(
-      ...buildEvaluatorNameSuggestions(
+      ...buildParamNameSuggestions(
         monaco,
         valueRange,
-        context.evaluators,
+        context.templateParameterNames,
         isStringValueContext
       )
     );
+    return dedupeSuggestions(suggestions);
   }
 
-  if (isSelectorPathLocation(location.path)) {
-    suggestions.push(
-      ...buildSelectorSuggestions(
-        monaco,
-        valueRange,
-        context.steps,
-        tree,
-        isStringValueContext
-      )
+  // --- template_values property key completions ---
+  if (isTemplate && isInsideTemplateValues(location.path)) {
+    const propertyKeyContext = getPropertyKeyContext(
+      location.path,
+      location.isAtPropertyKey
     );
+    if (propertyKeyContext) {
+      const hasStringNode = node?.type === 'string';
+      const propertyRange =
+        (hasStringNode
+          ? getPropertyKeyReplaceRange(monaco, model, node)
+          : null) ?? getDefaultRange(monaco, model, position);
+      suggestions.push(
+        ...buildTemplateValueKeySuggestions(
+          monaco,
+          propertyRange,
+          context.templateParameterNames,
+          tree,
+          hasStringNode,
+          text,
+          offset
+        )
+      );
+    }
+    return dedupeSuggestions(suggestions);
   }
 
-  const propertyKeyContext = getPropertyKeyContext(
-    location.path,
-    location.isAtPropertyKey
-  );
+  // --- Inside definition_template (or non-template mode): control-level completions ---
+  if (insideDefinition) {
+    if (isEvaluatorNameLocation(effectivePath)) {
+      suggestions.push(
+        ...buildEvaluatorNameSuggestions(
+          monaco,
+          valueRange,
+          context.evaluators,
+          isStringValueContext
+        )
+      );
+    }
 
-  if (propertyKeyContext) {
-    // Only treat as replacing when cursor is inside a quoted string node.
-    // For bare text (typing without "), we need the leading " in the insert.
-    const hasStringNode = node?.type === 'string';
-    const replaceExistingKey = hasStringNode;
+    if (isSelectorPathLocation(effectivePath)) {
+      suggestions.push(
+        ...buildSelectorSuggestions(
+          monaco,
+          valueRange,
+          context.steps,
+          tree,
+          isStringValueContext,
+          context.definitionPrefix
+        )
+      );
+    }
 
-    const propertyRange =
-      (hasStringNode
-        ? getPropertyKeyReplaceRange(monaco, model, node)
-        : null) ?? getDefaultRange(monaco, model, position);
-    const schemaCursor = resolveSchemaAtJsonPath(
-      context,
-      activeEvaluator,
-      propertyKeyContext.objectPath
-    );
-    const currentPropertyName =
-      replaceExistingKey && typeof node?.value === 'string' ? node.value : null;
-
-    suggestions.push(
-      ...buildSchemaPropertySuggestions(
-        monaco,
-        propertyRange,
-        schemaCursor,
-        tree,
-        propertyKeyContext.objectPath,
-        replaceExistingKey,
-        currentPropertyName,
-        text,
-        offset
-      )
-    );
-  }
-
-  // Only show value suggestions at actual value positions — not on blank lines,
-  // closing brackets, or property key positions where they're confusing noise.
-  const lineText = model.getLineContent(position.lineNumber);
-  const isValuePosition =
-    !propertyKeyContext && !location.isAtPropertyKey && isStringValueContext;
-  if (isValuePosition) {
-    const valueSchemaCursor = resolveSchemaAtJsonPath(
-      context,
-      activeEvaluator,
-      location.path
+    const propertyKeyContext = getPropertyKeyContext(
+      effectivePath,
+      location.isAtPropertyKey
     );
 
-    suggestions.push(
-      ...buildSchemaValueSuggestions(
-        monaco,
-        valueRange,
-        valueSchemaCursor,
-        isStringValueContext,
-        typeof node?.value === 'string' ? node.value : undefined
-      )
-    );
+    if (propertyKeyContext) {
+      // Only treat as replacing when cursor is inside a quoted string node.
+      // For bare text (typing without "), we need the leading " in the insert.
+      const hasStringNode = node?.type === 'string';
+      const replaceExistingKey = hasStringNode;
+
+      const propertyRange =
+        (hasStringNode
+          ? getPropertyKeyReplaceRange(monaco, model, node)
+          : null) ?? getDefaultRange(monaco, model, position);
+
+      // For template mode, the schema path uses the original (absolute) path
+      // since resolveSchemaAtJsonPath handles prefix stripping internally.
+      const schemaObjectPath = isTemplate
+        ? [
+            ...(context.definitionPrefix ?? []),
+            ...propertyKeyContext.objectPath,
+          ]
+        : propertyKeyContext.objectPath;
+      const schemaCursor = resolveSchemaAtJsonPath(
+        context,
+        activeEvaluator,
+        schemaObjectPath
+      );
+      const currentPropertyName =
+        replaceExistingKey && typeof node?.value === 'string'
+          ? node.value
+          : null;
+
+      suggestions.push(
+        ...buildSchemaPropertySuggestions(
+          monaco,
+          propertyRange,
+          schemaCursor,
+          tree,
+          isTemplate
+            ? [
+                ...(context.definitionPrefix ?? []),
+                ...propertyKeyContext.objectPath,
+              ]
+            : propertyKeyContext.objectPath,
+          replaceExistingKey,
+          currentPropertyName,
+          text,
+          offset
+        )
+      );
+    }
+
+    // Only show value suggestions at actual value positions — not on blank lines,
+    // closing brackets, or property key positions where they're confusing noise.
+    const isValuePosition =
+      !propertyKeyContext && !location.isAtPropertyKey && isStringValueContext;
+    if (isValuePosition) {
+      const valueSchemaCursor = resolveSchemaAtJsonPath(
+        context,
+        activeEvaluator,
+        location.path
+      );
+
+      suggestions.push(
+        ...buildSchemaValueSuggestions(
+          monaco,
+          valueRange,
+          valueSchemaCursor,
+          isStringValueContext,
+          typeof node?.value === 'string' ? node.value : undefined
+        )
+      );
+
+      // In template mode, also offer $param references at value positions
+      if (isTemplate) {
+        suggestions.push(
+          ...buildParamRefObjectSuggestions(
+            monaco,
+            valueRange,
+            context.templateParameterNames,
+            isStringValueContext
+          )
+        );
+      }
+    }
   }
 
   return dedupeSuggestions(suggestions);
@@ -1299,11 +1543,17 @@ function collectEvaluatorNames(
   }
 }
 
-export function extractEvaluatorNames(text: string): Map<string, string> {
+export function extractEvaluatorNames(
+  text: string,
+  definitionPrefix?: JsonPath
+): Map<string, string> {
   const tree = parseTree(text);
   if (!tree) return new Map();
 
-  const conditionNode = findNodeAtLocation(tree, ['condition']);
+  const subtree = getDefinitionSubtree(tree, definitionPrefix);
+  const conditionNode = subtree
+    ? findNodeAtLocation(subtree, ['condition'])
+    : undefined;
   const result = new Map<string, EvaluatorNodeInfo>();
   collectEvaluatorNames(conditionNode, result);
 
@@ -1369,12 +1619,16 @@ export function buildDefaultConfig(
 export function findEvaluatorConfigEdit(
   text: string,
   previousNames: Map<string, string>,
-  evaluators: JsonEditorEvaluatorOption[] | undefined
+  evaluators: JsonEditorEvaluatorOption[] | undefined,
+  definitionPrefix?: JsonPath
 ): { offset: number; length: number; newText: string } | null {
   const tree = parseTree(text);
   if (!tree) return null;
 
-  const conditionNode = findNodeAtLocation(tree, ['condition']);
+  const subtree = getDefinitionSubtree(tree, definitionPrefix);
+  const conditionNode = subtree
+    ? findNodeAtLocation(subtree, ['condition'])
+    : undefined;
   const result = new Map<string, EvaluatorNodeInfo>();
   collectEvaluatorNames(conditionNode, result);
 
@@ -1412,12 +1666,16 @@ export function findEvaluatorConfigEdit(
 
 export function findSteeringContextEdit(
   text: string,
-  previousDecision: string | null
+  previousDecision: string | null,
+  definitionPrefix?: JsonPath
 ): { offset: number; length: number; newText: string } | null {
   const tree = parseTree(text);
   if (!tree) return null;
 
-  const decisionNode = findNodeAtLocation(tree, ['action', 'decision']);
+  const subtree = getDefinitionSubtree(tree, definitionPrefix);
+  if (!subtree) return null;
+
+  const decisionNode = findNodeAtLocation(subtree, ['action', 'decision']);
   if (!decisionNode || typeof decisionNode.value !== 'string') return null;
 
   const currentDecision = decisionNode.value;
@@ -1425,7 +1683,7 @@ export function findSteeringContextEdit(
 
   if (currentDecision === 'steer') {
     // Add steering_context if missing
-    const steeringNode = findNodeAtLocation(tree, [
+    const steeringNode = findNodeAtLocation(subtree, [
       'action',
       'steering_context',
     ]);
@@ -1439,7 +1697,7 @@ export function findSteeringContextEdit(
     }
   } else if (previousDecision === 'steer') {
     // Remove steering_context when switching away from steer
-    const actionNode = findNodeAtLocation(tree, ['action']);
+    const actionNode = findNodeAtLocation(subtree, ['action']);
     if (actionNode?.type === 'object' && actionNode.children) {
       for (const prop of actionNode.children) {
         const key = prop.children?.[0];
@@ -1464,15 +1722,6 @@ export function findSteeringContextEdit(
 
 const MAX_HINT_VALUES = 6;
 
-function getStringValueAtPath(
-  tree: JsonNode | undefined,
-  path: JsonPath
-): string | null {
-  if (!tree) return null;
-  const node = findNodeAtLocation(tree, path);
-  return typeof node?.value === 'string' ? node.value : null;
-}
-
 export function getEmptyValueHints(
   monaco: MonacoModule,
   model: import('monaco-editor').editor.ITextModel,
@@ -1489,6 +1738,8 @@ export function getEmptyValueHints(
   const emptyStringPattern = /:\s*""/g;
   let match;
 
+  const isTemplate = context.mode === 'template';
+
   while ((match = emptyStringPattern.exec(text)) !== null) {
     const offset = match.index + match[0].length - 1;
     const location = getLocation(text, offset);
@@ -1502,13 +1753,32 @@ export function getEmptyValueHints(
       pos.column
     );
 
+    // For template mode, use relative path for location checks
+    const effectivePath = isTemplate
+      ? (stripDefinitionPrefix(location.path, context.definitionPrefix) ??
+        location.path)
+      : location.path;
+
+    // $param value hint — show available parameter names
+    if (isTemplate && isParamRefValueLocation(effectivePath)) {
+      const paramNames = context.templateParameterNames;
+      if (paramNames?.length) {
+        const display = paramNames.slice(0, MAX_HINT_VALUES);
+        const hint =
+          display.join('  |  ') +
+          (paramNames.length > MAX_HINT_VALUES ? '  | ...' : '');
+        hints.push({ range, hint: `  ${hint}` });
+      }
+      continue;
+    }
+
     const activeEvaluator = resolveActiveEvaluator(
       context,
       tree,
       location.path
     );
 
-    if (isEvaluatorNameLocation(location.path) && context.evaluators?.length) {
+    if (isEvaluatorNameLocation(effectivePath) && context.evaluators?.length) {
       const names = context.evaluators.map((e) => e.id);
       const display = names.slice(0, MAX_HINT_VALUES);
       const hint =
@@ -1518,7 +1788,7 @@ export function getEmptyValueHints(
       continue;
     }
 
-    if (isSelectorPathLocation(location.path)) {
+    if (isSelectorPathLocation(effectivePath)) {
       hints.push({
         range,
         hint: '  *  |  input  |  output  |  context  |  ...',
@@ -1605,7 +1875,34 @@ export function setupJsonEditorLanguageSupport(
       const location = getLocation(text, offset);
       if (!location.path.length) return null;
 
-      const rootSchema = asSchema(context.schema);
+      // In template mode, show a hover for $param references
+      if (context.mode === 'template') {
+        const effectivePath =
+          stripDefinitionPrefix(location.path, context.definitionPrefix) ??
+          location.path;
+        if (isParamRefValueLocation(effectivePath)) {
+          const node = tree ? findNodeAtOffset(tree, offset, true) : null;
+          if (node?.type === 'string' && typeof node.value === 'string') {
+            const word = model.getWordAtPosition(position);
+            return {
+              range: word
+                ? new monaco.Range(
+                    position.lineNumber,
+                    word.startColumn,
+                    position.lineNumber,
+                    word.endColumn
+                  )
+                : undefined,
+              contents: [
+                {
+                  value: `**Template parameter:** \`${node.value}\`\n\nThis value will be substituted from template_values at render time.`,
+                },
+              ],
+            };
+          }
+        }
+      }
+
       const activeEvaluator = resolveActiveEvaluator(
         context,
         tree,
@@ -1721,7 +2018,8 @@ const LEAF_CONDITION_TEMPLATE = {
 
 function findConditionNodeAtOffset(
   tree: JsonNode | undefined,
-  offset: number
+  offset: number,
+  conditionPath: JsonPath = ['condition']
 ): {
   node: JsonNode;
   isLeaf: boolean;
@@ -1730,7 +2028,7 @@ function findConditionNodeAtOffset(
 } | null {
   if (!tree) return null;
 
-  const conditionNode = findNodeAtLocation(tree, ['condition']);
+  const conditionNode = findNodeAtLocation(tree, conditionPath);
   if (!conditionNode) return null;
 
   return findConditionAtOffset(conditionNode, offset);
@@ -1803,14 +2101,16 @@ function registerConditionCodeActions(
     provideCodeActions(model, range) {
       if (model.uri.toString() !== context.modelUri)
         return { actions: [], dispose() {} };
-      if (context.mode !== 'control') return { actions: [], dispose() {} };
+      if (context.mode !== 'control' && context.mode !== 'template')
+        return { actions: [], dispose() {} };
 
       const text = model.getValue();
       const tree = parseTree(text);
       if (!tree) return { actions: [], dispose() {} };
 
       const offset = model.getOffsetAt(range.getStartPosition());
-      const condCtx = findConditionNodeAtOffset(tree, offset);
+      const conditionPath = [...(context.definitionPrefix ?? []), 'condition'];
+      const condCtx = findConditionNodeAtOffset(tree, offset, conditionPath);
       if (!condCtx) return { actions: [], dispose() {} };
 
       const actions: import('monaco-editor').languages.CodeAction[] = [];

@@ -72,7 +72,8 @@ export class Agents extends ClientSDK {
    *     db: Database session (injected)
    *
    * Returns:
-   *     InitAgentResponse with created flag and active controls (policy-derived + direct)
+   *     InitAgentResponse with created flag and active controls currently associated
+   *     through policies or direct links
    */
   async init(
     request: models.InitAgentRequest,
@@ -148,19 +149,25 @@ export class Agents extends ClientSDK {
   }
 
   /**
-   * List agent's active controls
+   * List agent's associated controls
    *
    * @remarks
-   * List all protection controls active for an agent.
+   * List protection controls associated with an agent.
    *
-   * Controls include the union of policy-derived and directly associated controls.
+   * By default, the endpoint returns all associated controls, including rendered
+   * controls, disabled controls, and unrendered template drafts. Callers can
+   * narrow the response via the state filters on this endpoint. Filters
+   * intersect, so unrendered drafts require rendered_state='unrendered'
+   * together with enabled_state='all' or 'disabled'.
    *
    * Args:
    *     agent_name: Agent identifier
+   *     rendered_state: Whether to return rendered controls, unrendered drafts, or both
+   *     enabled_state: Whether to return enabled controls, disabled controls, or both
    *     db: Database session (injected)
    *
    * Returns:
-   *     AgentControlsResponse with list of active controls
+   *     AgentControlsResponse with controls matching the requested state filters
    *
    * Raises:
    *     HTTPException 404: Agent not found

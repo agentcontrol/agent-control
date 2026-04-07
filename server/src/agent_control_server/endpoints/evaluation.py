@@ -1,8 +1,10 @@
 """Evaluation analysis endpoints."""
 
+from dataclasses import dataclass
+
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
-    ControlDefinition,
+    ControlDefinitionRuntime,
     ControlMatch,
     EvaluationRequest,
     EvaluationResponse,
@@ -17,7 +19,7 @@ from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
-from ..services.controls import list_controls_for_agent
+from ..services.controls import list_runtime_controls_for_agent
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
 
@@ -29,13 +31,13 @@ SAFE_INVALID_STEP_REGEX_ERROR = "Control configuration error: invalid step name 
 SAFE_ENGINE_VALIDATION_MESSAGE = "Invalid evaluation request or control configuration."
 
 
+@dataclass
 class ControlAdapter:
     """Adapts API Control to Engine ControlWithIdentity protocol."""
 
-    def __init__(self, id: int, name: str, control: ControlDefinition):
-        self.id = id
-        self.name = name
-        self.control = control
+    id: int
+    name: str
+    control: ControlDefinitionRuntime
 
 
 def _sanitize_evaluator_error(error_message: str) -> str:
@@ -148,12 +150,12 @@ async def evaluate(
             hint="Register the agent via initAgent before evaluating.",
         )
 
-    api_controls = await list_controls_for_agent(
+    runtime_controls = await list_runtime_controls_for_agent(
         request.agent_name,
         db,
         allow_invalid_step_name_regex=True,
     )
-    engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in api_controls]
+    engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
 
     engine = ControlEngine(engine_controls)
     try:
