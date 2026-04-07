@@ -11,6 +11,7 @@ AGENT_CONTROL_HOST ?= 0.0.0.0
 AGENT_CONTROL_PORT ?= 8000
 AGENT_CONTROL_DB_PORT ?= 5432
 AGENT_CONTROL_DB_HOST_PORT ?= $(AGENT_CONTROL_DB_PORT)
+AGENT_CONTROL_DOCKER_COMPOSE_PROJECT_NAME ?= $(notdir $(or $(PWD),$(CURDIR)))-dev
 
 TEST_DB ?= agent_control_test
 TEST_DB_ENV := env -u AGENT_CONTROL_DB_URL -u DATABASE_URL -u DB_URL AGENT_CONTROL_DB_HOST=localhost AGENT_CONTROL_DB_PORT=5432 AGENT_CONTROL_DB_USER=agent_control AGENT_CONTROL_DB_PASSWORD=agent_control AGENT_CONTROL_DB_DATABASE=$(TEST_DB) AGENT_CONTROL_DB_DRIVER=psycopg
@@ -20,7 +21,7 @@ help:
 	@echo "Available targets:"
 	@echo "  run                          - start FastAPI server (reload; honors AGENT_CONTROL_HOST/AGENT_CONTROL_PORT)"
 	@echo "                                 local Postgres host mapping defaults to AGENT_CONTROL_DB_PORT"
-	@echo "  start-dependencies           - docker compose up -d (start local dependencies)"
+	@echo "  start-dependencies           - docker compose up -d (start local dependencies; project=$(AGENT_CONTROL_DOCKER_COMPOSE_PROJECT_NAME))"
 	@echo "  test                         - run server tests (uses $(TEST_DB_ENV))"
 	@echo "  migrate                      - run database migrations (alembic upgrade head)"
 	@echo "  alembic-migrate MSG='message'  - autogenerate alembic revision"
@@ -61,9 +62,9 @@ alembic-stamp:
 	$(ALEMBIC) stamp $(STAMP)
 
 start-dependencies:
-	AGENT_CONTROL_DB_HOST_PORT=$(AGENT_CONTROL_DB_HOST_PORT) docker compose -f ../docker-compose.dev.yml up -d
+	AGENT_CONTROL_DB_HOST_PORT=$(AGENT_CONTROL_DB_HOST_PORT) docker compose -p $(AGENT_CONTROL_DOCKER_COMPOSE_PROJECT_NAME) -f ../docker-compose.dev.yml up -d
 	@echo "Waiting for PostgreSQL to be ready..."
-	@until docker compose -f ../docker-compose.dev.yml exec -T postgres pg_isready -U agent_control -d agent_control > /dev/null 2>&1; do \
+	@until docker compose -p $(AGENT_CONTROL_DOCKER_COMPOSE_PROJECT_NAME) -f ../docker-compose.dev.yml exec -T postgres pg_isready -U agent_control -d agent_control > /dev/null 2>&1; do \
 		sleep 1; \
 	done
 	@echo "PostgreSQL is ready!"
