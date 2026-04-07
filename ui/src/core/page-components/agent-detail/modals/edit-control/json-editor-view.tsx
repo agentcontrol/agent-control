@@ -372,6 +372,11 @@ export const JsonEditorView = ({
       if (!model) return;
       const start = model.getPositionAt(edit.offset);
       const end = model.getPositionAt(edit.offset + edit.length);
+      // NOTE: This async boundary (queueMicrotask) means the auto-edit
+      // creates a separate undo group from the user's keystroke. This breaks
+      // redo after undo when auto-edits fire (e.g. evaluator config fill).
+      // Synchronous alternatives (model.applyEdits) crash Monaco's worker.
+      // This is a known Monaco limitation — undo still works correctly.
       queueMicrotask(() => {
         isProgrammaticEdit = true;
         editor.executeEdits(source, [
@@ -386,7 +391,7 @@ export const JsonEditorView = ({
           },
         ]);
         const formatted = tryFormat(editor.getValue());
-        if (formatted) {
+        if (formatted && formatted !== editor.getValue()) {
           replaceAllContent(editor, formatted, 'reformat');
           handleJsonChange(formatted);
         } else {
