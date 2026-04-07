@@ -10,6 +10,7 @@ from agent_control_telemetry import (
     BaseControlEventSink,
     SinkResult,
 )
+from agent_control_telemetry.sinks import resolve_sink_result
 
 
 def _make_event(*, control_id: int) -> ControlExecutionEvent:
@@ -99,6 +100,29 @@ def test_base_async_control_event_sink_batches_single_event_writers() -> None:
     # Then: the base helper fans out to single-event writes and aggregates results
     assert sink.seen_control_ids == [1, 2]
     assert result == SinkResult(accepted=2, dropped=1)
+
+
+def test_resolve_sink_result_returns_sync_result_directly() -> None:
+    # Given: a plain SinkResult (not awaitable)
+    result = SinkResult(accepted=3, dropped=1)
+
+    # When: resolved
+    resolved = asyncio.run(resolve_sink_result(result))
+
+    # Then: the same result is returned unchanged
+    assert resolved == SinkResult(accepted=3, dropped=1)
+
+
+def test_resolve_sink_result_awaits_async_result() -> None:
+    # Given: a coroutine that returns a SinkResult
+    async def async_result() -> SinkResult:
+        return SinkResult(accepted=2, dropped=0)
+
+    # When: resolved
+    resolved = asyncio.run(resolve_sink_result(async_result()))
+
+    # Then: the awaited result is returned
+    assert resolved == SinkResult(accepted=2, dropped=0)
 
 
 def test_base_async_control_event_sink_single_event_delegates_to_batch_writer() -> None:
