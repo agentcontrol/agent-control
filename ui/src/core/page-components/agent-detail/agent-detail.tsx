@@ -66,7 +66,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   const { data: hasMonitorData, isLoading: checkingMonitorData } =
     useHasMonitorData(agentId, {
       enabled: needsInitialTabCheck,
-  });
+    });
 
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
