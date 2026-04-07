@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Sequence
+from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass
-from typing import Awaitable, Protocol, TypeAlias
+from typing import Protocol
 
 from agent_control_models import ControlExecutionEvent
 
@@ -23,7 +23,7 @@ class SinkResult:
         return self.accepted > 0
 
 
-SinkWriteResult: TypeAlias = SinkResult | Awaitable[SinkResult]
+type SinkWriteResult = SinkResult | Awaitable[SinkResult]
 
 
 class ControlEventSink(Protocol):
