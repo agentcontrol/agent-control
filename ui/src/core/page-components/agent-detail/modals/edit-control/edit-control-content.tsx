@@ -9,12 +9,15 @@ import {
   Stack,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { JsonEditorMonaco } from '@/components/json-editor-monaco';
 import { isApiError } from '@/core/api/errors';
 import type {
   Control,
@@ -23,10 +26,15 @@ import type {
 } from '@/core/api/types';
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
+import { useControlSchema } from '@/core/hooks/query-hooks/use-control-schema';
+import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
-import { openActionConfirmModal } from '@/core/utils/modals';
+import {
+  openActionConfirmModal,
+  openDestructiveConfirmModal,
+} from '@/core/utils/modals';
 
 import { ApiErrorAlert } from './api-error-alert';
 import {
@@ -41,6 +49,7 @@ import type {
   ControlDefinitionFormValues,
   ControlEditorMode,
   EditControlMode,
+  JsonEditorEvaluatorOption,
 } from './types';
 import { useEvaluatorConfigState } from './use-evaluator-config-state';
 import { applyApiErrorsToForms } from './utils';
@@ -53,6 +62,29 @@ function isTemplateBacked(control: Control): boolean {
 const EVALUATOR_CONFIG_HEIGHT = 450;
 const JSON_EDITOR_HEIGHT = 520;
 type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
+
+const DEFAULT_CONTROL_TEMPLATE = JSON.stringify(
+  {
+    description: 'Block outputs containing US Social Security Numbers',
+    enabled: true,
+    execution: 'server',
+    scope: {
+      step_types: ['llm'],
+      stages: ['post'],
+    },
+    condition: {
+      selector: { path: 'output' },
+      evaluator: {
+        name: 'regex',
+        config: { pattern: '\\b\\d{3}-\\d{2}-\\d{4}\\b' },
+      },
+    },
+    action: { decision: 'deny' },
+    tags: ['pii', 'compliance'],
+  },
+  null,
+  2
+);
 
 export type EditControlContentProps = {
   /** The control to edit/create template */
@@ -67,6 +99,12 @@ export type EditControlContentProps = {
   onSuccess?: () => void;
   /** Initial editor mode */
   initialEditorMode?: ControlEditorMode;
+  /**
+   * Mutable ref that receives the close handler (with unsaved-changes check).
+   * The parent Modal can use this ref for its own onClose so the X button
+   * also triggers the dirty check.
+   */
+  onCloseRef?: React.MutableRefObject<(() => void) | null>;
 };
 
 export const EditControlContent = (props: EditControlContentProps) => {
@@ -93,9 +131,13 @@ const RawEditControlContent = ({
   onClose,
   onSuccess,
   initialEditorMode = 'form',
+  onCloseRef,
 }: EditControlContentProps) => {
   const { data: agentResponse } = useAgent(agentId);
+  const { data: controlSchemaResponse } = useControlSchema();
+  const { data: globalEvaluators } = useEvaluators();
   const steps = agentResponse?.steps ?? [];
+  const agentName = agentResponse?.agent?.agent_name ?? agentId;
 
   const [workingDefinition, setWorkingDefinition] = useState<ControlDefinition>(
     control.control
@@ -114,6 +156,7 @@ const RawEditControlContent = ({
     useState<ProblemDetail | null>(null);
   const [definitionValidationStatus, setDefinitionValidationStatus] =
     useState<ValidationStatus>('idle');
+  const [isDirty, setIsDirty] = useState(false);
 
   const updateControl = useUpdateControl();
   const updateControlMetadata = useUpdateControlMetadata();
@@ -124,12 +167,45 @@ const RawEditControlContent = ({
     ? addControlToAgent.isPending
     : updateControl.isPending || updateControlMetadata.isPending;
 
+  const formRef = useRef<HTMLFormElement>(null);
   const formInitializedForEvaluator = useRef<string>('');
   const { leafCondition, evaluatorId, evaluator, canEditLeafCondition } =
     useMemo(
       () => getControlConditionState(workingDefinition),
       [workingDefinition]
     );
+  const availableEvaluators = useMemo<JsonEditorEvaluatorOption[]>(() => {
+    const merged = new Map<string, JsonEditorEvaluatorOption>();
+
+    for (const [id, evaluatorInfo] of Object.entries(globalEvaluators ?? {})) {
+      merged.set(id, {
+        id,
+        label: evaluatorInfo.name,
+        description: evaluatorInfo.description,
+        source: 'global',
+        configSchema: evaluatorInfo.config_schema,
+      });
+    }
+
+    for (const evaluatorSchema of agentResponse?.evaluators ?? []) {
+      const id = `${agentName}:${evaluatorSchema.name}`;
+      merged.set(id, {
+        id,
+        label: evaluatorSchema.name,
+        description: evaluatorSchema.description,
+        source: 'agent',
+        configSchema: evaluatorSchema.config_schema,
+      });
+    }
+
+    return [...merged.values()];
+  }, [agentName, agentResponse?.evaluators, globalEvaluators]);
+  const activeEvaluatorOption = useMemo(
+    () =>
+      availableEvaluators.find((candidate) => candidate.id === evaluatorId) ??
+      null,
+    [availableEvaluators, evaluatorId]
+  );
 
   const definitionForm = useForm<ControlDefinitionFormValues>({
     initialValues: {
@@ -315,6 +391,7 @@ const RawEditControlContent = ({
     setDefinitionJsonText(value);
     setDefinitionJsonError(null);
     setDefinitionValidationError(null);
+    setIsDirty(true);
   }, []);
 
   const getJsonDefinition = useCallback((): ControlDefinition | null => {
@@ -428,12 +505,15 @@ const RawEditControlContent = ({
     setEditorMode(initialEditorMode);
     setDefinitionJsonText(
       initialEditorMode === 'json'
-        ? JSON.stringify(control.control, null, 2)
+        ? mode === 'create'
+          ? DEFAULT_CONTROL_TEMPLATE
+          : JSON.stringify(control.control, null, 2)
         : ''
     );
     setDefinitionJsonError(null);
     setDefinitionValidationError(null);
     setDefinitionValidationStatus('idle');
+    setIsDirty(false);
   }, [control.control, initialEditorMode]);
 
   useEffect(() => {
@@ -447,10 +527,17 @@ const RawEditControlContent = ({
     const scope = workingDefinition.scope ?? {};
     const stepNamesValue = (scope.step_names ?? []).join(', ');
     const stepRegexValue = scope.step_name_regex ?? '';
-    const stepNameMode = stepRegexValue && !stepNamesValue ? 'regex' : 'names';
+    const stepNameMode: 'regex' | 'names' =
+      stepRegexValue && !stepNamesValue ? 'regex' : 'names';
 
-    definitionForm.setValues({
-      name: control.name,
+    // Preserve the user-edited control name. The name lives outside the JSON
+    // definition, so syncing workingDefinition→form should not overwrite it.
+    // control.name is only used as the initial value (set in the earlier
+    // control.control reset effect).
+    const currentName = definitionForm.values.name;
+
+    const syncedValues = {
+      name: currentName || control.name,
       description: workingDefinition.description ?? '',
       enabled: workingDefinition.enabled,
       step_types: scope.step_types ?? [],
@@ -465,7 +552,9 @@ const RawEditControlContent = ({
           ? (workingDefinition.action.steering_context?.message ?? '')
           : '',
       execution: workingDefinition.execution ?? 'server',
-    });
+    };
+    definitionForm.setValues(syncedValues);
+    definitionForm.resetDirty(syncedValues);
 
     if (leafCondition && evaluator) {
       evaluatorForm.setValues(
@@ -481,6 +570,14 @@ const RawEditControlContent = ({
     setUnmappedErrors([]);
     definitionForm.clearErrors();
     evaluatorForm.clearErrors();
+
+    // Bug fix #1: Explicitly validate the name before opening the confirm
+    // dialog. The HTML5 `required` attribute may silently block submission
+    // without showing a visible Mantine error message.
+    const nameValidation = definitionForm.validateField('name');
+    if (nameValidation.hasError) {
+      return;
+    }
 
     if (
       editorMode === 'form' &&
@@ -674,7 +771,7 @@ const RawEditControlContent = ({
       }
     };
 
-    openActionConfirmModal({
+    const modalId = openActionConfirmModal({
       title: isCreating ? 'Create control?' : 'Save changes?',
       children: (
         <Text size="sm" c="dimmed">
@@ -683,9 +780,57 @@ const RawEditControlContent = ({
             : 'This will update the control configuration.'}
         </Text>
       ),
-      onConfirm: runSave,
+      onConfirm: () => {
+        // Close the confirm modal immediately so a second click cannot
+        // fire another request (the Save button's `loading` state handles
+        // the rest of the pending UX).
+        modals.close(modalId);
+        runSave();
+      },
     });
   };
+
+  // --- Cmd+S / Ctrl+S shortcut to trigger Save ---
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        formRef.current?.requestSubmit();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    if (!isCreating && isDirty) {
+      openDestructiveConfirmModal({
+        title: 'Discard unsaved changes?',
+        children: (
+          <Text size="sm" c="dimmed">
+            You have unsaved changes. Are you sure you want to close?
+          </Text>
+        ),
+        confirmLabel: 'Discard',
+        onConfirm: () => {
+          if (onCloseRef) onCloseRef.current = null;
+          onClose();
+        },
+      });
+      return;
+    }
+    // Clear the ref so the parent's onClose won't re-enter handleClose.
+    if (onCloseRef) onCloseRef.current = null;
+    onClose();
+  }, [isDirty, onClose, isCreating, onCloseRef]);
+
+  // Expose handleClose to the parent so the Modal X button also checks dirty state.
+  useEffect(() => {
+    if (onCloseRef) onCloseRef.current = handleClose;
+    return () => {
+      if (onCloseRef) onCloseRef.current = null;
+    };
+  }, [handleClose, onCloseRef]);
 
   const formComponent = evaluator?.FormComponent;
   const definitionStatusLabel = (() => {
@@ -702,13 +847,20 @@ const RawEditControlContent = ({
       : definitionValidationStatus === 'invalid'
         ? 'red'
         : 'dimmed';
-  const isDefinitionJsonInvalid =
-    editorMode === 'json' &&
-    (definitionJsonError !== null || definitionValidationError !== null);
+  // Only disable the mode toggle for JSON *parse* errors (broken syntax the
+  // user must fix in JSON mode). Server-side validation errors (missing fields,
+  // bad values) should NOT lock the toggle — the user may want to switch to
+  // Form mode to fix them more easily.
+  const isDefinitionJsonParseError =
+    editorMode === 'json' && definitionJsonError !== null;
 
   return (
     <Box>
-      <form onSubmit={definitionForm.onSubmit(handleSubmit)}>
+      <form
+        ref={formRef}
+        noValidate
+        onSubmit={definitionForm.onSubmit(handleSubmit)}
+      >
         <Stack gap="md" mb="lg">
           <Group justify="space-between" align="flex-end" wrap="nowrap">
             <Box
@@ -731,16 +883,21 @@ const RawEditControlContent = ({
                   {definitionStatusLabel}
                 </Text>
               ) : null}
-              <SegmentedControl
-                value={editorMode}
-                onChange={handleEditorModeChange}
-                disabled={isDefinitionJsonInvalid}
-                data={[
-                  { value: 'form', label: 'Form' },
-                  { value: 'json', label: 'Full JSON' },
-                ]}
-                size="xs"
-              />
+              <Tooltip
+                label="Form: guided editing. Full JSON: direct control over the definition."
+                openDelay={600}
+              >
+                <SegmentedControl
+                  value={editorMode}
+                  onChange={handleEditorModeChange}
+                  disabled={isDefinitionJsonParseError}
+                  data={[
+                    { value: 'form', label: 'Form' },
+                    { value: 'json', label: 'Full JSON' },
+                  ]}
+                  size="xs"
+                />
+              </Tooltip>
             </Group>
           </Group>
 
@@ -761,7 +918,7 @@ const RawEditControlContent = ({
 
         {editorMode === 'json' ? (
           <Paper withBorder radius="sm" p={16}>
-            <JsonEditorView
+            <JsonEditorMonaco
               jsonText={definitionJsonText}
               handleJsonChange={handleDefinitionJsonChange}
               jsonError={definitionJsonError}
@@ -775,6 +932,10 @@ const RawEditControlContent = ({
               tooltip="Edit the raw control definition as JSON. Control name remains outside this editor."
               helperText="Enter the raw control definition only. Do not wrap it in data, name, id, or control objects."
               testId="control-json-textarea"
+              editorMode="control"
+              schema={controlSchemaResponse?.schema ?? null}
+              evaluators={availableEvaluators}
+              steps={steps}
             />
           </Paper>
         ) : (
@@ -796,6 +957,8 @@ const RawEditControlContent = ({
                   height={EVALUATOR_CONFIG_HEIGHT}
                   onConfigChange={syncJsonToForm}
                   onValidateConfig={validateEvaluatorConfig}
+                  activeEvaluatorId={evaluatorId}
+                  activeEvaluatorSchema={activeEvaluatorOption?.configSchema}
                 />
               ) : (
                 <Alert color="blue" variant="light" title="Composite condition">
@@ -822,7 +985,7 @@ const RawEditControlContent = ({
         <Group justify="flex-end">
           <Button
             variant="outline"
-            onClick={onClose}
+            onClick={handleClose}
             type="button"
             data-testid="cancel-button"
           >

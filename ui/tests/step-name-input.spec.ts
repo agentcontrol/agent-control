@@ -19,7 +19,7 @@ test.describe('Step Name Input', () => {
     await openEvaluatorForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
-    const namesInput = modal.getByPlaceholder('No steps available');
+    const namesInput = modal.getByPlaceholder('No steps registered via SDK');
     await expect(namesInput).toBeVisible();
     await expect(modal.getByPlaceholder('^db_.*')).not.toBeVisible();
   });
@@ -30,14 +30,16 @@ test.describe('Step Name Input', () => {
     await openEvaluatorForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
-    await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
+    await expect(
+      modal.getByPlaceholder('No steps registered via SDK')
+    ).toBeVisible();
 
     // Click the visible "Regex" label (switch is in ScrollArea and can be out of viewport)
     await modal.getByText('Regex', { exact: true }).click();
 
     await expect(modal.getByPlaceholder('^db_.*')).toBeVisible();
     await expect(
-      modal.getByPlaceholder('No steps available')
+      modal.getByPlaceholder('No steps registered via SDK')
     ).not.toBeVisible();
   });
 
@@ -56,7 +58,9 @@ test.describe('Step Name Input', () => {
 
     // Toggle off to names mode
     await modal.getByText('Regex', { exact: true }).click();
-    await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
+    await expect(
+      modal.getByPlaceholder('No steps registered via SDK')
+    ).toBeVisible();
 
     // Toggle back to regex mode – value should still be there
     await modal.getByText('Regex', { exact: true }).click();
@@ -67,7 +71,9 @@ test.describe('Step Name Input', () => {
     await openEvaluatorForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
-    await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
+    await expect(
+      modal.getByPlaceholder('No steps registered via SDK')
+    ).toBeVisible();
     await expect(modal.getByPlaceholder('search_db, fetch_user')).toHaveCount(
       0
     );
@@ -84,7 +90,9 @@ test.describe('Step Name Input', () => {
 
     await modal.getByText('Regex', { exact: true }).click();
 
-    await expect(modal.getByPlaceholder('No steps available')).toBeVisible();
+    await expect(
+      modal.getByPlaceholder('No steps registered via SDK')
+    ).toBeVisible();
     await expect(modal.getByPlaceholder('^db_.*')).not.toBeVisible();
   });
 

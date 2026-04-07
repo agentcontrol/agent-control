@@ -1,10 +1,13 @@
 """Tests for control validation and schema enforcement."""
 
+import json
 import uuid
 from copy import deepcopy
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
+from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
 
 
@@ -163,6 +166,131 @@ def test_validation_empty_string_path_rejected(client: TestClient):
     assert any("empty string" in e.get("message", "") for e in errors)
 
 
+def test_validation_empty_evaluator_name_rejected(client: TestClient):
+    """Test that empty evaluator names are rejected at the request boundary."""
+    control_id = create_control(client)
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["evaluator"] = {"name": "", "config": {"pattern": "x"}}
+
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "VALIDATION_ERROR"
+    assert any(
+        "evaluator.name" in str(err.get("field", ""))
+        for err in body.get("errors", [])
+    )
+    assert any(
+        "empty or whitespace-only" in err.get("message", "").lower()
+        for err in body.get("errors", [])
+    )
+
+
+def test_validate_endpoint_whitespace_evaluator_name_rejected(client: TestClient):
+    """Whitespace-only evaluator names are rejected during validate-without-save too."""
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"]["evaluator"] = {"name": "   ", "config": {"pattern": "x"}}
+
+    resp = client.post("/api/v1/controls/validate", json={"data": payload})
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "VALIDATION_ERROR"
+    assert any(
+        "evaluator.name" in str(err.get("field", ""))
+        for err in body.get("errors", [])
+    )
+    assert any(
+        "empty or whitespace-only" in err.get("message", "").lower()
+        for err in body.get("errors", [])
+    )
+
+
+def test_get_control_data_rejects_stored_blank_nested_evaluator_name(client: TestClient):
+    """Stored rows are revalidated on read using the same ControlDefinition model."""
+    control_id = create_control(client)
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"] = {
+        "or": [
+            deepcopy(VALID_CONTROL_PAYLOAD["condition"]),
+            {
+                "selector": {"path": "input"},
+                "evaluator": {"name": "   ", "config": {"pattern": "x"}},
+            },
+        ]
+    }
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
+            {"data": json.dumps(payload), "id": control_id},
+        )
+
+    resp = client.get(f"/api/v1/controls/{control_id}/data")
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "CORRUPTED_DATA"
+    assert any(
+        err.get("field") == "condition.or[1].evaluator.name"
+        for err in body.get("errors", [])
+    )
+    assert any(
+        "empty or whitespace-only" in err.get("message", "").lower()
+        for err in body.get("errors", [])
+    )
+
+
+def test_list_agent_controls_rejects_stored_blank_nested_evaluator_name(client: TestClient):
+    """Agent control listing rejects persisted blank evaluator names with the same validator."""
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {"agent_name": agent_name},
+            "steps": [],
+            "evaluators": [],
+        },
+    )
+    assert init_resp.status_code == 200
+
+    control_id = create_control(client)
+    assoc_resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert assoc_resp.status_code == 200
+
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"] = {
+        "or": [
+            deepcopy(VALID_CONTROL_PAYLOAD["condition"]),
+            {
+                "selector": {"path": "input"},
+                "evaluator": {"name": "", "config": {"pattern": "x"}},
+            },
+        ]
+    }
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
+            {"data": json.dumps(payload), "id": control_id},
+        )
+
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "CORRUPTED_DATA"
+    assert any(
+        err.get("field") == "data.condition.or[1].evaluator.name"
+        for err in body.get("errors", [])
+    )
+    assert any(
+        "empty or whitespace-only" in err.get("message", "").lower()
+        for err in body.get("errors", [])
+    )
+
+
 def test_validation_none_path_defaults_to_star(client: TestClient):
     """Test that None/missing path defaults to '*'."""
     # Given: a control and payload without path in selector (None)
@@ -316,5 +444,34 @@ def test_validation_nested_agent_scoped_evaluator_error_uses_bracketed_field_pat
     assert any(
         err.get("field") == "data.condition.or[0].evaluator.name"
         and err.get("code") == "evaluator_not_found"
+        for err in body.get("errors", [])
+    )
+
+
+def test_validation_standalone_evaluator_error_uses_bracketed_field_path(
+    client: TestClient,
+):
+    """Nested standalone (global) evaluator config errors use bracketed leaf paths."""
+    control_id = create_control(client)
+    payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    payload["condition"] = {
+        "or": [
+            {
+                "selector": {"path": "input"},
+                "evaluator": {
+                    "name": "regex",
+                    "config": {},
+                },
+            }
+        ]
+    }
+
+    resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error_code"] == "VALIDATION_ERROR"
+    assert any(
+        err.get("field", "").startswith("data.condition.or[0].evaluator")
         for err in body.get("errors", [])
     )

@@ -5,6 +5,7 @@ import type {
   CreateControlRequest,
   GetAgentControlsPathParams,
   GetAgentPathParams,
+  GetControlSchemaResponse,
   InitAgentRequestBody,
   ListAgentsQueryParams,
   PatchControlRequest,
@@ -170,6 +171,12 @@ export const api = {
       }),
     create: (data: CreateControlRequest) =>
       apiClient.PUT('/api/v1/controls', { body: data }),
+    getSchema: () =>
+      apiClient.GET('/api/v1/controls/schema') as Promise<{
+        data?: GetControlSchemaResponse;
+        error?: unknown;
+        response: Response;
+      }>,
     getData: (controlId: number) =>
       apiClient.GET('/api/v1/controls/{control_id}/data', {
         params: { path: { control_id: controlId } },
@@ -191,17 +198,14 @@ export const api = {
       data: ValidateControlDataRequest['data'];
       signal?: AbortSignal;
     }) =>
-      // TODO: remove cast after regenerating api types
-      (
-        apiClient.POST as unknown as (
-          path: '/api/v1/controls/validate',
-          init: { body: ValidateControlDataRequest; signal?: AbortSignal }
-        ) => Promise<{
-          data: ValidateControlDataResponse;
-          error?: unknown;
-          response?: Response;
-        }>
-      )('/api/v1/controls/validate', { body: { data }, signal }),
+      apiClient.POST('/api/v1/controls/validate', {
+        body: { data },
+        signal,
+      }) as Promise<{
+        data?: ValidateControlDataResponse;
+        error?: unknown;
+        response: Response;
+      }>,
     delete: (controlId: number, options?: { force?: boolean }) =>
       apiClient.DELETE('/api/v1/controls/{control_id}', {
         params: {
