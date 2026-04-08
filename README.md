@@ -66,7 +66,7 @@ curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/
 This starts PostgreSQL and Agent Control at `http://localhost:8000`, including
 the UI/dashboard.  
 
-Note that this starts server without API keys configured which is dangerous for any real world usage.  
+Note: This starts server without API keys configured which is dangerous for any real world usage.  
 
 Set appropirate env vars to override defaults like:
  * Exposed ports
