@@ -68,13 +68,10 @@ the UI/dashboard.
 
 Note that this starts server without API keys configured which is dangerous for any real world usage.  
 
-To override defaults like:
- * undled PostgreSQL password
+Set appropirate env vars to override defaults like:
  * Exposed ports
  * Agent and admin API keys
  * Postgres DB Password
-
-You can set env vars first:
 
 ```bash
 export AGENT_CONTROL_SERVER_HOST_PORT=18000
