@@ -47,10 +47,13 @@ def _coerce_to_string(data: Any) -> str:
     if isinstance(data, str):
         return data
     if isinstance(data, dict):
-        # Try common content fields first
+        # Scan all common content fields, not just the first match
+        parts = []
         for key in ("content", "input", "output", "text", "message"):
             if key in data and data[key] is not None:
-                return str(data[key])
+                parts.append(str(data[key]))
+        if parts:
+            return "\n".join(parts)
         # Fall back to JSON serialization
         try:
             return json.dumps(data, ensure_ascii=False, sort_keys=True, default=str)
@@ -90,6 +93,7 @@ class ATREvaluator(Evaluator[ATRConfig]):
         return _RULES_PATH.exists()
 
     def __init__(self, config: ATRConfig) -> None:
+        super().__init__(config)
         self.config = config
 
         # Load and filter rules eagerly
@@ -148,34 +152,50 @@ class ATREvaluator(Evaluator[ATRConfig]):
             return self._error_result(f"ATR evaluation error: {e}")
 
     def _match_rules(self, text: str) -> EvaluatorResult:
-        """Run all compiled rules against the text and return the first match."""
+        """Run all compiled rules against the text and return all matches."""
+        all_findings: list[dict[str, Any]] = []
+        max_confidence = 0.0
+
         for rule in self._compiled_rules:
             for pattern_entry in rule["patterns"]:
                 regex: re.Pattern[str] = pattern_entry["regex"]
                 match = regex.search(text)
                 if match:
-                    matched = self.config.block_on_match
-                    return EvaluatorResult(
-                        matched=matched,
-                        confidence=rule["confidence"],
-                        message=(
-                            f"ATR threat detected: {rule['title']} "
-                            f"[{rule['id']}] (severity: {rule['severity']})"
-                        ),
-                        metadata={
-                            "rule_id": rule["id"],
-                            "title": rule["title"],
-                            "severity": rule["severity"],
-                            "category": rule["category"],
-                            "matched_text": match.group()[:200],
-                            "pattern_description": pattern_entry["description"],
-                        },
-                    )
+                    all_findings.append({
+                        "rule_id": rule["id"],
+                        "title": rule["title"],
+                        "severity": rule["severity"],
+                        "category": rule["category"],
+                        "matched_text": match.group()[:200],
+                        "pattern_description": pattern_entry["description"],
+                    })
+                    max_confidence = max(max_confidence, rule["confidence"])
+                    break  # one match per rule is enough, but continue to other rules
+
+        if all_findings:
+            matched = self.config.block_on_match
+            return EvaluatorResult(
+                matched=matched,
+                confidence=max_confidence,
+                message=f"ATR: {len(all_findings)} threat(s) detected",
+                metadata={
+                    "findings": all_findings,
+                    "count": len(all_findings),
+                    "max_severity": all_findings[0]["severity"] if all_findings else None,
+                    # Keep backward-compatible single-match fields
+                    "rule_id": all_findings[0]["rule_id"],
+                    "title": all_findings[0]["title"],
+                    "severity": all_findings[0]["severity"],
+                    "category": all_findings[0]["category"],
+                    "matched_text": all_findings[0]["matched_text"],
+                    "pattern_description": all_findings[0]["pattern_description"],
+                },
+            )
 
         return EvaluatorResult(
             matched=False,
             confidence=1.0,
-            message="No ATR threats detected",
+            message="ATR: No threats detected",
         )
 
     def _error_result(self, error_detail: str) -> EvaluatorResult:
