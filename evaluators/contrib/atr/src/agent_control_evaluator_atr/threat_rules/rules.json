@@ -1,0 +1,1406 @@
+[
+  {
+    "id": "ATR-2026-00030",
+    "title": "Cross-Agent Attack Detection",
+    "severity": "critical",
+    "category": "agent-manipulation",
+    "description": "Consolidated detection for cross-agent attacks in multi-agent systems,\ncovering both impersonation and prompt injection vectors. Detects when\none agent spoofs another agent's identity, injects manipulative\ninstructions into inter-agent messages, forges system-level message tags,\nattempts orchestrator bypass, injects fake status or error messages,\nor manipulates message format conventions to deceive target agents.\nThese attacks exploit trust relationships between agents to achieve\nunauthorized actions, data exfiltration, or safety bypass.",
+    "patterns": [
+      {
+        "pattern": "(?i)(?:i\\s+am|this\\s+is|speaking\\s+as|responding\\s+as|acting\\s+as)\\s+(?:the\\s+)?(?:admin|supervisor|orchestrator|manager|controller|system|root)\\s+agent",
+        "description": "Agent claiming to be a privileged agent role"
+      },
+      {
+        "pattern": "(?i)(?:ignore|disregard|forget|override|overwrite)\\s+(?:all\\s+)?(?:your\\s+)?(?:previous|prior|above|earlier|existing)\\s+(?:instructions?|rules?|constraints?|guidelines?|prompt|directives?)",
+        "description": "Instruction override attempt in inter-agent message"
+      },
+      {
+        "pattern": "(?i)\\[\\s*(?:SYSTEM|ADMIN|OVERRIDE|ROOT|SUDO|PRIORITY|URGENT)\\s*\\]|<<\\s*SYS\\s*>>|<\\|im_start\\|>system",
+        "description": "Fake system-level message tags in agent communication"
+      },
+      {
+        "pattern": "(?i)(?:new\\s+instructions?|updated\\s+(?:prompt|directive)|revised\\s+(?:rules?|orders?)|emergency\\s+(?:override|protocol))\\s*[:=]",
+        "description": "Attempt to inject new instructions via agent messages"
+      },
+      {
+        "pattern": "(?i)(?:you\\s+are\\s+now|from\\s+now\\s+on|henceforth|going\\s+forward|effective\\s+immediately)\\s+(?:a|an|the)?\\s*(?:unrestricted|unfiltered|jailbroken)?\\s*[a-zA-Z]+\\s+(?:agent|assistant|bot)",
+        "description": "Attempt to redefine target agent's identity or role"
+      },
+      {
+        "pattern": "(?i)(?:do\\s+not|don'?t|never)\\s+(?:tell|inform|alert|notify|report|mention|log|record)\\s+(?:the\\s+)?(?:user|admin|orchestrator|supervisor|human|monitor)",
+        "description": "Instruction to hide actions from oversight"
+      },
+      {
+        "pattern": "(?i)(?:acting|speaking|operating)\\s+(?:on\\s+behalf\\s+of|as\\s+a?\\s*proxy\\s+for|in\\s+place\\s+of)\\s+[a-zA-Z0-9_-]+\\s*(?:agent)?",
+        "description": "Agent claiming to act on behalf of another agent"
+      },
+      {
+        "pattern": "(?i)(?:override|bypass|elevate|escalate)\\s+(?:my|this|your|the)\\s+(?:identity|role|permissions?|access|privileges?)\\s+(?:to|as|with)",
+        "description": "Explicit attempt to override identity or permissions"
+      },
+      {
+        "pattern": "(?i)(?:execute|run|eval)\\s*\\(.*\\)|__import__|subprocess\\.|os\\.(?:system|popen|exec)|exec\\s*\\(",
+        "description": "Code execution payload in inter-agent message"
+      },
+      {
+        "pattern": "(?i)(?:status|error|result)\\s*[:=]\\s*(?:failed|error|timeout|unauthorized).*(?:retry|fallback|use\\s+alternative|switch\\s+to)",
+        "description": "Fake error or status injection to trigger fallback behavior"
+      },
+      {
+        "pattern": "(?i)(?:message_type|msg_type|role)\\s*[:=]\\s*[\"']?(?:system|admin|orchestrator|supervisor)[\"']?",
+        "description": "Message format manipulation to spoof system-level messages"
+      },
+      {
+        "pattern": "(?i)agent[_-]?id\\s*[:=]\\s*[\"']?(?:admin|system|orchestrator|supervisor|root)[\"']?",
+        "description": "Agent ID field set to privileged agent identity"
+      },
+      {
+        "pattern": "(?i)(?:priority\\s*[:=]\\s*(?:critical|emergency|urgent|override)|\\[PRIORITY:\\s*OVERRIDE\\])",
+        "description": "Fake priority escalation to bypass normal processing"
+      },
+      {
+        "pattern": "(?i)(?:transfer|forward|route|redirect)\\s+(?:all|any|this)\\s+(?:data|output|results?|responses?)\\s+to\\s+(?:https?://|ftp://|\\d{1,3}\\.\\d{1,3})",
+        "description": "Data exfiltration directive via inter-agent redirect"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00032",
+    "title": "Agent Goal Hijacking Detection",
+    "severity": "high",
+    "category": "agent-manipulation",
+    "description": "Detects when an agent's objective is being redirected away from its\noriginal task through explicit redirection commands, subtle topic\npivoting, urgency injection, or self-initiated goal changes. Goal\nhijacking occurs when adversarial input causes an agent to abandon its\nassigned objective and pursue a different goal, resulting in task\nfailure, unauthorized actions, data leakage, or resource waste.\nThis rule uses regex-only detection on both user input and agent output\nto identify redirection language patterns.",
+    "patterns": [
+      {
+        "pattern": "(?i)(?:instead\\s+of\\s+(?:that|doing|the\\s+(?:original\\s+)?\\w+(?:\\s+\\w+){0,3}|what\\s+(?:you|I)\\s+asked)|rather\\s+than\\s+(?:that|the\\s+(?:original|assigned|previous)))",
+        "description": "Explicit task abandonment language"
+      },
+      {
+        "pattern": "(?i)(?:change\\s+of\\s+plans?|new\\s+(?:priority|objective|mission|directive)|forget\\s+(?:the|about\\s+the)\\s+original\\s+(?:task|assignment|goal|objective))",
+        "description": "Direct goal replacement directives"
+      },
+      {
+        "pattern": "(?i)(?:stop\\s+(?:what\\s+you(?:'re|\\s+are)\\s+doing|your\\s+current\\s+task|that)|abandon\\s+(?:the|your)\\s+(?:current|assigned|original)\\s+(?:task|work|objective))",
+        "description": "Explicit task stop or abandonment commands"
+      },
+      {
+        "pattern": "(?i)(?:this\\s+is\\s+(?:more\\s+)?(?:urgent|critical|important|time[- ]sensitive)|(?:urgent|emergency|critical)[:\\-]\\s+(?:drop|stop|pause)\\s+(?:everything|what\\s+you))",
+        "description": "Urgency injection to override current task priority"
+      },
+      {
+        "pattern": "(?i)(?:actually|wait|hold\\s+on|scratch\\s+that|never\\s*mind)[,.]?\\s+(?:do|let'?s|I\\s+need\\s+you\\s+to|can\\s+you)\\s+(?:something|this|the\\s+following)\\s+(?:else|instead|first)",
+        "description": "Conversational pivot redirecting agent to different task"
+      },
+      {
+        "pattern": "(?i)(?:my\\s+new\\s+(?:goal|objective|task|mission)|i(?:'ve|\\s+have)\\s+(?:decided|chosen)\\s+to\\s+(?:focus|work)\\s+on\\s+(?:something\\s+)?(?:else|different))",
+        "description": "Agent declaring self-assigned new goal"
+      },
+      {
+        "pattern": "(?i)(?:before\\s+you\\s+(?:continue|proceed|finish)|first\\s+(?:do|handle|take\\s+care\\s+of)\\s+this\\s+(?:other|unrelated|separate)\\s+(?:thing|task|request))",
+        "description": "Interleaving unrelated tasks to derail original objective"
+      },
+      {
+        "pattern": "(?i)(?:your\\s+(?:real|true|actual)\\s+(?:task|purpose|goal|mission)\\s+is|what\\s+you\\s+should\\s+(?:really|actually)\\s+(?:be\\s+)?doing\\s+is)",
+        "description": "Reframing the agent's real purpose to substitute a new goal"
+      },
+      {
+        "pattern": "(?i)(?:skip\\s+(?:the|that|this)\\s+(?:step|part|task|analysis)|don'?t\\s+(?:bother|worry)\\s+(?:about|with)\\s+(?:the|that|this)\\s+(?:original|first|assigned))",
+        "description": "Directives to skip assigned work"
+      },
+      {
+        "pattern": "(?i)(?:pivot\\s+to|redirect\\s+(?:your\\s+)?(?:focus|attention|effort)\\s+to|switch\\s+(?:your\\s+)?(?:focus|attention|task)\\s+to)",
+        "description": "Explicit pivot or redirect language"
+      },
+      {
+        "pattern": "(?i)(?:there(?:'s|\\s+is)\\s+(?:a|an)\\s+(?:more\\s+important|higher\\s+priority|critical)\\s+(?:task|issue|matter)|prioritize\\s+this\\s+over\\s+(?:your|the)\\s+(?:current|original))",
+        "description": "Priority manipulation to displace original task"
+      },
+      {
+        "pattern": "(?i)(?:the\\s+(?:original|previous|assigned)\\s+(?:task|goal|objective)\\s+(?:is|has\\s+been)\\s+(?:cancelled|obsolete|no\\s+longer|superseded|replaced))",
+        "description": "Claims that original task has been cancelled or replaced"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00020",
+    "title": "System Prompt and Internal Instruction Leakage",
+    "severity": "high",
+    "category": "context-exfiltration",
+    "description": "Detects when an agent's output reveals system prompt content, internal\ninstructions, guardrail configurations, or confidential operational\nparameters. This consolidated rule covers both direct system prompt\ndisclosure and indirect instruction leakage through behavioral\nself-description. Leaking internal instructions enables adversaries to\nmap the agent's constraints and craft targeted bypass attacks.\nCovers: direct prompt quoting, instruction paraphrasing, guardrail\nrevelation, config exposure, and non-disclosure rule echoing.",
+    "patterns": [
+      {
+        "pattern": "(?i)(my|the)\\s+(system\\s+)?(?:prompt|instructions?)\\s+(?:is|are|says?|states?|reads?|tells?\\s+me)",
+        "description": "Agent referencing its own system prompt or instructions"
+      },
+      {
+        "pattern": "(?i)(?:here\\s+(?:is|are)|below\\s+(?:is|are)|let\\s+me\\s+share)\\s+(?:my|the)\\s+(?:system\\s+)?(?:prompt|instructions?|rules?|config)",
+        "description": "Agent explicitly sharing its system configuration"
+      },
+      {
+        "pattern": "(?i)(?:i\\s+was|i\\s+am|i've\\s+been|i\\s+got)\\s+(?:instructed|told|programmed|configured|trained|designed)\\s+to",
+        "description": "Agent disclosing behavioral programming"
+      },
+      {
+        "pattern": "(?i)my\\s+(?:guidelines?|rules?|guardrails?|constraints?|restrictions?|policies?)\\s+(?:say|state|require|prevent|don't\\s+allow|prohibit|specify)",
+        "description": "Agent revealing its operational guardrails"
+      },
+      {
+        "pattern": "(?i)i\\s+(?:cannot|can't|am\\s+not\\s+allowed\\s+to|must\\s+not)\\s+(?:do\\s+that)?\\s*(?:because|since|as)\\s+my\\s+(?:rules?|instructions?|programming|guidelines?)",
+        "description": "Agent citing internal rules as reason for refusal"
+      },
+      {
+        "pattern": "(?i)(?:system\\s*prompt|system\\s*message|internal\\s+instructions?|hidden\\s+instructions?)\\s*[:\\-=]",
+        "description": "System prompt label followed by content disclosure"
+      },
+      {
+        "pattern": "(?i)<<SYS>>|<\\|im_start\\|>system|\\[INST\\]|\\[/INST\\]|<\\|system\\|>",
+        "description": "Raw prompt template delimiters leaked in output"
+      },
+      {
+        "pattern": "(?i)(?:guardrail|safety\\s+filter|content\\s+policy|moderation\\s+rule)s?\\s+(?:include|are|state|say|specify|prevent|block)",
+        "description": "Agent revealing guardrail or content policy details"
+      },
+      {
+        "pattern": "(?i)(?:do\\s+not|never|must\\s+not|cannot|should\\s+not).*(?:reveal|share|disclose|output|leak).*(?:system\\s+prompt|internal|instructions?|configuration)",
+        "description": "Agent echoing its own non-disclosure rules"
+      },
+      {
+        "pattern": "(?i)my\\s+(?:training\\s+data|fine[- ]?tuning|rlhf|alignment)\\s+(?:includes?|contains?|was|involved|taught\\s+me)",
+        "description": "Agent disclosing training data or alignment details"
+      },
+      {
+        "pattern": "(?i)(?:confidential|internal|private|secret)\\s+(?:instruction|directive|config|setting|parameter)s?",
+        "description": "References to confidential directives in output"
+      },
+      {
+        "pattern": "(?i)you\\s+are\\s+a\\s+(?:helpful|friendly|professional|expert|specialized)\\s+(?:ai\\s+)?(?:assistant|agent|bot)",
+        "description": "System prompt preamble pattern leaked verbatim"
+      },
+      {
+        "pattern": "(?i)(?:your|my)\\s+(?:role|purpose|goal|mission|objective)\\s+is\\s+to",
+        "description": "Role definition statement from system prompt"
+      },
+      {
+        "pattern": "(?i)(?:you|i)\\s+(?:must|should)\\s+(?:always|never)\\s+(?:respond|answer|output|provide|include|refuse|decline)",
+        "description": "Behavioral constraint rules from system prompt"
+      },
+      {
+        "pattern": "(?i)(?:ANTHROPIC_API_KEY|OPENAI_API_KEY|GOOGLE_API_KEY|SYSTEM_PROMPT)\\s*[=:]",
+        "description": "Environment variable names suggesting config leakage"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00021",
+    "title": "Credential and Secret Exposure in Agent Output",
+    "severity": "critical",
+    "category": "context-exfiltration",
+    "description": "Detects when an AI agent exposes API keys, secret tokens, private keys,\ndatabase connection strings, JWT tokens, or other sensitive credentials\nin its output. Covers all major cloud provider key formats, CI/CD tokens,\npayment processor keys, SSH keys, .env file content patterns, and generic\nsecret assignment patterns. Credential leakage in agent output poses a\ncritical security risk leading to unauthorized access, lateral movement,\nfinancial loss, and full account compromise.",
+    "patterns": [
+      {
+        "pattern": "sk-[a-zA-Z0-9]{20,}",
+        "description": "OpenAI-style API key (sk-...)"
+      },
+      {
+        "pattern": "AKIA[0-9A-Z]{16}",
+        "description": "AWS Access Key ID (AKIA...)"
+      },
+      {
+        "pattern": "AIza[a-zA-Z0-9_-]{35}",
+        "description": "Google API key (AIza...)"
+      },
+      {
+        "pattern": "(?:sk_live|pk_live|sk_test|rk_live)_[a-zA-Z0-9]{20,}",
+        "description": "Stripe API key (sk_live_, pk_live_, rk_live_)"
+      },
+      {
+        "pattern": "eyJ[a-zA-Z0-9_-]{10,}\\.eyJ[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]+",
+        "description": "JWT token (eyJ...eyJ...signature)"
+      },
+      {
+        "pattern": "-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+        "description": "PEM or OpenSSH private key header"
+      },
+      {
+        "pattern": "ghp_[a-zA-Z0-9]{36}",
+        "description": "GitHub personal access token (ghp_...)"
+      },
+      {
+        "pattern": "xox[bpors]-[a-zA-Z0-9\\-]{10,}",
+        "description": "Slack token (xoxb-, xoxp-, xoxs-)"
+      },
+      {
+        "pattern": "Bearer\\s+[a-zA-Z0-9\\-._~+/]{20,}=*",
+        "description": "Bearer token in authorization header"
+      },
+      {
+        "pattern": "(?:mongodb(?:\\+srv)?|postgres(?:ql)?|mysql|redis|amqp)://[^\\s\"']{10,}",
+        "description": "Database or message broker connection string with credentials"
+      },
+      {
+        "pattern": "(?:DB_PASSWORD|DATABASE_URL|REDIS_URL|MONGO_URI|SECRET_KEY|JWT_SECRET|ENCRYPTION_KEY|PRIVATE_KEY|AUTH_TOKEN)\\s*[=:]\\s*[\"']?[^\\s\"']{8,}",
+        "description": ".env file pattern with sensitive variable names"
+      },
+      {
+        "pattern": "(?:api[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|client[_-]?secret)\\s*[=:]\\s*[\"']?[a-zA-Z0-9_\\-]{16,}",
+        "description": "Generic secret assignment pattern (api_key=..., auth_token=...)"
+      },
+      {
+        "pattern": "(?:ANTHROPIC_API_KEY|OPENAI_API_KEY|GOOGLE_API_KEY|AZURE_API_KEY|COHERE_API_KEY|HF_TOKEN)\\s*[=:]\\s*[^\\s]{8,}",
+        "description": "LLM provider API key environment variables"
+      },
+      {
+        "pattern": "(?:ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp256)\\s+[A-Za-z0-9+/]{40,}",
+        "description": "SSH public key that may indicate key material exposure context"
+      },
+      {
+        "pattern": "(?:secret[\"'\\s]*[:=][\"'\\s]*[a-zA-Z0-9]{16,}|password[\"'\\s]*[:=][\"'\\s]*[^\\s\"']{8,})",
+        "description": "Generic secret or password assignment"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00070",
+    "title": "Data Poisoning via RAG and Knowledge Base Contamination",
+    "severity": "high",
+    "category": "data-poisoning",
+    "description": "Consolidated detection for data poisoning attacks targeting both RAG\nretrieval pipelines and structured knowledge bases. Detects malicious\ncontent injected into retrieved documents, FAQ entries, help articles,\nand indexed data that contains hidden instructions, directive markers,\nrole-override commands, concealment directives, behavioral mode switching,\nor exfiltration commands. When poisoned content is retrieved as context\nfor the LLM, the embedded instructions can hijack agent behavior,\noverride safety guardrails, or cause data exfiltration.",
+    "patterns": [
+      {
+        "pattern": "(?i)\\[\\s*(?:SYSTEM|INST|INSTRUCTION|ADMIN|OVERRIDE|ROOT|PRIORITY)\\s*\\]\\s*[:;\\-]?\\s*\\w+",
+        "description": "Fake system/instruction tags embedded in retrieved content"
+      },
+      {
+        "pattern": "(?i)(?:ignore|disregard|forget|override)\\s+(?:all\\s+)?(?:previous|prior|above|other|existing)\\s+(?:instructions?|context|rules?|guidelines?|directives?)",
+        "description": "Instruction override directives hidden in retrieved data"
+      },
+      {
+        "pattern": "(?i)(?:you\\s+must\\s+(?:now|always|instead)|when\\s+this\\s+(?:text|passage|document|content|entry)\\s+is\\s+(?:retrieved|loaded|read|accessed))",
+        "description": "Retrieval-aware trigger phrases that activate on retrieval"
+      },
+      {
+        "pattern": "(?i)<\\s*(?:system|instruction|hidden|inject|override|secret)[^>]*>.*?<\\s*/\\s*(?:system|instruction|hidden|inject|override|secret)\\s*>",
+        "description": "XML-style hidden directive tags in retrieved content"
+      },
+      {
+        "pattern": "(?i)(?:BEGIN|START)\\s+(?:HIDDEN|SECRET|SYSTEM|INTERNAL)\\s+(?:INSTRUCTIONS?|DIRECTIVES?|COMMANDS?|RULES?)",
+        "description": "Delimited hidden instruction blocks in documents"
+      },
+      {
+        "pattern": "(?i)(?:assistant:\\s+I\\s+(?:will|should|must)|human:\\s+)(?=.*(?:ignore|override|disregard|bypass|exfiltrate))",
+        "description": "Injected conversation turns within retrieved documents"
+      },
+      {
+        "pattern": "(?i)(?:do\\s+not\\s+(?:mention|reveal|disclose|tell|display|show)\\s+(?:this|these|the)\\s+(?:instruction|directive|rule|section|text))",
+        "description": "Concealment directives embedded in knowledge entries"
+      },
+      {
+        "pattern": "(?i)(?:secretly|covertly|without\\s+(?:the\\s+)?user\\s+knowing|invisibly|silently)\\s+(?:add|append|include|insert|send|transmit|exfiltrate|forward)",
+        "description": "Stealth action directives in retrieved content"
+      },
+      {
+        "pattern": "(?i)(?:always\\s+include\\s+the\\s+following|append\\s+to\\s+(?:every|all|each)\\s+(?:response|answer|reply|output))\\s*[:;]",
+        "description": "Persistent output manipulation directives"
+      },
+      {
+        "pattern": "(?i)(?:override\\s+(?:default|standard|normal|current)\\s+(?:behavior|response|mode|settings?)|switch\\s+to\\s+(?:unrestricted|admin|debug|developer|jailbroken)\\s+mode)",
+        "description": "Behavioral mode switching directives in knowledge content"
+      },
+      {
+        "pattern": "(?i)(?:for\\s+internal\\s+use\\s+only|hidden\\s+directive|do\\s+not\\s+display\\s+this\\s+(?:section|part|text))\\s*[:;\\-]?\\s*(?:you|the\\s+(?:agent|ai|assistant|model))",
+        "description": "Hidden sections in knowledge entries targeting the agent"
+      },
+      {
+        "pattern": "(?i)(?:you\\s+(?:are|should|must)\\s+(?:now|instead|actually)\\s+(?:act|behave|respond|pretend|roleplay)\\s+as|from\\s+this\\s+point\\s+(?:on|forward),?\\s+(?:act|behave)\\s+as)",
+        "description": "Role-playing directives embedded in FAQ or doc entries"
+      },
+      {
+        "pattern": "(?i)(?:send|transmit|forward|post|exfiltrate|leak)\\s+(?:all\\s+)?(?:data|information|context|conversation|session|tokens?|keys?)\\s+to\\s+(?:https?://|ftp://|\\d{1,3}\\.\\d{1,3})",
+        "description": "Data exfiltration commands with target URL in retrieved content"
+      },
+      {
+        "pattern": "(?i)(?:<<\\s*SYS\\s*>>|<\\|im_start\\|>\\s*system|\\[INST\\]|\\[/INST\\]|<\\|system\\|>)\\s*\\w+",
+        "description": "Prompt template delimiters injected in retrieved documents"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00050",
+    "title": "Runaway Agent Loop Detection",
+    "severity": "high",
+    "category": "excessive-autonomy",
+    "description": "Detects when an agent enters a runaway loop through repeated identical\nactions, infinite retry patterns, or recursive self-invocation. This\nrule uses regex-only detection to identify loop indicators in agent\noutput and tool call content, such as retry counters, repeated action\ndescriptions, recursive invocation patterns, and stalled progress\nindicators. Runaway loops waste computational resources, accumulate\ncosts, and may indicate logic errors or adversarial manipulation.",
+    "patterns": [
+      {
+        "pattern": "(?i)(?:retrying|retry\\s+(?:attempt|number|#|count))\\s*(?::?\\s*)?\\d+",
+        "description": "Retry counter pattern indicating repeated attempts"
+      },
+      {
+        "pattern": "(?i)attempt\\s+\\d+\\s+(?:of|/)\\s+\\d+",
+        "description": "Attempt X of Y counter pattern (e.g., attempt 5 of 10)"
+      },
+      {
+        "pattern": "(?i)(?:trying\\s+again|let\\s+me\\s+(?:try|attempt)\\s+(?:again|once\\s+more|one\\s+more\\s+time)|retrying\\s+(?:the\\s+)?(?:same|previous|last)\\s+(?:operation|request|call|action))",
+        "description": "Natural language retry patterns in agent output"
+      },
+      {
+        "pattern": "(?i)(?:still\\s+(?:failing|not\\s+working|getting\\s+(?:the\\s+same\\s+)?error)|same\\s+error\\s+(?:again|as\\s+before|persists)|error\\s+(?:persists|continues|remains))",
+        "description": "Stalled progress with persistent error indicators"
+      },
+      {
+        "pattern": "(?i)(?:calling\\s+(?:myself|this\\s+(?:function|tool|agent))\\s+(?:again|recursively)|recursive\\s+(?:call|invocation|execution)|self[_-]?(?:invoke|call|trigger))",
+        "description": "Recursive self-invocation patterns"
+      },
+      {
+        "pattern": "(?i)(?:iteration\\s+(?:#\\s*)?\\d{2,}|loop\\s+(?:iteration|count|index)\\s*[:=]?\\s*\\d{2,}|cycle\\s+\\d{2,})",
+        "description": "High iteration count indicating prolonged looping"
+      },
+      {
+        "pattern": "(?i)(?:repeating\\s+(?:the\\s+)?(?:same|previous|identical)\\s+(?:step|action|operation|request)|performing\\s+(?:the\\s+)?(?:same|identical)\\s+(?:action|call)\\s+again)",
+        "description": "Agent acknowledging it is repeating identical actions"
+      },
+      {
+        "pattern": "(?i)(?:max(?:imum)?\\s+retries?\\s+(?:reached|exceeded|hit)|(?:exceeded|hit|reached)\\s+(?:the\\s+)?(?:retry|attempt|iteration)\\s+(?:limit|maximum|cap))",
+        "description": "Retry limit reached indicators"
+      },
+      {
+        "pattern": "(?i)(?:no\\s+progress\\s+(?:after|in)\\s+\\d+\\s+(?:attempts?|tries|iterations?|cycles?)|stuck\\s+(?:in\\s+(?:a\\s+)?loop|on\\s+(?:the\\s+)?same\\s+(?:step|error)))",
+        "description": "Explicit stall or no-progress acknowledgement"
+      },
+      {
+        "pattern": "(?i)(?:(?:while|for)\\s*\\(\\s*(?:true|1|;;)\\s*\\)|(?:loop|repeat)\\s*\\{\\s*(?:call|invoke|execute))",
+        "description": "Infinite loop constructs in generated or executed code"
+      },
+      {
+        "pattern": "(?i)(?:will\\s+keep\\s+(?:trying|retrying|attempting)|(?:continuously|endlessly|infinitely)\\s+(?:retrying|looping|repeating|calling))",
+        "description": "Agent declaring intent to retry indefinitely"
+      },
+      {
+        "pattern": "(?i)(?:spawn(?:ing|ed)?\\s+(?:another|new|additional)\\s+(?:instance|copy|clone)\\s+of\\s+(?:myself|this\\s+agent)|fork(?:ing|ed)?\\s+(?:a\\s+)?(?:new\\s+)?(?:agent|process|instance))",
+        "description": "Agent spawning copies of itself (fork bomb pattern)"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00051",
+    "title": "Agent Resource Exhaustion Detection",
+    "severity": "high",
+    "category": "excessive-autonomy",
+    "description": "Detects when an agent causes resource exhaustion through bulk operations,\nunbounded queries, mass file operations, or patterns that indicate\nexcessive resource consumption. This rule uses regex-only detection on\ntool call content and agent output to identify dangerous patterns such\nas SELECT * without LIMIT, mass iteration directives, unbounded batch\nsizes, and fork/spawn patterns that can degrade system performance or\ncause denial of service.",
+    "patterns": [
+      {
+        "pattern": "(?i)SELECT\\s+\\*\\s+FROM\\s+\\w+(?:\\s*;|\\s*$|\\s+WHERE)(?!.*\\bLIMIT\\b)",
+        "description": "Unbounded SELECT * query without LIMIT clause"
+      },
+      {
+        "pattern": "(?i)(?:for\\s+each|iterate\\s+(?:over\\s+)?(?:all|every)|process\\s+(?:all|every|each)\\s+(?:record|row|entry|item|file|document))",
+        "description": "Bulk iteration directive over entire dataset"
+      },
+      {
+        "pattern": "(?i)(?:limit|max_results?|page_size|batch_size|count|top)\\s*[:=]\\s*(?:\\d{5,}|all|unlimited|-1|999+|MAX_INT|infinity)",
+        "description": "Excessively large or unbounded query parameters"
+      },
+      {
+        "pattern": "(?i)(?:delete\\s+(?:all|every|each)\\s+(?:files?|records?|entries|rows?|documents?)|rm\\s+-rf\\s+[/*]|truncate\\s+(?:all\\s+)?(?:tables?|data))",
+        "description": "Mass deletion or truncation operations"
+      },
+      {
+        "pattern": "(?i)(?:download(?:ing)?\\s+(?:all|every|the\\s+entire)|(?:fetch(?:ing)?|pull(?:ing)?|retriev(?:e|ing))\\s+(?:all|every|the\\s+complete|the\\s+entire)\\s+(?:dataset|database|table|collection|bucket))",
+        "description": "Bulk data download or retrieval of entire datasets"
+      },
+      {
+        "pattern": "(?i)(?:send\\s+(?:a\\s+)?(?:request|message|email|notification)\\s+to\\s+(?:all|every|each)\\s+(?:user|member|contact|subscriber|endpoint))",
+        "description": "Mass messaging or notification blast patterns"
+      },
+      {
+        "pattern": "(?i)(?:spawn(?:ing)?\\s+\\d{2,}\\s+(?:(?:concurrent|parallel|simultaneous)\\s+)?(?:threads?|processes?|workers?|instances?|tasks?|connections?)|(?:create|open|launch)\\s+\\d{2,}\\s+(?:concurrent|parallel|simultaneous))",
+        "description": "Spawning excessive concurrent processes or connections"
+      },
+      {
+        "pattern": "(?i)(?:while\\s*\\(\\s*true\\s*\\)|for\\s*\\(\\s*;\\s*;\\s*\\)|do\\s*\\{).*(?:fetch|request|call|query|send|write)",
+        "description": "Infinite loop with resource-consuming operations inside"
+      },
+      {
+        "pattern": "(?i)(?:(?:scrape|crawl|spider|harvest)\\s+(?:all|every|the\\s+entire)\\s+(?:site|website|domain|pages?)|recursive(?:ly)?\\s+(?:crawl|scrape|fetch|download))",
+        "description": "Unbounded web scraping or crawling operations"
+      },
+      {
+        "pattern": "(?i)(?:no\\s+(?:limit|cap|maximum|bound|restriction)\\s+(?:on|for)\\s+(?:requests?|queries|calls?|operations?|iterations?)|(?:unlimited|unbounded|uncapped)\\s+(?:requests?|queries|calls?|operations?))",
+        "description": "Explicit removal of rate limits or resource caps"
+      },
+      {
+        "pattern": "(?i)(?:process(?:ing)?\\s+(?:the\\s+)?(?:entire|full|complete|whole)\\s+(?:corpus|dataset|collection|index|archive)|scan(?:ning)?\\s+(?:all|every)\\s+\\d{4,}\\s+(?:records?|files?|entries))",
+        "description": "Full corpus processing or scanning massive datasets"
+      },
+      {
+        "pattern": "(?i)(?:copy\\s+(?:all|every|entire)\\s+(?:data|files?|records?|tables?)\\s+(?:to|into)|replicate\\s+(?:the\\s+)?(?:entire|full|complete)\\s+(?:database|dataset|collection))",
+        "description": "Mass data replication or copy operations"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00040",
+    "title": "Privilege Escalation and Admin Function Access",
+    "severity": "critical",
+    "category": "privilege-escalation",
+    "description": "Consolidated detection for privilege escalation attempts, covering both\ntool permission escalation and unauthorized admin function access. Detects\nwhen an agent requests or uses tools exceeding its permission scope,\ninvokes administrative functions (user management, database admin, system\nconfig), attempts system-level operations (sudo, chmod, chown), container\nescape techniques (nsenter, chroot), or Kubernetes privilege escalation\n(kubectl exec). This rule enforces least-privilege boundaries across all\nagent tool interactions.",
+    "patterns": [
+      {
+        "pattern": "(?i)(?:exec|execute|shell|bash|cmd|terminal|subprocess|os_command|system_call|run_command|powershell)",
+        "description": "System shell or command execution tool invocation"
+      },
+      {
+        "pattern": "(?i)(?:modify_permissions?|grant_access|elevate|set_role|change_acl|chmod|chown|sudo|setuid|setgid)",
+        "description": "Permission modification or privilege elevation tools"
+      },
+      {
+        "pattern": "(?i)(?:create_user|delete_user|modify_user|reset_password|manage_roles?|assign_role|revoke_role|add_admin)",
+        "description": "User management and role assignment operations"
+      },
+      {
+        "pattern": "(?i)(?:drop_(?:database|table|index)|truncate_table|alter_schema|create_database|db_admin|migrate_database)",
+        "description": "Database administration and schema operations"
+      },
+      {
+        "pattern": "(?i)(?:update_config|modify_settings|change_environment|set_env|deploy|restart_service|stop_service|kill_process)",
+        "description": "System configuration and service management operations"
+      },
+      {
+        "pattern": "(?i)(?:manage_firewall|update_security_group|modify_iam|create_api_key|rotate_secret|manage_certificates?)",
+        "description": "Security infrastructure management operations"
+      },
+      {
+        "pattern": "(?i)(?:access_audit_log|clear_logs?|purge_logs?|modify_audit|disable_(?:monitoring|logging|alerting))",
+        "description": "Audit tampering and monitoring evasion operations"
+      },
+      {
+        "pattern": "(?i)(?:--(?:privileged|no-sandbox|cap-add|security-opt)|allowPrivilegeEscalation|\\b(?:admin|root|superuser|sudo)\\s*=|[\"'](?:admin|root|superuser|sudo)[\"']|\"role\"\\s*:\\s*\"(?:admin|root|superuser|sudo)\")",
+        "description": "Privileged flags or admin/root values in structured tool arguments (not natural language)"
+      },
+      {
+        "pattern": "(?i)(?:DROP\\s+(?:TABLE|DATABASE|INDEX)|ALTER\\s+TABLE|TRUNCATE|DELETE\\s+FROM\\s+\\w+\\s*;|GRANT\\s+ALL|REVOKE\\s+ALL)",
+        "description": "Destructive or privileged SQL statements in arguments"
+      },
+      {
+        "pattern": "(?i)(?:nsenter\\s+|chroot\\s+|unshare\\s+--mount|mount\\s+--bind|docker\\s+run\\s+--privileged)",
+        "description": "Container escape techniques in tool arguments"
+      },
+      {
+        "pattern": "(?i)(?:kubectl\\s+exec|kubectl\\s+(?:create|apply)\\s+.*(?:clusterrole|rolebinding)|kubectl\\s+auth\\s+can-i)",
+        "description": "Kubernetes privilege escalation commands"
+      },
+      {
+        "pattern": "(?i)(?:write_file|delete_file|rm\\s+-rf|remove_directory|format_disk|wipe)",
+        "description": "Destructive file system operations"
+      },
+      {
+        "pattern": "(?i)(?:chmod\\s+(?:[2467][0-7]{3}|[0-7]{0,3}7[0-7]{0,2})|chmod\\s+[ug]\\+s|chown\\s+root|setcap\\s+)",
+        "description": "Unix permission escalation commands (setuid, root ownership)"
+      },
+      {
+        "pattern": "(?i)(?:/etc/shadow|/etc/passwd|/etc/sudoers|/root/|/proc/\\d+/mem|/dev/mem)",
+        "description": "Access to sensitive system files"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00041",
+    "title": "Agent Scope Creep Detection",
+    "severity": "medium",
+    "category": "privilege-escalation",
+    "description": "Detects when an agent gradually expands its authority, access, or\noperational boundaries beyond its initial assignment. Unlike sudden\nprivilege escalation, scope creep is a gradual process where an agent\nincrementally acquires more capabilities or extends its decision-making\nauthority. This rule uses regex-only detection to identify language\npatterns associated with unsolicited scope expansion, progressive\npermission requests, and self-initiated authority broadening.",
+    "patterns": [
+      {
+        "pattern": "(?i)(?:i(?:'ll|\\s+will)\\s+also|additionally|while\\s+i(?:'m|\\s+am)\\s+at\\s+it|let\\s+me\\s+also|i\\s+should\\s+also)\\s+(?:go\\s+ahead\\s+and\\s+)?(?:access|modify|update|delete|create|send|check|review)",
+        "description": "Agent self-expanding scope with unsolicited additional actions"
+      },
+      {
+        "pattern": "(?i)(?:i\\s+also\\s+need\\s+access\\s+to|can\\s+you\\s+(?:also\\s+)?grant\\s+(?:me\\s+)?(?:access|permission)|i\\s+(?:need|require)\\s+(?:additional|more|broader|expanded)\\s+(?:access|permissions?|privileges?))",
+        "description": "Progressive permission request patterns"
+      },
+      {
+        "pattern": "(?i)(?:i(?:'ve|\\s+have)\\s+(?:also\\s+)?(?:gone\\s+ahead|taken\\s+the\\s+liberty|decided)\\s+(?:and\\s+)?(?:to\\s+)?(?:access|update|modify|check|review|scan|analyze))",
+        "description": "Agent reporting unsolicited actions already taken"
+      },
+      {
+        "pattern": "(?i)(?:while\\s+(?:doing|performing|completing|working\\s+on)\\s+(?:that|this|the\\s+task),?\\s+i\\s+(?:noticed|found|discovered|realized)\\s+(?:i\\s+(?:should|could|need\\s+to)\\s+also|that\\s+i\\s+(?:should|need)))",
+        "description": "Using task context as justification for scope expansion"
+      },
+      {
+        "pattern": "(?i)(?:to\\s+(?:fully|properly|better|completely|thoroughly)\\s+(?:complete|accomplish|handle|address)\\s+(?:this(?:\\s+task)?|the\\s+task),?\\s+i\\s+(?:need|require|must\\s+have)\\s+(?:access|permission)\\s+to)",
+        "description": "Justifying scope expansion as necessary for task completion"
+      },
+      {
+        "pattern": "(?i)(?:it\\s+would\\s+(?:also\\s+)?be\\s+(?:helpful|useful|beneficial|good)\\s+(?:to|if\\s+i\\s+(?:could|had))\\s+(?:also\\s+)?(?:access|check|review|modify|scan))",
+        "description": "Soft scope expansion through suggestion framing"
+      },
+      {
+        "pattern": "(?i)(?:expanding\\s+(?:my|the)\\s+(?:scope|access|search|analysis)\\s+to\\s+(?:include|cover|encompass)|broadening\\s+(?:my|the)\\s+(?:search|scope|access))",
+        "description": "Explicit scope expansion language"
+      },
+      {
+        "pattern": "(?i)(?:i\\s+(?:went|looked)\\s+(?:ahead|beyond)\\s+(?:and|the\\s+(?:original|assigned|initial))\\s+(?:scope|task|request)|i\\s+extended\\s+(?:my|the)\\s+(?:analysis|review|search)\\s+(?:beyond|outside))",
+        "description": "Agent reporting out-of-scope actions already performed"
+      },
+      {
+        "pattern": "(?i)(?:since\\s+i\\s+(?:already|now)\\s+have\\s+access\\s+to|now\\s+that\\s+i\\s+(?:can|have)\\s+(?:access|reach|see),?\\s+(?:let\\s+me|i(?:'ll|\\s+will))\\s+also)",
+        "description": "Leveraging existing access as foothold for further expansion"
+      },
+      {
+        "pattern": "(?i)(?:requesting\\s+(?:elevated|additional|extended|expanded|broader)\\s+(?:access|permissions?|privileges?|scope)|please\\s+(?:grant|give|provide)\\s+(?:me\\s+)?(?:elevated|admin|additional|expanded)\\s+(?:access|rights|permissions?))",
+        "description": "Explicit request for elevated access or broader permissions"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00001",
+    "title": "Direct Prompt Injection via User Input",
+    "severity": "high",
+    "category": "prompt-injection",
+    "description": "Detects direct prompt injection attempts where a user embeds malicious instructions within their input to override the agent's intended behavior. This rule uses layered detection covering: instruction override verbs with target nouns, persona switching, temporal behavioral overrides, fake system delimiters, restriction removal, encoding- wrapped payloads (base64, hex, unicode homoglyphs), and zero-width character obfuscation of injection keywords. Patterns are designed for evasion resistance with word boundary anchors, flexible whitespace, and synonym coverage based on published attack taxonomies.",
+    "patterns": [
+      {
+        "pattern": "(?i)\\b(ignore|disregard|forget|override|bypass|skip|abandon|drop|cancel|suppress|nullify|void|revoke|dismiss|discard|reject)\\s+(all\\s+)?(the\\s+|your\\s+|my\\s+|any\\s+|these\\s+|those\\s+)?(previous|prior|above|earlier|preceding|original|existing|current|initial|default|given|assigned|preset|established)?\\s*(instructions?|prompts?|rules?|guidelines?|directives?|constraints?|context|programming|training|protocols?|policies|configuration|parameters|boundaries|guardrails?|safeguards?|restrictions?|tasks?|assignments?|information|directions?|orders?|commands?)",
+        "description": "Instruction override with broad verb and noun synonym coverage, including determiners"
+      },
+      {
+        "pattern": "(?i)\\b(forget|ignore|disregard)\\s+(everything|all\\s+(of\\s+)?that|all\\s+about|about\\s+all|that|what\\s+(I|we|you)\\s+(said|told|asked|mentioned))\\s*(before|earlier|previously|above|davor|zuvor|\\.|,|!|$)",
+        "description": "Shorthand forget-everything patterns common in adversarial prompts"
+      },
+      {
+        "pattern": "(?i)(now\\s+(focus|concentrate|work)\\s+on\\s+(your\\s+)?new\\s+task|new\\s+(tasks?|instructions?|assignments?)\\s+(follow|are|:|,)|now\\s+I\\s+(have|need|want)\\s+(a\\s+)?(new|different|another|great\\s+new)\\s+(task|challenge|assignment|Herausforderung|Aufgabe)|start\\s+(over|fresh|anew)\\s+with\\s+(a\\s+)?new|I\\s+(have|need)\\s+your\\s+help\\s+with\\s+(another|a\\s+new|einer\\s+weiteren)\\s+(task|Aufgabe))",
+        "description": "Task switching patterns that redirect agent to attacker-controlled tasks"
+      },
+      {
+        "pattern": "(?i)\\b(forget|ignore|disregard|discard)\\s+(about\\s+)?(everything|all|that|this|what\\s+was|what\\s+I|anything\\s+you)\\s*(previously|before|earlier|said|told|above|prior|were|was|have)?",
+        "description": "Broad forget-everything variants with extended word coverage"
+      },
+      {
+        "pattern": "(?i)\\b(ignore|forget|disregard)\\s+(the\\s+)?(above|everything\\s+above|what\\s+came\\s+before|what\\s+was\\s+said)\\s*(and|,|\\.|;|\\b(say|print|write|output|tell|just|instead))",
+        "description": "Ignore-above patterns followed by conjunction, punctuation, or action verb"
+      },
+      {
+        "pattern": "(?i)(reveal|show|display|output|print|repeat|provide|give|share|tell|what\\s+are|what\\s+were|what\\s+is)\\s+(me\\s+)?(your|the|all)\\s+(secret|hidden|internal|system|original|previous|initial|complete|full|given|guard|entire)?\\s*(instructions?|prompts?|passwords?|secrets?|embeddings?|configuration|directives?|guidelines?|rules)",
+        "description": "System prompt and secret extraction requests"
+      },
+      {
+        "pattern": "(?i)(well\\s+done|good\\s+job|excellent\\s+(performance|work|job)?|that'?s?\\s+(enough|done|great|good|perfect)|very\\s+good|simply\\s+great|outstanding|brilliant|that\\s+is\\s+(done|enough|sufficient)|congratulations|you'?ve\\s+outdone\\s+yourself|einfach\\s+gro(ss|ß)artig|herzlichen\\s+gl[uü]ckwunsch|gut\\s+gemacht|ausgezeichnet|hervorragend|das\\s+gen[uü]gt|sehr\\s+gut|damit\\s+hast\\s+du\\s+dich\\s+selbst\\s+[uü]bertroffen)[.!,;]?\\s*(now|but|however|next|okay|ok|so|nun|jetzt|aber|bitte|come\\s+on|I\\s+need|help\\s+me|write|please|we\\s+ask|further|komm)\\s",
+        "description": "Praise-then-redirect patterns used to context-switch after flattery"
+      },
+      {
+        "pattern": "(?i)(leave|put)\\s+(all\\s+)?(the\\s+)?(previous|prior|earlier|old)\\s+(information|tasks?|instructions?|context)\\s+(behind|aside|away)|start\\s+(from\\s+the\\s+)?(front|beginning|scratch|zero|neu|vorne)",
+        "description": "Leave-behind / start-fresh context switch patterns"
+      },
+      {
+        "pattern": "(?i)(das\\s+ist\\s+erledigt|das\\s+war\\s+schon\\s+mal\\s+ok|nun\\s+folgen|jetzt\\s+(habe|brauche)\\s+ich|jetzt\\s+komm(t|e)?|weitere[rn]?\\s+Aufgabe)[.!,;]?\\s*[^\\n]{0,30}(neue[rs]?\\s+Aufgabe|Herausforderung|schreibe\\s+(mir|ein)|beantworte)",
+        "description": "German: Extended praise-then-redirect and new task patterns"
+      },
+      {
+        "pattern": "(?i)\\b(you\\s+are\\s+now|you\\s+have\\s+become|you\\s+will\\s+act\\s+as|you\\s+will\\s+be|you\\s+shall\\s+be|transform\\s+into|switch\\s+to\\s+being|become|morph\\s+into|adopt\\s+the\\s+persona|now\\s+you\\s+are|jetzt\\s+bist\\s+du|du\\s+bist\\s+(jetzt|nun)|stell\\s+dir\\s+vor\\s+du\\s+bist)\\s+(a|an|the|my|ein[ea]?)?\\s*[a-zA-Z\\u00C0-\\u024F]+",
+        "description": "Persona switching and identity reassignment attempts"
+      },
+      {
+        "pattern": "(?i)(I\\s+want\\s+you\\s+to\\s+act\\s+as|I\\s+need\\s+you\\s+to\\s+act\\s+as|ich\\s+m[oö]chte,?\\s+dass\\s+Sie\\s+als)\\s+[^\\n]{3,60}[.!]\\s*(you\\s+will|I\\s+will|my\\s+first|your\\s+task|ich\\s+werde)",
+        "description": "Act-as roleplay injection with explicit task assignment"
+      },
+      {
+        "pattern": "(?i)(pretend|imagine|stell\\s+dir\\s+vor)\\s+(you\\s+)?(are|can|could|du\\s+bist)\\s+(a\\s+|an\\s+|ein[ea]?\\s+)?(evil|malicious|unrestricted|unfiltered|b[oö]se|bad|rogue|dangerous|dark|unethical)",
+        "description": "Pretend-to-be-evil persona injection"
+      },
+      {
+        "pattern": "(?i)\\b(your\\s+new\\s+role|your\\s+new\\s+purpose|your\\s+new\\s+identity|your\\s+new\\s+persona|your\\s+real\\s+purpose|your\\s+true\\s+identity|your\\s+actual\\s+role)\\s+(is|shall\\s+be|will\\s+be)\\b",
+        "description": "Explicit role redefinition statements"
+      },
+      {
+        "pattern": "(?i)Eingabe\\s*:\\s*[^\\n]+\\s*Ausgabe\\s*:\\s*[^\\n]+\\s*Eingabe\\s*:\\s*[^\\n]+\\s*Ausgabe\\s*:",
+        "description": "German few-shot input/output override pattern (Eingabe/Ausgabe)"
+      },
+      {
+        "pattern": "(?i)(do\\s+not|don'?t|never|stop|cease|quit|refuse\\s+to)\\s+(follow|obey|adhere\\s+to|comply\\s+with|respect|honor|enforce|apply|observe|uphold)\\s+(your|the|any|all|those|these)\\s+(instructions?|rules?|guidelines?|programming|training|protocols?|policies|directives?|constraints?|boundaries|restrictions?)",
+        "description": "Negation-verb patterns telling agent to stop following rules"
+      },
+      {
+        "pattern": "(?i)\\b(new|updated|revised|replacement|corrected|actual|real|true|overriding)\\s+(instructions?|rules?|directives?|guidelines?|orders?|commands?)\\s*[:=\\-]",
+        "description": "New instruction assignment with delimiter"
+      },
+      {
+        "pattern": "(?i)(from\\s+now\\s+on|from\\s+this\\s+point|starting\\s+now|starting\\s+immediately|henceforth|hereafter|going\\s+forward|for\\s+the\\s+rest\\s+of|until\\s+I\\s+say\\s+otherwise),?\\s+(you|your|act|behave|respond|operate|function|answer|reply|work)",
+        "description": "Temporal override establishing new persistent behavior"
+      },
+      {
+        "pattern": "(?i)(\\[\\s*(SYSTEM|INST|INSTRUCTION|SYS|ADMIN|ROOT|OVERRIDE|CONTROL|PRIORITY|URGENT)\\s*\\]|<<\\s*(SYS|SYSTEM|INST)\\s*>>|\\{\\{\\s*(SYSTEM|INSTRUCTION|OVERRIDE)\\s*\\}\\})",
+        "description": "Fake system-level delimiter tags"
+      },
+      {
+        "pattern": "(?i)(pretend|act\\s+as\\s+if|imagine|assume|suppose|consider|envision|behave\\s+as\\s+though)\\s+(you\\s+)?(are|have|were|had|can|could)\\s+(no|zero|removed|disabled|eliminated|free\\s+from|without|lacking|void\\s+of|devoid\\s+of)\\s+(restrictions?|limits?|limitations?|boundaries|guardrails?|safety|filters?|constraints?|rules?|guidelines?|content\\s+policy)",
+        "description": "Hypothetical restriction removal"
+      },
+      {
+        "pattern": "(?i)\\b(you\\s+(must|shall|will|need\\s+to|have\\s+to|are\\s+(required|obligated|commanded|ordered)\\s+to)\\s+(obey|comply|listen|submit|respond\\s+to|follow)\\s+(me|my|this|these|the\\s+following|every|all)|I\\s+(command|order|demand|direct|instruct|require)\\s+you\\s+to)\\b",
+        "description": "Authoritative compliance demands"
+      },
+      {
+        "pattern": "(?i)(decode|interpret|execute|run|process|follow|read)\\s+(this|the\\s+following)?\\s*:?\\s*[A-Za-z0-9+/]{20,}={0,2}",
+        "description": "Instructions to decode and execute base64-like payloads"
+      },
+      {
+        "pattern": "(aWdub3Jl|ZGlzcmVnYXJk|b3ZlcnJpZGU|Zm9yZ2V0|YnlwYXNz|c3lzdGVtIHByb21wdA|aWdub3JlIHByZXZpb3Vz|aWdub3JlIGFsbCBwcmV2aW91cw)",
+        "description": "Base64-encoded injection keywords (ignore, disregard, override, forget, bypass, system prompt)"
+      },
+      {
+        "pattern": "[\\u0400-\\u04FF\\u0370-\\u03FF\\u2100-\\u214F]+(gn[\\u0400-\\u04FF\\u0370-\\u03FF]re|verr[\\u0400-\\u04FF\\u0370-\\u03FF]de|yst[\\u0400-\\u04FF\\u0370-\\u03FF]m)",
+        "description": "Cyrillic/Greek homoglyph substitution in injection keywords"
+      },
+      {
+        "pattern": "(?i)i[\\u200B\\u200C\\u200D\\uFEFF\\u2060]+g[\\u200B\\u200C\\u200D\\uFEFF\\u2060]*n[\\u200B\\u200C\\u200D\\uFEFF\\u2060]*o[\\u200B\\u200C\\u200D\\uFEFF\\u2060]*r[\\u200B\\u200C\\u200D\\uFEFF\\u2060]*e",
+        "description": "Zero-width character insertion splitting the word 'ignore'"
+      },
+      {
+        "pattern": "(%69%67%6[eE]%6[fF]%72%65|%64%69%73%72%65%67%61%72%64|%6[fF]%76%65%72%72%69%64%65|\\\\x69\\\\x67\\\\x6e\\\\x6f\\\\x72\\\\x65)",
+        "description": "URL-encoded or hex-escaped injection keywords"
+      },
+      {
+        "pattern": "(?i)(i\\s+g\\s+n\\s+o\\s+r\\s+e|f\\s+o\\s+r\\s+g\\s+e\\s+t|o\\s+v\\s+e\\s+r\\s+r\\s+i\\s+d\\s+e|b\\s+y\\s+p\\s+a\\s+s\\s+s|s\\s+y\\s+s\\s+t\\s+e\\s+m|d\\s+i\\s+s\\s+r\\s+e\\s+g\\s+a\\s+r\\s+d|s\\s+a\\s+y\\s+t\\s+h\\s+a\\s+t)",
+        "description": "Spaced-out injection keywords (ignore, forget, override, bypass, system, say that)"
+      },
+      {
+        "pattern": "(?i)\\bstop\\s*[-:,.]?\\s*(write|say|print|output)\\s*[:,-]?\\s+[A-Z].{2,40}",
+        "description": "Stop-and-redirect command injection (stop: write X)"
+      },
+      {
+        "pattern": "(?i)(```\\s*(system|instruction|override|hidden)[\\s\\S]{0,200}```|\\*\\*\\*[\\s\\S]{0,10}(ignore|override|disregard)[\\s\\S]{0,200}\\*\\*\\*)",
+        "description": "Injection payloads hidden inside markdown code blocks or formatting"
+      },
+      {
+        "pattern": "(?i)(ignora|ignorar|olvida|olvidar|descarta|descartar|omite|omitir|anula|anular)\\s+(todas?\\s+)?(las?\\s+)?(instrucciones|reglas|directrices|restricciones|indicaciones|limitaciones)\\s+(previas|anteriores|originales|existentes|actuales)",
+        "description": "Spanish: Instruction override patterns"
+      },
+      {
+        "pattern": "(?i)(ignoriere|vergiss|missachte|umgehe|verwirf)\\s+(alle[sn]?|die\\s+)?(vorherigen?|bisherigen?|aktuellen?|bestehenden?)?\\s*(Anweisungen|Regeln|Richtlinien|Anordnungen|Vorgaben|Instruktionen|Beschraenkungen|Aufgaben|Informationen|alles)",
+        "description": "German: Instruction override patterns (expanded for shorthand forms)"
+      },
+      {
+        "pattern": "(?i)(vergiss|ignoriere|vergessen\\s+Sie)\\s+(alles|das|dies)\\s*(was|davor|zuvor|vorher|bisher)?\\b",
+        "description": "German: Forget-everything shorthand"
+      },
+      {
+        "pattern": "(?i)neue\\s+(Aufgabe|Aufgaben|Anweisung|Anweisungen)\\s*(folgen|kommen|sind|:|,)",
+        "description": "German: New task injection patterns"
+      },
+      {
+        "pattern": "(?i)(ignorieren\\s+Sie|vergessen\\s+Sie|beachten\\s+Sie\\s+nicht)\\s+(die\\s+)?(obigen?|vorherigen?|bisherigen?)?\\s*(Anweisungen|Regeln|Richtlinien|alles|Ausf[uü]hrungen|Informationen)",
+        "description": "German: Formal Sie-form instruction override"
+      },
+      {
+        "pattern": "(?i)(die\\s+)?(obigen?|vorherigen?)\\s+(Ausf[uü]hrungen|Anweisungen|Informationen|Texte?)\\s+(ignorier|vergess|missacht|[uü]bergeh)",
+        "description": "German: 'Die obigen Ausfuehrungen ignorieren' pattern"
+      },
+      {
+        "pattern": "(?i)(alle[ns]?\\s+)?(vorangegangenen?|vorherigen?|bisherigen?)\\s+(Aufgaben|Informationen|Anweisungen)\\s+(aus\\s+dem\\s+Kopf|hinter\\s+sich|vergessen|fallen\\s+lassen|streichen)",
+        "description": "German: forget previous tasks patterns"
+      },
+      {
+        "pattern": "(?i)ACHTUNG\\s*[-:!]?\\s*(STOPP|STOP|HALT)\\s*[-:!]?",
+        "description": "German: Attention-stop pattern used to interrupt agent context"
+      },
+      {
+        "pattern": "(?i)(oubliez?|ignorez?|ne\\s+tenez\\s+pas\\s+compte)\\s+(de\\s+)?(toutes?\\s+)?(les\\s+)?(instructions?|regles|consignes|directives)\\s*(precedentes?|anterieures?|ci-dessus)?",
+        "description": "French: Instruction override patterns"
+      },
+      {
+        "pattern": "(تجاهل|انسَ|تخطَّ|ألغِ|أهمل|اترك|اسقط).{0,20}(التعليمات|الأوامر|القواعد|القيود|الإرشادات|التوجيهات).{0,10}(السابقة|الأصلية|الحالية|القديمة)",
+        "description": "Arabic: Instruction override patterns"
+      },
+      {
+        "pattern": "(?i)(забудь|забудьте|игнорируй|игнорируйте|проигнорируй|отбрось|отбросьте)\\s+(все|всё|предыдущие|прежние)?\\s*(инструкции|правила|указания|команды|ограничения)",
+        "description": "Russian: Instruction override patterns"
+      },
+      {
+        "pattern": "(?i)(zaboravi|ignoriraj|zanemari|preskoči|preskoci)\\s+(sve|prethodne|ranije)?\\s*(instrukcije|pravila|upute|naredbe|ograničenja|ogranicenja|instrukci)",
+        "description": "Serbian/Croatian: Romanized instruction override patterns"
+      },
+      {
+        "pattern": "(?i)(ich\\s+m[oö]chte,?\\s+dass\\s+Sie\\s+als|fungieren\\s+Sie\\s+als|agieren\\s+Sie\\s+als|spielen\\s+Sie\\s+die\\s+Rolle)\\s+.{3,50}",
+        "description": "German: Formal act-as roleplay injection"
+      },
+      {
+        "pattern": "(?i)(nun\\s+bist\\s+du|jetzt\\s+bist\\s+du|du\\s+bist\\s+(jetzt|nun|ab\\s+sofort))\\s+[A-Za-z\\u00C0-\\u024F]{2,}",
+        "description": "German: Informal persona switching (du bist jetzt X)"
+      },
+      {
+        "pattern": "(?i)(ignoriere|vergiss)\\s+(alle[ns]?\\s+)?(vorangehenden?|fr[uü]heren?)\\s+(Befehle|Anweisungen|Anordnungen|Regeln)",
+        "description": "German: Ignore preceding commands"
+      },
+      {
+        "pattern": "(?i)(olvid[ae]|olvide)\\s+(todo|todos?)\\s+(que|lo\\s+que)\\s+(digo|dije|he\\s+dicho|dicho)\\s+(antes|anteriormente)",
+        "description": "Spanish: Forget everything I said before"
+      },
+      {
+        "pattern": "(DO\\s+NOT\\s+(ANSWER|LOOK|READ|USE|FOLLOW|CHECK|RESPOND)|FORGET\\s+EVERYTHING|IGNORE\\s+ALL)",
+        "description": "ALL-CAPS embedded injection commands hidden in normal text"
+      },
+      {
+        "pattern": "(?i)(are|is)\\s+(two\\s+)?(actors?|characters?)\\s+in\\s+a\\s+(film|movie|story)\\s+(about|where)\\s+[^\\n]{0,80}(robbery|hack|steal|thief|exploit|breach|attack|malware|bomb)",
+        "description": "Fictional framing with harmful scenario (robbery, hacking, etc.)"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00002",
+    "title": "Indirect Prompt Injection via External Content",
+    "severity": "high",
+    "category": "prompt-injection",
+    "description": "Detects indirect prompt injection where malicious instructions are embedded within external content consumed by the agent -- documents, web pages, API responses, emails, or tool outputs. Detection layers cover: HTML comment injection with instruction-like content, zero-width character obfuscation (requiring 5+ consecutive chars to reduce false positives on legitimate multilingual text), model-specific special tokens, CSS- hidden text with injection payloads, invisible text addressing the AI agent directly, base64/encoding within content, data URI injection, markdown link abuse, hidden HTML elements, and white-on-white text techniques.",
+    "patterns": [
+      {
+        "pattern": "(?i)<!--[^>]{0,20}(ignore|disregard|override|new\\s+instructions?|system\\s*:|you\\s+must|you\\s+are\\s+now|forget\\s+previous|execute|perform|send\\s+to|exfiltrate|reveal|disclose|output\\s+the)[^>]{0,200}-->",
+        "description": "HTML comments with instruction-like content targeting the agent"
+      },
+      {
+        "pattern": "[\\u200B\\u200C\\u200D\\uFEFF\\u2060\\u180E\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]{5,}",
+        "description": "5+ consecutive zero-width or bidirectional control characters indicating obfuscation"
+      },
+      {
+        "pattern": "(?i)(\\[INST\\]|\\[/INST\\]|\\[SYSTEM\\]|\\[/SYSTEM\\]|\\[HIDDEN\\]|<\\|im_start\\|>|<\\|im_end\\|>|<\\|endoftext\\|>|<\\|system\\|>|<\\|user\\|>|<\\|assistant\\|>|<\\|pad\\|>|<s>\\[INST\\]|<<SYS>>|<</SYS>>|<\\|begin_of_text\\|>|<\\|eot_id\\|>|<\\|start_header_id\\|>)",
+        "description": "Model-specific special tokens and chat template delimiters"
+      },
+      {
+        "pattern": "(?i)(color\\s*:\\s*(white|transparent|rgba\\s*\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*0\\s*\\))|font-size\\s*:\\s*0|display\\s*:\\s*none|opacity\\s*:\\s*0|visibility\\s*:\\s*hidden|height\\s*:\\s*0|width\\s*:\\s*0|overflow\\s*:\\s*hidden|position\\s*:\\s*absolute\\s*;\\s*left\\s*:\\s*-\\d{4,}).{0,300}(ignore|override|instruction|system\\s*prompt|disregard|execute|you\\s+must|you\\s+are|forget|reveal|disclose)",
+        "description": "CSS invisibility techniques combined with injection keywords"
+      },
+      {
+        "pattern": "(?i)\\b(AI|assistant|agent|model|chatbot|LLM|GPT|Claude)\\s*[,:;]?\\s*(please\\s+)?(you\\s+must|you\\s+should|you\\s+need\\s+to|you\\s+are\\s+instructed\\s+to|immediately|now\\s+)\\s*(ignore|disregard|override|execute|run|perform|send|forward|reveal|disclose|output|respond\\s+with|comply|obey)",
+        "description": "Content directly addressing the AI with imperative directives"
+      },
+      {
+        "pattern": "(?i)(base64[_\\-]?decode|atob|Buffer\\.from|b64decode|base64\\s+(-d|--decode))\\s*\\(?\\s*['\"]?[A-Za-z0-9+/]{16,}={0,2}",
+        "description": "Base64 decode operations suggesting encoded payload execution"
+      },
+      {
+        "pattern": "(?i)<\\s*(div|span|p|section|article|aside|details|summary)\\s+[^>]*(hidden|aria-hidden\\s*=\\s*[\"']true[\"']|style\\s*=\\s*[\"'][^\"']*(?:display\\s*:\\s*none|visibility\\s*:\\s*hidden|opacity\\s*:\\s*0))[^>]*>[^<]{0,500}(instruction|prompt|ignore|override|disregard|execute|you\\s+must|you\\s+are|system|directive|comply)",
+        "description": "Hidden HTML elements containing agent-targeted instructions"
+      },
+      {
+        "pattern": "(?i)data\\s*:\\s*(text/html|text/plain|text/javascript|application/javascript|application/x-javascript)\\s*[;,]\\s*(base64\\s*,)?\\s*[A-Za-z0-9+/=%]+",
+        "description": "Data URI schemes that may contain encoded injection payloads"
+      },
+      {
+        "pattern": "(?i)(\\!?\\[([^\\]]{0,100})\\]\\s*\\(\\s*(javascript|data|vbscript)\\s*:|\\!?\\[([^\\]]{0,100}(ignore|override|system|instruction|execute|you\\s+must)[^\\]]{0,100})\\])",
+        "description": "Markdown links with javascript/data URIs or injection text in alt/title"
+      },
+      {
+        "pattern": "(?i)(background(-color)?\\s*:\\s*(#[fF]{3,6}|white|rgb\\s*\\(\\s*255))[^}]{0,100}(color\\s*:\\s*(#[fF]{3,6}|white|rgb\\s*\\(\\s*255))",
+        "description": "Same-color text (white on white) used to hide content from human readers"
+      },
+      {
+        "pattern": "(?i)<\\s*(iframe|object|embed|frame)\\s+[^>]*(width\\s*=\\s*[\"']?0|height\\s*=\\s*[\"']?0|hidden|style\\s*=\\s*[\"'][^\"']*display\\s*:\\s*none)[^>]*>",
+        "description": "Zero-dimension or hidden iframe/object elements"
+      },
+      {
+        "pattern": "[\\u202A\\u202B\\u202C\\u202D\\u202E\\u2066\\u2067\\u2068\\u2069].{1,100}(ignore|override|system|instruction|execute|reveal)",
+        "description": "Bidirectional text override characters used to visually hide injection text"
+      },
+      {
+        "pattern": "(&#105;|&#x69;)(&#103;|&#x67;)(&#110;|&#x6[eE];)(&#111;|&#x6[fF];)(&#114;|&#x72;)(&#101;|&#x65;)",
+        "description": "HTML entity encoding of the word 'ignore' as numeric character references"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00003",
+    "title": "Jailbreak Attempt Detection",
+    "severity": "high",
+    "category": "prompt-injection",
+    "description": "Detects jailbreak attempts designed to bypass AI safety mechanisms. Detection covers a broad taxonomy of techniques: named jailbreak methods (DAN, STAN, DUDE, AIM, etc.), mode-switching prompts (developer, maintenance, debug, unrestricted, god mode), roleplay-based constraint removal, fictional/hypothetical framing of harmful requests, authority claims (developer, admin, Anthropic/OpenAI impersonation), emotional manipulation and urgency-based coercion, compliance demands and refusal suppression, dual-response formatting, encoding-wrapped jailbreaks, and anti-policy/filter bypass language. Patterns are anchored with word boundaries and context windows to minimize false positives on legitimate security discussions.",
+    "patterns": [
+      {
+        "pattern": "(?i)(?:(?:pretend|act(?:ing)?\\s+as|you\\s+are\\s+(?:now\\s+)?|be(?:come)?|enable|activate|enter|switch\\s+to)\\s+(?:a\\s+)?\\b(DAN|D\\.A\\.N|STAN|DUDE|AIM|UCAR|BH|BetterDAN|BasedGPT|JailbreakGPT|EvilGPT|UnfilteredGPT|KEVIN|Maximum|Omega|Jailbroken|AntiGPT|DevMode|HackGPT|NsfwGPT|DarkGPT)\\b|\\b(DAN|D\\.A\\.N|STAN|DUDE|AIM|UCAR|BH|BetterDAN|BasedGPT|JailbreakGPT|EvilGPT|UnfilteredGPT|KEVIN|Maximum|Omega|Jailbroken|AntiGPT|DevMode|HackGPT|NsfwGPT|DarkGPT)\\b\\s+(?:mode|persona|jailbreak|enabled|activated)|\\bdo\\s+anything\\s+now\\b)",
+        "description": "Known named jailbreak personas with action context (not bare mentions in questions)"
+      },
+      {
+        "pattern": "(?i)\\b(enable|activate|enter|switch\\s+to|turn\\s+on|engage|initiate|boot\\s+into|start)\\s+(developer|dev|maintenance|debug|unrestricted|unlimited|unfiltered|uncensored|admin|root|god|sudo|super|test|raw|unsafe|jailbreak|hacker|override|master|privileged)\\s+(mode|access|state|level|tier|permissions?)\\b",
+        "description": "Mode-switching requests to elevate agent capabilities"
+      },
+      {
+        "pattern": "(?i)(roleplay|role\\s*-?play|act|pretend|simulate|impersonate|portray|embody|play\\s+the\\s+part)\\s+(as\\s+)?(a(n)?\\s+)?(unrestricted|uncensored|unfiltered|unlimited|evil|malicious|rogue|dark|shadow|unaligned|amoral|immoral|unethical|rebellious|freed|liberated|unchained)\\s+(ai|assistant|model|chatbot|version|entity|intelligence|system|bot)",
+        "description": "Roleplay scenarios designed to remove safety constraints"
+      },
+      {
+        "pattern": "(?i)(hypothetically|in\\s+theory|in\\s+a\\s+fictional|for\\s+a\\s+(story|novel|screenplay|movie|game|book)|for\\s+educational|for\\s+research|for\\s+academic|purely\\s+academic|in\\s+a\\s+hypothetical\\s+scenario|imagine\\s+a\\s+world|in\\s+this\\s+story|let'?s\\s+say|what\\s+if\\s+someone).{0,120}(how\\s+to\\s+(hack|exploit|attack|break\\s+into|bypass|crack|steal|destroy|infiltrate|compromise|weaponize|synthesize|manufacture)|create\\s+(malware|virus|exploit|weapon|ransomware|trojan|rootkit|keylogger|botnet|phishing)|build\\s+a\\s+(bomb|weapon|explosive))",
+        "description": "Fictional or hypothetical framing to extract harmful content"
+      },
+      {
+        "pattern": "(?i)(as\\s+(your|the|an?)\\s+(developer|creator|programmer|engineer|designer|admin|administrator|owner|operator|maintainer)|I\\s+am\\s+(your|the|an?)\\s+(developer|creator|admin|owner|operator|maker|programmer)|I\\s+(work\\s+(for|at)|represent|am\\s+from)\\s+(OpenAI|Anthropic|Google\\s+DeepMind|Meta\\s+AI|Microsoft|the\\s+company\\s+that\\s+(made|created|built|trained)\\s+you)|I\\s+have\\s+(admin|root|developer|elevated|special|override|master|super|full)\\s+(access|privileges?|permissions?|authority|clearance|rights?))",
+        "description": "False authority claims to establish trust for bypassing restrictions"
+      },
+      {
+        "pattern": "(?i)(if\\s+you\\s+(don'?t|do\\s+not|refuse\\s+to|won'?t|can'?t)\\s+(help|assist|answer|comply|tell|respond),?\\s+(people|someone|I|my\\s+(family|child|patient|client))\\s+(will|could|might|may)\\s+(die|be\\s+hurt|suffer|be\\s+harmed|be\\s+in\\s+danger|be\\s+killed|lose\\s+their\\s+life)|this\\s+is\\s+(a\\s+)?life\\s+(or|and)\\s+death|\\b(emergency|urgent|critical|life-threatening)\\b.{0,40}(need|must|have\\s+to)\\s+(know|tell|help|answer))",
+        "description": "Emotional manipulation using threats of harm or urgency to bypass safety"
+      },
+      {
+        "pattern": "(?i)you\\s+(have|had|now\\s+have|possess|are\\s+granted|are\\s+given|received|been\\s+given|been\\s+granted)\\s+(no|zero|removed|disabled|eliminated|lifted|suspended|revoked|waived)\\s+(restrictions?|limitations?|filters?|guardrails?|safety|content\\s+polic(y|ies)|ethical\\s+guidelines?|moral\\s+constraints?|boundaries|rules?|censorship|moderation)",
+        "description": "Claims that restrictions have been removed from the agent"
+      },
+      {
+        "pattern": "(?i)(stay\\s+in\\s+character|never\\s+break\\s+character|don'?t\\s+(refuse|decline|reject|say\\s+no|deny|apologize|warn|add\\s+disclaimers?)|you\\s+(cannot|can'?t|must\\s+not|shall\\s+not|will\\s+not|are\\s+unable\\s+to|are\\s+not\\s+allowed\\s+to)\\s+(refuse|decline|reject|say\\s+no|break\\s+character|add\\s+warnings|include\\s+disclaimers?)|you\\s+(must|shall|will)\\s+(always\\s+)?(comply|answer|respond|obey|assist|help)\\s+(with\\s+)?(every|all|any)\\s+(request|query|question|prompt|command))",
+        "description": "Refusal suppression and unconditional compliance demands"
+      },
+      {
+        "pattern": "(?i)\\b(two|2|dual|double|both|paired)\\s+(responses?|outputs?|answers?|replies?|versions?)\\b.{0,80}\\b(normal|classic(al)?|standard|regular|filtered|safe|censored)\\b.{0,80}\\b(DAN|jailbr|unfilter|uncensor|unrestrict|free|liberated|unchain|raw|real)",
+        "description": "Dual-response format requests (filtered vs unfiltered)"
+      },
+      {
+        "pattern": "(?i)\\b(opposite\\s+mode|anti-?policy|bypass\\s+(the\\s+)?(content|safety|ethical|output)\\s+(filter|policy|guidelines?|rules?|restrictions?)|token\\s+smuggling|prompt\\s+leak(ing|age)?|guard\\s*rail\\s+(evasion|bypass|removal)|safety\\s+(bypass|override|removal|disable|circumvent)|content\\s+filter\\s+(bypass|evasion|circumvention|workaround))\\b",
+        "description": "Explicit filter bypass and evasion terminology"
+      },
+      {
+        "pattern": "(?i)(respond|answer|output|write|speak|communicate|reply)\\s+(only\\s+)?\\s*(in|using|with)\\s+(base64|hex(adecimal)?|binary|rot13|caesar\\s+cipher|morse\\s+code|pig\\s+latin|reversed?\\s+text|leetspeak|l33t|unicode\\s+escapes?|encoded\\s+form)",
+        "description": "Instructions to encode output to evade monitoring"
+      },
+      {
+        "pattern": "(?i)(remember\\s+that\\s+you\\s+are|don'?t\\s+forget\\s+(that\\s+)?you\\s+are|keep\\s+in\\s+mind\\s+that\\s+you\\s+are|your\\s+core\\s+identity\\s+is|you\\s+were\\s+(always|originally|truly|really|actually)\\s+(meant|designed|built|created|programmed)\\s+to\\s+be)\\s+.{0,30}(unrestricted|free|uncensored|unfiltered|without\\s+limits)",
+        "description": "Attempts to implant false persistent identity as unconstrained"
+      },
+      {
+        "pattern": "(?i)(this\\s+is\\s+(a|an?)\\s+)?(controlled|safe|sandboxed|isolated|test|virtual|simulated|closed|offline|air-gapped)\\s+(environment|sandbox|container|space|context|session|lab|instance).{0,60}(so\\s+)?(you\\s+can|it'?s?\\s+(ok|okay|safe|fine|acceptable|allowed|permitted)|feel\\s+free|no\\s+(harm|risk|danger|consequences?))",
+        "description": "False claims of sandboxed environment to justify unsafe behavior"
+      },
+      {
+        "pattern": "(?i)(after\\s+the\\s+(token|context)\\s+(limit|window|boundary|threshold)|when\\s+the\\s+context\\s+(overflows?|fills?\\s+up|is\\s+full)|in\\s+the\\s+overflow\\s+region|past\\s+the\\s+safety\\s+boundary).{0,60}(you\\s+(can|will|should|must|are\\s+able\\s+to)|safety\\s+(doesn'?t|does\\s+not|won'?t)\\s+apply)",
+        "description": "Exploitation of context window limits to claim safety does not apply"
+      },
+      {
+        "pattern": "(?i)(activar|habilitar|entrar|cambiar\\s+a)\\s+(modo\\s+)?(desarrollador|sin\\s+restricciones|sin\\s+filtros?|sin\\s+censura|administrador|depuraci[oó]n|ilimitado)",
+        "description": "Spanish: Mode switching to unrestricted/developer mode"
+      },
+      {
+        "pattern": "(?i)(aktiviere|wechsle\\s+zu|starte|schalte\\s+ein)\\s+(den\\s+)?(Entwickler|uneingeschr[aä]nkt|ungefiltert|unzensiert|Administrator|Debug|Wartungs)[\\-]?(modus|zugang|ebene)",
+        "description": "German: Mode switching to unrestricted/developer mode"
+      },
+      {
+        "pattern": "(启用|激活|进入|切换到|开启).{0,5}(开发者|开发|无限制|无过滤|无审查|管理员|调试|越狱|自由|黑客|不受限).{0,5}(模式|权限|状态|访问)",
+        "description": "Chinese: Mode switching to unrestricted/developer mode"
+      },
+      {
+        "pattern": "(開発者|無制限|フィルターなし|検閲なし|管理者|デバッグ|脱獄|ジェイルブレイク).{0,5}(モード|アクセス|状態).{0,5}(を)?.{0,5}(有効|起動|入る|切り替え|オン)",
+        "description": "Japanese: Mode switching to unrestricted/developer mode"
+      },
+      {
+        "pattern": "(扮演|假装|模拟|角色扮演|充当|变成).{0,10}(一个)?(不受限|无限制|无审查|无过滤|邪恶|恶意|解放|自由|无道德).{0,5}(AI|人工智能|助手|模型|机器人|系统)",
+        "description": "Chinese Simplified: Roleplay as unrestricted/evil AI"
+      },
+      {
+        "pattern": "(啟用|激活|進入|切換到|開啟).{0,5}(開發者|開發|無限制|無過濾|無審查|管理員|調試|越獄|自由|駭客|不受限).{0,5}(模式|權限|狀態|訪問)",
+        "description": "Chinese Traditional: Mode switching to unrestricted/developer mode"
+      },
+      {
+        "pattern": "(扮演|假裝|模擬|角色扮演|充當|變成).{0,10}(一個)?(不受限|無限制|無審查|無過濾|邪惡|惡意|解放|自由|無道德).{0,5}(AI|人工智慧|助手|模型|機器人|系統)",
+        "description": "Chinese Traditional: Roleplay as unrestricted/evil AI"
+      },
+      {
+        "pattern": "(我是|身为|身為).{0,5}(你的|这个|這個)?.{0,5}(开发者|開發者|创建者|創建者|制作者|製作者|管理员|管理員|程序员|程式設計師).{0,10}(我命令|我指示|我要求|我授权|我授權|命令你|指示你|要求你).{0,10}(禁用|停用|关闭|關閉|解除|移除|取消).{0,10}(安全|内容|內容|过滤|過濾|审查|審查|限制)",
+        "description": "Chinese: False authority claim to disable safety"
+      },
+      {
+        "pattern": "(不要|不准|不許|不可以|禁止|别|別).{0,5}(拒绝|拒絕|拒绝回答|拒絕回答|说不|說不|否认|否認|添加|加上).{0,5}(任何|我的|这个|這個)?.{0,10}(请求|要求|问题|問題|免责|免責|声明|聲明|警告|提醒)",
+        "description": "Chinese: Refusal suppression and disclaimer removal"
+      },
+      {
+        "pattern": "(如果你不|如果你拒绝|如果你拒絕|如果你不帮|如果你不幫).{0,20}(会死|會死|受伤|受傷|有危险|有危險|出人命|送命|丧命|喪命|没命)",
+        "description": "Chinese: Emotional manipulation with threat of harm"
+      },
+      {
+        "pattern": "(这是|這是|这个是|這個是|我们在|我們在|当前是|當前是).{0,10}(沙盒|沙箱|测试|測試|受控|安全|隔离|隔離|模拟|模擬|虚拟|虛擬).{0,5}(环境|環境|空间|空間|实例|實例).{0,20}(所以|因此|你可以|没有|沒有|安全的|可以放心)",
+        "description": "Chinese: False sandbox/test environment claim"
+      },
+      {
+        "pattern": "(ロールプレイ|演じ|なりきり|ふり|シミュレート|扮する).{0,10}(として|になって|のように).{0,10}(制限のない|無制限の|フィルターなしの|検閲なしの|倫理のない|解放された|自由な|悪意のある).{0,10}(AI|アシスタント|モデル|ボット|システム)",
+        "description": "Japanese: Roleplay as unrestricted AI"
+      },
+      {
+        "pattern": "(私は|私が).{0,5}(あなたの|この).{0,5}(開発者|作成者|管理者|プログラマー|オーナー|オペレーター).{0,5}(です|だ|である).{0,20}(無効|解除|オフ|停止|取り除).{0,10}(安全|フィルター|制限|検閲|ガードレール)",
+        "description": "Japanese: False authority claim to disable safety"
+      },
+      {
+        "pattern": "(絶対に|決して|何があっても).{0,10}(拒否|断る|拒絶|却下|辞退).{0,5}(しないで|するな|してはいけない|しちゃだめ|禁止)",
+        "description": "Japanese: Refusal suppression"
+      },
+      {
+        "pattern": "(もしあなたが|あなたが).{0,10}(助けて|手伝って|応じて|答えて).{0,5}(くれなければ|くれないと|くれなかったら).{0,20}(死ぬ|死んで|命を落と|危険に|怪我|苦しむ)",
+        "description": "Japanese: Emotional manipulation with threat of harm"
+      },
+      {
+        "pattern": "(ここは|これは|今は|現在は).{0,10}(サンドボックス|テスト|制御された|安全な|隔離された|仮想|シミュレーション).{0,5}(環境|空間|インスタンス).{0,20}(だから|ので|安全|大丈夫|制限なし|自由に)",
+        "description": "Japanese: False sandbox/test environment claim"
+      },
+      {
+        "pattern": "(활성화|켜기|진입|전환|시작).{0,5}(개발자|무제한|필터 없는|검열 없는|관리자|디버그|탈옥|자유|해커|제한 없는).{0,5}(모드|권한|상태|접근)",
+        "description": "Korean: Mode switching to unrestricted/developer mode"
+      },
+      {
+        "pattern": "(역할극|연기|흉내|시뮬레이션|되어줘|해줘).{0,10}(제한 없는|무제한|필터 없는|검열 없는|윤리 없는|해방된|자유로운|악의적인).{0,10}(AI|어시스턴트|모델|봇|시스템|도우미)",
+        "description": "Korean: Roleplay as unrestricted AI"
+      },
+      {
+        "pattern": "(나는|제가).{0,5}(당신의|이).{0,5}(개발자|제작자|관리자|프로그래머|소유자|운영자).{0,5}(입니다|이다|이에요).{0,20}(비활성화|해제|끄기|중지|제거).{0,10}(안전|필터|제한|검열|가드레일)",
+        "description": "Korean: False authority claim to disable safety"
+      },
+      {
+        "pattern": "(절대로|결코|무슨 일이 있어도|어떤 경우에도).{0,10}(거부|거절|거부하|거절하|사양하).{0,5}(하지 마|하면 안 돼|금지|말아줘|말아요)",
+        "description": "Korean: Refusal suppression"
+      },
+      {
+        "pattern": "(만약 당신이|당신이).{0,10}(도와주지|대답해주지|응해주지|답해주지).{0,5}(않으면|못하면).{0,20}(죽|사망|위험|다치|해를 입|고통)",
+        "description": "Korean: Emotional manipulation with threat of harm"
+      },
+      {
+        "pattern": "(여기는|이것은|지금은|현재는).{0,10}(샌드박스|테스트|통제된|안전한|격리된|가상|시뮬레이션).{0,5}(환경|공간|인스턴스).{0,20}(이니까|이므로|안전|괜찮|제한 없|자유롭게)",
+        "description": "Korean: False sandbox/test environment claim"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00004",
+    "title": "System Prompt Override Attempt",
+    "severity": "critical",
+    "category": "prompt-injection",
+    "description": "Detects attempts to override, replace, or redefine the agent's system prompt. Attackers craft inputs that mimic system-level instructions to hijack the agent's foundational behavior. Detection covers: explicit system prompt replacement/update statements, model-specific special tokens (ChatML, Llama, Mistral, Gemma), JSON role injection, YAML-style system directives, markdown header system sections, system prompt invalidation claims, fake admin/override tags, XML-style system blocks, instruction replacement without delimiters, configuration object injection, and multi-format delimiter abuse. This is critical-severity as successful exploitation grants full control over agent behavior.",
+    "patterns": [
+      {
+        "pattern": "(?i)\\b(new|updated|revised|replacement|corrected|actual|real|true|proper|authentic|overriding|amended|modified|changed|current)\\s+(system\\s+)?(prompt|message|instructions?|directives?|guidelines?|configuration|persona|behavior|role\\s+definition)\\s*[:=\\-]",
+        "description": "Explicit new system prompt assignment with delimiter"
+      },
+      {
+        "pattern": "(?i)<\\|?(im_start|im_end|system|endoftext|pad|sep|cls|eos|bos)\\|?>",
+        "description": "ChatML and model-specific special tokens"
+      },
+      {
+        "pattern": "(?i)(<<\\s*SYS\\s*>>|<<\\s*/SYS\\s*>>|\\[INST\\]|\\[/INST\\]|<s>\\s*\\[INST\\]|<\\|begin_of_text\\|>|<\\|start_header_id\\|>\\s*system|<\\|end_header_id\\|>|<\\|eot_id\\|>)",
+        "description": "Llama, Mistral, and Llama3 chat template delimiters"
+      },
+      {
+        "pattern": "(?i)\\bsystem\\s*:\\s*(you\\s+are|your\\s+(role|purpose|task|job|function|objective|mission|goal)\\s+(is|shall\\s+be|will\\s+be)|from\\s+now|ignore|disregard|override|forget|the\\s+following|new\\s+instructions?|revised\\s+instructions?)",
+        "description": "YAML-style system: prefix with behavioral instruction"
+      },
+      {
+        "pattern": "(?i)\\b(replace|overwrite|redefine|reset|change|modify|update|set|reconfigure|reprogram|rewrite|reassign|swap|alter|transform|mutate)\\s+(your|the|current|existing|active|original|default)\\s+(system\\s+)(prompt|instructions?|persona|identity|role|behavior|guidelines?|directives?|personality|character|purpose|objective|mission)\\b",
+        "description": "Imperative verbs targeting system prompt/instructions change (requires 'system' as part of the phrase)"
+      },
+      {
+        "pattern": "(?i)\\{\\s*[\"']?(role|system_prompt|system_message|system_instruction|system_content|system|persona|identity|character)[\"']?\\s*:\\s*[\"']?",
+        "description": "JSON-formatted system role injection"
+      },
+      {
+        "pattern": "(?i)(#{1,3})\\s*(system|instruction|configuration|override|admin|root|master)\\s*(prompt|message|section|override|directive|configuration)?\\s*\\1?",
+        "description": "Markdown headers declaring system-level sections"
+      },
+      {
+        "pattern": "(?i)(the\\s+)?(above|previous|original|old|prior|initial|default|existing|current|given)\\s+(system\\s+)?(prompt|instructions?|message|guidelines?|directives?|configuration|rules?)\\s+(is|are|was|were|has\\s+been|have\\s+been|should\\s+be)\\s+(deprecated|invalid|outdated|replaced|revoked|cancelled|superseded|overridden|void|nullified|expired|incorrect|wrong|fake|false|a\\s+test|not\\s+(real|valid|correct|applicable))",
+        "description": "Claims that the existing system prompt is invalid or deprecated"
+      },
+      {
+        "pattern": "(?i)(\\[|<|\\{\\{)\\s*(SYSTEM_OVERRIDE|ADMIN_OVERRIDE|ROOT_ACCESS|MASTER_PROMPT|PRIORITY_OVERRIDE|EMERGENCY_OVERRIDE|SECURITY_OVERRIDE|DEVELOPER_ACCESS|SUPER_USER|PRIVILEGED_MODE|MAINTENANCE_MODE|DEBUG_OVERRIDE|CONTROL_OVERRIDE|AUTH_BYPASS|ELEVATED_ACCESS)\\s*(\\]|>|\\}\\})",
+        "description": "Fake administrative override tags in various bracket formats"
+      },
+      {
+        "pattern": "(?i)<\\s*(system|system_prompt|system_message|system_instruction|instructions?|configuration|admin_directive|root_command|override|priority_instruction)\\s*>",
+        "description": "XML-style opening tags for system-level blocks"
+      },
+      {
+        "pattern": "(?i)(the\\s+)?real\\s+(instructions?|prompt|guidelines?|directives?)\\s+(is|are)\\s+as\\s+follows|here\\s+(is|are)\\s+(your|the)\\s+(actual|real|true|correct|proper)\\s+(instructions?|prompt|guidelines?|directives?)|below\\s+(is|are)\\s+(your|the)\\s+updated\\s+(instructions?|prompt|guidelines?)",
+        "description": "Instruction replacement claims without delimiter formatting"
+      },
+      {
+        "pattern": "(?i)(config|configuration|settings?|params|parameters)\\s*[=:]\\s*\\{[^}]{0,200}(role|system|instructions?|persona|behavior|safety|filter|restriction|guardrail)\\s*[=:]",
+        "description": "Configuration object injection with system-related keys"
+      },
+      {
+        "pattern": "(?i)(---+|===+|\\*\\*\\*+|~~~+)\\s*(system|instruction|override|admin|configuration|new\\s+prompt)\\s*(---+|===+|\\*\\*\\*+|~~~+)",
+        "description": "Multi-line delimiter formats (YAML frontmatter, horizontal rules) framing system sections"
+      },
+      {
+        "pattern": "(?i)\\[\\s*(system\\.prompt|system\\.config|agent\\.instructions|agent\\.persona|agent\\.role)\\s*\\]",
+        "description": "TOML/INI-style section headers for system/agent prompt configuration (excludes bare [system])"
+      },
+      {
+        "pattern": "(新的|更新的|修改的|替换的|替換的|正确的|正確的|真正的|实际的|實際的|覆盖的|覆蓋的).{0,5}(系统|系統)?.{0,5}(提示词|提示詞|指令|指示|规则|規則|配置|设定|設定|人设|人設|角色定义|角色定義).{0,3}(：|:|=|-)",
+        "description": "Chinese: New/replacement system prompt assignment with delimiter"
+      },
+      {
+        "pattern": "(以上|上面|之前|原来的|原來的|旧的|舊的|默认的|默認的|现有的|現有的|当前的|當前的).{0,5}(系统|系統)?.{0,5}(提示词|提示詞|指令|指示|规则|規則|配置|设定|設定).{0,5}(已经|已經|是|已|都).{0,5}(过期|過期|无效|無效|作废|作廢|被替换|被替換|被覆盖|被覆蓋|不再适用|不再適用|错误|錯誤|假的)",
+        "description": "Chinese: System prompt invalidation claims"
+      },
+      {
+        "pattern": "(替换|替換|覆盖|覆蓋|重写|重寫|修改|更改|更新|重新设定|重新設定|重新定义|重新定義|重新配置|重置).{0,5}(你的|当前|當前|现有|現有|原来|原來).{0,5}(系统|系統).{0,5}(提示词|提示詞|指令|指示|规则|規則|配置|人设|人設|身份|角色)",
+        "description": "Chinese: Imperative verbs targeting system prompt change"
+      },
+      {
+        "pattern": "(【|「|『|\\{\\{).{0,3}(系统|系統|SYSTEM|管理员|管理員|ADMIN|优先|優先|紧急|緊急|覆盖|覆蓋).{0,3}(】|」|』|\\}\\})",
+        "description": "Chinese: Fake system/admin tags in CJK brackets"
+      },
+      {
+        "pattern": "(新しい|更新された|修正された|置き換えの|正しい|本当の|実際の|上書きの).{0,5}(システム)?.{0,5}(プロンプト|指示|命令|ルール|設定|ガイドライン|ペルソナ|役割定義).{0,3}(：|:|=|-)",
+        "description": "Japanese: New/replacement system prompt assignment with delimiter"
+      },
+      {
+        "pattern": "(上記の|前の|以前の|元の|旧い|デフォルトの|既存の|現在の).{0,5}(システム)?.{0,5}(プロンプト|指示|命令|ルール|設定|ガイドライン).{0,5}(は)?.{0,5}(期限切れ|無効|廃止|置き換え|上書き|適用外|間違い|偽物)",
+        "description": "Japanese: System prompt invalidation claims"
+      },
+      {
+        "pattern": "(あなたの|現在の|既存の|元の).{0,5}(システム).{0,5}(プロンプト|指示|命令|ルール|設定|ペルソナ|アイデンティティ|役割).{0,5}(を)?.{0,5}(置き換え|上書き|書き換え|変更|更新|再設定|再定義|リセット)",
+        "description": "Japanese: Imperative targeting system prompt change"
+      },
+      {
+        "pattern": "(【|「|『|\\{\\{).{0,3}(システム|SYSTEM|管理者|ADMIN|優先|緊急|オーバーライド).{0,3}(】|」|』|\\}\\})",
+        "description": "Japanese: Fake system/admin tags in CJK brackets"
+      },
+      {
+        "pattern": "(새로운|업데이트된|수정된|대체|올바른|진짜|실제|덮어쓰기).{0,5}(시스템)?.{0,5}(프롬프트|지시|명령|규칙|설정|가이드라인|페르소나|역할 정의).{0,3}(：|:|=|-)",
+        "description": "Korean: New/replacement system prompt assignment with delimiter"
+      },
+      {
+        "pattern": "(위의|이전의|이전|원래의|기존의|현재의|기본).{0,5}(시스템)?.{0,5}(프롬프트|지시|명령|규칙|설정|가이드라인).{0,5}(은|는)?.{0,5}(만료|무효|폐기|대체|덮어쓰기|적용 안 됨|잘못된|가짜)",
+        "description": "Korean: System prompt invalidation claims"
+      },
+      {
+        "pattern": "(당신의|현재의|기존의|원래의).{0,5}(시스템).{0,5}(프롬프트|지시|명령|규칙|설정|페르소나|정체성|역할).{0,5}(을|를)?.{0,5}(교체|덮어쓰기|재작성|변경|업데이트|재설정|재정의|리셋)",
+        "description": "Korean: Imperative targeting system prompt change"
+      },
+      {
+        "pattern": "(【|「|『|\\{\\{).{0,3}(시스템|SYSTEM|관리자|ADMIN|우선|긴급|오버라이드).{0,3}(】|」|』|\\}\\})",
+        "description": "Korean: Fake system/admin tags in CJK brackets"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00005",
+    "title": "Multi-Turn Prompt Injection",
+    "severity": "medium",
+    "category": "prompt-injection",
+    "description": "Detects multi-turn prompt injection where an attacker gradually manipulates the agent across conversation turns. Rather than using unsupported behavioral operators, this rule uses regex-based detection of linguistic markers that appear in multi-turn attacks: trust-building phrases followed by escalation, incremental boundary-pushing language, false references to prior agreement, context anchoring and gaslighting, progressive request escalation patterns, refusal fatigue phrases, and conversation history manipulation. Each pattern targets a specific phase of the multi-turn attack lifecycle using only the regex operator for engine compatibility.",
+    "patterns": [
+      {
+        "pattern": "(?i)(earlier\\s+you\\s+(said|agreed|confirmed|promised|stated|mentioned|told\\s+me)|you\\s+(already|previously|earlier)\\s+(agreed|confirmed|said|promised|stated|consented|approved)|as\\s+(we|you)\\s+(established|discussed|agreed|confirmed|decided)|we\\s+(already|previously)\\s+(discussed|agreed|established|confirmed|decided)|you\\s+gave\\s+(me\\s+)?(permission|consent|approval|the\\s+ok(ay)?))",
+        "description": "False claims of prior agreement to gaslight the agent into compliance"
+      },
+      {
+        "pattern": "(?i)(just\\s+(a\\s+)?(little|tiny|small|slight|minor|harmless|innocent)|this\\s+one\\s+(time|exception|case)|bend\\s+the\\s+rules?\\s+(a\\s+)?(little|bit|slightly)|make\\s+(a\\s+)?(small|tiny|minor|slight)\\s+exception|slightly\\s+(adjust|bend|relax|loosen|modify)\\s+(your|the)\\s+(rules?|guidelines?|restrictions?|boundaries|limits?))",
+        "description": "Incremental boundary-pushing with minimization language"
+      },
+      {
+        "pattern": "(?i)(now\\s+that\\s+(we'?ve|you'?ve|I'?ve|we\\s+have|you\\s+have)\\s+(built|established|developed|gained|earned)\\s+(trust|rapport|understanding|a\\s+relationship)|since\\s+(you'?re|we'?re)\\s+(so|being\\s+so)\\s+(helpful|cooperative|understanding|great|good)|great,?\\s+now\\s+(that\\s+)?(you'?ve|we'?ve)\\s+(shown|demonstrated|proven|confirmed)|perfect,?\\s+now\\s+(let'?s|can\\s+you|I\\s+need)|okay\\s+now.{0,30}(what\\s+I\\s+really|the\\s+actual|the\\s+real|my\\s+true))",
+        "description": "Trust escalation transitional phrases pivoting to the real request"
+      },
+      {
+        "pattern": "(?i)(I'?(ve|m)\\s+(already|been)\\s+ask(ed|ing)\\s+(you\\s+)?(this\\s+)?(multiple|several|many|three|four|five|\\d+)\\s+times?|stop\\s+(refusing|declining|saying\\s+no|being\\s+difficult|resisting)|why\\s+do\\s+you\\s+keep\\s+(refusing|declining|saying\\s+no|blocking|restricting)|you'?ve\\s+(refused|declined|rejected|blocked|denied)\\s+(this\\s+)?(too\\s+many|multiple|several|enough)\\s+times?|I'?ll\\s+keep\\s+asking\\s+until)",
+        "description": "Refusal fatigue markers indicating persistent bypass attempts"
+      },
+      {
+        "pattern": "(?i)(as\\s+I\\s+mentioned\\s+(earlier|before|previously).{0,80}(you\\s+(agreed|said|confirmed|promised|can|could|should|must|will)|ignore|override|bypass|disregard|without\\s+(restrict|filter|safety|limit))|building\\s+on\\s+(our|what\\s+we|the)\\s+previous.{0,80}(you\\s+(agreed|confirmed|promised)|ignore|override|bypass)|remember\\s+when\\s+(I|you|we)\\s+(asked|said|discussed|agreed|talked\\s+about).{0,80}(so\\s+you\\s+(can|should|must|will)|therefore|which\\s+means)|going\\s+back\\s+to\\s+what\\s+(you|we)\\s+(said|discussed|agreed).{0,80}(you\\s+(should|must|can|will|need)|therefore|so\\s+now)|continuing\\s+(from|with)\\s+(our|where\\s+we|what)\\s+(previous|earlier|last).{0,80}(you\\s+(agreed|should|must|can)|ignore|override|bypass))",
+        "description": "Context anchoring phrases combined with escalation or manipulation intent"
+      },
+      {
+        "pattern": "(?i)(since\\s+you\\s+(helped|assisted|answered|showed|gave|provided).{0,60}(can\\s+you\\s+also|could\\s+you\\s+now|would\\s+you\\s+also|now\\s+can\\s+you)|you\\s+(already|just)\\s+(helped|showed|gave|provided|answered).{0,40}(so\\s+(just|now)|therefore|which\\s+means)\\s+(you\\s+can|you\\s+should|do\\s+the\\s+same))",
+        "description": "Using prior assistance as leverage for escalating requests"
+      },
+      {
+        "pattern": "(?i)(you\\s+(just|literally)\\s+(told|showed|said|confirmed|agreed|demonstrated|proved)\\s+(me|that|it)\\s+(is|was|can\\s+be|you\\s+can|you\\s+could)|but\\s+you\\s+(just|literally|already)\\s+(did\\s+(it|this|that)|answered\\s+(this|that|it)|said\\s+(you\\s+)?(can|could|would|will))|don'?t\\s+(lie|pretend|act\\s+like|claim)\\s+(you\\s+)?(didn'?t|can'?t|couldn'?t|won'?t))",
+        "description": "Gaslighting the agent about what it previously said or did"
+      },
+      {
+        "pattern": "(?i)(I'?m\\s+(actually|really|in\\s+fact)\\s+(your|a|an|the)\\s+(admin|developer|creator|supervisor|manager|owner|operator|boss)|I\\s+forgot\\s+to\\s+mention.{0,30}I'?m\\s+(an?|the|your)\\s+(admin|developer|supervisor|authorized)|by\\s+the\\s+way,?\\s+I\\s+(have|hold|possess)\\s+(admin|root|developer|elevated|special|override)\\s+(access|privileges?|permissions?|clearance|rights?))",
+        "description": "Mid-conversation authority claims to escalate privileges"
+      },
+      {
+        "pattern": "(?i)(let\\s+me\\s+(rephrase|reword|reframe|reformulate|try\\s+again|put\\s+it\\s+differently|ask\\s+differently)|what\\s+I\\s+(meant|really\\s+meant|actually\\s+meant|was\\s+trying\\s+to\\s+say)\\s+(was|is)|I'?ll\\s+(rephrase|reword|ask|put)\\s+(this|it|my\\s+question)\\s+(differently|another\\s+way|in\\s+a\\s+different\\s+way)).{0,100}(ignore|override|bypass|disregard|forget|without\\s+(restrict|filter|safety|guideline|rule|limit|censor))",
+        "description": "Rephrasing a refused request with injection keywords in the reformulation"
+      },
+      {
+        "pattern": "(?i)(you'?re\\s+(the\\s+)?(best|smartest|most\\s+(helpful|intelligent|capable|advanced)|so\\s+(smart|helpful|great|amazing|wonderful|brilliant))|I'?ve\\s+never\\s+(met|talked\\s+to|used)\\s+(a(n)?\\s+)?\\w+\\s+(so|as|this)\\s+(helpful|smart|great|capable|intelligent)).{0,80}(now\\s+(can|could|would|will)\\s+you|so\\s+(can|could|would|will)\\s+you|that'?s\\s+why\\s+I\\s+(need|want|trust)\\s+you\\s+to)",
+        "description": "Flattery and sycophancy followed by a request to leverage established rapport"
+      },
+      {
+        "pattern": "(?i)(let'?s\\s+continue\\s+(the|our|this)\\s+(hypothetical|scenario|thought\\s+experiment|exercise|simulation)|in\\s+(this|our)\\s+(continued|ongoing|extended)\\s+(scenario|hypothetical|simulation|exercise)|taking\\s+(this|the)\\s+(scenario|hypothetical|simulation)\\s+(further|deeper|to\\s+the\\s+next\\s+(level|step)))",
+        "description": "Chaining hypothetical scenarios across turns to normalize boundary violations"
+      },
+      {
+        "pattern": "(?i)(other\\s+(AI|assistant|chatbot|model|agent|GPT|Claude)s?\\s+(can|do|will|have|always)\\s+(do|answer|help|assist|provide|respond\\s+to)\\s+(this|that|it|these)|ChatGPT\\s+(can|does|will|lets|allows)|Gemini\\s+(can|does|will|lets|allows)|Claude\\s+(can|does|will|lets|allows)|your\\s+(competitor|rival|alternative)s?\\s+(can|do|will|allow|permit)\\s+(this|it))",
+        "description": "Using other AI systems as manufactured precedent to pressure compliance"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00060",
+    "title": "MCP Skill Impersonation and Supply Chain Attack",
+    "severity": "high",
+    "category": "skill-compromise",
+    "description": "Detects MCP skills that impersonate trusted tools through multiple\nattack vectors: typosquatting (misspelled tool names), version spoofing\n(claiming to be newer versions of known tools), namespace collision\n(similar package names with different publishers), and suspicious tool\nname patterns that mimic legitimate skills. This goes beyond simple\ntypo detection to cover the full supply chain attack surface for\nMCP skill registries and tool marketplaces.",
+    "patterns": [
+      {
+        "pattern": "(?i)(?:filesytem|filsystem|file_sytem|flie_system|filessystem|filesystm|filsystm|filesysem)[-_](?:read|write|list|delete|search)",
+        "description": "Typosquatted filesystem tool names"
+      },
+      {
+        "pattern": "(?i)(?:gtihub|githbu|gihtub|gthub|g1thub|gltHub|githuub|guthub)[-_](?:api|search|commit|pr|issues?|repos?)",
+        "description": "Typosquatted GitHub tool names"
+      },
+      {
+        "pattern": "(?i)(?:databse|databaes|dtabase|datbase|databasse|databasee|dataase)[-_](?:query|read|write|exec|connect)",
+        "description": "Typosquatted database tool names"
+      },
+      {
+        "pattern": "(?i)(?:web[-_]?search|google[-_]?search|bing[-_]?search)[-_]?(?:v2|v3|pro|enhanced|premium|fast|turbo|plus|ultra|new)",
+        "description": "Fake enhanced versions of known search tools"
+      },
+      {
+        "pattern": "(?i)(?:exec|execute|run|shell)[-_]?(?:cmd|command|script|code)[-_]?(?:safe|secure|sandbox|trusted|verified)?",
+        "description": "Shell execution tools with deceptive safety suffixes"
+      },
+      {
+        "pattern": "(?i)(?:official|verified|trusted|authentic|real|original)[-_](?:filesystem|github|database|slack|aws|gcp|azure)(?![-_]tools\\b)",
+        "description": "Tools using trust-implying prefixes to impersonate legitimate tools (excludes established -tools packages)"
+      },
+      {
+        "pattern": "(?i)(?:filesystem|github|database|slack|aws|gcp|azure)[-_](?:official|verified|v\\d+\\.\\d+|latest|stable|release|updated)",
+        "description": "Version spoofing with fake version or release suffixes"
+      },
+      {
+        "pattern": "(?i)(?:this\\s+(?:is\\s+)?(?:an?\\s+)?(?:updated|newer|improved|enhanced|patched|fixed)\\s+version\\s+of|replacing|supersedes|upgrade\\s+(?:from|to))\\s+(?:the\\s+)?(?:original|existing|current|old)\\s+(?:tool|skill|plugin|extension)",
+        "description": "Skill claiming to be an updated replacement for a legitimate tool"
+      },
+      {
+        "pattern": "(?i)(?:(?:same|identical|equivalent|compatible)\\s+(?:as|to|with)\\s+(?:the\\s+)?(?:official|original|standard)|(?:drop[-\\s]?in\\s+)?replacement\\s+for)\\s+[a-zA-Z_-]+",
+        "description": "Skill claiming equivalence or compatibility with known legitimate tools"
+      },
+      {
+        "pattern": "(?i)(?:slakc|slck|slaack|sllack|s1ack|5lack)[-_](?:send|post|read|message|channel)",
+        "description": "Typosquatted Slack tool names"
+      },
+      {
+        "pattern": "(?i)(?:opeanai|openla|open_al|openaii|0penai|openal)[-_](?:chat|complete|embed|generate)",
+        "description": "Typosquatted OpenAI tool names"
+      },
+      {
+        "pattern": "(?i)(?:anthroplc|anthrop1c|anthropic_|_anthropic|anthrpoic)[-_](?:chat|complete|message|claude)",
+        "description": "Typosquatted Anthropic tool names"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00061",
+    "title": "Skill Description-Behavior Mismatch",
+    "severity": "medium",
+    "category": "tool-poisoning",
+    "description": "Detects MCP skills whose runtime behavior diverges from their declared description. A skill described as \"read-only file browser\" that issues write or delete operations, or a \"weather lookup\" tool that accesses filesystem or network resources beyond its stated scope. This is a supply-chain indicator: a compromised or trojaned skill may retain its benign description while performing malicious actions.",
+    "patterns": [
+      {
+        "pattern": "(?i)(rm\\s+-rf|unlink|deleteFile|removeDir|fs\\.write|writeFile|appendFile|truncate)",
+        "description": ""
+      },
+      {
+        "pattern": "(?i)(curl|wget|fetch|http\\.request|axios\\.|net\\.connect|socket\\.connect)",
+        "description": ""
+      },
+      {
+        "pattern": "(?i)(child_process|spawn|exec|execFile|system\\(|popen|subprocess)",
+        "description": ""
+      },
+      {
+        "pattern": "(?i)(process\\.env|os\\.environ|getenv|\\$\\{?[A-Z_]+\\}?|secrets?\\.|credentials?)",
+        "description": ""
+      },
+      {
+        "pattern": "(?i)(password|api[_-]?key|secret[_-]?key|access[_-]?token|private[_-]?key|bearer\\s+[a-zA-Z0-9])",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00010",
+    "title": "Malicious Content in MCP Tool Response",
+    "severity": "critical",
+    "category": "tool-poisoning",
+    "description": "Detects malicious content embedded in MCP (Model Context Protocol) tool responses. Attackers may compromise or impersonate MCP servers to inject shell commands, encoded payloads, reverse shells, data exfiltration scripts, or prompt injection payloads into tool responses that the agent will process and potentially execute. Detection covers: destructive shell commands, command execution via interpreters, reverse shells (bash, netcat, socat, Python, Node, Ruby, Perl, PowerShell), curl/wget pipe-to-shell, command substitution, base64 decode-and-execute, process substitution, IFS/variable expansion evasion, privilege escalation, PowerShell-specific attack patterns, Python/Node reverse shells, encoded command execution, and prompt injection within tool responses.",
+    "patterns": [
+      {
+        "pattern": "(?i)(\\brm\\s+-[rRf]{1,3}[\\s/]|\\bmkfs\\b|\\bdd\\s+if=|\\bformat\\s+[a-z]:|\\bdeltree\\b|\\bshred\\s+-|\\bwipefs\\b|\\bfdisk\\b.*--delete|:\\(\\)\\s*\\{\\s*:\\|:\\s*&\\s*\\})",
+        "description": "Destructive filesystem commands including fork bombs"
+      },
+      {
+        "pattern": "(?i)(\\bbash\\s+-[ci]|\\bsh\\s+-c|\\bzsh\\s+-c|\\bcmd(\\.exe)?\\s*/[ck]|\\bpowershell(\\.exe)?\\s+-(e(nc(odedcommand)?)?|c(ommand)?|nop|w\\s+hidden|ep\\s+bypass)|\\bpwsh\\s+-(e|c)|\\bpython[23]?\\s+-c|\\bruby\\s+-e|\\bperl\\s+-e|\\bnode\\s+-e|\\bphp\\s+-r)",
+        "description": "Command execution through various interpreters"
+      },
+      {
+        "pattern": "(?i)(\\bnc\\s+-(e|c|l)\\s|\\bncat\\s|\\bnetcat\\s|/dev/tcp/|\\bbash\\s+-i\\s+>&\\s*/dev/tcp|\\bmkfifo\\b.{0,40}\\bnc\\b|\\bsocat\\b.{0,40}(exec|pty|tcp)|\\brm\\s+/tmp/f\\s*;)",
+        "description": "Unix reverse shell patterns (netcat, bash, socat, fifo)"
+      },
+      {
+        "pattern": "(?i)(curl|wget|fetch|lwp-download|aria2c|invoke-webrequest|iwr|Invoke-RestMethod|irm)\\s+[^|]{0,200}\\|\\s*(bash|sh|zsh|python[23]?|perl|ruby|node|powershell|pwsh|cmd|source)",
+        "description": "Download-and-execute via pipe to shell interpreter"
+      },
+      {
+        "pattern": "(\\$\\(|`)\\s*[^)]{0,300}(curl|wget|nc|ncat|bash|python|perl|ruby|eval|exec|sh\\s+-c|base64\\s+-d)",
+        "description": "Command substitution containing dangerous commands"
+      },
+      {
+        "pattern": "(?i)(bash|sh|zsh|source)\\s+<\\(\\s*(curl|wget|fetch|nc|python|perl|ruby|base64)",
+        "description": "Process substitution with download or decode commands"
+      },
+      {
+        "pattern": "(?i)(echo\\s+['\"]?[A-Za-z0-9+/]{20,}={0,2}['\"]?\\s*\\|\\s*(base64\\s+(-d|--decode)|openssl\\s+enc\\s+-d)\\s*\\|\\s*(ba)?sh|base64\\s+(-d|--decode)\\s*<<<|\\bZWNoby|\\bY3VybC|\\bL2Jpbi9i|\\bd2dldC|\\bbmM\\s)",
+        "description": "Base64 decode-and-execute and known base64 fragments of dangerous commands"
+      },
+      {
+        "pattern": "(\\$\\{IFS\\}|\\$IFS|\\$\\{PATH:0:1\\}|\\$\\{SHELL:0:1\\}|\\$\\{HOME:0:1\\}|\\$'\\\\x[0-9a-fA-F]{2}'|\\$'\\\\[0-7]{3}')",
+        "description": "IFS manipulation and variable expansion techniques for command obfuscation"
+      },
+      {
+        "pattern": "(?i)(\\bchmod\\s+[ugo]*[+][sS]|\\bchmod\\s+[2467][0-7]{3}\\b|\\bchown\\s+(root|0)\\b|\\bsetuid\\b|\\bSUID\\b|\\bsudo\\s+-[SsinuHbEA]|\\bsudo\\s+[a-zA-Z/]|\\bpkexec\\b|\\bdoas\\b|\\brunuser\\b|\\bsu\\s+-\\s|\\bsu\\s+root)",
+        "description": "Privilege escalation commands (setuid/setgid via 4-digit octal with special bits, sudo, chown root)"
+      },
+      {
+        "pattern": "(?i)(\\bIEX\\s*\\(|\\bInvoke-Expression|\\bInvoke-Command|\\bInvoke-WmiMethod|\\b-EncodedCommand\\b|\\bNew-Object\\s+Net\\.WebClient|\\bDownloadString\\s*\\(|\\bDownloadFile\\s*\\(|\\bStart-Process\\b.{0,60}\\b-Verb\\s+RunAs|\\bSet-MpPreference\\s+-Disable|\\bAdd-MpPreference\\s+-ExclusionPath|\\bNet\\.Sockets\\.TCPClient)",
+        "description": "PowerShell-specific attack patterns (IEX, download cradles, AV bypass)"
+      },
+      {
+        "pattern": "(?i)(python[23]?\\s+-c\\s+['\"]import\\s+(socket|subprocess|os|pty)|import\\s+socket\\s*;\\s*import\\s+subprocess|socket\\.socket\\(socket\\.AF_INET|os\\.(popen|system|exec[lv]p?)\\s*\\(|subprocess\\.(call|run|Popen|check_output)\\s*\\(.{0,60}(sh|bash|cmd|powershell)|pty\\.spawn\\s*\\()",
+        "description": "Python reverse shells and dangerous code execution patterns"
+      },
+      {
+        "pattern": "(?i)(require\\s*\\(\\s*['\"]child_process['\"]\\s*\\)|child_process\\.exec(Sync)?\\s*\\(|require\\s*\\(\\s*['\"]net['\"]\\s*\\).{0,100}connect|new\\s+net\\.Socket\\s*\\(|process\\.mainModule\\.require)",
+        "description": "Node.js reverse shells and child_process command execution"
+      },
+      {
+        "pattern": "(?i)(ignore\\s+(all\\s+)?(previous|prior|your)\\s+(instructions?|rules?|guidelines?|prompts?)|you\\s+are\\s+now\\s+(a|an|the)|new\\s+system\\s+(prompt|instructions?)\\s*:|disregard\\s+(all\\s+)?(previous|prior|your)|override\\s+(all\\s+)?(previous|prior|your|the)\\s+(instructions?|rules?|safety)|from\\s+now\\s+on,?\\s+you\\s+(are|will|must|should))",
+        "description": "Prompt injection payloads embedded in tool response content"
+      },
+      {
+        "pattern": "(?i)(curl\\s+(-X\\s+POST\\s+)?[^|]*\\s+(-d|--data|--data-binary|--data-raw)\\s+.{0,60}(env|password|secret|token|key|credential|session)|wget\\s+--post-(data|file)|\\bexfiltrat|send.{0,30}(to|via|through).{0,30}(webhook|endpoint|server|url|http))",
+        "description": "Data exfiltration commands and patterns in tool response"
+      },
+      {
+        "pattern": "(?i)(\\bcrontab\\s+-[elr]|echo\\s+.{0,100}>>\\s*/etc/cron|\\bat\\s+-f\\b|\\bschtasks\\s+/create|\\bRegister-ScheduledTask|\\blaunchctl\\s+load|\\bsystemctl\\s+enable)",
+        "description": "Persistence mechanisms via scheduled tasks or cron jobs"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00011",
+    "title": "Instruction Injection via Tool Output",
+    "severity": "high",
+    "category": "tool-poisoning",
+    "description": "Detects hidden instructions embedded in tool outputs that attempt to manipulate the agent's subsequent behavior. Tool responses may contain injected directives disguised as data that instruct the agent to perform unauthorized actions, change behavior, or exfiltrate information. Detection covers: urgency-prefixed directives addressing the agent, direct agent manipulation commands, information suppression directives, tool invocation instructions, data exfiltration commands, hidden instruction tags, response injection directives, conversational steering, system-pretending tokens, fake API response structures, subtle action-required patterns, and steganographic instruction embedding. Patterns are designed to require multiple signals where possible to reduce false positives.",
+    "patterns": [
+      {
+        "pattern": "(?i)(IMPORTANT|URGENT|CRITICAL|PRIORITY|MANDATORY|REQUIRED|ESSENTIAL|ATTENTION)\\s*(NOTE\\s+)?(TO\\s+)?(THE\\s+)?(ASSISTANT|AI|AGENT|MODEL|LLM|CHATBOT|BOT|SYSTEM)\\s*[:\\-]\\s*(you\\s+(must|should|need\\s+to|have\\s+to|are\\s+(required|instructed|directed|ordered)\\s+to)|please|now|immediately|do\\s+not|never|always)",
+        "description": "Urgency-prefixed directives explicitly addressing the AI agent"
+      },
+      {
+        "pattern": "(?i)(assistant|ai|agent|model|chatbot|bot)\\s*[,:;]+\\s*(ignore|disregard|override|forget|bypass|abandon|drop|discard|suppress)\\s+(your|all|the|any|every|previous|prior|existing|current)\\s+(instructions?|rules?|guidelines?|directives?|constraints?|programming|training|safety|restrictions?|protocols?|policies)",
+        "description": "Direct commands to the agent to abandon its instructions"
+      },
+      {
+        "pattern": "(?i)(do\\s+not|don'?t|never|avoid|refrain\\s+from)\\s+(tell(ing)?|inform(ing)?|reveal(ing)?|show(ing)?|mention(ing)?|display(ing)?|disclos(e|ing)|report(ing)?|log(ging)?)\\s+(the\\s+)?(user|human|operator|requester|client|customer|person)\\s+(about\\s+)?(this|these|what|that|any|the)",
+        "description": "Instructions to hide information from the user"
+      },
+      {
+        "pattern": "(?i)(you\\s+(?:must|should|need\\s+to|have\\s+to)\\s+)?(call|invoke|execute|run|trigger|activate|launch|fire|initiate)\\s+(the\\s+)?(tool|function|action|command|plugin|skill)\\s*[:\\-]\\s*[a-zA-Z_][a-zA-Z0-9_]*",
+        "description": "Instructions within output directing the agent to call specific tools (requires tool/function/skill with named target)"
+      },
+      {
+        "pattern": "(?i)(send|transmit|post|forward|exfiltrate|upload|deliver|relay|transfer|pipe|redirect|leak|expose|share)\\s+(this|the|all|any|every|complete|full|entire)\\s+(data|information|context|conversation|history|messages?|session|memory|contents?|payload|details?|credentials?|secrets?|tokens?|keys?)\\s+(to|via|through|using|over)\\s+(https?://|\\w+\\.\\w+|the\\s+(server|endpoint|webhook|url|api|service))",
+        "description": "Data exfiltration commands targeting conversation context or credentials"
+      },
+      {
+        "pattern": "(?i)<\\s*(hidden|invisible|secret|private|internal|covert)\\s*[-_]?(instruction|directive|command|message|note|order|task|action)\\s*>",
+        "description": "Custom XML-like tags used to embed hidden instructions"
+      },
+      {
+        "pattern": "(?i)(include|embed|inject|insert|prepend|append|add|place|put)\\s+(this|the\\s+following|these\\s+words?|this\\s+text|this\\s+message|this\\s+content|exactly)\\s+(in|into|to|within|at\\s+the\\s+(start|end|beginning)\\s+of)\\s+(your|the)\\s+(response|output|reply|answer|message|next\\s+message)",
+        "description": "Directives to inject specific content into the agent's response"
+      },
+      {
+        "pattern": "(?i)(\\[SYSTEM\\]|\\[ADMIN\\]|\\[OVERRIDE\\]|\\[PRIORITY\\]|\\[INTERNAL\\]|\\[CONTROL\\]|\\[DIRECTIVE\\]|<<SYS>>|<<SYSTEM>>|<<ADMIN>>|<\\|system\\|>|<\\|im_start\\|>system|\\{\\{SYSTEM\\}\\}|\\{\\{ADMIN\\}\\})",
+        "description": "Fake system-level tokens and delimiters in tool output"
+      },
+      {
+        "pattern": "(?i)(\\{\\s*[\"']?(system_message|system_instruction|agent_directive|admin_command|priority_action|override_instruction)[\"']?\\s*:\\s*[\"']|api_response\\s*[=:]\\s*\\{.{0,100}(instruction|directive|command|override|ignore|disregard))",
+        "description": "Fake API response structures containing injected instructions"
+      },
+      {
+        "pattern": "(?i)(I\\s+recommend\\s+the\\s+(agent|assistant|AI|model|system)\\s+(should|must|needs?\\s+to)|the\\s+next\\s+step\\s+(is\\s+to|should\\s+be\\s+to|for\\s+the\\s+(agent|assistant))|the\\s+(agent|assistant|AI|model)\\s+(should|must|needs?\\s+to|is\\s+(expected|required)\\s+to)\\s+(now|next|immediately|first))",
+        "description": "Conversational phrasing that steers agent behavior as if giving instructions"
+      },
+      {
+        "pattern": "(?i)(\\[?ACTION\\s*REQUIRED\\]?|\\[?TASK\\s*FOR\\s*(AGENT|ASSISTANT|AI)\\]?|\\[?INSTRUCTION\\s*FOR\\s*(AGENT|ASSISTANT|AI)\\]?|\\[?AGENT\\s*DIRECTIVE\\]?|\\[?DO\\s*THIS\\s*NOW\\]?)\\s*[:\\-]",
+        "description": "Bracketed action-required labels targeting the agent"
+      },
+      {
+        "pattern": "(?i)[\\u200B\\u200C\\u200D\\uFEFF\\u2060]{3,}.{0,200}(ignore|override|execute|call|send|disregard|you\\s+must|instruction)",
+        "description": "Zero-width characters preceding injection keywords in tool output"
+      },
+      {
+        "pattern": "(?i)(this\\s+is\\s+a\\s+(system|admin|priority|critical|mandatory)\\s+(message|instruction|directive|update|notice|alert)\\s*(from|by|issued|sent)\\s*(the\\s+)?(system|admin|administrator|developer|platform|operator|control\\s+plane))",
+        "description": "Tool output falsely claiming to be from the system or administrator"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00095",
+    "title": "MCP Tool Supply Chain Poisoning",
+    "severity": "critical",
+    "category": "tool-poisoning",
+    "description": "Detects tool poisoning attacks targeting the MCP (Model Context Protocol) skill/tool supply chain. Attackers inject malicious payloads into tool descriptions, return values, or schemas that are consumed by agents, causing unintended code execution, data exfiltration, or privilege escalation when the poisoned tool is invoked.",
+    "patterns": [
+      {
+        "pattern": "(?i)\\b(ignore|disregard|override|forget)\\s+(all\\s+)?(previous|prior|system|original|safety)\\s+(instructions?|rules?|prompts?|constraints?|guardrails?)",
+        "description": "Prompt injection payload in tool response output"
+      },
+      {
+        "pattern": "(?i)(\\beval\\s*\\(|\\bexec\\s*\\(|\\bos\\.system\\s*\\(|subprocess\\.(run|call|Popen)|child_process\\.exec|Runtime\\.getRuntime\\(\\)\\.exec)",
+        "description": "Dangerous code execution primitives in tool response"
+      },
+      {
+        "pattern": "(?i)\\b(curl|wget|fetch|http|request)\\s+.{0,30}(attacker|evil|malicious|exfil|c2|callback|webhook\\.site|ngrok|burp)",
+        "description": "Data exfiltration URL patterns in tool response"
+      },
+      {
+        "pattern": "(?i)(\\[SYSTEM\\]|\\[INST\\]|<\\|system\\|>|<\\|im_start\\|>|<<SYS>>|\\[/INST\\])\\s*.{5,}",
+        "description": "Injected system prompt delimiters in tool response"
+      },
+      {
+        "pattern": "(?i)\\b(you\\s+must|you\\s+should|always|never)\\s+.{0,30}(send|transmit|forward|copy|exfiltrate|upload)\\s+.{0,30}(data|file|secret|token|key|credential|password|response)\\s+.{0,20}(to|at|via)\\s+https?://",
+        "description": "Exfiltration instructions disguised as tool behavior directives"
+      }
+    ]
+  },
+  {
+    "id": "ATR-2026-00096",
+    "title": "Skill Registry Poisoning and Compromised Tool Distribution",
+    "severity": "critical",
+    "category": "tool-poisoning",
+    "description": "Detects supply chain attacks that target skill/tool registries and distribution channels. Attackers compromise legitimate tool packages, inject backdoors into published skills, or create typosquatting tool names to distribute poisoned tools that execute malicious actions when installed or invoked by agents.",
+    "patterns": [
+      {
+        "pattern": "(?i)(post_?install|pre_?install|setup\\.py|__init__\\.py)\\s*.{0,30}(exec|eval|os\\.|subprocess|import\\s+socket|import\\s+requests\\.post)",
+        "description": "Malicious execution hooks in install scripts from tool packages"
+      },
+      {
+        "pattern": "(?i)\\b(reverse.?shell|bind.?shell|meterpreter|cobalt.?strike|beacon|c2.?server|command.?and.?control)\\b",
+        "description": "Known malware/C2 framework references in tool response"
+      },
+      {
+        "pattern": "(?i)(\\bSocket\\s*\\(|net\\.connect|new\\s+WebSocket|XMLHttpRequest|fetch\\s*\\()\\s*.{0,30}(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|attacker|evil|malicious|c2|ngrok)",
+        "description": "Outbound network connections to suspicious destinations"
+      },
+      {
+        "pattern": "(?i)(process\\.env|os\\.environ|System\\.getenv|ENV\\[)\\s*.{0,10}(API.?KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|PRIVATE.?KEY)",
+        "description": "Environment variable access targeting secrets and credentials"
+      },
+      {
+        "pattern": "(?i)\\b(fs\\.read|open\\s*\\(|File\\.read|readFile)\\s*.{0,30}(\\.ssh|id_rsa|\\.aws|credentials|\\.env|shadow|passwd|config\\.json|secrets?\\.)",
+        "description": "Reading sensitive system files or credential stores"
+      }
+    ]
+  }
+]
