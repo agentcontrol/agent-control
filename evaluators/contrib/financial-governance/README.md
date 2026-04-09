@@ -13,7 +13,7 @@ Tracks cumulative agent spend and enforces rolling budget limits. Stateful — r
 - **Per-transaction cap** — reject any single payment above a threshold (`BudgetLimit` with no window)
 - **Rolling period budget** — reject payments that would exceed a time-windowed budget (`BudgetWindow(kind="rolling", ...)`)
 - **Calendar-aligned budget** — reject payments that exceed a day/week/month budget (`BudgetWindow(kind="fixed", ...)`)
-- **Scoped budgets** — independent counters per channel, agent, or session via `scope_by`
+- **Scoped budgets** — per-dimension or composite counters via `scope_by`
 - **Pluggable storage** — abstract `SpendStore` protocol with built-in `InMemorySpendStore`; bring your own PostgreSQL, Redis, etc.
 - **Atomic enforcement** — `check_and_record()` prevents TOCTOU races in single-process deployments
 
@@ -31,6 +31,9 @@ Static policy checks with no state tracking. Enforces structural rules on indivi
 # From the repo root (development)
 cd evaluators/contrib/financial-governance
 pip install -e ".[dev]"
+
+# Or install through the builtin package extra
+pip install "agent-control-evaluators[financial-governance]"
 ```
 
 ## Configuration

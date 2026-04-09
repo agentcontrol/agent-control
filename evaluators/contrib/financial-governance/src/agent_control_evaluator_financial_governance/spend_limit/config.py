@@ -84,8 +84,11 @@ class BudgetLimit(EvaluatorConfig):
             never ``float`` for money.
         currency: Currency symbol this limit applies to (e.g. ``"USDC"``).
         scope_by: Tuple of context dimension keys used to isolate budgets.
-            Each dimension is **independent**: ``scope_by=("channel",)`` creates
-            a separate counter for each unique channel value.
+            The tuple is treated as a composite scope key:
+            ``scope_by=("channel",)`` creates a separate counter for each
+            unique channel, while ``scope_by=("channel", "agent_id")``
+            creates a separate counter for each unique ``(channel, agent_id)``
+            pair.
             An empty tuple means global (unscoped): all transactions for this
             currency share a single counter.
         window: Time window for accumulated-spend budgets.  ``None`` means a

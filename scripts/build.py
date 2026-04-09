@@ -6,7 +6,7 @@ packages (models, engine) into the source directories before building, then clea
 afterward. This allows the published wheels to be self-contained.
 
 Usage:
-    python scripts/build.py [models|evaluators|sdk|server|galileo|all]
+    python scripts/build.py [models|evaluators|sdk|server|galileo|financial-governance|all]
 """
 
 import shutil
@@ -222,6 +222,23 @@ def build_evaluator_galileo() -> None:
     print(f"  Built agent-control-evaluator-galileo v{version}")
 
 
+def build_evaluator_financial_governance() -> None:
+    """Build agent-control-evaluator-financial-governance."""
+    version = get_global_version()
+    package_dir = ROOT / "evaluators" / "contrib" / "financial-governance"
+
+    print(f"Building agent-control-evaluator-financial-governance v{version}")
+
+    dist_dir = package_dir / "dist"
+    if dist_dir.exists():
+        shutil.rmtree(dist_dir)
+
+    set_package_version(package_dir / "pyproject.toml", version)
+
+    subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=package_dir, check=True)
+    print(f"  Built agent-control-evaluator-financial-governance v{version}")
+
+
 def build_all() -> None:
     """Build all packages."""
     print(f"Building all packages (version {get_global_version()})\n")
@@ -230,6 +247,7 @@ def build_all() -> None:
     build_sdk()
     build_server()
     build_evaluator_galileo()
+    build_evaluator_financial_governance()
     print("\nAll packages built successfully!")
 
 
@@ -248,8 +266,10 @@ if __name__ == "__main__":
         build_server()
     elif target == "galileo":
         build_evaluator_galileo()
+    elif target == "financial-governance":
+        build_evaluator_financial_governance()
     elif target == "all":
         build_all()
     else:
-        print("Usage: python scripts/build.py [models|evaluators|sdk|server|galileo|all]")
+        print("Usage: python scripts/build.py [models|evaluators|sdk|server|galileo|financial-governance|all]")
         sys.exit(1)
