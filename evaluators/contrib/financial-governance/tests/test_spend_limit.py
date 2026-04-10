@@ -9,13 +9,13 @@ from typing import Any
 import pytest
 
 from agent_control_evaluator_financial_governance.spend_limit import (
+    BudgetCheck,
     BudgetLimit,
     BudgetWindow,
     InMemorySpendStore,
     SpendLimitConfig,
     SpendLimitEvaluator,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -235,6 +235,50 @@ def test_check_and_record_rejects_non_positive() -> None:
         )
 
 
+def test_check_and_record_many_records_once_after_all_budgets_pass() -> None:
+    store = InMemorySpendStore()
+    since = time.time() - 1
+
+    accepted, failed_index, current_spends = store.check_and_record_many(
+        amount=Decimal("50"),
+        currency="USDC",
+        checks=[
+            BudgetCheck(limit=Decimal("100"), start=since),
+            BudgetCheck(limit=Decimal("100"), start=since, scope={"channel": "A"}),
+        ],
+        metadata={"channel": "A"},
+    )
+
+    assert accepted is True
+    assert failed_index is None
+    assert current_spends == [Decimal("0"), Decimal("0")]
+    assert store.record_count() == 1
+    assert store.get_spend("USDC", since) == Decimal("50")
+    assert store.get_spend("USDC", since, scope={"channel": "A"}) == Decimal("50")
+
+
+def test_check_and_record_many_does_not_record_when_any_budget_fails() -> None:
+    store = InMemorySpendStore()
+    since = time.time() - 1
+    store.record_spend(Decimal("95"), "USDC")
+
+    accepted, failed_index, current_spends = store.check_and_record_many(
+        amount=Decimal("10"),
+        currency="USDC",
+        checks=[
+            BudgetCheck(limit=Decimal("100"), start=since),
+            BudgetCheck(limit=Decimal("100"), start=since, scope={"channel": "A"}),
+        ],
+        metadata={"channel": "A"},
+    )
+
+    assert accepted is False
+    assert failed_index == 0
+    assert current_spends == [Decimal("95")]
+    assert store.record_count() == 1
+    assert store.get_spend("USDC", since) == Decimal("95")
+
+
 # ---------------------------------------------------------------------------
 # BudgetWindow / BudgetLimit / SpendLimitConfig validation
 # ---------------------------------------------------------------------------
@@ -417,6 +461,59 @@ async def test_successful_transaction_is_recorded() -> None:
 
 
 @pytest.mark.asyncio
+async def test_later_per_transaction_violation_does_not_record_early() -> None:
+    store = InMemorySpendStore()
+    cfg = SpendLimitConfig(limits=[
+        _period_limit("1000"),
+        _per_tx_limit("40"),
+    ])
+    ev = SpendLimitEvaluator(cfg, store=store)
+
+    result = await ev.evaluate(_tx(amount="50.00"))
+
+    assert result.matched is True
+    assert result.metadata and result.metadata["violation"] == "per_transaction_cap"
+    assert store.record_count() == 0
+
+
+@pytest.mark.asyncio
+async def test_multiple_period_limits_record_once() -> None:
+    store = InMemorySpendStore()
+    cfg = SpendLimitConfig(limits=[
+        _period_limit("1000"),
+        _period_limit("100", scope_by=("channel",)),
+    ])
+    ev = SpendLimitEvaluator(cfg, store=store)
+
+    result = await ev.evaluate(_tx(amount="50.00", channel="channel-A"))
+
+    assert result.matched is False
+    since = time.time() - 5
+    assert store.record_count() == 1
+    assert store.get_spend("USDC", since) == Decimal("50")
+    assert store.get_spend("USDC", since, scope={"channel": "channel-A"}) == Decimal("50")
+
+
+@pytest.mark.asyncio
+async def test_period_budget_failure_does_not_leave_partial_record() -> None:
+    store = InMemorySpendStore()
+    store.record_spend(Decimal("95"), "USDC")
+    cfg = SpendLimitConfig(limits=[
+        _period_limit("100"),
+        _period_limit("100", scope_by=("channel",)),
+    ])
+    ev = SpendLimitEvaluator(cfg, store=store)
+
+    result = await ev.evaluate(_tx(amount="10.00", channel="channel-A"))
+
+    assert result.matched is True
+    assert result.metadata and result.metadata["violation"] == "period_budget"
+    since = time.time() - 5
+    assert store.record_count() == 1
+    assert store.get_spend("USDC", since) == Decimal("95")
+
+
+@pytest.mark.asyncio
 async def test_multiple_sequential_transactions_accumulate() -> None:
     store = InMemorySpendStore()
     ev = _make_evaluator(max_per_transaction="100", max_per_period="250", store=store)
@@ -589,6 +686,17 @@ async def test_malformed_input_is_not_evaluator_error() -> None:
     r5 = await ev.evaluate(None)
     assert r5.matched is False
     assert r5.error is None
+
+
+@pytest.mark.parametrize("bad_amount", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.asyncio
+async def test_non_finite_amount_is_not_evaluator_error(bad_amount: str) -> None:
+    ev = _make_evaluator(max_per_transaction="100")
+
+    result = await ev.evaluate(_tx(amount=bad_amount))
+
+    assert result.matched is False
+    assert result.error is None
 
 
 # ---------------------------------------------------------------------------

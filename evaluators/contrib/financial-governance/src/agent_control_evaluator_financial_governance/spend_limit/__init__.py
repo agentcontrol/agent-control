@@ -2,13 +2,14 @@
 
 from .config import BudgetLimit, BudgetWindow, SpendLimitConfig
 from .evaluator import SpendLimitEvaluator
-from .store import InMemorySpendStore, SpendStore
+from .store import BudgetCheck, InMemorySpendStore, SpendStore
 
 __all__ = [
     "SpendLimitEvaluator",
     "SpendLimitConfig",
     "BudgetLimit",
     "BudgetWindow",
+    "BudgetCheck",
     "SpendStore",
     "InMemorySpendStore",
 ]

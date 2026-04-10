@@ -165,6 +165,12 @@ class TransactionPolicyEvaluator(Evaluator[TransactionPolicyConfig]):
                 confidence=1.0,
                 message=f"Transaction 'amount' is not numeric: {amount_raw!r}",
             )
+        if not amount.is_finite():
+            return EvaluatorResult(
+                matched=False,
+                confidence=1.0,
+                message=f"Transaction 'amount' must be finite: {amount_raw!r}",
+            )
 
         # Build shared metadata for result context
         base_meta: dict[str, Any] = {

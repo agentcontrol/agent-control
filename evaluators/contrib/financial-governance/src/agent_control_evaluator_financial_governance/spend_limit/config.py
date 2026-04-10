@@ -5,9 +5,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from pydantic import Field, field_validator, model_validator
-
 from agent_control_evaluators import EvaluatorConfig
+from pydantic import Field, field_validator, model_validator
 
 
 class BudgetWindow(EvaluatorConfig):

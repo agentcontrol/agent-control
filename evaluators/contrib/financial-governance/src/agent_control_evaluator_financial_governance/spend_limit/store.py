@@ -34,9 +34,20 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from dataclasses import dataclass
 from decimal import Decimal
 from threading import Lock
 from typing import Any, Protocol, runtime_checkable
+
+
+@dataclass(frozen=True, slots=True)
+class BudgetCheck:
+    """One budget constraint to evaluate against a proposed transaction."""
+
+    limit: Decimal
+    start: float
+    end: float | None = None
+    scope: dict[str, str] | None = None
 
 
 @runtime_checkable
@@ -137,6 +148,26 @@ class SpendStore(Protocol):
 
             - ``accepted`` is ``True`` when within budget and recorded.
             - ``current_spend`` is total period spend *before* this transaction.
+        """
+        ...
+
+    def check_and_record_many(
+        self,
+        amount: Decimal,
+        currency: str,
+        checks: list[BudgetCheck],
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[bool, int | None, list[Decimal]]:
+        """Atomically validate *amount* against multiple budget checks.
+
+        All checks must pass before a single spend record is written.
+
+        Returns:
+            ``(accepted, failed_index, current_spends)`` where:
+
+            - ``accepted`` is ``True`` when every check passed and the spend was recorded once.
+            - ``failed_index`` is the index of the first failed check, else ``None``.
+            - ``current_spends`` aligns with ``checks`` and contains each pre-transaction total.
         """
         ...
 
@@ -270,6 +301,36 @@ class InMemorySpendStore:
             self._records.append(record)
             self._prune_locked(now)
             return True, current
+
+    def check_and_record_many(
+        self,
+        amount: Decimal,
+        currency: str,
+        checks: list[BudgetCheck],
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[bool, int | None, list[Decimal]]:
+        """Atomically validate multiple budgets, then record once if all pass."""
+        if amount <= Decimal("0"):
+            raise ValueError(f"amount must be positive, got {amount!r}")
+
+        now = time.time()
+        with self._lock:
+            current_spends: list[Decimal] = []
+            for idx, check in enumerate(checks):
+                current = self._sum_locked(currency, check.start, check.end, check.scope)
+                current_spends.append(current)
+                if current + amount > check.limit:
+                    return False, idx, current_spends
+
+            record = _SpendRecord(
+                amount=amount,
+                currency=currency,
+                recorded_at=now,
+                metadata=metadata,
+            )
+            self._records.append(record)
+            self._prune_locked(now)
+            return True, None, current_spends
 
     # ------------------------------------------------------------------
     # Internal helpers

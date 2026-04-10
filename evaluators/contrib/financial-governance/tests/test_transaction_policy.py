@@ -13,7 +13,6 @@ from agent_control_evaluator_financial_governance.transaction_policy import (
     TransactionPolicyEvaluator,
 )
 
-
 # ---------------------------------------------------------------------------
 # TransactionPolicyConfig validation tests
 # ---------------------------------------------------------------------------
@@ -123,6 +122,15 @@ async def test_non_numeric_amount_not_matched() -> None:
     """Non-numeric amount is a non-match, NOT an evaluator error."""
     ev = _make_evaluator()
     result = await ev.evaluate({"amount": "lots", "currency": "USDC", "recipient": "0xABC"})
+    assert result.matched is False
+    assert result.error is None
+
+
+@pytest.mark.parametrize("bad_amount", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.asyncio
+async def test_non_finite_amount_not_matched(bad_amount: str) -> None:
+    ev = _make_evaluator()
+    result = await ev.evaluate({"amount": bad_amount, "currency": "USDC", "recipient": "0xABC"})
     assert result.matched is False
     assert result.error is None
 

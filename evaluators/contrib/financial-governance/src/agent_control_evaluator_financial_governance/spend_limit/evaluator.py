@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import calendar
 import time
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -15,7 +14,7 @@ from agent_control_evaluators import (
 from agent_control_models import EvaluatorResult
 
 from .config import BudgetLimit, SpendLimitConfig
-from .store import InMemorySpendStore, SpendStore
+from .store import BudgetCheck, InMemorySpendStore, SpendStore
 
 # Sentinel value returned by _build_scope when a required scope dimension is
 # missing from the transaction data.  Distinct from None (which means global).
@@ -31,9 +30,12 @@ def _extract_decimal(data: dict[str, Any], key: str) -> Decimal | None:
     if raw is None:
         return None
     try:
-        return Decimal(str(raw))
+        value = Decimal(str(raw))
     except (TypeError, ValueError, InvalidOperation):
         return None
+    if not value.is_finite():
+        return None
+    return value
 
 
 def _window_start(limit: BudgetLimit) -> float:
@@ -294,10 +296,9 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
             )
 
         # ---- Evaluate each limit in order ----
-        # We iterate all limits first to check.  If all pass, record once at the end.
-        # For period budgets we use check_and_record atomically to avoid TOCTOU.
-        # We collect limits that apply to this transaction (matching currency)
-        # and also track which limits need to be recorded after all checks pass.
+        # First pass: check per-transaction caps and gather all applicable
+        # period budgets.  Second pass: validate all gathered budgets atomically
+        # and record a single spend entry only if every budget passes.
 
         # Build metadata to attach to the spend record
         spend_metadata: dict[str, Any] = {
@@ -307,12 +308,15 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
         }
         spend_metadata["recipient"] = recipient
 
-        has_period_limits = False
+        has_matching_currency_limit = False
+        period_checks: list[tuple[BudgetLimit, BudgetCheck]] = []
 
         for limit in self.config.limits:
             # Skip limits for other currencies
             if limit.currency != tx_currency:
                 continue
+
+            has_matching_currency_limit = True
 
             scope = self._build_scope(data, limit)
 
@@ -343,48 +347,52 @@ class SpendLimitEvaluator(Evaluator[SpendLimitConfig]):
                 # Per-tx cap passes — no need to "record" a cap (it's per-call)
 
             else:
-                # Rolling / fixed period budget — use atomic check_and_record
-                # to eliminate the TOCTOU race between get_spend + record_spend.
-                has_period_limits = True
-                win_start = _window_start(limit)
+                period_checks.append((
+                    limit,
+                    BudgetCheck(
+                        limit=limit.amount,
+                        start=_window_start(limit),
+                        scope=scope,
+                    ),
+                ))
 
-                accepted, current_spend = self._store.check_and_record(
-                    amount=amount,
-                    currency=tx_currency,
-                    limit=limit.amount,
-                    start=win_start,
-                    scope=scope,
-                    metadata=spend_metadata if spend_metadata else None,
+        if period_checks:
+            accepted, failed_index, current_spends = self._store.check_and_record_many(
+                amount=amount,
+                currency=tx_currency,
+                checks=[check for _, check in period_checks],
+                metadata=spend_metadata if spend_metadata else None,
+            )
+
+            if not accepted:
+                assert failed_index is not None
+                limit, _failed_check = period_checks[failed_index]
+                current_spend = current_spends[failed_index]
+                projected = current_spend + amount
+                return EvaluatorResult(
+                    matched=True,
+                    confidence=1.0,
+                    message=(
+                        f"Transaction would bring period spend to "
+                        f"{projected} {tx_currency}, exceeding the "
+                        f"{limit.window.kind} budget of {limit.amount} {tx_currency} "
+                        f"(current period spend: {current_spend})"
+                    ),
+                    metadata={
+                        "violation": "period_budget",
+                        "amount": float(amount),
+                        "current_period_spend": float(current_spend),
+                        "projected_period_spend": float(projected),
+                        "max_per_period": float(limit.amount),
+                        "currency": tx_currency,
+                        "recipient": recipient,
+                    },
                 )
 
-                if not accepted:
-                    projected = current_spend + amount
-                    return EvaluatorResult(
-                        matched=True,
-                        confidence=1.0,
-                        message=(
-                            f"Transaction would bring period spend to "
-                            f"{projected} {tx_currency}, exceeding the "
-                            f"{limit.window.kind} budget of {limit.amount} {tx_currency} "
-                            f"(current period spend: {current_spend})"
-                        ),
-                        metadata={
-                            "violation": "period_budget",
-                            "amount": float(amount),
-                            "current_period_spend": float(current_spend),
-                            "projected_period_spend": float(projected),
-                            "max_per_period": float(limit.amount),
-                            "currency": tx_currency,
-                            "recipient": recipient,
-                        },
-                    )
-
         # ---- All limits passed ----
-        # If there were no period limits, record_spend for audit trail
-        # (check_and_record already recorded for period limits above)
-        if not has_period_limits and any(
-            limit.currency == tx_currency for limit in self.config.limits
-        ):
+        # If there were no period limits, record_spend for audit trail.
+        # Period-budget paths already recorded exactly once above.
+        if not period_checks and has_matching_currency_limit:
             self._store.record_spend(
                 amount=amount,
                 currency=tx_currency,
