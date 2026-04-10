@@ -3,12 +3,19 @@
 Deterministic evaluator: confidence is always 1.0, matched is True when
 any configured limit is exceeded. Utilization ratio and spend breakdown
 are returned in result metadata, not in confidence.
+
+The evaluator is stateless. Budget state lives in a module-level store
+registry, independent of the evaluator instance cache in _factory.py.
+This prevents silent state loss on LRU eviction and avoids cross-control
+leakage when different controls share the same config.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import math
+import threading
 from typing import Any
 
 from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
@@ -17,8 +24,60 @@ from agent_control_models import EvaluatorResult
 
 from .config import BudgetEvaluatorConfig
 from .memory_store import InMemoryBudgetStore
+from .store import BudgetStore
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Module-level store registry
+#
+# Decoupled from the evaluator instance cache so that LRU eviction in
+# _factory.py does not destroy accumulated budget state. The registry
+# is keyed by a stable config hash. Two controls with identical config
+# intentionally share a budget pool (same config = same budget).
+# ---------------------------------------------------------------------------
+
+# NOTE: The registry is unbounded. In practice a deployment has a finite
+# set of budget configs. If dynamic config generation becomes a concern,
+# add a max-size cap with LRU eviction here.
+_STORE_REGISTRY: dict[str, BudgetStore] = {}
+_STORE_REGISTRY_LOCK = threading.Lock()
+
+
+def _config_key(config: BudgetEvaluatorConfig) -> str:
+    """Build a stable key for the store registry from evaluator config.
+
+    The limits list is sorted before hashing so that two configs with
+    semantically identical rules in different order share a store.
+    """
+    config_dict = config.model_dump(mode="json")
+    config_dict["limits"] = sorted(
+        config_dict["limits"],
+        key=lambda r: json.dumps(r, sort_keys=True, default=str),
+    )
+    return f"budget:{json.dumps(config_dict, sort_keys=True, default=str)}"
+
+
+def get_or_create_store(config: BudgetEvaluatorConfig) -> BudgetStore:
+    """Get or create a store for the given config, thread-safe."""
+    key = _config_key(config)
+    with _STORE_REGISTRY_LOCK:
+        store = _STORE_REGISTRY.get(key)
+        if store is None:
+            store = InMemoryBudgetStore(rules=config.limits)
+            _STORE_REGISTRY[key] = store
+        return store
+
+
+def clear_budget_stores() -> None:
+    """Clear all budget stores. Useful for testing."""
+    with _STORE_REGISTRY_LOCK:
+        _STORE_REGISTRY.clear()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _extract_by_path(data: Any, path: str) -> Any:
@@ -50,6 +109,10 @@ def _extract_tokens(data: Any, token_path: str | None) -> tuple[int, int]:
     if token_path:
         val = _extract_by_path(data, token_path)
         if isinstance(val, int) and not isinstance(val, bool) and val >= 0:
+            # When token_path resolves to a single int we cannot distinguish
+            # input vs output. Attribute the whole count to output because
+            # output rates are typically higher than input rates in pricing
+            # tables, so this over-estimates cost rather than under-estimates.
             return 0, val
         if isinstance(val, dict):
             data = val
@@ -78,19 +141,23 @@ def _estimate_cost(
     input_tokens: int,
     output_tokens: int,
     pricing: dict[str, dict[str, float]] | None,
-) -> int:
-    """Estimate cost in minor units from model pricing table. Returns 0 if unknown."""
+) -> float:
+    """Estimate cost in cents (USD) from model pricing table.
+
+    Returns a float for precision. Rounding happens at snapshot time,
+    not per call.
+    """
     if not model or not pricing:
-        return 0
+        return 0.0
     rates = pricing.get(model)
     if not rates:
-        return 0
+        return 0.0
     input_rate = rates.get("input_per_1k", 0.0)
     output_rate = rates.get("output_per_1k", 0.0)
     cost = (input_tokens * input_rate + output_tokens * output_rate) / 1000.0
     if not math.isfinite(cost) or cost < 0:
-        return 0
-    return math.ceil(cost)
+        return 0.0
+    return cost
 
 
 def _extract_metadata(data: Any, metadata_paths: dict[str, str]) -> dict[str, str]:
@@ -103,6 +170,11 @@ def _extract_metadata(data: Any, metadata_paths: dict[str, str]) -> dict[str, st
     return result
 
 
+# ---------------------------------------------------------------------------
+# Evaluator
+# ---------------------------------------------------------------------------
+
+
 @register_evaluator
 class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
     """Tracks cumulative LLM token and cost usage per scope and time window.
@@ -110,20 +182,16 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
     Deterministic evaluator: matched=True when any configured limit is
     exceeded, confidence=1.0 always.
 
-    The evaluator is stateful -- it accumulates usage in a BudgetStore.
-    The store is created per evaluator config and is thread-safe.
+    The evaluator is stateless. Budget state is managed by a module-level
+    store registry (get_or_create_store), not by the evaluator instance.
     """
 
     metadata = EvaluatorMetadata(
         name="budget",
-        version="2.0.0",
+        version="3.0.0",
         description="Cumulative LLM token and cost budget tracking",
     )
     config_model = BudgetEvaluatorConfig
-
-    def __init__(self, config: BudgetEvaluatorConfig) -> None:
-        super().__init__(config)
-        self._store = InMemoryBudgetStore(rules=config.limits)
 
     async def evaluate(self, data: Any) -> EvaluatorResult:
         """Evaluate step data against all configured budget limits."""
@@ -146,7 +214,8 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
 
         step_metadata = _extract_metadata(data, self.config.metadata_paths)
 
-        snapshots = self._store.record_and_check(
+        store = get_or_create_store(self.config)
+        snapshots = await store.record_and_check(
             scope=step_metadata,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -156,7 +225,7 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
         breached: list[dict[str, Any]] = []
         all_snaps: list[dict[str, Any]] = []
 
-        for i, snap in enumerate(snapshots):
+        for snap in snapshots:
             snap_info = {
                 "spent": snap.spent,
                 "spent_tokens": snap.spent_tokens,
@@ -180,7 +249,7 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
                     "all_snapshots": all_snaps,
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
-                    "cost": cost,
+                    "cost": round(cost, 6),
                 },
             )
 
@@ -193,7 +262,7 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
                 "all_snapshots": all_snaps,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
-                "cost": cost,
+                "cost": round(cost, 6),
                 "max_utilization": round(max_util, 4),
             },
         )

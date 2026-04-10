@@ -17,11 +17,12 @@ from agent_control_evaluator_budget.budget.config import (
     WINDOW_WEEKLY,
     BudgetEvaluatorConfig,
     BudgetLimitRule,
-    Currency,
 )
 from agent_control_evaluator_budget.budget.evaluator import (
     BudgetEvaluator,
     _extract_tokens,
+    clear_budget_stores,
+    get_or_create_store,
 )
 from agent_control_evaluator_budget.budget.memory_store import (
     InMemoryBudgetStore,
@@ -30,39 +31,53 @@ from agent_control_evaluator_budget.budget.memory_store import (
     _derive_period_key,
 )
 
+
+@pytest.fixture(autouse=True)
+def _clean_store_registry() -> None:
+    """Clear the module-level store registry before each test."""
+    clear_budget_stores()
+
+
 # ---------------------------------------------------------------------------
 # InMemoryBudgetStore
 # ---------------------------------------------------------------------------
 
 
 class TestInMemoryBudgetStore:
-    def test_single_record_under_limit(self) -> None:
+    @pytest.mark.asyncio
+    async def test_single_record_under_limit(self) -> None:
         # Given: store with a $10 daily limit (1000 cents)
         rules = [BudgetLimitRule(limit=1000, window_seconds=WINDOW_DAILY)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 1700000000.0)
 
         # When: record 300 cents of usage
-        results = store.record_and_check(scope={}, input_tokens=100, output_tokens=50, cost=300)
+        results = await store.record_and_check(
+            scope={}, input_tokens=100, output_tokens=50, cost=300.0
+        )
 
         # Then: not breached, ratio ~0.3
         assert len(results) == 1
         assert not results[0].exceeded
         assert results[0].utilization == pytest.approx(0.3, abs=0.01)
 
-    def test_accumulation_triggers_breach(self) -> None:
+    @pytest.mark.asyncio
+    async def test_accumulation_triggers_breach(self) -> None:
         # Given: store with 1000-cent limit
         rules = [BudgetLimitRule(limit=1000)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 1700000000.0)
 
         # When: record 600 + 500 = 1100 cents
-        store.record_and_check(scope={}, input_tokens=100, output_tokens=50, cost=600)
-        results = store.record_and_check(scope={}, input_tokens=100, output_tokens=50, cost=500)
+        await store.record_and_check(scope={}, input_tokens=100, output_tokens=50, cost=600.0)
+        results = await store.record_and_check(
+            scope={}, input_tokens=100, output_tokens=50, cost=500.0
+        )
 
         # Then: exceeded
         assert results[0].exceeded is True
         assert results[0].spent == 1100
 
-    def test_scope_isolation(self) -> None:
+    @pytest.mark.asyncio
+    async def test_scope_isolation(self) -> None:
         # Given: per-agent limits
         rules = [
             BudgetLimitRule(scope={"agent": "a"}, limit=1000),
@@ -71,11 +86,11 @@ class TestInMemoryBudgetStore:
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 1700000000.0)
 
         # When: agent-a records 900, agent-b records 100
-        results_a = store.record_and_check(
-            scope={"agent": "a"}, input_tokens=0, output_tokens=0, cost=900
+        results_a = await store.record_and_check(
+            scope={"agent": "a"}, input_tokens=0, output_tokens=0, cost=900.0
         )
-        results_b = store.record_and_check(
-            scope={"agent": "b"}, input_tokens=0, output_tokens=0, cost=100
+        results_b = await store.record_and_check(
+            scope={"agent": "b"}, input_tokens=0, output_tokens=0, cost=100.0
         )
 
         # Then: agent-a near limit, agent-b well under
@@ -83,7 +98,8 @@ class TestInMemoryBudgetStore:
         assert results_b[0].spent == 100
         assert not results_b[0].exceeded
 
-    def test_period_isolation(self) -> None:
+    @pytest.mark.asyncio
+    async def test_period_isolation(self) -> None:
         # Given: daily limit, clock at two different days
         rules = [BudgetLimitRule(limit=1000, window_seconds=WINDOW_DAILY)]
         day1 = 1700000000.0
@@ -91,63 +107,75 @@ class TestInMemoryBudgetStore:
 
         # When: record on day 1, then day 2
         store = InMemoryBudgetStore(rules=rules, clock=lambda: day1)
-        store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=800)
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=800.0)
 
         store._clock = lambda: day2
-        results = store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=300)
+        results = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=300.0
+        )
 
         # Then: day 2 is a fresh period
         assert results[0].spent == 300
         assert not results[0].exceeded
 
-    def test_exceeded_exact_limit(self) -> None:
+    @pytest.mark.asyncio
+    async def test_exceeded_exact_limit(self) -> None:
         # Given: 1000-cent limit
         rules = [BudgetLimitRule(limit=1000)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
 
         # When: spend exactly 1000
-        results = store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1000)
+        results = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=1000.0
+        )
 
         # Then: exceeded (>= not >)
         assert results[0].exceeded is True
 
-    def test_token_only_limit(self) -> None:
+    @pytest.mark.asyncio
+    async def test_token_only_limit(self) -> None:
         # Given: 1000-token limit, no cost limit
         rules = [BudgetLimitRule(limit_tokens=1000)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
 
         # When: consume 600+500 = 1100 tokens
-        results = store.record_and_check(scope={}, input_tokens=600, output_tokens=500, cost=0)
+        results = await store.record_and_check(
+            scope={}, input_tokens=600, output_tokens=500, cost=0.0
+        )
 
         # Then: exceeded
         assert results[0].exceeded is True
         assert results[0].spent_tokens == 1100
 
-    def test_no_matching_rules(self) -> None:
+    @pytest.mark.asyncio
+    async def test_no_matching_rules(self) -> None:
         # Given: rule for agent=summarizer only
         rules = [BudgetLimitRule(scope={"agent": "summarizer"}, limit=1000)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
 
         # When: step from agent=other
-        results = store.record_and_check(
-            scope={"agent": "other"}, input_tokens=100, output_tokens=50, cost=999
+        results = await store.record_and_check(
+            scope={"agent": "other"}, input_tokens=100, output_tokens=50, cost=999.0
         )
 
         # Then: no snapshots (rule didn't match)
         assert results == []
 
-    def test_group_by_user(self) -> None:
+    @pytest.mark.asyncio
+    async def test_group_by_user(self) -> None:
         # Given: global rule with group_by=user_id
         rules = [BudgetLimitRule(group_by="user_id", limit=500)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
 
         # When: two users each spend
-        store.record_and_check(scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=400)
-        results_u1 = store.record_and_check(
-            scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=200
+        await store.record_and_check(
+            scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=400.0
         )
-        results_u2 = store.record_and_check(
-            scope={"user_id": "u2"}, input_tokens=0, output_tokens=0, cost=300
+        results_u1 = await store.record_and_check(
+            scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=200.0
+        )
+        results_u2 = await store.record_and_check(
+            scope={"user_id": "u2"}, input_tokens=0, output_tokens=0, cost=300.0
         )
 
         # Then: u1 exceeded, u2 not
@@ -156,14 +184,20 @@ class TestInMemoryBudgetStore:
 
     def test_thread_safety(self) -> None:
         # Given: high-limit rule and 10 concurrent threads
+        # Each thread calls asyncio.run(store.record_and_check(...)) -- the async
+        # method wraps a sync critical section, so threading.Lock prevents races.
         rules = [BudgetLimitRule(limit=1_000_000)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
         errors: list[str] = []
 
+        import asyncio
+
         def record_many() -> None:
             try:
                 for _ in range(100):
-                    store.record_and_check(scope={}, input_tokens=1, output_tokens=1, cost=1)
+                    asyncio.run(
+                        store.record_and_check(scope={}, input_tokens=1, output_tokens=1, cost=1.0)
+                    )
             except Exception as exc:
                 errors.append(str(exc))
 
@@ -180,7 +214,8 @@ class TestInMemoryBudgetStore:
         assert snap.spent_tokens == 2000
         assert snap.spent == 1000
 
-    def test_max_buckets_fail_closed(self) -> None:
+    @pytest.mark.asyncio
+    async def test_max_buckets_fail_closed(self) -> None:
         # Given: store limited to 3 buckets with group_by=user_id
         rules = [BudgetLimitRule(group_by="user_id", limit=100_000)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0, max_buckets=3)
@@ -188,8 +223,8 @@ class TestInMemoryBudgetStore:
         # When: 5 different users try to record
         exceeded_count = 0
         for i in range(5):
-            results = store.record_and_check(
-                scope={"user_id": f"u{i}"}, input_tokens=1, output_tokens=1, cost=1
+            results = await store.record_and_check(
+                scope={"user_id": f"u{i}"}, input_tokens=1, output_tokens=1, cost=1.0
             )
             if results and results[0].exceeded:
                 exceeded_count += 1
@@ -197,11 +232,12 @@ class TestInMemoryBudgetStore:
         # Then: first 3 succeed, last 2 fail-closed
         assert exceeded_count == 2
 
-    def test_reset_all(self) -> None:
+    @pytest.mark.asyncio
+    async def test_reset_all(self) -> None:
         # Given: store with recorded usage
         rules = [BudgetLimitRule(limit=1000)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
-        store.record_and_check(scope={}, input_tokens=10, output_tokens=10, cost=100)
+        await store.record_and_check(scope={}, input_tokens=10, output_tokens=10, cost=100.0)
 
         # When: reset all
         store.reset()
@@ -209,6 +245,36 @@ class TestInMemoryBudgetStore:
         # Then: empty
         snap = store.get_snapshot("__global__", "", limit=1000)
         assert snap.spent == 0
+
+    @pytest.mark.asyncio
+    async def test_float_accumulation_precision(self) -> None:
+        # Given: store with 1-cent limit
+        rules = [BudgetLimitRule(limit=1)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+
+        # When: 100 calls each costing 0.003 cents (total = 0.3 cents)
+        for _ in range(100):
+            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=0.003)
+
+        # Then: not exceeded (0.3 < 1), no ceil-per-call overcount
+        snap = store.get_snapshot("__global__", "", limit=1)
+        assert not snap.exceeded
+        assert snap.spent == 0  # round(0.3) = 0
+
+    @pytest.mark.asyncio
+    async def test_float_accumulation_eventual_breach(self) -> None:
+        # Given: store with 1-cent limit
+        rules = [BudgetLimitRule(limit=1)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+
+        # When: 400 calls each costing 0.003 cents (total = 1.2 cents)
+        for _ in range(400):
+            results = await store.record_and_check(
+                scope={}, input_tokens=0, output_tokens=0, cost=0.003
+            )
+
+        # Then: exceeded (1.2 >= 1)
+        assert results[0].exceeded is True
 
 
 # ---------------------------------------------------------------------------
@@ -218,51 +284,92 @@ class TestInMemoryBudgetStore:
 
 class TestUtilities:
     def test_compute_utilization_no_limits(self) -> None:
-        assert _compute_utilization(100, 10000, None, None) == 0.0
+        # Given/When: no limits set / Then: 0.0
+        assert _compute_utilization(100.0, 10000, None, None) == 0.0
 
     def test_compute_utilization_spend_only(self) -> None:
-        # Given: 500 of 1000 spent
-        assert _compute_utilization(500, 0, 1000, None) == pytest.approx(0.5)
+        # Given: 500 of 1000 spent / Then: 0.5
+        assert _compute_utilization(500.0, 0, 1000, None) == pytest.approx(0.5)
 
     def test_compute_utilization_clamped(self) -> None:
-        assert _compute_utilization(2000, 0, 1000, None) == pytest.approx(1.0)
+        # Given: overspent / Then: clamped to 1.0
+        assert _compute_utilization(2000.0, 0, 1000, None) == pytest.approx(1.0)
+
+    def test_compute_utilization_negative_clamped_to_zero(self) -> None:
+        # Given: refund made the accumulator go negative
+        # When: utilization is computed
+        # Then: clamped to 0.0 (BudgetSnapshot.utilization contract)
+        assert _compute_utilization(-150.0, 0, 100, None) == 0.0
+        # And: negative tokens (not currently reachable but defensively clamped)
+        assert _compute_utilization(0.0, -50, None, 100) == 0.0
+
+    def test_parse_period_key_valid(self) -> None:
+        # Given: well-formed period key / Then: parsed tuple
+        from agent_control_evaluator_budget.budget.memory_store import _parse_period_key
+
+        assert _parse_period_key("P86400:19675") == (86400, 19675)
+        assert _parse_period_key("P3600:0") == (3600, 0)
+
+    def test_parse_period_key_malformed(self) -> None:
+        # Given: empty, missing, or non-numeric period keys
+        # When: parsed
+        # Then: None returned (never raises)
+        from agent_control_evaluator_budget.budget.memory_store import _parse_period_key
+
+        assert _parse_period_key("") is None  # cumulative sentinel
+        assert _parse_period_key("P") is None  # no separator
+        assert _parse_period_key("P:1") is None  # empty window
+        assert _parse_period_key("P86400:") is None  # empty index
+        assert _parse_period_key("Pabc:1") is None  # non-numeric window
+        assert _parse_period_key("P86400:xyz") is None  # non-numeric index
+        assert _parse_period_key("X86400:1") is None  # wrong prefix
+        assert _parse_period_key("PP86400:1") is None  # double P
 
     def test_derive_period_key_none(self) -> None:
+        # Given: no window / Then: empty key
         assert _derive_period_key(None, 0.0) == ""
 
     def test_derive_period_key_daily(self) -> None:
-        # Given: 1700000000 / 86400 = 19675 (truncated)
+        # Given: daily window at 1700000000 / Then: epoch-aligned key
         key = _derive_period_key(WINDOW_DAILY, 1700000000.0)
         assert key == "P86400:19675"
 
     def test_derive_period_key_weekly(self) -> None:
+        # Given: weekly window / Then: key starts with P604800:
         key = _derive_period_key(WINDOW_WEEKLY, 1700000000.0)
         assert key.startswith("P604800:")
 
     def test_build_scope_key_global(self) -> None:
+        # Given: empty scope / Then: __global__
         assert _build_scope_key({}, None, {}) == "__global__"
 
     def test_build_scope_key_with_scope(self) -> None:
+        # Given: channel scope / Then: channel=slack
         key = _build_scope_key({"channel": "slack"}, None, {})
         assert key == "channel=slack"
 
     def test_build_scope_key_with_group_by(self) -> None:
+        # Given: scope + group_by / Then: combined key
         key = _build_scope_key({"channel": "slack"}, "user_id", {"user_id": "u1"})
         assert key == "channel=slack|user_id=u1"
 
     def test_build_scope_key_group_by_missing(self) -> None:
+        # Given: group_by field not in scope / Then: __global__
         key = _build_scope_key({}, "user_id", {})
         assert key == "__global__"
 
     def test_extract_tokens_standard(self) -> None:
+        # Given: standard token fields / Then: extracted
         data = {"usage": {"input_tokens": 100, "output_tokens": 50}}
         assert _extract_tokens(data, None) == (100, 50)
 
     def test_extract_tokens_openai(self) -> None:
+        # Given: OpenAI-style fields / Then: extracted
         data = {"usage": {"prompt_tokens": 80, "completion_tokens": 40}}
         assert _extract_tokens(data, None) == (80, 40)
 
     def test_extract_tokens_none(self) -> None:
+        # Given: None data / Then: (0, 0)
         assert _extract_tokens(None, None) == (0, 0)
 
 
@@ -273,52 +380,53 @@ class TestUtilities:
 
 class TestBudgetLimitRuleConfig:
     def test_valid_rule(self) -> None:
+        # Given/When: valid limit / Then: accepted
         rule = BudgetLimitRule(limit=1000)
         assert rule.limit == 1000
-        assert rule.currency == Currency.USD
 
     def test_no_limit_rejected(self) -> None:
+        # Given/When: no limit or limit_tokens / Then: rejected
         with pytest.raises(ValidationError, match="At least one"):
             BudgetLimitRule()
 
     def test_negative_limit_rejected(self) -> None:
+        # Given/When: negative limit / Then: rejected
         with pytest.raises(ValidationError, match="positive"):
             BudgetLimitRule(limit=-1)
 
     def test_zero_limit_rejected(self) -> None:
+        # Given/When: zero limit / Then: rejected
         with pytest.raises(ValidationError, match="positive"):
             BudgetLimitRule(limit=0)
 
     def test_negative_limit_tokens_rejected(self) -> None:
+        # Given/When: negative limit_tokens / Then: rejected
         with pytest.raises(ValidationError, match="positive"):
             BudgetLimitRule(limit_tokens=-1)
 
     def test_negative_window_seconds_rejected(self) -> None:
+        # Given/When: negative window_seconds / Then: rejected
         with pytest.raises(ValidationError, match="positive"):
             BudgetLimitRule(limit=1000, window_seconds=-1)
 
     def test_zero_window_seconds_rejected(self) -> None:
+        # Given/When: zero window_seconds / Then: rejected
         with pytest.raises(ValidationError, match="positive"):
             BudgetLimitRule(limit=1000, window_seconds=0)
 
     def test_token_only_rule(self) -> None:
+        # Given/When: limit_tokens only / Then: accepted, limit is None
         rule = BudgetLimitRule(limit_tokens=5000)
         assert rule.limit is None
         assert rule.limit_tokens == 5000
 
-    def test_currency_enum(self) -> None:
-        rule = BudgetLimitRule(limit=1000, currency=Currency.EUR)
-        assert rule.currency == Currency.EUR
-
-    def test_currency_from_string(self) -> None:
-        rule = BudgetLimitRule(limit=1000, currency="tokens")
-        assert rule.currency == Currency.TOKENS
-
     def test_empty_limits_rejected(self) -> None:
+        # Given/When: empty limits list / Then: rejected
         with pytest.raises(ValidationError):
             BudgetEvaluatorConfig(limits=[])
 
     def test_window_constants(self) -> None:
+        # Given/When/Then: constants have expected values
         assert WINDOW_DAILY == 86400
         assert WINDOW_WEEKLY == 604800
         assert WINDOW_MONTHLY == 2592000
@@ -339,7 +447,7 @@ class TestBudgetEvaluator:
         # Given: evaluator with $10 limit (1000 cents)
         ev = self._make_evaluator(limits=[{"limit": 1000}])
 
-        # When: evaluate with usage data (cost field is ignored without pricing/model_path)
+        # When: evaluate with usage data
         result = await ev.evaluate({"usage": {"input_tokens": 100, "output_tokens": 50}})
 
         # Then: not matched
@@ -356,8 +464,8 @@ class TestBudgetEvaluator:
         )
 
         # When: two calls with tokens costing 27 cents each
-        # cost = ceil(300*30/1000 + 300*60/1000) = ceil(9+18) = 27
-        # total = 27+27 = 54 > 50
+        # cost = (300*30 + 300*60) / 1000 = 27.0
+        # total = 27 + 27 = 54 > 50
         step = {"model": "gpt-4", "usage": {"input_tokens": 300, "output_tokens": 300}}
         await ev.evaluate(step)
         result = await ev.evaluate(step)
@@ -369,7 +477,6 @@ class TestBudgetEvaluator:
     @pytest.mark.asyncio
     async def test_group_by_user(self) -> None:
         # Given: per-user 1000-cent budget with pricing table
-        # pricing: 200 cents per 1k input tokens
         ev = self._make_evaluator(
             limits=[{"group_by": "user_id", "limit": 1000}],
             pricing={"gpt-4": {"input_per_1k": 200.0, "output_per_1k": 0.0}},
@@ -378,8 +485,6 @@ class TestBudgetEvaluator:
         )
 
         # When: u1 spends 800+300=1100 cents, u2 spends 300 cents
-        # 4000 input tokens * 200/1000 = 800 cents
-        # 1500 input tokens * 200/1000 = 300 cents
         def _step(tokens: int, user: str) -> dict:
             return {
                 "model": "gpt-4",
@@ -408,6 +513,7 @@ class TestBudgetEvaluator:
 
     @pytest.mark.asyncio
     async def test_no_data_returns_not_matched(self) -> None:
+        # Given: evaluator / When: None data / Then: not matched
         ev = self._make_evaluator(limits=[{"limit": 1000}])
         result = await ev.evaluate(None)
         assert result.matched is False
@@ -415,14 +521,13 @@ class TestBudgetEvaluator:
     @pytest.mark.asyncio
     async def test_confidence_always_one(self) -> None:
         # Given: evaluator with 1000-cent limit and pricing table
-        # pricing: 200 cents per 1k input tokens
         ev = self._make_evaluator(
             limits=[{"limit": 1000}],
             pricing={"gpt-4": {"input_per_1k": 200.0, "output_per_1k": 0.0}},
             model_path="model",
         )
 
-        # When: first call costs 50 cents (250 tokens), second costs 960 cents (4800 tokens)
+        # When: first call costs 50 cents, second costs 960 cents
         def _step(tokens: int) -> dict:
             return {"model": "gpt-4", "usage": {"input_tokens": tokens, "output_tokens": 0}}
 
@@ -443,7 +548,7 @@ class TestBudgetEvaluator:
         )
 
         # When: evaluate with known model and tokens
-        # cost = ceil(100*30/1000 + 200*60/1000) = ceil(3+12) = 15 cents
+        # cost = (100*30 + 200*60) / 1000 = 15.0 cents
         result = await ev.evaluate(
             {
                 "model": "gpt-4",
@@ -454,7 +559,7 @@ class TestBudgetEvaluator:
         # Then: not matched (15 < 100), cost tracked in metadata
         assert result.matched is False
         assert result.metadata is not None
-        assert result.metadata["cost"] == 15
+        assert result.metadata["cost"] == pytest.approx(15.0, abs=0.01)
 
     @pytest.mark.asyncio
     async def test_unknown_model_cost_zero(self) -> None:
@@ -476,7 +581,85 @@ class TestBudgetEvaluator:
         # Then: not matched (cost=0 because model not in pricing)
         assert result.matched is False
         assert result.metadata is not None
-        assert result.metadata["cost"] == 0
+        assert result.metadata["cost"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_small_cost_no_overcount(self) -> None:
+        # Given: evaluator with 1-cent limit, pricing yields 0.003 cents per call
+        ev = self._make_evaluator(
+            limits=[{"limit": 1}],
+            pricing={"gpt-4": {"input_per_1k": 0.03, "output_per_1k": 0.0}},
+            model_path="model",
+        )
+        step = {"model": "gpt-4", "usage": {"input_tokens": 100, "output_tokens": 0}}
+
+        # When: 100 calls (total cost = 0.3 cents, should NOT exceed 1 cent)
+        for _ in range(100):
+            result = await ev.evaluate(step)
+
+        # Then: not exceeded (float accumulation, no per-call ceil)
+        assert result.matched is False
+
+
+# ---------------------------------------------------------------------------
+# Store registry
+# ---------------------------------------------------------------------------
+
+
+class TestStoreRegistry:
+    def test_same_config_returns_same_store(self) -> None:
+        # Given: two configs with identical parameters
+        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}])
+
+        # When: get store twice
+        store1 = get_or_create_store(config)
+        store2 = get_or_create_store(config)
+
+        # Then: same object
+        assert store1 is store2
+
+    def test_different_config_returns_different_store(self) -> None:
+        # Given: two configs with different limits
+        config1 = BudgetEvaluatorConfig(limits=[{"limit": 1000}])
+        config2 = BudgetEvaluatorConfig(limits=[{"limit": 2000}])
+
+        # When: get stores
+        store1 = get_or_create_store(config1)
+        store2 = get_or_create_store(config2)
+
+        # Then: different objects
+        assert store1 is not store2
+
+    def test_clear_budget_stores(self) -> None:
+        # Given: a registered store
+        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}])
+        store1 = get_or_create_store(config)
+
+        # When: clear all stores
+        clear_budget_stores()
+        store2 = get_or_create_store(config)
+
+        # Then: new store (old one is gone)
+        assert store1 is not store2
+
+    @pytest.mark.asyncio
+    async def test_evaluator_uses_registry(self) -> None:
+        # Given: two evaluators with same config
+        config = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            pricing={"gpt-4": {"input_per_1k": 100.0, "output_per_1k": 0.0}},
+            model_path="model",
+        )
+        ev1 = BudgetEvaluator(config)
+        ev2 = BudgetEvaluator(config)
+
+        # When: ev1 records usage, ev2 checks
+        step = {"model": "gpt-4", "usage": {"input_tokens": 500, "output_tokens": 0}}
+        await ev1.evaluate(step)
+        result = await ev2.evaluate(step)
+
+        # Then: ev2 sees ev1's accumulated spend (shared store via registry)
+        assert result.matched is True  # 50 + 50 = 100 >= 100
 
 
 # ---------------------------------------------------------------------------
@@ -504,18 +687,22 @@ class TestBudgetAdversarial:
 
         assert _extract_by_path({"a": 1}, "__class__") is None
 
-    def test_group_by_without_metadata_skips_rule(self) -> None:
+    @pytest.mark.asyncio
+    async def test_group_by_without_metadata_skips_rule(self) -> None:
         # Given: rule with group_by=user_id but no user_id in scope
         rules = [BudgetLimitRule(group_by="user_id", limit=1000)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
 
         # When: step without user_id
-        results = store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=999)
+        results = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=999.0
+        )
 
         # Then: rule skipped
         assert results == []
 
-    def test_two_rules_same_scope_no_double_count(self) -> None:
+    @pytest.mark.asyncio
+    async def test_two_rules_same_scope_no_double_count(self) -> None:
         # Given: two global rules with different limit types
         rules = [
             BudgetLimitRule(limit=1000),
@@ -524,53 +711,44 @@ class TestBudgetAdversarial:
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
 
         # When: record once
-        results = store.record_and_check(scope={}, input_tokens=100, output_tokens=100, cost=100)
+        results = await store.record_and_check(
+            scope={}, input_tokens=100, output_tokens=100, cost=100.0
+        )
 
         # Then: both rules get snapshot, but usage recorded only once
         assert len(results) == 2
         assert results[0].spent == 100  # not 200
         assert results[1].spent_tokens == 200  # not 400
 
-    def test_different_currency_separate_buckets(self) -> None:
-        # Given: two rules with same scope but different currencies
-        rules = [
-            BudgetLimitRule(limit=1000, currency=Currency.USD),
-            BudgetLimitRule(limit=2000, currency=Currency.EUR),
-        ]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
-
-        # When: record once
-        results = store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=500)
-
-        # Then: each currency gets its own bucket, both record the cost
-        assert len(results) == 2
-        assert results[0].spent == 500
-        assert results[1].spent == 500
-
-    def test_negative_cost_not_recorded(self) -> None:
+    @pytest.mark.asyncio
+    async def test_negative_cost_reduces_spend(self) -> None:
         # Given: store with 1000-cent limit
         rules = [BudgetLimitRule(limit=1000)]
         store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
 
         # When: record positive then negative cost
-        store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=500)
-        results = store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=-200)
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=500.0)
+        results = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=-200.0
+        )
 
-        # Then: negative cost is added (store is dumb; validation is caller's job)
-        # If this is undesirable, evaluator must reject negatives before calling store
+        # Then: negative cost reduces spend (store does not clamp; validation is caller's job)
         assert results[0].spent == 300
 
-    def test_window_seconds_boundary_alignment(self) -> None:
+    @pytest.mark.asyncio
+    async def test_window_seconds_boundary_alignment(self) -> None:
         # Given: hourly window, clock at boundary-1 and boundary
         rules = [BudgetLimitRule(limit=1000, window_seconds=3600)]
         boundary = 3600 * 100  # exact hour boundary
 
         # When: record just before and at boundary
         store = InMemoryBudgetStore(rules=rules, clock=lambda: boundary - 1)
-        store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=500)
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=500.0)
 
         store._clock = lambda: boundary
-        results = store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=500)
+        results = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=500.0
+        )
 
         # Then: boundary crossing starts fresh period
         assert results[0].spent == 500  # not 1000
@@ -582,11 +760,6 @@ class TestConfigValidationEdgeCases:
         with pytest.raises(ValidationError, match="positive"):
             BudgetLimitRule(limit_tokens=0)
 
-    def test_invalid_currency_rejected(self) -> None:
-        # Given/When: invalid currency string
-        with pytest.raises(ValidationError):
-            BudgetLimitRule(limit=1000, currency="btc")
-
 
 class TestBoolGuard:
     """bool is a subclass of int in Python -- must be rejected."""
@@ -597,3 +770,656 @@ class TestBoolGuard:
 
         # When/Then: bools are not accepted as token counts
         assert _extract_tokens(data, None) == (0, 0)
+
+
+# ---------------------------------------------------------------------------
+# Store registry robustness
+# ---------------------------------------------------------------------------
+
+
+class TestStoreRegistryRobustness:
+    def test_concurrent_get_or_create_store(self) -> None:
+        # Given: 10 threads requesting the same config concurrently
+        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}])
+        stores: list[Any] = []
+        lock = threading.Lock()
+
+        def get_store() -> None:
+            s = get_or_create_store(config)
+            with lock:
+                stores.append(s)
+
+        # When: 10 threads call get_or_create_store simultaneously
+        threads = [threading.Thread(target=get_store) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Then: all threads got the same store object
+        assert len(stores) == 10
+        assert all(s is stores[0] for s in stores)
+
+    @pytest.mark.asyncio
+    async def test_evaluator_cache_eviction_preserves_budget_state(self) -> None:
+        # Given: evaluator that has recorded usage
+        from agent_control_evaluators._factory import (
+            clear_evaluator_cache,
+        )
+
+        config = BudgetEvaluatorConfig(
+            limits=[{"limit": 1000}],
+            pricing={"gpt-4": {"input_per_1k": 100.0, "output_per_1k": 0.0}},
+            model_path="model",
+        )
+        ev = BudgetEvaluator(config)
+        step = {"model": "gpt-4", "usage": {"input_tokens": 500, "output_tokens": 0}}
+        await ev.evaluate(step)
+
+        # When: simulate LRU eviction by clearing the evaluator cache
+        clear_evaluator_cache()
+
+        # Then: budget state survives (stored in module-level registry, not on evaluator)
+        ev2 = BudgetEvaluator(config)
+        result = await ev2.evaluate(step)
+
+        # 500 tokens * 100 cents/1k = 50.0 cents per call.
+        # Two calls = 100.0 cents total. limit=1000, so not exceeded.
+        # Key assertion: state IS preserved across evaluator re-creation.
+        assert result.metadata is not None
+        assert result.metadata["cost"] == pytest.approx(50.0, abs=0.1)
+        # The all_snapshots should show accumulated spend from both calls
+        snaps = result.metadata["all_snapshots"]
+        assert snaps[0]["spent"] == 100  # round(50.0 + 50.0) = 100, not 50
+
+
+# ---------------------------------------------------------------------------
+# _estimate_cost edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestRoundingBoundary:
+    @pytest.mark.asyncio
+    async def test_spent_half_cent_below_limit_not_exceeded(self) -> None:
+        # Given: store with 1000-cent limit
+        rules = [BudgetLimitRule(limit=1000)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+
+        # When: spend 999.5 cents (just below limit)
+        results = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=999.5
+        )
+
+        # Then: not exceeded (999.5 < 1000), spent display < limit
+        assert results[0].exceeded is False
+        assert results[0].spent < results[0].limit  # no contradiction
+
+    @pytest.mark.asyncio
+    async def test_spent_display_never_exceeds_actual(self) -> None:
+        # Given: store with 100-cent limit
+        rules = [BudgetLimitRule(limit=100)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+
+        # When: spend 99.9 cents
+        results = await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=99.9)
+
+        # Then: floor truncation means spent=99, not rounded to 100
+        assert results[0].spent == 99
+        assert results[0].exceeded is False
+
+
+class TestConfigKeyOrdering:
+    def test_limits_order_does_not_affect_store_identity(self) -> None:
+        # Given: two configs with same rules in different order
+        rule_a = {"limit": 1000, "scope": {"agent": "a"}}
+        rule_b = {"limit": 2000, "scope": {"agent": "b"}}
+        config1 = BudgetEvaluatorConfig(limits=[rule_a, rule_b])
+        config2 = BudgetEvaluatorConfig(limits=[rule_b, rule_a])
+
+        # When: get stores for both
+        store1 = get_or_create_store(config1)
+        store2 = get_or_create_store(config2)
+
+        # Then: same store (order-independent)
+        assert store1 is store2
+
+
+class TestEstimateCostEdgeCases:
+    def test_nan_rate_returns_zero(self) -> None:
+        from agent_control_evaluator_budget.budget.evaluator import _estimate_cost
+
+        # Given: pricing table with NaN rate
+        pricing = {"gpt-4": {"input_per_1k": float("nan"), "output_per_1k": 0.0}}
+
+        # When: estimate cost
+        cost = _estimate_cost("gpt-4", 1000, 0, pricing)
+
+        # Then: returns 0.0 (NaN guard)
+        assert cost == 0.0
+
+    def test_inf_rate_returns_zero(self) -> None:
+        from agent_control_evaluator_budget.budget.evaluator import _estimate_cost
+
+        # Given: pricing table with Inf rate
+        pricing = {"gpt-4": {"input_per_1k": float("inf"), "output_per_1k": 0.0}}
+
+        # When: estimate cost
+        cost = _estimate_cost("gpt-4", 1000, 0, pricing)
+
+        # Then: returns 0.0 (Inf guard)
+        assert cost == 0.0
+
+    def test_negative_rate_returns_zero(self) -> None:
+        from agent_control_evaluator_budget.budget.evaluator import _estimate_cost
+
+        # Given: pricing table with negative rate
+        pricing = {"gpt-4": {"input_per_1k": -10.0, "output_per_1k": 0.0}}
+
+        # When: estimate cost
+        cost = _estimate_cost("gpt-4", 1000, 0, pricing)
+
+        # Then: returns 0.0 (negative guard)
+        assert cost == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Nested model_path extraction
+# ---------------------------------------------------------------------------
+
+
+class TestNestedModelPath:
+    @pytest.mark.asyncio
+    async def test_nested_model_path(self) -> None:
+        # Given: evaluator with nested model_path
+        ev = BudgetEvaluator(
+            BudgetEvaluatorConfig(
+                limits=[{"limit": 1000}],
+                pricing={"gpt-4": {"input_per_1k": 100.0, "output_per_1k": 0.0}},
+                model_path="llm.model_name",
+            )
+        )
+
+        # When: evaluate with nested model structure
+        result = await ev.evaluate(
+            {
+                "llm": {"model_name": "gpt-4"},
+                "usage": {"input_tokens": 500, "output_tokens": 0},
+            }
+        )
+
+        # Then: model resolved correctly, cost computed
+        assert result.metadata is not None
+        assert result.metadata["cost"] == pytest.approx(50.0, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# TTL prune tests
+# ---------------------------------------------------------------------------
+
+
+class TestTTLPrune:
+    @pytest.mark.asyncio
+    async def test_ttl_prune_drops_old_period_on_rollover(self) -> None:
+        # Given: store with daily window. Day N, N+1, N+2 timestamps.
+        day_seconds = WINDOW_DAILY
+        day_n = 1700000000.0
+        # Align to exact day boundary
+        day_n = (int(day_n) // day_seconds) * day_seconds
+        day_n1 = day_n + day_seconds
+        day_n2 = day_n + 2 * day_seconds
+
+        rules = [BudgetLimitRule(limit=10_000, window_seconds=day_seconds)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+
+        # When: record on day N
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        # record on day N+1
+        store._clock = lambda: day_n1
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=2.0)
+        # record on day N+2 -- should prune day N
+        store._clock = lambda: day_n2
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=3.0)
+
+        # Then: only buckets for day N+1 and N+2 remain for that scope
+        with store._lock:
+            period_keys = [k[1] for k in store._buckets]
+
+        day_n_key = _derive_period_key(day_seconds, day_n)
+        day_n1_key = _derive_period_key(day_seconds, day_n1)
+        day_n2_key = _derive_period_key(day_seconds, day_n2)
+
+        assert day_n_key not in period_keys, "Day N bucket should be pruned"
+        assert day_n1_key in period_keys, "Day N+1 bucket must be retained"
+        assert day_n2_key in period_keys, "Day N+2 bucket must be retained"
+
+    @pytest.mark.asyncio
+    async def test_ttl_prune_preserves_cumulative_buckets(self) -> None:
+        # Given: store with both cumulative (window=None) and daily rules
+        day_seconds = WINDOW_DAILY
+        day_n = (int(1700000000.0) // day_seconds) * day_seconds
+
+        rules = [
+            BudgetLimitRule(limit=10_000),  # cumulative (window_seconds=None)
+            BudgetLimitRule(limit=10_000, window_seconds=day_seconds),
+        ]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+
+        # When: record on 3 consecutive days
+        for i in range(3):
+            store._clock = lambda i=i: day_n + i * day_seconds
+            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+
+        # Then: cumulative bucket (empty period key) must survive
+        with store._lock:
+            period_keys = [k[1] for k in store._buckets]
+
+        assert "" in period_keys, "Cumulative bucket (period_key='') must not be pruned"
+
+    @pytest.mark.asyncio
+    async def test_ttl_prune_preserves_other_windows(self) -> None:
+        # Given: store with hourly and daily rules
+        hour = 3600
+        day = WINDOW_DAILY
+        t0 = (int(1700000000.0) // day) * day  # align to day boundary
+
+        rules = [
+            BudgetLimitRule(limit=10_000, window_seconds=hour),
+            BudgetLimitRule(limit=100_000, window_seconds=day),
+        ]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: t0)
+
+        # When: roll hours many times (within same day)
+        for h in range(5):
+            store._clock = lambda h=h: t0 + h * hour
+            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+
+        # Then: daily bucket must survive hourly rollovers
+        day_key = _derive_period_key(day, t0)
+        with store._lock:
+            period_keys = [k[1] for k in store._buckets]
+
+        assert day_key in period_keys, "Daily bucket must survive hourly rollovers"
+
+        # When: roll day (prune old hourly buckets)
+        t_day2 = t0 + day
+        store._clock = lambda: t_day2
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+
+        with store._lock:
+            period_keys_after = [k[1] for k in store._buckets]
+
+        # Then: old hour-0 through hour-3 (index < current_hour-1) should be pruned
+        # daily bucket survives (different window)
+        day_key2 = _derive_period_key(day, t_day2)
+        assert day_key2 in period_keys_after or day_key in period_keys_after, (
+            "At least one daily bucket must survive"
+        )
+        # hour 0 key should be gone (it's >1 period behind the new day's hour-0)
+        hour0_key = _derive_period_key(hour, t0)
+        # hour0 is many hours before t_day2's first hour -- must be pruned
+        assert hour0_key not in period_keys_after, "Old hourly buckets should be pruned"
+
+    @pytest.mark.asyncio
+    async def test_ttl_prune_no_rescan_within_period(self) -> None:
+        # Given: store with daily window. After a rollover, subsequent records
+        # within the same new period must NOT trigger another prune scan.
+        day_seconds = WINDOW_DAILY
+        day_n = (int(1700000000.0) // day_seconds) * day_seconds
+        day_n1 = day_n + day_seconds
+
+        rules = [BudgetLimitRule(limit=10_000, window_seconds=day_seconds)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+
+        # Roll over to day N+1
+        store._clock = lambda: day_n1
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+
+        # Capture _last_pruned_period state after first record of new period
+        with store._lock:
+            snapshot_index = dict(store._last_pruned_period)
+
+        # When: record many more times within the same new period
+        for _ in range(10):
+            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+
+        # Then: _last_pruned_period unchanged (no rescan occurred)
+        with store._lock:
+            after_index = dict(store._last_pruned_period)
+
+        assert after_index == snapshot_index, "Prune scan must not repeat within same period"
+
+    @pytest.mark.asyncio
+    async def test_ttl_prune_sparse_rollover(self) -> None:
+        # Given: daily rule, first record at index 5, then jump to index 100
+        day = WINDOW_DAILY
+        day_n = (int(1700000000.0) // day) * day
+        rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+
+        # When: record at baseline
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        # Jump forward ~95 days (any stale indices must be swept in one scan)
+        for i in range(1, 6):
+            store._clock = lambda i=i: day_n + i * day
+            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        # Large gap -- should prune everything older than index-1
+        far = day_n + 100 * day
+        store._clock = lambda: far
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+
+        # Then: only current (index 100) and previous-valid bucket survive for that window
+        with store._lock:
+            period_keys = [k[1] for k in store._buckets if k[1].startswith("P")]
+        far_key = _derive_period_key(day, far)
+        assert far_key in period_keys
+        # Nothing from the early batch (indices 0..5) should remain
+        for i in range(6):
+            old_key = _derive_period_key(day, day_n + i * day)
+            assert old_key not in period_keys, f"stale index {i} must be pruned"
+
+    @pytest.mark.asyncio
+    async def test_ttl_prune_reset_clears_prune_state(self) -> None:
+        # Given: store that has pruned once
+        day = WINDOW_DAILY
+        day_n = (int(1700000000.0) // day) * day
+        rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        store._clock = lambda: day_n + 2 * day
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        with store._lock:
+            assert day in store._last_pruned_period
+
+        # When: full reset
+        store.reset()
+
+        # Then: _last_pruned_period is cleared so that a future rollover
+        # re-enables pruning against fresh state
+        with store._lock:
+            assert store._last_pruned_period == {}
+
+        # And: a fresh rollover sequence prunes again (watermark advances)
+        store._clock = lambda: day_n
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        store._clock = lambda: day_n + 2 * day
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        with store._lock:
+            assert store._last_pruned_period.get(day) is not None
+
+    @pytest.mark.asyncio
+    async def test_ttl_prune_partial_reset_preserves_prune_state(self) -> None:
+        # Given: store that has pruned once
+        day = WINDOW_DAILY
+        day_n = (int(1700000000.0) // day) * day
+        rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        store._clock = lambda: day_n + 2 * day
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        with store._lock:
+            before = dict(store._last_pruned_period)
+
+        # When: partial reset (scope-scoped)
+        store.reset(scope_key="__global__")
+
+        # Then: prune state preserved (partial reset does not clobber watermark)
+        with store._lock:
+            assert store._last_pruned_period == before
+
+    @pytest.mark.asyncio
+    async def test_ttl_prune_cross_scope(self) -> None:
+        # Given: group_by user, two users recording on the same day
+        day = WINDOW_DAILY
+        day_n = (int(1700000000.0) // day) * day
+        rules = [
+            BudgetLimitRule(limit=10_000, window_seconds=day, group_by="user_id"),
+        ]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+        await store.record_and_check(
+            scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=1.0
+        )
+        await store.record_and_check(
+            scope={"user_id": "u2"}, input_tokens=0, output_tokens=0, cost=1.0
+        )
+
+        # Pre-condition: both users have distinct buckets on day N
+        day_n_key = _derive_period_key(day, day_n)
+        with store._lock:
+            day_n_scope_keys = [k[0] for k in store._buckets if k[1] == day_n_key]
+        assert "user_id=u1" in day_n_scope_keys, "u1 must have its own bucket"
+        assert "user_id=u2" in day_n_scope_keys, "u2 must have its own bucket"
+
+        # When: only u1 records on day N+2 (triggers prune)
+        store._clock = lambda: day_n + 2 * day
+        await store.record_and_check(
+            scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=1.0
+        )
+
+        # Then: u2's day-N bucket is also pruned -- the period expired globally,
+        # not per-scope. This is intentional: the prune sweeps all same-window
+        # stale buckets regardless of which scope triggered it.
+        day_n_key = _derive_period_key(day, day_n)
+        with store._lock:
+            period_keys = [k for k in store._buckets if k[1] == day_n_key]
+        assert period_keys == [], "u2 day-N bucket must be pruned by u1's rollover"
+
+    @pytest.mark.asyncio
+    async def test_ttl_prune_respects_max_buckets_after_rollover(self) -> None:
+        # Given: store with max_buckets=2 (hard cap). Record on day N and N+1
+        # fills capacity. On day N+2 the prune must free the day-N slot BEFORE
+        # the max_buckets check, otherwise rollover permanently fails closed.
+        day = WINDOW_DAILY
+        day_n = (int(1700000000.0) // day) * day
+        rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
+        store = InMemoryBudgetStore(
+            rules=rules, clock=lambda: day_n, max_buckets=2
+        )
+
+        # When: fill 2 buckets
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        store._clock = lambda: day_n + day
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        # Day N+2 at capacity -- prune must free space
+        store._clock = lambda: day_n + 2 * day
+        snaps = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
+
+        # Then: day N+2 record succeeded (not fail-closed) and day-N bucket is gone
+        assert len(snaps) == 1
+        assert not snaps[0].exceeded
+        with store._lock:
+            period_keys = [k[1] for k in store._buckets]
+        day_n_key = _derive_period_key(day, day_n)
+        assert day_n_key not in period_keys, "stale day-N bucket must be pruned to free slot"
+
+    @pytest.mark.asyncio
+    async def test_ttl_prune_backwards_clock_is_noop(self) -> None:
+        # Given: store that pruned at day N+5 (watermark = index 5)
+        day = WINDOW_DAILY
+        day_n = (int(1700000000.0) // day) * day
+        rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        store._clock = lambda: day_n + 5 * day
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        with store._lock:
+            watermark_before = store._last_pruned_period.get(day)
+        assert watermark_before is not None
+
+        # When: clock jumps backwards to day N+2 and creates a new bucket there
+        store._clock = lambda: day_n + 2 * day
+        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+
+        # Then: watermark did NOT drop (monotonic advance only)
+        with store._lock:
+            watermark_after = store._last_pruned_period.get(day)
+        assert watermark_after == watermark_before, (
+            "backwards clock must not lower the prune watermark"
+        )
+
+
+class TestBudgetStoreABC:
+    def test_subclass_with_sync_override_rejected_at_class_creation(self) -> None:
+        # Given: a subclass that overrides record_and_check with a sync def
+        # When: the class body is evaluated
+        # Then: TypeError is raised, surfacing the contract violation at
+        # class-creation time rather than failing silently at the first
+        # `await` call site in production.
+        from agent_control_evaluator_budget.budget.store import BudgetSnapshot, BudgetStore
+
+        with pytest.raises(TypeError, match="must be an async def"):
+
+            class BrokenStore(BudgetStore):  # type: ignore[unused-ignore]
+                def record_and_check(  # noqa: D401, ANN001
+                    self,
+                    scope: dict[str, str],
+                    input_tokens: int,
+                    output_tokens: int,
+                    cost: float,
+                ) -> list[BudgetSnapshot]:
+                    return []
+
+    def test_subclass_with_async_override_accepted(self) -> None:
+        # Given/When: a subclass that overrides with async def
+        # Then: class creation succeeds and the subclass can be instantiated
+        from agent_control_evaluator_budget.budget.store import BudgetSnapshot, BudgetStore
+
+        class GoodStore(BudgetStore):
+            async def record_and_check(
+                self,
+                scope: dict[str, str],
+                input_tokens: int,
+                output_tokens: int,
+                cost: float,
+            ) -> list[BudgetSnapshot]:
+                return []
+
+        # And: instances pass nominal isinstance against the ABC
+        instance = GoodStore()
+        assert isinstance(instance, BudgetStore)
+
+    def test_subclass_without_override_accepted_at_class_creation(self) -> None:
+        # Given/When: a subclass that does NOT override record_and_check
+        # Then: class creation succeeds (__init_subclass__ method=None path).
+        # ABC enforces the abstractmethod at instantiation, not class creation.
+        from agent_control_evaluator_budget.budget.store import BudgetStore
+
+        class PartialStore(BudgetStore):
+            pass  # no override; abstractmethod prevents instantiation
+
+        # And: instantiation is blocked by ABC, not our __init_subclass__
+        with pytest.raises(TypeError, match="abstract method"):
+            PartialStore()
+
+    def test_mixin_sync_override_rejected(self) -> None:
+        # Given: a sync mixin that provides record_and_check, and a subclass
+        # that inherits it via MRO without overriding in its own __dict__
+        # When: class creation is attempted
+        # Then: __init_subclass__ walks MRO and catches the sync mixin override
+        from agent_control_evaluator_budget.budget.store import BudgetStore
+
+        class SyncMixin:
+            def record_and_check(self, scope, input_tokens, output_tokens, cost):
+                return []
+
+        with pytest.raises(TypeError, match="must be an async def"):
+
+            class MixinStore(SyncMixin, BudgetStore):
+                pass
+
+
+class TestNaNCostDefense:
+    @pytest.mark.asyncio
+    async def test_nan_cost_coerced_to_zero(self) -> None:
+        # Given: store with a cost limit
+        rules = [BudgetLimitRule(limit=1000)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+
+        # When: NaN cost is injected directly (bypassing _estimate_cost)
+        await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=float("nan")
+        )
+        # And: a subsequent valid charge arrives
+        snaps = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=500.0
+        )
+
+        # Then: the NaN was coerced to 0.0; the accumulator is 500, not NaN
+        assert snaps[0].spent == 500
+        assert not snaps[0].exceeded
+
+    @pytest.mark.asyncio
+    async def test_inf_cost_coerced_to_zero(self) -> None:
+        # Given: store with a cost limit
+        rules = [BudgetLimitRule(limit=1000)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+
+        # When: Inf cost is injected
+        await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=float("inf")
+        )
+        snaps = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=100.0
+        )
+
+        # Then: Inf was coerced to 0.0; the accumulator is 100
+        assert snaps[0].spent == 100
+        assert not snaps[0].exceeded
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("neg_input", "neg_output"),
+        [(-50, 0), (0, -50), (-30, -20)],
+        ids=["neg_input_only", "neg_output_only", "both_negative"],
+    )
+    async def test_negative_tokens_clamped_to_zero(
+        self, neg_input: int, neg_output: int
+    ) -> None:
+        # Given: store with a token limit, filled to 90 tokens
+        rules = [BudgetLimitRule(limit_tokens=100)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        await store.record_and_check(
+            scope={}, input_tokens=90, output_tokens=0, cost=0.0
+        )
+
+        # When: inject negative input/output tokens
+        snaps = await store.record_and_check(
+            scope={}, input_tokens=neg_input, output_tokens=neg_output, cost=0.0
+        )
+
+        # Then: negative tokens clamped to 0; accumulator stays at 90
+        assert snaps[0].spent_tokens == 90
+        assert not snaps[0].exceeded
+
+    @pytest.mark.asyncio
+    async def test_nan_clock_does_not_crash(self) -> None:
+        # Given: store with a windowed rule AND a clock that returns NaN
+        rules = [BudgetLimitRule(limit=1000, window_seconds=WINDOW_DAILY)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: float("nan"))
+
+        # When: record_and_check is called (would raise OverflowError in
+        # _derive_period_key without the guard)
+        snaps = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=100.0
+        )
+
+        # Then: no crash; maps to epoch-zero period, budget still enforced
+        assert len(snaps) == 1
+        assert snaps[0].spent == 100
+
+    @pytest.mark.asyncio
+    async def test_inf_clock_does_not_crash(self) -> None:
+        # Given: clock returning Inf
+        rules = [BudgetLimitRule(limit=1000, window_seconds=WINDOW_DAILY)]
+        store = InMemoryBudgetStore(rules=rules, clock=lambda: float("inf"))
+
+        # When: record_and_check is called
+        snaps = await store.record_and_check(
+            scope={}, input_tokens=0, output_tokens=0, cost=100.0
+        )
+
+        # Then: no crash
+        assert len(snaps) == 1
+        assert snaps[0].spent == 100

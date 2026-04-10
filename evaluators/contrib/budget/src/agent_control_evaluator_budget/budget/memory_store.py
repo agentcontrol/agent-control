@@ -6,13 +6,14 @@ use a Redis or Postgres-backed store (separate package).
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from .config import BudgetLimitRule
-from .store import BudgetSnapshot
+from .store import BudgetSnapshot, BudgetStore, round_spent
 
 
 def _sanitize_scope_value(val: str) -> str:
@@ -32,6 +33,20 @@ def _build_scope_key(
     if group_by and group_by in step_scope:
         parts.append(f"{group_by}={_sanitize_scope_value(step_scope[group_by])}")
     return "|".join(parts) if parts else "__global__"
+
+
+def _parse_period_key(key: str) -> tuple[int, int] | None:
+    """Parse 'P{window}:{index}' into (window_seconds, bucket_index).
+
+    Returns None for empty/cumulative keys.
+    """
+    if not key or not key.startswith("P"):
+        return None
+    try:
+        window_part, index_part = key[1:].split(":", 1)
+        return int(window_part), int(index_part)
+    except (ValueError, IndexError):
+        return None
 
 
 def _derive_period_key(window_seconds: int | None, now: float) -> str:
@@ -58,17 +73,22 @@ def _scope_matches(rule: BudgetLimitRule, scope: dict[str, str]) -> bool:
 
 
 def _compute_utilization(
-    spent: int,
+    spent: float,
     spent_tokens: int,
     limit: int | None,
     limit_tokens: int | None,
 ) -> float:
-    """Return max(spend_ratio, token_ratio) clamped to [0.0, 1.0]."""
+    """Return max(spend_ratio, token_ratio) clamped to [0.0, 1.0].
+
+    The low-side clamp is load-bearing: under refund semantics the internal
+    `spent` accumulator may go negative, which would otherwise produce a
+    negative ratio and violate the BudgetSnapshot.utilization contract.
+    """
     ratios: list[float] = []
     if limit is not None and limit > 0:
-        ratios.append(min(spent / limit, 1.0))
+        ratios.append(max(0.0, min(spent / limit, 1.0)))
     if limit_tokens is not None and limit_tokens > 0:
-        ratios.append(min(spent_tokens / limit_tokens, 1.0))
+        ratios.append(max(0.0, min(spent_tokens / limit_tokens, 1.0)))
     return max(ratios) if ratios else 0.0
 
 
@@ -76,7 +96,7 @@ def _compute_utilization(
 class _Bucket:
     """Internal mutable accumulator for a single (scope, period) pair."""
 
-    spent: int = 0
+    spent: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
 
@@ -85,17 +105,21 @@ class _Bucket:
         return self.input_tokens + self.output_tokens
 
 
-class InMemoryBudgetStore:
+class InMemoryBudgetStore(BudgetStore):
     """Thread-safe in-memory budget store.
 
     Initialized with a list of BudgetLimitRule. Derives period keys
     internally from window_seconds + injected clock.
 
-    NOTE: Currency conversion is not handled here. The cost integer
-    passed to record_and_check is assumed to be in the same unit as
-    the rule's currency. Cross-currency conversion (e.g. USD->EUR)
-    is the caller's responsibility and will be addressed when cost
-    calculation moves into the evaluator (pending design review).
+    Cost is accumulated as float for precision. Integer rounding
+    happens only at snapshot time for display/reporting.
+
+    TTL prune: on new period rollover per window, buckets older than
+    `current - 1` for that window are dropped. This keeps memory bounded
+    for long-running deployments with windowed rules.
+
+    `max_buckets` remains as a backstop for high-cardinality group_by
+    explosions that TTL cannot protect against.
     """
 
     _DEFAULT_MAX_BUCKETS = 100_000
@@ -110,20 +134,45 @@ class InMemoryBudgetStore:
         self._rules = rules
         self._clock = clock
         self._lock = threading.Lock()
-        self._buckets: dict[tuple[str, str, str], _Bucket] = {}
+        self._buckets: dict[tuple[str, str], _Bucket] = {}
         self._max_buckets = max_buckets
+        self._last_pruned_period: dict[int, int] = {}
 
-    def record_and_check(
+    async def record_and_check(
         self,
         scope: dict[str, str],
         input_tokens: int,
         output_tokens: int,
-        cost: int,
+        cost: float,
     ) -> list[BudgetSnapshot]:
         """Atomically record usage and return snapshots for all matching rules."""
+        return self._record_and_check_sync(scope, input_tokens, output_tokens, cost)
+
+    def _record_and_check_sync(
+        self,
+        scope: dict[str, str],
+        input_tokens: int,
+        output_tokens: int,
+        cost: float,
+    ) -> list[BudgetSnapshot]:
+        """Sync implementation of record_and_check.
+
+        NaN/Inf cost is coerced to 0.0 defensively. Once NaN enters a
+        bucket's float accumulator, all subsequent additions produce NaN
+        and `nan >= limit` is always False (IEEE 754), permanently
+        disabling budget enforcement for that bucket.
+        """
+        if not math.isfinite(cost):
+            cost = 0.0
+        # Token counts have no refund semantics; clamp to non-negative
+        # to prevent negative injection from resetting the accumulator.
+        input_tokens = max(0, input_tokens)
+        output_tokens = max(0, output_tokens)
         now = self._clock()
+        if not math.isfinite(now):
+            now = 0.0
         snapshots: list[BudgetSnapshot] = []
-        recorded_pairs: set[tuple[str, str, str]] = set()
+        recorded_pairs: set[tuple[str, str]] = set()
 
         with self._lock:
             for rule in self._rules:
@@ -132,9 +181,7 @@ class InMemoryBudgetStore:
 
                 scope_key = _build_scope_key(rule.scope, rule.group_by, scope)
                 period_key = _derive_period_key(rule.window_seconds, now)
-                cur = rule.currency
-                currency_key = cur.value if hasattr(cur, "value") else str(cur)
-                pair = (scope_key, period_key, currency_key)
+                pair = (scope_key, period_key)
 
                 if pair not in recorded_pairs:
                     bucket = self._get_or_create_bucket(pair)
@@ -157,8 +204,14 @@ class InMemoryBudgetStore:
                     recorded_pairs.add(pair)
                 else:
                     bucket = self._buckets.get(pair)
-                    if bucket is None:
-                        continue
+                    # Defensive: this branch is unreachable under current
+                    # invariants (recorded_pairs only contains pairs whose
+                    # bucket was successfully created, and self._lock prevents
+                    # concurrent deletion). If a future refactor violates
+                    # this, the assertion surfaces it.
+                    assert bucket is not None, (
+                        f"bucket for {pair!r} was in recorded_pairs but missing from _buckets"
+                    )
 
                 total_tokens = bucket.total_tokens
                 utilization = _compute_utilization(
@@ -172,7 +225,7 @@ class InMemoryBudgetStore:
 
                 snapshots.append(
                     BudgetSnapshot(
-                        spent=bucket.spent,
+                        spent=round_spent(bucket.spent),
                         spent_tokens=total_tokens,
                         limit=rule.limit,
                         limit_tokens=rule.limit_tokens,
@@ -189,10 +242,9 @@ class InMemoryBudgetStore:
         period_key: str,
         limit: int | None = None,
         limit_tokens: int | None = None,
-        currency: str = "usd",
     ) -> BudgetSnapshot:
         """Read current budget state without recording usage."""
-        key = (scope_key, period_key, currency)
+        key = (scope_key, period_key)
         with self._lock:
             bucket = self._buckets.get(key)
             if bucket is None:
@@ -212,7 +264,7 @@ class InMemoryBudgetStore:
             if limit_tokens is not None and total_tokens >= limit_tokens:
                 exceeded = True
             return BudgetSnapshot(
-                spent=bucket.spent,
+                spent=round_spent(bucket.spent),
                 spent_tokens=total_tokens,
                 limit=limit,
                 limit_tokens=limit_tokens,
@@ -225,6 +277,7 @@ class InMemoryBudgetStore:
         with self._lock:
             if scope_key is None and period_key is None:
                 self._buckets.clear()
+                self._last_pruned_period.clear()
                 return
             keys_to_remove = [
                 k
@@ -235,11 +288,45 @@ class InMemoryBudgetStore:
             for k in keys_to_remove:
                 del self._buckets[k]
 
-    def _get_or_create_bucket(self, key: tuple[str, str, str]) -> _Bucket | None:
-        """Get or create a bucket. Returns None if max_buckets reached."""
+    def _get_or_create_bucket(self, key: tuple[str, str]) -> _Bucket | None:
+        """Get or create a bucket. Returns None if max_buckets reached.
+
+        On period rollover (new windowed bucket with a forward period index),
+        stale buckets for the same window (bucket_index < current - 1) are
+        pruned BEFORE the max_buckets capacity check, so that a rollover at
+        capacity can free space rather than fail closed. Cross-scope pruning
+        is intentional: all stale same-window buckets are dropped regardless
+        of scope key, since the period has expired globally.
+
+        The watermark `_last_pruned_period[window]` only advances forward;
+        a backwards clock does not trigger spurious prune work.
+
+        Caller must hold self._lock.
+        """
         bucket = self._buckets.get(key)
         if bucket is not None:
             return bucket
+
+        # TTL prune runs BEFORE the max_buckets check so that rollover at
+        # capacity can reclaim space rather than fail closed permanently.
+        parsed = _parse_period_key(key[1])
+        if parsed is not None:
+            window, index = parsed
+            last_pruned = self._last_pruned_period.get(window)
+            # Only advance on forward progress. Backwards clock is a no-op;
+            # the previously established watermark still protects us.
+            if last_pruned is None or index > last_pruned:
+                stale_keys = [
+                    k
+                    for k in self._buckets
+                    if (kp := _parse_period_key(k[1])) is not None
+                    and kp[0] == window
+                    and kp[1] < index - 1
+                ]
+                for k in stale_keys:
+                    del self._buckets[k]
+                self._last_pruned_period[window] = index
+
         if len(self._buckets) >= self._max_buckets:
             return None
         bucket = _Bucket()
