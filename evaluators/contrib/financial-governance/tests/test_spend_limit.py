@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -16,6 +18,7 @@ from agent_control_evaluator_financial_governance.spend_limit import (
     SpendLimitConfig,
     SpendLimitEvaluator,
 )
+from agent_control_evaluator_financial_governance.spend_limit.evaluator import _window_start
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -308,6 +311,17 @@ def test_budget_window_fixed_valid() -> None:
     w = BudgetWindow(kind="fixed", unit="day", timezone="America/New_York")
     assert w.unit == "day"
     assert w.timezone == "America/New_York"
+
+
+def test_window_start_honors_configured_timezone() -> None:
+    tz = ZoneInfo("America/New_York")
+    limit = BudgetLimit(
+        amount=Decimal("500"),
+        currency="USDC",
+        window=BudgetWindow(kind="fixed", unit="day", timezone="America/New_York"),
+    )
+    expected = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    assert _window_start(limit) == pytest.approx(expected, abs=1)
 
 
 def test_config_empty_limits() -> None:

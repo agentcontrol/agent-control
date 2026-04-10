@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from agent_control_evaluators import (
     Evaluator,
@@ -42,12 +43,12 @@ def _window_start(limit: BudgetLimit) -> float:
     """Compute the Unix timestamp start of the current budget window.
 
     For ``kind="rolling"``: ``now - seconds``.
-    For ``kind="fixed"`` with ``unit="day"``: midnight UTC today.
-    For ``kind="fixed"`` with ``unit="week"``: midnight UTC Monday of this week.
-    For ``kind="fixed"`` with ``unit="month"``: midnight UTC on the 1st of this month.
+    For ``kind="fixed"`` with ``unit="day"``: local midnight in the configured timezone.
+    For ``kind="fixed"`` with ``unit="week"``: local midnight Monday in the configured timezone.
+    For ``kind="fixed"`` with ``unit="month"``:
+    local midnight on the 1st in the configured timezone.
 
-    Note: Timezone support is noted in the model but calendar alignment uses UTC
-    for now.  Full IANA timezone support is a follow-up.
+    When ``window.timezone`` is omitted, UTC is used.
     """
     window = limit.window
     assert window is not None  # called only when window is set
@@ -59,19 +60,21 @@ def _window_start(limit: BudgetLimit) -> float:
 
     # kind == "fixed"
     import datetime as _dt
-    utc_now = _dt.datetime.now(_dt.timezone.utc)
+
+    tz = ZoneInfo(window.timezone or "UTC")
+    local_now = _dt.datetime.now(tz)
 
     if window.unit == "day":
-        start = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
     elif window.unit == "week":
-        # Monday of the current ISO week
-        start = utc_now - _dt.timedelta(days=utc_now.weekday())
+        # Monday of the current ISO week in the configured timezone.
+        start = local_now - _dt.timedelta(days=local_now.weekday())
         start = start.replace(hour=0, minute=0, second=0, microsecond=0)
     elif window.unit == "month":
-        start = utc_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     else:
         # Fallback — should not happen given BudgetWindow validation
-        start = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     return start.timestamp()
 

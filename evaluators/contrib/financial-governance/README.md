@@ -127,11 +127,18 @@ rolling = BudgetLimit(
     window=BudgetWindow(kind="rolling", seconds=86400),
 )
 
-# Calendar-day budget (UTC)
+# Calendar-day budget (UTC by default)
 daily = BudgetLimit(
     amount=Decimal("500"),
     currency="USDC",
     window=BudgetWindow(kind="fixed", unit="day"),
+)
+
+# Calendar-day budget aligned to New York local midnight
+ny_daily = BudgetLimit(
+    amount=Decimal("500"),
+    currency="USDC",
+    window=BudgetWindow(kind="fixed", unit="day", timezone="America/New_York"),
 )
 
 config = SpendLimitConfig(limits=[cap, rolling, daily])
@@ -143,7 +150,7 @@ evaluator = SpendLimitEvaluator(config)
 | kind | Required fields | Notes |
 |------|----------------|-------|
 | `"rolling"` | `seconds` | Sliding window from `now - seconds` |
-| `"fixed"` | `unit` (`"day"`, `"week"`, or `"month"`) | Calendar-aligned, UTC by default |
+| `"fixed"` | `unit` (`"day"`, `"week"`, or `"month"`), optional `timezone` | Calendar-aligned in the configured IANA timezone, UTC by default |
 
 ### scope_by semantics
 
@@ -197,7 +204,13 @@ result = await evaluator.evaluate({
 
 ## Custom SpendStore
 
-The `SpendStore` protocol requires three methods. Implement them for your backend:
+The `SpendStore` protocol requires four methods for full evaluator compatibility:
+- `record_spend()`
+- `get_spend()`
+- `check_and_record()`
+- `check_and_record_many()`
+
+Implement them for your backend:
 
 ```python
 from decimal import Decimal
@@ -268,12 +281,29 @@ class PostgresSpendStore:
             self.record_spend(amount, currency, metadata)
             return True, current
 
+    def check_and_record_many(
+        self,
+        amount: Decimal,
+        currency: str,
+        checks: list[BudgetCheck],
+        metadata: dict | None = None,
+    ) -> tuple[bool, int | None, list[Decimal]]:
+        with self._conn.transaction():
+            current_spends: list[Decimal] = []
+            for idx, check in enumerate(checks):
+                current = self.get_spend(currency, check.start, check.end, check.scope)
+                current_spends.append(current)
+                if current + amount > check.limit:
+                    return False, idx, current_spends
+            self.record_spend(amount, currency, metadata)
+            return True, None, current_spends
+
 # Use it:
 store = PostgresSpendStore("postgresql://...")
 evaluator = SpendLimitEvaluator(config, store=store)
 ```
 
-> **Single-process atomicity note:** `InMemorySpendStore.check_and_record()` uses a `threading.Lock` to atomically check-and-record within a single process. For multi-process or distributed deployments, your custom store must implement true database-level atomics (e.g., PostgreSQL `SELECT ... FOR UPDATE`, Redis Lua scripts).
+> **Single-process atomicity note:** `InMemorySpendStore.check_and_record()` and `check_and_record_many()` use a `threading.Lock` to atomically validate and record within a single process. For multi-process or distributed deployments, your custom store must implement true database-level atomics (e.g., PostgreSQL `SELECT ... FOR UPDATE`, Redis Lua scripts).
 
 ## Running Tests
 
