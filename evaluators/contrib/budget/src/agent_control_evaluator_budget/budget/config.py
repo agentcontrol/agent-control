@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from typing import Literal
 
 from agent_control_evaluators._base import EvaluatorConfig
 from pydantic import Field, field_validator, model_validator
@@ -17,12 +17,11 @@ WINDOW_WEEKLY = 604800
 WINDOW_MONTHLY = 2592000  # 30 days
 
 
-class Currency(str, Enum):
-    """Supported budget currencies."""
+class ModelPricing(EvaluatorConfig):
+    """Per-model token pricing in cents per 1K tokens."""
 
-    USD = "usd"
-    EUR = "eur"
-    TOKENS = "tokens"
+    input_per_1k: float = 0.0
+    output_per_1k: float = 0.0
 
 
 class BudgetLimitRule(EvaluatorConfig):
@@ -43,37 +42,22 @@ class BudgetLimitRule(EvaluatorConfig):
             each user gets their own budget. None = shared/global limit.
         window_seconds: Time window for accumulation in seconds.
             None = cumulative (no reset). See WINDOW_* constants.
-        limit: Maximum spend in the window, in minor units (e.g. cents
-            for USD). None = uncapped on this dimension.
-        currency: Currency for the limit. Defaults to USD.
-        limit_tokens: Maximum tokens in the window. None = uncapped.
+        limit: Maximum usage in the window. Interpreted by limit_unit.
+        limit_unit: Unit for limit. usd_cents checks spend; tokens checks
+            input + output tokens.
     """
 
     scope: dict[str, str] = Field(default_factory=dict)
     group_by: str | None = None
     window_seconds: int | None = None
-    limit: int | None = None
-    currency: Currency = Currency.USD
-    limit_tokens: int | None = None
-
-    @model_validator(mode="after")
-    def at_least_one_limit(self) -> "BudgetLimitRule":
-        if self.limit is None and self.limit_tokens is None:
-            raise ValueError("At least one of limit or limit_tokens must be set")
-        return self
+    limit: int
+    limit_unit: Literal["usd_cents", "tokens"] = "usd_cents"
 
     @field_validator("limit")
     @classmethod
-    def validate_limit(cls, v: int | None) -> int | None:
-        if v is not None and v <= 0:
+    def validate_limit(cls, v: int) -> int:
+        if v <= 0:
             raise ValueError("limit must be a positive integer")
-        return v
-
-    @field_validator("limit_tokens")
-    @classmethod
-    def validate_limit_tokens(cls, v: int | None) -> int | None:
-        if v is not None and v <= 0:
-            raise ValueError("limit_tokens must be positive")
         return v
 
     @field_validator("window_seconds")
@@ -89,9 +73,13 @@ class BudgetEvaluatorConfig(EvaluatorConfig):
 
     Attributes:
         limits: List of budget limit rules. Each is checked independently.
-        pricing: Optional model pricing table. Maps model name to per-1K
-            token rates. Used to derive cost in USD from token counts and
-            model name.
+        budget_id: Unique budget pool identifier. Same budget_id shares
+            accumulated spend. Different budget_id is fully isolated.
+        unknown_model_behavior: What to do when a model is not found in the
+            pricing table and a cost-based rule exists. block=fail closed,
+            warn=log warning and treat cost as 0.
+        pricing: Optional model pricing table. Maps model name to ModelPricing.
+            Used to derive cost in USD from token counts and model name.
         token_path: Dot-notation path to extract token usage from step
             data (e.g. "usage.total_tokens"). If None, looks for standard
             fields (input_tokens, output_tokens, total_tokens, usage).
@@ -101,7 +89,27 @@ class BudgetEvaluatorConfig(EvaluatorConfig):
     """
 
     limits: list[BudgetLimitRule] = Field(min_length=1)
-    pricing: dict[str, dict[str, float]] | None = None
+    budget_id: str = Field(
+        default="default",
+        description=(
+            "Unique budget pool identifier. Same budget_id shares accumulated spend. "
+            "Different budget_id is fully isolated."
+        ),
+    )
+    unknown_model_behavior: Literal["block", "warn"] = Field(
+        default="block",
+        description=(
+            "What to do when a model is not found in the pricing table and a cost-based "
+            "rule exists. block=fail closed, warn=log warning and treat cost as 0."
+        ),
+    )
+    pricing: dict[str, ModelPricing] | None = None
     token_path: str | None = None
     model_path: str | None = None
     metadata_paths: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def require_pricing_for_cost_rules(self) -> "BudgetEvaluatorConfig":
+        if self.pricing is None and any(rule.limit_unit == "usd_cents" for rule in self.limits):
+            raise ValueError('pricing is required when any rule uses limit_unit="usd_cents"')
+        return self

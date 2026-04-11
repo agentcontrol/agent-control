@@ -7,12 +7,11 @@ are returned in result metadata, not in confidence.
 The evaluator is stateless. Budget state lives in a module-level store
 registry, independent of the evaluator instance cache in _factory.py.
 This prevents silent state loss on LRU eviction and avoids cross-control
-leakage when different controls share the same config.
+leakage when different controls use different budget_id values.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import threading
@@ -22,7 +21,7 @@ from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
 from agent_control_evaluators._registry import register_evaluator
 from agent_control_models import EvaluatorResult
 
-from .config import BudgetEvaluatorConfig
+from .config import BudgetEvaluatorConfig, ModelPricing
 from .memory_store import InMemoryBudgetStore
 from .store import BudgetStore
 
@@ -33,8 +32,8 @@ logger = logging.getLogger(__name__)
 #
 # Decoupled from the evaluator instance cache so that LRU eviction in
 # _factory.py does not destroy accumulated budget state. The registry
-# is keyed by a stable config hash. Two controls with identical config
-# intentionally share a budget pool (same config = same budget).
+# is keyed by budget_id. Controls with the same budget_id intentionally
+# share accumulated spend; different budget_id values are isolated.
 # ---------------------------------------------------------------------------
 
 # NOTE: The registry is unbounded. In practice a deployment has a finite
@@ -44,27 +43,13 @@ _STORE_REGISTRY: dict[str, BudgetStore] = {}
 _STORE_REGISTRY_LOCK = threading.Lock()
 
 
-def _config_key(config: BudgetEvaluatorConfig) -> str:
-    """Build a stable key for the store registry from evaluator config.
-
-    The limits list is sorted before hashing so that two configs with
-    semantically identical rules in different order share a store.
-    """
-    config_dict = config.model_dump(mode="json")
-    config_dict["limits"] = sorted(
-        config_dict["limits"],
-        key=lambda r: json.dumps(r, sort_keys=True, default=str),
-    )
-    return f"budget:{json.dumps(config_dict, sort_keys=True, default=str)}"
-
-
 def get_or_create_store(config: BudgetEvaluatorConfig) -> BudgetStore:
     """Get or create a store for the given config, thread-safe."""
-    key = _config_key(config)
+    key = f"budget:{config.budget_id}"
     with _STORE_REGISTRY_LOCK:
         store = _STORE_REGISTRY.get(key)
         if store is None:
-            store = InMemoryBudgetStore(rules=config.limits)
+            store = InMemoryBudgetStore()
             _STORE_REGISTRY[key] = store
         return store
 
@@ -140,7 +125,7 @@ def _estimate_cost(
     model: str | None,
     input_tokens: int,
     output_tokens: int,
-    pricing: dict[str, dict[str, float]] | None,
+    pricing: dict[str, ModelPricing] | None,
 ) -> float:
     """Estimate cost in cents (USD) from model pricing table.
 
@@ -152,8 +137,8 @@ def _estimate_cost(
     rates = pricing.get(model)
     if not rates:
         return 0.0
-    input_rate = rates.get("input_per_1k", 0.0)
-    output_rate = rates.get("output_per_1k", 0.0)
+    input_rate = rates.input_per_1k
+    output_rate = rates.output_per_1k
     cost = (input_tokens * input_rate + output_tokens * output_rate) / 1000.0
     if not math.isfinite(cost) or cost < 0:
         return 0.0
@@ -211,11 +196,31 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
                 model = str(val)
 
         cost = _estimate_cost(model, input_tokens, output_tokens, self.config.pricing)
+        model_known = model is None or self.config.pricing is None or model in self.config.pricing
+        has_cost_rule = any(rule.limit_unit == "usd_cents" for rule in self.config.limits)
+        if not model_known and has_cost_rule:
+            if self.config.unknown_model_behavior == "block":
+                return EvaluatorResult(
+                    matched=True,
+                    confidence=1.0,
+                    message=f"Unknown model blocked: {model}",
+                    metadata={
+                        "unknown_model": model,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                    },
+                )
+            logger.warning(
+                "Budget evaluator: unknown model %r, treating cost as 0 "
+                "(unknown_model_behavior=warn)",
+                model,
+            )
 
         step_metadata = _extract_metadata(data, self.config.metadata_paths)
 
         store = get_or_create_store(self.config)
         snapshots = await store.record_and_check(
+            rules=self.config.limits,
             scope=step_metadata,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -230,7 +235,7 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
                 "spent": snap.spent,
                 "spent_tokens": snap.spent_tokens,
                 "limit": snap.limit,
-                "limit_tokens": snap.limit_tokens,
+                "limit_unit": snap.limit_unit,
                 "utilization": round(snap.utilization, 4),
                 "exceeded": snap.exceeded,
             }

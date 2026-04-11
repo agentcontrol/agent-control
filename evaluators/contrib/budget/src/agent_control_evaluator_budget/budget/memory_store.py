@@ -76,20 +76,19 @@ def _compute_utilization(
     spent: float,
     spent_tokens: int,
     limit: int | None,
-    limit_tokens: int | None,
+    limit_unit: str,
 ) -> float:
-    """Return max(spend_ratio, token_ratio) clamped to [0.0, 1.0].
+    """Return the selected usage ratio clamped to [0.0, 1.0].
 
     The low-side clamp is load-bearing: under refund semantics the internal
     `spent` accumulator may go negative, which would otherwise produce a
     negative ratio and violate the BudgetSnapshot.utilization contract.
     """
-    ratios: list[float] = []
-    if limit is not None and limit > 0:
-        ratios.append(max(0.0, min(spent / limit, 1.0)))
-    if limit_tokens is not None and limit_tokens > 0:
-        ratios.append(max(0.0, min(spent_tokens / limit_tokens, 1.0)))
-    return max(ratios) if ratios else 0.0
+    if limit_unit == "tokens":
+        ratio = spent_tokens / limit if limit else 0.0
+    else:
+        ratio = spent / limit if limit else 0.0
+    return max(0.0, min(ratio, 1.0))
 
 
 @dataclass
@@ -108,8 +107,9 @@ class _Bucket:
 class InMemoryBudgetStore(BudgetStore):
     """Thread-safe in-memory budget store.
 
-    Initialized with a list of BudgetLimitRule. Derives period keys
-    internally from window_seconds + injected clock.
+    Owns bucket state and derives period keys internally from
+    window_seconds + injected clock. Callers provide the rules to evaluate
+    on each record operation.
 
     Cost is accumulated as float for precision. Integer rounding
     happens only at snapshot time for display/reporting.
@@ -126,12 +126,10 @@ class InMemoryBudgetStore(BudgetStore):
 
     def __init__(
         self,
-        rules: list[BudgetLimitRule],
         *,
         clock: Callable[[], float] = time.time,
         max_buckets: int = _DEFAULT_MAX_BUCKETS,
     ) -> None:
-        self._rules = rules
         self._clock = clock
         self._lock = threading.Lock()
         self._buckets: dict[tuple[str, str], _Bucket] = {}
@@ -140,16 +138,18 @@ class InMemoryBudgetStore(BudgetStore):
 
     async def record_and_check(
         self,
+        rules: list[BudgetLimitRule],
         scope: dict[str, str],
         input_tokens: int,
         output_tokens: int,
         cost: float,
     ) -> list[BudgetSnapshot]:
         """Atomically record usage and return snapshots for all matching rules."""
-        return self._record_and_check_sync(scope, input_tokens, output_tokens, cost)
+        return self._record_and_check_sync(rules, scope, input_tokens, output_tokens, cost)
 
     def _record_and_check_sync(
         self,
+        rules: list[BudgetLimitRule],
         scope: dict[str, str],
         input_tokens: int,
         output_tokens: int,
@@ -175,7 +175,7 @@ class InMemoryBudgetStore(BudgetStore):
         recorded_pairs: set[tuple[str, str]] = set()
 
         with self._lock:
-            for rule in self._rules:
+            for rule in rules:
                 if not _scope_matches(rule, scope):
                     continue
 
@@ -192,9 +192,9 @@ class InMemoryBudgetStore(BudgetStore):
                                 spent=0,
                                 spent_tokens=0,
                                 limit=rule.limit,
-                                limit_tokens=rule.limit_tokens,
                                 utilization=1.0,
                                 exceeded=True,
+                                limit_unit=rule.limit_unit,
                             )
                         )
                         continue
@@ -215,22 +215,21 @@ class InMemoryBudgetStore(BudgetStore):
 
                 total_tokens = bucket.total_tokens
                 utilization = _compute_utilization(
-                    bucket.spent, total_tokens, rule.limit, rule.limit_tokens
+                    bucket.spent, total_tokens, rule.limit, rule.limit_unit
                 )
-                exceeded = False
-                if rule.limit is not None and bucket.spent >= rule.limit:
-                    exceeded = True
-                if rule.limit_tokens is not None and total_tokens >= rule.limit_tokens:
-                    exceeded = True
+                if rule.limit_unit == "tokens":
+                    exceeded = total_tokens >= rule.limit
+                else:
+                    exceeded = bucket.spent >= rule.limit
 
                 snapshots.append(
                     BudgetSnapshot(
                         spent=round_spent(bucket.spent),
                         spent_tokens=total_tokens,
                         limit=rule.limit,
-                        limit_tokens=rule.limit_tokens,
                         utilization=utilization,
                         exceeded=exceeded,
+                        limit_unit=rule.limit_unit,
                     )
                 )
 
@@ -241,7 +240,7 @@ class InMemoryBudgetStore(BudgetStore):
         scope_key: str,
         period_key: str,
         limit: int | None = None,
-        limit_tokens: int | None = None,
+        limit_unit: str = "usd_cents",
     ) -> BudgetSnapshot:
         """Read current budget state without recording usage."""
         key = (scope_key, period_key)
@@ -252,24 +251,23 @@ class InMemoryBudgetStore(BudgetStore):
                     spent=0,
                     spent_tokens=0,
                     limit=limit,
-                    limit_tokens=limit_tokens,
                     utilization=0.0,
                     exceeded=False,
+                    limit_unit=limit_unit,
                 )
             total_tokens = bucket.total_tokens
-            utilization = _compute_utilization(bucket.spent, total_tokens, limit, limit_tokens)
-            exceeded = False
-            if limit is not None and bucket.spent >= limit:
-                exceeded = True
-            if limit_tokens is not None and total_tokens >= limit_tokens:
-                exceeded = True
+            utilization = _compute_utilization(bucket.spent, total_tokens, limit, limit_unit)
+            if limit_unit == "tokens":
+                exceeded = bool(limit is not None and total_tokens >= limit)
+            else:
+                exceeded = bool(limit is not None and bucket.spent >= limit)
             return BudgetSnapshot(
                 spent=round_spent(bucket.spent),
                 spent_tokens=total_tokens,
                 limit=limit,
-                limit_tokens=limit_tokens,
                 utilization=utilization,
                 exceeded=exceeded,
+                limit_unit=limit_unit,
             )
 
     def reset(self, scope_key: str | None = None, period_key: str | None = None) -> None:

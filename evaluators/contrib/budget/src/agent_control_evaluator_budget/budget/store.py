@@ -14,7 +14,10 @@ import inspect
 import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .config import BudgetLimitRule
 
 
 @dataclass(frozen=True)
@@ -24,19 +27,18 @@ class BudgetSnapshot:
     Attributes:
         spent: Cumulative spend in cents (USD), rounded from float.
         spent_tokens: Cumulative tokens (input + output) in this scope+period.
-        limit: Configured spend ceiling in cents, or None if uncapped.
-        limit_tokens: Configured token ceiling, or None if uncapped.
-        utilization: max(spend_ratio, token_ratio) clamped to [0.0, 1.0].
-            0.0 when no limits are set.
-        exceeded: True when any limit is breached.
+        limit: Configured ceiling, interpreted by limit_unit.
+        utilization: Selected usage ratio clamped to [0.0, 1.0].
+        exceeded: True when the configured limit is breached.
+        limit_unit: Unit used to interpret limit.
     """
 
     spent: int
     spent_tokens: int
     limit: int | None
-    limit_tokens: int | None
     utilization: float
     exceeded: bool
+    limit_unit: str = "usd_cents"
 
 
 def round_spent(value: float) -> int:
@@ -54,10 +56,10 @@ def round_spent(value: float) -> int:
 class BudgetStore(ABC):
     """Abstract base class for budget storage backends.
 
-    The store is initialized with a list of BudgetLimitRule and derives
-    period keys internally from window_seconds + current time.
-
-    Callers pass only usage data: scope dict, input_tokens, output_tokens, cost.
+    The store owns bucket state and derives period keys internally from
+    window_seconds + current time. Callers pass the rules to evaluate for
+    each record operation along with usage data: scope dict, input_tokens,
+    output_tokens, cost.
 
     Negative `cost` values are permitted and reduce accumulated spend (refund
     semantics). `round_spent()` floors the displayed snapshot spend to 0 for
@@ -102,6 +104,7 @@ class BudgetStore(ABC):
     @abstractmethod
     async def record_and_check(
         self,
+        rules: list[BudgetLimitRule],
         scope: dict[str, str],
         input_tokens: int,
         output_tokens: int,
@@ -110,6 +113,7 @@ class BudgetStore(ABC):
         """Atomically record usage and return snapshots for all matching rules.
 
         Args:
+            rules: Rules to evaluate against the shared bucket state.
             scope: Scope dimensions from the step (e.g. {"agent": "summarizer"}).
             input_tokens: Input tokens consumed by this call.
             output_tokens: Output tokens consumed by this call.

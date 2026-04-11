@@ -17,6 +17,7 @@ from agent_control_evaluator_budget.budget.config import (
     WINDOW_WEEKLY,
     BudgetEvaluatorConfig,
     BudgetLimitRule,
+    ModelPricing,
 )
 from agent_control_evaluator_budget.budget.evaluator import (
     BudgetEvaluator,
@@ -48,11 +49,11 @@ class TestInMemoryBudgetStore:
     async def test_single_record_under_limit(self) -> None:
         # Given: store with a $10 daily limit (1000 cents)
         rules = [BudgetLimitRule(limit=1000, window_seconds=WINDOW_DAILY)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 1700000000.0)
+        store = InMemoryBudgetStore(clock=lambda: 1700000000.0)
 
         # When: record 300 cents of usage
         results = await store.record_and_check(
-            scope={}, input_tokens=100, output_tokens=50, cost=300.0
+            rules=rules, scope={}, input_tokens=100, output_tokens=50, cost=300.0
         )
 
         # Then: not breached, ratio ~0.3
@@ -64,12 +65,14 @@ class TestInMemoryBudgetStore:
     async def test_accumulation_triggers_breach(self) -> None:
         # Given: store with 1000-cent limit
         rules = [BudgetLimitRule(limit=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 1700000000.0)
+        store = InMemoryBudgetStore(clock=lambda: 1700000000.0)
 
         # When: record 600 + 500 = 1100 cents
-        await store.record_and_check(scope={}, input_tokens=100, output_tokens=50, cost=600.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=100, output_tokens=50, cost=600.0
+        )
         results = await store.record_and_check(
-            scope={}, input_tokens=100, output_tokens=50, cost=500.0
+            rules=rules, scope={}, input_tokens=100, output_tokens=50, cost=500.0
         )
 
         # Then: exceeded
@@ -83,14 +86,14 @@ class TestInMemoryBudgetStore:
             BudgetLimitRule(scope={"agent": "a"}, limit=1000),
             BudgetLimitRule(scope={"agent": "b"}, limit=1000),
         ]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 1700000000.0)
+        store = InMemoryBudgetStore(clock=lambda: 1700000000.0)
 
         # When: agent-a records 900, agent-b records 100
         results_a = await store.record_and_check(
-            scope={"agent": "a"}, input_tokens=0, output_tokens=0, cost=900.0
+            rules=rules, scope={"agent": "a"}, input_tokens=0, output_tokens=0, cost=900.0
         )
         results_b = await store.record_and_check(
-            scope={"agent": "b"}, input_tokens=0, output_tokens=0, cost=100.0
+            rules=rules, scope={"agent": "b"}, input_tokens=0, output_tokens=0, cost=100.0
         )
 
         # Then: agent-a near limit, agent-b well under
@@ -106,12 +109,14 @@ class TestInMemoryBudgetStore:
         day2 = day1 + WINDOW_DAILY
 
         # When: record on day 1, then day 2
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: day1)
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=800.0)
+        store = InMemoryBudgetStore(clock=lambda: day1)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=800.0
+        )
 
         store._clock = lambda: day2
         results = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=300.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=300.0
         )
 
         # Then: day 2 is a fresh period
@@ -122,11 +127,11 @@ class TestInMemoryBudgetStore:
     async def test_exceeded_exact_limit(self) -> None:
         # Given: 1000-cent limit
         rules = [BudgetLimitRule(limit=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: spend exactly 1000
         results = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=1000.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1000.0
         )
 
         # Then: exceeded (>= not >)
@@ -135,12 +140,12 @@ class TestInMemoryBudgetStore:
     @pytest.mark.asyncio
     async def test_token_only_limit(self) -> None:
         # Given: 1000-token limit, no cost limit
-        rules = [BudgetLimitRule(limit_tokens=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        rules = [BudgetLimitRule(limit=1000, limit_unit="tokens")]
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: consume 600+500 = 1100 tokens
         results = await store.record_and_check(
-            scope={}, input_tokens=600, output_tokens=500, cost=0.0
+            rules=rules, scope={}, input_tokens=600, output_tokens=500, cost=0.0
         )
 
         # Then: exceeded
@@ -151,11 +156,11 @@ class TestInMemoryBudgetStore:
     async def test_no_matching_rules(self) -> None:
         # Given: rule for agent=summarizer only
         rules = [BudgetLimitRule(scope={"agent": "summarizer"}, limit=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: step from agent=other
         results = await store.record_and_check(
-            scope={"agent": "other"}, input_tokens=100, output_tokens=50, cost=999.0
+            rules=rules, scope={"agent": "other"}, input_tokens=100, output_tokens=50, cost=999.0
         )
 
         # Then: no snapshots (rule didn't match)
@@ -165,17 +170,17 @@ class TestInMemoryBudgetStore:
     async def test_group_by_user(self) -> None:
         # Given: global rule with group_by=user_id
         rules = [BudgetLimitRule(group_by="user_id", limit=500)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: two users each spend
         await store.record_and_check(
-            scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=400.0
+            rules=rules, scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=400.0
         )
         results_u1 = await store.record_and_check(
-            scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=200.0
+            rules=rules, scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=200.0
         )
         results_u2 = await store.record_and_check(
-            scope={"user_id": "u2"}, input_tokens=0, output_tokens=0, cost=300.0
+            rules=rules, scope={"user_id": "u2"}, input_tokens=0, output_tokens=0, cost=300.0
         )
 
         # Then: u1 exceeded, u2 not
@@ -184,10 +189,10 @@ class TestInMemoryBudgetStore:
 
     def test_thread_safety(self) -> None:
         # Given: high-limit rule and 10 concurrent threads
-        # Each thread calls asyncio.run(store.record_and_check(...)) -- the async
+        # Each thread calls asyncio.run(store.record_and_check(rules=rules, ...)) -- the async
         # method wraps a sync critical section, so threading.Lock prevents races.
         rules = [BudgetLimitRule(limit=1_000_000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
         errors: list[str] = []
 
         import asyncio
@@ -196,7 +201,9 @@ class TestInMemoryBudgetStore:
             try:
                 for _ in range(100):
                     asyncio.run(
-                        store.record_and_check(scope={}, input_tokens=1, output_tokens=1, cost=1.0)
+                        store.record_and_check(
+                            rules=rules, scope={}, input_tokens=1, output_tokens=1, cost=1.0
+                        )
                     )
             except Exception as exc:
                 errors.append(str(exc))
@@ -218,13 +225,13 @@ class TestInMemoryBudgetStore:
     async def test_max_buckets_fail_closed(self) -> None:
         # Given: store limited to 3 buckets with group_by=user_id
         rules = [BudgetLimitRule(group_by="user_id", limit=100_000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0, max_buckets=3)
+        store = InMemoryBudgetStore(clock=lambda: 0.0, max_buckets=3)
 
         # When: 5 different users try to record
         exceeded_count = 0
         for i in range(5):
             results = await store.record_and_check(
-                scope={"user_id": f"u{i}"}, input_tokens=1, output_tokens=1, cost=1.0
+                rules=rules, scope={"user_id": f"u{i}"}, input_tokens=1, output_tokens=1, cost=1.0
             )
             if results and results[0].exceeded:
                 exceeded_count += 1
@@ -236,8 +243,10 @@ class TestInMemoryBudgetStore:
     async def test_reset_all(self) -> None:
         # Given: store with recorded usage
         rules = [BudgetLimitRule(limit=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
-        await store.record_and_check(scope={}, input_tokens=10, output_tokens=10, cost=100.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=10, output_tokens=10, cost=100.0
+        )
 
         # When: reset all
         store.reset()
@@ -250,11 +259,13 @@ class TestInMemoryBudgetStore:
     async def test_float_accumulation_precision(self) -> None:
         # Given: store with 1-cent limit
         rules = [BudgetLimitRule(limit=1)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: 100 calls each costing 0.003 cents (total = 0.3 cents)
         for _ in range(100):
-            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=0.003)
+            await store.record_and_check(
+                rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=0.003
+            )
 
         # Then: not exceeded (0.3 < 1), no ceil-per-call overcount
         snap = store.get_snapshot("__global__", "", limit=1)
@@ -265,12 +276,12 @@ class TestInMemoryBudgetStore:
     async def test_float_accumulation_eventual_breach(self) -> None:
         # Given: store with 1-cent limit
         rules = [BudgetLimitRule(limit=1)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: 400 calls each costing 0.003 cents (total = 1.2 cents)
         for _ in range(400):
             results = await store.record_and_check(
-                scope={}, input_tokens=0, output_tokens=0, cost=0.003
+                rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=0.003
             )
 
         # Then: exceeded (1.2 >= 1)
@@ -285,23 +296,23 @@ class TestInMemoryBudgetStore:
 class TestUtilities:
     def test_compute_utilization_no_limits(self) -> None:
         # Given/When: no limits set / Then: 0.0
-        assert _compute_utilization(100.0, 10000, None, None) == 0.0
+        assert _compute_utilization(100.0, 10000, None, "usd_cents") == 0.0
 
     def test_compute_utilization_spend_only(self) -> None:
         # Given: 500 of 1000 spent / Then: 0.5
-        assert _compute_utilization(500.0, 0, 1000, None) == pytest.approx(0.5)
+        assert _compute_utilization(500.0, 0, 1000, "usd_cents") == pytest.approx(0.5)
 
     def test_compute_utilization_clamped(self) -> None:
         # Given: overspent / Then: clamped to 1.0
-        assert _compute_utilization(2000.0, 0, 1000, None) == pytest.approx(1.0)
+        assert _compute_utilization(2000.0, 0, 1000, "usd_cents") == pytest.approx(1.0)
 
     def test_compute_utilization_negative_clamped_to_zero(self) -> None:
         # Given: refund made the accumulator go negative
         # When: utilization is computed
         # Then: clamped to 0.0 (BudgetSnapshot.utilization contract)
-        assert _compute_utilization(-150.0, 0, 100, None) == 0.0
+        assert _compute_utilization(-150.0, 0, 100, "usd_cents") == 0.0
         # And: negative tokens (not currently reachable but defensively clamped)
-        assert _compute_utilization(0.0, -50, None, 100) == 0.0
+        assert _compute_utilization(0.0, -50, 100, "tokens") == 0.0
 
     def test_parse_period_key_valid(self) -> None:
         # Given: well-formed period key / Then: parsed tuple
@@ -385,8 +396,8 @@ class TestBudgetLimitRuleConfig:
         assert rule.limit == 1000
 
     def test_no_limit_rejected(self) -> None:
-        # Given/When: no limit or limit_tokens / Then: rejected
-        with pytest.raises(ValidationError, match="At least one"):
+        # Given/When: no limit / Then: rejected
+        with pytest.raises(ValidationError, match="Field required"):
             BudgetLimitRule()
 
     def test_negative_limit_rejected(self) -> None:
@@ -399,11 +410,6 @@ class TestBudgetLimitRuleConfig:
         with pytest.raises(ValidationError, match="positive"):
             BudgetLimitRule(limit=0)
 
-    def test_negative_limit_tokens_rejected(self) -> None:
-        # Given/When: negative limit_tokens / Then: rejected
-        with pytest.raises(ValidationError, match="positive"):
-            BudgetLimitRule(limit_tokens=-1)
-
     def test_negative_window_seconds_rejected(self) -> None:
         # Given/When: negative window_seconds / Then: rejected
         with pytest.raises(ValidationError, match="positive"):
@@ -415,10 +421,10 @@ class TestBudgetLimitRuleConfig:
             BudgetLimitRule(limit=1000, window_seconds=0)
 
     def test_token_only_rule(self) -> None:
-        # Given/When: limit_tokens only / Then: accepted, limit is None
-        rule = BudgetLimitRule(limit_tokens=5000)
-        assert rule.limit is None
-        assert rule.limit_tokens == 5000
+        # Given/When: token limit_unit / Then: accepted
+        rule = BudgetLimitRule(limit=5000, limit_unit="tokens")
+        assert rule.limit == 5000
+        assert rule.limit_unit == "tokens"
 
     def test_empty_limits_rejected(self) -> None:
         # Given/When: empty limits list / Then: rejected
@@ -430,6 +436,22 @@ class TestBudgetLimitRuleConfig:
         assert WINDOW_DAILY == 86400
         assert WINDOW_WEEKLY == 604800
         assert WINDOW_MONTHLY == 2592000
+
+
+class TestModelPricing:
+    def test_model_pricing_validation_requires_pricing_for_cost_rules(self) -> None:
+        # Given: a cost-based rule without pricing
+        # When/Then: config validation rejects it
+        with pytest.raises(ValidationError, match="pricing is required"):
+            BudgetEvaluatorConfig(limits=[BudgetLimitRule(limit=100)])
+
+    def test_model_pricing_token_rule_no_pricing_ok(self) -> None:
+        # Given: a token-only rule without pricing
+        # When: config is created
+        config = BudgetEvaluatorConfig(limits=[BudgetLimitRule(limit=100, limit_unit="tokens")])
+
+        # Then: no pricing table is required
+        assert config.pricing is None
 
 
 # ---------------------------------------------------------------------------
@@ -445,7 +467,7 @@ class TestBudgetEvaluator:
     @pytest.mark.asyncio
     async def test_single_call_under_budget(self) -> None:
         # Given: evaluator with $10 limit (1000 cents)
-        ev = self._make_evaluator(limits=[{"limit": 1000}])
+        ev = self._make_evaluator(limits=[{"limit": 1000}], pricing={})
 
         # When: evaluate with usage data
         result = await ev.evaluate({"usage": {"input_tokens": 100, "output_tokens": 50}})
@@ -503,7 +525,7 @@ class TestBudgetEvaluator:
     @pytest.mark.asyncio
     async def test_token_only_limit(self) -> None:
         # Given: 500 token limit
-        ev = self._make_evaluator(limits=[{"limit_tokens": 500}])
+        ev = self._make_evaluator(limits=[{"limit": 500, "limit_unit": "tokens"}])
 
         # When: consume 600 tokens
         result = await ev.evaluate({"usage": {"input_tokens": 300, "output_tokens": 300}})
@@ -514,7 +536,7 @@ class TestBudgetEvaluator:
     @pytest.mark.asyncio
     async def test_no_data_returns_not_matched(self) -> None:
         # Given: evaluator / When: None data / Then: not matched
-        ev = self._make_evaluator(limits=[{"limit": 1000}])
+        ev = self._make_evaluator(limits=[{"limit": 1000}], pricing={})
         result = await ev.evaluate(None)
         assert result.matched is False
 
@@ -563,11 +585,12 @@ class TestBudgetEvaluator:
 
     @pytest.mark.asyncio
     async def test_unknown_model_cost_zero(self) -> None:
-        # Given: evaluator with pricing table but data from an unknown model
+        # Given: evaluator with warn mode and data from an unknown model
         ev = self._make_evaluator(
             limits=[{"limit": 100}],
             pricing={"gpt-4": {"input_per_1k": 30.0, "output_per_1k": 60.0}},
             model_path="model",
+            unknown_model_behavior="warn",
         )
 
         # When: evaluate with a model not in the pricing table
@@ -601,6 +624,167 @@ class TestBudgetEvaluator:
         assert result.matched is False
 
 
+class TestBudgetIdSemantics:
+    @pytest.mark.asyncio
+    async def test_same_budget_id_shares_store(self) -> None:
+        # Given: two evaluators with the same budget_id
+        config1 = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            budget_id="shared",
+            pricing={"gpt-4": {"input_per_1k": 100.0, "output_per_1k": 0.0}},
+            model_path="model",
+        )
+        config2 = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            budget_id="shared",
+            pricing={"gpt-4": {"input_per_1k": 100.0, "output_per_1k": 0.0}},
+            model_path="model",
+        )
+        ev1 = BudgetEvaluator(config1)
+        ev2 = BudgetEvaluator(config2)
+        step = {"model": "gpt-4", "usage": {"input_tokens": 500, "output_tokens": 0}}
+
+        # When: each evaluator records a 50-cent call
+        first = await ev1.evaluate(step)
+        second = await ev2.evaluate(step)
+
+        # Then: spend is shared and the second call reaches the 100-cent limit
+        assert first.matched is False
+        assert second.matched is True
+
+    @pytest.mark.asyncio
+    async def test_different_budget_id_isolates_store(self) -> None:
+        # Given: two evaluators with different budget_id values
+        config1 = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            budget_id="pool-a",
+            pricing={"gpt-4": {"input_per_1k": 100.0, "output_per_1k": 0.0}},
+            model_path="model",
+        )
+        config2 = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            budget_id="pool-b",
+            pricing={"gpt-4": {"input_per_1k": 100.0, "output_per_1k": 0.0}},
+            model_path="model",
+        )
+        ev1 = BudgetEvaluator(config1)
+        ev2 = BudgetEvaluator(config2)
+        step = {"model": "gpt-4", "usage": {"input_tokens": 500, "output_tokens": 0}}
+
+        # When: each evaluator records a 50-cent call
+        first = await ev1.evaluate(step)
+        second = await ev2.evaluate(step)
+
+        # Then: each pool remains below the 100-cent limit independently
+        assert first.matched is False
+        assert second.matched is False
+
+
+class TestUnknownModelBehavior:
+    @pytest.mark.asyncio
+    async def test_unknown_model_block_default(self) -> None:
+        # Given: a cost rule with pricing that does not include the incoming model
+        config = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            pricing={"gpt-4": {"input_per_1k": 10.0, "output_per_1k": 20.0}},
+            model_path="model",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: the step uses an unknown model
+        result = await evaluator.evaluate(
+            {"model": "unknown-model", "usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: the evaluator fails closed and reports the unknown model
+        assert result.matched is True
+        assert result.metadata is not None
+        assert result.metadata["unknown_model"] == "unknown-model"
+
+    @pytest.mark.asyncio
+    async def test_unknown_model_warn(self) -> None:
+        # Given: a cost rule configured to warn on unknown models
+        config = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            pricing={"gpt-4": {"input_per_1k": 10.0, "output_per_1k": 20.0}},
+            model_path="model",
+            unknown_model_behavior="warn",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: the step uses an unknown model
+        result = await evaluator.evaluate(
+            {"model": "unknown-model", "usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: the evaluator treats cost as 0 and does not block
+        assert result.matched is False
+        assert result.metadata is not None
+        assert result.metadata["cost"] == 0.0
+        assert result.metadata["all_snapshots"][0]["spent_tokens"] == 150
+
+    @pytest.mark.asyncio
+    async def test_unknown_model_token_only_unaffected(self) -> None:
+        # Given: a token-only rule with a pricing table that does not include
+        # the incoming model and the default block setting
+        config = BudgetEvaluatorConfig(
+            limits=[{"limit": 1000, "limit_unit": "tokens"}],
+            pricing={},
+            model_path="model",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: the step uses an unknown model below the token limit
+        result = await evaluator.evaluate(
+            {"model": "unknown-model", "usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: unknown-model blocking is not applied without a cost rule
+        assert result.matched is False
+        assert result.metadata is not None
+        assert result.metadata["all_snapshots"][0]["spent_tokens"] == 150
+
+    @pytest.mark.asyncio
+    async def test_pricing_lookup_is_case_sensitive(self) -> None:
+        # Given: pricing for lowercase gpt-4
+        config = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            pricing={"gpt-4": {"input_per_1k": 10.0, "output_per_1k": 20.0}},
+            model_path="model",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: the step uses a differently cased model name
+        result = await evaluator.evaluate(
+            {"model": "GPT-4", "usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: lookup is case-sensitive and the default behavior fails closed
+        assert result.matched is True
+        assert result.metadata is not None
+        assert result.metadata["unknown_model"] == "GPT-4"
+
+    @pytest.mark.asyncio
+    async def test_known_model_not_blocked(self) -> None:
+        # Given: a cost rule whose pricing includes the incoming model
+        config = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            pricing={"gpt-4": {"input_per_1k": 10.0, "output_per_1k": 20.0}},
+            model_path="model",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: the step uses the known model
+        result = await evaluator.evaluate(
+            {"model": "gpt-4", "usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: normal budget evaluation runs
+        assert result.matched is False
+        assert result.metadata is not None
+        assert "unknown_model" not in result.metadata
+
+
 # ---------------------------------------------------------------------------
 # Store registry
 # ---------------------------------------------------------------------------
@@ -609,7 +793,7 @@ class TestBudgetEvaluator:
 class TestStoreRegistry:
     def test_same_config_returns_same_store(self) -> None:
         # Given: two configs with identical parameters
-        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}])
+        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}], pricing={})
 
         # When: get store twice
         store1 = get_or_create_store(config)
@@ -618,10 +802,10 @@ class TestStoreRegistry:
         # Then: same object
         assert store1 is store2
 
-    def test_different_config_returns_different_store(self) -> None:
-        # Given: two configs with different limits
-        config1 = BudgetEvaluatorConfig(limits=[{"limit": 1000}])
-        config2 = BudgetEvaluatorConfig(limits=[{"limit": 2000}])
+    def test_different_budget_id_returns_different_store(self) -> None:
+        # Given: two configs with different budget ids
+        config1 = BudgetEvaluatorConfig(limits=[{"limit": 1000}], budget_id="a", pricing={})
+        config2 = BudgetEvaluatorConfig(limits=[{"limit": 1000}], budget_id="b", pricing={})
 
         # When: get stores
         store1 = get_or_create_store(config1)
@@ -632,7 +816,7 @@ class TestStoreRegistry:
 
     def test_clear_budget_stores(self) -> None:
         # Given: a registered store
-        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}])
+        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}], pricing={})
         store1 = get_or_create_store(config)
 
         # When: clear all stores
@@ -660,6 +844,39 @@ class TestStoreRegistry:
 
         # Then: ev2 sees ev1's accumulated spend (shared store via registry)
         assert result.matched is True  # 50 + 50 = 100 >= 100
+
+    @pytest.mark.asyncio
+    async def test_same_budget_id_shares_buckets_but_not_rules(self) -> None:
+        # Given: two configs sharing budget_id but using different limits
+        pricing = {"gpt-4": {"input_per_1k": 100.0, "output_per_1k": 0.0}}
+        config1 = BudgetEvaluatorConfig(
+            limits=[{"limit": 100}],
+            budget_id="shared",
+            pricing=pricing,
+            model_path="model",
+        )
+        config2 = BudgetEvaluatorConfig(
+            limits=[{"limit": 1000}],
+            budget_id="shared",
+            pricing=pricing,
+            model_path="model",
+        )
+        ev1 = BudgetEvaluator(config1)
+        ev2 = BudgetEvaluator(config2)
+        step = {"model": "gpt-4", "usage": {"input_tokens": 600, "output_tokens": 0}}
+
+        # When: the first evaluator records 60 cents, then the second records
+        # another 60 cents into the same budget bucket
+        first = await ev1.evaluate(step)
+        second = await ev2.evaluate(step)
+
+        # Then: the second evaluator sees shared bucket state (120 cents) but
+        # evaluates against its own 1000-cent rule, not config1's 100-cent rule.
+        assert first.matched is False
+        assert second.matched is False
+        assert second.metadata is not None
+        assert second.metadata["all_snapshots"][0]["spent"] == 120
+        assert second.metadata["all_snapshots"][0]["limit"] == 1000
 
 
 # ---------------------------------------------------------------------------
@@ -691,11 +908,11 @@ class TestBudgetAdversarial:
     async def test_group_by_without_metadata_skips_rule(self) -> None:
         # Given: rule with group_by=user_id but no user_id in scope
         rules = [BudgetLimitRule(group_by="user_id", limit=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: step without user_id
         results = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=999.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=999.0
         )
 
         # Then: rule skipped
@@ -706,13 +923,13 @@ class TestBudgetAdversarial:
         # Given: two global rules with different limit types
         rules = [
             BudgetLimitRule(limit=1000),
-            BudgetLimitRule(limit_tokens=5000),
+            BudgetLimitRule(limit=5000, limit_unit="tokens"),
         ]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: record once
         results = await store.record_and_check(
-            scope={}, input_tokens=100, output_tokens=100, cost=100.0
+            rules=rules, scope={}, input_tokens=100, output_tokens=100, cost=100.0
         )
 
         # Then: both rules get snapshot, but usage recorded only once
@@ -724,12 +941,14 @@ class TestBudgetAdversarial:
     async def test_negative_cost_reduces_spend(self) -> None:
         # Given: store with 1000-cent limit
         rules = [BudgetLimitRule(limit=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: record positive then negative cost
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=500.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=500.0
+        )
         results = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=-200.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=-200.0
         )
 
         # Then: negative cost reduces spend (store does not clamp; validation is caller's job)
@@ -742,12 +961,14 @@ class TestBudgetAdversarial:
         boundary = 3600 * 100  # exact hour boundary
 
         # When: record just before and at boundary
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: boundary - 1)
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=500.0)
+        store = InMemoryBudgetStore(clock=lambda: boundary - 1)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=500.0
+        )
 
         store._clock = lambda: boundary
         results = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=500.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=500.0
         )
 
         # Then: boundary crossing starts fresh period
@@ -755,10 +976,10 @@ class TestBudgetAdversarial:
 
 
 class TestConfigValidationEdgeCases:
-    def test_zero_limit_tokens_rejected(self) -> None:
+    def test_zero_token_limit_rejected(self) -> None:
         # Given/When: zero token limit
         with pytest.raises(ValidationError, match="positive"):
-            BudgetLimitRule(limit_tokens=0)
+            BudgetLimitRule(limit=0, limit_unit="tokens")
 
 
 class TestBoolGuard:
@@ -780,7 +1001,7 @@ class TestBoolGuard:
 class TestStoreRegistryRobustness:
     def test_concurrent_get_or_create_store(self) -> None:
         # Given: 10 threads requesting the same config concurrently
-        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}])
+        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}], pricing={})
         stores: list[Any] = []
         lock = threading.Lock()
 
@@ -843,11 +1064,11 @@ class TestRoundingBoundary:
     async def test_spent_half_cent_below_limit_not_exceeded(self) -> None:
         # Given: store with 1000-cent limit
         rules = [BudgetLimitRule(limit=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: spend 999.5 cents (just below limit)
         results = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=999.5
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=999.5
         )
 
         # Then: not exceeded (999.5 < 1000), spent display < limit
@@ -858,10 +1079,12 @@ class TestRoundingBoundary:
     async def test_spent_display_never_exceeds_actual(self) -> None:
         # Given: store with 100-cent limit
         rules = [BudgetLimitRule(limit=100)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: spend 99.9 cents
-        results = await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=99.9)
+        results = await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=99.9
+        )
 
         # Then: floor truncation means spent=99, not rounded to 100
         assert results[0].spent == 99
@@ -869,12 +1092,12 @@ class TestRoundingBoundary:
 
 
 class TestConfigKeyOrdering:
-    def test_limits_order_does_not_affect_store_identity(self) -> None:
-        # Given: two configs with same rules in different order
+    def test_limits_order_does_not_affect_same_budget_id_store_identity(self) -> None:
+        # Given: two configs with same budget_id and rules in different order
         rule_a = {"limit": 1000, "scope": {"agent": "a"}}
         rule_b = {"limit": 2000, "scope": {"agent": "b"}}
-        config1 = BudgetEvaluatorConfig(limits=[rule_a, rule_b])
-        config2 = BudgetEvaluatorConfig(limits=[rule_b, rule_a])
+        config1 = BudgetEvaluatorConfig(limits=[rule_a, rule_b], budget_id="ordered", pricing={})
+        config2 = BudgetEvaluatorConfig(limits=[rule_b, rule_a], budget_id="ordered", pricing={})
 
         # When: get stores for both
         store1 = get_or_create_store(config1)
@@ -889,7 +1112,7 @@ class TestEstimateCostEdgeCases:
         from agent_control_evaluator_budget.budget.evaluator import _estimate_cost
 
         # Given: pricing table with NaN rate
-        pricing = {"gpt-4": {"input_per_1k": float("nan"), "output_per_1k": 0.0}}
+        pricing = {"gpt-4": ModelPricing(input_per_1k=float("nan"), output_per_1k=0.0)}
 
         # When: estimate cost
         cost = _estimate_cost("gpt-4", 1000, 0, pricing)
@@ -901,7 +1124,7 @@ class TestEstimateCostEdgeCases:
         from agent_control_evaluator_budget.budget.evaluator import _estimate_cost
 
         # Given: pricing table with Inf rate
-        pricing = {"gpt-4": {"input_per_1k": float("inf"), "output_per_1k": 0.0}}
+        pricing = {"gpt-4": ModelPricing(input_per_1k=float("inf"), output_per_1k=0.0)}
 
         # When: estimate cost
         cost = _estimate_cost("gpt-4", 1000, 0, pricing)
@@ -913,7 +1136,7 @@ class TestEstimateCostEdgeCases:
         from agent_control_evaluator_budget.budget.evaluator import _estimate_cost
 
         # Given: pricing table with negative rate
-        pricing = {"gpt-4": {"input_per_1k": -10.0, "output_per_1k": 0.0}}
+        pricing = {"gpt-4": ModelPricing(input_per_1k=-10.0, output_per_1k=0.0)}
 
         # When: estimate cost
         cost = _estimate_cost("gpt-4", 1000, 0, pricing)
@@ -969,16 +1192,22 @@ class TestTTLPrune:
         day_n2 = day_n + 2 * day_seconds
 
         rules = [BudgetLimitRule(limit=10_000, window_seconds=day_seconds)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+        store = InMemoryBudgetStore(clock=lambda: day_n)
 
         # When: record on day N
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         # record on day N+1
         store._clock = lambda: day_n1
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=2.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=2.0
+        )
         # record on day N+2 -- should prune day N
         store._clock = lambda: day_n2
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=3.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=3.0
+        )
 
         # Then: only buckets for day N+1 and N+2 remain for that scope
         with store._lock:
@@ -1002,12 +1231,14 @@ class TestTTLPrune:
             BudgetLimitRule(limit=10_000),  # cumulative (window_seconds=None)
             BudgetLimitRule(limit=10_000, window_seconds=day_seconds),
         ]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+        store = InMemoryBudgetStore(clock=lambda: day_n)
 
         # When: record on 3 consecutive days
         for i in range(3):
             store._clock = lambda i=i: day_n + i * day_seconds
-            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+            await store.record_and_check(
+                rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+            )
 
         # Then: cumulative bucket (empty period key) must survive
         with store._lock:
@@ -1026,12 +1257,14 @@ class TestTTLPrune:
             BudgetLimitRule(limit=10_000, window_seconds=hour),
             BudgetLimitRule(limit=100_000, window_seconds=day),
         ]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: t0)
+        store = InMemoryBudgetStore(clock=lambda: t0)
 
         # When: roll hours many times (within same day)
         for h in range(5):
             store._clock = lambda h=h: t0 + h * hour
-            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+            await store.record_and_check(
+                rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+            )
 
         # Then: daily bucket must survive hourly rollovers
         day_key = _derive_period_key(day, t0)
@@ -1043,7 +1276,9 @@ class TestTTLPrune:
         # When: roll day (prune old hourly buckets)
         t_day2 = t0 + day
         store._clock = lambda: t_day2
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
 
         with store._lock:
             period_keys_after = [k[1] for k in store._buckets]
@@ -1068,12 +1303,16 @@ class TestTTLPrune:
         day_n1 = day_n + day_seconds
 
         rules = [BudgetLimitRule(limit=10_000, window_seconds=day_seconds)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        store = InMemoryBudgetStore(clock=lambda: day_n)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
 
         # Roll over to day N+1
         store._clock = lambda: day_n1
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
 
         # Capture _last_pruned_period state after first record of new period
         with store._lock:
@@ -1081,7 +1320,9 @@ class TestTTLPrune:
 
         # When: record many more times within the same new period
         for _ in range(10):
-            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+            await store.record_and_check(
+                rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+            )
 
         # Then: _last_pruned_period unchanged (no rescan occurred)
         with store._lock:
@@ -1095,18 +1336,24 @@ class TestTTLPrune:
         day = WINDOW_DAILY
         day_n = (int(1700000000.0) // day) * day
         rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+        store = InMemoryBudgetStore(clock=lambda: day_n)
 
         # When: record at baseline
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         # Jump forward ~95 days (any stale indices must be swept in one scan)
         for i in range(1, 6):
             store._clock = lambda i=i: day_n + i * day
-            await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+            await store.record_and_check(
+                rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+            )
         # Large gap -- should prune everything older than index-1
         far = day_n + 100 * day
         store._clock = lambda: far
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
 
         # Then: only current (index 100) and previous-valid bucket survive for that window
         with store._lock:
@@ -1124,10 +1371,14 @@ class TestTTLPrune:
         day = WINDOW_DAILY
         day_n = (int(1700000000.0) // day) * day
         rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        store = InMemoryBudgetStore(clock=lambda: day_n)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         store._clock = lambda: day_n + 2 * day
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         with store._lock:
             assert day in store._last_pruned_period
 
@@ -1141,9 +1392,13 @@ class TestTTLPrune:
 
         # And: a fresh rollover sequence prunes again (watermark advances)
         store._clock = lambda: day_n
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         store._clock = lambda: day_n + 2 * day
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         with store._lock:
             assert store._last_pruned_period.get(day) is not None
 
@@ -1153,10 +1408,14 @@ class TestTTLPrune:
         day = WINDOW_DAILY
         day_n = (int(1700000000.0) // day) * day
         rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        store = InMemoryBudgetStore(clock=lambda: day_n)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         store._clock = lambda: day_n + 2 * day
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         with store._lock:
             before = dict(store._last_pruned_period)
 
@@ -1175,12 +1434,12 @@ class TestTTLPrune:
         rules = [
             BudgetLimitRule(limit=10_000, window_seconds=day, group_by="user_id"),
         ]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
+        store = InMemoryBudgetStore(clock=lambda: day_n)
         await store.record_and_check(
-            scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=1.0
+            rules=rules, scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=1.0
         )
         await store.record_and_check(
-            scope={"user_id": "u2"}, input_tokens=0, output_tokens=0, cost=1.0
+            rules=rules, scope={"user_id": "u2"}, input_tokens=0, output_tokens=0, cost=1.0
         )
 
         # Pre-condition: both users have distinct buckets on day N
@@ -1193,7 +1452,7 @@ class TestTTLPrune:
         # When: only u1 records on day N+2 (triggers prune)
         store._clock = lambda: day_n + 2 * day
         await store.record_and_check(
-            scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=1.0
+            rules=rules, scope={"user_id": "u1"}, input_tokens=0, output_tokens=0, cost=1.0
         )
 
         # Then: u2's day-N bucket is also pruned -- the period expired globally,
@@ -1212,18 +1471,20 @@ class TestTTLPrune:
         day = WINDOW_DAILY
         day_n = (int(1700000000.0) // day) * day
         rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
-        store = InMemoryBudgetStore(
-            rules=rules, clock=lambda: day_n, max_buckets=2
-        )
+        store = InMemoryBudgetStore(clock=lambda: day_n, max_buckets=2)
 
         # When: fill 2 buckets
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         store._clock = lambda: day_n + day
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         # Day N+2 at capacity -- prune must free space
         store._clock = lambda: day_n + 2 * day
         snaps = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=1.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
         )
 
         # Then: day N+2 record succeeded (not fail-closed) and day-N bucket is gone
@@ -1240,17 +1501,23 @@ class TestTTLPrune:
         day = WINDOW_DAILY
         day_n = (int(1700000000.0) // day) * day
         rules = [BudgetLimitRule(limit=10_000, window_seconds=day)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: day_n)
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        store = InMemoryBudgetStore(clock=lambda: day_n)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         store._clock = lambda: day_n + 5 * day
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
         with store._lock:
             watermark_before = store._last_pruned_period.get(day)
         assert watermark_before is not None
 
         # When: clock jumps backwards to day N+2 and creates a new bucket there
         store._clock = lambda: day_n + 2 * day
-        await store.record_and_check(scope={}, input_tokens=0, output_tokens=0, cost=1.0)
+        await store.record_and_check(
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=1.0
+        )
 
         # Then: watermark did NOT drop (monotonic advance only)
         with store._lock:
@@ -1274,6 +1541,7 @@ class TestBudgetStoreABC:
             class BrokenStore(BudgetStore):  # type: ignore[unused-ignore]
                 def record_and_check(  # noqa: D401, ANN001
                     self,
+                    rules: list[BudgetLimitRule],
                     scope: dict[str, str],
                     input_tokens: int,
                     output_tokens: int,
@@ -1289,6 +1557,7 @@ class TestBudgetStoreABC:
         class GoodStore(BudgetStore):
             async def record_and_check(
                 self,
+                rules: list[BudgetLimitRule],
                 scope: dict[str, str],
                 input_tokens: int,
                 output_tokens: int,
@@ -1321,7 +1590,7 @@ class TestBudgetStoreABC:
         from agent_control_evaluator_budget.budget.store import BudgetStore
 
         class SyncMixin:
-            def record_and_check(self, scope, input_tokens, output_tokens, cost):
+            def record_and_check(self, rules, scope, input_tokens, output_tokens, cost):
                 return []
 
         with pytest.raises(TypeError, match="must be an async def"):
@@ -1335,15 +1604,15 @@ class TestNaNCostDefense:
     async def test_nan_cost_coerced_to_zero(self) -> None:
         # Given: store with a cost limit
         rules = [BudgetLimitRule(limit=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: NaN cost is injected directly (bypassing _estimate_cost)
         await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=float("nan")
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=float("nan")
         )
         # And: a subsequent valid charge arrives
         snaps = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=500.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=500.0
         )
 
         # Then: the NaN was coerced to 0.0; the accumulator is 500, not NaN
@@ -1354,14 +1623,14 @@ class TestNaNCostDefense:
     async def test_inf_cost_coerced_to_zero(self) -> None:
         # Given: store with a cost limit
         rules = [BudgetLimitRule(limit=1000)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
 
         # When: Inf cost is injected
         await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=float("inf")
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=float("inf")
         )
         snaps = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=100.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=100.0
         )
 
         # Then: Inf was coerced to 0.0; the accumulator is 100
@@ -1374,19 +1643,17 @@ class TestNaNCostDefense:
         [(-50, 0), (0, -50), (-30, -20)],
         ids=["neg_input_only", "neg_output_only", "both_negative"],
     )
-    async def test_negative_tokens_clamped_to_zero(
-        self, neg_input: int, neg_output: int
-    ) -> None:
+    async def test_negative_tokens_clamped_to_zero(self, neg_input: int, neg_output: int) -> None:
         # Given: store with a token limit, filled to 90 tokens
-        rules = [BudgetLimitRule(limit_tokens=100)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: 0.0)
+        rules = [BudgetLimitRule(limit=100, limit_unit="tokens")]
+        store = InMemoryBudgetStore(clock=lambda: 0.0)
         await store.record_and_check(
-            scope={}, input_tokens=90, output_tokens=0, cost=0.0
+            rules=rules, scope={}, input_tokens=90, output_tokens=0, cost=0.0
         )
 
         # When: inject negative input/output tokens
         snaps = await store.record_and_check(
-            scope={}, input_tokens=neg_input, output_tokens=neg_output, cost=0.0
+            rules=rules, scope={}, input_tokens=neg_input, output_tokens=neg_output, cost=0.0
         )
 
         # Then: negative tokens clamped to 0; accumulator stays at 90
@@ -1397,12 +1664,12 @@ class TestNaNCostDefense:
     async def test_nan_clock_does_not_crash(self) -> None:
         # Given: store with a windowed rule AND a clock that returns NaN
         rules = [BudgetLimitRule(limit=1000, window_seconds=WINDOW_DAILY)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: float("nan"))
+        store = InMemoryBudgetStore(clock=lambda: float("nan"))
 
         # When: record_and_check is called (would raise OverflowError in
         # _derive_period_key without the guard)
         snaps = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=100.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=100.0
         )
 
         # Then: no crash; maps to epoch-zero period, budget still enforced
@@ -1413,11 +1680,11 @@ class TestNaNCostDefense:
     async def test_inf_clock_does_not_crash(self) -> None:
         # Given: clock returning Inf
         rules = [BudgetLimitRule(limit=1000, window_seconds=WINDOW_DAILY)]
-        store = InMemoryBudgetStore(rules=rules, clock=lambda: float("inf"))
+        store = InMemoryBudgetStore(clock=lambda: float("inf"))
 
         # When: record_and_check is called
         snaps = await store.record_and_check(
-            scope={}, input_tokens=0, output_tokens=0, cost=100.0
+            rules=rules, scope={}, input_tokens=0, output_tokens=0, cost=100.0
         )
 
         # Then: no crash
