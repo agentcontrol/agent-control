@@ -1,9 +1,9 @@
 """Direct event ingestor implementation.
 
 This module provides the DirectEventIngestor, which processes events
-immediately by writing them to a control-event sink. Existing store-based
-callers are preserved by wrapping EventStore instances in the default
-EventStoreControlEventSink internally.
+immediately by writing them to an async control-event sink. Existing
+store-based callers are preserved by wrapping EventStore instances in the
+default EventStoreControlEventSink internally.
 
 For high-throughput scenarios, users can implement their own buffered
 ingestor (e.g., QueuedEventIngestor, RedisEventIngestor).
@@ -13,7 +13,7 @@ import json
 import logging
 
 from agent_control_models.observability import ControlExecutionEvent
-from agent_control_telemetry.sinks import ControlEventSink, resolve_sink_result
+from agent_control_telemetry.sinks import AsyncControlEventSink
 
 from ..sinks import EventStoreControlEventSink
 from ..store.base import EventStore
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class DirectEventIngestor(EventIngestor):
-    """Processes events immediately by writing them to a control-event sink.
+    """Processes events immediately by writing them to an async control-event sink.
 
     This is the simplest ingestor implementation. Events are written
     directly to the configured sink, adding ~5-20ms latency per batch.
@@ -32,23 +32,23 @@ class DirectEventIngestor(EventIngestor):
     implement a custom buffered ingestor (e.g., QueuedEventIngestor).
 
     Attributes:
-        sink: The ControlEventSink used to write events
+        sink: The AsyncControlEventSink used to write events
         log_to_stdout: Whether to log events as structured JSON
     """
 
     def __init__(
         self,
-        store: EventStore | ControlEventSink,
+        store: EventStore | AsyncControlEventSink,
         log_to_stdout: bool = False,
     ):
         """Initialize the ingestor.
 
         Args:
-            store: Either an EventStore or a ControlEventSink implementation
+            store: Either an EventStore or an AsyncControlEventSink implementation
             log_to_stdout: Whether to log events as structured JSON (default: False)
         """
         if isinstance(store, EventStore):
-            self.sink: ControlEventSink = EventStoreControlEventSink(store)
+            self.sink: AsyncControlEventSink = EventStoreControlEventSink(store)
         else:
             self.sink = store
         self.log_to_stdout = log_to_stdout
@@ -70,7 +70,7 @@ class DirectEventIngestor(EventIngestor):
         dropped = 0
 
         try:
-            sink_result = await resolve_sink_result(self.sink.write_events(events))
+            sink_result = await self.sink.write_events(events)
             processed = sink_result.accepted
             dropped = sink_result.dropped
 

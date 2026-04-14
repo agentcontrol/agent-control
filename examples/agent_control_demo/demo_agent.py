@@ -154,6 +154,7 @@ def initialize_demo_agent() -> bool:
             agent_name=AGENT_NAME,
             agent_description="Demo chatbot for testing controls",
             server_url=SERVER_URL,
+            observability_enabled=True
         )
         logger.info("Agent initialized successfully")
         return True
