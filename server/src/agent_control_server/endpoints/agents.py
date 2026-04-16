@@ -1213,6 +1213,26 @@ async def add_agent_control(
     agent = await _get_agent_or_404(agent_name, db)
     control_service = ControlService(db)
     control = await control_service.get_active_control_or_404(control_id)
+    if await control_service.is_control_published(control_id):
+        raise ConflictError(
+            error_code=ErrorCode.CONTROL_PUBLISHED,
+            detail=(
+                f"Control '{control.name}' is published in the Control Store and "
+                "cannot be attached directly to an agent"
+            ),
+            resource="Control",
+            resource_id=str(control_id),
+            hint="Clone the published control first, then attach the clone to the agent.",
+            errors=[
+                ValidationErrorItem(
+                    resource="Control",
+                    field="control_id",
+                    code="published_control_conflict",
+                    message="Published controls must be cloned before agent association.",
+                    value=control_id,
+                )
+            ],
+        )
 
     validation_errors = _validate_controls_for_agent(agent, [control])
     if validation_errors:

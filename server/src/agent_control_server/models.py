@@ -56,6 +56,27 @@ agent_controls: Table = Table(
     Column("control_id", ForeignKey("controls.id"), primary_key=True, index=True),
 )
 
+# Association table for ControlStore <> Control publication relationship
+control_stores_controls: Table = Table(
+    "control_stores_controls",
+    Base.metadata,
+    Column("store_id", ForeignKey("control_stores.id"), primary_key=True, index=True),
+    Column("control_id", ForeignKey("controls.id"), primary_key=True, index=True),
+    Column(
+        "published_at",
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    ),
+    Index(
+        "idx_control_stores_controls_store_published",
+        "store_id",
+        "published_at",
+        "control_id",
+    ),
+    Index("idx_control_stores_controls_control", "control_id"),
+)
+
 
 class Policy(Base):
     __tablename__ = "policies"
@@ -68,6 +89,23 @@ class Policy(Base):
     # Many-to-many: Policy <> Control (direct relationship, no ControlSet layer)
     controls: Mapped[list["Control"]] = relationship(
         "Control", secondary=lambda: policy_controls, back_populates="policies"
+    )
+
+
+class ControlStore(Base):
+    __tablename__ = "control_stores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+    controls: Mapped[list["Control"]] = relationship(
+        "Control",
+        secondary=lambda: control_stores_controls,
+        back_populates="stores",
     )
 
 
@@ -85,6 +123,11 @@ class Control(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    cloned_control_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("controls.id"),
+        nullable=True,
+    )
     # JSONB payload describing control specifics
     data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
@@ -99,6 +142,11 @@ class Control(Base):
     # Many-to-many backref: Control <> Agent (direct relationship)
     agents: Mapped[list["Agent"]] = relationship(
         "Agent", secondary=lambda: agent_controls, back_populates="controls"
+    )
+    stores: Mapped[list["ControlStore"]] = relationship(
+        "ControlStore",
+        secondary=lambda: control_stores_controls,
+        back_populates="controls",
     )
 
 

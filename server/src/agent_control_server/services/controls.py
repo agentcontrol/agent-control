@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -13,13 +14,32 @@ from agent_control_models import (
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.policy import Control as APIControl
 from pydantic import ValidationError
-from sqlalchemy import Integer, String, delete, func, literal, or_, select, union, union_all
+from sqlalchemy import (
+    Integer,
+    String,
+    and_,
+    delete,
+    func,
+    literal,
+    or_,
+    select,
+    union,
+    union_all,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
 from ..errors import APIValidationError, NotFoundError
-from ..models import Control, ControlVersion, agent_controls, agent_policies, policy_controls
+from ..models import (
+    Control,
+    ControlStore,
+    ControlVersion,
+    agent_controls,
+    agent_policies,
+    control_stores_controls,
+    policy_controls,
+)
 from .control_definitions import (
     parse_control_definition_or_api_error,
     parse_runtime_control_definition_or_api_error,
@@ -28,6 +48,9 @@ from .query_utils import escape_like_pattern
 
 type AgentControlRenderedState = Literal["rendered", "unrendered", "all"]
 type AgentControlEnabledState = Literal["enabled", "disabled", "all"]
+
+_DEFAULT_CONTROL_STORE_NAME = "default"
+_MAX_CONTROL_NAME_LENGTH = 255
 
 
 @dataclass(frozen=True)
@@ -54,6 +77,24 @@ class ControlListPage:
     """Paginated control rows for browse/list endpoints."""
 
     controls: list[Control]
+    total: int
+    has_more: bool
+    next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class PublishedControlRow:
+    """Published control row plus store publication metadata."""
+
+    control: Control
+    published_at: dt.datetime
+
+
+@dataclass(frozen=True)
+class PublishedControlPage:
+    """Paginated published-control results for the default store."""
+
+    controls: list[PublishedControlRow]
     total: int
     has_more: bool
     next_cursor: str | None
@@ -89,9 +130,19 @@ class ControlService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    def create_control(self, *, name: str, data: dict[str, Any]) -> Control:
+    def create_control(
+        self,
+        *,
+        name: str,
+        data: dict[str, Any],
+        cloned_control_id: int | None = None,
+    ) -> Control:
         """Create a new pending control row."""
-        control = Control(name=name, data=data)
+        control = Control(
+            name=name,
+            data=deepcopy(data),
+            cloned_control_id=cloned_control_id,
+        )
         self._db.add(control)
         return control
 
@@ -173,6 +224,79 @@ class ControlService:
             stmt = stmt.where(Control.id != exclude_control_id)
         result = await self._db.execute(stmt)
         return result.first() is not None
+
+    async def generate_unique_clone_name(self, source_name: str) -> str:
+        """Return a unique active-control name for a cloned control."""
+        copy_index = 1
+        while True:
+            suffix = "-copy" if copy_index == 1 else f"-copy-{copy_index}"
+            max_base_length = max(1, _MAX_CONTROL_NAME_LENGTH - len(suffix))
+            candidate = f"{source_name[:max_base_length]}{suffix}"
+            if not await self.active_control_name_exists(candidate):
+                return candidate
+            copy_index += 1
+
+    async def clone_control(
+        self,
+        *,
+        source_control: Control,
+        name: str | None = None,
+    ) -> Control:
+        """Create a cloned control with provenance and initial version history."""
+        target_name = name or await self.generate_unique_clone_name(source_control.name)
+        source_version_num = await self._latest_version_num(source_control.id)
+        cloned_control = self.create_control(
+            name=target_name,
+            data=source_control.data,
+            cloned_control_id=source_control.id,
+        )
+        await self.create_version(
+            cloned_control,
+            event_type="cloned",
+            note=(
+                f"Cloned from '{source_control.name}' "
+                f"(id:{source_control.id}) at version {source_version_num}"
+            ),
+        )
+        return cloned_control
+
+    async def is_control_published(self, control_id: int) -> bool:
+        """Return whether a control is currently published in the default store."""
+        default_store_id = await self._get_default_store_id()
+        result = await self._db.execute(
+            select(control_stores_controls.c.control_id).where(
+                control_stores_controls.c.store_id == default_store_id,
+                control_stores_controls.c.control_id == control_id,
+            )
+        )
+        return result.first() is not None
+
+    async def publish_control(self, control_id: int) -> None:
+        """Publish a control to the default store idempotently."""
+        default_store_id = await self._get_default_store_id()
+        await self._db.execute(
+            pg_insert(control_stores_controls)
+            .values(store_id=default_store_id, control_id=control_id)
+            .on_conflict_do_nothing()
+        )
+
+    async def unpublish_control(self, control_id: int) -> None:
+        """Remove a control from the default store idempotently."""
+        default_store_id = await self._get_default_store_id()
+        await self._db.execute(
+            delete(control_stores_controls).where(
+                control_stores_controls.c.store_id == default_store_id,
+                control_stores_controls.c.control_id == control_id,
+            )
+        )
+
+    async def remove_all_store_publications(self, control_id: int) -> None:
+        """Remove all store publication rows for a control."""
+        await self._db.execute(
+            delete(control_stores_controls).where(
+                control_stores_controls.c.control_id == control_id
+            )
+        )
 
     async def create_version(
         self,
@@ -416,6 +540,98 @@ class ControlService:
             next_cursor=next_cursor,
         )
 
+    async def list_published_controls_page(
+        self,
+        *,
+        cursor: int | None,
+        limit: int,
+        name: str | None,
+        enabled: bool | None,
+        tag: str | None,
+    ) -> PublishedControlPage:
+        """Return paginated published controls from the default store."""
+        default_store_id = await self._get_default_store_id()
+        query = (
+            select(Control, control_stores_controls.c.published_at)
+            .join(control_stores_controls, Control.id == control_stores_controls.c.control_id)
+            .where(
+                control_stores_controls.c.store_id == default_store_id,
+                Control.deleted_at.is_(None),
+            )
+            .order_by(
+                control_stores_controls.c.published_at.desc(),
+                control_stores_controls.c.control_id.desc(),
+            )
+        )
+        query = self._apply_published_control_filters(
+            query,
+            name=name,
+            enabled=enabled,
+            tag=tag,
+        )
+
+        if cursor is not None:
+            cursor_result = await self._db.execute(
+                select(control_stores_controls.c.published_at).where(
+                    control_stores_controls.c.store_id == default_store_id,
+                    control_stores_controls.c.control_id == cursor,
+                )
+            )
+            cursor_published_at = cast(dt.datetime | None, cursor_result.scalar_one_or_none())
+            if cursor_published_at is not None:
+                query = query.where(
+                    or_(
+                        control_stores_controls.c.published_at < cursor_published_at,
+                        and_(
+                            control_stores_controls.c.published_at == cursor_published_at,
+                            control_stores_controls.c.control_id < cursor,
+                        ),
+                    )
+                )
+
+        result = await self._db.execute(query.limit(limit + 1))
+        rows = result.all()
+        controls = [
+            PublishedControlRow(
+                control=cast(Control, row[0]),
+                published_at=cast(dt.datetime, row[1]),
+            )
+            for row in rows
+        ]
+
+        total_query = (
+            select(func.count())
+            .select_from(control_stores_controls)
+            .join(Control, Control.id == control_stores_controls.c.control_id)
+            .where(
+                control_stores_controls.c.store_id == default_store_id,
+                Control.deleted_at.is_(None),
+            )
+        )
+        total_query = self._apply_published_control_filters(
+            total_query,
+            name=name,
+            enabled=enabled,
+            tag=tag,
+        )
+        total_result = await self._db.execute(total_query)
+        total = cast(int, total_result.scalar_one())
+
+        has_more = len(controls) > limit
+        if has_more:
+            controls = controls[:-1]
+
+        next_cursor: str | None = None
+        if has_more and controls:
+            next_cursor = str(controls[-1].control.id)
+
+        return PublishedControlPage(
+            controls=controls,
+            total=total,
+            has_more=has_more,
+            next_cursor=next_cursor,
+        )
+
     async def list_control_usage(self, control_ids: Sequence[int]) -> dict[int, ControlUsage]:
         """Return representative agent usage and usage counts for the provided controls."""
         if not control_ids:
@@ -593,6 +809,28 @@ class ControlService:
             )
         return associations
 
+    async def _get_default_store_id(self) -> int:
+        """Return the seeded default-store ID."""
+        result = await self._db.execute(
+            select(ControlStore.id).where(ControlStore.name == _DEFAULT_CONTROL_STORE_NAME)
+        )
+        store_id = result.scalar_one_or_none()
+        if store_id is None:
+            raise RuntimeError(
+                "Default control store is missing; run the Phase 3 migration before using "
+                "control-store endpoints."
+            )
+        return cast(int, store_id)
+
+    async def _latest_version_num(self, control_id: int) -> int:
+        """Return the latest version number currently stored for a control."""
+        result = await self._db.execute(
+            select(func.coalesce(func.max(ControlVersion.version_num), 0)).where(
+                ControlVersion.control_id == control_id
+            )
+        )
+        return cast(int, result.scalar_one())
+
     async def _next_version_num(self, control_id: int) -> int:
         """Compute the next monotonically increasing version number for a control."""
         result = await self._db.execute(
@@ -691,6 +929,36 @@ class ControlService:
             )
         if execution is not None:
             stmt = stmt.where(Control.data["execution"].astext == execution)
+        if tag is not None:
+            stmt = stmt.where(Control.data["tags"].contains([tag]))
+
+        return stmt
+
+    def _apply_published_control_filters(
+        self,
+        stmt: Select[Any],
+        *,
+        name: str | None,
+        enabled: bool | None,
+        tag: str | None,
+    ) -> Select[Any]:
+        """Apply published-store browse filters to a query."""
+        if name is not None:
+            stmt = stmt.where(
+                Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
+            )
+
+        if enabled is not None:
+            if enabled:
+                stmt = stmt.where(
+                    or_(
+                        Control.data["enabled"].astext == "true",
+                        ~Control.data.has_key("enabled"),
+                    )
+                )
+            else:
+                stmt = stmt.where(Control.data["enabled"].astext == "false")
+
         if tag is not None:
             stmt = stmt.where(Control.data["tags"].contains([tag]))
 

@@ -515,6 +515,45 @@ class ListControlsResponse(BaseModel):
     pagination: PaginationInfo = Field(..., description="Pagination metadata")
 
 
+class PublishedControlSummary(BaseModel):
+    """Summary of a published control in the default store."""
+
+    id: int = Field(..., description="Control ID")
+    name: str = Field(..., description="Control name")
+    description: str | None = Field(None, description="Control description")
+    enabled: bool = Field(True, description="Whether control is enabled")
+    execution: str | None = Field(None, description="'server' or 'sdk'")
+    step_types: list[str] | None = Field(None, description="Step types in scope")
+    stages: list[str] | None = Field(None, description="Evaluation stages in scope")
+    tags: list[str] = Field(default_factory=list, description="Control tags")
+    template_backed: bool = Field(
+        False,
+        description="Whether the control was created from a template",
+    )
+    template_rendered: bool | None = Field(
+        None,
+        description=(
+            "Whether a template-backed control has been rendered. "
+            "True for rendered templates, False for unrendered templates, "
+            "None for non-template controls."
+        ),
+    )
+    published_at: str = Field(
+        ...,
+        description="ISO 8601 timestamp when the control was published to the default store",
+    )
+
+
+class ListPublishedControlsResponse(BaseModel):
+    """Response for listing controls published in the default store."""
+
+    controls: list[PublishedControlSummary] = Field(
+        ...,
+        description="List of published control summaries",
+    )
+    pagination: PaginationInfo = Field(..., description="Pagination metadata")
+
+
 class ControlVersionSummary(BaseModel):
     """Summary of a single control version."""
 
@@ -584,4 +623,27 @@ class PatchControlResponse(BaseModel):
     name: str = Field(..., description="Current control name (may have changed)")
     enabled: bool | None = Field(
         None, description="Current enabled status (if control has data configured)"
+    )
+
+
+class CloneControlRequest(BaseModel):
+    """Request to clone a control."""
+
+    name: SlugName | None = Field(
+        None,
+        description=(
+            "Optional name for the cloned control. If omitted, the server generates "
+            "a unique copy name."
+        ),
+    )
+
+
+class CloneControlResponse(BaseModel):
+    """Response for cloning a control."""
+
+    control_id: int = Field(..., description="Identifier of the cloned control")
+    name: str = Field(..., description="Name assigned to the cloned control")
+    cloned_control_id: int = Field(
+        ...,
+        description="Identifier of the source control the clone was created from",
     )

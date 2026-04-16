@@ -53,10 +53,10 @@ def test_policy_add_control_and_list(client: TestClient) -> None:
     assert r.json()["success"] is True
 
     # When: listing policy controls
-    l = client.get(f"/api/v1/policies/{policy_id}/controls")
+    list_response = client.get(f"/api/v1/policies/{policy_id}/controls")
     # Then: the control id is included
-    assert l.status_code == 200
-    assert control_id in l.json()["control_ids"]
+    assert list_response.status_code == 200
+    assert control_id in list_response.json()["control_ids"]
 
 
 def test_policy_add_control_idempotent(client: TestClient) -> None:
@@ -72,9 +72,9 @@ def test_policy_add_control_idempotent(client: TestClient) -> None:
     assert r.json()["success"] is True
 
     # Then: listing still shows it once (set semantics by ids)
-    l = client.get(f"/api/v1/policies/{policy_id}/controls")
-    assert l.status_code == 200
-    ids = l.json()["control_ids"]
+    list_response = client.get(f"/api/v1/policies/{policy_id}/controls")
+    assert list_response.status_code == 200
+    ids = list_response.json()["control_ids"]
     assert ids.count(control_id) == 1
 
 
@@ -91,10 +91,10 @@ def test_policy_remove_control(client: TestClient) -> None:
     assert d.json()["success"] is True
 
     # When: listing controls
-    l = client.get(f"/api/v1/policies/{policy_id}/controls")
+    list_response = client.get(f"/api/v1/policies/{policy_id}/controls")
     # Then: the control is not present
-    assert l.status_code == 200
-    assert control_id not in l.json()["control_ids"]
+    assert list_response.status_code == 200
+    assert control_id not in list_response.json()["control_ids"]
 
 
 def test_policy_remove_control_idempotent_when_not_associated(client: TestClient) -> None:
@@ -210,11 +210,21 @@ def test_policy_add_control_db_error_returns_500(
     policy_result.scalars.return_value.first.return_value = policy
     control_result = MagicMock()
     control_result.scalars.return_value.first.return_value = control
+    store_result = MagicMock()
+    store_result.scalar_one_or_none.return_value = 1
+    publication_result = MagicMock()
+    publication_result.first.return_value = None
 
     async def mock_db() -> AsyncGenerator[AsyncSession, None]:
         mock_session = AsyncMock(spec=AsyncSession)
         mock_session.execute = AsyncMock(
-            side_effect=[policy_result, control_result, MagicMock()]
+            side_effect=[
+                policy_result,
+                control_result,
+                store_result,
+                publication_result,
+                MagicMock(),
+            ]
         )
         mock_session.commit.side_effect = Exception("db error")
         mock_session.rollback = AsyncMock()
