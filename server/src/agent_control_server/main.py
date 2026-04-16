@@ -8,6 +8,7 @@ from typing import Any
 import uvicorn
 from agent_control_engine import discover_evaluators, list_evaluators
 from agent_control_models import HealthResponse
+from agent_control_telemetry import DEFAULT_CONTROL_EVENT_SINK_NAME, ControlEventSinkSelection
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +36,11 @@ from .errors import (
 )
 from .logging_utils import configure_logging, get_uvicorn_log_level_name
 from .observability.ingest import DirectEventIngestor
+from .observability.sinks import (
+    EventStoreControlEventSink,
+    ResolvedControlEventBackend,
+    resolve_control_event_backend,
+)
 from .observability.store import PostgresEventStore
 from .ui_assets import configure_ui_routes
 
@@ -94,19 +100,37 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if observability_settings.enabled:
         logger.info("Initializing observability components...")
 
-        # 1. Create event store
-        store = PostgresEventStore(AsyncSessionLocal)
-        app.state.event_store = store
-        logger.info("PostgresEventStore initialized")
+        # 1. Resolve the active sink from shared sink-selection config
+        sink_selection = ControlEventSinkSelection(
+            name=observability_settings.sink_name,
+            config=observability_settings.sink_config,
+        )
+        default_backend: ResolvedControlEventBackend | None = None
+        if sink_selection.name == DEFAULT_CONTROL_EVENT_SINK_NAME:
+            store = PostgresEventStore(AsyncSessionLocal)
+            default_backend = ResolvedControlEventBackend(
+                sink=EventStoreControlEventSink(store),
+                event_store=store,
+            )
+            logger.info("PostgresEventStore initialized")
+
+        backend = resolve_control_event_backend(
+            sink_selection,
+            default_backend=default_backend,
+        )
+        app.state.event_store = backend.event_store
 
         # 2. Create event ingestor
         ingestor = DirectEventIngestor(
-            store=store,
+            store=backend.sink,
             log_to_stdout=observability_settings.stdout,
         )
         app.state.event_ingestor = ingestor
         logger.info(
-            f"DirectEventIngestor initialized (stdout={observability_settings.stdout})"
+            "DirectEventIngestor initialized "
+            "(stdout=%s, sink=%s)",
+            observability_settings.stdout,
+            sink_selection.name,
         )
 
         logger.info("Observability initialization complete")

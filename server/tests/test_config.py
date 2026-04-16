@@ -185,6 +185,7 @@ def test_observability_settings_support_prefixed_env_vars(monkeypatch) -> None:
     # Given: canonical observability env vars are set
     monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_ENABLED", "false")
     monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_STDOUT", "true")
+    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_NAME", "default")
 
     # When: loading observability settings from the environment
     config = ObservabilitySettings()
@@ -192,6 +193,17 @@ def test_observability_settings_support_prefixed_env_vars(monkeypatch) -> None:
     # Then: the Agent Control-prefixed env vars are used
     assert config.enabled is False
     assert config.stdout is True
+    assert config.sink_name == "default"
+
+
+def test_observability_settings_parse_sink_config(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_NAME", "custom")
+    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_CONFIG", '{"project":"demo"}')
+
+    config = ObservabilitySettings()
+
+    assert config.sink_name == "custom"
+    assert config.sink_config == {"project": "demo"}
 
 
 def test_observability_settings_ignore_legacy_env_vars(monkeypatch) -> None:

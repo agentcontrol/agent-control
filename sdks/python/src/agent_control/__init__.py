@@ -65,6 +65,7 @@ from agent_control_models import (
     EvaluationResult,
     EvaluatorResult,
     EvaluatorSpec,
+    JSONObject,
     Step,
     StepSchema,
     TemplateControlInput,
@@ -98,14 +99,17 @@ from .observability import (
     get_event_sink,
     get_log_config,
     get_logger,
+    get_registered_control_event_sink_factory_names,
     get_registered_control_event_sinks,
     init_observability,
     is_observability_enabled,
     log_control_evaluation,
     register_control_event_sink,
+    register_control_event_sink_factory,
     shutdown_observability,
     sync_shutdown_observability,
     unregister_control_event_sink,
+    unregister_control_event_sink_factory,
     write_events,
 )
 from .tracing import (
@@ -415,6 +419,8 @@ def init(
     steps: list[StepSchemaDict] | None = None,
     conflict_mode: Literal["strict", "overwrite"] = "overwrite",
     observability_enabled: bool | None = None,
+    observability_sink_name: str | None = None,
+    observability_sink_config: JSONObject | None = None,
     log_config: dict[str, Any] | None = None,
     policy_refresh_interval_seconds: int = 60,
     **kwargs: object
@@ -443,6 +449,9 @@ def init(
         conflict_mode: Conflict handling mode for initAgent registration.
             Defaults to "overwrite" in SDK flows.
         observability_enabled: Optional bool to enable/disable observability (defaults to env var)
+        observability_sink_name: Optional sink selection name. Use "default" to preserve
+            SDK -> server OSS delivery or "registered" / a named sink factory for custom sinks.
+        observability_sink_config: Optional JSON config payload for the selected sink.
         log_config: Optional logging configuration dict:
                {"enabled": True, "span_start": True, "span_end": True, "control_eval": True}
         policy_refresh_interval_seconds: Interval for background policy refresh loop.
@@ -636,6 +645,8 @@ def init(
         server_url=state.server_url,
         api_key=state.api_key,
         enabled=observability_enabled,
+        sink_name=observability_sink_name,
+        sink_config=observability_sink_config,
     )
     if batcher:
         logger.info("Observability enabled")
@@ -1371,9 +1382,12 @@ __all__ = [
     "is_observability_enabled",
     "get_event_batcher",
     "get_event_sink",
+    "get_registered_control_event_sink_factory_names",
     "get_registered_control_event_sinks",
     "register_control_event_sink",
+    "register_control_event_sink_factory",
     "unregister_control_event_sink",
+    "unregister_control_event_sink_factory",
     "configure_logging",
     "get_log_config",
     "log_control_evaluation",

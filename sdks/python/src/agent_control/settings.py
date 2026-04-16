@@ -19,6 +19,8 @@ Usage:
 
 from typing import Any
 
+from agent_control_models import JSONObject
+from agent_control_telemetry import DEFAULT_CONTROL_EVENT_SINK_NAME
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -59,6 +61,14 @@ class SDKSettings(BaseSettings):
     observability_enabled: bool = Field(
         default=True,
         description="Enable sending events to server",
+    )
+    observability_sink_name: str = Field(
+        default=DEFAULT_CONTROL_EVENT_SINK_NAME,
+        description="Control-event sink selection (default or registered/custom sink name)",
+    )
+    observability_sink_config: JSONObject = Field(
+        default_factory=dict,
+        description="JSON config payload passed to the selected control-event sink",
     )
     batch_size: int = Field(
         default=100,
@@ -121,6 +131,11 @@ class SDKSettings(BaseSettings):
 
 # Global settings instance - loaded from environment at import time
 settings = SDKSettings()
+
+
+def load_settings_from_env() -> SDKSettings:
+    """Load a fresh settings snapshot directly from environment variables."""
+    return SDKSettings()
 
 
 def get_settings() -> SDKSettings:

@@ -149,7 +149,7 @@ if __name__ == "__main__":
 Use `agent_control.shutdown()` or `await agent_control.ashutdown()` before process exit so short-lived scripts flush pending observability events cleanly.
 
 External integrations can register a sink for the same finalized
-control-event payloads:
+control-event payloads and then select it through observability config:
 
 ```python
 from agent_control import (
@@ -169,14 +169,21 @@ class MyControlEventSink(BaseControlEventSink):
 sink = MyControlEventSink()
 register_control_event_sink(sink)
 
+# Select registered sinks instead of the default SDK -> server sink.
+agent_control.init(
+    agent_name="awesome_bot_3000",
+    observability_enabled=True,
+    observability_sink_name="registered",
+)
+
 # Later, when tearing down the integration:
 unregister_control_event_sink(sink)
 ```
 
 Registered sinks receive the same local, server, and merged control-execution
-events the SDK emits through its normal event-construction flow. If no
-external sink is registered, the default OSS delivery path is unchanged. If one
-or more sinks are registered, they replace the default built-in delivery path.
+events the SDK emits through its normal event-construction flow. The default
+SDK sink remains the OSS path to the Agent Control server. To use registered
+or named custom sinks, set `observability_sink_name` explicitly.
 
 Next, create a control in Step 4, then run the setup and agent scripts in
 order to see blocking in action.

@@ -5,6 +5,8 @@ import secrets
 from functools import cached_property
 from typing import Any
 
+from agent_control_models import JSONObject
+from agent_control_telemetry import DEFAULT_CONTROL_EVENT_SINK_NAME
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -203,6 +205,10 @@ class ObservabilitySettings(BaseSettings):
 
     # Enable/disable observability features
     enabled: bool = True
+
+    # Event sink selection
+    sink_name: str = DEFAULT_CONTROL_EVENT_SINK_NAME
+    sink_config: JSONObject = Field(default_factory=dict)
 
     # Stdout logging of events
     stdout: bool = False

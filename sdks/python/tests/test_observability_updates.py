@@ -20,7 +20,12 @@ from agent_control.observability import (
     register_control_event_sink,
     unregister_control_event_sink,
 )
+from agent_control.settings import configure_settings
 from agent_control_models import ControlDefinition, ControlExecutionEvent
+from agent_control_telemetry import (
+    DEFAULT_CONTROL_EVENT_SINK_NAME,
+    REGISTERED_CONTROL_EVENT_SINK_NAME,
+)
 from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
 from agent_control_telemetry.trace_context import (
     clear_trace_context_provider,
@@ -348,6 +353,7 @@ class TestBuildControlExecutionEvents:
 class TestCheckEvaluationWithLocal:
     def teardown_method(self) -> None:
         clear_trace_context_provider()
+        configure_settings(observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME)
 
     @pytest.mark.asyncio
     async def test_delivers_local_events_in_oss_mode(self):
@@ -413,6 +419,7 @@ class TestCheckEvaluationWithLocal:
 
         sink = RecordingSink()
         register_control_event_sink(sink)
+        configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
 
         try:
             mock_response = EvaluationResponse(
@@ -469,6 +476,7 @@ class TestCheckEvaluationWithLocal:
             assert event.span_id == "def456"
         finally:
             unregister_control_event_sink(sink)
+            configure_settings(observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME)
 
     @pytest.mark.asyncio
     async def test_resolves_provider_trace_context_for_local_events(self):
@@ -579,6 +587,7 @@ class TestCheckEvaluationWithLocal:
 class TestCheckEvaluation:
     def teardown_method(self) -> None:
         clear_trace_context_provider()
+        configure_settings(observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME)
 
     @pytest.mark.asyncio
     async def test_check_evaluation_enqueues_reconstructed_server_events_when_enabled(
@@ -633,6 +642,7 @@ class TestCheckEvaluation:
 
         sink = RecordingSink()
         register_control_event_sink(sink)
+        configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
 
         try:
             mock_http_response = MagicMock()
@@ -671,6 +681,7 @@ class TestCheckEvaluation:
             assert sink.received_batches[0][0].control_execution_id == "ce-1"
         finally:
             unregister_control_event_sink(sink)
+            configure_settings(observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME)
 
     @pytest.mark.asyncio
     async def test_skips_local_event_reconstruction_when_observability_disabled(self):
@@ -862,6 +873,7 @@ class TestMergedEventCreation:
 
         sink = RecordingSink()
         register_control_event_sink(sink)
+        configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
 
         try:
             local_response = EvaluationResponse(
@@ -949,6 +961,7 @@ class TestMergedEventCreation:
             assert {event.control_id for event in merged_events} == {1, 2}
         finally:
             unregister_control_event_sink(sink)
+            configure_settings(observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME)
 
     @pytest.mark.asyncio
     async def test_merged_event_mode_enqueues_local_events_before_reraising_server_failure(self):

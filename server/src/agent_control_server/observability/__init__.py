@@ -27,6 +27,13 @@ Example:
 """
 
 from .ingest import DirectEventIngestor, EventIngestor, IngestResult
+from .sinks import (
+    ResolvedControlEventBackend,
+    get_registered_control_event_sink_factory_names,
+    register_control_event_sink_factory,
+    resolve_control_event_backend,
+    unregister_control_event_sink_factory,
+)
 from .store import (
     EventQuery,
     EventQueryResult,
@@ -40,6 +47,11 @@ __all__ = [
     "EventIngestor",
     "IngestResult",
     "DirectEventIngestor",
+    "ResolvedControlEventBackend",
+    "register_control_event_sink_factory",
+    "unregister_control_event_sink_factory",
+    "get_registered_control_event_sink_factory_names",
+    "resolve_control_event_backend",
     # Store interfaces
     "EventStore",
     "EventQuery",
