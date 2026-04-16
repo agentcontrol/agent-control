@@ -1155,6 +1155,8 @@ def sync_shutdown_observability() -> None:
         _configured_named_event_sink_selection = None
     with _used_custom_event_sinks_lock:
         _used_custom_event_sinks.clear()
+    with _external_event_sinks_lock:
+        _external_event_sinks.clear()
 
 
 async def shutdown_observability() -> None:

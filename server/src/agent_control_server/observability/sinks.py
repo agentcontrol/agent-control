@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from agent_control_models.observability import ControlExecutionEvent
 from agent_control_telemetry import (
     DEFAULT_CONTROL_EVENT_SINK_NAME,
+    REGISTERED_CONTROL_EVENT_SINK_NAME,
     AsyncControlEventSink,
     ControlEventSinkFactory,
     ControlEventSinkFactoryRegistry,
@@ -72,6 +73,11 @@ def resolve_control_event_backend(
         if default_backend is None:
             raise RuntimeError("Default server observability backend was not provided")
         return default_backend
+    if selection.name == REGISTERED_CONTROL_EVENT_SINK_NAME:
+        raise RuntimeError(
+            "The 'registered' observability sink is not supported on the server; "
+            "configure 'default' or a named server sink factory instead"
+        )
 
     try:
         return _named_event_sink_factories.resolve(selection)

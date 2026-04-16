@@ -1303,6 +1303,18 @@ class TestShutdownObservability:
         assert sink.flush_calls == 1
         assert sink.close_calls == 1
 
+    def test_sync_shutdown_clears_registered_sink_instances(self):
+        sink = AsyncLifecycleRecordingSink()
+        register_control_event_sink(sink)
+        configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
+
+        assert add_event(create_mock_event()) is True
+
+        sync_shutdown_observability()
+
+        assert get_registered_control_event_sinks() == ()
+        assert is_observability_enabled() is False
+
 
 class TestEventBatcherShutdownConfig:
     """Tests for shutdown timeout configuration."""

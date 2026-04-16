@@ -1,6 +1,10 @@
 """Tests for server-side observability sink resolution."""
 
-from agent_control_telemetry import ControlEventSinkSelection
+import pytest
+from agent_control_telemetry import (
+    REGISTERED_CONTROL_EVENT_SINK_NAME,
+    ControlEventSinkSelection,
+)
 
 from agent_control_server.observability.sinks import (
     ResolvedControlEventBackend,
@@ -61,3 +65,10 @@ def test_resolve_control_event_backend_uses_named_factory() -> None:
     )
 
     assert resolved is named_backend
+
+
+def test_resolve_control_event_backend_rejects_registered_selection() -> None:
+    with pytest.raises(RuntimeError, match="not supported on the server"):
+        resolve_control_event_backend(
+            ControlEventSinkSelection(name=REGISTERED_CONTROL_EVENT_SINK_NAME)
+        )
