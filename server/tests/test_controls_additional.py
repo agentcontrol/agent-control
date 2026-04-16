@@ -26,6 +26,13 @@ from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
 
 
+def _make_integrity_error(constraint_name: str) -> IntegrityError:
+    diag = SimpleNamespace(constraint_name=constraint_name)
+    orig = Exception(f'duplicate key value violates unique constraint "{constraint_name}"')
+    setattr(orig, "diag", diag)
+    return IntegrityError("statement", {}, orig)
+
+
 def _create_control(
     client: TestClient,
     name: str | None = None,
@@ -65,11 +72,7 @@ def test_create_control_integrity_error_returns_conflict(client: TestClient) -> 
         mock_session.add = MagicMock()
         mock_session.refresh = AsyncMock()
         mock_session.commit = AsyncMock(
-            side_effect=IntegrityError(
-                "INSERT INTO controls ...",
-                {"name": "duplicate-control"},
-                Exception("duplicate key value violates unique constraint"),
-            )
+            side_effect=_make_integrity_error("idx_controls_name_active")
         )
         yield mock_session
 
@@ -104,18 +107,20 @@ def test_patch_control_rename_integrity_error_returns_conflict(client: TestClien
         name_lookup_result = MagicMock()
         name_lookup_result.first.return_value = None
 
+        lock_result = MagicMock()
         version_lookup_result = MagicMock()
         version_lookup_result.scalar_one.return_value = 1
 
         mock_session.execute = AsyncMock(
-            side_effect=[control_lookup_result, name_lookup_result, version_lookup_result]
+            side_effect=[
+                control_lookup_result,
+                name_lookup_result,
+                lock_result,
+                version_lookup_result,
+            ]
         )
         mock_session.commit = AsyncMock(
-            side_effect=IntegrityError(
-                "UPDATE controls ...",
-                {"name": "existing-control"},
-                Exception("duplicate key value violates unique constraint"),
-            )
+            side_effect=_make_integrity_error("idx_controls_name_active")
         )
         yield mock_session
 
@@ -127,6 +132,47 @@ def test_patch_control_rename_integrity_error_returns_conflict(client: TestClien
 
     assert resp.status_code == 409
     assert resp.json()["error_code"] == "CONTROL_NAME_CONFLICT"
+
+
+def test_patch_control_non_name_integrity_error_returns_500(client: TestClient) -> None:
+    """Non-name integrity failures during patch should surface as database errors."""
+    control_obj = SimpleNamespace(
+        id=1,
+        name="old-control",
+        data=deepcopy(VALID_CONTROL_PAYLOAD),
+        deleted_at=None,
+    )
+
+    async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
+        mock_session = AsyncMock(spec=AsyncSession)
+
+        control_lookup_result = MagicMock()
+        control_lookup_result.scalars.return_value.first.return_value = control_obj
+
+        lock_result = MagicMock()
+        version_lookup_result = MagicMock()
+        version_lookup_result.scalar_one.return_value = 1
+
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                control_lookup_result,
+                lock_result,
+                version_lookup_result,
+            ]
+        )
+        mock_session.commit = AsyncMock(
+            side_effect=_make_integrity_error("uq_control_versions_control_version")
+        )
+        yield mock_session
+
+    app.dependency_overrides[get_async_db] = mock_db_integrity_error
+    try:
+        resp = client.patch("/api/v1/controls/1", json={"enabled": False})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 500
+    assert resp.json()["error_code"] == "DATABASE_ERROR"
 
 
 def test_list_controls_filters_and_pagination(client: TestClient) -> None:

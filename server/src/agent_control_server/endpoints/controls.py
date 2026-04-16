@@ -72,6 +72,11 @@ template_router = APIRouter(prefix="/control-templates", tags=["controls"])
 
 _logger = get_logger(__name__)
 
+_CONTROL_NAME_UNIQUE_CONSTRAINTS = {
+    "controls_name_key",
+    "idx_controls_name_active",
+}
+
 
 def _serialize_control_data(
     control_data: ControlDefinition | UnrenderedTemplateControl,
@@ -171,6 +176,18 @@ def _template_backed_raw_update_conflict(control_id: int) -> ConflictError:
             )
         ],
     )
+
+
+def _is_control_name_conflict(error: IntegrityError) -> bool:
+    """Return whether an IntegrityError came from the active-control name uniqueness guard."""
+    diag = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    if diag in _CONTROL_NAME_UNIQUE_CONSTRAINTS:
+        return True
+
+    error_text = " ".join(
+        part for part in (str(error.orig), str(error)) if part and part != "None"
+    )
+    return any(name in error_text for name in _CONTROL_NAME_UNIQUE_CONSTRAINTS)
 
 
 async def _render_and_validate_template_input(
@@ -492,14 +509,25 @@ async def create_control(
             note="Initial creation",
         )
         await db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
-        raise ConflictError(
-            error_code=ErrorCode.CONTROL_NAME_CONFLICT,
-            detail=f"Control with name '{request.name}' already exists",
+        if _is_control_name_conflict(exc):
+            raise ConflictError(
+                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                detail=f"Control with name '{request.name}' already exists",
+                resource="Control",
+                resource_id=request.name,
+                hint="Choose a different name or update the existing control.",
+            )
+        _logger.error(
+            "Failed to create control '%s' due to integrity error",
+            request.name,
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail=f"Failed to create control '{request.name}': database error",
             resource="Control",
-            resource_id=request.name,
-            hint="Choose a different name or update the existing control.",
+            operation="create",
         )
     except Exception:
         await db.rollback()
@@ -688,7 +716,7 @@ async def set_control_data(
         HTTPException 500: Database error during update
     """
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
 
     control_def = await _materialize_control_input(
         request.data,
@@ -1025,7 +1053,7 @@ async def delete_control(
         HTTPException 500: Database error during deletion
     """
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
 
     # Check for associations with policies and direct agent links.
     policy_assoc_query = select(
@@ -1161,7 +1189,7 @@ async def patch_control(
         HTTPException 500: Database error during update
     """
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
     parsed_control = _parse_stored_control_data(
         control.data,
         control_name=control.name,
@@ -1239,15 +1267,27 @@ async def patch_control(
             )
             await db.commit()
             _logger.info(f"Updated control '{control.name}' ({control_id})")
-        except IntegrityError:
+        except IntegrityError as exc:
             await db.rollback()
-            conflicting_name = request.name or control.name
-            raise ConflictError(
-                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
-                detail=f"Control with name '{conflicting_name}' already exists",
+            if _is_control_name_conflict(exc):
+                conflicting_name = request.name or control.name
+                raise ConflictError(
+                    error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                    detail=f"Control with name '{conflicting_name}' already exists",
+                    resource="Control",
+                    resource_id=conflicting_name,
+                    hint="Choose a different name or update the existing control.",
+                )
+            _logger.error(
+                "Failed to update control '%s' (%s) due to integrity error",
+                control.name,
+                control_id,
+                exc_info=True,
+            )
+            raise DatabaseError(
+                detail=f"Failed to update control '{control.name}': database error",
                 resource="Control",
-                resource_id=conflicting_name,
-                hint="Choose a different name or update the existing control.",
+                operation="update",
             )
         except Exception:
             await db.rollback()

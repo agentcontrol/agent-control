@@ -3,9 +3,11 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from copy import deepcopy
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent_control_models.errors import ErrorCode
 from agent_control_server.errors import APIValidationError
@@ -17,7 +19,11 @@ from agent_control_server.models import (
     agent_policies,
     policy_controls,
 )
-from agent_control_server.services.controls import list_controls_for_agent, list_controls_for_policy
+from agent_control_server.services.controls import (
+    ControlService,
+    list_controls_for_agent,
+    list_controls_for_policy,
+)
 
 from .utils import VALID_CONTROL_PAYLOAD
 
@@ -48,6 +54,36 @@ def _unrendered_template_payload() -> dict[str, object]:
         },
         "template_values": {},
     }
+
+
+@pytest.mark.asyncio
+async def test_create_version_locks_control_row_before_allocating_version_number() -> None:
+    # Given: a control service with a mocked session
+    mock_session = AsyncMock(spec=AsyncSession)
+    lock_result = MagicMock()
+    version_lookup_result = MagicMock()
+    version_lookup_result.scalar_one.return_value = 4
+    mock_session.execute = AsyncMock(side_effect=[lock_result, version_lookup_result])
+    mock_session.flush = AsyncMock()
+    mock_session.add = MagicMock()
+
+    service = ControlService(mock_session)
+    control = Control(
+        id=123,
+        name=f"control-{uuid.uuid4()}",
+        data=VALID_CONTROL_PAYLOAD,
+        deleted_at=None,
+    )
+
+    # When: creating a new version row
+    version = await service.create_version(control, event_type="edit", note="Edited")
+
+    # Then: the service first takes a row-level lock on the control
+    lock_stmt = mock_session.execute.await_args_list[0].args[0]
+    assert getattr(lock_stmt, "_for_update_arg", None) is not None
+
+    # And: the allocated version number comes from the subsequent query
+    assert version.version_num == 4
 
 
 @pytest.mark.asyncio

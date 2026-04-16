@@ -54,9 +54,17 @@ class ControlService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def get_control_or_404(self, control_id: int) -> Control:
+    async def get_control_or_404(
+        self,
+        control_id: int,
+        *,
+        for_update: bool = False,
+    ) -> Control:
         """Load any control row, including soft-deleted controls."""
-        result = await self._db.execute(select(Control).where(Control.id == control_id))
+        stmt = select(Control).where(Control.id == control_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self._db.execute(stmt)
         control = cast(Control | None, result.scalars().first())
         if control is None:
             raise NotFoundError(
@@ -68,11 +76,17 @@ class ControlService:
             )
         return control
 
-    async def get_active_control_or_404(self, control_id: int) -> Control:
+    async def get_active_control_or_404(
+        self,
+        control_id: int,
+        *,
+        for_update: bool = False,
+    ) -> Control:
         """Load an active control row or raise CONTROL_NOT_FOUND."""
-        result = await self._db.execute(
-            select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
-        )
+        stmt = select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self._db.execute(stmt)
         control = cast(Control | None, result.scalars().first())
         if control is None:
             raise NotFoundError(
@@ -106,6 +120,7 @@ class ControlService:
     ) -> ControlVersion:
         """Append a new immutable version row for the current control state."""
         await self._db.flush()
+        await self._lock_control_row(control.id)
 
         next_version_num = await self._next_version_num(control.id)
         version = ControlVersion(
@@ -193,6 +208,12 @@ class ControlService:
             )
         )
         return cast(int, result.scalar_one())
+
+    async def _lock_control_row(self, control_id: int) -> None:
+        """Serialize version creation on a control by taking a row-level lock."""
+        await self._db.execute(
+            select(Control.id).where(Control.id == control_id).with_for_update()
+        )
 
     @staticmethod
     def _build_snapshot(control: Control) -> dict[str, Any]:
