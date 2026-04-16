@@ -46,8 +46,18 @@ def test_lifespan_uses_custom_backend_store_for_custom_sink(monkeypatch) -> None
             self.closed = True
 
     class DummySink:
+        def __init__(self) -> None:
+            self.flushed = False
+            self.closed = False
+
         async def write_events(self, events):  # type: ignore[no-untyped-def]
             raise NotImplementedError
+
+        async def flush(self) -> None:
+            self.flushed = True
+
+        async def close(self) -> None:
+            self.closed = True
 
     custom_store = DummyStore()
     custom_sink = DummySink()
@@ -76,7 +86,10 @@ def test_lifespan_uses_custom_backend_store_for_custom_sink(monkeypatch) -> None
         with TestClient(app):
             assert app.state.event_store is custom_store
             assert app.state.event_ingestor.sink is custom_sink
+            assert app.state.event_sink is custom_sink
         assert custom_store.closed is True
+        assert custom_sink.flushed is True
+        assert custom_sink.closed is True
     finally:
         unregister_control_event_sink_factory("custom")
 

@@ -71,6 +71,36 @@ class RecordingSink(BaseControlEventSink):
         return SinkResult(accepted=accepted, dropped=dropped)
 
 
+class LifecycleRecordingSink(RecordingSink):
+    """Test sink that records shutdown lifecycle hooks."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.flush_calls = 0
+        self.close_calls = 0
+
+    def flush(self) -> None:
+        self.flush_calls += 1
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+class AsyncLifecycleRecordingSink(RecordingSink):
+    """Test sink with async shutdown lifecycle hooks."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.flush_calls = 0
+        self.close_calls = 0
+
+    async def flush(self) -> None:
+        self.flush_calls += 1
+
+    async def close(self) -> None:
+        self.close_calls += 1
+
+
 def reset_observability_state() -> None:
     """Clear global observability state between tests."""
     import agent_control.observability as obs
@@ -893,6 +923,18 @@ class TestExternalControlEventSinks:
         assert sink.received_batches
         assert get_registered_control_event_sink_factory_names() == ("custom",)
 
+    def test_named_sink_factory_failure_disables_delivery_without_raising(self):
+        register_control_event_sink_factory(
+            "custom",
+            lambda config: (_ for _ in ()).throw(RuntimeError(f"boom:{config['x']}")),
+        )
+        configure_settings(observability_sink_name="custom", observability_sink_config={"x": 1})
+
+        assert is_observability_enabled() is False
+        result = add_event(create_mock_event())
+
+        assert result is False
+
     def test_named_sink_factory_resolution_is_serialized(self):
         sink = RecordingSink()
         resolve_entered = threading.Event()
@@ -1049,6 +1091,37 @@ class TestInitObservability:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
 
+    def test_init_switching_named_sink_without_config_clears_stale_config(self):
+        first_sink = RecordingSink()
+        second_sink = RecordingSink()
+        first_configs: list[dict[str, object]] = []
+        second_configs: list[dict[str, object]] = []
+        register_control_event_sink_factory(
+            "first",
+            lambda config: first_configs.append(config) or first_sink,
+        )
+        register_control_event_sink_factory(
+            "second",
+            lambda config: second_configs.append(config) or second_sink,
+        )
+
+        init_observability(
+            enabled=True,
+            sink_name="first",
+            sink_config={"project": "demo"},
+        )
+        init_observability(
+            enabled=True,
+            sink_name="second",
+        )
+
+        result = add_event(create_mock_event())
+
+        assert result is True
+        assert first_configs == []
+        assert second_configs == [{}]
+        assert len(second_sink.received_batches) == 1
+
     def test_init_idempotent(self):
         """Test that init_observability is idempotent."""
         import agent_control.observability as obs
@@ -1083,6 +1156,13 @@ def test_sdk_settings_parse_observability_sink_env(monkeypatch) -> None:
 
 class TestShutdownObservability:
     """Tests for shutdown_observability function."""
+
+    def setup_method(self) -> None:
+        reset_observability_state()
+
+    def teardown_method(self) -> None:
+        sync_shutdown_observability()
+        reset_observability_state()
 
     @pytest.mark.asyncio
     async def test_shutdown_flushes_and_stops(self):
@@ -1164,6 +1244,32 @@ class TestShutdownObservability:
         assert batcher is None
         assert settings.observability_sink_name == REGISTERED_CONTROL_EVENT_SINK_NAME
         assert settings.observability_sink_config == {"project": "demo"}
+
+    def test_sync_shutdown_flushes_and_closes_registered_custom_sinks(self):
+        sync_sink = LifecycleRecordingSink()
+        async_sink = AsyncLifecycleRecordingSink()
+        register_control_event_sink(sync_sink)
+        register_control_event_sink(async_sink)
+        configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
+
+        sync_shutdown_observability()
+
+        assert sync_sink.flush_calls == 1
+        assert sync_sink.close_calls == 1
+        assert async_sink.flush_calls == 1
+        assert async_sink.close_calls == 1
+
+    def test_sync_shutdown_flushes_and_closes_cached_named_sink(self):
+        sink = AsyncLifecycleRecordingSink()
+        register_control_event_sink_factory("custom", lambda config: sink)
+        configure_settings(observability_sink_name="custom", observability_sink_config={"x": 1})
+
+        assert add_event(create_mock_event()) is True
+
+        sync_shutdown_observability()
+
+        assert sink.flush_calls == 1
+        assert sink.close_calls == 1
 
 
 class TestEventBatcherShutdownConfig:

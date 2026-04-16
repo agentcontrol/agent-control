@@ -1,5 +1,6 @@
 """Main server application entry point."""
 
+import inspect
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -85,6 +86,34 @@ def add_prometheus_metrics(app: FastAPI, metrics_prefix: str) -> None:
     app.add_route(METRICS_PATH, handle_metrics)
 
 
+async def _shutdown_observability_sink(sink: object) -> None:
+    """Flush and close a custom async sink when it exposes lifecycle hooks."""
+    flush = getattr(sink, "flush", None)
+    if callable(flush):
+        try:
+            result = flush()
+            if inspect.isawaitable(result):
+                await result
+        except Exception:
+            logger.warning("Observability sink flush failed during shutdown", exc_info=True)
+
+    for method_name in ("close", "shutdown"):
+        callback = getattr(sink, method_name, None)
+        if not callable(callback):
+            continue
+        try:
+            result = callback()
+            if inspect.isawaitable(result):
+                await result
+        except Exception:
+            logger.warning(
+                "Observability sink %s failed during shutdown",
+                method_name,
+                exc_info=True,
+            )
+        return
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager for FastAPI app startup and shutdown."""
@@ -119,6 +148,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             default_backend=default_backend,
         )
         app.state.event_store = backend.event_store
+        app.state.event_sink = backend.sink
 
         # 2. Create event ingestor
         ingestor = DirectEventIngestor(
@@ -140,6 +170,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown: Clean up observability
     if observability_settings.enabled and hasattr(app.state, "event_store"):
         logger.info("Shutting down observability components...")
+        sink = getattr(app.state, "event_sink", None)
+        if sink is not None and sink is not app.state.event_store:
+            await _shutdown_observability_sink(sink)
         await app.state.event_store.close()
         logger.info("EventStore closed")
 

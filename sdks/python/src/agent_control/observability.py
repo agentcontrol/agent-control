@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import inspect
 import logging
 import threading
 import time
@@ -932,6 +933,13 @@ def _get_or_create_named_control_event_sink(
         except SinkSelectionError:
             logger.warning("Configured control-event sink '%s' is not available", selection.name)
             return None
+        except Exception:
+            logger.warning(
+                "Configured control-event sink '%s' failed to initialize",
+                selection.name,
+                exc_info=True,
+            )
+            return None
 
         _configured_named_event_sink = sink
         _configured_named_event_sink_selection = selection.model_copy(deep=True)
@@ -968,6 +976,56 @@ def _shutdown_built_in_event_sink() -> None:
     _event_sink = None
 
 
+def _shutdown_custom_control_event_sink(sink: ControlEventSink) -> None:
+    """Flush and close a custom sink when it exposes lifecycle hooks."""
+    flush = getattr(sink, "flush", None)
+    if callable(flush):
+        try:
+            result = flush()
+            if inspect.isawaitable(result):
+                asyncio.run(result)
+        except Exception:
+            logger.warning("Control-event sink flush failed during shutdown", exc_info=True)
+
+    for method_name in ("close", "shutdown"):
+        callback = getattr(sink, method_name, None)
+        if not callable(callback):
+            continue
+        try:
+            result = callback()
+            if inspect.isawaitable(result):
+                asyncio.run(result)
+        except Exception:
+            logger.warning(
+                "Control-event sink %s failed during shutdown",
+                method_name,
+                exc_info=True,
+            )
+        return
+
+
+def _get_custom_control_event_sinks_to_shutdown() -> tuple[ControlEventSink, ...]:
+    """Collect custom sink instances that should be cleaned up on shutdown."""
+    sinks: list[ControlEventSink] = []
+    seen_ids: set[int] = set()
+
+    if get_settings().observability_sink_name == REGISTERED_CONTROL_EVENT_SINK_NAME:
+        for sink in get_registered_control_event_sinks():
+            sink_id = id(sink)
+            if sink_id not in seen_ids:
+                seen_ids.add(sink_id)
+                sinks.append(sink)
+
+    with _configured_named_event_sink_lock:
+        if _configured_named_event_sink is not None:
+            sink_id = id(_configured_named_event_sink)
+            if sink_id not in seen_ids:
+                seen_ids.add(sink_id)
+                sinks.append(_configured_named_event_sink)
+
+    return tuple(sinks)
+
+
 def init_observability(
     server_url: str | None = None,
     api_key: str | None = None,
@@ -993,10 +1051,16 @@ def init_observability(
     global _batcher, _event_sink
 
     settings_updates: dict[str, object] = {}
+    current_settings = get_settings()
     if enabled is not None:
         settings_updates["observability_enabled"] = enabled
     if sink_name is not None:
         settings_updates["observability_sink_name"] = sink_name
+        if (
+            sink_config is None
+            and sink_name != current_settings.observability_sink_name
+        ):
+            settings_updates["observability_sink_config"] = {}
     if sink_config is not None:
         settings_updates["observability_sink_config"] = sink_config
     if settings_updates:
@@ -1075,7 +1139,10 @@ def write_events(events: Sequence[ControlExecutionEvent]) -> SinkResult:
 def sync_shutdown_observability() -> None:
     """Synchronously shut down observability and flush remaining events."""
     global _configured_named_event_sink, _configured_named_event_sink_selection
+    custom_sinks = _get_custom_control_event_sinks_to_shutdown()
     _shutdown_built_in_event_sink()
+    for sink in custom_sinks:
+        _shutdown_custom_control_event_sink(sink)
     with _configured_named_event_sink_lock:
         _configured_named_event_sink = None
         _configured_named_event_sink_selection = None
