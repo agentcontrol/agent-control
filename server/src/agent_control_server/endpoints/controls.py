@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import ValidationError
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
@@ -974,9 +974,10 @@ async def publish_control(
     """Publish an active, valid, runtime-unassociated control to the default store."""
     control_service = ControlService(db)
     control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    control_name = control.name
     _parse_stored_control_data(
         control.data,
-        control_name=control.name,
+        control_name=control_name,
         control_id=control.id,
     )
 
@@ -1004,12 +1005,12 @@ async def publish_control(
         await db.rollback()
         _logger.error(
             "Failed to publish control '%s' (%s) to the default store",
-            control.name,
+            control_name,
             control_id,
             exc_info=True,
         )
         raise DatabaseError(
-            detail=f"Failed to publish control '{control.name}': database error",
+            detail=f"Failed to publish control '{control_name}': database error",
             resource="Control",
             operation="publish",
         )
@@ -1030,7 +1031,8 @@ async def unpublish_control(
 ) -> AssocResponse:
     """Remove a control from the default store idempotently."""
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    control_name = control.name
 
     try:
         await control_service.unpublish_control(control_id)
@@ -1039,12 +1041,12 @@ async def unpublish_control(
         await db.rollback()
         _logger.error(
             "Failed to unpublish control '%s' (%s) from the default store",
-            control.name,
+            control_name,
             control_id,
             exc_info=True,
         )
         raise DatabaseError(
-            detail=f"Failed to unpublish control '{control.name}': database error",
+            detail=f"Failed to unpublish control '{control_name}': database error",
             resource="Control",
             operation="unpublish",
         )
@@ -1071,13 +1073,24 @@ async def list_published_controls(
     db: AsyncSession = Depends(get_async_db),
 ) -> ListPublishedControlsResponse:
     """List default-store controls ordered by publication time descending."""
-    page = await ControlService(db).list_published_controls_page(
-        cursor=cursor,
-        limit=limit,
-        name=name,
-        enabled=enabled,
-        tag=tag,
-    )
+    try:
+        page = await ControlService(db).list_published_controls_page(
+            cursor=cursor,
+            limit=limit,
+            name=name,
+            enabled=enabled,
+            tag=tag,
+        )
+    except (OperationalError, ProgrammingError, RuntimeError):
+        _logger.error(
+            "Failed to list published controls from the default store",
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail="Failed to list published controls: database error",
+            resource="ControlStore",
+            operation="list",
+        )
 
     return ListPublishedControlsResponse(
         controls=[
@@ -1111,6 +1124,7 @@ async def clone_control(
     db: AsyncSession = Depends(get_async_db),
 ) -> CloneControlResponse:
     """Clone an active control into a new independent control with provenance."""
+    max_auto_name_retries = 5
     control_service = ControlService(db)
     source_control = await control_service.get_active_control_or_404(control_id, for_update=True)
     _parse_stored_control_data(
@@ -1132,52 +1146,77 @@ async def clone_control(
             hint="Choose a different name or update the existing control.",
         )
 
-    target_name = (
-        requested_name
-        if requested_name is not None
-        else await control_service.generate_unique_clone_name(source_control.name)
-    )
     source_name = source_control.name
-    try:
-        cloned_control = await control_service.clone_control(
-            source_control=source_control,
-            name=target_name,
+    auto_name_attempts = 0
+
+    while True:
+        target_name = (
+            requested_name
+            if requested_name is not None
+            else await control_service.generate_unique_clone_name(source_control.name)
         )
-        await db.commit()
-    except IntegrityError as exc:
-        await db.rollback()
-        if _is_control_name_conflict(exc):
-            raise ConflictError(
-                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
-                detail=f"Control with name '{target_name}' already exists",
-                resource="Control",
-                resource_id=target_name,
-                hint="Choose a different name or update the existing control.",
+        try:
+            cloned_control = await control_service.clone_control(
+                source_control=source_control,
+                name=target_name,
             )
-        _logger.error(
-            "Failed to clone control '%s' (%s) due to integrity error",
-            source_name,
-            control_id,
-            exc_info=True,
-        )
-        raise DatabaseError(
-            detail=f"Failed to clone control '{source_name}': database error",
-            resource="Control",
-            operation="clone",
-        )
-    except Exception:
-        await db.rollback()
-        _logger.error(
-            "Failed to clone control '%s' (%s)",
-            source_name,
-            control_id,
-            exc_info=True,
-        )
-        raise DatabaseError(
-            detail=f"Failed to clone control '{source_name}': database error",
-            resource="Control",
-            operation="clone",
-        )
+            await db.commit()
+            break
+        except IntegrityError as exc:
+            await db.rollback()
+            if _is_control_name_conflict(exc):
+                if requested_name is not None:
+                    raise ConflictError(
+                        error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                        detail=f"Control with name '{target_name}' already exists",
+                        resource="Control",
+                        resource_id=target_name,
+                        hint="Choose a different name or update the existing control.",
+                    )
+                auto_name_attempts += 1
+                if auto_name_attempts >= max_auto_name_retries:
+                    raise ConflictError(
+                        error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                        detail=f"Failed to generate a unique clone name for '{source_name}'",
+                        resource="Control",
+                        resource_id=str(control_id),
+                        hint="Retry the clone request or provide an explicit name.",
+                    )
+                source_control = await control_service.get_active_control_or_404(
+                    control_id,
+                    for_update=True,
+                )
+                _parse_stored_control_data(
+                    source_control.data,
+                    control_name=source_control.name,
+                    control_id=source_control.id,
+                )
+                source_name = source_control.name
+                continue
+            _logger.error(
+                "Failed to clone control '%s' (%s) due to integrity error",
+                source_name,
+                control_id,
+                exc_info=True,
+            )
+            raise DatabaseError(
+                detail=f"Failed to clone control '{source_name}': database error",
+                resource="Control",
+                operation="clone",
+            )
+        except Exception:
+            await db.rollback()
+            _logger.error(
+                "Failed to clone control '%s' (%s)",
+                source_name,
+                control_id,
+                exc_info=True,
+            )
+            raise DatabaseError(
+                detail=f"Failed to clone control '{source_name}': database error",
+                resource="Control",
+                operation="clone",
+            )
 
     return CloneControlResponse(
         control_id=cloned_control.id,

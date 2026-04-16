@@ -8,19 +8,18 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from agent_control_evaluators import RegexEvaluatorConfig
+from agent_control_models import ConditionNode
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from agent_control_models import ConditionNode
 from agent_control_server.db import get_async_db
-from agent_control_server.models import Control
-
-from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_server.endpoints import controls as controls_module
 from agent_control_server.main import app
+from agent_control_server.models import Control
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -96,6 +95,7 @@ def test_patch_control_rename_integrity_error_returns_conflict(client: TestClien
         name="old-control",
         data=deepcopy(VALID_CONTROL_PAYLOAD),
         deleted_at=None,
+        cloned_control_id=None,
     )
 
     async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
@@ -141,6 +141,7 @@ def test_patch_control_non_name_integrity_error_returns_500(client: TestClient) 
         name="old-control",
         data=deepcopy(VALID_CONTROL_PAYLOAD),
         deleted_at=None,
+        cloned_control_id=None,
     )
 
     async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
@@ -314,7 +315,7 @@ def test_patch_control_rename_with_spaces_rejected(client: TestClient) -> None:
 
 
 def test_create_control_trimmed_name_stored(client: TestClient) -> None:
-    """Control names are canonicalized at the API boundary: leading/trailing whitespace is trimmed."""
+    """Control names are canonicalized: leading and trailing whitespace is trimmed."""
     resp = client.put(
         "/api/v1/controls",
         json={"name": "  trimmed-control  ", "data": VALID_CONTROL_PAYLOAD},
@@ -327,7 +328,7 @@ def test_create_control_trimmed_name_stored(client: TestClient) -> None:
 
 
 def test_patch_control_trimmed_name_stored(client: TestClient) -> None:
-    """PATCH control name is canonicalized at the API boundary: leading/trailing whitespace is trimmed."""
+    """PATCH control names are canonicalized before persistence."""
     control_id, _ = _create_control(client)
     resp = client.patch(
         f"/api/v1/controls/{control_id}",
@@ -462,7 +463,10 @@ def test_list_controls_enabled_true_includes_missing_enabled(client: TestClient)
     # Given: controls with enabled true, enabled false, and missing enabled
     control_true_id, control_true_name = _create_control(client, name=f"Enabled-{uuid.uuid4()}")
     control_false_id, control_false_name = _create_control(client, name=f"Disabled-{uuid.uuid4()}")
-    control_missing_id, control_missing_name = _create_control(client, name=f"Missing-{uuid.uuid4()}")
+    control_missing_id, control_missing_name = _create_control(
+        client,
+        name=f"Missing-{uuid.uuid4()}",
+    )
 
     data_true = deepcopy(VALID_CONTROL_PAYLOAD)
     data_true["enabled"] = True
@@ -693,7 +697,10 @@ def test_create_control_allows_reusing_soft_deleted_name(client: TestClient) -> 
     assert delete_resp.status_code == 200
 
     # When: creating a new control with the same name
-    recreate_resp = client.put("/api/v1/controls", json={"name": name, "data": VALID_CONTROL_PAYLOAD})
+    recreate_resp = client.put(
+        "/api/v1/controls",
+        json={"name": name, "data": VALID_CONTROL_PAYLOAD},
+    )
 
     # Then: creation succeeds because uniqueness only applies to active rows
     assert recreate_resp.status_code == 200, recreate_resp.text
@@ -789,11 +796,10 @@ def test_set_control_data_agent_scoped_agent_not_found(client: TestClient) -> No
 def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> None:
     # Given: an agent without the referenced evaluator
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_name": agent_name, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name},
             "steps": [],
             "evaluators": [],
         },
@@ -802,7 +808,10 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
 
     control_id, _ = _create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": f"{agent_name}:missing", "config": {"pattern": "x"}}
+    payload["condition"]["evaluator"] = {
+        "name": f"{agent_name}:missing",
+        "config": {"pattern": "x"},
+    }
 
     # When: setting data with evaluator not registered on agent
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
@@ -811,17 +820,19 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "EVALUATOR_NOT_FOUND"
-    assert any(err.get("field") == "data.condition.evaluator.name" for err in body.get("errors", []))
+    assert any(
+        err.get("field") == "data.condition.evaluator.name"
+        for err in body.get("errors", [])
+    )
 
 
 def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> None:
     # Given: an agent with evaluator schema requiring "pattern"
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_name": agent_name, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name},
             "steps": [],
             "evaluators": [
                 {
@@ -849,7 +860,10 @@ def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> Non
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "INVALID_CONFIG"
-    assert any(err.get("field") == "data.condition.evaluator.config" for err in body.get("errors", []))
+    assert any(
+        err.get("field") == "data.condition.evaluator.config"
+        for err in body.get("errors", [])
+    )
 
 
 def test_patch_control_updates_name_and_enabled(client: TestClient) -> None:
@@ -907,11 +921,10 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
 ) -> None:
     # Given: an agent whose stored data is corrupted
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    agent_name = agent_name
     resp = client.post(
         "/api/v1/agents/initAgent",
         json={
-            "agent": {"agent_name": agent_name, "agent_name": agent_name},
+            "agent": {"agent_name": agent_name},
             "steps": [],
             "evaluators": [{"name": "custom", "config_schema": {"type": "object"}}],
         },

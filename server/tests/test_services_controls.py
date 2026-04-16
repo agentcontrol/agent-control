@@ -130,6 +130,7 @@ async def test_create_version_locks_control_row_before_allocating_version_number
         name=f"control-{uuid.uuid4()}",
         data=VALID_CONTROL_PAYLOAD,
         deleted_at=None,
+        cloned_control_id=None,
     )
 
     # When: creating a new version row

@@ -58,9 +58,7 @@ def _seed_default_control_store() -> None:
             text("SELECT id FROM control_stores WHERE name = 'default' LIMIT 1")
         ).scalar()
         if existing is None:
-            conn.execute(
-                ControlStore.__table__.insert().values(id=1, name="default")
-            )
+            conn.execute(ControlStore.__table__.insert().values(name="default"))
 
 
 @pytest.fixture(scope="session")

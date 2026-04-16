@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from pathlib import Path
 
 import pytest
 from alembic.config import Config
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from agent_control_server.config import db_config
+from agent_control_server.db import get_async_db
 from alembic import command
+
+from .conftest import TEST_ADMIN_API_KEY
+from .utils import VALID_CONTROL_PAYLOAD
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 PRE_MIGRATION_REVISION = "c1e9f9c4a1d2"
@@ -25,7 +33,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _insert_control(engine: Engine, *, name: str) -> int:
+def _insert_control(
+    engine: Engine,
+    *,
+    name: str,
+    data: dict[str, object] | None = None,
+) -> int:
+    payload = data if data is not None else {"description": "pre-phase3"}
     with engine.begin() as conn:
         return int(
             conn.execute(
@@ -36,9 +50,48 @@ def _insert_control(engine: Engine, *, name: str) -> int:
                     RETURNING id
                     """
                 ),
-                {"name": name, "data": json.dumps({"description": "pre-phase3"})},
+                {"name": name, "data": json.dumps(payload)},
             ).scalar_one()
         )
+
+
+def _insert_policy(engine: Engine, *, name: str) -> int:
+    with engine.begin() as conn:
+        return int(
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO policies (name)
+                    VALUES (:name)
+                    RETURNING id
+                    """
+                ),
+                {"name": name},
+            ).scalar_one()
+        )
+
+
+def _insert_agent(engine: Engine, *, name: str) -> str:
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO agents (name, data)
+                VALUES (:name, CAST(:data AS JSONB))
+                """
+            ),
+            {
+                "name": name,
+                "data": json.dumps(
+                    {
+                        "agent_metadata": {},
+                        "steps": [],
+                        "evaluators": [],
+                    }
+                ),
+            },
+        )
+    return name
 
 
 @pytest.fixture
@@ -146,3 +199,136 @@ def test_upgrade_advances_control_store_identity_after_default_seed(
         )
 
     assert next_store_id > 1
+
+
+def test_pre_phase3_runtime_control_endpoints_remain_usable_during_rollout(
+    app: FastAPI,
+    upgrade_to,
+    temp_db_url: str,
+    temp_engine: Engine,
+) -> None:
+    # Given: a database upgraded only to the pre-Phase-3 schema
+    upgrade_to(PRE_MIGRATION_REVISION)
+    policy_control_id = _insert_control(
+        temp_engine,
+        name="pre-phase3-policy-control",
+        data=VALID_CONTROL_PAYLOAD,
+    )
+    agent_control_id = _insert_control(
+        temp_engine,
+        name="pre-phase3-agent-control",
+        data=VALID_CONTROL_PAYLOAD,
+    )
+    delete_control_id = _insert_control(
+        temp_engine,
+        name="pre-phase3-delete-control",
+        data=VALID_CONTROL_PAYLOAD,
+    )
+    policy_id = _insert_policy(temp_engine, name="pre-phase3-policy")
+    agent_name = _insert_agent(temp_engine, name="pre-phase3-agent")
+
+    async_engine = create_async_engine(temp_db_url, echo=False)
+    session_factory = async_sessionmaker(
+        bind=async_engine,
+        autoflush=False,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
+
+    async def _override_get_async_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_async_db] = _override_get_async_db
+    try:
+        with TestClient(
+            app,
+            raise_server_exceptions=True,
+            headers={"X-API-Key": TEST_ADMIN_API_KEY},
+        ) as client:
+            # When: using existing runtime endpoints against legacy rows before store tables exist
+            policy_assoc = client.post(
+                f"/api/v1/policies/{policy_id}/controls/{policy_control_id}"
+            )
+
+            agent_assoc = client.post(
+                f"/api/v1/agents/{agent_name}/controls/{agent_control_id}"
+            )
+
+            controls_response = client.get("/api/v1/controls")
+            agent_controls_response = client.get(f"/api/v1/agents/{agent_name}/controls")
+            delete_response = client.delete(f"/api/v1/controls/{delete_control_id}")
+
+            # Then: the legacy runtime endpoints and read paths still succeed
+            # without control-store tables
+            assert policy_assoc.status_code == 200, policy_assoc.text
+            assert agent_assoc.status_code == 200, agent_assoc.text
+            assert controls_response.status_code == 200, controls_response.text
+            assert agent_controls_response.status_code == 200, agent_controls_response.text
+            assert delete_response.status_code == 200, delete_response.text
+            assert {
+                control["name"] for control in controls_response.json()["controls"]
+            } >= {
+                "pre-phase3-policy-control",
+                "pre-phase3-agent-control",
+            }
+            assert [
+                control["id"] for control in agent_controls_response.json()["controls"]
+            ] == [agent_control_id]
+    finally:
+        app.dependency_overrides.pop(get_async_db, None)
+        asyncio.run(async_engine.dispose())
+
+
+def test_pre_phase3_control_store_endpoints_fail_gracefully(
+    app: FastAPI,
+    upgrade_to,
+    temp_db_url: str,
+    temp_engine: Engine,
+) -> None:
+    # Given: a database that has not yet received the Phase 3 store schema
+    upgrade_to(PRE_MIGRATION_REVISION)
+    control_id = _insert_control(
+        temp_engine,
+        name="pre-phase3-store-control",
+        data=VALID_CONTROL_PAYLOAD,
+    )
+
+    async_engine = create_async_engine(temp_db_url, echo=False)
+    session_factory = async_sessionmaker(
+        bind=async_engine,
+        autoflush=False,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
+
+    async def _override_get_async_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_async_db] = _override_get_async_db
+    try:
+        with TestClient(
+            app,
+            raise_server_exceptions=True,
+            headers={"X-API-Key": TEST_ADMIN_API_KEY},
+        ) as client:
+            # When: calling new control-store endpoints before the migration lands
+            publish_response = client.post(
+                f"/api/v1/control-stores/default/controls/{control_id}"
+            )
+            unpublish_response = client.delete(
+                f"/api/v1/control-stores/default/controls/{control_id}"
+            )
+            list_response = client.get("/api/v1/control-stores/default/controls")
+
+            # Then: the endpoints fail with the standard database error envelope
+            assert publish_response.status_code == 500, publish_response.text
+            assert publish_response.json()["error_code"] == "DATABASE_ERROR"
+            assert unpublish_response.status_code == 500, unpublish_response.text
+            assert unpublish_response.json()["error_code"] == "DATABASE_ERROR"
+            assert list_response.status_code == 500, list_response.text
+            assert list_response.json()["error_code"] == "DATABASE_ERROR"
+    finally:
+        app.dependency_overrides.pop(get_async_db, None)
+        asyncio.run(async_engine.dispose())

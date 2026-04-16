@@ -29,6 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 from sqlalchemy.sql import Select
 
 from ..errors import APIValidationError, NotFoundError
@@ -131,6 +132,18 @@ class ControlService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
+    @staticmethod
+    def _with_control_runtime_columns(stmt: Select[Any]) -> Select[Any]:
+        """Restrict control reads to columns that exist before Phase 3."""
+        return stmt.options(
+            load_only(
+                Control.id,
+                Control.name,
+                Control.data,
+                Control.deleted_at,
+            )
+        )
+
     def create_control(
         self,
         *,
@@ -139,11 +152,13 @@ class ControlService:
         cloned_control_id: int | None = None,
     ) -> Control:
         """Create a new pending control row."""
-        control = Control(
-            name=name,
-            data=deepcopy(data),
-            cloned_control_id=cloned_control_id,
-        )
+        control_kwargs: dict[str, Any] = {
+            "name": name,
+            "data": deepcopy(data),
+        }
+        if cloned_control_id is not None:
+            control_kwargs["cloned_control_id"] = cloned_control_id
+        control = Control(**control_kwargs)
         self._db.add(control)
         return control
 
@@ -176,7 +191,9 @@ class ControlService:
         for_update: bool = False,
     ) -> Control:
         """Load any control row, including soft-deleted controls."""
-        stmt = select(Control).where(Control.id == control_id)
+        stmt = self._with_control_runtime_columns(
+            select(Control).where(Control.id == control_id)
+        )
         if for_update:
             stmt = stmt.with_for_update()
         result = await self._db.execute(stmt)
@@ -198,7 +215,9 @@ class ControlService:
         for_update: bool = False,
     ) -> Control:
         """Load an active control row or raise CONTROL_NOT_FOUND."""
-        stmt = select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
+        stmt = self._with_control_runtime_columns(
+            select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
+        )
         if for_update:
             stmt = stmt.with_for_update()
         result = await self._db.execute(stmt)
@@ -268,12 +287,13 @@ class ControlService:
             return False
 
         try:
-            result = await self._db.execute(
-                select(control_stores_controls.c.control_id).where(
-                    control_stores_controls.c.store_id == default_store_id,
-                    control_stores_controls.c.control_id == control_id,
+            async with self._db.begin_nested():
+                result = await self._db.execute(
+                    select(control_stores_controls.c.control_id).where(
+                        control_stores_controls.c.store_id == default_store_id,
+                        control_stores_controls.c.control_id == control_id,
+                    )
                 )
-            )
         except (OperationalError, ProgrammingError) as exc:
             if _is_missing_control_store_schema_error(exc):
                 return False
@@ -302,11 +322,12 @@ class ControlService:
     async def remove_all_store_publications(self, control_id: int) -> None:
         """Remove all store publication rows for a control."""
         try:
-            await self._db.execute(
-                delete(control_stores_controls).where(
-                    control_stores_controls.c.control_id == control_id
+            async with self._db.begin_nested():
+                await self._db.execute(
+                    delete(control_stores_controls).where(
+                        control_stores_controls.c.control_id == control_id
+                    )
                 )
-            )
         except (OperationalError, ProgrammingError) as exc:
             if _is_missing_control_store_schema_error(exc):
                 return
@@ -322,13 +343,14 @@ class ControlService:
         """Append a new immutable version row for the current control state."""
         await self._db.flush()
         await self._lock_control_row(control.id)
+        cloned_control_id = await self._get_snapshot_cloned_control_id(control)
 
         next_version_num = await self._next_version_num(control.id)
         version = ControlVersion(
             control_id=control.id,
             version_num=next_version_num,
             event_type=event_type,
-            snapshot=self._build_snapshot(control),
+            snapshot=self._build_snapshot(control, cloned_control_id=cloned_control_id),
             note=note,
         )
         self._db.add(version)
@@ -403,7 +425,7 @@ class ControlService:
 
     async def list_controls_for_policy(self, policy_id: int) -> list[Control]:
         """Return DB control rows directly associated with a policy."""
-        stmt = (
+        stmt = self._with_control_runtime_columns(
             select(Control)
             .join(policy_controls, Control.id == policy_controls.c.control_id)
             .where(policy_controls.c.policy_id == policy_id, Control.deleted_at.is_(None))
@@ -508,7 +530,9 @@ class ControlService:
         tag: str | None,
     ) -> ControlListPage:
         """Return paginated active controls for the browse endpoint."""
-        query = select(Control).where(Control.deleted_at.is_(None)).order_by(Control.id.desc())
+        query = self._with_control_runtime_columns(
+            select(Control).where(Control.deleted_at.is_(None)).order_by(Control.id.desc())
+        )
         query = self._apply_control_list_filters(
             query,
             name=name,
@@ -843,12 +867,25 @@ class ControlService:
     async def _get_default_store_id(self, *, required: bool = True) -> int | None:
         """Return the seeded default-store ID."""
         try:
-            result = await self._db.execute(
-                select(ControlStore.id).where(ControlStore.name == _DEFAULT_CONTROL_STORE_NAME)
-            )
+            if required:
+                result = await self._db.execute(
+                    select(ControlStore.id).where(ControlStore.name == _DEFAULT_CONTROL_STORE_NAME)
+                )
+            else:
+                async with self._db.begin_nested():
+                    result = await self._db.execute(
+                        select(ControlStore.id).where(
+                            ControlStore.name == _DEFAULT_CONTROL_STORE_NAME
+                        )
+                    )
         except (OperationalError, ProgrammingError) as exc:
-            if not required and _is_missing_control_store_schema_error(exc):
-                return None
+            if _is_missing_control_store_schema_error(exc):
+                if not required:
+                    return None
+                raise RuntimeError(
+                    "Default control store is unavailable; run the Phase 3 migration "
+                    "before using control-store endpoints."
+                ) from exc
             raise
         store_id = result.scalar_one_or_none()
         if store_id is None:
@@ -884,6 +921,22 @@ class ControlService:
             select(Control.id).where(Control.id == control_id).with_for_update()
         )
 
+    async def _get_snapshot_cloned_control_id(self, control: Control) -> int | None:
+        """Load clone provenance for version snapshots with rollout-safe fallback."""
+        if "cloned_control_id" in control.__dict__:
+            return cast(int | None, control.__dict__["cloned_control_id"])
+
+        try:
+            async with self._db.begin_nested():
+                result = await self._db.execute(
+                    select(Control.cloned_control_id).where(Control.id == control.id)
+                )
+        except (OperationalError, ProgrammingError) as exc:
+            if _is_missing_cloned_control_id_schema_error(exc):
+                return None
+            raise
+        return cast(int | None, result.scalar_one())
+
     async def _list_db_controls_for_agent(self, agent_name: str) -> Sequence[Control]:
         """Return DB control rows associated with an agent."""
         policy_control_ids = (
@@ -900,7 +953,7 @@ class ControlService:
         )
         control_ids_subquery = union(policy_control_ids, direct_control_ids).subquery()
 
-        stmt = (
+        stmt = self._with_control_runtime_columns(
             select(Control)
             .join(control_ids_subquery, Control.id == control_ids_subquery.c.control_id)
             .where(Control.deleted_at.is_(None))
@@ -1003,10 +1056,13 @@ class ControlService:
         return stmt
 
     @staticmethod
-    def _build_snapshot(control: Control) -> dict[str, Any]:
+    def _build_snapshot(
+        control: Control,
+        *,
+        cloned_control_id: int | None,
+    ) -> dict[str, Any]:
         """Serialize the persisted control state stored in version history."""
         deleted_at = control.deleted_at.isoformat() if control.deleted_at is not None else None
-        cloned_control_id = cast(int | None, getattr(control, "cloned_control_id", None))
         return {
             "name": control.name,
             "data": control.data,
@@ -1106,3 +1162,13 @@ def _is_missing_control_store_schema_error(
     if "control_stores" not in error_text and "control_stores_controls" not in error_text:
         return False
     return "does not exist" in error_text or "no such table" in error_text
+
+
+def _is_missing_cloned_control_id_schema_error(
+    error: OperationalError | ProgrammingError,
+) -> bool:
+    """Return whether an error came from pre-Phase-3 clone provenance schema."""
+    error_text = " ".join(part for part in (str(error.orig), str(error)) if part).lower()
+    if "cloned_control_id" not in error_text:
+        return False
+    return "does not exist" in error_text or "no such column" in error_text
