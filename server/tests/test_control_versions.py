@@ -127,6 +127,28 @@ def test_delete_control_creates_deleted_version_row(client: TestClient) -> None:
     assert deleted_version.snapshot["deleted_at"] is not None
 
 
+def test_delete_control_force_creates_deleted_version_row(client: TestClient) -> None:
+    # Given: an existing control associated with a policy
+    control_id, _ = _create_control(client)
+    policy_resp = client.put("/api/v1/policies", json={"name": f"policy-{uuid.uuid4()}"})
+    assert policy_resp.status_code == 200, policy_resp.text
+    policy_id = policy_resp.json()["policy_id"]
+    assoc_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert assoc_resp.status_code == 200, assoc_resp.text
+
+    # When: force-deleting the in-use control
+    resp = client.delete(f"/api/v1/controls/{control_id}?force=true")
+
+    # Then: the deleted version is still recorded
+    assert resp.status_code == 200, resp.text
+    versions = _fetch_versions(control_id)
+    assert [version.version_num for version in versions] == [1, 2]
+    latest = versions[-1]
+    assert latest.event_type == "deleted"
+    assert latest.note == "Deleted"
+    assert latest.snapshot["deleted_at"] is not None
+
+
 def test_list_control_versions_paginates_newest_first_without_snapshot(
     client: TestClient,
 ) -> None:
@@ -169,6 +191,26 @@ def test_list_control_versions_paginates_newest_first_without_snapshot(
     assert [item["version_num"] for item in body_2["versions"]] == [1]
     assert body_2["pagination"]["has_more"] is False
     assert body_2["pagination"]["next_cursor"] is None
+
+
+def test_list_control_versions_returns_history_for_deleted_control(
+    client: TestClient,
+) -> None:
+    # Given: a control that has been soft-deleted
+    control_id, _ = _create_control(client)
+    delete_resp = client.delete(f"/api/v1/controls/{control_id}")
+    assert delete_resp.status_code == 200, delete_resp.text
+
+    # When: listing version history after deletion
+    resp = client.get(f"/api/v1/controls/{control_id}/versions")
+
+    # Then: the deleted control's history remains browsable
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [item["version_num"] for item in body["versions"]] == [2, 1]
+    assert [item["event_type"] for item in body["versions"]] == ["deleted", "created"]
+    assert body["pagination"]["total"] == 2
+    assert body["pagination"]["has_more"] is False
 
 
 def test_get_control_version_returns_full_snapshot_for_deleted_control(

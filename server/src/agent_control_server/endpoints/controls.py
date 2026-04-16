@@ -727,6 +727,7 @@ async def set_control_data(
         control,
         data=_serialize_control_data(control_def),
     )
+    control_name = control.name
     try:
         await control_service.create_version(
             control,
@@ -737,11 +738,11 @@ async def set_control_data(
     except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to update data for control '{control.name}' ({control_id})",
+            f"Failed to update data for control '{control_name}' ({control_id})",
             exc_info=True,
         )
         raise DatabaseError(
-            detail=f"Failed to update data for control '{control.name}': database error",
+            detail=f"Failed to update data for control '{control_name}': database error",
             resource="Control",
             operation="update data",
         )
@@ -972,6 +973,7 @@ async def delete_control(
 
     # Tombstone the control so backfilled version history remains referentially intact.
     control_service.mark_control_deleted(control, deleted_at=dt.datetime.now(dt.UTC))
+    control_name = control.name
     try:
         await control_service.create_version(
             control,
@@ -983,11 +985,11 @@ async def delete_control(
     except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to soft-delete control '{control.name}' ({control_id})",
+            f"Failed to soft-delete control '{control_name}' ({control_id})",
             exc_info=True,
         )
         raise DatabaseError(
-            detail=f"Failed to delete control '{control.name}': database error",
+            detail=f"Failed to delete control '{control_name}': database error",
             resource="Control",
             operation="delete",
         )
@@ -1102,6 +1104,7 @@ async def patch_control(
 
     # Commit if anything changed
     if updated:
+        attempted_control_name = control.name
         try:
             await control_service.create_version(
                 control,
@@ -1123,23 +1126,23 @@ async def patch_control(
                 )
             _logger.error(
                 "Failed to update control '%s' (%s) due to integrity error",
-                control.name,
+                attempted_control_name,
                 control_id,
                 exc_info=True,
             )
             raise DatabaseError(
-                detail=f"Failed to update control '{control.name}': database error",
+                detail=f"Failed to update control '{attempted_control_name}': database error",
                 resource="Control",
                 operation="update",
             )
         except Exception:
             await db.rollback()
             _logger.error(
-                f"Failed to update control '{control.name}' ({control_id})",
+                f"Failed to update control '{attempted_control_name}' ({control_id})",
                 exc_info=True,
             )
             raise DatabaseError(
-                detail=f"Failed to update control '{control.name}': database error",
+                detail=f"Failed to update control '{attempted_control_name}': database error",
                 resource="Control",
                 operation="update",
             )

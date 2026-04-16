@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import uuid
 from copy import deepcopy
@@ -7,13 +8,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from agent_control_models.errors import ErrorCode
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from agent_control_server.errors import APIValidationError
 from agent_control_server.models import (
     Agent,
     Control,
+    ControlVersion,
     Policy,
     agent_controls,
     agent_policies,
@@ -23,6 +26,7 @@ from agent_control_server.services.controls import (
     ControlService,
 )
 
+from .conftest import AsyncSessionTest, engine
 from .utils import VALID_CONTROL_PAYLOAD
 
 
@@ -54,6 +58,52 @@ def _unrendered_template_payload() -> dict[str, object]:
     }
 
 
+async def _create_versioned_control(
+    *,
+    name: str | None = None,
+    data: dict[str, object] | None = None,
+) -> tuple[int, str]:
+    control_name = name or f"control-{uuid.uuid4()}"
+    control_data = deepcopy(data) if data is not None else deepcopy(VALID_CONTROL_PAYLOAD)
+
+    async with AsyncSessionTest() as session:
+        service = ControlService(session)
+        control = service.create_control(name=control_name, data=control_data)
+        await service.create_version(
+            control,
+            event_type="created",
+            note="Initial creation",
+        )
+        await session.commit()
+        return control.id, control_name
+
+
+def _fetch_control(control_id: int) -> Control | None:
+    with Session(engine) as session:
+        return session.scalars(select(Control).where(Control.id == control_id)).first()
+
+
+def _fetch_control_by_name(name: str) -> Control | None:
+    with Session(engine) as session:
+        return session.scalars(select(Control).where(Control.name == name)).first()
+
+
+def _fetch_versions(control_id: int) -> list[ControlVersion]:
+    with Session(engine) as session:
+        return list(
+            session.scalars(
+                select(ControlVersion)
+                .where(ControlVersion.control_id == control_id)
+                .order_by(ControlVersion.version_num)
+            ).all()
+        )
+
+
+def _fetch_all_versions() -> list[ControlVersion]:
+    with Session(engine) as session:
+        return list(session.scalars(select(ControlVersion)).all())
+
+
 @pytest.mark.asyncio
 async def test_create_version_locks_control_row_before_allocating_version_number() -> None:
     # Given: a control service with a mocked session
@@ -82,6 +132,109 @@ async def test_create_version_locks_control_row_before_allocating_version_number
 
     # And: the allocated version number comes from the subsequent query
     assert version.version_num == 4
+
+
+@pytest.mark.asyncio
+async def test_create_control_transaction_rollback_does_not_persist_control_or_version() -> None:
+    # Given: a new control plus its initial version inside an open transaction
+    control_name = f"control-{uuid.uuid4()}"
+    async with AsyncSessionTest() as session:
+        service = ControlService(session)
+        control = service.create_control(
+            name=control_name,
+            data=deepcopy(VALID_CONTROL_PAYLOAD),
+        )
+        await service.create_version(
+            control,
+            event_type="created",
+            note="Initial creation",
+        )
+
+        # When: the transaction is rolled back before commit
+        await session.rollback()
+
+    # Then: neither the control row nor the version row persist
+    assert _fetch_control_by_name(control_name) is None
+    assert _fetch_all_versions() == []
+
+
+@pytest.mark.asyncio
+async def test_replace_control_data_transaction_rollback_preserves_prior_state() -> None:
+    # Given: a committed control with an initial version row
+    control_id, _ = await _create_versioned_control()
+
+    async with AsyncSessionTest() as session:
+        service = ControlService(session)
+        control = await service.get_active_control_or_404(control_id)
+        updated_data = deepcopy(control.data)
+        updated_data["description"] = "Should not persist"
+        service.replace_control_data(control, data=updated_data)
+        await service.create_version(
+            control,
+            event_type="updated",
+            note="Edited",
+        )
+
+        # When: the edit transaction is rolled back
+        await session.rollback()
+
+    # Then: the persisted control state and version history remain unchanged
+    persisted_control = _fetch_control(control_id)
+    assert persisted_control is not None
+    assert persisted_control.data["description"] == VALID_CONTROL_PAYLOAD["description"]
+    assert [version.version_num for version in _fetch_versions(control_id)] == [1]
+
+
+@pytest.mark.asyncio
+async def test_patch_mutation_transaction_rollback_preserves_prior_state() -> None:
+    # Given: a committed control with an initial version row
+    control_id, control_name = await _create_versioned_control()
+
+    async with AsyncSessionTest() as session:
+        service = ControlService(session)
+        control = await service.get_active_control_or_404(control_id)
+        service.rename_control(control, name=f"{control_name}-renamed")
+        service.set_control_enabled(control, enabled=False)
+        await service.create_version(
+            control,
+            event_type="updated",
+            note="Edited",
+        )
+
+        # When: the patch transaction is rolled back
+        await session.rollback()
+
+    # Then: the persisted control row and version history stay at the pre-patch state
+    persisted_control = _fetch_control(control_id)
+    assert persisted_control is not None
+    assert persisted_control.name == control_name
+    assert persisted_control.data["enabled"] is True
+    assert [version.version_num for version in _fetch_versions(control_id)] == [1]
+
+
+@pytest.mark.asyncio
+async def test_delete_control_transaction_rollback_preserves_active_state() -> None:
+    # Given: a committed control with an initial version row
+    control_id, _ = await _create_versioned_control()
+
+    async with AsyncSessionTest() as session:
+        service = ControlService(session)
+        control = await service.get_active_control_or_404(control_id)
+        service.mark_control_deleted(control, deleted_at=dt.datetime.now(dt.UTC))
+        await service.create_version(
+            control,
+            event_type="deleted",
+            note="Deleted",
+        )
+
+        # When: the delete transaction is rolled back
+        await session.rollback()
+
+    # Then: the control remains active and no deleted version is persisted
+    persisted_control = _fetch_control(control_id)
+    assert persisted_control is not None
+    assert persisted_control.deleted_at is None
+    assert [version.version_num for version in _fetch_versions(control_id)] == [1]
 
 
 @pytest.mark.asyncio
@@ -394,6 +547,84 @@ async def test_remove_control_from_agent_reports_policy_inheritance(async_db) ->
     # Then: the service reports that only the inherited policy link remains
     assert second_result.removed_direct_association is False
     assert second_result.control_still_active is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    engine.dialect.name != "postgresql",
+    reason="Concurrent version allocation test requires PostgreSQL row locking semantics",
+)
+async def test_create_version_allocates_sequential_numbers_under_concurrent_mutations() -> None:
+    # Given: an existing control with an initial version
+    async with AsyncSessionTest() as setup_session:
+        setup_service = ControlService(setup_session)
+        control = setup_service.create_control(
+            name=f"control-{uuid.uuid4()}",
+            data=deepcopy(VALID_CONTROL_PAYLOAD),
+        )
+        await setup_service.create_version(
+            control,
+            event_type="created",
+            note="Initial creation",
+        )
+        await setup_session.commit()
+        control_id = control.id
+
+    start = asyncio.Event()
+    ready_count = 0
+    ready_lock = asyncio.Lock()
+
+    async def mutate_and_version(description: str) -> None:
+        nonlocal ready_count
+
+        async with AsyncSessionTest() as session:
+            service = ControlService(session)
+            control = await service.get_active_control_or_404(control_id)
+            updated_data = deepcopy(control.data)
+            updated_data["description"] = description
+            service.replace_control_data(control, data=updated_data)
+
+            async with ready_lock:
+                ready_count += 1
+                if ready_count == 2:
+                    start.set()
+
+            await start.wait()
+            await service.create_version(
+                control,
+                event_type="updated",
+                note=f"Edited to {description}",
+            )
+            await session.commit()
+
+    # When: two sessions create versions concurrently for the same control
+    await asyncio.wait_for(
+        asyncio.gather(
+            mutate_and_version("Concurrent update A"),
+            mutate_and_version("Concurrent update B"),
+        ),
+        timeout=10,
+    )
+
+    # Then: version numbers remain sequential for that control
+    with Session(engine) as session:
+        versions = list(
+            session.scalars(
+                select(ControlVersion)
+                .where(ControlVersion.control_id == control_id)
+                .order_by(ControlVersion.version_num)
+            ).all()
+        )
+
+    assert [version.version_num for version in versions] == [1, 2, 3]
+    assert [version.event_type for version in versions] == [
+        "created",
+        "updated",
+        "updated",
+    ]
+    assert {
+        version.snapshot["data"]["description"] for version in versions[1:]
+    } == {"Concurrent update A", "Concurrent update B"}
 
 
 @pytest.mark.asyncio
