@@ -8,7 +8,7 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from agent_control_models import ControlExecutionEvent, JSONObject
 from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
@@ -215,8 +215,11 @@ class OTELControlEventSink(BaseControlEventSink):
             ),
             trace_state=self._sdk_modules.trace_state_cls(),
         )
-        return self._sdk_modules.set_span_in_context(
-            self._sdk_modules.non_recording_span_cls(parent_span_context)
+        return cast(
+            object,
+            self._sdk_modules.set_span_in_context(
+                self._sdk_modules.non_recording_span_cls(parent_span_context)
+            ),
         )
 
 
