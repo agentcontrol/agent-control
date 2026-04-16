@@ -6,7 +6,9 @@ import { controlsCreate } from "../funcs/controls-create.js";
 import { controlsDelete } from "../funcs/controls-delete.js";
 import { controlsGetData } from "../funcs/controls-get-data.js";
 import { controlsGetSchema } from "../funcs/controls-get-schema.js";
+import { controlsGetVersion } from "../funcs/controls-get-version.js";
 import { controlsGet } from "../funcs/controls-get.js";
+import { controlsListVersions } from "../funcs/controls-list-versions.js";
 import { controlsList } from "../funcs/controls-list.js";
 import { controlsRenderTemplate } from "../funcs/controls-render-template.js";
 import { controlsUpdateData } from "../funcs/controls-update-data.js";
@@ -293,6 +295,42 @@ export class Controls extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.SetControlDataResponse> {
     return unwrapAsync(controlsUpdateData(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * List control version history
+   *
+   * @remarks
+   * List control versions ordered newest-first using cursor-based pagination.
+   */
+  async listVersions(
+    request:
+      operations.ListControlVersionsApiV1ControlsControlIdVersionsGetRequest,
+    options?: RequestOptions,
+  ): Promise<models.ListControlVersionsResponse> {
+    return unwrapAsync(controlsListVersions(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * Get a specific control version
+   *
+   * @remarks
+   * Return a specific control version, including its raw persisted snapshot.
+   */
+  async getVersion(
+    request:
+      operations.GetControlVersionApiV1ControlsControlIdVersionsVersionNumGetRequest,
+    options?: RequestOptions,
+  ): Promise<models.GetControlVersionResponse> {
+    return unwrapAsync(controlsGetVersion(
       this,
       request,
       options,

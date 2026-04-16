@@ -60,6 +60,7 @@ class ErrorCode(StrEnum):
     AGENT_NOT_FOUND = "AGENT_NOT_FOUND"
     POLICY_NOT_FOUND = "POLICY_NOT_FOUND"
     CONTROL_NOT_FOUND = "CONTROL_NOT_FOUND"
+    CONTROL_VERSION_NOT_FOUND = "CONTROL_VERSION_NOT_FOUND"
     EVALUATOR_NOT_FOUND = "EVALUATOR_NOT_FOUND"
 
     # Conflict Errors (3xx pattern)
@@ -364,6 +365,7 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.AGENT_NOT_FOUND: "Agent Not Found",
     ErrorCode.POLICY_NOT_FOUND: "Policy Not Found",
     ErrorCode.CONTROL_NOT_FOUND: "Control Not Found",
+    ErrorCode.CONTROL_VERSION_NOT_FOUND: "Control Version Not Found",
     ErrorCode.EVALUATOR_NOT_FOUND: "Evaluator Not Found",
     # Conflict errors
     ErrorCode.AGENT_NAME_CONFLICT: "Agent Name Already Exists",

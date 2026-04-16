@@ -150,6 +150,16 @@ actions:
       x-speakeasy-group: controls
       x-speakeasy-name-override: updateData
 
+  - target: $["paths"]["/api/v1/controls/{control_id}/versions"]["get"]
+    update:
+      x-speakeasy-group: controls
+      x-speakeasy-name-override: listVersions
+
+  - target: $["paths"]["/api/v1/controls/{control_id}/versions/{version_num}"]["get"]
+    update:
+      x-speakeasy-group: controls
+      x-speakeasy-name-override: getVersion
+
   - target: $["paths"]["/api/v1/evaluation"]["post"]
     update:
       x-speakeasy-group: evaluation

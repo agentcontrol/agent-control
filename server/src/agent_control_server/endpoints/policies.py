@@ -14,6 +14,7 @@ from ..db import get_async_db
 from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Control, Policy, policy_controls
+from ..services.controls import ControlService
 
 router = APIRouter(prefix="/policies", tags=["policies"])
 
@@ -117,18 +118,7 @@ async def add_control_to_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    ctl_res = await db.execute(
-        select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
-    )
-    control = ctl_res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await ControlService(db).get_active_control_or_404(control_id)
 
     # Add association using INSERT ... ON CONFLICT DO NOTHING for idempotency
     try:
@@ -202,18 +192,7 @@ async def remove_control_from_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    ctl_res = await db.execute(
-        select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
-    )
-    control = ctl_res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await ControlService(db).get_active_control_or_404(control_id)
 
     # Remove association (idempotent - deleting non-existent is no-op)
     try:

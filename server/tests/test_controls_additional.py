@@ -92,6 +92,7 @@ def test_patch_control_rename_integrity_error_returns_conflict(client: TestClien
         id=1,
         name="old-control",
         data=deepcopy(VALID_CONTROL_PAYLOAD),
+        deleted_at=None,
     )
 
     async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
@@ -103,8 +104,11 @@ def test_patch_control_rename_integrity_error_returns_conflict(client: TestClien
         name_lookup_result = MagicMock()
         name_lookup_result.first.return_value = None
 
+        version_lookup_result = MagicMock()
+        version_lookup_result.scalar_one.return_value = 1
+
         mock_session.execute = AsyncMock(
-            side_effect=[control_lookup_result, name_lookup_result]
+            side_effect=[control_lookup_result, name_lookup_result, version_lookup_result]
         )
         mock_session.commit = AsyncMock(
             side_effect=IntegrityError(

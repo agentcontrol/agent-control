@@ -59,6 +59,7 @@ from ..services.agent_names import normalize_agent_name_or_422
 from ..services.controls import (
     AgentControlEnabledState,
     AgentControlRenderedState,
+    ControlService,
     list_controls_for_agent,
     list_controls_for_policy,
 )
@@ -1245,19 +1246,7 @@ async def add_agent_control(
 ) -> AssocResponse:
     """Associate a control directly with an agent (idempotent)."""
     agent = await _get_agent_or_404(agent_name, db)
-
-    control_result = await db.execute(
-        select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
-    )
-    control: Control | None = control_result.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await ControlService(db).get_active_control_or_404(control_id)
 
     validation_errors = _validate_controls_for_agent(agent, [control])
     if validation_errors:
@@ -1313,18 +1302,7 @@ async def remove_agent_control(
 ) -> RemoveAgentControlResponse:
     """Remove a direct control association from an agent (idempotent)."""
     agent = await _get_agent_or_404(agent_name, db)
-
-    control_result = await db.execute(
-        select(Control.id).where(Control.id == control_id, Control.deleted_at.is_(None))
-    )
-    if control_result.first() is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    await ControlService(db).get_active_control_or_404(control_id)
 
     try:
         remove_direct_stmt = (

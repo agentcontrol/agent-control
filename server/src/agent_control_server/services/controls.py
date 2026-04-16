@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal, cast
 
 from agent_control_models import (
     ControlDefinition,
@@ -12,12 +12,12 @@ from agent_control_models import (
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.policy import Control as APIControl
 from pydantic import ValidationError
-from sqlalchemy import select, union
+from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..errors import APIValidationError
+from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
-from ..models import Control, agent_controls, agent_policies, policy_controls
+from ..models import Control, ControlVersion, agent_controls, agent_policies, policy_controls
 from .control_definitions import (
     parse_control_definition_or_api_error,
     parse_runtime_control_definition_or_api_error,
@@ -36,6 +36,175 @@ class RuntimeControl:
     id: int
     name: str
     control: ControlDefinitionRuntime
+
+
+@dataclass(frozen=True)
+class ControlVersionPage:
+    """Paginated control-version results."""
+
+    versions: list[ControlVersion]
+    total: int
+    has_more: bool
+    next_cursor: str | None
+
+
+class ControlService:
+    """Shared control persistence helpers used by server endpoints."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def get_control_or_404(self, control_id: int) -> Control:
+        """Load any control row, including soft-deleted controls."""
+        result = await self._db.execute(select(Control).where(Control.id == control_id))
+        control = cast(Control | None, result.scalars().first())
+        if control is None:
+            raise NotFoundError(
+                error_code=ErrorCode.CONTROL_NOT_FOUND,
+                detail=f"Control with ID '{control_id}' not found",
+                resource="Control",
+                resource_id=str(control_id),
+                hint="Verify the control ID is correct and the control has been created.",
+            )
+        return control
+
+    async def get_active_control_or_404(self, control_id: int) -> Control:
+        """Load an active control row or raise CONTROL_NOT_FOUND."""
+        result = await self._db.execute(
+            select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
+        )
+        control = cast(Control | None, result.scalars().first())
+        if control is None:
+            raise NotFoundError(
+                error_code=ErrorCode.CONTROL_NOT_FOUND,
+                detail=f"Control with ID '{control_id}' not found",
+                resource="Control",
+                resource_id=str(control_id),
+                hint="Verify the control ID is correct and the control has been created.",
+            )
+        return control
+
+    async def active_control_name_exists(
+        self,
+        name: str,
+        *,
+        exclude_control_id: int | None = None,
+    ) -> bool:
+        """Return whether an active control already uses the provided name."""
+        stmt = select(Control.id).where(Control.name == name, Control.deleted_at.is_(None))
+        if exclude_control_id is not None:
+            stmt = stmt.where(Control.id != exclude_control_id)
+        result = await self._db.execute(stmt)
+        return result.first() is not None
+
+    async def create_version(
+        self,
+        control: Control,
+        *,
+        event_type: str,
+        note: str,
+    ) -> ControlVersion:
+        """Append a new immutable version row for the current control state."""
+        await self._db.flush()
+
+        next_version_num = await self._next_version_num(control.id)
+        version = ControlVersion(
+            control_id=control.id,
+            version_num=next_version_num,
+            event_type=event_type,
+            snapshot=self._build_snapshot(control),
+            note=note,
+        )
+        self._db.add(version)
+        await self._db.flush()
+        return version
+
+    async def list_versions(
+        self,
+        control_id: int,
+        *,
+        cursor: int | None,
+        limit: int,
+    ) -> ControlVersionPage:
+        """Return control versions newest-first with cursor pagination."""
+        await self.get_control_or_404(control_id)
+
+        total_result = await self._db.execute(
+            select(func.count())
+            .select_from(ControlVersion)
+            .where(ControlVersion.control_id == control_id)
+        )
+        total = cast(int, total_result.scalar_one())
+
+        stmt = (
+            select(ControlVersion)
+            .where(ControlVersion.control_id == control_id)
+            .order_by(ControlVersion.version_num.desc())
+        )
+        if cursor is not None:
+            stmt = stmt.where(ControlVersion.version_num < cursor)
+
+        result = await self._db.execute(stmt.limit(limit + 1))
+        versions = list(result.scalars().all())
+
+        has_more = len(versions) > limit
+        if has_more:
+            versions = versions[:-1]
+
+        next_cursor: str | None = None
+        if has_more and versions:
+            next_cursor = str(versions[-1].version_num)
+
+        return ControlVersionPage(
+            versions=versions,
+            total=total,
+            has_more=has_more,
+            next_cursor=next_cursor,
+        )
+
+    async def get_version_or_404(self, control_id: int, version_num: int) -> ControlVersion:
+        """Load a specific version row for a control."""
+        await self.get_control_or_404(control_id)
+
+        result = await self._db.execute(
+            select(ControlVersion).where(
+                ControlVersion.control_id == control_id,
+                ControlVersion.version_num == version_num,
+            )
+        )
+        version = cast(ControlVersion | None, result.scalars().first())
+        if version is None:
+            raise NotFoundError(
+                error_code=ErrorCode.CONTROL_VERSION_NOT_FOUND,
+                detail=(
+                    f"Version '{version_num}' for control with ID '{control_id}' not found"
+                ),
+                resource="ControlVersion",
+                resource_id=f"{control_id}:{version_num}",
+                hint="Verify the control ID and version number are correct.",
+            )
+        return version
+
+    async def _next_version_num(self, control_id: int) -> int:
+        """Compute the next monotonically increasing version number for a control."""
+        result = await self._db.execute(
+            select(func.coalesce(func.max(ControlVersion.version_num), 0) + 1).where(
+                ControlVersion.control_id == control_id
+            )
+        )
+        return cast(int, result.scalar_one())
+
+    @staticmethod
+    def _build_snapshot(control: Control) -> dict[str, Any]:
+        """Serialize the persisted control state stored in version history."""
+        deleted_at = control.deleted_at.isoformat() if control.deleted_at is not None else None
+        cloned_control_id = cast(int | None, getattr(control, "cloned_control_id", None))
+        return {
+            "name": control.name,
+            "data": control.data,
+            "deleted_at": deleted_at,
+            "cloned_control_id": cloned_control_id,
+        }
 
 
 async def _list_db_controls_for_agent(
