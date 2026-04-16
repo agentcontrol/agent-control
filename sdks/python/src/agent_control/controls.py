@@ -107,7 +107,7 @@ async def get_control(
         Dictionary containing:
             - id: Control ID
             - name: Control name
-            - data: Control definition (condition, action, scope, etc.) or None if not configured
+            - data: Control definition or unrendered template control data
 
     Raises:
         httpx.HTTPError: If request fails
@@ -117,8 +117,7 @@ async def get_control(
         async with AgentControlClient() as client:
             control = await get_control(client, control_id=5)
             print(f"Control: {control['name']}")
-            if control['data']:
-                print(f"Execution: {control['data']['execution']}")
+            print(f"Enabled: {control['data']['enabled']}")
     """
     response = await client.http_client.get(f"/api/v1/controls/{control_id}")
     response.raise_for_status()

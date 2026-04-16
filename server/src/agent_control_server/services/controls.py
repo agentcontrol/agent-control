@@ -60,6 +60,7 @@ async def _list_db_controls_for_agent(
     stmt = (
         select(Control)
         .join(control_ids_subquery, Control.id == control_ids_subquery.c.control_id)
+        .where(Control.deleted_at.is_(None))
         .order_by(Control.id.desc())
     )
 
@@ -155,7 +156,7 @@ async def list_controls_for_policy(policy_id: int, db: AsyncSession) -> list[Con
     stmt = (
         select(Control)
         .join(policy_controls, Control.id == policy_controls.c.control_id)
-        .where(policy_controls.c.policy_id == policy_id)
+        .where(policy_controls.c.policy_id == policy_id, Control.deleted_at.is_(None))
     )
     result = await db.execute(stmt)
     return list(result.scalars().unique().all())

@@ -311,12 +311,10 @@ class GetControlResponse(BaseModel):
 
     id: int = Field(..., description="Control ID")
     name: str = Field(..., description="Control name")
-    data: ControlDefinition | UnrenderedTemplateControl | None = Field(
-        None,
+    data: ControlDefinition | UnrenderedTemplateControl = Field(
         description=(
             "Control configuration data. A ControlDefinition for raw/rendered "
-            "controls, an UnrenderedTemplateControl for unrendered templates, "
-            "or None if not yet configured."
+            "controls or an UnrenderedTemplateControl for unrendered templates."
         ),
     )
 

@@ -223,7 +223,7 @@ export class Controls extends ClientSDK {
    * Raises:
    *     HTTPException 404: Control not found
    *     HTTPException 409: New name conflicts with existing control
-   *     HTTPException 422: Cannot update enabled status (control has no data configured)
+   *     HTTPException 422: Cannot update metadata for corrupted control data
    *     HTTPException 500: Database error during update
    */
   async updateMetadata(

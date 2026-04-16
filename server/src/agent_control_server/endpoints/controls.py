@@ -1,3 +1,6 @@
+import datetime as dt
+from typing import cast
+
 from agent_control_engine import list_evaluators
 from agent_control_models import ControlDefinition, TemplateControlInput, UnrenderedTemplateControl
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
@@ -27,6 +30,7 @@ from pydantic import ValidationError
 from sqlalchemy import Integer, String, delete, func, literal, or_, select, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import Select
 
 from ..auth import require_admin_key
 from ..db import get_async_db
@@ -65,6 +69,38 @@ router = APIRouter(prefix="/controls", tags=["controls"])
 template_router = APIRouter(prefix="/control-templates", tags=["controls"])
 
 _logger = get_logger(__name__)
+
+
+def _select_active_control(control_id: int) -> Select[tuple[Control]]:
+    """Return a query for an active control row by ID."""
+    return select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
+
+
+def _select_active_control_name(
+    name: str,
+    *,
+    exclude_control_id: int | None = None,
+) -> Select[tuple[int]]:
+    """Return a query for active controls matching the provided name."""
+    stmt = select(Control.id).where(Control.name == name, Control.deleted_at.is_(None))
+    if exclude_control_id is not None:
+        stmt = stmt.where(Control.id != exclude_control_id)
+    return stmt
+
+
+async def _get_active_control_or_404(control_id: int, db: AsyncSession) -> Control:
+    """Load an active control or raise CONTROL_NOT_FOUND."""
+    res = await db.execute(_select_active_control(control_id))
+    control = cast(Control | None, res.scalars().first())
+    if control is None:
+        raise NotFoundError(
+            error_code=ErrorCode.CONTROL_NOT_FOUND,
+            detail=f"Control with ID '{control_id}' not found",
+            resource="Control",
+            resource_id=str(control_id),
+            hint="Verify the control ID is correct and the control has been created.",
+        )
+    return control
 
 
 def _serialize_control_data(
@@ -463,7 +499,7 @@ async def create_control(
         HTTPException 500: Database error during creation
     """
     # Uniqueness check
-    existing = await db.execute(select(Control.id).where(Control.name == request.name))
+    existing = await db.execute(_select_active_control_name(request.name))
     if existing.first() is not None:
         raise ConflictError(
             error_code=ErrorCode.CONTROL_NAME_CONFLICT,
@@ -539,35 +575,12 @@ async def get_control(
     Raises:
         HTTPException 404: Control not found
     """
-    res = await db.execute(select(Control).where(Control.id == control_id))
-    control = res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
-
-    # Parse data if present and non-empty
-    control_data: ControlDefinition | UnrenderedTemplateControl | None = None
-    if control.data:
-        try:
-            control_data = _parse_stored_control_data(
-                control.data,
-                control_name=control.name,
-                control_id=control_id,
-            )
-        except Exception:
-            # Data exists but is corrupted - log and return None
-            _logger.warning(
-                "Control '%s' (id=%s) has corrupted data that failed validation",
-                control.name,
-                control_id,
-                exc_info=True,
-            )
-            control_data = None
+    control = await _get_active_control_or_404(control_id, db)
+    control_data = _parse_stored_control_data(
+        control.data,
+        control_name=control.name,
+        control_id=control_id,
+    )
 
     return GetControlResponse(
         id=control.id,
@@ -602,16 +615,7 @@ async def get_control_data(
         HTTPException 404: Control not found
         HTTPException 422: Control data is corrupted
     """
-    res = await db.execute(select(Control).where(Control.id == control_id))
-    control = res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await _get_active_control_or_404(control_id, db)
     control_data = _parse_stored_control_data(
         control.data,
         control_name=control.name,
@@ -650,16 +654,7 @@ async def set_control_data(
         HTTPException 404: Control not found
         HTTPException 500: Database error during update
     """
-    res = await db.execute(select(Control).where(Control.id == control_id))
-    control = res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await _get_active_control_or_404(control_id, db)
 
     control_def = await _materialize_control_input(
         request.data,
@@ -756,7 +751,7 @@ async def list_controls(
     Example:
         GET /controls?limit=10&enabled=true&step_type=tool
     """
-    query = select(Control).order_by(Control.id.desc())
+    query = select(Control).where(Control.deleted_at.is_(None)).order_by(Control.id.desc())
 
     # Apply cursor
     if cursor is not None:
@@ -821,7 +816,7 @@ async def list_controls(
     controls = list(result.scalars().all())
 
     # Get total count (with same filters, but without cursor/limit)
-    total_query = select(func.count()).select_from(Control)
+    total_query = select(func.count()).select_from(Control).where(Control.deleted_at.is_(None))
     if name is not None:
         total_query = total_query.where(
             Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
@@ -990,17 +985,7 @@ async def delete_control(
         HTTPException 409: Control is in use (and force=false)
         HTTPException 500: Database error during deletion
     """
-    # Find the control
-    result = await db.execute(select(Control).where(Control.id == control_id))
-    control = result.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await _get_active_control_or_404(control_id, db)
 
     # Check for associations with policies and direct agent links.
     policy_assoc_query = select(
@@ -1072,15 +1057,15 @@ async def delete_control(
             len(dissociated_from_agents),
         )
 
-    # Delete the control
-    await db.delete(control)
+    # Tombstone the control so backfilled version history remains referentially intact.
+    control.deleted_at = dt.datetime.now(dt.UTC)
     try:
         await db.commit()
-        _logger.info(f"Deleted control '{control.name}' ({control_id})")
+        _logger.info("Soft-deleted control '%s' (%s)", control.name, control_id)
     except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to delete control '{control.name}' ({control_id})",
+            f"Failed to soft-delete control '{control.name}' ({control_id})",
             exc_info=True,
         )
         raise DatabaseError(
@@ -1127,20 +1112,15 @@ async def patch_control(
     Raises:
         HTTPException 404: Control not found
         HTTPException 409: New name conflicts with existing control
-        HTTPException 422: Cannot update enabled status (control has no data configured)
+        HTTPException 422: Cannot update metadata for corrupted control data
         HTTPException 500: Database error during update
     """
-    # Find the control
-    result = await db.execute(select(Control).where(Control.id == control_id))
-    control = result.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await _get_active_control_or_404(control_id, db)
+    parsed_control = _parse_stored_control_data(
+        control.data,
+        control_name=control.name,
+        control_id=control_id,
+    )
 
     # Track if anything changed
     updated = False
@@ -1149,7 +1129,7 @@ async def patch_control(
     if request.name is not None and request.name != control.name:
         # Check for name collision
         existing = await db.execute(
-            select(Control.id).where(Control.name == request.name)
+            _select_active_control_name(request.name, exclude_control_id=control_id)
         )
         if existing.first() is not None:
             raise ConflictError(
@@ -1165,26 +1145,7 @@ async def patch_control(
     # Update enabled status if provided
     current_enabled: bool | None = None
     if request.enabled is not None:
-        if not control.data:
-            raise APIValidationError(
-                error_code=ErrorCode.VALIDATION_ERROR,
-                detail=(
-                    f"Cannot update enabled status: control '{control.name}' "
-                    "has no data configured"
-                ),
-                resource="Control",
-                hint=f"Use PUT /{control_id}/data to configure the control first.",
-                errors=[
-                    ValidationErrorItem(
-                        resource="Control",
-                        field="enabled",
-                        code="no_data_configured",
-                        message="Control must have data configured before enabling/disabling",
-                    )
-                ],
-            )
-
-        if _is_unrendered_template(control.data):
+        if isinstance(parsed_control, UnrenderedTemplateControl):
             if request.enabled:
                 raise APIValidationError(
                     error_code=ErrorCode.VALIDATION_ERROR,
@@ -1213,48 +1174,14 @@ async def patch_control(
             # enabled=False on an unrendered template is a no-op (already false).
             current_enabled = False
         else:
-            try:
-                ctrl_def = ControlDefinition.model_validate(control.data)
-                if ctrl_def.enabled != request.enabled:
-                    new_data = dict(control.data)
-                    new_data["enabled"] = request.enabled
-                    control.data = new_data
-                    updated = True
-                current_enabled = request.enabled if updated else ctrl_def.enabled
-            except ValidationError:
-                _logger.error(
-                    "Control '%s' (%s) has corrupted data in patch request",
-                    control.name,
-                    control_id,
-                    exc_info=True,
-                )
-                raise APIValidationError(
-                    error_code=ErrorCode.CORRUPTED_DATA,
-                    detail=f"Control '{control.name}' has corrupted data",
-                    resource="Control",
-                    hint="Update the control data using PUT /{control_id}/data.",
-                    errors=[
-                        ValidationErrorItem(
-                            resource="Control",
-                            field="data",
-                            code="corrupted_data",
-                            message=_CORRUPTED_CONTROL_DATA_MESSAGE,
-                        )
-                    ],
-                )
-    elif control.data:
-        # Get current enabled status for response
-        if _is_unrendered_template(control.data):
-            current_enabled = False
-        else:
-            try:
-                ctrl_def = ControlDefinition.model_validate(control.data)
-                current_enabled = ctrl_def.enabled
-            except ValidationError:
-                _logger.warning(
-                    "Control '%s' has invalid data, using default",
-                    control.name,
-                )
+            if parsed_control.enabled != request.enabled:
+                new_data = dict(control.data)
+                new_data["enabled"] = request.enabled
+                control.data = new_data
+                updated = True
+            current_enabled = request.enabled if updated else parsed_control.enabled
+    else:
+        current_enabled = parsed_control.enabled
 
     # Commit if anything changed
     if updated:

@@ -95,13 +95,14 @@ def test_create_control_without_data_returns_422(client: TestClient) -> None:
 
 
 def test_get_control_data_initially_unconfigured(client: TestClient) -> None:
-    # Given: a legacy control row with no data set
+    # Given: an invalid legacy control row with an empty payload
     control_id = create_unconfigured_control()
     # When: fetching its data
     resp = client.get(f"/api/v1/controls/{control_id}/data")
-    # Then: 422 because empty data is not a valid ControlDefinition (RFC 7807 format)
+    # Then: 422 because empty data is invalid stored control data
     assert resp.status_code == 422
     response_data = resp.json()
+    assert response_data["error_code"] == "CORRUPTED_DATA"
     assert "invalid data" in response_data.get("detail", "").lower()
 
 
@@ -274,20 +275,19 @@ def test_create_control_duplicate_name_409(client: TestClient) -> None:
 
 
 def test_get_control_returns_metadata(client: TestClient) -> None:
-    """Test GET /controls/{id} returns id, name, and None data for legacy rows."""
-    # Given: a legacy control with a specific name and no configured data
+    """Test GET /controls/{id} rejects active controls with invalid stored data."""
+    # Given: a legacy control with a specific name and an invalid empty payload
     name = f"test-control-{uuid.uuid4()}"
     control_id = create_unconfigured_control(name)
 
     # When: fetching the control
     get_resp = client.get(f"/api/v1/controls/{control_id}")
 
-    # Then: returns id, name, and data (None for legacy unconfigured rows)
-    assert get_resp.status_code == 200
+    # Then: the API reports corrupted stored data instead of returning null data
+    assert get_resp.status_code == 422
     body = get_resp.json()
-    assert body["id"] == control_id
-    assert body["name"] == name
-    assert body["data"] is None  # Not configured yet
+    assert body["error_code"] == "CORRUPTED_DATA"
+    assert "invalid data" in body["detail"].lower()
 
 
 def test_get_control_with_data(client: TestClient) -> None:

@@ -114,9 +114,6 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
     agent_evaluators = {e.name: e for e in (agent_data.evaluators or [])}
 
     for control in controls:
-        if not control.data:
-            continue
-
         # Skip unrendered template controls — they have no evaluators to validate.
         if (
             isinstance(control.data, dict)
@@ -399,6 +396,7 @@ async def list_agents(
             )
             .join(Control, all_associations.c.control_id == Control.id)
             .where(
+                Control.deleted_at.is_(None),
                 or_(
                     Control.data["enabled"].astext == "true",
                     ~Control.data.has_key("enabled"),
@@ -1248,7 +1246,9 @@ async def add_agent_control(
     """Associate a control directly with an agent (idempotent)."""
     agent = await _get_agent_or_404(agent_name, db)
 
-    control_result = await db.execute(select(Control).where(Control.id == control_id))
+    control_result = await db.execute(
+        select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
+    )
     control: Control | None = control_result.scalars().first()
     if control is None:
         raise NotFoundError(
@@ -1314,7 +1314,9 @@ async def remove_agent_control(
     """Remove a direct control association from an agent (idempotent)."""
     agent = await _get_agent_or_404(agent_name, db)
 
-    control_result = await db.execute(select(Control.id).where(Control.id == control_id))
+    control_result = await db.execute(
+        select(Control.id).where(Control.id == control_id, Control.deleted_at.is_(None))
+    )
     if control_result.first() is None:
         raise NotFoundError(
             error_code=ErrorCode.CONTROL_NOT_FOUND,

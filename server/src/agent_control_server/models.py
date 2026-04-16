@@ -14,6 +14,8 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -71,12 +73,24 @@ class Policy(Base):
 
 class Control(Base):
     __tablename__ = "controls"
+    __table_args__ = (
+        Index(
+            "idx_controls_name_active",
+            "name",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     # JSONB payload describing control specifics
     data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
+    )
+    deleted_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     # Many-to-many backref: Control <> Policy
     policies: Mapped[list["Policy"]] = relationship(
@@ -85,6 +99,26 @@ class Control(Base):
     # Many-to-many backref: Control <> Agent (direct relationship)
     agents: Mapped[list["Agent"]] = relationship(
         "Agent", secondary=lambda: agent_controls, back_populates="controls"
+    )
+
+
+class ControlVersion(Base):
+    __tablename__ = "control_versions"
+    __table_args__ = (
+        UniqueConstraint("control_id", "version_num", name="uq_control_versions_control_version"),
+        Index("idx_control_versions_control_created", "control_id", text("created_at DESC")),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    control_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("controls.id"), nullable=False
+    )
+    version_num: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
     )
 
 

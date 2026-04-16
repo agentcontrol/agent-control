@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from copy import deepcopy
 
@@ -77,6 +78,36 @@ async def test_list_controls_for_policy_returns_controls(async_db) -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_controls_for_policy_excludes_deleted_controls(async_db) -> None:
+    # Given: a policy associated with one active and one soft-deleted control
+    policy = Policy(name=f"policy-{uuid.uuid4()}")
+    active_control = Control(name=f"control-{uuid.uuid4()}", data=VALID_CONTROL_PAYLOAD)
+    deleted_control = Control(
+        name=f"deleted-control-{uuid.uuid4()}",
+        data=VALID_CONTROL_PAYLOAD,
+        deleted_at=dt.datetime.now(dt.UTC),
+    )
+    async_db.add_all([policy, active_control, deleted_control])
+    await async_db.flush()
+
+    await async_db.execute(
+        insert(policy_controls).values(
+            [
+                {"policy_id": policy.id, "control_id": active_control.id},
+                {"policy_id": policy.id, "control_id": deleted_control.id},
+            ]
+        )
+    )
+    await async_db.commit()
+
+    # When: listing controls for the policy
+    controls = await list_controls_for_policy(policy.id, async_db)
+
+    # Then: only active controls are returned
+    assert [control.id for control in controls] == [active_control.id]
+
+
+@pytest.mark.asyncio
 async def test_list_controls_for_agent_returns_controls(async_db) -> None:
     # Given: an agent associated with one policy control and one direct control
     policy = Policy(name=f"policy-{uuid.uuid4()}")
@@ -109,6 +140,41 @@ async def test_list_controls_for_agent_returns_controls(async_db) -> None:
     assert names == {policy_control.name, direct_control.name}
     ids = [control.id for control in controls]
     assert ids == sorted(ids, reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_list_controls_for_agent_excludes_deleted_controls(async_db) -> None:
+    # Given: an agent associated with one active and one soft-deleted control
+    active_control = Control(name=f"active-control-{uuid.uuid4()}", data=VALID_CONTROL_PAYLOAD)
+    deleted_control = Control(
+        name=f"deleted-control-{uuid.uuid4()}",
+        data=VALID_CONTROL_PAYLOAD,
+        deleted_at=dt.datetime.now(dt.UTC),
+    )
+    agent = Agent(name=f"agent-{uuid.uuid4()}", data={})
+    async_db.add_all([active_control, deleted_control, agent])
+    await async_db.flush()
+
+    await async_db.execute(
+        insert(agent_controls).values(
+            [
+                {"agent_name": agent.name, "control_id": active_control.id},
+                {"agent_name": agent.name, "control_id": deleted_control.id},
+            ]
+        )
+    )
+    await async_db.commit()
+
+    # When: listing controls for the agent
+    controls = await list_controls_for_agent(
+        agent.name,
+        async_db,
+        rendered_state="all",
+        enabled_state="all",
+    )
+
+    # Then: soft-deleted controls are excluded
+    assert [control.id for control in controls] == [active_control.id]
 
 
 @pytest.mark.asyncio

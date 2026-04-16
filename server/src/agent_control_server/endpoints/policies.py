@@ -117,7 +117,9 @@ async def add_control_to_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    ctl_res = await db.execute(select(Control).where(Control.id == control_id))
+    ctl_res = await db.execute(
+        select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
+    )
     control = ctl_res.scalars().first()
     if control is None:
         raise NotFoundError(
@@ -200,7 +202,9 @@ async def remove_control_from_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    ctl_res = await db.execute(select(Control).where(Control.id == control_id))
+    ctl_res = await db.execute(
+        select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
+    )
     control = ctl_res.scalars().first()
     if control is None:
         raise NotFoundError(
@@ -272,9 +276,9 @@ async def list_policy_controls(
         )
 
     rows = await db.execute(
-        select(policy_controls.c.control_id).where(
-            policy_controls.c.policy_id == policy_id
-        )
+        select(policy_controls.c.control_id)
+        .join(Control, Control.id == policy_controls.c.control_id)
+        .where(policy_controls.c.policy_id == policy_id, Control.deleted_at.is_(None))
     )
     control_ids = [r[0] for r in rows.fetchall()]
     return GetPolicyControlsResponse(control_ids=control_ids)
