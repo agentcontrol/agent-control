@@ -118,9 +118,8 @@ async def add_control_to_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    control = await ControlService(db).get_active_control_or_404(control_id)
-
     control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id)
 
     # Add association using INSERT ... ON CONFLICT DO NOTHING for idempotency
     try:
@@ -187,9 +186,8 @@ async def remove_control_from_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    control = await ControlService(db).get_active_control_or_404(control_id)
-
     control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id)
 
     # Remove association (idempotent - deleting non-existent is no-op)
     try:
