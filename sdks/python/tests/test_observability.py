@@ -1123,7 +1123,7 @@ class TestShutdownObservability:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
 
-    def test_sync_shutdown_resets_sink_selection_to_defaults(self):
+    def test_sync_shutdown_preserves_programmatic_sink_selection(self):
         configure_settings(
             observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME,
             observability_sink_config={"project": "demo"},
@@ -1132,10 +1132,13 @@ class TestShutdownObservability:
         sync_shutdown_observability()
 
         settings = get_settings()
-        assert settings.observability_sink_name == DEFAULT_CONTROL_EVENT_SINK_NAME
-        assert settings.observability_sink_config == {}
+        assert settings.observability_sink_name == REGISTERED_CONTROL_EVENT_SINK_NAME
+        assert settings.observability_sink_config == {"project": "demo"}
 
-    def test_sync_shutdown_restores_sink_selection_from_environment(self, monkeypatch):
+    def test_sync_shutdown_does_not_replace_programmatic_sink_selection_with_environment(
+        self,
+        monkeypatch,
+    ):
         monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_NAME", "galileo")
         monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_CONFIG", '{"project":"demo"}')
         configure_settings(
@@ -1146,7 +1149,20 @@ class TestShutdownObservability:
         sync_shutdown_observability()
 
         settings = get_settings()
-        assert settings.observability_sink_name == "galileo"
+        assert settings.observability_sink_name == REGISTERED_CONTROL_EVENT_SINK_NAME
+        assert settings.observability_sink_config == {"project": "override"}
+
+    def test_init_without_sink_overrides_preserves_programmatic_sink_settings(self):
+        configure_settings(
+            observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME,
+            observability_sink_config={"project": "demo"},
+        )
+
+        batcher = init_observability(enabled=True)
+
+        settings = get_settings()
+        assert batcher is None
+        assert settings.observability_sink_name == REGISTERED_CONTROL_EVENT_SINK_NAME
         assert settings.observability_sink_config == {"project": "demo"}
 
 

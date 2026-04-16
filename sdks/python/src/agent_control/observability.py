@@ -69,7 +69,7 @@ from agent_control_telemetry.sinks import (
     SinkResult,
 )
 
-from agent_control.settings import configure_settings, get_settings, load_settings_from_env
+from agent_control.settings import configure_settings, get_settings
 
 if TYPE_CHECKING:
     from agent_control_models import ControlExecutionEvent
@@ -1079,13 +1079,6 @@ def sync_shutdown_observability() -> None:
     with _configured_named_event_sink_lock:
         _configured_named_event_sink = None
         _configured_named_event_sink_selection = None
-
-    # Reset sink selection between SDK sessions while preserving environment defaults.
-    env_settings = load_settings_from_env()
-    configure_settings(
-        observability_sink_name=env_settings.observability_sink_name,
-        observability_sink_config=env_settings.observability_sink_config,
-    )
 
 
 async def shutdown_observability() -> None:
