@@ -1212,7 +1212,7 @@ async def add_agent_control(
     """Associate a control directly with an agent (idempotent)."""
     agent = await _get_agent_or_404(agent_name, db)
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
     if await control_service.is_control_published(control_id):
         raise ConflictError(
             error_code=ErrorCode.CONTROL_PUBLISHED,

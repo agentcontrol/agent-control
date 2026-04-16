@@ -973,7 +973,7 @@ async def publish_control(
 ) -> AssocResponse:
     """Publish an active, valid, runtime-unassociated control to the default store."""
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
     _parse_stored_control_data(
         control.data,
         control_name=control.name,

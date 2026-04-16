@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import uuid
 from copy import deepcopy
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
@@ -13,10 +15,13 @@ from agent_control_server.models import (
     Control,
     ControlStore,
     ControlVersion,
+    Policy,
     control_stores_controls,
+    policy_controls,
 )
+from agent_control_server.services.controls import ControlService
 
-from .conftest import engine
+from .conftest import AsyncSessionTest, engine
 from .utils import VALID_CONTROL_PAYLOAD
 
 
@@ -90,6 +95,34 @@ def _create_agent(client: TestClient, *, name: str | None = None) -> str:
     )
     assert response.status_code == 200, response.text
     return agent_name
+
+
+async def _create_versioned_control(
+    *,
+    name: str | None = None,
+    data: dict[str, object] | None = None,
+) -> tuple[int, str]:
+    control_name = name or f"control-{uuid.uuid4()}"
+    payload = deepcopy(data) if data is not None else deepcopy(VALID_CONTROL_PAYLOAD)
+
+    async with AsyncSessionTest() as session:
+        service = ControlService(session)
+        control = service.create_control(name=control_name, data=payload)
+        await service.create_version(
+            control,
+            event_type="created",
+            note="Initial creation",
+        )
+        await session.commit()
+        return control.id, control_name
+
+
+async def _create_policy_row(*, name: str | None = None) -> int:
+    async with AsyncSessionTest() as session:
+        policy = Policy(name=name or f"policy-{uuid.uuid4()}")
+        session.add(policy)
+        await session.commit()
+        return policy.id
 
 
 def _fetch_control(control_id: int) -> Control | None:
@@ -284,6 +317,137 @@ def test_list_published_controls_filters_by_tag_and_enabled(client: TestClient) 
     )
     assert disabled_filtered.status_code == 200, disabled_filtered.text
     assert [item["id"] for item in disabled_filtered.json()["controls"]] == [disabled_id]
+
+
+def test_list_published_controls_rejects_stale_cursor(client: TestClient) -> None:
+    _ensure_default_store()
+    first_id, _ = _create_control(client, name="first-control")
+    second_id, _ = _create_control(client, name="second-control")
+
+    for control_id in (first_id, second_id):
+        response = client.post(f"/api/v1/control-stores/default/controls/{control_id}")
+        assert response.status_code == 200, response.text
+
+    _set_published_at(first_id, dt.datetime(2026, 4, 15, 10, 0, tzinfo=dt.UTC))
+    _set_published_at(second_id, dt.datetime(2026, 4, 15, 11, 0, tzinfo=dt.UTC))
+
+    first_page = client.get("/api/v1/control-stores/default/controls", params={"limit": 1})
+    assert first_page.status_code == 200, first_page.text
+    stale_cursor = first_page.json()["pagination"]["next_cursor"]
+
+    unpublish_response = client.delete(f"/api/v1/control-stores/default/controls/{second_id}")
+    assert unpublish_response.status_code == 200, unpublish_response.text
+
+    stale_page = client.get(
+        "/api/v1/control-stores/default/controls",
+        params={"limit": 1, "cursor": stale_cursor},
+    )
+    assert stale_page.status_code == 422
+    assert stale_page.json()["error_code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    engine.dialect.name != "postgresql",
+    reason="Control-store concurrency coverage requires PostgreSQL row locking semantics",
+)
+async def test_publish_waits_for_policy_association_and_preserves_catalog_invariant() -> None:
+    control_id, _ = await _create_versioned_control()
+    policy_id = await _create_policy_row()
+
+    association_has_lock = asyncio.Event()
+    publish_started = asyncio.Event()
+    release_association = asyncio.Event()
+
+    async def associate_control() -> None:
+        async with AsyncSessionTest() as session:
+            service = ControlService(session)
+            await service.get_active_control_or_404(control_id, for_update=True)
+            assert not await service.is_control_published(control_id)
+            association_has_lock.set()
+            await release_association.wait()
+            await service.add_control_to_policy(policy_id=policy_id, control_id=control_id)
+            await session.commit()
+
+    async def publish_control() -> None:
+        async with AsyncSessionTest() as session:
+            service = ControlService(session)
+            publish_started.set()
+            await service.get_active_control_or_404(control_id, for_update=True)
+            associations = await service.list_control_associations(control_id)
+            if not associations.policy_ids and not associations.agent_names:
+                await service.publish_control(control_id)
+            await session.commit()
+
+    association_task = asyncio.create_task(associate_control())
+    await association_has_lock.wait()
+    publish_task = asyncio.create_task(publish_control())
+    await publish_started.wait()
+    release_association.set()
+    await asyncio.gather(association_task, publish_task)
+
+    with Session(engine) as session:
+        policy_link = session.execute(
+            select(policy_controls.c.control_id).where(
+                policy_controls.c.policy_id == policy_id,
+                policy_controls.c.control_id == control_id,
+            )
+        ).first()
+
+    assert policy_link is not None
+    assert _published_rows(control_id) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    engine.dialect.name != "postgresql",
+    reason="Control-store concurrency coverage requires PostgreSQL row locking semantics",
+)
+async def test_policy_association_waits_for_publish_and_preserves_catalog_invariant() -> None:
+    control_id, _ = await _create_versioned_control()
+    policy_id = await _create_policy_row()
+
+    publish_has_lock = asyncio.Event()
+    association_started = asyncio.Event()
+    release_publish = asyncio.Event()
+
+    async def publish_control() -> None:
+        async with AsyncSessionTest() as session:
+            service = ControlService(session)
+            await service.get_active_control_or_404(control_id, for_update=True)
+            associations = await service.list_control_associations(control_id)
+            assert associations.policy_ids == []
+            publish_has_lock.set()
+            await release_publish.wait()
+            await service.publish_control(control_id)
+            await session.commit()
+
+    async def associate_control() -> None:
+        async with AsyncSessionTest() as session:
+            service = ControlService(session)
+            association_started.set()
+            await service.get_active_control_or_404(control_id, for_update=True)
+            if not await service.is_control_published(control_id):
+                await service.add_control_to_policy(policy_id=policy_id, control_id=control_id)
+            await session.commit()
+
+    publish_task = asyncio.create_task(publish_control())
+    await publish_has_lock.wait()
+    association_task = asyncio.create_task(associate_control())
+    await association_started.wait()
+    release_publish.set()
+    await asyncio.gather(publish_task, association_task)
+
+    with Session(engine) as session:
+        policy_link = session.execute(
+            select(policy_controls.c.control_id).where(
+                policy_controls.c.policy_id == policy_id,
+                policy_controls.c.control_id == control_id,
+            )
+        ).first()
+
+    assert policy_link is None
+    assert len(_published_rows(control_id)) == 1
 
 
 def test_clone_control_creates_independent_control_with_provenance_and_version(

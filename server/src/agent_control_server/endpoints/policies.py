@@ -119,7 +119,7 @@ async def add_control_to_policy(
         )
 
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
     if await control_service.is_control_published(control_id):
         raise ConflictError(
             error_code=ErrorCode.CONTROL_PUBLISHED,

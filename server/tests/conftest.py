@@ -94,9 +94,14 @@ def db_schema() -> None:
         admin_engine.dispose()
 
     # Recreate tables for tests in the configured database.
-    reflected_metadata = MetaData()
-    reflected_metadata.reflect(bind=engine)
-    reflected_metadata.drop_all(bind=engine)
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+    else:
+        reflected_metadata = MetaData()
+        reflected_metadata.reflect(bind=engine)
+        reflected_metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     _seed_default_control_store()
     yield

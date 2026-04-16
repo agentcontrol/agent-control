@@ -578,16 +578,33 @@ class ControlService:
                 )
             )
             cursor_published_at = cast(dt.datetime | None, cursor_result.scalar_one_or_none())
-            if cursor_published_at is not None:
-                query = query.where(
-                    or_(
-                        control_stores_controls.c.published_at < cursor_published_at,
-                        and_(
-                            control_stores_controls.c.published_at == cursor_published_at,
-                            control_stores_controls.c.control_id < cursor,
-                        ),
-                    )
+            if cursor_published_at is None:
+                raise APIValidationError(
+                    error_code=ErrorCode.VALIDATION_ERROR,
+                    detail="Published-control cursor is invalid or expired",
+                    resource="ControlStore",
+                    errors=[
+                        ValidationErrorItem(
+                            resource="ControlStore",
+                            field="cursor",
+                            code="invalid_cursor",
+                            message=(
+                                "Cursor no longer points to a published control. "
+                                "Restart pagination from the first page."
+                            ),
+                            value=cursor,
+                        )
+                    ],
                 )
+            query = query.where(
+                or_(
+                    control_stores_controls.c.published_at < cursor_published_at,
+                    and_(
+                        control_stores_controls.c.published_at == cursor_published_at,
+                        control_stores_controls.c.control_id < cursor,
+                    ),
+                )
+            )
 
         result = await self._db.execute(query.limit(limit + 1))
         rows = result.all()
