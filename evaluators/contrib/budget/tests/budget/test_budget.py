@@ -466,13 +466,13 @@ class TestBudgetEvaluator:
 
     @pytest.mark.asyncio
     async def test_single_call_under_budget(self) -> None:
-        # Given: evaluator with $10 limit (1000 cents)
-        ev = self._make_evaluator(limits=[{"limit": 1000}], pricing={})
+        # Given: evaluator with 1000-token limit (token-only, no pricing needed)
+        ev = self._make_evaluator(limits=[{"limit": 1000, "limit_unit": "tokens"}])
 
         # When: evaluate with usage data
         result = await ev.evaluate({"usage": {"input_tokens": 100, "output_tokens": 50}})
 
-        # Then: not matched
+        # Then: not matched (150 < 1000)
         assert result.matched is False
         assert result.confidence == 1.0
 
@@ -536,7 +536,7 @@ class TestBudgetEvaluator:
     @pytest.mark.asyncio
     async def test_no_data_returns_not_matched(self) -> None:
         # Given: evaluator / When: None data / Then: not matched
-        ev = self._make_evaluator(limits=[{"limit": 1000}], pricing={})
+        ev = self._make_evaluator(limits=[{"limit": 1000}], pricing={}, model_path="model")
         result = await ev.evaluate(None)
         assert result.matched is False
 
@@ -793,7 +793,7 @@ class TestUnknownModelBehavior:
 class TestStoreRegistry:
     def test_same_config_returns_same_store(self) -> None:
         # Given: two configs with identical parameters
-        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}], pricing={})
+        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}], pricing={}, model_path="model")
 
         # When: get store twice
         store1 = get_or_create_store(config)
@@ -804,8 +804,12 @@ class TestStoreRegistry:
 
     def test_different_budget_id_returns_different_store(self) -> None:
         # Given: two configs with different budget ids
-        config1 = BudgetEvaluatorConfig(limits=[{"limit": 1000}], budget_id="a", pricing={})
-        config2 = BudgetEvaluatorConfig(limits=[{"limit": 1000}], budget_id="b", pricing={})
+        config1 = BudgetEvaluatorConfig(
+            limits=[{"limit": 1000}], budget_id="a", pricing={}, model_path="model",
+        )
+        config2 = BudgetEvaluatorConfig(
+            limits=[{"limit": 1000}], budget_id="b", pricing={}, model_path="model",
+        )
 
         # When: get stores
         store1 = get_or_create_store(config1)
@@ -816,7 +820,7 @@ class TestStoreRegistry:
 
     def test_clear_budget_stores(self) -> None:
         # Given: a registered store
-        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}], pricing={})
+        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}], pricing={}, model_path="model")
         store1 = get_or_create_store(config)
 
         # When: clear all stores
@@ -1001,7 +1005,7 @@ class TestBoolGuard:
 class TestStoreRegistryRobustness:
     def test_concurrent_get_or_create_store(self) -> None:
         # Given: 10 threads requesting the same config concurrently
-        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}], pricing={})
+        config = BudgetEvaluatorConfig(limits=[{"limit": 1000}], pricing={}, model_path="model")
         stores: list[Any] = []
         lock = threading.Lock()
 
@@ -1096,8 +1100,12 @@ class TestConfigKeyOrdering:
         # Given: two configs with same budget_id and rules in different order
         rule_a = {"limit": 1000, "scope": {"agent": "a"}}
         rule_b = {"limit": 2000, "scope": {"agent": "b"}}
-        config1 = BudgetEvaluatorConfig(limits=[rule_a, rule_b], budget_id="ordered", pricing={})
-        config2 = BudgetEvaluatorConfig(limits=[rule_b, rule_a], budget_id="ordered", pricing={})
+        config1 = BudgetEvaluatorConfig(
+            limits=[rule_a, rule_b], budget_id="ordered", pricing={}, model_path="model",
+        )
+        config2 = BudgetEvaluatorConfig(
+            limits=[rule_b, rule_a], budget_id="ordered", pricing={}, model_path="model",
+        )
 
         # When: get stores for both
         store1 = get_or_create_store(config1)
@@ -1525,6 +1533,367 @@ class TestTTLPrune:
         assert watermark_after == watermark_before, (
             "backwards clock must not lower the prune watermark"
         )
+
+
+class TestModelPathRequired:
+    def test_cost_rule_without_model_path_rejected(self) -> None:
+        # Given: a cost-based rule with pricing but no model_path
+        # When/Then: config validation rejects it
+        with pytest.raises(ValidationError, match="model_path is required"):
+            BudgetEvaluatorConfig(
+                limits=[BudgetLimitRule(limit=100)],
+                pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            )
+
+    def test_token_rule_without_model_path_ok(self) -> None:
+        # Given: a token-only rule without model_path
+        # When: config is created
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=100, limit_unit="tokens")],
+        )
+
+        # Then: no model_path required
+        assert config.model_path is None
+
+    def test_cost_rule_with_model_path_accepted(self) -> None:
+        # Given: a cost-based rule with pricing and model_path
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=100)],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+        )
+
+        # Then: config is valid
+        assert config.model_path == "model"
+
+    def test_cost_rule_with_empty_model_path_rejected(self) -> None:
+        # Given: cost rule with model_path="" (empty string is falsy)
+        # When/Then: validator rejects it
+        with pytest.raises(ValidationError, match="model_path is required"):
+            BudgetEvaluatorConfig(
+                limits=[BudgetLimitRule(limit=100)],
+                pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+                model_path="",
+            )
+
+    def test_cost_rule_with_whitespace_model_path_rejected(self) -> None:
+        # Given: cost rule with model_path="  " (whitespace-only is stripped)
+        # When/Then: validator rejects it
+        with pytest.raises(ValidationError, match="model_path is required"):
+            BudgetEvaluatorConfig(
+                limits=[BudgetLimitRule(limit=100)],
+                pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+                model_path="  ",
+            )
+
+
+class TestModelPathRuntimeExtraction:
+    @pytest.mark.asyncio
+    async def test_model_field_missing_blocks_when_cost_rule_matches(self) -> None:
+        # Given: cost rule with model_path, but data has no "model" field
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=100)],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: step data omits the model field entirely
+        result = await evaluator.evaluate(
+            {"usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: fail-closed -- model_path configured but model unresolvable
+        assert result.matched is True
+        assert result.metadata is not None
+        assert result.metadata["unknown_model"] is None
+
+    @pytest.mark.asyncio
+    async def test_model_field_missing_block_message(self) -> None:
+        # Given: cost rule with model_path, data has no model field
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=100)],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: step omits model field
+        result = await evaluator.evaluate(
+            {"usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: message distinguishes path-not-found from unknown-model
+        assert result.matched is True
+        assert "Model not found at path 'model'" in result.message
+
+    @pytest.mark.asyncio
+    async def test_unknown_model_block_message(self) -> None:
+        # Given: cost rule with model_path, unknown model in data
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=100)],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: step has model not in pricing
+        result = await evaluator.evaluate(
+            {"model": "unknown-model", "usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: message names the unknown model
+        assert result.matched is True
+        assert "Unknown model: unknown-model" in result.message
+
+    @pytest.mark.asyncio
+    async def test_model_field_missing_warn_mode(self) -> None:
+        # Given: cost rule with model_path, warn mode, data has no model
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=100)],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+            unknown_model_behavior="warn",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: step data omits the model field
+        result = await evaluator.evaluate(
+            {"usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: not blocked (warn mode), cost=0
+        assert result.matched is False
+        assert result.metadata is not None
+        assert result.metadata["cost"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_model_field_missing_token_only_with_model_path(self) -> None:
+        # Given: token-only rule, model_path IS set, data has no model field
+        # This exercises Branch B: model_path_configured=True, model=None,
+        # has_matching_cost_rule=False (token rule only).
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=1000, limit_unit="tokens")],
+            model_path="model",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: step has no "model" field
+        result = await evaluator.evaluate(
+            {"usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: not blocked (no cost rule), tokens accumulated normally
+        assert result.matched is False
+        assert result.metadata is not None
+        assert result.metadata["all_snapshots"][0]["spent_tokens"] == 150
+        assert result.metadata["cost"] == 0.0
+        assert "unknown_model" not in result.metadata
+
+    @pytest.mark.asyncio
+    async def test_model_field_missing_token_only_unaffected(self) -> None:
+        # Given: token-only rule, model_path not set, data has no model
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=1000, limit_unit="tokens")],
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: step data with no model
+        result = await evaluator.evaluate(
+            {"usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: normal token evaluation, no blocking
+        assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_empty_pricing_with_model_triggers_block(self) -> None:
+        # Given: cost rule, pricing={} (not None), model IS present
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=100)],
+            pricing={},
+            model_path="model",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: model present but not in empty pricing table
+        result = await evaluator.evaluate(
+            {"model": "gpt-4", "usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: model not in {}, blocked
+        assert result.matched is True
+        assert result.metadata is not None
+        assert result.metadata["unknown_model"] == "gpt-4"
+
+
+class TestScopedUnknownModelBlock:
+    @pytest.mark.asyncio
+    async def test_unknown_model_not_blocked_when_only_token_rule_matches(self) -> None:
+        # Given: evaluator with a token-only rule for scope A and a cost rule for scope B
+        config = BudgetEvaluatorConfig(
+            limits=[
+                BudgetLimitRule(scope={"agent": "a"}, limit=1000, limit_unit="tokens"),
+                BudgetLimitRule(scope={"agent": "b"}, limit=100),
+            ],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+            metadata_paths={"agent": "agent"},
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: scope A step uses an unknown model (only token rule applies)
+        result = await evaluator.evaluate(
+            {
+                "agent": "a",
+                "model": "unknown-model",
+                "usage": {"input_tokens": 100, "output_tokens": 50},
+            }
+        )
+
+        # Then: not blocked -- only token rule matches scope A
+        assert result.matched is False
+        assert result.metadata is not None
+        assert "unknown_model" not in result.metadata
+
+    @pytest.mark.asyncio
+    async def test_unknown_model_blocked_when_cost_rule_matches(self) -> None:
+        # Given: same config but step targets scope B (where cost rule lives)
+        config = BudgetEvaluatorConfig(
+            limits=[
+                BudgetLimitRule(scope={"agent": "a"}, limit=1000, limit_unit="tokens"),
+                BudgetLimitRule(scope={"agent": "b"}, limit=100),
+            ],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+            metadata_paths={"agent": "agent"},
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: scope B step uses an unknown model (cost rule applies)
+        result = await evaluator.evaluate(
+            {
+                "agent": "b",
+                "model": "unknown-model",
+                "usage": {"input_tokens": 100, "output_tokens": 50},
+            }
+        )
+
+        # Then: blocked -- cost rule matches scope B
+        assert result.matched is True
+        assert result.metadata is not None
+        assert result.metadata["unknown_model"] == "unknown-model"
+
+    @pytest.mark.asyncio
+    async def test_unknown_model_no_matching_rules_at_all(self) -> None:
+        # Given: cost rule scoped to agent=b, step from agent=c (no match)
+        config = BudgetEvaluatorConfig(
+            limits=[
+                BudgetLimitRule(scope={"agent": "b"}, limit=100),
+            ],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+            metadata_paths={"agent": "agent"},
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: step from agent=c with unknown model
+        result = await evaluator.evaluate(
+            {
+                "agent": "c",
+                "model": "unknown-model",
+                "usage": {"input_tokens": 100, "output_tokens": 50},
+            }
+        )
+
+        # Then: not blocked (no rules match this scope at all)
+        assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_warn_mode_scoped_no_warning_when_scope_mismatches(self) -> None:
+        # Given: cost rule scoped to agent=b, warn mode
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(scope={"agent": "b"}, limit=100)],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+            metadata_paths={"agent": "agent"},
+            unknown_model_behavior="warn",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: scope A step with unknown model (cost rule is scoped to B)
+        result = await evaluator.evaluate(
+            {
+                "agent": "a",
+                "model": "unknown-model",
+                "usage": {"input_tokens": 100, "output_tokens": 50},
+            }
+        )
+
+        # Then: no block, no warn -- scope A has no matching cost rule
+        assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_mixed_global_rules_warn_mode_token_accumulates(self) -> None:
+        # Given: global cost rule (warn) + global token rule, unknown model
+        config = BudgetEvaluatorConfig(
+            limits=[
+                BudgetLimitRule(limit=100),
+                BudgetLimitRule(limit=1000, limit_unit="tokens"),
+            ],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+            unknown_model_behavior="warn",
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: unknown model with tokens
+        result = await evaluator.evaluate(
+            {"model": "unknown-model", "usage": {"input_tokens": 100, "output_tokens": 50}}
+        )
+
+        # Then: not blocked (warn mode), token rule still accumulates
+        assert result.matched is False
+        assert result.metadata is not None
+        token_snap = next(
+            s for s in result.metadata["all_snapshots"] if s["limit_unit"] == "tokens"
+        )
+        assert token_snap["spent_tokens"] == 150
+
+    @pytest.mark.asyncio
+    async def test_group_by_unknown_model_block_no_bucket_created(self) -> None:
+        # Given: group_by cost rule, unknown model
+        config = BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(group_by="user_id", limit=100)],
+            pricing={"gpt-4": ModelPricing(input_per_1k=10.0, output_per_1k=20.0)},
+            model_path="model",
+            metadata_paths={"user_id": "user_id"},
+        )
+        evaluator = BudgetEvaluator(config)
+
+        # When: unknown model is blocked (no bucket created)
+        blocked = await evaluator.evaluate(
+            {
+                "user_id": "u1",
+                "model": "unknown",
+                "usage": {"input_tokens": 9000, "output_tokens": 0},
+            }
+        )
+        assert blocked.matched is True
+
+        # When: known model follows -- bucket starts fresh
+        result = await evaluator.evaluate(
+            {
+                "user_id": "u1",
+                "model": "gpt-4",
+                "usage": {"input_tokens": 100, "output_tokens": 0},
+            }
+        )
+
+        # Then: not contaminated by blocked step
+        assert result.matched is False
+        assert result.metadata is not None
+        assert result.metadata["all_snapshots"][0]["spent"] > 0
 
 
 class TestBudgetStoreABC:

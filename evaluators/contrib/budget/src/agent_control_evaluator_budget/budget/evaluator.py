@@ -22,7 +22,7 @@ from agent_control_evaluators._registry import register_evaluator
 from agent_control_models import EvaluatorResult
 
 from .config import BudgetEvaluatorConfig, ModelPricing
-from .memory_store import InMemoryBudgetStore
+from .memory_store import InMemoryBudgetStore, _scope_matches
 from .store import BudgetStore
 
 logger = logging.getLogger(__name__)
@@ -190,33 +190,51 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
         input_tokens, output_tokens = _extract_tokens(data, self.config.token_path)
 
         model: str | None = None
-        if self.config.model_path:
+        model_path_configured = bool(self.config.model_path)
+        if model_path_configured:
             val = _extract_by_path(data, self.config.model_path)
             if val is not None:
                 model = str(val)
 
         cost = _estimate_cost(model, input_tokens, output_tokens, self.config.pricing)
-        model_known = model is None or self.config.pricing is None or model in self.config.pricing
-        has_cost_rule = any(rule.limit_unit == "usd_cents" for rule in self.config.limits)
-        if not model_known and has_cost_rule:
-            if self.config.unknown_model_behavior == "block":
-                return EvaluatorResult(
-                    matched=True,
-                    confidence=1.0,
-                    message=f"Unknown model blocked: {model}",
-                    metadata={
-                        "unknown_model": model,
-                        "input_tokens": input_tokens,
-                        "output_tokens": output_tokens,
-                    },
-                )
-            logger.warning(
-                "Budget evaluator: unknown model %r, treating cost as 0 "
-                "(unknown_model_behavior=warn)",
-                model,
-            )
 
         step_metadata = _extract_metadata(data, self.config.metadata_paths)
+
+        if model_path_configured and model is None:
+            model_known = False
+        else:
+            model_known = (
+                model is None or self.config.pricing is None or model in self.config.pricing
+            )
+        if not model_known:
+            has_matching_cost_rule = any(
+                rule.limit_unit == "usd_cents"
+                and _scope_matches(rule, step_metadata)
+                for rule in self.config.limits
+            )
+            if has_matching_cost_rule:
+                if model is None:
+                    block_reason = (
+                        f"Model not found at path '{self.config.model_path}'"
+                    )
+                else:
+                    block_reason = f"Unknown model: {model}"
+                if self.config.unknown_model_behavior == "block":
+                    return EvaluatorResult(
+                        matched=True,
+                        confidence=1.0,
+                        message=f"{block_reason} (blocked)",
+                        metadata={
+                            "unknown_model": model,
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                        },
+                    )
+                logger.warning(
+                    "Budget evaluator: %s, treating cost as 0 "
+                    "(unknown_model_behavior=warn)",
+                    block_reason,
+                )
 
         store = get_or_create_store(self.config)
         snapshots = await store.record_and_check(

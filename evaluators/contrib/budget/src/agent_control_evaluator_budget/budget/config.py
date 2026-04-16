@@ -110,6 +110,9 @@ class BudgetEvaluatorConfig(EvaluatorConfig):
 
     @model_validator(mode="after")
     def require_pricing_for_cost_rules(self) -> "BudgetEvaluatorConfig":
-        if self.pricing is None and any(rule.limit_unit == "usd_cents" for rule in self.limits):
+        has_cost_rule = any(rule.limit_unit == "usd_cents" for rule in self.limits)
+        if has_cost_rule and self.pricing is None:
             raise ValueError('pricing is required when any rule uses limit_unit="usd_cents"')
+        if has_cost_rule and not (self.model_path or "").strip():
+            raise ValueError('model_path is required when any rule uses limit_unit="usd_cents"')
         return self
