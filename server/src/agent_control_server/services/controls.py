@@ -27,6 +27,7 @@ from sqlalchemy import (
     union_all,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
@@ -262,13 +263,21 @@ class ControlService:
 
     async def is_control_published(self, control_id: int) -> bool:
         """Return whether a control is currently published in the default store."""
-        default_store_id = await self._get_default_store_id()
-        result = await self._db.execute(
-            select(control_stores_controls.c.control_id).where(
-                control_stores_controls.c.store_id == default_store_id,
-                control_stores_controls.c.control_id == control_id,
+        default_store_id = await self._get_default_store_id(required=False)
+        if default_store_id is None:
+            return False
+
+        try:
+            result = await self._db.execute(
+                select(control_stores_controls.c.control_id).where(
+                    control_stores_controls.c.store_id == default_store_id,
+                    control_stores_controls.c.control_id == control_id,
+                )
             )
-        )
+        except (OperationalError, ProgrammingError) as exc:
+            if _is_missing_control_store_schema_error(exc):
+                return False
+            raise
         return result.first() is not None
 
     async def publish_control(self, control_id: int) -> None:
@@ -292,11 +301,16 @@ class ControlService:
 
     async def remove_all_store_publications(self, control_id: int) -> None:
         """Remove all store publication rows for a control."""
-        await self._db.execute(
-            delete(control_stores_controls).where(
-                control_stores_controls.c.control_id == control_id
+        try:
+            await self._db.execute(
+                delete(control_stores_controls).where(
+                    control_stores_controls.c.control_id == control_id
+                )
             )
-        )
+        except (OperationalError, ProgrammingError) as exc:
+            if _is_missing_control_store_schema_error(exc):
+                return
+            raise
 
     async def create_version(
         self,
@@ -826,13 +840,20 @@ class ControlService:
             )
         return associations
 
-    async def _get_default_store_id(self) -> int:
+    async def _get_default_store_id(self, *, required: bool = True) -> int | None:
         """Return the seeded default-store ID."""
-        result = await self._db.execute(
-            select(ControlStore.id).where(ControlStore.name == _DEFAULT_CONTROL_STORE_NAME)
-        )
+        try:
+            result = await self._db.execute(
+                select(ControlStore.id).where(ControlStore.name == _DEFAULT_CONTROL_STORE_NAME)
+            )
+        except (OperationalError, ProgrammingError) as exc:
+            if not required and _is_missing_control_store_schema_error(exc):
+                return None
+            raise
         store_id = result.scalar_one_or_none()
         if store_id is None:
+            if not required:
+                return None
             raise RuntimeError(
                 "Default control store is missing; run the Phase 3 migration before using "
                 "control-store endpoints."
@@ -1075,3 +1096,13 @@ def _matches_enabled_state(
     if enabled_state == "enabled":
         return is_enabled
     return not is_enabled
+
+
+def _is_missing_control_store_schema_error(
+    error: OperationalError | ProgrammingError,
+) -> bool:
+    """Return whether an error came from the pre-Phase-3 store schema being absent."""
+    error_text = " ".join(part for part in (str(error.orig), str(error)) if part).lower()
+    if "control_stores" not in error_text and "control_stores_controls" not in error_text:
+        return False
+    return "does not exist" in error_text or "no such table" in error_text

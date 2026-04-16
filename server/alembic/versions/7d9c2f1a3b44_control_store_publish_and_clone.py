@@ -83,7 +83,7 @@ def upgrade() -> None:
         sa.column("name", sa.String()),
     )
     op.get_bind().execute(
-        sa.insert(control_stores).values(id=1, name="default")
+        sa.insert(control_stores).values(name="default")
     )
 
 

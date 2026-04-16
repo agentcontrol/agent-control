@@ -123,3 +123,26 @@ def test_upgrade_seeds_default_store_and_adds_clone_provenance(
     assert stores == [{"id": 1, "name": "default"}]
     assert control["cloned_control_id"] is None
     assert "control_stores_controls" in inspect(temp_engine).get_table_names()
+
+
+def test_upgrade_advances_control_store_identity_after_default_seed(
+    upgrade_to,
+    temp_engine: Engine,
+) -> None:
+    upgrade_to(PRE_MIGRATION_REVISION)
+    upgrade_to(MIGRATION_REVISION)
+
+    with temp_engine.begin() as conn:
+        next_store_id = int(
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO control_stores (name)
+                    VALUES ('post-seed-store')
+                    RETURNING id
+                    """
+                )
+            ).scalar_one()
+        )
+
+    assert next_store_id > 1
