@@ -64,23 +64,23 @@ curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/
 ```
 
 This starts PostgreSQL and Agent Control at `http://localhost:8000`, including
-the UI/dashboard.
+the UI/dashboard.  
 
-To override the exposed host ports, set `AGENT_CONTROL_SERVER_HOST_PORT` and/or
-`AGENT_CONTROL_DB_HOST_PORT` before starting Compose. Example:
+Note: This starts server without API keys configured which is dangerous for any real world usage.  
+
+Set appropirate env vars to override defaults like:
+ * Exposed ports
+ * Agent and admin API keys
+ * Postgres DB Password
 
 ```bash
 export AGENT_CONTROL_SERVER_HOST_PORT=18000
 export AGENT_CONTROL_DB_HOST_PORT=15432
-curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
-```
+export AGENT_CONTROL_API_KEY_ENABLED=true
+export AGENT_CONTROL_API_KEYS="agent-api-key"
+export AGENT_CONTROL_ADMIN_API_KEYS="admin-api-key"
+export AGENT_CONTROL_POSTGRES_PASSWORD="postgres-password"
 
-To override the bundled PostgreSQL password, set
-`AGENT_CONTROL_POSTGRES_PASSWORD` before starting Compose. This value is used
-for both the Postgres container and the server's database connection. Example:
-
-```bash
-export AGENT_CONTROL_POSTGRES_PASSWORD=agent_control_local
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
 ```
 

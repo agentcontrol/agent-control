@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v7.4.1 (2026-04-14)
+
+### Documentation
+
+- **server**: Update README.md ([#168](https://github.com/agentcontrol/agent-control/pull/168),
+  [`275d305`](https://github.com/agentcontrol/agent-control/commit/275d305a7e6b89640900da9d943f5cde2d8d957d))
+
+### Refactoring
+
+- **models**: Reject legacy action values at API boundaries
+  ([#163](https://github.com/agentcontrol/agent-control/pull/163),
+  [`b965e66`](https://github.com/agentcontrol/agent-control/commit/b965e6697df1dca5ccc073ae0910311028a55e5c))
+
+
 ## v7.4.0 (2026-04-07)
 
 ### Chores

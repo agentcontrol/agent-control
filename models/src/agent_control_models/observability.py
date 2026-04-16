@@ -14,7 +14,11 @@ from uuid import uuid4
 
 from pydantic import Field, field_validator
 
-from .actions import ActionDecision, normalize_action, normalize_action_list
+from .actions import (
+    ActionDecision,
+    normalize_action,
+    validate_action_list,
+)
 from .agent import AGENT_NAME_MIN_LENGTH, AGENT_NAME_PATTERN, normalize_agent_name
 from .base import BaseModel
 
@@ -343,12 +347,12 @@ class EventQueryRequest(BaseModel):
 
     @field_validator("actions", mode="before")
     @classmethod
-    def normalize_actions_filter(
+    def validate_actions_filter(
         cls, value: list[str] | None
     ) -> list[ActionDecision] | None:
         if value is None:
             return None
-        return normalize_action_list(value)
+        return validate_action_list(value)
 
 
 class EventQueryResponse(BaseModel):

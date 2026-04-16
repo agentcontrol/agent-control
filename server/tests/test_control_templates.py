@@ -638,17 +638,17 @@ def test_template_backed_control_supports_direct_agent_attachment(client: TestCl
     assert body["matches"][0]["control_name"] == control_name
 
 
-def test_template_backed_warn_control_evaluates_as_safe_with_observe_match(
+def test_template_backed_observe_control_evaluates_as_safe_with_observe_match(
     client: TestClient,
 ) -> None:
-    # Given: a template-backed control whose rendered action uses the legacy warn alias
+    # Given: a template-backed control whose rendered action is observe
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
-    payload["template"]["definition_template"]["action"]["decision"] = "warn"  # type: ignore[index]
+    payload["template"]["definition_template"]["action"]["decision"] = "observe"  # type: ignore[index]
     control_id, control_name = _create_template_control_with_name(
         client,
         payload,
-        name_prefix="warn-template-control",
+        name_prefix="observe-template-control",
     )
     agent_name = _assign_control_to_agent(client, control_id)
 
@@ -725,7 +725,7 @@ def test_template_backed_control_preserves_falsey_values_and_uses_them_in_behavi
 def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
     client: TestClient,
 ) -> None:
-    # Given: an agent with both a template-backed deny control and a raw warn control
+    # Given: an agent with both a template-backed deny control and a raw observe control
     template_control_id, template_control_name = _create_template_control_with_name(client)
     agent_name = _assign_control_to_agent(client, template_control_id)
 
@@ -733,19 +733,19 @@ def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
     assert policy_response.status_code == 200, policy_response.text
     policy_id = policy_response.json()["policy_id"]
 
-    raw_warn_name = f"raw-warn-{uuid.uuid4()}"
-    raw_warn_response = client.put(
+    raw_observe_name = f"raw-observe-{uuid.uuid4()}"
+    raw_observe_response = client.put(
         "/api/v1/controls",
         json={
-            "name": raw_warn_name,
-            "data": _raw_control_payload("hello", action="warn"),
+            "name": raw_observe_name,
+            "data": _raw_control_payload("hello", action="observe"),
         },
     )
-    assert raw_warn_response.status_code == 200, raw_warn_response.text
-    raw_warn_control_id = raw_warn_response.json()["control_id"]
+    assert raw_observe_response.status_code == 200, raw_observe_response.text
+    raw_observe_control_id = raw_observe_response.json()["control_id"]
 
     add_control_response = client.post(
-        f"/api/v1/policies/{policy_id}/controls/{raw_warn_control_id}"
+        f"/api/v1/policies/{policy_id}/controls/{raw_observe_control_id}"
     )
     assert add_control_response.status_code == 200, add_control_response.text
 
@@ -764,7 +764,7 @@ def test_mixed_raw_and_template_backed_controls_obey_deny_precedence(
     assert len(body["matches"]) == 2
     names = {match["control_name"] for match in body["matches"]}
     actions = {match["action"] for match in body["matches"]}
-    assert names == {template_control_name, raw_warn_name}
+    assert names == {template_control_name, raw_observe_name}
     assert actions == {"deny", "observe"}
 
 

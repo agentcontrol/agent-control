@@ -11,7 +11,7 @@ from uuid import uuid4
 import re2
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from .actions import ActionDecision, normalize_action
+from .actions import ActionDecision, normalize_action, validate_action
 from .agent import JSONValue
 from .base import BaseModel
 
@@ -520,8 +520,8 @@ class ControlAction(BaseModel):
 
     @field_validator("decision", mode="before")
     @classmethod
-    def normalize_decision(cls, value: str) -> ActionDecision:
-        return normalize_action(value)
+    def validate_decision(cls, value: str) -> ActionDecision:
+        return validate_action(value)
 
 
 MAX_CONDITION_DEPTH = 6
