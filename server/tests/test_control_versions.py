@@ -3,10 +3,11 @@ from __future__ import annotations
 import uuid
 from copy import deepcopy
 
-from agent_control_server.models import ControlVersion
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from agent_control_server.models import ControlVersion
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -47,7 +48,7 @@ def test_create_control_creates_initial_version_row(client: TestClient) -> None:
     assert len(versions) == 1
     version = versions[0]
     assert version.version_num == 1
-    assert version.event_type == "create"
+    assert version.event_type == "created"
     assert version.note == "Initial creation"
     assert version.snapshot["name"] == control_name
     assert version.snapshot["data"]["description"] == VALID_CONTROL_PAYLOAD["description"]
@@ -69,7 +70,7 @@ def test_set_control_data_creates_edited_version_row(client: TestClient) -> None
     versions = _fetch_versions(control_id)
     assert [version.version_num for version in versions] == [1, 2]
     latest = versions[-1]
-    assert latest.event_type == "edit"
+    assert latest.event_type == "updated"
     assert latest.note == "Edited"
     assert latest.snapshot["data"]["description"] == "Updated description"
 
@@ -90,7 +91,7 @@ def test_patch_control_creates_edited_version_row(client: TestClient) -> None:
     versions = _fetch_versions(control_id)
     assert [version.version_num for version in versions] == [1, 2]
     latest = versions[-1]
-    assert latest.event_type == "edit"
+    assert latest.event_type == "updated"
     assert latest.note == "Edited"
     assert latest.snapshot["name"] == new_name
     assert latest.snapshot["data"]["enabled"] is False
@@ -121,7 +122,7 @@ def test_delete_control_creates_deleted_version_row(client: TestClient) -> None:
     versions = _fetch_versions(control_id)
     assert [version.version_num for version in versions] == [1, 2]
     deleted_version = versions[-1]
-    assert deleted_version.event_type == "delete"
+    assert deleted_version.event_type == "deleted"
     assert deleted_version.note == "Deleted"
     assert deleted_version.snapshot["deleted_at"] is not None
 
@@ -185,7 +186,7 @@ def test_get_control_version_returns_full_snapshot_for_deleted_control(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["version_num"] == 2
-    assert body["event_type"] == "delete"
+    assert body["event_type"] == "deleted"
     assert body["note"] == "Deleted"
     assert body["snapshot"]["name"] == control_name
     assert body["snapshot"]["deleted_at"] is not None

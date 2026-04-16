@@ -6,14 +6,14 @@ from agent_control_models.server import (
     GetPolicyControlsResponse,
 )
 from fastapi import APIRouter, Depends
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
 from ..db import get_async_db
 from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
-from ..models import Control, Policy, policy_controls
+from ..models import Policy
 from ..services.controls import ControlService
 
 router = APIRouter(prefix="/policies", tags=["policies"])
@@ -120,16 +120,11 @@ async def add_control_to_policy(
 
     control = await ControlService(db).get_active_control_or_404(control_id)
 
+    control_service = ControlService(db)
+
     # Add association using INSERT ... ON CONFLICT DO NOTHING for idempotency
     try:
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-        stmt = (
-            pg_insert(policy_controls)
-            .values(policy_id=policy_id, control_id=control_id)
-            .on_conflict_do_nothing()
-        )
-        await db.execute(stmt)
+        await control_service.add_control_to_policy(policy_id=policy_id, control_id=control_id)
         await db.commit()
     except Exception:
         await db.rollback()
@@ -194,13 +189,13 @@ async def remove_control_from_policy(
 
     control = await ControlService(db).get_active_control_or_404(control_id)
 
+    control_service = ControlService(db)
+
     # Remove association (idempotent - deleting non-existent is no-op)
     try:
-        await db.execute(
-            delete(policy_controls).where(
-                (policy_controls.c.policy_id == policy_id)
-                & (policy_controls.c.control_id == control_id)
-            )
+        await control_service.remove_control_from_policy(
+            policy_id=policy_id,
+            control_id=control_id,
         )
         await db.commit()
     except Exception:
@@ -254,10 +249,5 @@ async def list_policy_controls(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    rows = await db.execute(
-        select(policy_controls.c.control_id)
-        .join(Control, Control.id == policy_controls.c.control_id)
-        .where(policy_controls.c.policy_id == policy_id, Control.deleted_at.is_(None))
-    )
-    control_ids = [r[0] for r in rows.fetchall()]
+    control_ids = await ControlService(db).list_policy_control_ids(policy_id)
     return GetPolicyControlsResponse(control_ids=control_ids)

@@ -6,10 +6,10 @@ from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from agent_control_models.errors import ErrorCode
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agent_control_models.errors import ErrorCode
 from agent_control_server.errors import APIValidationError
 from agent_control_server.models import (
     Agent,
@@ -21,8 +21,6 @@ from agent_control_server.models import (
 )
 from agent_control_server.services.controls import (
     ControlService,
-    list_controls_for_agent,
-    list_controls_for_policy,
 )
 
 from .utils import VALID_CONTROL_PAYLOAD
@@ -76,7 +74,7 @@ async def test_create_version_locks_control_row_before_allocating_version_number
     )
 
     # When: creating a new version row
-    version = await service.create_version(control, event_type="edit", note="Edited")
+    version = await service.create_version(control, event_type="updated", note="Edited")
 
     # Then: the service first takes a row-level lock on the control
     lock_stmt = mock_session.execute.await_args_list[0].args[0]
@@ -106,7 +104,7 @@ async def test_list_controls_for_policy_returns_controls(async_db) -> None:
     await async_db.commit()
 
     # When: listing controls for the policy
-    controls = await list_controls_for_policy(policy.id, async_db)
+    controls = await ControlService(async_db).list_controls_for_policy(policy.id)
 
     # Then: both controls are returned
     names = {c.name for c in controls}
@@ -137,7 +135,7 @@ async def test_list_controls_for_policy_excludes_deleted_controls(async_db) -> N
     await async_db.commit()
 
     # When: listing controls for the policy
-    controls = await list_controls_for_policy(policy.id, async_db)
+    controls = await ControlService(async_db).list_controls_for_policy(policy.id)
 
     # Then: only active controls are returned
     assert [control.id for control in controls] == [active_control.id]
@@ -168,7 +166,7 @@ async def test_list_controls_for_agent_returns_controls(async_db) -> None:
     await async_db.commit()
 
     # When: listing controls for the agent
-    controls = await list_controls_for_agent(agent.name, async_db)
+    controls = await ControlService(async_db).list_controls_for_agent(agent.name)
 
     # Then: both policy-derived and direct controls are returned
     assert len(controls) == 2
@@ -202,9 +200,8 @@ async def test_list_controls_for_agent_excludes_deleted_controls(async_db) -> No
     await async_db.commit()
 
     # When: listing controls for the agent
-    controls = await list_controls_for_agent(
+    controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
-        async_db,
         rendered_state="all",
         enabled_state="all",
     )
@@ -249,15 +246,14 @@ async def test_list_controls_for_agent_filters_by_rendered_and_enabled_state(asy
     await async_db.commit()
 
     # When: listing controls with the default active-only behavior
-    default_controls = await list_controls_for_agent(agent.name, async_db)
+    default_controls = await ControlService(async_db).list_controls_for_agent(agent.name)
 
     # Then: only rendered and enabled controls are returned
     assert {control.name for control in default_controls} == {active_control.name}
 
     # When: requesting disabled rendered controls
-    disabled_controls = await list_controls_for_agent(
+    disabled_controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
-        async_db,
         enabled_state="disabled",
     )
 
@@ -265,9 +261,8 @@ async def test_list_controls_for_agent_filters_by_rendered_and_enabled_state(asy
     assert {control.name for control in disabled_controls} == {disabled_control.name}
 
     # When: requesting unrendered controls
-    unrendered_controls = await list_controls_for_agent(
+    unrendered_controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
-        async_db,
         rendered_state="unrendered",
         enabled_state="all",
     )
@@ -276,9 +271,8 @@ async def test_list_controls_for_agent_filters_by_rendered_and_enabled_state(asy
     assert {control.name for control in unrendered_controls} == {unrendered_control.name}
 
     # When: requesting the full associated set
-    all_controls = await list_controls_for_agent(
+    all_controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
-        async_db,
         rendered_state="all",
         enabled_state="all",
     )
@@ -291,15 +285,115 @@ async def test_list_controls_for_agent_filters_by_rendered_and_enabled_state(asy
     }
 
     # When: requesting the impossible intersection of unrendered and enabled
-    impossible_controls = await list_controls_for_agent(
+    impossible_controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
-        async_db,
         rendered_state="unrendered",
         enabled_state="enabled",
     )
 
     # Then: the service returns an empty list
     assert impossible_controls == []
+
+
+@pytest.mark.asyncio
+async def test_list_active_control_counts_by_agent_deduplicates_and_filters_inactive(
+    async_db,
+) -> None:
+    # Given: an agent with overlapping policy/direct controls plus inactive controls
+    policy = Policy(name=f"policy-{uuid.uuid4()}")
+    agent = Agent(name=f"agent-{uuid.uuid4()}", data={})
+    shared_control = Control(name=f"shared-{uuid.uuid4()}", data=VALID_CONTROL_PAYLOAD)
+    policy_only_control = Control(name=f"policy-only-{uuid.uuid4()}", data=VALID_CONTROL_PAYLOAD)
+    disabled_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    disabled_payload["enabled"] = False
+    disabled_control = Control(name=f"disabled-{uuid.uuid4()}", data=disabled_payload)
+    deleted_control = Control(
+        name=f"deleted-{uuid.uuid4()}",
+        data=VALID_CONTROL_PAYLOAD,
+        deleted_at=dt.datetime.now(dt.UTC),
+    )
+    async_db.add_all(
+        [
+            policy,
+            agent,
+            shared_control,
+            policy_only_control,
+            disabled_control,
+            deleted_control,
+        ]
+    )
+    await async_db.flush()
+
+    await async_db.execute(
+        insert(agent_policies).values({"agent_name": agent.name, "policy_id": policy.id})
+    )
+    await async_db.execute(
+        insert(policy_controls).values(
+            [
+                {"policy_id": policy.id, "control_id": shared_control.id},
+                {"policy_id": policy.id, "control_id": policy_only_control.id},
+                {"policy_id": policy.id, "control_id": deleted_control.id},
+            ]
+        )
+    )
+    await async_db.execute(
+        insert(agent_controls).values(
+            [
+                {"agent_name": agent.name, "control_id": shared_control.id},
+                {"agent_name": agent.name, "control_id": disabled_control.id},
+            ]
+        )
+    )
+    await async_db.commit()
+
+    # When: counting active controls for the agent
+    counts = await ControlService(async_db).list_active_control_counts_by_agent([agent.name])
+
+    # Then: active controls are deduplicated and inactive controls are excluded
+    assert counts == {agent.name: 2}
+
+
+@pytest.mark.asyncio
+async def test_remove_control_from_agent_reports_policy_inheritance(async_db) -> None:
+    # Given: a control linked both directly and through an assigned policy
+    policy = Policy(name=f"policy-{uuid.uuid4()}")
+    agent = Agent(name=f"agent-{uuid.uuid4()}", data={})
+    control = Control(name=f"control-{uuid.uuid4()}", data=VALID_CONTROL_PAYLOAD)
+    async_db.add_all([policy, agent, control])
+    await async_db.flush()
+
+    await async_db.execute(
+        insert(agent_policies).values({"agent_name": agent.name, "policy_id": policy.id})
+    )
+    await async_db.execute(
+        insert(policy_controls).values({"policy_id": policy.id, "control_id": control.id})
+    )
+    await async_db.execute(
+        insert(agent_controls).values({"agent_name": agent.name, "control_id": control.id})
+    )
+    await async_db.commit()
+
+    service = ControlService(async_db)
+
+    # When: removing the direct association
+    first_result = await service.remove_control_from_agent(
+        agent_name=agent.name,
+        control_id=control.id,
+    )
+
+    # Then: the direct link is removed but the control is still active via policy inheritance
+    assert first_result.removed_direct_association is True
+    assert first_result.control_still_active is True
+
+    # When: removing it again without a direct association
+    second_result = await service.remove_control_from_agent(
+        agent_name=agent.name,
+        control_id=control.id,
+    )
+
+    # Then: the service reports that only the inherited policy link remains
+    assert second_result.removed_direct_association is False
+    assert second_result.control_still_active is True
 
 
 @pytest.mark.asyncio
@@ -324,7 +418,7 @@ async def test_list_controls_for_agent_corrupted_data_raises(async_db) -> None:
 
     # When: listing controls for the agent
     with pytest.raises(APIValidationError) as exc_info:
-        await list_controls_for_agent(agent.name, async_db)
+        await ControlService(async_db).list_controls_for_agent(agent.name)
 
     # Then: corrupted data error is raised
     assert exc_info.value.error_code == ErrorCode.CORRUPTED_DATA
@@ -348,9 +442,8 @@ async def test_list_controls_for_agent_corrupted_unrendered_data_raises(async_db
 
     # When: listing active controls, which would normally exclude unrendered drafts
     with pytest.raises(APIValidationError) as exc_info:
-        await list_controls_for_agent(
+        await ControlService(async_db).list_controls_for_agent(
             agent.name,
-            async_db,
             rendered_state="rendered",
             enabled_state="enabled",
         )
