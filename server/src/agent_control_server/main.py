@@ -171,9 +171,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if observability_settings.enabled and hasattr(app.state, "event_store"):
         logger.info("Shutting down observability components...")
         sink = getattr(app.state, "event_sink", None)
-        if sink is not None and sink is not app.state.event_store:
+        if sink is not None:
             await _shutdown_observability_sink(sink)
-        await app.state.event_store.close()
+        if sink is None or sink is not app.state.event_store:
+            await app.state.event_store.close()
         logger.info("EventStore closed")
 
 

@@ -816,6 +816,8 @@ _named_event_sink_factories: ControlEventSinkFactoryRegistry[ControlEventSink] =
 _configured_named_event_sink: ControlEventSink | None = None
 _configured_named_event_sink_selection: ControlEventSinkSelection | None = None
 _configured_named_event_sink_lock = threading.Lock()
+_used_custom_event_sinks: list[ControlEventSink] = []
+_used_custom_event_sinks_lock = threading.Lock()
 
 
 class _BatcherControlEventSink(BaseControlEventSink):
@@ -906,6 +908,14 @@ def get_registered_control_event_sink_factory_names() -> tuple[str, ...]:
     return _named_event_sink_factories.registered_names()
 
 
+def _remember_custom_control_event_sinks(sinks: Sequence[ControlEventSink]) -> None:
+    """Track custom sink instances that should be cleaned up on shutdown."""
+    with _used_custom_event_sinks_lock:
+        for sink in sinks:
+            if not any(remembered_sink is sink for remembered_sink in _used_custom_event_sinks):
+                _used_custom_event_sinks.append(sink)
+
+
 def _get_sink_selection() -> ControlEventSinkSelection:
     """Build the current sink-selection model from SDK settings."""
     settings = get_settings()
@@ -920,6 +930,8 @@ def _get_or_create_named_control_event_sink(
 ) -> ControlEventSink | None:
     """Resolve and cache a named configured sink."""
     global _configured_named_event_sink, _configured_named_event_sink_selection
+
+    previous_sink: ControlEventSink | None = None
 
     with _configured_named_event_sink_lock:
         if (
@@ -941,9 +953,15 @@ def _get_or_create_named_control_event_sink(
             )
             return None
 
+        if _configured_named_event_sink is not None and _configured_named_event_sink is not sink:
+            previous_sink = _configured_named_event_sink
         _configured_named_event_sink = sink
         _configured_named_event_sink_selection = selection.model_copy(deep=True)
-        return sink
+
+    if previous_sink is not None:
+        _shutdown_custom_control_event_sink(previous_sink)
+
+    return sink
 
 
 def _get_active_control_event_sinks() -> tuple[ControlEventSink, ...]:
@@ -960,10 +978,15 @@ def _get_active_control_event_sinks() -> tuple[ControlEventSink, ...]:
     if selection.name == DEFAULT_CONTROL_EVENT_SINK_NAME:
         return (_event_sink,) if _event_sink is not None else ()
     if selection.name == REGISTERED_CONTROL_EVENT_SINK_NAME:
-        return get_registered_control_event_sinks()
+        sinks = get_registered_control_event_sinks()
+        _remember_custom_control_event_sinks(sinks)
+        return sinks
 
     named_sink = _get_or_create_named_control_event_sink(selection)
-    return (named_sink,) if named_sink is not None else ()
+    if named_sink is None:
+        return ()
+    _remember_custom_control_event_sinks((named_sink,))
+    return (named_sink,)
 
 
 def _shutdown_built_in_event_sink() -> None:
@@ -1006,24 +1029,8 @@ def _shutdown_custom_control_event_sink(sink: ControlEventSink) -> None:
 
 def _get_custom_control_event_sinks_to_shutdown() -> tuple[ControlEventSink, ...]:
     """Collect custom sink instances that should be cleaned up on shutdown."""
-    sinks: list[ControlEventSink] = []
-    seen_ids: set[int] = set()
-
-    if get_settings().observability_sink_name == REGISTERED_CONTROL_EVENT_SINK_NAME:
-        for sink in get_registered_control_event_sinks():
-            sink_id = id(sink)
-            if sink_id not in seen_ids:
-                seen_ids.add(sink_id)
-                sinks.append(sink)
-
-    with _configured_named_event_sink_lock:
-        if _configured_named_event_sink is not None:
-            sink_id = id(_configured_named_event_sink)
-            if sink_id not in seen_ids:
-                seen_ids.add(sink_id)
-                sinks.append(_configured_named_event_sink)
-
-    return tuple(sinks)
+    with _used_custom_event_sinks_lock:
+        return tuple(_used_custom_event_sinks)
 
 
 def init_observability(
@@ -1146,6 +1153,8 @@ def sync_shutdown_observability() -> None:
     with _configured_named_event_sink_lock:
         _configured_named_event_sink = None
         _configured_named_event_sink_selection = None
+    with _used_custom_event_sinks_lock:
+        _used_custom_event_sinks.clear()
 
 
 async def shutdown_observability() -> None:

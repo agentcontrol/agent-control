@@ -10,13 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from agent_control_models import ControlExecutionEvent
-from agent_control_telemetry import (
-    DEFAULT_CONTROL_EVENT_SINK_NAME,
-    REGISTERED_CONTROL_EVENT_SINK_NAME,
-)
-from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
-
 from agent_control.observability import (
     EventBatcher,
     add_event,
@@ -36,6 +29,12 @@ from agent_control.observability import (
     write_events,
 )
 from agent_control.settings import SDKSettings, configure_settings, get_settings
+from agent_control_models import ControlExecutionEvent
+from agent_control_telemetry import (
+    DEFAULT_CONTROL_EVENT_SINK_NAME,
+    REGISTERED_CONTROL_EVENT_SINK_NAME,
+)
+from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
 
 
 def create_mock_event():
@@ -114,6 +113,8 @@ def reset_observability_state() -> None:
         observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME,
         observability_sink_config={},
     )
+    with obs._used_custom_event_sinks_lock:
+        obs._used_custom_event_sinks.clear()
     with obs._external_event_sinks_lock:
         obs._external_event_sinks.clear()
     for name in obs.get_registered_control_event_sink_factory_names():
@@ -1251,6 +1252,7 @@ class TestShutdownObservability:
         register_control_event_sink(sync_sink)
         register_control_event_sink(async_sink)
         configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
+        assert add_event(create_mock_event()) is True
 
         sync_shutdown_observability()
 
@@ -1266,6 +1268,36 @@ class TestShutdownObservability:
 
         assert add_event(create_mock_event()) is True
 
+        sync_shutdown_observability()
+
+        assert sink.flush_calls == 1
+        assert sink.close_calls == 1
+
+    def test_switching_named_sink_closes_previous_cached_sink(self):
+        first_sink = AsyncLifecycleRecordingSink()
+        second_sink = AsyncLifecycleRecordingSink()
+        register_control_event_sink_factory("first", lambda config: first_sink)
+        register_control_event_sink_factory("second", lambda config: second_sink)
+        configure_settings(observability_sink_name="first", observability_sink_config={"x": 1})
+
+        assert add_event(create_mock_event()) is True
+
+        configure_settings(observability_sink_name="second", observability_sink_config={"x": 2})
+
+        assert add_event(create_mock_event()) is True
+        assert first_sink.flush_calls == 1
+        assert first_sink.close_calls == 1
+        assert second_sink.flush_calls == 0
+        assert second_sink.close_calls == 0
+
+    def test_sync_shutdown_closes_registered_sinks_after_switching_back_to_default(self):
+        sink = AsyncLifecycleRecordingSink()
+        register_control_event_sink(sink)
+        configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
+
+        assert add_event(create_mock_event()) is True
+
+        configure_settings(observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME)
         sync_shutdown_observability()
 
         assert sink.flush_calls == 1
