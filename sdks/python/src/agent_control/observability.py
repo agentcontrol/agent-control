@@ -50,7 +50,7 @@ import inspect
 import logging
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -1006,7 +1006,7 @@ def _shutdown_custom_control_event_sink(sink: ControlEventSink) -> None:
         try:
             result = flush()
             if inspect.isawaitable(result):
-                asyncio.run(result)
+                asyncio.run(_run_awaitable_during_shutdown(result))
         except Exception:
             logger.warning("Control-event sink flush failed during shutdown", exc_info=True)
 
@@ -1017,7 +1017,7 @@ def _shutdown_custom_control_event_sink(sink: ControlEventSink) -> None:
         try:
             result = callback()
             if inspect.isawaitable(result):
-                asyncio.run(result)
+                asyncio.run(_run_awaitable_during_shutdown(result))
         except Exception:
             logger.warning(
                 "Control-event sink %s failed during shutdown",
@@ -1025,6 +1025,11 @@ def _shutdown_custom_control_event_sink(sink: ControlEventSink) -> None:
                 exc_info=True,
             )
         return
+
+
+async def _run_awaitable_during_shutdown(result: Awaitable[Any]) -> None:
+    """Await a sink lifecycle callback through a concrete coroutine."""
+    await result
 
 
 def _get_custom_control_event_sinks_to_shutdown() -> tuple[ControlEventSink, ...]:
