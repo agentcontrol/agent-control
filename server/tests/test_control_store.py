@@ -325,7 +325,7 @@ def test_list_published_controls_uses_cursor_pagination_and_name_filter(
 
     assert [item["id"] for item in first_body["controls"]] == [gamma_id, beta_id]
     assert first_body["pagination"]["has_more"] is True
-    assert first_body["pagination"]["next_cursor"] == str(beta_id)
+    assert first_body["pagination"]["next_cursor"] is not None
 
     second_page = client.get(
         "/api/v1/control-stores/default/controls",
@@ -377,7 +377,9 @@ def test_list_published_controls_filters_by_tag_and_enabled(client: TestClient) 
     assert [item["id"] for item in disabled_filtered.json()["controls"]] == [disabled_id]
 
 
-def test_list_published_controls_rejects_stale_cursor(client: TestClient) -> None:
+def test_list_published_controls_cursor_survives_unpublished_cursor_row(
+    client: TestClient,
+) -> None:
     _ensure_default_store()
     first_id, _ = _create_control(client, name="first-control")
     second_id, _ = _create_control(client, name="second-control")
@@ -391,17 +393,66 @@ def test_list_published_controls_rejects_stale_cursor(client: TestClient) -> Non
 
     first_page = client.get("/api/v1/control-stores/default/controls", params={"limit": 1})
     assert first_page.status_code == 200, first_page.text
-    stale_cursor = first_page.json()["pagination"]["next_cursor"]
+    next_cursor = first_page.json()["pagination"]["next_cursor"]
 
     unpublish_response = client.delete(f"/api/v1/control-stores/default/controls/{second_id}")
     assert unpublish_response.status_code == 200, unpublish_response.text
 
-    stale_page = client.get(
+    next_page = client.get(
         "/api/v1/control-stores/default/controls",
-        params={"limit": 1, "cursor": stale_cursor},
+        params={"limit": 1, "cursor": next_cursor},
     )
-    assert stale_page.status_code == 422
-    assert stale_page.json()["error_code"] == "VALIDATION_ERROR"
+    assert next_page.status_code == 200, next_page.text
+    assert [item["id"] for item in next_page.json()["controls"]] == [first_id]
+
+
+def test_list_published_controls_cursor_survives_unpublish_and_republish(
+    client: TestClient,
+) -> None:
+    _ensure_default_store()
+    alpha_id, _ = _create_control(client, name="AlphaControl")
+    beta_id, _ = _create_control(client, name="BetaDetector")
+    gamma_id, _ = _create_control(client, name="GammaControl")
+
+    for control_id in (alpha_id, beta_id, gamma_id):
+        response = client.post(f"/api/v1/control-stores/default/controls/{control_id}")
+        assert response.status_code == 200, response.text
+
+    _set_published_at(alpha_id, dt.datetime(2026, 4, 15, 10, 0, tzinfo=dt.UTC))
+    _set_published_at(beta_id, dt.datetime(2026, 4, 15, 11, 0, tzinfo=dt.UTC))
+    _set_published_at(gamma_id, dt.datetime(2026, 4, 15, 12, 0, tzinfo=dt.UTC))
+
+    first_page = client.get("/api/v1/control-stores/default/controls", params={"limit": 2})
+    assert first_page.status_code == 200, first_page.text
+    first_body = first_page.json()
+    assert [item["id"] for item in first_body["controls"]] == [gamma_id, beta_id]
+
+    unpublish_response = client.delete(f"/api/v1/control-stores/default/controls/{beta_id}")
+    assert unpublish_response.status_code == 200, unpublish_response.text
+    republish_response = client.post(f"/api/v1/control-stores/default/controls/{beta_id}")
+    assert republish_response.status_code == 200, republish_response.text
+    _set_published_at(beta_id, dt.datetime(2026, 4, 15, 13, 0, tzinfo=dt.UTC))
+
+    next_page = client.get(
+        "/api/v1/control-stores/default/controls",
+        params={"limit": 2, "cursor": first_body["pagination"]["next_cursor"]},
+    )
+    assert next_page.status_code == 200, next_page.text
+    assert [item["id"] for item in next_page.json()["controls"]] == [alpha_id]
+
+
+def test_list_published_controls_rejects_malformed_cursor(client: TestClient) -> None:
+    _ensure_default_store()
+    control_id, _ = _create_control(client, name="cursor-target")
+    response = client.post(f"/api/v1/control-stores/default/controls/{control_id}")
+    assert response.status_code == 200, response.text
+
+    malformed_page = client.get(
+        "/api/v1/control-stores/default/controls",
+        params={"limit": 1, "cursor": "not-a-valid-cursor"},
+    )
+    assert malformed_page.status_code == 422
+    assert malformed_page.json()["error_code"] == "VALIDATION_ERROR"
 
 
 def test_list_published_controls_uses_control_id_tie_breaker_for_equal_timestamps(
@@ -427,7 +478,7 @@ def test_list_published_controls_uses_control_id_tie_breaker_for_equal_timestamp
     assert first_page.status_code == 200, first_page.text
     first_body = first_page.json()
     assert [item["id"] for item in first_body["controls"]] == expected_order[:2]
-    assert first_body["pagination"]["next_cursor"] == str(expected_order[1])
+    assert first_body["pagination"]["next_cursor"] is not None
 
     # When: requesting the next page from that cursor
     second_page = client.get(
@@ -962,6 +1013,8 @@ def test_clone_control_integrity_name_conflict_returns_conflict(
     name_lookup_result.first.return_value = None
     source_version_result = MagicMock()
     source_version_result.scalar_one.return_value = 1
+    insert_result = MagicMock()
+    insert_result.scalar_one.return_value = 201
     lock_result = MagicMock()
     clone_version_result = MagicMock()
     clone_version_result.scalar_one.return_value = 1
@@ -971,6 +1024,7 @@ def test_clone_control_integrity_name_conflict_returns_conflict(
             control_result,
             name_lookup_result,
             source_version_result,
+            insert_result,
             lock_result,
             clone_version_result,
         ]
@@ -1016,6 +1070,8 @@ def test_clone_control_without_name_retries_generated_name_conflict(
     first_name_lookup_result.first.return_value = None
     first_source_version_result = MagicMock()
     first_source_version_result.scalar_one.return_value = 3
+    first_insert_result = MagicMock()
+    first_insert_result.scalar_one.return_value = 201
     first_lock_result = MagicMock()
     first_clone_version_result = MagicMock()
     first_clone_version_result.scalar_one.return_value = 1
@@ -1027,20 +1083,11 @@ def test_clone_control_without_name_retries_generated_name_conflict(
     retry_second_name_lookup_result.first.return_value = None
     retry_source_version_result = MagicMock()
     retry_source_version_result.scalar_one.return_value = 3
+    retry_insert_result = MagicMock()
+    retry_insert_result.scalar_one.return_value = 202
     retry_lock_result = MagicMock()
     retry_clone_version_result = MagicMock()
     retry_clone_version_result.scalar_one.return_value = 1
-
-    added_controls: list[Control] = []
-
-    def add_side_effect(instance: object) -> None:
-        if isinstance(instance, Control):
-            added_controls.append(instance)
-
-    async def flush_side_effect() -> None:
-        for index, control in enumerate(added_controls, start=1):
-            if control.id is None:
-                control.id = 200 + index
 
     mock_session = AsyncMock(spec=AsyncSession)
     mock_session.execute = AsyncMock(
@@ -1048,18 +1095,20 @@ def test_clone_control_without_name_retries_generated_name_conflict(
             control_result,
             first_name_lookup_result,
             first_source_version_result,
+            first_insert_result,
             first_lock_result,
             first_clone_version_result,
             retry_control_result,
             retry_first_name_lookup_result,
             retry_second_name_lookup_result,
             retry_source_version_result,
+            retry_insert_result,
             retry_lock_result,
             retry_clone_version_result,
         ]
     )
-    mock_session.add.side_effect = add_side_effect
-    mock_session.flush.side_effect = flush_side_effect
+    mock_session.add = MagicMock()
+    mock_session.flush = AsyncMock()
     mock_session.commit.side_effect = [
         _make_integrity_error("idx_controls_name_active"),
         None,
@@ -1100,6 +1149,8 @@ def test_clone_control_non_name_integrity_error_returns_500(
     name_lookup_result.first.return_value = None
     source_version_result = MagicMock()
     source_version_result.scalar_one.return_value = 1
+    insert_result = MagicMock()
+    insert_result.scalar_one.return_value = 201
     lock_result = MagicMock()
     clone_version_result = MagicMock()
     clone_version_result.scalar_one.return_value = 1
@@ -1109,6 +1160,7 @@ def test_clone_control_non_name_integrity_error_returns_500(
             control_result,
             name_lookup_result,
             source_version_result,
+            insert_result,
             lock_result,
             clone_version_result,
         ]

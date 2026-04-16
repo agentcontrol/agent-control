@@ -247,6 +247,13 @@ def test_pre_phase3_runtime_control_endpoints_remain_usable_during_rollout(
             headers={"X-API-Key": TEST_ADMIN_API_KEY},
         ) as client:
             # When: using existing runtime endpoints against legacy rows before store tables exist
+            create_response = client.put(
+                "/api/v1/controls",
+                json={
+                    "name": "pre-phase3-created-control",
+                    "data": VALID_CONTROL_PAYLOAD,
+                },
+            )
             policy_assoc = client.post(
                 f"/api/v1/policies/{policy_id}/controls/{policy_control_id}"
             )
@@ -261,6 +268,7 @@ def test_pre_phase3_runtime_control_endpoints_remain_usable_during_rollout(
 
             # Then: the legacy runtime endpoints and read paths still succeed
             # without control-store tables
+            assert create_response.status_code == 200, create_response.text
             assert policy_assoc.status_code == 200, policy_assoc.text
             assert agent_assoc.status_code == 200, agent_assoc.text
             assert controls_response.status_code == 200, controls_response.text
@@ -269,6 +277,7 @@ def test_pre_phase3_runtime_control_endpoints_remain_usable_during_rollout(
             assert {
                 control["name"] for control in controls_response.json()["controls"]
             } >= {
+                "pre-phase3-created-control",
                 "pre-phase3-policy-control",
                 "pre-phase3-agent-control",
             }

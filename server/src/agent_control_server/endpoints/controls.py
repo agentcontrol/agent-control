@@ -1062,9 +1062,9 @@ async def unpublish_control(
     response_description="Paginated published control summaries",
 )
 async def list_published_controls(
-    cursor: int | None = Query(
+    cursor: str | None = Query(
         None,
-        description="Control ID cursor from the previous page",
+        description="Opaque cursor from the previous page",
     ),
     limit: int = Query(_DEFAULT_PAGINATION_LIMIT, ge=1, le=_MAX_PAGINATION_LIMIT),
     name: str | None = Query(None, description="Filter by name (partial, case-insensitive)"),

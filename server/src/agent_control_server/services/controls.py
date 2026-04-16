@@ -20,6 +20,7 @@ from sqlalchemy import (
     and_,
     delete,
     func,
+    insert,
     literal,
     or_,
     select,
@@ -151,16 +152,14 @@ class ControlService:
         data: dict[str, Any],
         cloned_control_id: int | None = None,
     ) -> Control:
-        """Create a new pending control row."""
+        """Create a pending control object to be inserted with its first version."""
         control_kwargs: dict[str, Any] = {
             "name": name,
             "data": deepcopy(data),
         }
         if cloned_control_id is not None:
             control_kwargs["cloned_control_id"] = cloned_control_id
-        control = Control(**control_kwargs)
-        self._db.add(control)
-        return control
+        return Control(**control_kwargs)
 
     @staticmethod
     def rename_control(control: Control, *, name: str) -> None:
@@ -342,6 +341,8 @@ class ControlService:
     ) -> ControlVersion:
         """Append a new immutable version row for the current control state."""
         await self._db.flush()
+        if control.id is None:
+            await self._insert_control_row(control)
         await self._lock_control_row(control.id)
         cloned_control_id = await self._get_snapshot_cloned_control_id(control)
 
@@ -581,7 +582,7 @@ class ControlService:
     async def list_published_controls_page(
         self,
         *,
-        cursor: int | None,
+        cursor: str | None,
         limit: int,
         name: str | None,
         enabled: bool | None,
@@ -609,37 +610,13 @@ class ControlService:
         )
 
         if cursor is not None:
-            cursor_result = await self._db.execute(
-                select(control_stores_controls.c.published_at).where(
-                    control_stores_controls.c.store_id == default_store_id,
-                    control_stores_controls.c.control_id == cursor,
-                )
-            )
-            cursor_published_at = cast(dt.datetime | None, cursor_result.scalar_one_or_none())
-            if cursor_published_at is None:
-                raise APIValidationError(
-                    error_code=ErrorCode.VALIDATION_ERROR,
-                    detail="Published-control cursor is invalid or expired",
-                    resource="ControlStore",
-                    errors=[
-                        ValidationErrorItem(
-                            resource="ControlStore",
-                            field="cursor",
-                            code="invalid_cursor",
-                            message=(
-                                "Cursor no longer points to a published control. "
-                                "Restart pagination from the first page."
-                            ),
-                            value=cursor,
-                        )
-                    ],
-                )
+            cursor_published_at, cursor_control_id = _parse_published_control_cursor(cursor)
             query = query.where(
                 or_(
                     control_stores_controls.c.published_at < cursor_published_at,
                     and_(
                         control_stores_controls.c.published_at == cursor_published_at,
-                        control_stores_controls.c.control_id < cursor,
+                        control_stores_controls.c.control_id < cursor_control_id,
                     ),
                 )
             )
@@ -678,7 +655,10 @@ class ControlService:
 
         next_cursor: str | None = None
         if has_more and controls:
-            next_cursor = str(controls[-1].control.id)
+            next_cursor = _build_published_control_cursor(
+                controls[-1].published_at,
+                controls[-1].control.id,
+            )
 
         return PublishedControlPage(
             controls=controls,
@@ -921,6 +901,23 @@ class ControlService:
             select(Control.id).where(Control.id == control_id).with_for_update()
         )
 
+    async def _insert_control_row(self, control: Control) -> None:
+        """Insert a new control row without requiring post-Phase-3 columns."""
+        insert_values: dict[str, Any] = {
+            "name": control.name,
+            "data": deepcopy(control.data),
+        }
+        if control.deleted_at is not None:
+            insert_values["deleted_at"] = control.deleted_at
+        cloned_control_id = cast(int | None, control.__dict__.get("cloned_control_id"))
+        if cloned_control_id is not None:
+            insert_values["cloned_control_id"] = cloned_control_id
+
+        result = await self._db.execute(
+            insert(Control.__table__).values(**insert_values).returning(Control.id)
+        )
+        control.id = cast(int, result.scalar_one())
+
     async def _get_snapshot_cloned_control_id(self, control: Control) -> int | None:
         """Load clone provenance for version snapshots with rollout-safe fallback."""
         if "cloned_control_id" in control.__dict__:
@@ -1078,6 +1075,35 @@ def _is_unrendered_template_payload(data: object) -> bool:
         and data.get("template") is not None
         and data.get("condition") is None
     )
+
+
+def _build_published_control_cursor(published_at: dt.datetime, control_id: int) -> str:
+    """Encode the published-control sort key into an opaque cursor string."""
+    return f"{published_at.isoformat()}::{control_id}"
+
+
+def _parse_published_control_cursor(cursor: str) -> tuple[dt.datetime, int]:
+    """Decode a published-control cursor or raise the standard invalid-cursor error."""
+    try:
+        published_at_raw, control_id_raw = cursor.rsplit("::", 1)
+        published_at = dt.datetime.fromisoformat(published_at_raw)
+        control_id = int(control_id_raw)
+    except (TypeError, ValueError) as exc:
+        raise APIValidationError(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Published-control cursor is invalid",
+            resource="ControlStore",
+            errors=[
+                ValidationErrorItem(
+                    resource="ControlStore",
+                    field="cursor",
+                    code="invalid_cursor",
+                    message="Cursor must come from a previous published-controls response.",
+                    value=cursor,
+                )
+            ],
+        ) from exc
+    return published_at, control_id
 
 
 def _parse_unrendered_template_or_api_error(control: Control) -> UnrenderedTemplateControl:
