@@ -39,6 +39,11 @@ Repository = "https://github.com/yourusername/agent-control"
 strands-agents = ["strands-agents>=1.26.0"]
 google-adk = ["google-adk>=1.0.0"]
 galileo = ["agent-control-evaluator-galileo>=3.0.0"]
+otel = [
+    "opentelemetry-api>=1.24.0",
+    "opentelemetry-sdk>=1.24.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.24.0",
+]
 
 [dependency-groups]
 dev = [

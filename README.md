@@ -185,6 +185,24 @@ events the SDK emits through its normal event-construction flow. The default
 SDK sink remains the OSS path to the Agent Control server. To use registered
 or named custom sinks, set `observability_sink_name` explicitly.
 
+The SDK also includes a built-in OpenTelemetry sink. Install the OTEL extra,
+select the `otel` sink, and configure the OTLP exporter through Agent Control
+settings or environment variables:
+
+```bash
+uv pip install "agent-control-sdk[otel]"
+export AGENT_CONTROL_OBSERVABILITY_SINK_NAME=otel
+export AGENT_CONTROL_OTEL_ENABLED=true
+export AGENT_CONTROL_OTEL_ENDPOINT=http://localhost:4318/v1/traces
+export AGENT_CONTROL_OTEL_HEADERS='{"authorization":"Bearer demo-token"}'
+export AGENT_CONTROL_OTEL_SERVICE_NAME=awesome-bot
+```
+
+If the `otel` sink is selected without an OTLP endpoint/exporter configured,
+the OTEL path stays inert and the default OSS SDK-to-server behavior still
+remains unchanged unless `observability_sink_name` is explicitly switched away
+from `default`.
+
 Next, create a control in Step 4, then run the setup and agent scripts in
 order to see blocking in action.
 

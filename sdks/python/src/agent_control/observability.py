@@ -28,6 +28,12 @@ Event Batching Usage:
 Configuration (Environment Variables):
     # Observability (event batching)
     AGENT_CONTROL_OBSERVABILITY_ENABLED: Enable observability (default: true)
+    AGENT_CONTROL_OBSERVABILITY_SINK_NAME: Selected control-event sink (default: default)
+    AGENT_CONTROL_OBSERVABILITY_SINK_CONFIG: JSON config for the selected sink
+    AGENT_CONTROL_OTEL_ENABLED: Enable the built-in OTEL sink (default: false)
+    AGENT_CONTROL_OTEL_ENDPOINT: OTLP HTTP endpoint for exported control-event spans
+    AGENT_CONTROL_OTEL_HEADERS: JSON object of OTLP exporter headers
+    AGENT_CONTROL_OTEL_SERVICE_NAME: OTEL service.name for emitted spans
     AGENT_CONTROL_BATCH_SIZE: Max events per batch (default: 100)
     AGENT_CONTROL_FLUSH_INTERVAL: Seconds between flushes (default: 5.0)
     AGENT_CONTROL_SHUTDOWN_JOIN_TIMEOUT: Seconds to wait for worker shutdown (default: 5.0)
@@ -74,6 +80,8 @@ from agent_control.settings import configure_settings, get_settings
 
 if TYPE_CHECKING:
     from agent_control_models import ControlExecutionEvent
+
+from .otel_sink import OTEL_CONTROL_EVENT_SINK_NAME, create_otel_control_event_sink
 
 # =============================================================================
 # Logger Setup - Standard Library Pattern
@@ -818,6 +826,17 @@ _configured_named_event_sink_selection: ControlEventSinkSelection | None = None
 _configured_named_event_sink_lock = threading.Lock()
 _used_custom_event_sinks: list[ControlEventSink] = []
 _used_custom_event_sinks_lock = threading.Lock()
+
+
+def _register_builtin_control_event_sink_factories() -> None:
+    """Ensure built-in named sink factories are available."""
+    _named_event_sink_factories.register(
+        OTEL_CONTROL_EVENT_SINK_NAME,
+        create_otel_control_event_sink,
+    )
+
+
+_register_builtin_control_event_sink_factories()
 
 
 class _BatcherControlEventSink(BaseControlEventSink):
