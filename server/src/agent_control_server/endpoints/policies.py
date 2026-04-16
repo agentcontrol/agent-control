@@ -1,4 +1,4 @@
-from agent_control_models.errors import ErrorCode
+from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AssocResponse,
     CreatePolicyRequest,
@@ -119,7 +119,27 @@ async def add_control_to_policy(
         )
 
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    if await control_service.is_control_published(control_id):
+        raise ConflictError(
+            error_code=ErrorCode.CONTROL_PUBLISHED,
+            detail=(
+                f"Control '{control.name}' is published in the Control Store and "
+                "cannot be attached directly to a policy"
+            ),
+            resource="Control",
+            resource_id=str(control_id),
+            hint="Clone the published control first, then attach the clone to the policy.",
+            errors=[
+                ValidationErrorItem(
+                    resource="Control",
+                    field="control_id",
+                    code="published_control_conflict",
+                    message="Published controls must be cloned before policy association.",
+                    value=control_id,
+                )
+            ],
+        )
 
     # Add association using INSERT ... ON CONFLICT DO NOTHING for idempotency
     try:

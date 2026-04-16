@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from agent_control_models.errors import ErrorCode
 from sqlalchemy import insert, select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -104,6 +105,14 @@ def _fetch_all_versions() -> list[ControlVersion]:
         return list(session.scalars(select(ControlVersion)).all())
 
 
+def _missing_store_schema_error() -> ProgrammingError:
+    return ProgrammingError(
+        "SELECT * FROM control_stores",
+        {},
+        Exception('relation "control_stores" does not exist'),
+    )
+
+
 @pytest.mark.asyncio
 async def test_create_version_locks_control_row_before_allocating_version_number() -> None:
     # Given: a control service with a mocked session
@@ -121,6 +130,7 @@ async def test_create_version_locks_control_row_before_allocating_version_number
         name=f"control-{uuid.uuid4()}",
         data=VALID_CONTROL_PAYLOAD,
         deleted_at=None,
+        cloned_control_id=None,
     )
 
     # When: creating a new version row
@@ -132,6 +142,29 @@ async def test_create_version_locks_control_row_before_allocating_version_number
 
     # And: the allocated version number comes from the subsequent query
     assert version.version_num == 4
+
+
+@pytest.mark.asyncio
+async def test_is_control_published_returns_false_when_store_schema_is_absent() -> None:
+    # Given: a pre-migration database session where control-store tables do not exist yet
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.execute = AsyncMock(side_effect=[_missing_store_schema_error()])
+
+    # When: checking whether a control is published
+    is_published = await ControlService(mock_session).is_control_published(123)
+
+    # Then: the compatibility guard treats it as unpublished
+    assert is_published is False
+
+
+@pytest.mark.asyncio
+async def test_remove_all_store_publications_noops_when_store_schema_is_absent() -> None:
+    # Given: a pre-migration database session where publication rows cannot exist yet
+    mock_session = AsyncMock(spec=AsyncSession)
+    mock_session.execute = AsyncMock(side_effect=[_missing_store_schema_error()])
+
+    # When/Then: removing publications does not raise
+    await ControlService(mock_session).remove_all_store_publications(123)
 
 
 @pytest.mark.asyncio

@@ -149,6 +149,37 @@ def test_delete_control_force_creates_deleted_version_row(client: TestClient) ->
     assert latest.snapshot["deleted_at"] is not None
 
 
+def test_cloned_control_versions_preserve_clone_provenance_after_update_and_delete(
+    client: TestClient,
+) -> None:
+    # Given: a cloned control with source provenance
+    source_id, source_name = _create_control(client)
+    clone_response = client.post(
+        f"/api/v1/controls/{source_id}/clone",
+        json={"name": f"{source_name}-clone"},
+    )
+    assert clone_response.status_code == 200, clone_response.text
+    clone_id = int(clone_response.json()["control_id"])
+
+    updated_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    updated_payload["description"] = "Clone-only update"
+
+    # When: updating and then deleting the cloned control
+    update_response = client.put(
+        f"/api/v1/controls/{clone_id}/data",
+        json={"data": updated_payload},
+    )
+    assert update_response.status_code == 200, update_response.text
+    delete_response = client.delete(f"/api/v1/controls/{clone_id}")
+    assert delete_response.status_code == 200, delete_response.text
+
+    # Then: every later version keeps the original clone provenance
+    versions = _fetch_versions(clone_id)
+    assert [version.version_num for version in versions] == [1, 2, 3]
+    assert [version.event_type for version in versions] == ["cloned", "updated", "deleted"]
+    assert all(version.snapshot["cloned_control_id"] == source_id for version in versions)
+
+
 def test_list_control_versions_paginates_newest_first_without_snapshot(
     client: TestClient,
 ) -> None:

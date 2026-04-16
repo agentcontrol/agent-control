@@ -1,10 +1,14 @@
 import datetime as dt
+from typing import cast
 
 from agent_control_engine import list_evaluators
 from agent_control_models import ControlDefinition, TemplateControlInput, UnrenderedTemplateControl
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentRef,
+    AssocResponse,
+    CloneControlRequest,
+    CloneControlResponse,
     ControlSummary,
     ControlVersionSummary,
     CreateControlRequest,
@@ -16,9 +20,11 @@ from agent_control_models.server import (
     GetControlVersionResponse,
     ListControlsResponse,
     ListControlVersionsResponse,
+    ListPublishedControlsResponse,
     PaginationInfo,
     PatchControlRequest,
     PatchControlResponse,
+    PublishedControlSummary,
     RenderControlTemplateRequest,
     RenderControlTemplateResponse,
     SetControlDataRequest,
@@ -30,7 +36,7 @@ from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import ValidationError
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
@@ -68,6 +74,7 @@ _SCHEMA_VALIDATION_FAILED_MESSAGE = "Config does not satisfy the evaluator schem
 
 router = APIRouter(prefix="/controls", tags=["controls"])
 template_router = APIRouter(prefix="/control-templates", tags=["controls"])
+store_router = APIRouter(prefix="/control-stores/default/controls", tags=["control-stores"])
 
 _logger = get_logger(__name__)
 
@@ -153,6 +160,93 @@ def _enabled_from_stored_payload(data: object) -> bool:
         return True
     raw_enabled = data.get("enabled", True)
     return raw_enabled if type(raw_enabled) is bool else True
+
+
+def _control_description_from_data(data: dict[str, object]) -> str | None:
+    """Return a human-friendly control description from stored JSON."""
+    template = data.get("template")
+    template_description = template.get("description") if isinstance(template, dict) else None
+    description = data.get("description")
+    return cast(str | None, description or template_description)
+
+
+def _control_scope_from_data(data: dict[str, object]) -> dict[str, object]:
+    """Return the stored scope object when present."""
+    raw_scope = data.get("scope")
+    return raw_scope if isinstance(raw_scope, dict) else {}
+
+
+def _build_control_summary(
+    control_id: int,
+    name: str,
+    data: dict[str, object],
+    *,
+    usage: AgentRef | None,
+    used_by_agents_count: int,
+) -> ControlSummary:
+    """Build the admin control-browse summary from stored JSON."""
+    scope = _control_scope_from_data(data)
+    return ControlSummary(
+        id=control_id,
+        name=name,
+        description=_control_description_from_data(data),
+        enabled=_enabled_from_stored_payload(data),
+        execution=cast(str | None, data.get("execution")),
+        step_types=cast(list[str] | None, scope.get("step_types")),
+        stages=cast(list[str] | None, scope.get("stages")),
+        tags=cast(list[str], data.get("tags", [])),
+        template_backed="template" in data,
+        template_rendered=("condition" in data if "template" in data else None),
+        used_by_agent=usage,
+        used_by_agents_count=used_by_agents_count,
+    )
+
+
+def _build_published_control_summary(
+    control_id: int,
+    name: str,
+    data: dict[str, object],
+    *,
+    published_at: dt.datetime,
+) -> PublishedControlSummary:
+    """Build the published-store summary from stored JSON."""
+    scope = _control_scope_from_data(data)
+    return PublishedControlSummary(
+        id=control_id,
+        name=name,
+        description=_control_description_from_data(data),
+        enabled=_enabled_from_stored_payload(data),
+        execution=cast(str | None, data.get("execution")),
+        step_types=cast(list[str] | None, scope.get("step_types")),
+        stages=cast(list[str] | None, scope.get("stages")),
+        tags=cast(list[str], data.get("tags", [])),
+        template_backed="template" in data,
+        template_rendered=("condition" in data if "template" in data else None),
+        published_at=published_at.isoformat(),
+    )
+
+
+def _published_control_conflict(control_id: int, *, action: str) -> ConflictError:
+    """Return the standard conflict for published controls on runtime paths."""
+    return ConflictError(
+        error_code=ErrorCode.CONTROL_PUBLISHED,
+        detail=(
+            f"Control with ID '{control_id}' is published in the Control Store and "
+            f"cannot be used for runtime {action}"
+        ),
+        resource="Control",
+        resource_id=str(control_id),
+        hint="Clone the published control first, then associate the clone.",
+        errors=[
+            ValidationErrorItem(
+                resource="Control",
+                field="control_id",
+                code="published_control_conflict",
+                message="Published controls must be cloned before runtime association.",
+                value=control_id,
+            )
+        ],
+    )
 
 
 def _template_backed_raw_update_conflict(control_id: int) -> ConflictError:
@@ -839,28 +933,14 @@ async def list_controls(
     # Build summaries (filtering already done at DB level)
     summaries: list[ControlSummary] = []
     for ctrl in page.controls:
-        # Extract summary fields from JSONB data
         data = ctrl.data or {}
-        scope = data.get("scope") or {}
         usage = usage_by_control_id.get(ctrl.id)
         summaries.append(
-            ControlSummary(
-                id=ctrl.id,
-                name=ctrl.name,
-                description=(
-                    data.get("description")
-                    or (data.get("template") or {}).get("description")
-                ),
-                enabled=data.get("enabled", True),
-                execution=data.get("execution"),
-                step_types=scope.get("step_types"),
-                stages=scope.get("stages"),
-                tags=data.get("tags", []),
-                template_backed="template" in data,
-                template_rendered=(
-                    "condition" in data if "template" in data else None
-                ),
-                used_by_agent=(
+            _build_control_summary(
+                ctrl.id,
+                ctrl.name,
+                data,
+                usage=(
                     AgentRef(agent_name=usage.representative_agent_name)
                     if usage is not None and usage.representative_agent_name is not None
                     else None
@@ -877,6 +957,271 @@ async def list_controls(
             next_cursor=page.next_cursor,
             has_more=page.has_more,
         ),
+    )
+
+
+@store_router.post(
+    "/{control_id}",
+    dependencies=[Depends(require_admin_key)],
+    response_model=AssocResponse,
+    summary="Publish a control to the default store",
+    response_description="Success confirmation",
+)
+async def publish_control(
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+) -> AssocResponse:
+    """Publish an active, valid, runtime-unassociated control to the default store."""
+    control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    control_name = control.name
+    _parse_stored_control_data(
+        control.data,
+        control_name=control_name,
+        control_id=control.id,
+    )
+
+    associations = await control_service.list_control_associations(control_id)
+    if associations.policy_ids or associations.agent_names:
+        raise ConflictError(
+            error_code=ErrorCode.CONTROL_IN_USE,
+            detail=(
+                f"Control '{control.name}' is already associated with "
+                f"{len(associations.policy_ids)} policy/policies and "
+                f"{len(associations.agent_names)} agent(s)"
+            ),
+            resource="Control",
+            resource_id=str(control_id),
+            hint=(
+                "Published controls must not have runtime associations. "
+                "Clone them for runtime use."
+            ),
+        )
+
+    try:
+        await control_service.publish_control(control_id)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        _logger.error(
+            "Failed to publish control '%s' (%s) to the default store",
+            control_name,
+            control_id,
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail=f"Failed to publish control '{control_name}': database error",
+            resource="Control",
+            operation="publish",
+        )
+
+    return AssocResponse(success=True)
+
+
+@store_router.delete(
+    "/{control_id}",
+    dependencies=[Depends(require_admin_key)],
+    response_model=AssocResponse,
+    summary="Unpublish a control from the default store",
+    response_description="Success confirmation",
+)
+async def unpublish_control(
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+) -> AssocResponse:
+    """Remove a control from the default store idempotently."""
+    control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    control_name = control.name
+
+    try:
+        await control_service.unpublish_control(control_id)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        _logger.error(
+            "Failed to unpublish control '%s' (%s) from the default store",
+            control_name,
+            control_id,
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail=f"Failed to unpublish control '{control_name}': database error",
+            resource="Control",
+            operation="unpublish",
+        )
+
+    return AssocResponse(success=True)
+
+
+@store_router.get(
+    "",
+    dependencies=[Depends(require_admin_key)],
+    response_model=ListPublishedControlsResponse,
+    summary="Browse controls published in the default store",
+    response_description="Paginated published control summaries",
+)
+async def list_published_controls(
+    cursor: str | None = Query(
+        None,
+        description="Opaque cursor from the previous page",
+    ),
+    limit: int = Query(_DEFAULT_PAGINATION_LIMIT, ge=1, le=_MAX_PAGINATION_LIMIT),
+    name: str | None = Query(None, description="Filter by name (partial, case-insensitive)"),
+    enabled: bool | None = Query(None, description="Filter by enabled status"),
+    tag: str | None = Query(None, description="Filter by tag"),
+    db: AsyncSession = Depends(get_async_db),
+) -> ListPublishedControlsResponse:
+    """List default-store controls ordered by publication time descending."""
+    try:
+        page = await ControlService(db).list_published_controls_page(
+            cursor=cursor,
+            limit=limit,
+            name=name,
+            enabled=enabled,
+            tag=tag,
+        )
+    except (OperationalError, ProgrammingError, RuntimeError):
+        _logger.error(
+            "Failed to list published controls from the default store",
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail="Failed to list published controls: database error",
+            resource="ControlStore",
+            operation="list",
+        )
+
+    return ListPublishedControlsResponse(
+        controls=[
+            _build_published_control_summary(
+                published.control.id,
+                published.control.name,
+                published.control.data,
+                published_at=published.published_at,
+            )
+            for published in page.controls
+        ],
+        pagination=PaginationInfo(
+            limit=limit,
+            total=page.total,
+            next_cursor=page.next_cursor,
+            has_more=page.has_more,
+        ),
+    )
+
+
+@router.post(
+    "/{control_id}/clone",
+    dependencies=[Depends(require_admin_key)],
+    response_model=CloneControlResponse,
+    summary="Clone a control",
+    response_description="Cloned control metadata",
+)
+async def clone_control(
+    control_id: int,
+    request: CloneControlRequest | None = None,
+    db: AsyncSession = Depends(get_async_db),
+) -> CloneControlResponse:
+    """Clone an active control into a new independent control with provenance."""
+    max_auto_name_retries = 5
+    control_service = ControlService(db)
+    source_control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    _parse_stored_control_data(
+        source_control.data,
+        control_name=source_control.name,
+        control_id=source_control.id,
+    )
+
+    requested_name = request.name if request is not None else None
+    if (
+        requested_name is not None
+        and await control_service.active_control_name_exists(requested_name)
+    ):
+        raise ConflictError(
+            error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+            detail=f"Control with name '{requested_name}' already exists",
+            resource="Control",
+            resource_id=requested_name,
+            hint="Choose a different name or update the existing control.",
+        )
+
+    source_name = source_control.name
+    auto_name_attempts = 0
+
+    while True:
+        target_name = (
+            requested_name
+            if requested_name is not None
+            else await control_service.generate_unique_clone_name(source_control.name)
+        )
+        try:
+            cloned_control = await control_service.clone_control(
+                source_control=source_control,
+                name=target_name,
+            )
+            await db.commit()
+            break
+        except IntegrityError as exc:
+            await db.rollback()
+            if _is_control_name_conflict(exc):
+                if requested_name is not None:
+                    raise ConflictError(
+                        error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                        detail=f"Control with name '{target_name}' already exists",
+                        resource="Control",
+                        resource_id=target_name,
+                        hint="Choose a different name or update the existing control.",
+                    )
+                auto_name_attempts += 1
+                if auto_name_attempts >= max_auto_name_retries:
+                    raise ConflictError(
+                        error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                        detail=f"Failed to generate a unique clone name for '{source_name}'",
+                        resource="Control",
+                        resource_id=str(control_id),
+                        hint="Retry the clone request or provide an explicit name.",
+                    )
+                source_control = await control_service.get_active_control_or_404(
+                    control_id,
+                    for_update=True,
+                )
+                _parse_stored_control_data(
+                    source_control.data,
+                    control_name=source_control.name,
+                    control_id=source_control.id,
+                )
+                source_name = source_control.name
+                continue
+            _logger.error(
+                "Failed to clone control '%s' (%s) due to integrity error",
+                source_name,
+                control_id,
+                exc_info=True,
+            )
+            raise DatabaseError(
+                detail=f"Failed to clone control '{source_name}': database error",
+                resource="Control",
+                operation="clone",
+            )
+        except Exception:
+            await db.rollback()
+            _logger.error(
+                "Failed to clone control '%s' (%s)",
+                source_name,
+                control_id,
+                exc_info=True,
+            )
+            raise DatabaseError(
+                detail=f"Failed to clone control '{source_name}': database error",
+                resource="Control",
+                operation="clone",
+            )
+
+    return CloneControlResponse(
+        control_id=cloned_control.id,
+        name=cloned_control.name,
+        cloned_control_id=source_control.id,
     )
 
 
@@ -975,6 +1320,7 @@ async def delete_control(
     control_service.mark_control_deleted(control, deleted_at=dt.datetime.now(dt.UTC))
     control_name = control.name
     try:
+        await control_service.remove_all_store_publications(control_id)
         await control_service.create_version(
             control,
             event_type="deleted",

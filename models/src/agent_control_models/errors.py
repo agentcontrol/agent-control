@@ -69,6 +69,7 @@ class ErrorCode(StrEnum):
     CONTROL_NAME_CONFLICT = "CONTROL_NAME_CONFLICT"
     EVALUATOR_NAME_CONFLICT = "EVALUATOR_NAME_CONFLICT"
     CONTROL_IN_USE = "CONTROL_IN_USE"
+    CONTROL_PUBLISHED = "CONTROL_PUBLISHED"
     CONTROL_TEMPLATE_CONFLICT = "CONTROL_TEMPLATE_CONFLICT"
     EVALUATOR_IN_USE = "EVALUATOR_IN_USE"
     SCHEMA_INCOMPATIBLE = "SCHEMA_INCOMPATIBLE"
@@ -373,6 +374,7 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.CONTROL_NAME_CONFLICT: "Control Name Already Exists",
     ErrorCode.EVALUATOR_NAME_CONFLICT: "Evaluator Name Conflict",
     ErrorCode.CONTROL_IN_USE: "Control In Use",
+    ErrorCode.CONTROL_PUBLISHED: "Published Control Conflict",
     ErrorCode.CONTROL_TEMPLATE_CONFLICT: "Control Template Conflict",
     ErrorCode.EVALUATOR_IN_USE: "Evaluator In Use",
     ErrorCode.SCHEMA_INCOMPATIBLE: "Schema Incompatible",
