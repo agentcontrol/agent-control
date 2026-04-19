@@ -24,6 +24,10 @@ _OTEL_NOOP_WARNING = (
     "OpenTelemetry sink selected but OpenTelemetry SDK/exporter dependencies are not available; "
     "control events will be accepted without being exported"
 )
+_OTEL_EXPORTER_MISSING_WARNING = (
+    "OpenTelemetry sink selected but no OTLP exporter configuration was found; "
+    "control events will not be exported"
+)
 
 AttributeValue = str | bool | int | float | list[str] | list[bool] | list[int] | list[float]
 
@@ -63,6 +67,8 @@ class OTELSDKModules:
     non_recording_span_cls: type[Any]
     trace_flags_cls: type[Any]
     trace_state_cls: type[Any]
+    status_cls: type[Any]
+    status_code_cls: type[Any]
     span_kind: Any
     set_span_in_context: Any
 
@@ -139,6 +145,9 @@ def control_event_to_otel_span(event: ControlExecutionEvent) -> OTELControlEvent
 class _NoOpControlEventSink(BaseControlEventSink):
     """Sink that accepts events but intentionally emits nothing."""
 
+    def is_active(self) -> bool:
+        return False
+
     def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkResult:
         return SinkResult(accepted=len(events), dropped=0)
 
@@ -195,6 +204,14 @@ class OTELControlEventSink(BaseControlEventSink):
             record_exception = getattr(span, "record_exception", None)
             if callable(record_exception):
                 record_exception(RuntimeError(span_data.error_message))
+            set_status = getattr(span, "set_status", None)
+            if callable(set_status):
+                set_status(
+                    self._sdk_modules.status_cls(
+                        self._sdk_modules.status_code_cls.ERROR,
+                        span_data.error_message,
+                    )
+                )
         span.end(end_time=span_data.end_time_unix_nano)
 
     def _build_parent_context(self, span_data: OTELControlEventSpan) -> object | None:
@@ -269,6 +286,8 @@ def _load_otel_sdk_modules() -> OTELSDKModules:
         NonRecordingSpan,
         SpanContext,
         SpanKind,
+        Status,
+        StatusCode,
         TraceFlags,
         TraceState,
         set_span_in_context,
@@ -283,6 +302,8 @@ def _load_otel_sdk_modules() -> OTELSDKModules:
         non_recording_span_cls=NonRecordingSpan,
         trace_flags_cls=TraceFlags,
         trace_state_cls=TraceState,
+        status_cls=Status,
+        status_code_cls=StatusCode,
         span_kind=SpanKind,
         set_span_in_context=set_span_in_context,
     )
@@ -303,14 +324,20 @@ def create_otel_control_event_sink(config: JSONObject) -> BaseControlEventSink:
     resource = sdk_modules.resource_cls.create({"service.name": resolved_config.service_name})
     tracer_provider = sdk_modules.tracer_provider_cls(resource=resource)
 
-    if _has_explicit_otel_exporter_configuration(resolved_config):
-        exporter_kwargs: dict[str, object] = {}
-        if resolved_config.endpoint:
-            exporter_kwargs["endpoint"] = resolved_config.endpoint
-        if resolved_config.headers:
-            exporter_kwargs["headers"] = resolved_config.headers
-        exporter = sdk_modules.otlp_span_exporter_cls(**exporter_kwargs)
-        tracer_provider.add_span_processor(sdk_modules.batch_span_processor_cls(exporter))
+    if not _has_explicit_otel_exporter_configuration(resolved_config):
+        logger.warning(_OTEL_EXPORTER_MISSING_WARNING)
+        shutdown = getattr(tracer_provider, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+        return _NoOpControlEventSink()
+
+    exporter_kwargs: dict[str, object] = {}
+    if resolved_config.endpoint:
+        exporter_kwargs["endpoint"] = resolved_config.endpoint
+    if resolved_config.headers:
+        exporter_kwargs["headers"] = resolved_config.headers
+    exporter = sdk_modules.otlp_span_exporter_cls(**exporter_kwargs)
+    tracer_provider.add_span_processor(sdk_modules.batch_span_processor_cls(exporter))
 
     tracer = tracer_provider.get_tracer(_OTEL_INSTRUMENTATION_SCOPE)
     return OTELControlEventSink(

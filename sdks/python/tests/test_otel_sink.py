@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import patch
 
+from agent_control_models import ControlExecutionEvent
+
 from agent_control import add_event, init_observability, sync_shutdown_observability
+from agent_control.observability import is_observability_enabled
 from agent_control.otel_sink import (
     OTEL_CONTROL_EVENT_SINK_NAME,
     OTELControlEventSink,
@@ -15,7 +19,6 @@ from agent_control.otel_sink import (
     create_otel_control_event_sink,
 )
 from agent_control.settings import configure_settings, get_settings
-from agent_control_models import ControlExecutionEvent
 
 
 def _make_event(**overrides: object) -> ControlExecutionEvent:
@@ -46,12 +49,16 @@ class FakeSpan:
         self.attributes: dict[str, object] = {}
         self.end_time: int | None = None
         self.exceptions: list[str] = []
+        self.status: FakeStatus | None = None
 
     def set_attributes(self, attributes: dict[str, object]) -> None:
         self.attributes = dict(attributes)
 
     def record_exception(self, exc: BaseException) -> None:
         self.exceptions.append(str(exc))
+
+    def set_status(self, status: FakeStatus) -> None:
+        self.status = status
 
     def end(self, end_time: int) -> None:
         self.end_time = end_time
@@ -152,6 +159,16 @@ class FakeTraceState:
     pass
 
 
+class FakeStatusCode:
+    ERROR = "error"
+
+
+class FakeStatus:
+    def __init__(self, status_code: object, description: str | None = None) -> None:
+        self.status_code = status_code
+        self.description = description
+
+
 class FakeSpanKind:
     INTERNAL = "internal"
 
@@ -170,6 +187,8 @@ def _fake_otel_sdk_modules() -> OTELSDKModules:
         non_recording_span_cls=FakeNonRecordingSpan,
         trace_flags_cls=FakeTraceFlags,
         trace_state_cls=FakeTraceState,
+        status_cls=FakeStatus,
+        status_code_cls=FakeStatusCode,
         span_kind=FakeSpanKind,
         set_span_in_context=_fake_set_span_in_context,
     )
@@ -218,6 +237,7 @@ def test_create_otel_control_event_sink_is_inert_when_disabled() -> None:
     sink = create_otel_control_event_sink({})
     result = sink.write_events([_make_event()])
 
+    assert sink.is_active() is False
     assert result.accepted == 1
     assert result.dropped == 0
 
@@ -225,13 +245,13 @@ def test_create_otel_control_event_sink_is_inert_when_disabled() -> None:
 def test_create_otel_control_event_sink_without_exporter_stays_inert() -> None:
     configure_settings(otel_enabled=True, otel_endpoint=None)
 
-    with patch("agent_control.otel_sink._load_otel_sdk_modules", return_value=_fake_otel_sdk_modules()):
+    with patch(
+        "agent_control.otel_sink._load_otel_sdk_modules",
+        return_value=_fake_otel_sdk_modules(),
+    ):
         sink = create_otel_control_event_sink({})
 
-    assert isinstance(sink, OTELControlEventSink)
-    tracer_provider = sink._tracer_provider
-    assert isinstance(tracer_provider, FakeTracerProvider)
-    assert tracer_provider.processors == []
+    assert sink.is_active() is False
 
 
 def test_create_otel_control_event_sink_uses_exporter_config_and_emits_spans() -> None:
@@ -242,7 +262,10 @@ def test_create_otel_control_event_sink_uses_exporter_config_and_emits_spans() -
         otel_service_name="agent-control-tests",
     )
 
-    with patch("agent_control.otel_sink._load_otel_sdk_modules", return_value=_fake_otel_sdk_modules()):
+    with patch(
+        "agent_control.otel_sink._load_otel_sdk_modules",
+        return_value=_fake_otel_sdk_modules(),
+    ):
         sink = create_otel_control_event_sink({})
 
     assert isinstance(sink, OTELControlEventSink)
@@ -278,6 +301,9 @@ def test_create_otel_control_event_sink_uses_exporter_config_and_emits_spans() -
     assert span.attributes["agent_control.agent_name"] == event.agent_name
     assert span.attributes["agent_control.error_message"] == "rule failed"
     assert span.exceptions == ["rule failed"]
+    assert span.status is not None
+    assert span.status.status_code == FakeStatusCode.ERROR
+    assert span.status.description == "rule failed"
 
     sink.flush()
     sink.close()
@@ -292,9 +318,63 @@ def test_observability_uses_builtin_otel_sink_when_selected() -> None:
         otel_endpoint="http://collector:4318/v1/traces",
     )
 
-    with patch("agent_control.otel_sink._load_otel_sdk_modules", return_value=_fake_otel_sdk_modules()):
+    with patch(
+        "agent_control.otel_sink._load_otel_sdk_modules",
+        return_value=_fake_otel_sdk_modules(),
+    ):
         batcher = init_observability(enabled=True)
         result = add_event(_make_event())
 
     assert batcher is None
     assert result is True
+
+
+def test_observability_does_not_activate_inert_otel_sink() -> None:
+    configure_settings(
+        observability_sink_name=OTEL_CONTROL_EVENT_SINK_NAME,
+        otel_enabled=True,
+        otel_endpoint=None,
+    )
+
+    with patch(
+        "agent_control.otel_sink._load_otel_sdk_modules",
+        return_value=_fake_otel_sdk_modules(),
+    ):
+        batcher = init_observability(enabled=True)
+        assert batcher is None
+        assert is_observability_enabled() is False
+
+        result = add_event(_make_event())
+
+    assert result is False
+
+
+def test_observability_rebuilds_otel_sink_when_effective_settings_change() -> None:
+    import agent_control.observability as obs
+
+    configure_settings(
+        observability_sink_name=OTEL_CONTROL_EVENT_SINK_NAME,
+        otel_enabled=True,
+        otel_endpoint="http://collector:4318/v1/traces",
+    )
+
+    with patch(
+        "agent_control.otel_sink._load_otel_sdk_modules",
+        return_value=_fake_otel_sdk_modules(),
+    ):
+        assert add_event(_make_event()) is True
+        first_sink = cast(OTELControlEventSink, obs._configured_named_event_sink)
+        first_provider = first_sink._tracer_provider
+
+        configure_settings(otel_endpoint="http://collector-2:4318/v1/traces")
+
+        assert add_event(_make_event(control_execution_id="ce-456")) is True
+        second_sink = cast(OTELControlEventSink, obs._configured_named_event_sink)
+
+    assert second_sink is not None
+    assert first_sink is not second_sink
+    assert first_provider.shutdown_calls == 1
+    assert obs._configured_named_event_sink_selection is not None
+    assert obs._configured_named_event_sink_selection.config["endpoint"] == (
+        "http://collector-2:4318/v1/traces"
+    )

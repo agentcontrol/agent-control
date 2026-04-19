@@ -57,7 +57,7 @@ import logging
 import threading
 import time
 from collections.abc import Awaitable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -81,7 +81,11 @@ from agent_control.settings import configure_settings, get_settings
 if TYPE_CHECKING:
     from agent_control_models import ControlExecutionEvent
 
-from .otel_sink import OTEL_CONTROL_EVENT_SINK_NAME, create_otel_control_event_sink
+from .otel_sink import (
+    OTEL_CONTROL_EVENT_SINK_NAME,
+    _resolve_otel_sink_config,
+    create_otel_control_event_sink,
+)
 
 # =============================================================================
 # Logger Setup - Standard Library Pattern
@@ -938,10 +942,21 @@ def _remember_custom_control_event_sinks(sinks: Sequence[ControlEventSink]) -> N
 def _get_sink_selection() -> ControlEventSinkSelection:
     """Build the current sink-selection model from SDK settings."""
     settings = get_settings()
+    config = dict(settings.observability_sink_config)
+    if settings.observability_sink_name == OTEL_CONTROL_EVENT_SINK_NAME:
+        config = asdict(_resolve_otel_sink_config(config))
     return ControlEventSinkSelection(
         name=settings.observability_sink_name,
-        config=settings.observability_sink_config,
+        config=config,
     )
+
+
+def _sink_is_active(sink: ControlEventSink) -> bool:
+    """Return whether a sink instance is currently able to deliver events."""
+    is_active = getattr(sink, "is_active", None)
+    if callable(is_active):
+        return bool(is_active())
+    return True
 
 
 def _get_or_create_named_control_event_sink(
@@ -995,14 +1010,17 @@ def _get_active_control_event_sinks() -> tuple[ControlEventSink, ...]:
 
     selection = _get_sink_selection()
     if selection.name == DEFAULT_CONTROL_EVENT_SINK_NAME:
-        return (_event_sink,) if _event_sink is not None else ()
+        if _event_sink is None or not _sink_is_active(_event_sink):
+            return ()
+        return (_event_sink,)
     if selection.name == REGISTERED_CONTROL_EVENT_SINK_NAME:
         sinks = get_registered_control_event_sinks()
+        sinks = tuple(sink for sink in sinks if _sink_is_active(sink))
         _remember_custom_control_event_sinks(sinks)
         return sinks
 
     named_sink = _get_or_create_named_control_event_sink(selection)
-    if named_sink is None:
+    if named_sink is None or not _sink_is_active(named_sink):
         return ()
     _remember_custom_control_event_sinks((named_sink,))
     return (named_sink,)
