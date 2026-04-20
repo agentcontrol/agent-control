@@ -73,6 +73,54 @@ async def test_check_evaluation_returns_result_model():
 
 
 @pytest.mark.asyncio
+async def test_check_evaluation_forwards_target_fields_when_supplied():
+    """target_type and target_id land in the outgoing request body when set."""
+
+    class DummyResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"is_safe": True, "confidence": 1.0}
+
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.post = AsyncMock(return_value=DummyResponse())
+
+    await evaluation.check_evaluation(
+        client=client,
+        agent_name="Agent-Example_01",
+        step={"type": "llm", "name": "chat", "input": "hello"},
+        stage="pre",
+        target_type="environment",
+        target_id="env-prod-123",
+    )
+
+    sent_payload = client.http_client.post.await_args.kwargs["json"]
+    assert sent_payload["target_type"] == "environment"
+    assert sent_payload["target_id"] == "env-prod-123"
+
+
+@pytest.mark.asyncio
+async def test_check_evaluation_rejects_half_target_context():
+    """Server-side pairing rule must be enforced client-side via model validation."""
+    client = MagicMock()
+    client.http_client = AsyncMock()
+    client.http_client.post = AsyncMock()
+
+    with pytest.raises(ValidationError):
+        await evaluation.check_evaluation(
+            client=client,
+            agent_name="Agent-Example_01",
+            step={"type": "llm", "name": "chat", "input": "hello"},
+            stage="pre",
+            target_type="environment",
+        )
+
+    client.http_client.post.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_evaluate_controls_requires_server_url():
     """evaluate_controls should require server_url to be configured."""
     with patch("agent_control.state.server_url", None):
@@ -124,3 +172,47 @@ async def test_evaluate_controls_with_context(monkeypatch):
             )
 
     assert mock_check.call_args is not None
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_forwards_target_fields(monkeypatch):
+    """target_type and target_id flow through to check_evaluation_with_local."""
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_check = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    with patch("agent_control.state.server_url", "http://localhost:8000"):
+        with patch("agent_control.state.api_key", None):
+            await evaluation.evaluate_controls(
+                step_name="chat",
+                input="hello",
+                stage="pre",
+                agent_name="test-bot",
+                target_type="environment",
+                target_id="env-prod-123",
+            )
+
+    forwarded = mock_check.call_args.kwargs
+    assert forwarded["target_type"] == "environment"
+    assert forwarded["target_id"] == "env-prod-123"
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_defaults_target_fields_to_none(monkeypatch):
+    """Omitting target fields sends None through so the existing path stays unchanged."""
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_check = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    with patch("agent_control.state.server_url", "http://localhost:8000"):
+        with patch("agent_control.state.api_key", None):
+            await evaluation.evaluate_controls(
+                step_name="chat",
+                input="hello",
+                stage="pre",
+                agent_name="test-bot",
+            )
+
+    forwarded = mock_check.call_args.kwargs
+    assert forwarded["target_type"] is None
+    assert forwarded["target_id"] is None

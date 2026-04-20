@@ -170,12 +170,19 @@ async def check_evaluation(
     agent_name: str,
     step: Step,
     stage: Literal["pre", "post"],
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
 ) -> EvaluationResult:
     """Check if agent interaction is safe through the public SDK helper.
 
     The server returns only evaluation semantics. When SDK observability is
     enabled, this helper reconstructs server-side control-execution events
     from the response and enqueues them through the built-in SDK batcher.
+
+    ``target_type`` and ``target_id`` are optional. When both are supplied the
+    server merges controls attached to that target into the effective set;
+    when either is omitted the request uses the agent-only path.
     """
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id, resolved_span_id = get_trace_and_span_ids()
@@ -183,6 +190,8 @@ async def check_evaluation(
         agent_name=normalized_name,
         step=step,
         stage=stage,
+        target_type=target_type,
+        target_id=target_id,
     )
     request_payload = request.model_dump(mode="json")
 
@@ -218,8 +227,16 @@ async def check_evaluation_with_local(
     trace_id: str | None = None,
     span_id: str | None = None,
     event_agent_name: str | None = None,
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
 ) -> EvaluationResult:
-    """Evaluate controls with local-first execution and SDK-owned event emission."""
+    """Evaluate controls with local-first execution and SDK-owned event emission.
+
+    ``target_type`` / ``target_id`` are optional. When both are supplied they
+    are forwarded to the server on the remote evaluation call, letting the
+    server merge controls attached to that target into its resolution.
+    """
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id = trace_id
     resolved_span_id = span_id
@@ -299,6 +316,8 @@ async def check_evaluation_with_local(
         agent_name=normalized_name,
         step=step,
         stage=stage,
+        target_type=target_type,
+        target_id=target_id,
     )
 
     def _with_parse_errors(result: EvaluationResult) -> EvaluationResult:
@@ -402,8 +421,15 @@ async def evaluate_controls(
     agent_name: str,
     trace_id: str | None = None,
     span_id: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
 ) -> EvaluationResult:
-    """Evaluate controls for a step."""
+    """Evaluate controls for a step.
+
+    When ``target_type`` and ``target_id`` are both supplied, the SDK forwards
+    them to the server so controls attached to that target are included in
+    resolution. Omit either to use the agent-only path.
+    """
     if state.server_url is None:
         raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
 
@@ -430,4 +456,6 @@ async def evaluate_controls(
             trace_id=trace_id,
             span_id=span_id,
             event_agent_name=agent_name,
+            target_type=target_type,
+            target_id=target_id,
         )
