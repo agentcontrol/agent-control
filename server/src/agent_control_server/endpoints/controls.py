@@ -34,10 +34,9 @@ from ..errors import (
     APIValidationError,
     ConflictError,
     DatabaseError,
-    NotFoundError,
 )
 from ..logging_utils import get_logger
-from ..models import Agent, AgentData, Control, agent_controls, agent_policies, policy_controls
+from ..models import AgentData, Control, agent_controls, agent_policies, policy_controls
 from ..services.condition_traversal import iter_condition_leaves_with_paths
 from ..services.control_definitions import parse_control_definition_or_api_error
 from ..services.control_templates import (
@@ -52,6 +51,10 @@ from ..services.evaluator_utils import (
     validate_config_against_schema,
 )
 from ..services.query_utils import escape_like_pattern
+from ..services.tenant_scoped_lookups import (
+    get_agent_in_tenant_or_404,
+    get_control_in_tenant_or_404,
+)
 from ..services.validation_paths import format_field_path
 from ..tenancy import get_tenant_id
 
@@ -171,13 +174,14 @@ def _template_backed_raw_update_conflict(control_id: int) -> ConflictError:
 async def _render_and_validate_template_input(
     template_input: TemplateControlInput,
     *,
+    tenant_id: str,
     db: AsyncSession,
     enabled: bool = True,
 ) -> ControlDefinition:
     """Render a template-backed input and validate evaluator config."""
     rendered = render_template_control_input(template_input, enabled=enabled)
     try:
-        await _validate_control_definition(rendered.control, db)
+        await _validate_control_definition(rendered.control, tenant_id=tenant_id, db=db)
     except APIValidationError as exc:
         raise remap_template_api_error(
             exc,
@@ -190,6 +194,7 @@ async def _render_and_validate_template_input(
 async def _materialize_control_input(
     control_input: ControlDefinition | TemplateControlInput,
     *,
+    tenant_id: str,
     db: AsyncSession,
     current_payload: object | None = None,
     control_id: int | None = None,
@@ -202,6 +207,7 @@ async def _materialize_control_input(
             )
             return await _render_and_validate_template_input(
                 control_input,
+                tenant_id=tenant_id,
                 db=db,
                 enabled=enabled,
             )
@@ -220,6 +226,7 @@ async def _materialize_control_input(
             enabled = _enabled_from_stored_payload(current_payload)
             return await _render_and_validate_template_input(
                 control_input,
+                tenant_id=tenant_id,
                 db=db,
                 enabled=enabled,
             )
@@ -239,17 +246,22 @@ async def _materialize_control_input(
             raise RuntimeError("control_id is required for template-backed raw updates")
         raise _template_backed_raw_update_conflict(control_id)
 
-    await _validate_control_definition(control_input, db)
+    await _validate_control_definition(control_input, tenant_id=tenant_id, db=db)
     return control_input
 
 
 async def _validate_control_definition(
-    control_def: ControlDefinition, db: AsyncSession
+    control_def: ControlDefinition, *, tenant_id: str, db: AsyncSession
 ) -> None:
     """Validate evaluator config for definitions referencing known global evaluators.
 
-    Agent-scoped evaluators must exist on the referenced agent. Builtin and external
-    names that are not loaded in this process are accepted without config checks.
+    Agent-scoped evaluators must exist on the referenced agent **in the caller's
+    tenant**. A reference to an agent owned by another tenant surfaces as
+    AGENT_NOT_FOUND; this both prevents cross-tenant binding of control
+    definitions and avoids leaking the existence or evaluator inventory of
+    foreign-tenant agents through validation error messages. Builtin and
+    external names that are not loaded in this process are accepted without
+    config checks.
     """
     available_evaluators = list_evaluators()
     agent_data_by_name: dict[str, AgentData] = {}
@@ -272,21 +284,11 @@ async def _validate_control_definition(
 
             agent_data = agent_data_by_name.get(agent_namespace)
             if agent_data is None:
-                agent_result = await db.execute(
-                    select(Agent).where(Agent.name == agent_namespace)
+                agent = await get_agent_in_tenant_or_404(
+                    tenant_id=tenant_id,
+                    agent_name=agent_namespace,
+                    db=db,
                 )
-                agent = agent_result.scalars().first()
-                if agent is None:
-                    raise NotFoundError(
-                        error_code=ErrorCode.AGENT_NOT_FOUND,
-                        detail=f"Agent '{agent_namespace}' not found",
-                        resource="Agent",
-                        resource_id=agent_namespace,
-                        hint=(
-                            "Ensure the agent exists before creating controls "
-                            "that reference its evaluators."
-                        ),
-                    )
 
                 try:
                     agent_data = AgentData.model_validate(agent.data)
@@ -422,6 +424,7 @@ async def _validate_control_definition(
 )
 async def render_control_template(
     request: RenderControlTemplateRequest,
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> RenderControlTemplateResponse:
     """Render a template-backed control without persisting it."""
@@ -430,6 +433,7 @@ async def render_control_template(
             template=request.template,
             template_values=request.template_values,
         ),
+        tenant_id=tenant_id,
         db=db,
         enabled=True,
     )
@@ -476,7 +480,9 @@ async def create_control(
             hint="Choose a different name or update the existing control.",
         )
 
-    control_def = await _materialize_control_input(request.data, db=db)
+    control_def = await _materialize_control_input(
+        request.data, tenant_id=tenant_id, db=db
+    )
     control_data = _serialize_control_data(control_def)
 
     control = Control(name=request.name, tenant_id=tenant_id, data=control_data)
@@ -527,7 +533,9 @@ async def get_control_schema() -> GetControlSchemaResponse:
     response_description="Control metadata and configuration",
 )
 async def get_control(
-    control_id: int, db: AsyncSession = Depends(get_async_db)
+    control_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> GetControlResponse:
     """
     Retrieve a control by ID including its name and configuration data.
@@ -542,16 +550,9 @@ async def get_control(
     Raises:
         HTTPException 404: Control not found
     """
-    res = await db.execute(select(Control).where(Control.id == control_id))
-    control = res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
 
     # Parse data if present and non-empty
     control_data: ControlDefinition | UnrenderedTemplateControl | None = None
@@ -587,7 +588,9 @@ async def get_control(
     response_description="Control data payload",
 )
 async def get_control_data(
-    control_id: int, db: AsyncSession = Depends(get_async_db)
+    control_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> GetControlDataResponse:
     """
     Retrieve the configuration data for a control.
@@ -605,16 +608,9 @@ async def get_control_data(
         HTTPException 404: Control not found
         HTTPException 422: Control data is corrupted
     """
-    res = await db.execute(select(Control).where(Control.id == control_id))
-    control = res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
     control_data = _parse_stored_control_data(
         control.data,
         control_name=control.name,
@@ -633,6 +629,7 @@ async def get_control_data(
 async def set_control_data(
     control_id: int,
     request: SetControlDataRequest,
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> SetControlDataResponse:
     """
@@ -653,19 +650,13 @@ async def set_control_data(
         HTTPException 404: Control not found
         HTTPException 500: Database error during update
     """
-    res = await db.execute(select(Control).where(Control.id == control_id))
-    control = res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
 
     control_def = await _materialize_control_input(
         request.data,
+        tenant_id=tenant_id,
         db=db,
         current_payload=control.data,
         control_id=control_id,
@@ -695,7 +686,9 @@ async def set_control_data(
     response_description="Validation result",
 )
 async def validate_control_data(
-    request: ValidateControlDataRequest, db: AsyncSession = Depends(get_async_db)
+    request: ValidateControlDataRequest,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> ValidateControlDataResponse:
     """
     Validate control configuration data without saving it.
@@ -709,7 +702,7 @@ async def validate_control_data(
     """
     # Validate mirrors create: complete template values trigger a full render,
     # incomplete values validate structure only (matching unrendered create).
-    await _materialize_control_input(request.data, db=db)
+    await _materialize_control_input(request.data, tenant_id=tenant_id, db=db)
     return ValidateControlDataResponse(success=True)
 
 
@@ -734,6 +727,7 @@ async def list_controls(
     stage: str | None = Query(None, description="Filter by stage ('pre' or 'post')"),
     execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
     tag: str | None = Query(None, description="Filter by tag"),
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> ListControlsResponse:
     """
@@ -759,7 +753,7 @@ async def list_controls(
     Example:
         GET /controls?limit=10&enabled=true&step_type=tool
     """
-    query = select(Control).order_by(Control.id.desc())
+    query = select(Control).where(Control.tenant_id == tenant_id).order_by(Control.id.desc())
 
     # Apply cursor
     if cursor is not None:
@@ -824,7 +818,7 @@ async def list_controls(
     controls = list(result.scalars().all())
 
     # Get total count (with same filters, but without cursor/limit)
-    total_query = select(func.count()).select_from(Control)
+    total_query = select(func.count()).select_from(Control).where(Control.tenant_id == tenant_id)
     if name is not None:
         total_query = total_query.where(
             Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
@@ -972,6 +966,7 @@ async def delete_control(
         description="If true, dissociate from all policy/agent links before deleting. "
         "If false, fail if control is associated with any policy or agent.",
     ),
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> DeleteControlResponse:
     """
@@ -993,17 +988,10 @@ async def delete_control(
         HTTPException 409: Control is in use (and force=false)
         HTTPException 500: Database error during deletion
     """
-    # Find the control
-    result = await db.execute(select(Control).where(Control.id == control_id))
-    control = result.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    # Find the control (tenant-scoped lookup)
+    control = await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
 
     # Check for associations with policies and direct agent links.
     policy_assoc_query = select(
@@ -1110,6 +1098,7 @@ async def delete_control(
 async def patch_control(
     control_id: int,
     request: PatchControlRequest,
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> PatchControlResponse:
     """
@@ -1133,17 +1122,10 @@ async def patch_control(
         HTTPException 422: Cannot update enabled status (control has no data configured)
         HTTPException 500: Database error during update
     """
-    # Find the control
-    result = await db.execute(select(Control).where(Control.id == control_id))
-    control = result.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    # Find the control (tenant-scoped lookup)
+    control = await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
 
     # Track if anything changed
     updated = False

@@ -11,9 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
 from ..db import get_async_db
-from ..errors import ConflictError, DatabaseError, NotFoundError
+from ..errors import ConflictError, DatabaseError
 from ..logging_utils import get_logger
-from ..models import Control, Policy, policy_controls
+from ..models import Policy, policy_controls
+from ..services.tenant_scoped_lookups import (
+    get_control_in_tenant_or_404,
+    get_policy_in_tenant_or_404,
+)
 from ..tenancy import get_tenant_id
 
 router = APIRouter(prefix="/policies", tags=["policies"])
@@ -88,7 +92,10 @@ async def create_policy(
     response_description="Success confirmation",
 )
 async def add_control_to_policy(
-    policy_id: int, control_id: int, db: AsyncSession = Depends(get_async_db)
+    policy_id: int,
+    control_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AssocResponse:
     """
     Associate a control with a policy.
@@ -109,27 +116,13 @@ async def add_control_to_policy(
         HTTPException 500: Database error
     """
     # Find policy and control
-    pol_res = await db.execute(select(Policy).where(Policy.id == policy_id))
-    policy = pol_res.scalars().first()
-    if policy is None:
-        raise NotFoundError(
-            error_code=ErrorCode.POLICY_NOT_FOUND,
-            detail=f"Policy with ID '{policy_id}' not found",
-            resource="Policy",
-            resource_id=str(policy_id),
-            hint="Verify the policy ID is correct and the policy has been created.",
-        )
+    policy = await get_policy_in_tenant_or_404(
+        tenant_id=tenant_id, policy_id=policy_id, db=db
+    )
 
-    ctl_res = await db.execute(select(Control).where(Control.id == control_id))
-    control = ctl_res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
 
     # Add association using INSERT ... ON CONFLICT DO NOTHING for idempotency
     try:
@@ -172,7 +165,10 @@ async def add_control_to_policy(
     response_description="Success confirmation",
 )
 async def remove_control_from_policy(
-    policy_id: int, control_id: int, db: AsyncSession = Depends(get_async_db)
+    policy_id: int,
+    control_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AssocResponse:
     """
     Remove a control from a policy.
@@ -192,27 +188,13 @@ async def remove_control_from_policy(
         HTTPException 404: Policy or control not found
         HTTPException 500: Database error
     """
-    pol_res = await db.execute(select(Policy).where(Policy.id == policy_id))
-    policy = pol_res.scalars().first()
-    if policy is None:
-        raise NotFoundError(
-            error_code=ErrorCode.POLICY_NOT_FOUND,
-            detail=f"Policy with ID '{policy_id}' not found",
-            resource="Policy",
-            resource_id=str(policy_id),
-            hint="Verify the policy ID is correct and the policy has been created.",
-        )
+    policy = await get_policy_in_tenant_or_404(
+        tenant_id=tenant_id, policy_id=policy_id, db=db
+    )
 
-    ctl_res = await db.execute(select(Control).where(Control.id == control_id))
-    control = ctl_res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
 
     # Remove association (idempotent - deleting non-existent is no-op)
     try:
@@ -249,7 +231,9 @@ async def remove_control_from_policy(
     response_description="List of control IDs",
 )
 async def list_policy_controls(
-    policy_id: int, db: AsyncSession = Depends(get_async_db)
+    policy_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> GetPolicyControlsResponse:
     """
     List all controls associated with a policy.
@@ -264,15 +248,9 @@ async def list_policy_controls(
     Raises:
         HTTPException 404: Policy not found
     """
-    pol_res = await db.execute(select(Policy.id).where(Policy.id == policy_id))
-    if pol_res.first() is None:
-        raise NotFoundError(
-            error_code=ErrorCode.POLICY_NOT_FOUND,
-            detail=f"Policy with ID '{policy_id}' not found",
-            resource="Policy",
-            resource_id=str(policy_id),
-            hint="Verify the policy ID is correct and the policy has been created.",
-        )
+    await get_policy_in_tenant_or_404(
+        tenant_id=tenant_id, policy_id=policy_id, db=db
+    )
 
     rows = await db.execute(
         select(policy_controls.c.control_id).where(

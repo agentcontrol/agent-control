@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from agent_control_models import ConditionNode
 from agent_control_server.db import get_async_db
-from agent_control_server.models import Control
+from agent_control_server.models import DEFAULT_TENANT_ID, Control
 
 from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_server.endpoints import controls as controls_module
@@ -939,7 +939,9 @@ async def test_set_control_data_selector_without_model_dump_uses_original_serial
     request = SimpleNamespace(data=DummyData(payload))
 
     # When: updating the control data with a non-Pydantic selector
-    response = await controls_module.set_control_data(control.id, request, async_db)
+    response = await controls_module.set_control_data(
+        control.id, request, DEFAULT_TENANT_ID, async_db
+    )
 
     # Then: the update succeeds and uses the original selector serialization
     assert response.success is True

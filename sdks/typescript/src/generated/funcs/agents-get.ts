@@ -37,13 +37,14 @@ import { Result } from "../types/fp.js";
  *
  * Args:
  *     agent_name: Agent identifier
+ *     tenant_id: Effective tenant (injected)
  *     db: Database session (injected)
  *
  * Returns:
  *     GetAgentResponse with agent metadata and step list
  *
  * Raises:
- *     HTTPException 404: Agent not found
+ *     HTTPException 404: Agent not found (or owned by another tenant)
  *     HTTPException 422: Agent data is corrupted
  */
 export function agentsGet(

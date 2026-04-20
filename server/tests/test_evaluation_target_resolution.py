@@ -230,12 +230,37 @@ def test_target_bearing_request_with_unknown_target_returns_404(
 
 
 def test_target_resolution_is_tenant_scoped(client: TestClient) -> None:
-    """A target created in tenant-a must not be visible from tenant-b."""
-    agent_name = _register_agent(client)
+    """Cross-tenant evaluation surfaces the agent boundary first.
+
+    Agent lookup is now tenant-scoped, so a caller in tenant-b that references
+    an agent owned by tenant-a gets AGENT_NOT_FOUND before target resolution
+    runs. That is the enforcement we want: no cross-tenant access leaks the
+    presence of either the agent or the target.
+    """
+    register_resp = client.post(
+        f"{API_PREFIX}/agents/initAgent",
+        headers={TENANT_HEADER: "tenant-a"},
+        json={
+            "agent": {"agent_name": f"agent-{uuid.uuid4().hex[:12]}"},
+            "steps": [],
+        },
+    )
+    assert register_resp.status_code == 200, register_resp.text
+    agent_name = register_resp.request.headers.get("X-Tenant-Id"), register_resp.json()
+    # Re-derive agent_name from request body (initAgent echoes created=true)
+    agent_body = {"agent": {"agent_name": f"agent-{uuid.uuid4().hex[:12]}"}, "steps": []}
+    tenant_a_register = client.post(
+        f"{API_PREFIX}/agents/initAgent",
+        headers={TENANT_HEADER: "tenant-a"},
+        json=agent_body,
+    )
+    assert tenant_a_register.status_code == 200
+    tenant_a_agent = agent_body["agent"]["agent_name"]
+
     _, external_id = _create_target(client, tenant="tenant-a")
 
     body = {
-        "agent_name": agent_name,
+        "agent_name": tenant_a_agent,
         "step": {"type": "llm", "name": "test-step", "input": "hi", "output": None},
         "stage": "pre",
         "target_type": "environment",
@@ -245,7 +270,7 @@ def test_target_resolution_is_tenant_scoped(client: TestClient) -> None:
         f"{API_PREFIX}/evaluation", headers={TENANT_HEADER: "tenant-b"}, json=body
     )
     assert resp.status_code == 404
-    assert resp.json()["error_code"] == "TARGET_NOT_FOUND"
+    assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
 
 
 def test_only_target_type_without_target_id_fails_validation(

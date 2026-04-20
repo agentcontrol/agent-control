@@ -188,16 +188,22 @@ async def list_target_controls(
     return result.scalars().all()
 
 
-async def control_exists(*, control_id: int, db: AsyncSession) -> bool:
-    """Return whether a control with the given ID exists."""
-    result = await db.execute(select(Control.id).where(Control.id == control_id))
+async def control_exists_in_tenant(
+    *, control_id: int, tenant_id: str, db: AsyncSession
+) -> bool:
+    """Return whether a control with the given ID exists in the given tenant."""
+    result = await db.execute(
+        select(Control.id).where(
+            Control.id == control_id, Control.tenant_id == tenant_id
+        )
+    )
     return result.first() is not None
 
 
 __all__ = [
     "AttachResult",
     "attach_control_to_target",
-    "control_exists",
+    "control_exists_in_tenant",
     "create_target",
     "delete_target",
     "detach_control_from_target",

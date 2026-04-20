@@ -18,8 +18,9 @@ from ..auth import RequireAPIKey
 from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
-from ..models import Agent, Target
+from ..models import Target
 from ..services.controls import list_runtime_controls_for_agent
+from ..services.tenant_scoped_lookups import get_agent_in_tenant_or_404
 from ..tenancy import get_tenant_id
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
@@ -147,18 +148,9 @@ async def evaluate(
     """
     del client  # Authentication is still required by dependency injection.
 
-    agent_result = await db.execute(
-        select(Agent).where(Agent.name == request.agent_name)
+    await get_agent_in_tenant_or_404(
+        tenant_id=tenant_id, agent_name=request.agent_name, db=db
     )
-    agent = agent_result.scalar_one_or_none()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent '{request.agent_name}' not found",
-            resource="Agent",
-            resource_id=request.agent_name,
-            hint="Register the agent via initAgent before evaluating.",
-        )
 
     resolved_target_id: int | None = None
     if request.target_type is not None and request.target_id is not None:

@@ -71,6 +71,11 @@ from ..services.schema_compat import (
     check_schema_compatibility,
     format_compatibility_error,
 )
+from ..services.tenant_scoped_lookups import (
+    get_agent_in_tenant_or_404,
+    get_control_in_tenant_or_404,
+    get_policy_in_tenant_or_404,
+)
 from ..tenancy import get_tenant_id
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -287,6 +292,7 @@ async def list_agents(
     cursor: str | None = None,
     limit: int = _DEFAULT_PAGINATION_LIMIT,
     name: str | None = None,
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> ListAgentsResponse:
     """
@@ -312,16 +318,22 @@ async def list_agents(
         Agent.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\") if name else None
     )
 
-    # Get total count (with name filter if provided)
-    count_query = select(func.count()).select_from(Agent)
+    # Get total count (with tenant scope + name filter if provided)
+    count_query = (
+        select(func.count()).select_from(Agent).where(Agent.tenant_id == tenant_id)
+    )
     if name_filter is not None:
         count_query = count_query.where(name_filter)
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
-    # Build query with cursor-based pagination
-    # Order by created_at DESC, then by name DESC for stable ordering
-    query = select(Agent).order_by(Agent.created_at.desc(), Agent.name.desc())
+    # Build query with cursor-based pagination, scoped to the current tenant.
+    # Order by created_at DESC, then by name DESC for stable ordering.
+    query = (
+        select(Agent)
+        .where(Agent.tenant_id == tenant_id)
+        .order_by(Agent.created_at.desc(), Agent.name.desc())
+    )
 
     # Apply name filter if provided
     if name_filter is not None:
@@ -331,7 +343,9 @@ async def list_agents(
     if cursor:
         cursor_name = normalize_agent_name_or_422(cursor, field_name="cursor")
         cursor_agent_result = await db.execute(
-            select(Agent).where(Agent.name == cursor_name)
+            select(Agent).where(
+                Agent.name == cursor_name, Agent.tenant_id == tenant_id
+            )
         )
         cursor_agent = cursor_agent_result.scalars().first()
         if cursor_agent:
@@ -527,8 +541,20 @@ async def init_agent(
             )
         incoming_steps_by_key[step_key] = step
 
+    # Agent.name is still globally unique at the schema level. Look up
+    # globally and split into three cases: no row (create), row owned by the
+    # current tenant (update), row owned by another tenant (409 with a
+    # non-disclosing message).
     result = await db.execute(select(Agent).where(Agent.name == request.agent.agent_name))
     existing: Agent | None = result.scalars().first()
+    if existing is not None and existing.tenant_id != tenant_id:
+        raise ConflictError(
+            error_code=ErrorCode.AGENT_NAME_CONFLICT,
+            detail=f"Agent name '{request.agent.agent_name}' is not available.",
+            resource="Agent",
+            resource_id=request.agent.agent_name,
+            hint="Choose a different agent name.",
+        )
 
     created = False
 
@@ -829,7 +855,11 @@ async def init_agent(
     summary="Get agent details",
     response_description="Agent metadata and registered steps",
 )
-async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -> GetAgentResponse:
+async def get_agent(
+    agent_name: str,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
+) -> GetAgentResponse:
     """
     Retrieve agent metadata and all registered steps.
 
@@ -837,29 +867,20 @@ async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -
 
     Args:
         agent_name: Agent identifier
+        tenant_id: Effective tenant (injected)
         db: Database session (injected)
 
     Returns:
         GetAgentResponse with agent metadata and step list
 
     Raises:
-        HTTPException 404: Agent not found
+        HTTPException 404: Agent not found (or owned by another tenant)
         HTTPException 422: Agent data is corrupted
     """
     agent_name = normalize_agent_name_or_422(agent_name)
-    result = await db.execute(select(Agent).where(Agent.name == agent_name))
-    existing: Agent | None = result.scalars().first()
-    if existing is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with name '{agent_name}' not found",
-            resource="Agent",
-            resource_id=str(agent_name),
-            hint=(
-                "Verify the agent name is correct and the agent has been "
-                "registered via initAgent."
-            ),
-        )
+    existing = await get_agent_in_tenant_or_404(
+        tenant_id=tenant_id, agent_name=agent_name, db=db
+    )
 
     try:
         data_model = AgentData.model_validate(existing.data)
@@ -899,20 +920,14 @@ async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -
     )
 
 
-async def _get_agent_or_404(agent_name: str, db: AsyncSession) -> Agent:
-    """Get an agent or raise AGENT_NOT_FOUND."""
+async def _get_agent_or_404(
+    agent_name: str, tenant_id: str, db: AsyncSession
+) -> Agent:
+    """Get an agent scoped to ``tenant_id`` or raise AGENT_NOT_FOUND."""
     normalized_agent_name = normalize_agent_name_or_422(agent_name)
-    result = await db.execute(select(Agent).where(Agent.name == normalized_agent_name))
-    agent: Agent | None = result.scalars().first()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with name '{normalized_agent_name}' not found",
-            resource="Agent",
-            resource_id=normalized_agent_name,
-            hint="Verify the agent name is correct and the agent has been registered.",
-        )
-    return agent
+    return await get_agent_in_tenant_or_404(
+        tenant_id=tenant_id, agent_name=normalized_agent_name, db=db
+    )
 
 
 @router.post(
@@ -923,21 +938,17 @@ async def _get_agent_or_404(agent_name: str, db: AsyncSession) -> Agent:
     response_description="Success confirmation",
 )
 async def add_agent_policy(
-    agent_name: str, policy_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    policy_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AssocResponse:
     """Associate a policy with an agent (idempotent)."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
 
-    policy_result = await db.execute(select(Policy).where(Policy.id == policy_id))
-    policy: Policy | None = policy_result.scalars().first()
-    if policy is None:
-        raise NotFoundError(
-            error_code=ErrorCode.POLICY_NOT_FOUND,
-            detail=f"Policy with ID '{policy_id}' not found",
-            resource="Policy",
-            resource_id=str(policy_id),
-            hint="Verify the policy ID is correct and the policy has been created.",
-        )
+    await get_policy_in_tenant_or_404(
+        tenant_id=tenant_id, policy_id=policy_id, db=db
+    )
 
     validation_errors = await _validate_policy_controls_for_agent(agent, policy_id, db)
     if validation_errors:
@@ -993,21 +1004,17 @@ async def add_agent_policy(
     response_description="Success status with previous policy ID",
 )
 async def set_agent_policy(
-    agent_name: str, policy_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    policy_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> SetPolicyResponse:
     """Compatibility endpoint that replaces all policy associations with one policy."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
 
-    policy_result = await db.execute(select(Policy).where(Policy.id == policy_id))
-    policy: Policy | None = policy_result.scalars().first()
-    if policy is None:
-        raise NotFoundError(
-            error_code=ErrorCode.POLICY_NOT_FOUND,
-            detail=f"Policy with ID '{policy_id}' not found",
-            resource="Policy",
-            resource_id=str(policy_id),
-            hint="Verify the policy ID is correct and the policy has been created.",
-        )
+    await get_policy_in_tenant_or_404(
+        tenant_id=tenant_id, policy_id=policy_id, db=db
+    )
 
     validation_errors = await _validate_policy_controls_for_agent(agent, policy_id, db)
     if validation_errors:
@@ -1070,10 +1077,12 @@ async def set_agent_policy(
     response_description="List of policy IDs",
 )
 async def get_agent_policies(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> GetAgentPoliciesResponse:
     """List policy IDs associated with an agent."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
     result = await db.execute(
         select(agent_policies.c.policy_id)
         .where(agent_policies.c.agent_name == agent.name)
@@ -1089,10 +1098,12 @@ async def get_agent_policies(
     response_description="Policy ID",
 )
 async def get_agent_policy(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> GetPolicyResponse:
     """Compatibility endpoint that returns the first associated policy."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
     policy_result = await db.execute(
         select(Policy.id)
         .join(agent_policies, agent_policies.c.policy_id == Policy.id)
@@ -1119,24 +1130,21 @@ async def get_agent_policy(
     response_description="Success confirmation",
 )
 async def remove_agent_policy(
-    agent_name: str, policy_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    policy_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AssocResponse:
     """Remove a policy association from an agent.
 
     Idempotent for existing resources: removing a non-associated link is a no-op.
     Missing agent/policy resources still return 404.
     """
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
 
-    policy_result = await db.execute(select(Policy.id).where(Policy.id == policy_id))
-    if policy_result.first() is None:
-        raise NotFoundError(
-            error_code=ErrorCode.POLICY_NOT_FOUND,
-            detail=f"Policy with ID '{policy_id}' not found",
-            resource="Policy",
-            resource_id=str(policy_id),
-            hint="Verify the policy ID is correct and the policy has been created.",
-        )
+    await get_policy_in_tenant_or_404(
+        tenant_id=tenant_id, policy_id=policy_id, db=db
+    )
 
     try:
         await db.execute(
@@ -1171,10 +1179,12 @@ async def remove_agent_policy(
     response_description="Success confirmation",
 )
 async def remove_all_agent_policies(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AssocResponse:
     """Remove all policy associations from an agent."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
 
     try:
         await db.execute(delete(agent_policies).where(agent_policies.c.agent_name == agent.name))
@@ -1206,10 +1216,12 @@ async def remove_all_agent_policies(
     response_description="Success confirmation",
 )
 async def delete_agent_policy(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> DeletePolicyResponse:
     """Compatibility endpoint that removes all policy associations."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
 
     existing_policy_result = await db.execute(
         select(agent_policies.c.policy_id)
@@ -1254,21 +1266,17 @@ async def delete_agent_policy(
     response_description="Success confirmation",
 )
 async def add_agent_control(
-    agent_name: str, control_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    control_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AssocResponse:
     """Associate a control directly with an agent (idempotent)."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
 
-    control_result = await db.execute(select(Control).where(Control.id == control_id))
-    control: Control | None = control_result.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
 
     validation_errors = _validate_controls_for_agent(agent, [control])
     if validation_errors:
@@ -1324,20 +1332,17 @@ async def add_agent_control(
     response_description="Success confirmation",
 )
 async def remove_agent_control(
-    agent_name: str, control_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    control_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> RemoveAgentControlResponse:
     """Remove a direct control association from an agent (idempotent)."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
 
-    control_result = await db.execute(select(Control.id).where(Control.id == control_id))
-    if control_result.first() is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
 
     try:
         remove_direct_stmt = (
@@ -1420,6 +1425,7 @@ async def list_agent_controls(
             "combine with rendered_state='rendered' to exclude them."
         ),
     ),
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> AgentControlsResponse:
     """
@@ -1443,7 +1449,7 @@ async def list_agent_controls(
     Raises:
         HTTPException 404: Agent not found
     """
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, tenant_id, db)
     controls = await list_controls_for_agent(
         agent.name,
         db,
@@ -1485,6 +1491,7 @@ async def list_agent_evaluators(
     agent_name: str,
     cursor: str | None = None,
     limit: int = _DEFAULT_PAGINATION_LIMIT,
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> ListEvaluatorsResponse:
     """
@@ -1510,16 +1517,9 @@ async def list_agent_evaluators(
     # Clamp limit
     limit = min(max(1, limit), _MAX_PAGINATION_LIMIT)
 
-    result = await db.execute(select(Agent).where(Agent.name == agent_name))
-    agent: Agent | None = result.scalars().first()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with name '{agent_name}' not found",
-            resource="Agent",
-            resource_id=str(agent_name),
-            hint="Verify the agent name is correct and the agent has been registered.",
-        )
+    agent = await get_agent_in_tenant_or_404(
+        tenant_id=tenant_id, agent_name=agent_name, db=db
+    )
 
     try:
         data_model = AgentData.model_validate(agent.data)
@@ -1580,6 +1580,7 @@ async def list_agent_evaluators(
 async def get_agent_evaluator(
     agent_name: str,
     evaluator_name: str,
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> EvaluatorSchemaItem:
     """
@@ -1597,16 +1598,9 @@ async def get_agent_evaluator(
         HTTPException 404: Agent or evaluator not found
     """
     agent_name = normalize_agent_name_or_422(agent_name)
-    result = await db.execute(select(Agent).where(Agent.name == agent_name))
-    agent: Agent | None = result.scalars().first()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with name '{agent_name}' not found",
-            resource="Agent",
-            resource_id=str(agent_name),
-            hint="Verify the agent name is correct and the agent has been registered.",
-        )
+    agent = await get_agent_in_tenant_or_404(
+        tenant_id=tenant_id, agent_name=agent_name, db=db
+    )
 
     try:
         data_model = AgentData.model_validate(agent.data)
@@ -1646,6 +1640,7 @@ async def get_agent_evaluator(
 async def patch_agent(
     agent_name: str,
     request: PatchAgentRequest,
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> PatchAgentResponse:
     """
@@ -1667,16 +1662,9 @@ async def patch_agent(
         HTTPException 500: Database error during update
     """
     agent_name = normalize_agent_name_or_422(agent_name)
-    result = await db.execute(select(Agent).where(Agent.name == agent_name))
-    agent: Agent | None = result.scalars().first()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent with name '{agent_name}' not found",
-            resource="Agent",
-            resource_id=str(agent_name),
-            hint="Verify the agent name is correct and the agent has been registered.",
-        )
+    agent = await get_agent_in_tenant_or_404(
+        tenant_id=tenant_id, agent_name=agent_name, db=db
+    )
 
     try:
         data_model = AgentData.model_validate(agent.data)

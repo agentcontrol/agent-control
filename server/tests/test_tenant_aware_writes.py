@@ -131,13 +131,14 @@ def test_agent_create_with_header_lands_in_resolved_tenant(
 def test_agent_policy_association_inherits_agent_tenant(
     client: TestClient, db_engine
 ) -> None:
-    """Association rows must record the agent's tenant, not the request-scoped one."""
+    """Association rows record the agent's tenant when both sides are same-tenant."""
     agent_name = _init_agent(client, tenant="agent-tenant")
-    policy_id, _ = _create_policy(client, tenant="policy-tenant")
+    policy_id, _ = _create_policy(client, tenant="agent-tenant")
 
-    # Attach without a header. The association must still pick up the agent's tenant
-    # rather than falling through to DEFAULT_TENANT_ID.
-    attach = client.post(f"{API_PREFIX}/agents/{agent_name}/policies/{policy_id}")
+    attach = client.post(
+        f"{API_PREFIX}/agents/{agent_name}/policies/{policy_id}",
+        headers={TENANT_HEADER: "agent-tenant"},
+    )
     assert attach.status_code == 200, attach.text
 
     recorded = _tenant_of(
@@ -153,10 +154,11 @@ def test_agent_control_association_inherits_agent_tenant(
     client: TestClient, db_engine
 ) -> None:
     agent_name = _init_agent(client, tenant="agent-tenant")
-    control_id, _ = _create_control(client, tenant="other-tenant")
+    control_id, _ = _create_control(client, tenant="agent-tenant")
 
     attach = client.post(
-        f"{API_PREFIX}/agents/{agent_name}/controls/{control_id}"
+        f"{API_PREFIX}/agents/{agent_name}/controls/{control_id}",
+        headers={TENANT_HEADER: "agent-tenant"},
     )
     assert attach.status_code == 200, attach.text
 

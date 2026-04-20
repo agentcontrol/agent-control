@@ -198,7 +198,9 @@ async def attach_target_control(
     omitted, the attachment defaults to ``enabled=true``.
     """
     await _get_target_or_404(tenant_id=tenant_id, target_id=target_id, db=db)
-    if not await targets_service.control_exists(control_id=control_id, db=db):
+    if not await targets_service.control_exists_in_tenant(
+        control_id=control_id, tenant_id=tenant_id, db=db
+    ):
         raise NotFoundError(
             error_code=ErrorCode.CONTROL_NOT_FOUND,
             detail=f"Control with ID '{control_id}' not found",
