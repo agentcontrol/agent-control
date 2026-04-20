@@ -205,6 +205,46 @@ actions:
       x-speakeasy-group: policies
       x-speakeasy-name-override: removeControl
 
+  - target: $["paths"]["/api/v1/targets"]["get"]
+    update:
+      x-speakeasy-group: targets
+      x-speakeasy-name-override: list
+
+  - target: $["paths"]["/api/v1/targets"]["post"]
+    update:
+      x-speakeasy-group: targets
+      x-speakeasy-name-override: create
+
+  - target: $["paths"]["/api/v1/targets/{target_id}"]["get"]
+    update:
+      x-speakeasy-group: targets
+      x-speakeasy-name-override: get
+
+  - target: $["paths"]["/api/v1/targets/{target_id}"]["delete"]
+    update:
+      x-speakeasy-group: targets
+      x-speakeasy-name-override: delete
+
+  - target: $["paths"]["/api/v1/targets/{target_id}/controls"]["get"]
+    update:
+      x-speakeasy-group: targets
+      x-speakeasy-name-override: listControls
+
+  - target: $["paths"]["/api/v1/targets/{target_id}/controls/{control_id}"]["post"]
+    update:
+      x-speakeasy-group: targets
+      x-speakeasy-name-override: attachControl
+
+  - target: $["paths"]["/api/v1/targets/{target_id}/controls/{control_id}"]["patch"]
+    update:
+      x-speakeasy-group: targets
+      x-speakeasy-name-override: toggleControl
+
+  - target: $["paths"]["/api/v1/targets/{target_id}/controls/{control_id}"]["delete"]
+    update:
+      x-speakeasy-group: targets
+      x-speakeasy-name-override: detachControl
+
   - target: $["paths"]["/health"]["get"]
     update:
       x-speakeasy-group: system

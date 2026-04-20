@@ -101,6 +101,16 @@ from .server import (
     ValidateControlDataRequest,
     ValidateControlDataResponse,
 )
+from .target import (
+    AttachTargetControlRequest,
+    CreateTargetRequest,
+    CreateTargetResponse,
+    ListTargetControlsResponse,
+    ListTargetsResponse,
+    TargetControlSummary,
+    TargetSummary,
+    ToggleTargetControlRequest,
+)
 
 __all__ = [
     # Health
@@ -191,4 +201,13 @@ __all__ = [
     "StatsResponse",
     "StatsTotals",
     "TimeseriesBucket",
+    # Target models
+    "AttachTargetControlRequest",
+    "CreateTargetRequest",
+    "CreateTargetResponse",
+    "ListTargetControlsResponse",
+    "ListTargetsResponse",
+    "TargetControlSummary",
+    "TargetSummary",
+    "ToggleTargetControlRequest",
 ]

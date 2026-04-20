@@ -10,6 +10,7 @@ import { Evaluators } from "./evaluators.js";
 import { Observability } from "./observability.js";
 import { Policies } from "./policies.js";
 import { System } from "./system.js";
+import { Targets } from "./targets.js";
 
 export class AgentControlSDK extends ClientSDK {
   private _system?: System;
@@ -45,5 +46,10 @@ export class AgentControlSDK extends ClientSDK {
   private _policies?: Policies;
   get policies(): Policies {
     return (this._policies ??= new Policies(this._options));
+  }
+
+  private _targets?: Targets;
+  get targets(): Targets {
+    return (this._targets ??= new Targets(this._options));
   }
 }

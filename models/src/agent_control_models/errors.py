@@ -61,6 +61,8 @@ class ErrorCode(StrEnum):
     POLICY_NOT_FOUND = "POLICY_NOT_FOUND"
     CONTROL_NOT_FOUND = "CONTROL_NOT_FOUND"
     EVALUATOR_NOT_FOUND = "EVALUATOR_NOT_FOUND"
+    TARGET_NOT_FOUND = "TARGET_NOT_FOUND"
+    TARGET_CONTROL_NOT_FOUND = "TARGET_CONTROL_NOT_FOUND"
 
     # Conflict Errors (3xx pattern)
     AGENT_NAME_CONFLICT = "AGENT_NAME_CONFLICT"
@@ -71,6 +73,7 @@ class ErrorCode(StrEnum):
     CONTROL_TEMPLATE_CONFLICT = "CONTROL_TEMPLATE_CONFLICT"
     EVALUATOR_IN_USE = "EVALUATOR_IN_USE"
     SCHEMA_INCOMPATIBLE = "SCHEMA_INCOMPATIBLE"
+    TARGET_CONFLICT = "TARGET_CONFLICT"
 
     # Validation Errors (4xx pattern)
     VALIDATION_ERROR = "VALIDATION_ERROR"
@@ -365,6 +368,8 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.POLICY_NOT_FOUND: "Policy Not Found",
     ErrorCode.CONTROL_NOT_FOUND: "Control Not Found",
     ErrorCode.EVALUATOR_NOT_FOUND: "Evaluator Not Found",
+    ErrorCode.TARGET_NOT_FOUND: "Target Not Found",
+    ErrorCode.TARGET_CONTROL_NOT_FOUND: "Target Control Not Found",
     # Conflict errors
     ErrorCode.AGENT_NAME_CONFLICT: "Agent Name Already Exists",
     ErrorCode.POLICY_NAME_CONFLICT: "Policy Name Already Exists",
@@ -374,6 +379,7 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.CONTROL_TEMPLATE_CONFLICT: "Control Template Conflict",
     ErrorCode.EVALUATOR_IN_USE: "Evaluator In Use",
     ErrorCode.SCHEMA_INCOMPATIBLE: "Schema Incompatible",
+    ErrorCode.TARGET_CONFLICT: "Target Already Exists",
     # Validation errors
     ErrorCode.VALIDATION_ERROR: "Validation Error",
     ErrorCode.INVALID_CONFIG: "Invalid Configuration",

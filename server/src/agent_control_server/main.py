@@ -26,6 +26,7 @@ from .endpoints.evaluators import router as evaluator_router
 from .endpoints.observability import router as observability_router
 from .endpoints.policies import router as policy_router
 from .endpoints.system import router as system_router
+from .endpoints.targets import router as target_router
 from .errors import (
     APIError,
     api_error_handler,
@@ -221,6 +222,11 @@ app.include_router(
 
 app.include_router(
     evaluator_router,
+    prefix=api_v1_prefix,
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    target_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(require_api_key)],
 )
