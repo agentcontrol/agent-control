@@ -841,6 +841,10 @@ def register_control_event_sink(sink: ControlEventSink) -> None:
     through the SDK's local, server, and merged event flows. When one or more
     external sinks are registered, they replace the default built-in delivery
     path. Registration is idempotent for the same sink instance.
+
+    External sinks remain caller-owned. The SDK does not flush, close, or
+    unregister them during shutdown; callers are responsible for their
+    lifecycle and should unregister them when they are no longer needed.
     """
     with _external_event_sinks_lock:
         if sink not in _external_event_sinks:
@@ -894,7 +898,8 @@ def init_observability(
     Args:
         server_url: Server URL for sending events
         api_key: API key for authentication
-        enabled: Override AGENT_CONTROL_OBSERVABILITY_ENABLED
+        enabled: Per-call override for AGENT_CONTROL_OBSERVABILITY_ENABLED.
+            This does not mutate the process-global SDK settings.
 
     Returns:
         EventBatcher instance if enabled, None otherwise
@@ -902,8 +907,6 @@ def init_observability(
     global _batcher, _event_sink
 
     is_enabled = enabled if enabled is not None else get_settings().observability_enabled
-    if enabled is not None:
-        configure_settings(observability_enabled=is_enabled)
 
     if not is_enabled:
         logger.debug("Observability disabled")
@@ -958,7 +961,11 @@ def write_events(events: Sequence[ControlExecutionEvent]) -> SinkResult:
 
 
 def sync_shutdown_observability() -> None:
-    """Synchronously shut down observability and flush remaining events."""
+    """Synchronously shut down observability and flush remaining events.
+
+    Only SDK-owned resources are shut down here. Caller-registered external
+    sinks remain registered and are not flushed/closed by the SDK.
+    """
     global _batcher, _event_sink
     if _batcher is not None:
         _batcher.shutdown()

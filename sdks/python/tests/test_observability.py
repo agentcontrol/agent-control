@@ -8,6 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from agent_control_models import ControlExecutionEvent
+from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
+
 from agent_control.observability import (
     EventBatcher,
     add_event,
@@ -24,8 +27,6 @@ from agent_control.observability import (
     unregister_control_event_sink,
 )
 from agent_control.settings import configure_settings, get_settings
-from agent_control_models import ControlExecutionEvent
-from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
 
 
 def create_mock_event():
@@ -59,6 +60,21 @@ class RecordingSink(BaseControlEventSink):
         accepted = self.accepted if self.accepted is not None else len(events)
         dropped = max(len(events) - accepted, 0)
         return SinkResult(accepted=accepted, dropped=dropped)
+
+
+class LifecycleRecordingSink(RecordingSink):
+    """Test sink that exposes lifecycle hooks owned by the caller."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.flush_calls = 0
+        self.close_calls = 0
+
+    def flush(self) -> None:
+        self.flush_calls += 1
+
+    def close(self) -> None:
+        self.close_calls += 1
 
 
 def reset_observability_state() -> None:
@@ -825,6 +841,29 @@ class TestInitObservability:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
 
+    def test_enabled_override_does_not_mutate_global_settings(self):
+        """Test that enabled= only affects the current init call."""
+        import agent_control.observability as obs
+
+        old_batcher = obs._batcher
+        old_sink = obs._event_sink
+        original_settings = get_settings().model_dump()
+        obs._batcher = None
+        obs._event_sink = None
+
+        try:
+            configure_settings(observability_enabled=True)
+
+            result = init_observability(enabled=False)
+
+            assert result is None
+            assert get_settings().observability_enabled is True
+            assert is_observability_enabled() is False
+        finally:
+            configure_settings(**original_settings)
+            obs._batcher = old_batcher
+            obs._event_sink = old_sink
+
     def test_init_enabled_creates_batcher(self):
         """Test that init_observability creates batcher when enabled."""
         import agent_control.observability as obs
@@ -909,6 +948,30 @@ class TestShutdownObservability:
         try:
             await shutdown_observability()  # Should not raise
         finally:
+            obs._batcher = old_batcher
+            obs._event_sink = old_sink
+
+    def test_shutdown_does_not_manage_registered_external_sink_lifecycle(self):
+        """Caller-registered sinks remain caller-owned across shutdown."""
+        import agent_control.observability as obs
+
+        old_batcher = obs._batcher
+        old_sink = obs._event_sink
+        external_sink = LifecycleRecordingSink()
+
+        try:
+            register_control_event_sink(external_sink)
+            assert add_event(create_mock_event()) is True
+
+            sync_shutdown_observability()
+
+            assert external_sink.flush_calls == 0
+            assert external_sink.close_calls == 0
+            assert get_registered_control_event_sinks() == (external_sink,)
+            assert add_event(create_mock_event()) is True
+            assert len(external_sink.received_batches) == 2
+        finally:
+            unregister_control_event_sink(external_sink)
             obs._batcher = old_batcher
             obs._event_sink = old_sink
 
