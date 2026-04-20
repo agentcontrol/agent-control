@@ -71,6 +71,7 @@ from ..services.schema_compat import (
     check_schema_compatibility,
     format_compatibility_error,
 )
+from ..tenancy import get_tenant_id
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -460,6 +461,7 @@ async def list_agents(
 async def init_agent(
     request: InitAgentRequest,
     client: RequireAPIKey,
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> InitAgentResponse:
     """
@@ -541,6 +543,7 @@ async def init_agent(
 
         new_agent = Agent(
             name=request.agent.agent_name,
+            tenant_id=tenant_id,
             data=data_model.model_dump(mode="json"),
         )
         db.add(new_agent)
@@ -956,7 +959,11 @@ async def add_agent_policy(
     try:
         stmt = (
             pg_insert(agent_policies)
-            .values(agent_name=agent.name, policy_id=policy_id)
+            .values(
+                agent_name=agent.name,
+                policy_id=policy_id,
+                tenant_id=agent.tenant_id,
+            )
             .on_conflict_do_nothing()
         )
         await db.execute(stmt)
@@ -1031,7 +1038,11 @@ async def set_agent_policy(
         await db.execute(delete(agent_policies).where(agent_policies.c.agent_name == agent.name))
         await db.execute(
             pg_insert(agent_policies)
-            .values(agent_name=agent.name, policy_id=policy_id)
+            .values(
+                agent_name=agent.name,
+                policy_id=policy_id,
+                tenant_id=agent.tenant_id,
+            )
             .on_conflict_do_nothing()
         )
         await db.commit()
@@ -1279,7 +1290,11 @@ async def add_agent_control(
     try:
         stmt = (
             pg_insert(agent_controls)
-            .values(agent_name=agent.name, control_id=control_id)
+            .values(
+                agent_name=agent.name,
+                control_id=control_id,
+                tenant_id=agent.tenant_id,
+            )
             .on_conflict_do_nothing()
         )
         await db.execute(stmt)

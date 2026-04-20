@@ -14,6 +14,7 @@ from ..db import get_async_db
 from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Control, Policy, policy_controls
+from ..tenancy import get_tenant_id
 
 router = APIRouter(prefix="/policies", tags=["policies"])
 
@@ -28,7 +29,9 @@ _logger = get_logger(__name__)
     response_description="Created policy ID",
 )
 async def create_policy(
-    request: CreatePolicyRequest, db: AsyncSession = Depends(get_async_db)
+    request: CreatePolicyRequest,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> CreatePolicyResponse:
     """
     Create a new empty policy with a unique name.
@@ -58,7 +61,7 @@ async def create_policy(
             hint="Choose a different name or update the existing policy.",
         )
 
-    policy = Policy(name=request.name)
+    policy = Policy(name=request.name, tenant_id=tenant_id)
     db.add(policy)
     try:
         await db.commit()

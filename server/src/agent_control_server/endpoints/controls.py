@@ -53,6 +53,7 @@ from ..services.evaluator_utils import (
 )
 from ..services.query_utils import escape_like_pattern
 from ..services.validation_paths import format_field_path
+from ..tenancy import get_tenant_id
 
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
@@ -443,7 +444,9 @@ async def render_control_template(
     response_description="Created control ID",
 )
 async def create_control(
-    request: CreateControlRequest, db: AsyncSession = Depends(get_async_db)
+    request: CreateControlRequest,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
 ) -> CreateControlResponse:
     """
     Create a new control with a unique name.
@@ -476,7 +479,7 @@ async def create_control(
     control_def = await _materialize_control_input(request.data, db=db)
     control_data = _serialize_control_data(control_def)
 
-    control = Control(name=request.name, data=control_data)
+    control = Control(name=request.name, tenant_id=tenant_id, data=control_data)
     db.add(control)
     try:
         await db.commit()
