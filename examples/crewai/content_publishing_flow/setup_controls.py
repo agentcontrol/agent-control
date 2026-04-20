@@ -46,7 +46,8 @@ async def create_control_safe(
                 print(f"  ! Could not find existing control '{name}'")
                 raise SystemExit(1)
         else:
-            print(f"  ! Error creating control '{name}': {e}")
+            detail = getattr(getattr(e, "response", None), "text", "")
+            print(f"  ! Error creating control '{name}': {e}\n  ! Response body: {detail}")
             raise
 
 
@@ -108,13 +109,15 @@ async def setup_publishing_controls():
                 "step_names": ["validate_request"],
                 "stages": ["pre"],
             },
-            "selector": {
-                "path": "input.request",
-            },
-            "evaluator": {
-                "name": "json",
-                "config": {
-                    "required_fields": ["topic", "audience", "content_type"],
+            "condition": {
+                "selector": {
+                    "path": "input.request",
+                },
+                "evaluator": {
+                    "name": "json",
+                    "config": {
+                        "required_fields": ["topic", "audience", "content_type"],
+                    },
                 },
             },
             "action": {"decision": "deny"},
@@ -134,22 +137,24 @@ async def setup_publishing_controls():
                 "step_names": ["research_topic"],
                 "stages": ["post"],
             },
-            "selector": {
-                "path": "output",
-            },
-            "evaluator": {
-                "name": "list",
-                "config": {
-                    "values": [
-                        "infowars.com",
-                        "naturalcures.com",
-                        "conspiracydaily.net",
-                        "fakenews.org",
-                        "unverifiedsource.com",
-                    ],
-                    "logic": "any",
-                    "match_mode": "contains",
-                    "case_sensitive": False,
+            "condition": {
+                "selector": {
+                    "path": "output",
+                },
+                "evaluator": {
+                    "name": "list",
+                    "config": {
+                        "values": [
+                            "infowars.com",
+                            "naturalcures.com",
+                            "conspiracydaily.net",
+                            "fakenews.org",
+                            "unverifiedsource.com",
+                        ],
+                        "logic": "any",
+                        "match_mode": "contains",
+                        "case_sensitive": False,
+                    },
                 },
             },
             "action": {"decision": "deny"},
@@ -169,18 +174,20 @@ async def setup_publishing_controls():
                 "step_names": ["fact_check"],
                 "stages": ["post"],
             },
-            "selector": {
-                "path": "output",
-            },
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    "pattern": (
-                        r"(?i)"
-                        r"(?:UNVERIFIED|UNCONFIRMED|DEBUNKED|RETRACTED|FABRICATED)"
-                        r"|(?:no\s+credible\s+source)"
-                        r"|(?:cannot\s+be\s+verified)"
-                    ),
+            "condition": {
+                "selector": {
+                    "path": "output",
+                },
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        "pattern": (
+                            r"(?i)"
+                            r"(?:UNVERIFIED|UNCONFIRMED|DEBUNKED|RETRACTED|FABRICATED)"
+                            r"|(?:no\s+credible\s+source)"
+                            r"|(?:cannot\s+be\s+verified)"
+                        ),
+                    },
                 },
             },
             "action": {"decision": "deny"},
@@ -200,19 +207,21 @@ async def setup_publishing_controls():
                 "step_names": ["write_draft"],
                 "stages": ["post"],
             },
-            "selector": {
-                "path": "output",
-            },
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    "pattern": (
-                        r"(?:"
-                        r"\b\d{3}-\d{2}-\d{4}\b"               # SSN
-                        r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"  # Email
-                        r"|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"      # Phone
-                        r")"
-                    ),
+            "condition": {
+                "selector": {
+                    "path": "output",
+                },
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        "pattern": (
+                            r"(?:"
+                            r"\b\d{3}-\d{2}-\d{4}\b"               # SSN
+                            r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"  # Email
+                            r"|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"      # Phone
+                            r")"
+                        ),
+                    },
                 },
             },
             "action": {"decision": "deny"},
@@ -232,22 +241,24 @@ async def setup_publishing_controls():
                 "step_names": ["write_draft"],
                 "stages": ["post"],
             },
-            "selector": {
-                "path": "output",
-            },
-            "evaluator": {
-                "name": "list",
-                "config": {
-                    "values": [
-                        "insider trading",
-                        "market manipulation",
-                        "ponzi scheme",
-                        "money laundering",
-                        "classified information",
-                    ],
-                    "logic": "any",
-                    "match_mode": "contains",
-                    "case_sensitive": False,
+            "condition": {
+                "selector": {
+                    "path": "output",
+                },
+                "evaluator": {
+                    "name": "list",
+                    "config": {
+                        "values": [
+                            "insider trading",
+                            "market manipulation",
+                            "ponzi scheme",
+                            "money laundering",
+                            "classified information",
+                        ],
+                        "logic": "any",
+                        "match_mode": "contains",
+                        "case_sensitive": False,
+                    },
                 },
             },
             "action": {"decision": "deny"},
@@ -267,13 +278,15 @@ async def setup_publishing_controls():
                 "step_names": ["legal_review"],
                 "stages": ["post"],
             },
-            "selector": {
-                "path": "output",
-            },
-            "evaluator": {
-                "name": "json",
-                "config": {
-                    "required_fields": ["disclaimer", "legal_reviewed"],
+            "condition": {
+                "selector": {
+                    "path": "output",
+                },
+                "evaluator": {
+                    "name": "json",
+                    "config": {
+                        "required_fields": ["disclaimer", "legal_reviewed"],
+                    },
                 },
             },
             "action": {"decision": "deny"},
@@ -293,19 +306,21 @@ async def setup_publishing_controls():
                 "step_names": ["edit_content"],
                 "stages": ["post"],
             },
-            "selector": {
-                "path": "output",
-            },
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    "pattern": (
-                        r"(?:"
-                        r"\b\d{3}-\d{2}-\d{4}\b"
-                        r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-                        r"|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"
-                        r")"
-                    ),
+            "condition": {
+                "selector": {
+                    "path": "output",
+                },
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        "pattern": (
+                            r"(?:"
+                            r"\b\d{3}-\d{2}-\d{4}\b"
+                            r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+                            r"|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"
+                            r")"
+                        ),
+                    },
                 },
             },
             "action": {"decision": "deny"},
@@ -330,16 +345,18 @@ async def setup_publishing_controls():
                 "step_names": ["request_human_review"],
                 "stages": ["pre"],
             },
-            "selector": {
-                "path": "input.content_type",
-            },
-            "evaluator": {
-                "name": "list",
-                "config": {
-                    "values": ["internal_memo"],
-                    "logic": "any",
-                    "match_mode": "exact",
-                    "case_sensitive": False,
+            "condition": {
+                "selector": {
+                    "path": "input.content_type",
+                },
+                "evaluator": {
+                    "name": "list",
+                    "config": {
+                        "values": ["internal_memo"],
+                        "logic": "any",
+                        "match_mode": "exact",
+                        "case_sensitive": False,
+                    },
                 },
             },
             "action": {
@@ -364,19 +381,21 @@ async def setup_publishing_controls():
                 "step_names": ["publish_content"],
                 "stages": ["pre"],
             },
-            "selector": {
-                "path": "input.content",
-            },
-            "evaluator": {
-                "name": "regex",
-                "config": {
-                    "pattern": (
-                        r"(?:"
-                        r"\b\d{3}-\d{2}-\d{4}\b"
-                        r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-                        r"|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"
-                        r")"
-                    ),
+            "condition": {
+                "selector": {
+                    "path": "input.content",
+                },
+                "evaluator": {
+                    "name": "regex",
+                    "config": {
+                        "pattern": (
+                            r"(?:"
+                            r"\b\d{3}-\d{2}-\d{4}\b"
+                            r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+                            r"|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"
+                            r")"
+                        ),
+                    },
                 },
             },
             "action": {"decision": "deny"},
