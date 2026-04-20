@@ -816,8 +816,6 @@ _named_event_sink_factories: ControlEventSinkFactoryRegistry[ControlEventSink] =
 _configured_named_event_sink: ControlEventSink | None = None
 _configured_named_event_sink_selection: ControlEventSinkSelection | None = None
 _configured_named_event_sink_lock = threading.Lock()
-_used_custom_event_sinks: list[ControlEventSink] = []
-_used_custom_event_sinks_lock = threading.Lock()
 
 
 class _BatcherControlEventSink(BaseControlEventSink):
@@ -858,7 +856,8 @@ def register_control_event_sink(sink: ControlEventSink) -> None:
     Registered sinks receive the same finalized control-event payloads emitted
     through the SDK's local, server, and merged event flows when the active
     sink selection is `registered`. Registration is idempotent for the same
-    sink instance.
+    sink instance. Caller-registered sinks remain caller-owned: the SDK does
+    not flush, close, or unregister them during shutdown.
     """
     with _external_event_sinks_lock:
         if not any(registered_sink is sink for registered_sink in _external_event_sinks):
@@ -906,14 +905,6 @@ def unregister_control_event_sink_factory(name: str) -> None:
 def get_registered_control_event_sink_factory_names() -> tuple[str, ...]:
     """Return the registered named control-event sink factories."""
     return _named_event_sink_factories.registered_names()
-
-
-def _remember_custom_control_event_sinks(sinks: Sequence[ControlEventSink]) -> None:
-    """Track custom sink instances that should be cleaned up on shutdown."""
-    with _used_custom_event_sinks_lock:
-        for sink in sinks:
-            if not any(remembered_sink is sink for remembered_sink in _used_custom_event_sinks):
-                _used_custom_event_sinks.append(sink)
 
 
 def _get_sink_selection() -> ControlEventSinkSelection:
@@ -978,14 +969,11 @@ def _get_active_control_event_sinks() -> tuple[ControlEventSink, ...]:
     if selection.name == DEFAULT_CONTROL_EVENT_SINK_NAME:
         return (_event_sink,) if _event_sink is not None else ()
     if selection.name == REGISTERED_CONTROL_EVENT_SINK_NAME:
-        sinks = get_registered_control_event_sinks()
-        _remember_custom_control_event_sinks(sinks)
-        return sinks
+        return get_registered_control_event_sinks()
 
     named_sink = _get_or_create_named_control_event_sink(selection)
     if named_sink is None:
         return ()
-    _remember_custom_control_event_sinks((named_sink,))
     return (named_sink,)
 
 
@@ -1030,12 +1018,6 @@ def _shutdown_custom_control_event_sink(sink: ControlEventSink) -> None:
 async def _run_awaitable_during_shutdown(result: Awaitable[Any]) -> None:
     """Await a sink lifecycle callback through a concrete coroutine."""
     await result
-
-
-def _get_custom_control_event_sinks_to_shutdown() -> tuple[ControlEventSink, ...]:
-    """Collect custom sink instances that should be cleaned up on shutdown."""
-    with _used_custom_event_sinks_lock:
-        return tuple(_used_custom_event_sinks)
 
 
 def init_observability(
@@ -1124,44 +1106,48 @@ def add_event(event: ControlExecutionEvent) -> bool:
 
 
 def write_events(events: Sequence[ControlExecutionEvent]) -> SinkResult:
-    """Write events through the active sink selection."""
+    """Write events through the active sink selection.
+
+    For fanout selections such as ``registered``, the returned result reflects
+    the delivery guaranteed across all selected sinks. Partial delivery to only
+    a subset of sinks is surfaced as dropped events instead of being masked by
+    the most successful sink result.
+    """
     active_sinks = _get_active_control_event_sinks()
-    best_result: SinkResult | None = None
+    if not active_sinks:
+        return SinkResult(accepted=0, dropped=len(events))
+
+    min_accepted = len(events)
+    max_dropped = 0
 
     for sink in active_sinks:
         try:
             result = sink.write_events(events)
         except Exception:
             logger.warning("Control-event sink write failed", exc_info=True)
+            min_accepted = 0
+            max_dropped = max(max_dropped, len(events))
             continue
-        if best_result is None or (
-            result.accepted,
-            -result.dropped,
-        ) > (
-            best_result.accepted,
-            -best_result.dropped,
-        ):
-            best_result = result
 
-    if best_result is None:
-        return SinkResult(accepted=0, dropped=len(events))
-    return best_result
+        min_accepted = min(min_accepted, result.accepted)
+        max_dropped = max(max_dropped, result.dropped)
+
+    dropped = max(max_dropped, len(events) - min_accepted)
+    accepted = min(min_accepted, max(len(events) - dropped, 0))
+    return SinkResult(accepted=accepted, dropped=dropped)
 
 
 def sync_shutdown_observability() -> None:
     """Synchronously shut down observability and flush remaining events."""
     global _configured_named_event_sink, _configured_named_event_sink_selection
-    custom_sinks = _get_custom_control_event_sinks_to_shutdown()
     _shutdown_built_in_event_sink()
-    for sink in custom_sinks:
-        _shutdown_custom_control_event_sink(sink)
+    configured_named_sink: ControlEventSink | None = None
     with _configured_named_event_sink_lock:
+        configured_named_sink = _configured_named_event_sink
         _configured_named_event_sink = None
         _configured_named_event_sink_selection = None
-    with _used_custom_event_sinks_lock:
-        _used_custom_event_sinks.clear()
-    with _external_event_sinks_lock:
-        _external_event_sinks.clear()
+    if configured_named_sink is not None:
+        _shutdown_custom_control_event_sink(configured_named_sink)
 
 
 async def shutdown_observability() -> None:

@@ -21,10 +21,29 @@ class SinkSelectionError(LookupError):
 
 
 class ControlEventSinkSelection(BaseModel):
-    """Configuration for choosing a control-event sink."""
+    """Runtime-agnostic sink-selection payload.
 
-    name: str = Field(default=DEFAULT_CONTROL_EVENT_SINK_NAME, min_length=1)
-    config: JSONObject = Field(default_factory=dict)
+    This model intentionally shares only the selection shape across runtimes.
+    The meaning of built-in sink names such as ``default`` or ``registered``,
+    along with any supported config keys, is defined by the caller/runtime
+    that resolves the selection.
+    """
+
+    name: str = Field(
+        default=DEFAULT_CONTROL_EVENT_SINK_NAME,
+        min_length=1,
+        description=(
+            "Sink selection name. Built-in names are interpreted by the runtime "
+            "that resolves this selection."
+        ),
+    )
+    config: JSONObject = Field(
+        default_factory=dict,
+        description=(
+            "Runtime-specific configuration for the selected sink. Shared only "
+            "as a transport shape, not as cross-runtime semantics."
+        ),
+    )
 
 
 class ControlEventSinkFactoryRegistry[SinkT]:

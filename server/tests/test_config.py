@@ -185,7 +185,7 @@ def test_observability_settings_support_prefixed_env_vars(monkeypatch) -> None:
     # Given: canonical observability env vars are set
     monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_ENABLED", "false")
     monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_STDOUT", "true")
-    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_NAME", "default")
+    monkeypatch.setenv("AGENT_CONTROL_SERVER_OBSERVABILITY_SINK_NAME", "default")
 
     # When: loading observability settings from the environment
     config = ObservabilitySettings()
@@ -197,13 +197,26 @@ def test_observability_settings_support_prefixed_env_vars(monkeypatch) -> None:
 
 
 def test_observability_settings_parse_sink_config(monkeypatch) -> None:
-    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_NAME", "custom")
-    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_CONFIG", '{"project":"demo"}')
+    monkeypatch.setenv("AGENT_CONTROL_SERVER_OBSERVABILITY_SINK_NAME", "custom")
+    monkeypatch.setenv("AGENT_CONTROL_SERVER_OBSERVABILITY_SINK_CONFIG", '{"project":"demo"}')
 
     config = ObservabilitySettings()
 
     assert config.sink_name == "custom"
     assert config.sink_config == {"project": "demo"}
+
+
+def test_observability_settings_ignore_shared_sink_selection_env_vars(monkeypatch) -> None:
+    # Given: only the shared SDK-facing sink selection env vars are set
+    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_NAME", "registered")
+    monkeypatch.setenv("AGENT_CONTROL_OBSERVABILITY_SINK_CONFIG", '{"project":"demo"}')
+
+    # When: loading server observability settings
+    config = ObservabilitySettings()
+
+    # Then: the server keeps its own default sink selection
+    assert config.sink_name == "default"
+    assert config.sink_config == {}
 
 
 def test_observability_settings_ignore_legacy_env_vars(monkeypatch) -> None:

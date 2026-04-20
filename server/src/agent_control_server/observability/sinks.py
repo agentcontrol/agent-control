@@ -68,7 +68,12 @@ def resolve_control_event_backend(
     *,
     default_backend: ResolvedControlEventBackend | None = None,
 ) -> ResolvedControlEventBackend:
-    """Resolve the active server observability backend from shared selection config."""
+    """Resolve the active server observability backend from shared selection config.
+
+    The shared ``ControlEventSinkSelection`` model provides only the config
+    shape. Server-specific built-in semantics are defined here, so SDK-only
+    selections such as ``registered`` are rejected explicitly.
+    """
     if selection.name == DEFAULT_CONTROL_EVENT_SINK_NAME:
         if default_backend is None:
             raise RuntimeError("Default server observability backend was not provided")
