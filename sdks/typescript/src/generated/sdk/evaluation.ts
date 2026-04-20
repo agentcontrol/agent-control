@@ -18,6 +18,14 @@ export class Evaluation extends ClientSDK {
    * ``EvaluationResponse`` and does not build or ingest observability events
    * on the server; SDKs reconstruct and emit those events separately through
    * the observability ingestion endpoint.
+   *
+   * Target-bearing requests (``target_type`` and ``target_id`` both set) merge
+   * controls attached to that target into the effective set, with the same
+   * deduplication/precedence rules used by the runtime resolver: when the
+   * same control is attached via both the agent/policy path and the target
+   * path, the agent/policy attachment wins. The request body carries the
+   * caller-supplied external target identifier; the server resolves it to
+   * the internal target row via the tenant context.
    */
   async evaluate(
     request: models.EvaluationRequest,

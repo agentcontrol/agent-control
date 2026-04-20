@@ -17,7 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import APIValidationError
 from ..logging_utils import get_logger
-from ..models import Control, agent_controls, agent_policies, policy_controls
+from ..models import (
+    Control,
+    TargetControl,
+    agent_controls,
+    agent_policies,
+    policy_controls,
+)
 from .control_definitions import (
     parse_control_definition_or_api_error,
     parse_runtime_control_definition_or_api_error,
@@ -41,8 +47,25 @@ class RuntimeControl:
 async def _list_db_controls_for_agent(
     agent_name: str,
     db: AsyncSession,
+    *,
+    target_id: int | None = None,
 ) -> Sequence[Control]:
-    """Return DB Control rows for the controls associated with an agent."""
+    """Return DB Control rows for the controls associated with an agent.
+
+    When ``target_id`` is None, returns the classic set: direct agent
+    controls plus policy-derived controls. When provided, also merges in
+    controls attached to the given target. Resolution rules:
+
+    - A control appears in the effective set if it is attached via
+      ``agent_controls`` or via ``policy_controls`` through an assigned
+      policy, regardless of target state.
+    - A control attached only via ``target_controls`` contributes to the
+      effective set when ``target_controls.enabled`` is true.
+    - When the same control appears from multiple sources, the UNION
+      deduplicates by ``control_id``; the agent-side row effectively
+      masks the target-side attachment so agent-level attachment takes
+      precedence over target-level state.
+    """
     policy_control_ids = (
         select(policy_controls.c.control_id.label("control_id"))
         .select_from(
@@ -55,7 +78,19 @@ async def _list_db_controls_for_agent(
     direct_control_ids = select(agent_controls.c.control_id.label("control_id")).where(
         agent_controls.c.agent_name == agent_name
     )
-    control_ids_subquery = union(policy_control_ids, direct_control_ids).subquery()
+
+    if target_id is None:
+        control_ids_subquery = union(policy_control_ids, direct_control_ids).subquery()
+    else:
+        target_control_ids = select(
+            TargetControl.control_id.label("control_id")
+        ).where(
+            TargetControl.target_id == target_id,
+            TargetControl.enabled.is_(True),
+        )
+        control_ids_subquery = union(
+            policy_control_ids, direct_control_ids, target_control_ids
+        ).subquery()
 
     stmt = (
         select(Control)
@@ -206,9 +241,17 @@ async def list_runtime_controls_for_agent(
     db: AsyncSession,
     *,
     allow_invalid_step_name_regex: bool = False,
+    target_id: int | None = None,
 ) -> list[RuntimeControl]:
-    """Return runtime-parsed controls for evaluation hot paths."""
-    db_controls = await _list_db_controls_for_agent(agent_name, db)
+    """Return runtime-parsed controls for evaluation hot paths.
+
+    When ``target_id`` is provided, the effective set includes enabled
+    ``target_controls`` attached to that target. When None, behavior matches
+    the classic agent + policy resolution path.
+    """
+    db_controls = await _list_db_controls_for_agent(
+        agent_name, db, target_id=target_id
+    )
 
     runtime_controls: list[RuntimeControl] = []
     for c in db_controls:

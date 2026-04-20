@@ -1,7 +1,7 @@
 """Evaluation-related models."""
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .agent import AGENT_NAME_MIN_LENGTH, AGENT_NAME_PATTERN, Step, normalize_agent_name
 from .base import BaseModel
@@ -19,6 +19,12 @@ class EvaluationRequest(BaseModel):
         agent_name: Unique identifier of the agent making the request
         step: Step payload for evaluation
         stage: 'pre' (before execution) or 'post' (after execution)
+        target_type: Optional opaque target kind (e.g. 'environment') for
+            target-bearing requests. When supplied with ``target_id``, the
+            server merges any controls attached to that target into the
+            effective set. Omit for the agent-only path.
+        target_id: Caller-supplied external identifier of the target, paired
+            with ``target_type``.
     """
     agent_name: str = Field(
         ...,
@@ -31,6 +37,22 @@ class EvaluationRequest(BaseModel):
     )
     stage: Literal["pre", "post"] = Field(
         ..., description="Evaluation stage: 'pre' or 'post'"
+    )
+    target_type: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Optional target kind for target-bearing requests "
+            "(e.g. 'environment'). Must be provided together with target_id."
+        ),
+    )
+    target_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description=(
+            "Optional external identifier of the target. Must be provided "
+            "together with target_type."
+        ),
     )
 
     model_config = {
@@ -86,6 +108,18 @@ class EvaluationRequest(BaseModel):
     @classmethod
     def validate_and_normalize_agent_name(cls, value: str) -> str:
         return normalize_agent_name(str(value))
+
+    @model_validator(mode="after")
+    def validate_target_fields_paired(self) -> "EvaluationRequest":
+        """target_type and target_id must be supplied together or not at all."""
+        has_type = self.target_type is not None
+        has_id = self.target_id is not None
+        if has_type != has_id:
+            raise ValueError(
+                "target_type and target_id must be provided together; "
+                "pass both or omit both."
+            )
+        return self
 
 
 class EvaluationResponse(BaseModel):
