@@ -3,7 +3,7 @@
 This module provides a lightweight HTTP client that calls the Galileo Protect API
 directly, without requiring the full galileo-sdk package.
 
-Reference: https://v2docs.galileo.ai/sdk-api/python/reference/protect
+Reference: https://docs.galileo.ai/sdk-api/python/reference/protect
 """
 
 import logging

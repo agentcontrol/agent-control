@@ -44,8 +44,8 @@ services:
     ports:
       - "${AGENT_CONTROL_SERVER_HOST_PORT:-8000}:8000"
     environment:
-      # Database connection (uses Docker service name 'postgres')
-      # Use postgresql+psycopg:// (supports both sync migrations and async app code)
+      # Database connection uses the Docker service name and the container port.
+      # AGENT_CONTROL_DB_HOST_PORT only controls the host-side port mapping.
       AGENT_CONTROL_DB_URL: "postgresql+psycopg://agent_control:${AGENT_CONTROL_POSTGRES_PASSWORD:-agent_control}@postgres:5432/agent_control"
       # Server configuration
       AGENT_CONTROL_HOST: 0.0.0.0

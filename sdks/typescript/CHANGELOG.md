@@ -1,3 +1,13 @@
+## [2.3.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.2.0...ts-sdk-v2.3.0) (2026-04-19)
+
+### Features
+
+* **server:** refactor server ingestion to sink ([#165](https://github.com/agentcontrol/agent-control/issues/165)) ([6791d73](https://github.com/agentcontrol/agent-control/commit/6791d738868eb80e52fa9a04e3d9a1c8dc835fec))
+
+### Bug Fixes
+
+* **docker:** use 5432 for agent control server pg connection" ([c464e50](https://github.com/agentcontrol/agent-control/commit/c464e500d45a9dc7df072697d41126e73757001a))
+
 ## [2.2.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.1.0...ts-sdk-v2.2.0) (2026-04-07)
 
 ### Features
