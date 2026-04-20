@@ -65,6 +65,8 @@ async def test_check_evaluation_returns_result_model():
                 "context": None,
             },
             "stage": "pre",
+            "target_type": None,
+            "target_id": None,
         },
         headers=None,
     )

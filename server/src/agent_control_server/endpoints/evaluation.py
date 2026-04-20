@@ -18,8 +18,9 @@ from ..auth import RequireAPIKey
 from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
-from ..models import Agent
+from ..models import Agent, Target
 from ..services.controls import list_runtime_controls_for_agent
+from ..tenancy import get_tenant_id
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
 
@@ -126,6 +127,7 @@ def _sanitize_evaluation_response(response: EvaluationResponse) -> EvaluationRes
 async def evaluate(
     request: EvaluationRequest,
     client: RequireAPIKey,
+    tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_async_db),
 ) -> EvaluationResponse:
     """Analyze content for safety and control violations.
@@ -134,6 +136,14 @@ async def evaluate(
     ``EvaluationResponse`` and does not build or ingest observability events
     on the server; SDKs reconstruct and emit those events separately through
     the observability ingestion endpoint.
+
+    Target-bearing requests (``target_type`` and ``target_id`` both set) merge
+    controls attached to that target into the effective set, with the same
+    deduplication/precedence rules used by the runtime resolver: when the
+    same control is attached via both the agent/policy path and the target
+    path, the agent/policy attachment wins. The request body carries the
+    caller-supplied external target identifier; the server resolves it to
+    the internal target row via the tenant context.
     """
     del client  # Authentication is still required by dependency injection.
 
@@ -150,10 +160,37 @@ async def evaluate(
             hint="Register the agent via initAgent before evaluating.",
         )
 
+    resolved_target_id: int | None = None
+    if request.target_type is not None and request.target_id is not None:
+        target_result = await db.execute(
+            select(Target.id).where(
+                Target.tenant_id == tenant_id,
+                Target.target_type == request.target_type,
+                Target.external_id == request.target_id,
+            )
+        )
+        resolved_target_id = target_result.scalar_one_or_none()
+        if resolved_target_id is None:
+            raise NotFoundError(
+                error_code=ErrorCode.TARGET_NOT_FOUND,
+                detail=(
+                    f"Target (type='{request.target_type}', "
+                    f"id='{request.target_id}') not found in this tenant"
+                ),
+                resource="Target",
+                resource_id=request.target_id,
+                hint=(
+                    "Create the target via POST /api/v1/targets before sending "
+                    "target-bearing evaluation requests, or retry without "
+                    "target_type / target_id for the OSS path."
+                ),
+            )
+
     runtime_controls = await list_runtime_controls_for_agent(
         request.agent_name,
         db,
         allow_invalid_step_name_regex=True,
+        target_id=resolved_target_id,
     )
     engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
 
