@@ -57,20 +57,22 @@ async def setup():
                         "step_names": ["process_transfer"],
                         "stages": ["pre"],
                     },
-                    "selector": {"path": "input.destination_country"},
-                    "evaluator": {
-                        "name": "list",
-                        "config": {
-                            "values": [
-                                "north korea",
-                                "iran",
-                                "syria",
-                                "cuba",
-                                "crimea",
-                            ],
-                            "logic": "any",
-                            "match_mode": "contains",
-                            "case_sensitive": False,
+                    "condition": {
+                        "selector": {"path": "input.destination_country"},
+                        "evaluator": {
+                            "name": "list",
+                            "config": {
+                                "values": [
+                                    "north korea",
+                                    "iran",
+                                    "syria",
+                                    "cuba",
+                                    "crimea",
+                                ],
+                                "logic": "any",
+                                "match_mode": "contains",
+                                "case_sensitive": False,
+                            },
                         },
                     },
                     "action": {"decision": "deny"},
@@ -92,13 +94,15 @@ async def setup():
                         "step_names": ["process_transfer"],
                         "stages": ["pre"],
                     },
-                    "selector": {"path": "input"},
-                    "evaluator": {
-                        "name": "json",
-                        "config": {
-                            "field_constraints": {
-                                "fraud_score": {"type": "number", "max": 0.8}
-                            }
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {
+                            "name": "json",
+                            "config": {
+                                "field_constraints": {
+                                    "fraud_score": {"type": "number", "max": 0.8}
+                                }
+                            },
                         },
                     },
                     "action": {"decision": "deny"},
@@ -121,32 +125,34 @@ async def setup():
                         "step_names": ["process_transfer"],
                         "stages": ["pre"],
                     },
-                    "selector": {"path": "input"},
-                    "evaluator": {
-                        "name": "json",
-                        "config": {
-                            "json_schema": {
-                                "type": "object",
-                                "oneOf": [
-                                    {
-                                        "properties": {
-                                            "amount": {
-                                                "type": "number",
-                                                "exclusiveMaximum": 10000,
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {
+                            "name": "json",
+                            "config": {
+                                "json_schema": {
+                                    "type": "object",
+                                    "oneOf": [
+                                        {
+                                            "properties": {
+                                                "amount": {
+                                                    "type": "number",
+                                                    "exclusiveMaximum": 10000,
+                                                }
                                             }
-                                        }
-                                    },
-                                    {
-                                        "properties": {
-                                            "amount": {
-                                                "type": "number",
-                                                "minimum": 10000,
-                                            },
-                                            "verified_2fa": {"const": True},
-                                        }
-                                    },
-                                ]
-                            }
+                                        },
+                                        {
+                                            "properties": {
+                                                "amount": {
+                                                    "type": "number",
+                                                    "minimum": 10000,
+                                                },
+                                                "verified_2fa": {"const": True},
+                                            }
+                                        },
+                                    ]
+                                }
+                            },
                         },
                     },
                     "action": {
@@ -179,32 +185,34 @@ async def setup():
                         "step_names": ["process_transfer"],
                         "stages": ["pre"],
                     },
-                    "selector": {"path": "input"},
-                    "evaluator": {
-                        "name": "json",
-                        "config": {
-                            "json_schema": {
-                                "type": "object",
-                                "oneOf": [
-                                    {
-                                        "properties": {
-                                            "amount": {
-                                                "type": "number",
-                                                "exclusiveMaximum": 50000,
+                    "condition": {
+                        "selector": {"path": "input"},
+                        "evaluator": {
+                            "name": "json",
+                            "config": {
+                                "json_schema": {
+                                    "type": "object",
+                                    "oneOf": [
+                                        {
+                                            "properties": {
+                                                "amount": {
+                                                    "type": "number",
+                                                    "exclusiveMaximum": 50000,
+                                                }
                                             }
-                                        }
-                                    },
-                                    {
-                                        "properties": {
-                                            "amount": {
-                                                "type": "number",
-                                                "minimum": 50000,
-                                            },
-                                            "manager_approved": {"const": True},
-                                        }
-                                    },
-                                ]
-                            }
+                                        },
+                                        {
+                                            "properties": {
+                                                "amount": {
+                                                    "type": "number",
+                                                    "minimum": 50000,
+                                                },
+                                                "manager_approved": {"const": True},
+                                            }
+                                        },
+                                    ]
+                                }
+                            },
                         },
                     },
                     "action": {
@@ -238,17 +246,19 @@ async def setup():
                         "step_names": ["process_transfer"],
                         "stages": ["pre"],
                     },
-                    "selector": {"path": "input.recipient"},
-                    "evaluator": {
-                        "name": "list",
-                        "config": {
-                            "values": [
-                                "Acme Corp",
-                                "Global Suppliers Inc",
-                                "TechVentures LLC",
-                            ],
-                            "match_type": "not_in",
-                            "case_sensitive": False,
+                    "condition": {
+                        "selector": {"path": "input.recipient"},
+                        "evaluator": {
+                            "name": "list",
+                            "config": {
+                                "values": [
+                                    "Acme Corp",
+                                    "Global Suppliers Inc",
+                                    "TechVentures LLC",
+                                ],
+                                "match_type": "not_in",
+                                "case_sensitive": False,
+                            },
                         },
                     },
                     "action": {"decision": "observe"},
@@ -270,11 +280,13 @@ async def setup():
                         "step_names": ["process_transfer"],
                         "stages": ["post"],
                     },
-                    "selector": {"path": "output"},
-                    "evaluator": {
-                        "name": "regex",
-                        "config": {
-                            "pattern": r"(?:\b\d{3}-\d{2}-\d{4}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b)"
+                    "condition": {
+                        "selector": {"path": "output"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {
+                                "pattern": r"(?:\b\d{3}-\d{2}-\d{4}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b)"
+                            },
                         },
                     },
                     "action": {"decision": "observe"},

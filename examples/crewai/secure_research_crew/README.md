@@ -73,7 +73,18 @@ Then from this directory:
 
 ```bash
 cd examples/crewai/secure_research_crew
-uv pip install -e . --upgrade
+```
+
+`agent-control-sdk` and `crewai` have an incompatible transitive dependency on `pydantic` (crewai caps at `<2.12`, the SDK evaluators require `>=2.12.4`). Install in two steps to work around this:
+
+```bash
+# Install crewai and all other deps via normal resolver
+uv pip install -e .
+
+# Install agent-control-sdk separately, skipping the conflicting evaluators dep
+# (this example uses server-mode execution and does not need evaluators locally)
+uv pip install agent-control-sdk==7.5.0 --no-deps
+uv pip install httpx pydantic-settings docstring-parser google-re2 jsonschema
 ```
 
 ### 2. Start the Agent Control server

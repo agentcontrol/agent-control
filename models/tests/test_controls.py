@@ -164,13 +164,28 @@ def test_condition_iter_leaves_preserves_left_to_right_order() -> None:
 
 def test_condition_depth_limit_is_enforced() -> None:
     # Given: a condition tree nested deeper than the allowed maximum
+    allowed_depth = _leaf("input")
+    for _ in range(11):
+        allowed_depth = {"not": allowed_depth}
+
+    control = ControlDefinition.model_validate(
+        {
+            "execution": "server",
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "condition": allowed_depth,
+            "action": {"decision": "deny"},
+        }
+    )
+
+    assert control.condition.max_depth() == 12
+
     too_deep = _leaf("input")
-    for _ in range(6):
+    for _ in range(12):
         too_deep = {"not": too_deep}
 
     with pytest.raises(
         ValidationError,
-        match="Condition nesting depth exceeds maximum of 6",
+        match="Condition nesting depth exceeds maximum of 12",
     ):
         # When: validating the deep condition tree
         ControlDefinition.model_validate(

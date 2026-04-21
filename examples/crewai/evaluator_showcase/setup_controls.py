@@ -64,22 +64,24 @@ async def setup():
                         "step_names": ["run_sql_query"],
                         "stages": ["pre"],
                     },
-                    "selector": {"path": "input.query"},
-                    "evaluator": {
-                        "name": "sql",
-                        "config": {
-                            "blocked_operations": [
-                                "DROP",
-                                "DELETE",
-                                "TRUNCATE",
-                                "ALTER",
-                                "GRANT",
-                                "INSERT",
-                                "UPDATE",
-                            ],
-                            "allow_multi_statements": False,
-                            "require_limit": True,
-                            "max_limit": 100,
+                    "condition": {
+                        "selector": {"path": "input.query"},
+                        "evaluator": {
+                            "name": "sql",
+                            "config": {
+                                "blocked_operations": [
+                                    "DROP",
+                                    "DELETE",
+                                    "TRUNCATE",
+                                    "ALTER",
+                                    "GRANT",
+                                    "INSERT",
+                                    "UPDATE",
+                                ],
+                                "allow_multi_statements": False,
+                                "require_limit": True,
+                                "max_limit": 100,
+                            },
                         },
                     },
                     "action": {"decision": "deny"},
@@ -105,19 +107,21 @@ async def setup():
                         "step_names": ["run_sql_query"],
                         "stages": ["pre"],
                     },
-                    "selector": {"path": "input.query"},
-                    "evaluator": {
-                        "name": "list",
-                        "config": {
-                            "values": [
-                                "audit_log",
-                                "admin_users",
-                                "payment_methods",
-                                "salary_data",
-                            ],
-                            "logic": "any",
-                            "match_mode": "contains",
-                            "case_sensitive": False,
+                    "condition": {
+                        "selector": {"path": "input.query"},
+                        "evaluator": {
+                            "name": "list",
+                            "config": {
+                                "values": [
+                                    "audit_log",
+                                    "admin_users",
+                                    "payment_methods",
+                                    "salary_data",
+                                ],
+                                "logic": "any",
+                                "match_mode": "contains",
+                                "case_sensitive": False,
+                            },
                         },
                     },
                     "action": {"decision": "deny"},
@@ -143,17 +147,19 @@ async def setup():
                         "step_names": ["run_sql_query"],
                         "stages": ["post"],
                     },
-                    "selector": {"path": "output"},
-                    "evaluator": {
-                        "name": "regex",
-                        "config": {
-                            "pattern": (
-                                r"(?:"
-                                r"\b\d{3}-\d{2}-\d{4}\b"  # SSN
-                                r"|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b"  # Credit card
-                                r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"  # Email
-                                r")"
-                            )
+                    "condition": {
+                        "selector": {"path": "output"},
+                        "evaluator": {
+                            "name": "regex",
+                            "config": {
+                                "pattern": (
+                                    r"(?:"
+                                    r"\b\d{3}-\d{2}-\d{4}\b"  # SSN
+                                    r"|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b"  # Credit card
+                                    r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"  # Email
+                                    r")"
+                                )
+                            },
                         },
                     },
                     "action": {"decision": "deny"},
@@ -179,17 +185,19 @@ async def setup():
                         "step_names": ["analyze_data"],
                         "stages": ["pre"],
                     },
-                    "selector": {"path": "input.request"},
-                    "evaluator": {
-                        "name": "json",
-                        "config": {
-                            "required_fields": ["dataset", "date_range"],
-                            "field_constraints": {
-                                "max_rows": {
-                                    "type": "number",
-                                    "min": 1,
-                                    "max": 10000,
-                                }
+                    "condition": {
+                        "selector": {"path": "input.request"},
+                        "evaluator": {
+                            "name": "json",
+                            "config": {
+                                "required_fields": ["dataset", "date_range"],
+                                "field_constraints": {
+                                    "max_rows": {
+                                        "type": "number",
+                                        "min": 1,
+                                        "max": 10000,
+                                    }
+                                },
                             },
                         },
                     },
@@ -215,11 +223,13 @@ async def setup():
                         "step_names": ["analyze_data"],
                         "stages": ["pre"],
                     },
-                    "selector": {"path": "input.request"},
-                    "evaluator": {
-                        "name": "json",
-                        "config": {
-                            "required_fields": ["purpose"],
+                    "condition": {
+                        "selector": {"path": "input.request"},
+                        "evaluator": {
+                            "name": "json",
+                            "config": {
+                                "required_fields": ["purpose"],
+                            },
                         },
                     },
                     "action": {
@@ -240,7 +250,7 @@ async def setup():
         # ── Create Controls & Associate with Agent ──────────────────────
         control_ids = []
         for name, data in control_defs:
-            evaluator = data["evaluator"]["name"].upper()
+            evaluator = data["condition"]["evaluator"]["name"].upper()
             decision = data["action"]["decision"].upper()
             try:
                 result = await controls.create_control(client, name=name, data=data)

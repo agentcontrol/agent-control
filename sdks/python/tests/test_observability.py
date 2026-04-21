@@ -1021,6 +1021,29 @@ class TestInitObservability:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
 
+    def test_enabled_override_does_not_mutate_global_settings(self):
+        """Test that enabled= only affects the current init call."""
+        import agent_control.observability as obs
+
+        old_batcher = obs._batcher
+        old_sink = obs._event_sink
+        original_settings = get_settings().model_dump()
+        obs._batcher = None
+        obs._event_sink = None
+
+        try:
+            configure_settings(observability_enabled=True)
+
+            result = init_observability(enabled=False)
+
+            assert result is None
+            assert get_settings().observability_enabled is True
+            assert is_observability_enabled() is False
+        finally:
+            configure_settings(**original_settings)
+            obs._batcher = old_batcher
+            obs._event_sink = old_sink
+
     def test_init_enabled_creates_batcher(self):
         """Test that init_observability creates batcher when enabled."""
         import agent_control.observability as obs

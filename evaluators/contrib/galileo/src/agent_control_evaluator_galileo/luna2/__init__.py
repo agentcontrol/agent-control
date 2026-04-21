@@ -11,8 +11,8 @@ Environment Variables:
     GALILEO_CONSOLE_URL: Optional, for custom deployments
 
 Documentation:
-    https://v2docs.galileo.ai/concepts/protect/overview
-    https://v2docs.galileo.ai/sdk-api/python/reference/protect
+    https://docs.galileo.ai/concepts/protect/overview
+    https://docs.galileo.ai/sdk-api/python/reference/protect
 """
 
 from agent_control_evaluator_galileo.luna2.config import (

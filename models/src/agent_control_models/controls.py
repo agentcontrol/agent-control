@@ -281,8 +281,9 @@ class SteeringContext(BaseModel):
 type TemplateValue = str | bool | list[str]
 type JsonValue = JSONValue
 
+MAX_CONDITION_DEPTH = 12
 _TEMPLATE_PARAMETER_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
-MAX_TEMPLATE_DEFINITION_DEPTH = 12
+MAX_TEMPLATE_DEFINITION_DEPTH = MAX_CONDITION_DEPTH
 MAX_TEMPLATE_DEFINITION_NODES = 1000
 
 
@@ -522,9 +523,6 @@ class ControlAction(BaseModel):
     @classmethod
     def validate_decision(cls, value: str) -> ActionDecision:
         return validate_action(value)
-
-
-MAX_CONDITION_DEPTH = 6
 
 
 def _validate_common_control_constraints(
