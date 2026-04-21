@@ -37,9 +37,10 @@ The template uses `{{NAME}}` for that package identifier. It does not use `{{ORG
    - `{{CLASS}}` -> evaluator class name
    - `{{AUTHOR}}` -> authoring team
 
-   Then confirm the package `version` and the `agent-control-evaluators` /
-   `agent-control-models` dependency floors still match the current monorepo version before you
-   commit the new package.
+   Then confirm the package `version` reflects your release plan and that the
+   `agent-control-evaluators` / `agent-control-models` dependency floors still match the
+   compatibility floor used by the existing contrib packages and builtin extras (currently
+   `>=3.0.0`) before you commit the new package.
 
 3. Add package code and tests:
 
@@ -76,8 +77,11 @@ After the new package exists as a real contrib package, wire it into the repo co
 
    ```toml
    [project.optional-dependencies]
-   <name> = ["agent-control-evaluator-<name>>=<current-version>"]
+   <name> = ["agent-control-evaluator-<name>>=<minimum-compatible-version>"]
    ```
+
+   Use the lowest published version that is actually compatible with the package; do not tie
+   this extra to the current monorepo version unless the contrib package itself requires it.
 
 2. Add the workspace source pin to `evaluators/builtin/pyproject.toml`:
 
