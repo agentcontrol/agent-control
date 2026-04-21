@@ -111,8 +111,12 @@ def _extract_tokens(data: Any, token_path: str | None) -> tuple[int, int]:
     if isinstance(data, dict):
         usage = data.get("usage", data)
         if isinstance(usage, dict):
-            inp = usage.get("input_tokens", usage.get("prompt_tokens"))
-            out = usage.get("output_tokens", usage.get("completion_tokens"))
+            inp = usage.get("input_tokens")
+            if inp is None:
+                inp = usage.get("prompt_tokens")
+            out = usage.get("output_tokens")
+            if out is None:
+                out = usage.get("completion_tokens")
             input_tokens = _extract_non_negative_int(inp)
             output_tokens = _extract_non_negative_int(out)
             if input_tokens is not None and output_tokens is not None:
