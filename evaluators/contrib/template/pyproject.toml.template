@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-evaluator-{{NAME}}"
-version = "7.5.0"
+version = "0.1.0"
 description = "{{NAME}} evaluators for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
