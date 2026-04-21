@@ -7,22 +7,22 @@ External evaluator that calls Cisco AI Defense Chat Inspection via REST and maps
 
 ## Installation
 
-Install from PyPI (if available):
+Canonical install path:
+
+```bash
+pip install "agent-control-evaluators[cisco]"
+```
+
+Fallback direct wheel install:
 
 ```bash
 pip install agent-control-evaluator-cisco
 ```
 
-Or install from the workspace for local development:
+For local development:
 
 ```bash
 uv pip install -e evaluators/contrib/cisco
-```
-
-Alternatively, install via the builtin evaluators package extra (one-liner):
-
-```bash
-pip install agent-control-evaluators[cisco]
 ```
 
 - Build wheel from the repo root (contrib package only):

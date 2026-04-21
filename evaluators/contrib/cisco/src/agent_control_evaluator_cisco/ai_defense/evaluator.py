@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from agent_control_evaluators import (
@@ -13,6 +14,11 @@ from agent_control_models import EvaluatorResult
 
 from .client import AI_DEFENSE_HTTPX_AVAILABLE, REGION_BASE_URLS, AIDefenseClient, build_endpoint
 from .config import CiscoAIDefenseConfig
+
+try:
+    _PACKAGE_VERSION = version("agent-control-evaluator-cisco")
+except PackageNotFoundError:
+    _PACKAGE_VERSION = "0.0.0.dev"
 
 
 def _load_api_key(env_name: str) -> str:
@@ -99,7 +105,7 @@ class CiscoAIDefenseEvaluator(Evaluator[CiscoAIDefenseConfig]):
 
     metadata = EvaluatorMetadata(
         name="cisco.ai_defense",
-        version="0.1.0",
+        version=_PACKAGE_VERSION,
         description="Cisco AI Defense Chat Inspection integration",
         requires_api_key=True,
         timeout_ms=15000,

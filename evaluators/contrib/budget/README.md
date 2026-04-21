@@ -5,7 +5,19 @@ Budget evaluator for agent-control that tracks cumulative LLM token and cost usa
 ## Install
 
 ```bash
+pip install "agent-control-evaluators[budget]"
+```
+
+Fallback direct wheel install:
+
+```bash
 pip install agent-control-evaluator-budget
+```
+
+For local development:
+
+```bash
+uv pip install -e evaluators/contrib/budget
 ```
 
 ## Quickstart

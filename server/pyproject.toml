@@ -22,7 +22,7 @@ dependencies = [
     "jsonschema-rs>=0.22.0",
     "PyJWT>=2.8.0",
     "google-re2>=1.1",  # For engine (bundled)
-    "agent-control-evaluators>=3.0.0",  # NOT vendored - avoid conflict with galileo
+    "agent-control-evaluators>=7.5.0",  # NOT vendored - avoid conflict with galileo
 ]
 authors = [
     {name = "Agent Control Team"}
@@ -31,7 +31,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 
 [project.optional-dependencies]
-galileo = ["agent-control-evaluator-galileo>=3.0.0"]
+galileo = ["agent-control-evaluator-galileo>=7.5.0"]
 
 [dependency-groups]
 dev = [

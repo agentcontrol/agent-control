@@ -7,6 +7,7 @@ Evaluators take config at __init__, evaluate() only takes data.
 The evaluator uses direct HTTP API calls instead of the galileo SDK.
 """
 
+from importlib.metadata import version
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -282,7 +283,7 @@ class TestLuna2EvaluatorImport:
 
         assert Luna2Evaluator is not None
         assert Luna2Evaluator.metadata.name == "galileo.luna2"
-        assert Luna2Evaluator.metadata.version == "3.0.0"
+        assert Luna2Evaluator.metadata.version == version("agent-control-evaluator-galileo")
 
     @patch("agent_control_evaluator_galileo.luna2.evaluator.LUNA2_AVAILABLE", False)
     def test_luna2_evaluator_is_available_false_without_httpx(self):

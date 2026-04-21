@@ -1,14 +1,14 @@
 [project]
 name = "agent-control-evaluator-cisco"
-version = "0.1.0"
+version = "7.5.0"
 description = "Cisco AI Defense evaluator for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Cisco AI Defense Team" }]
 dependencies = [
-    "agent-control-evaluators>=3.0.0",
-    "agent-control-models>=3.0.0",
+    "agent-control-evaluators>=7.5.0",
+    "agent-control-models>=7.5.0",
     "httpx>=0.24.0",
 ]
 

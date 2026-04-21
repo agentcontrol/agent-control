@@ -5,6 +5,7 @@ Given/When/Then comment style per reviewer request.
 
 from __future__ import annotations
 
+from importlib.metadata import version
 import threading
 from typing import Any
 
@@ -37,6 +38,10 @@ from agent_control_evaluator_budget.budget.memory_store import (
 def _clean_store_registry() -> None:
     """Clear the module-level store registry before each test."""
     clear_budget_stores()
+
+
+def test_metadata_version_matches_distribution_version() -> None:
+    assert BudgetEvaluator.metadata.version == version("agent-control-evaluator-budget")
 
 
 # ---------------------------------------------------------------------------
