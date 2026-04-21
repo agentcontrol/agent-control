@@ -4,11 +4,13 @@
 
 import { targetsAttachControl } from "../funcs/targets-attach-control.js";
 import { targetsCreate } from "../funcs/targets-create.js";
+import { targetsDeleteControlByNaturalKey } from "../funcs/targets-delete-control-by-natural-key.js";
 import { targetsDelete } from "../funcs/targets-delete.js";
 import { targetsDetachControl } from "../funcs/targets-detach-control.js";
 import { targetsGet } from "../funcs/targets-get.js";
 import { targetsListControls } from "../funcs/targets-list-controls.js";
 import { targetsList } from "../funcs/targets-list.js";
+import { targetsPutControlByNaturalKey } from "../funcs/targets-put-control-by-natural-key.js";
 import { targetsToggleControl } from "../funcs/targets-toggle-control.js";
 import { ClientSDK, RequestOptions } from "../lib/sdks.js";
 import * as models from "../models/index.js";
@@ -151,6 +153,55 @@ export class Targets extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.TargetControlSummary> {
     return unwrapAsync(targetsAttachControl(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * Detach a control from a target identified by natural key
+   *
+   * @remarks
+   * Idempotently detach a control from a target addressed by natural key.
+   *
+   * Final-state semantics: returns 204 whether the attachment existed and
+   * was removed, the attachment never existed, or the target row itself
+   * does not exist in the caller's tenant. A control that does not exist
+   * in the caller's tenant still surfaces as 404 to avoid masking caller
+   * errors under detach idempotency.
+   */
+  async deleteControlByNaturalKey(
+    request:
+      operations.DeleteTargetControlByNaturalKeyApiV1TargetsTargetTypeExternalIdControlsControlIdDeleteRequest,
+    options?: RequestOptions,
+  ): Promise<void> {
+    return unwrapAsync(targetsDeleteControlByNaturalKey(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * Attach a control to a target identified by natural key
+   *
+   * @remarks
+   * Idempotently attach a control to a target addressed by natural key.
+   *
+   * Desired-state semantics: the attachment converges to ``enabled``
+   * regardless of prior existence. If the target row does not exist yet
+   * in the caller's tenant, it is created lazily with empty metadata. A
+   * control that does not exist in the caller's tenant surfaces as 404
+   * with the same shape as a control that exists in another tenant, so
+   * cross-tenant non-disclosure is preserved.
+   */
+  async putControlByNaturalKey(
+    request:
+      operations.PutTargetControlByNaturalKeyApiV1TargetsTargetTypeExternalIdControlsControlIdPutRequest,
+    options?: RequestOptions,
+  ): Promise<models.TargetControlSummary> {
+    return unwrapAsync(targetsPutControlByNaturalKey(
       this,
       request,
       options,

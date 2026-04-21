@@ -43,6 +43,122 @@ async def get_target_by_id(
     return result.scalars().first()
 
 
+async def get_target_by_natural_key(
+    *,
+    tenant_id: str,
+    target_type: str,
+    external_id: str,
+    db: AsyncSession,
+) -> Target | None:
+    """Return the target identified by ``(tenant_id, target_type, external_id)``.
+
+    Raw lookup — no ``404`` semantics baked in because callers differ on the
+    absent-row behavior: GET wants 404, PUT attach wants to lazy-create, and
+    DELETE wants a 204. Keeping this helper contract-free lets each endpoint
+    pick its own policy.
+    """
+    stmt = select(Target).where(
+        Target.tenant_id == tenant_id,
+        Target.target_type == target_type,
+        Target.external_id == external_id,
+    )
+    result = await db.execute(stmt)
+    return result.scalars().first()
+
+
+async def ensure_target_by_natural_key(
+    *,
+    tenant_id: str,
+    target_type: str,
+    external_id: str,
+    db: AsyncSession,
+) -> tuple[Target, bool]:
+    """Return the target for ``(tenant_id, target_type, external_id)``, creating it if absent.
+
+    Race-safe: uses ``INSERT ... ON CONFLICT DO NOTHING`` followed by a
+    re-select so two concurrent callers both end up holding the same row
+    without surfacing an ``IntegrityError``.
+
+    Returns ``(target, created)`` where ``created`` is ``True`` only when
+    the insert actually produced a new row (the caller that won the race).
+    Losing callers see ``created=False`` and the winner's row.
+    """
+    insert_stmt = (
+        pg_insert(Target)
+        .values(
+            tenant_id=tenant_id,
+            target_type=target_type,
+            external_id=external_id,
+            name=None,
+            data={},
+        )
+        .on_conflict_do_nothing(
+            index_elements=["tenant_id", "target_type", "external_id"]
+        )
+        .returning(Target.id)
+    )
+    insert_result = await db.execute(insert_stmt)
+    inserted_id = insert_result.scalar_one_or_none()
+    await db.commit()
+
+    select_stmt = select(Target).where(
+        Target.tenant_id == tenant_id,
+        Target.target_type == target_type,
+        Target.external_id == external_id,
+    )
+    select_result = await db.execute(select_stmt)
+    target = select_result.scalars().first()
+    if target is None:
+        # Should be unreachable: either we just inserted or another writer
+        # did, so the row must exist by the time we select. Guarded for
+        # readability of the tuple return contract.
+        raise RuntimeError(
+            "ensure_target_by_natural_key: row vanished between insert and select"
+        )
+    return target, inserted_id is not None
+
+
+async def upsert_target_control_attachment(
+    *,
+    target_id: int,
+    control_id: int,
+    enabled: bool,
+    db: AsyncSession,
+) -> TargetControl:
+    """Create or update the ``(target, control)`` attachment to the desired state.
+
+    Race-safe: ``INSERT ... ON CONFLICT DO UPDATE SET enabled = EXCLUDED.enabled``
+    makes the attachment converge to ``enabled`` regardless of whether it
+    previously existed. This is the natural-key PUT's desired-state
+    contract; concurrent PUTs with the same ``enabled`` value are no-ops,
+    and competing values follow last-write-wins at the DB level.
+    """
+    stmt = (
+        pg_insert(TargetControl)
+        .values(target_id=target_id, control_id=control_id, enabled=enabled)
+        .on_conflict_do_update(
+            index_elements=["target_id", "control_id"],
+            set_={"enabled": enabled},
+        )
+        .returning(
+            TargetControl.id, TargetControl.control_id, TargetControl.enabled
+        )
+    )
+    result = await db.execute(stmt)
+    row = result.one()
+    await db.commit()
+    # Build a detached TargetControl for the return shape. We only need
+    # id/control_id/enabled at the call site; full ORM hydration isn't
+    # necessary here.
+    attachment = TargetControl(
+        id=row.id,
+        target_id=target_id,
+        control_id=row.control_id,
+        enabled=row.enabled,
+    )
+    return attachment
+
+
 async def list_targets(
     *,
     tenant_id: str,
@@ -207,9 +323,12 @@ __all__ = [
     "create_target",
     "delete_target",
     "detach_control_from_target",
+    "ensure_target_by_natural_key",
     "get_target_by_id",
+    "get_target_by_natural_key",
     "list_target_controls",
     "list_targets",
     "set_target_control_enabled",
+    "upsert_target_control_attachment",
     "IntegrityError",
 ]

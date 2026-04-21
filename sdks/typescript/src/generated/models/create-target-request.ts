@@ -14,7 +14,7 @@ export type CreateTargetRequest = {
    */
   data?: { [k: string]: any } | undefined;
   /**
-   * Stable caller-supplied identifier for the target.
+   * Stable caller-supplied identifier. URL-safe: letters, digits, dot, underscore, hyphen.
    */
   externalId: string;
   /**
@@ -22,7 +22,7 @@ export type CreateTargetRequest = {
    */
   name?: string | null | undefined;
   /**
-   * Opaque target kind (e.g. 'environment').
+   * Opaque target kind slug (e.g. 'environment'). Lowercase letters, digits, underscores; must start with a letter.
    */
   targetType: string;
 };

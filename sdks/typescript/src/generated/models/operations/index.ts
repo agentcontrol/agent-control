@@ -9,6 +9,7 @@ export * from "./attach-target-control-api-v1-targets-target-id-controls-control
 export * from "./delete-agent-policy-api-v1-agents-agent-name-policy-delete.js";
 export * from "./delete-control-api-v1-controls-control-id-delete.js";
 export * from "./delete-target-api-v1-targets-target-id-delete.js";
+export * from "./delete-target-control-by-natural-key-api-v1-targets-target-type-external-id-controls-control-id-delete.js";
 export * from "./detach-target-control-api-v1-targets-target-id-controls-control-id-delete.js";
 export * from "./get-agent-api-v1-agents-agent-name-get.js";
 export * from "./get-agent-evaluator-api-v1-agents-agent-name-evaluators-evaluator-name-get.js";
@@ -28,6 +29,7 @@ export * from "./list-policy-controls-api-v1-policies-policy-id-controls-get.js"
 export * from "./list-targets-api-v1-targets-get.js";
 export * from "./patch-agent-api-v1-agents-agent-name-patch.js";
 export * from "./patch-control-api-v1-controls-control-id-patch.js";
+export * from "./put-target-control-by-natural-key-api-v1-targets-target-type-external-id-controls-control-id-put.js";
 export * from "./remove-agent-control-api-v1-agents-agent-name-controls-control-id-delete.js";
 export * from "./remove-agent-policy-api-v1-agents-agent-name-policies-policy-id-delete.js";
 export * from "./remove-all-agent-policies-api-v1-agents-agent-name-policies-delete.js";

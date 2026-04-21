@@ -34,7 +34,7 @@ export type TargetSummary = {
    */
   name?: string | null | undefined;
   /**
-   * Opaque target kind.
+   * Opaque target kind slug.
    */
   targetType: string;
   /**

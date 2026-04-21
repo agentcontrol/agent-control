@@ -105,10 +105,12 @@ from .target import (
     AttachTargetControlRequest,
     CreateTargetRequest,
     CreateTargetResponse,
+    ExternalIdStr,
     ListTargetControlsResponse,
     ListTargetsResponse,
     TargetControlSummary,
     TargetSummary,
+    TargetTypeStr,
     ToggleTargetControlRequest,
 )
 
@@ -205,9 +207,11 @@ __all__ = [
     "AttachTargetControlRequest",
     "CreateTargetRequest",
     "CreateTargetResponse",
+    "ExternalIdStr",
     "ListTargetControlsResponse",
     "ListTargetsResponse",
     "TargetControlSummary",
     "TargetSummary",
+    "TargetTypeStr",
     "ToggleTargetControlRequest",
 ]

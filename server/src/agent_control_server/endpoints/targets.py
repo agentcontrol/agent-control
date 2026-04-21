@@ -3,12 +3,23 @@
 Surface area: targets CRUD plus attach/detach/toggle/list of controls on a
 target. Runtime control resolution from targets is handled separately.
 
+Two URL shapes exist for the attach/detach write path:
+
+- ``/targets/{target_id}/controls/{control_id}`` — the original int-id
+  routes, kept for callers that already hold an internal ``target_id``.
+- ``/targets/{target_type}/{external_id}/controls/{control_id}`` — the
+  natural-key routes, so client-facing consumers never need to look up
+  Agent Control's internal surrogate key. These lazily create the target
+  row on PUT if absent.
+
 Tenant context is resolved via the ``get_tenant_id`` dependency, which reads
 an optional ``X-Tenant-Id`` header and falls back to ``DEFAULT_TENANT_ID``
 when absent, so callers that do not supply a tenant land on the default.
 """
 
 from __future__ import annotations
+
+from typing import Annotated
 
 from agent_control_models import (
     AttachTargetControlRequest,
@@ -21,7 +32,7 @@ from agent_control_models import (
     ToggleTargetControlRequest,
 )
 from agent_control_models.errors import ErrorCode
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +42,26 @@ from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Target
 from ..services import targets as targets_service
+from ..services.tenant_scoped_lookups import get_control_in_tenant_or_404
 from ..tenancy import get_tenant_id
+
+# Path-parameter charset guards. Kept in sync with ``TargetTypeStr`` and
+# ``ExternalIdStr`` in agent_control_models.target. Duplicated here because
+# FastAPI's Path() takes a pattern literal, not a pydantic type.
+_TARGET_TYPE_PATH_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
+_EXTERNAL_ID_PATH_PATTERN = r"^[A-Za-z0-9._-]{1,255}$"
+
+_TargetTypePath = Annotated[
+    str,
+    Path(pattern=_TARGET_TYPE_PATH_PATTERN, description="Target type slug."),
+]
+_ExternalIdPath = Annotated[
+    str,
+    Path(
+        pattern=_EXTERNAL_ID_PATH_PATTERN,
+        description="Caller-supplied external identifier.",
+    ),
+]
 
 router = APIRouter(prefix="/targets", tags=["targets"])
 
@@ -324,4 +354,109 @@ async def list_controls_for_target(
             TargetControlSummary(id=row.id, control_id=row.control_id, enabled=row.enabled)
             for row in rows
         ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Natural-key attach / detach
+# ---------------------------------------------------------------------------
+
+
+@router.put(
+    "/{target_type}/{external_id}/controls/{control_id}",
+    dependencies=[Depends(require_admin_key)],
+    response_model=TargetControlSummary,
+    summary="Attach a control to a target identified by natural key",
+    response_description="Current attachment state",
+)
+async def put_target_control_by_natural_key(
+    target_type: _TargetTypePath,
+    external_id: _ExternalIdPath,
+    control_id: int,
+    request: AttachTargetControlRequest | None = None,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
+) -> TargetControlSummary:
+    """Idempotently attach a control to a target addressed by natural key.
+
+    Desired-state semantics: the attachment converges to ``enabled``
+    regardless of prior existence. If the target row does not exist yet
+    in the caller's tenant, it is created lazily with empty metadata. A
+    control that does not exist in the caller's tenant surfaces as 404
+    with the same shape as a control that exists in another tenant, so
+    cross-tenant non-disclosure is preserved.
+    """
+    # Control existence check is tenant-scoped, so a control belonging to
+    # another tenant returns AGENT_NOT_FOUND-style 404 without leaking.
+    await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
+
+    target, created = await targets_service.ensure_target_by_natural_key(
+        tenant_id=tenant_id,
+        target_type=target_type,
+        external_id=external_id,
+        db=db,
+    )
+    if created:
+        _logger.info(
+            "Lazily created target on natural-key attach "
+            "(tenant_id=%s, target_type=%s, external_id=%s, target_id=%s)",
+            tenant_id,
+            target_type,
+            external_id,
+            target.id,
+        )
+
+    enabled = request.enabled if request is not None else True
+    attachment = await targets_service.upsert_target_control_attachment(
+        target_id=target.id,
+        control_id=control_id,
+        enabled=enabled,
+        db=db,
+    )
+    return TargetControlSummary(
+        id=attachment.id,
+        control_id=attachment.control_id,
+        enabled=attachment.enabled,
+    )
+
+
+@router.delete(
+    "/{target_type}/{external_id}/controls/{control_id}",
+    dependencies=[Depends(require_admin_key)],
+    status_code=204,
+    summary="Detach a control from a target identified by natural key",
+    response_description="Empty response on success",
+)
+async def delete_target_control_by_natural_key(
+    target_type: _TargetTypePath,
+    external_id: _ExternalIdPath,
+    control_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
+) -> None:
+    """Idempotently detach a control from a target addressed by natural key.
+
+    Final-state semantics: returns 204 whether the attachment existed and
+    was removed, the attachment never existed, or the target row itself
+    does not exist in the caller's tenant. A control that does not exist
+    in the caller's tenant still surfaces as 404 to avoid masking caller
+    errors under detach idempotency.
+    """
+    await get_control_in_tenant_or_404(
+        tenant_id=tenant_id, control_id=control_id, db=db
+    )
+
+    target = await targets_service.get_target_by_natural_key(
+        tenant_id=tenant_id,
+        target_type=target_type,
+        external_id=external_id,
+        db=db,
+    )
+    if target is None:
+        return
+
+    await targets_service.detach_control_from_target(
+        target_id=target.id, control_id=control_id, db=db
     )
