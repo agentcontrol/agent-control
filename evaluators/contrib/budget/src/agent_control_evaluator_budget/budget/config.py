@@ -79,11 +79,13 @@ class BudgetEvaluatorConfig(EvaluatorConfig):
             pricing table and a cost-based rule exists. block=fail closed,
             warn=log warning and treat cost as 0.
         pricing: Optional model pricing table. Maps model name to ModelPricing.
-            Used to derive cost in USD from token counts and model name.
+            Required when any rule uses limit_unit="usd_cents". Used to
+            derive cost in USD from token counts and model name.
         token_path: Dot-notation path to extract token usage from step
             data (e.g. "usage.total_tokens"). If None, looks for standard
             fields (input_tokens, output_tokens, total_tokens, usage).
         model_path: Dot-notation path to extract model name (for pricing lookup).
+            Required when any rule uses limit_unit="usd_cents".
         metadata_paths: Mapping of metadata field name to dot-notation path
             in step data. Used to extract scope dimensions (channel, user_id, etc).
     """

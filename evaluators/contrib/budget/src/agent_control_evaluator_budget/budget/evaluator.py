@@ -117,14 +117,21 @@ def _extract_tokens(data: Any, token_path: str | None) -> tuple[int, int]:
             out = usage.get("output_tokens")
             if out is None:
                 out = usage.get("completion_tokens")
-            inp_ok = isinstance(inp, int) and not isinstance(inp, bool)
-            out_ok = isinstance(out, int) and not isinstance(out, bool)
-            if inp_ok and out_ok:
-                return max(0, inp), max(0, out)
+            input_tokens = _extract_non_negative_int(inp)
+            output_tokens = _extract_non_negative_int(out)
+            if input_tokens is not None and output_tokens is not None:
+                return input_tokens, output_tokens
             total = usage.get("total_tokens")
             if isinstance(total, int) and not isinstance(total, bool) and total > 0:
                 return 0, max(0, total)
     return 0, 0
+
+
+def _extract_non_negative_int(value: Any) -> int | None:
+    """Return a non-negative integer or None for invalid token values."""
+    if not isinstance(value, int) or isinstance(value, bool):
+        return None
+    return max(0, value)
 
 
 def _estimate_cost(
@@ -196,9 +203,10 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
         input_tokens, output_tokens = _extract_tokens(data, self.config.token_path)
 
         model: str | None = None
-        model_path_configured = bool(self.config.model_path)
-        if model_path_configured:
-            val = _extract_by_path(data, self.config.model_path)
+        model_path = self.config.model_path
+        model_path_configured = bool(model_path)
+        if model_path:
+            val = _extract_by_path(data, model_path)
             if val is not None:
                 model = str(val)
 
@@ -220,9 +228,7 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
             )
             if has_matching_cost_rule:
                 if model is None:
-                    block_reason = (
-                        f"Model not found at path '{self.config.model_path}'"
-                    )
+                    block_reason = f"Model not found at path '{model_path}'"
                 else:
                     block_reason = f"Unknown model: {model}"
                 if self.config.unknown_model_behavior == "block":

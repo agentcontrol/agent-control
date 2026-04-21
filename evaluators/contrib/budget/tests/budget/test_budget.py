@@ -384,6 +384,33 @@ class TestUtilities:
         data = {"usage": {"prompt_tokens": 80, "completion_tokens": 40}}
         assert _extract_tokens(data, None) == (80, 40)
 
+    def test_extract_tokens_falls_back_when_normalized_fields_are_none(self) -> None:
+        # Given: normalized fields present but unset, plus legacy OpenAI fields
+        data = {
+            "usage": {
+                "input_tokens": None,
+                "output_tokens": None,
+                "prompt_tokens": 80,
+                "completion_tokens": 40,
+            }
+        }
+
+        # When/Then: fallback still uses the legacy fields
+        assert _extract_tokens(data, None) == (80, 40)
+
+    def test_extract_tokens_falls_back_per_field(self) -> None:
+        # Given: one normalized field missing, the other present
+        data = {
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": None,
+                "completion_tokens": 40,
+            }
+        }
+
+        # When/Then: fallback applies independently per token side
+        assert _extract_tokens(data, None) == (100, 40)
+
     def test_extract_tokens_none(self) -> None:
         # Given: None data / Then: (0, 0)
         assert _extract_tokens(None, None) == (0, 0)
