@@ -40,10 +40,9 @@ The template uses `{{NAME}}` for that package identifier. It does not use `{{ORG
    The template starts new packages at `0.1.0`; change that if your release plan differs.
    Also replace the copied `README.md` with package-specific install, configuration, and usage
    docs before your first build or publish. Then confirm the package `version` reflects your
-   release plan and that the
-   `agent-control-evaluators` / `agent-control-models` dependency floors still match the
-   compatibility floor used by the existing contrib packages and builtin extras (currently
-   `>=3.0.0`) before you commit the new package.
+   release plan and that the `agent-control-evaluators` / `agent-control-models` dependency
+   floors match the compatibility floor you intend to support. Keep those dependency floors
+   aligned with the builtin extra you add below before you commit the new package.
 
 3. Add package code and tests:
 
@@ -93,22 +92,16 @@ After the new package exists as a real contrib package, wire it into the repo co
    agent-control-evaluator-<name> = { path = "../contrib/<name>", editable = true }
    ```
 
-3. If this package should publish on the repo-managed release train, wire all of the release
-   automation together:
+3. Add the package to `tool.semantic_release.version_toml` in the root `pyproject.toml`:
 
-   - Add the package to `tool.semantic_release.version_toml` in the root `pyproject.toml`:
+   ```toml
+   "evaluators/contrib/<name>/pyproject.toml:project.version",
+   ```
 
-     ```toml
-     "evaluators/contrib/<name>/pyproject.toml:project.version",
-     ```
-
-   - Add a build target for the package in `scripts/build.py`, and include it in the release
-     workflow's build step.
-
-   - Add a publish/upload step for the package in `.github/workflows/release.yaml`.
-
-   If the contrib package will be versioned and published independently, skip the repo release
-   train wiring and keep its versioning/publishing automation local to that package.
+   The repo's release automation discovers real contrib packages automatically via
+   `scripts/contrib_packages.py`, so once the package has a real `pyproject.toml` and the
+   builtin extra / uv source wiring above is in place, `scripts/build.py` and
+   `.github/workflows/release.yaml` will pick it up without additional manual edits.
 
 Until those steps are done, the package is still scaffolding rather than a real contrib package.
 
