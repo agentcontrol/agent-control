@@ -82,8 +82,10 @@ After the new package exists as a real contrib package, wire it into the repo co
    <name> = ["agent-control-evaluator-<name>>=<minimum-compatible-version>"]
    ```
 
-   Use the lowest published version that is actually compatible with the package; do not tie
-   this extra to the current monorepo version unless the contrib package itself requires it.
+   Keep this extra on the current monorepo release line. The release build rewrites builtin
+   dependency floors to the active release version before publishing
+   `agent-control-evaluators`, so a lower source floor here would not survive into the
+   published extra metadata.
 
 2. Add the workspace source pin to `evaluators/builtin/pyproject.toml`:
 
