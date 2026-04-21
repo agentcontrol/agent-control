@@ -1,4 +1,5 @@
 import sys
+import tomllib
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
@@ -50,3 +51,13 @@ dependencies = [
 galileo = ["agent-control-evaluator-galileo>=7.6.0"]
 """.strip()
     )
+
+
+def test_builtin_evaluators_manifest_keeps_models_floor_rewritable() -> None:
+    builtin_pyproject = SCRIPTS_DIR.parent / "evaluators" / "builtin" / "pyproject.toml"
+    with builtin_pyproject.open("rb") as handle:
+        manifest = tomllib.load(handle)
+
+    dependencies = manifest["project"]["dependencies"]
+
+    assert "agent-control-models>=7.5.0" in dependencies

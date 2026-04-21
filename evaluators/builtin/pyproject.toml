@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Agent Control Team" }]
 dependencies = [
-    "agent-control-models",
+    "agent-control-models>=7.5.0",
     "pydantic>=2.12.4",
     "google-re2>=1.1",
     "jsonschema>=4.0.0",
