@@ -47,17 +47,14 @@ jobs:
           uv --version
           python --version
 
+      - name: Verify contrib packaging contract
+        run: python3 scripts/contrib_packages.py verify
+
       - name: Sync dependencies
         run: make sync
 
-      - name: Lint
-        run: make lint
-
-      - name: Type check
-        run: make typecheck
-
-      - name: Test with coverage
-        run: make test
+      - name: Run Python checks
+        run: make check
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
