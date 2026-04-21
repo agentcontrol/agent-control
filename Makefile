@@ -1,4 +1,4 @@
-.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all models-test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build contrib-test contrib-lint contrib-lint-fix contrib-typecheck contrib-build sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish telemetry-test telemetry-lint telemetry-lint-fix telemetry-typecheck telemetry-build telemetry-publish
+.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all scripts-test models-test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build contrib-test contrib-lint contrib-lint-fix contrib-typecheck contrib-build sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish telemetry-test telemetry-lint telemetry-lint-fix telemetry-typecheck telemetry-build telemetry-publish
 
 # Workspace package names
 PACK_MODELS := agent-control-models
@@ -19,11 +19,11 @@ TELEMETRY_DIR := telemetry
 EVALUATORS_DIR := evaluators/builtin
 CONTRIB_DIR := evaluators/contrib
 UI_DIR := ui
-CONTRIB_PACKAGE_NAMES := $(shell python3 scripts/contrib_packages.py names)
 
 define run-contrib-target
 	@set -e; \
-	for package in $(CONTRIB_PACKAGE_NAMES); do \
+	packages=$$(python3 scripts/contrib_packages.py names); \
+	for package in $$packages; do \
 		$(MAKE) -C $(CONTRIB_DIR)/$$package $(1); \
 	done
 endef
@@ -42,6 +42,7 @@ help:
 	@echo ""
 	@echo "Test:"
 	@echo "  make test            - run tests for core packages and all discovered contrib evaluators"
+	@echo "  make scripts-test    - run root contrib packaging contract tests"
 	@echo "  make models-test     - run shared model tests with coverage"
 	@echo "  make test-extras     - run tests for all discovered contrib evaluators"
 	@echo "  make test-all        - alias for make test"
@@ -92,7 +93,10 @@ openapi-spec-check: openapi-spec
 # Test
 # ---------------------------
 
-test: models-test telemetry-test server-test engine-test sdk-test evaluators-test contrib-test
+test: scripts-test models-test telemetry-test server-test engine-test sdk-test evaluators-test contrib-test
+
+scripts-test:
+	uv run --with pytest pytest scripts/tests -q
 
 models-test:
 	cd $(MODELS_DIR) && uv run pytest --cov=src --cov-report=xml:../coverage-models.xml -q
