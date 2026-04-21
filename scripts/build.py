@@ -43,6 +43,21 @@ def set_package_version(pyproject_path: Path, version: str) -> None:
     pyproject_path.write_text(updated)
 
 
+def sync_dependency_floors(pyproject_path: Path, dependency_names: list[str], version: str) -> None:
+    """Update internal dependency lower bounds to the release version."""
+    content = pyproject_path.read_text()
+    updated = content
+    for dependency_name in dependency_names:
+        updated = re.sub(
+            rf'("{re.escape(dependency_name)}>=)([^",;\]\s]+)',
+            rf"\g<1>{version}",
+            updated,
+        )
+
+    if updated != content:
+        pyproject_path.write_text(updated)
+
+
 def inject_bundle_metadata(init_file: Path, package_name: str, version: str) -> None:
     """Add bundling metadata to __init__.py for conflict detection."""
     content = init_file.read_text()
@@ -65,11 +80,19 @@ def clean_dist_dir(package_dir: Path) -> Path:
     return dist_dir
 
 
-def build_python_package(distribution_name: str, package_dir: Path, version: str) -> None:
+def build_python_package(
+    distribution_name: str,
+    package_dir: Path,
+    version: str,
+    dependency_names: list[str] | None = None,
+) -> None:
     """Build a standalone Python package into its local dist directory."""
     print(f"Building {distribution_name} v{version}")
     dist_dir = clean_dist_dir(package_dir)
-    set_package_version(package_dir / "pyproject.toml", version)
+    pyproject_path = package_dir / "pyproject.toml"
+    set_package_version(pyproject_path, version)
+    if dependency_names:
+        sync_dependency_floors(pyproject_path, dependency_names, version)
     subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=package_dir, check=True)
     print(f"  Built {distribution_name} v{version}")
 
@@ -77,6 +100,11 @@ def build_python_package(distribution_name: str, package_dir: Path, version: str
 def discover_contrib_by_name() -> dict[str, ContribPackage]:
     """Return discovered contrib packages keyed by contrib name."""
     return {package.name: package for package in discover_contrib_packages()}
+
+
+def discover_contrib_distribution_names() -> list[str]:
+    """Return the distribution names for all discovered contrib packages."""
+    return [package.package for package in discover_contrib_packages()]
 
 
 def build_models() -> None:
@@ -128,7 +156,13 @@ def build_sdk() -> None:
         version,
     )
 
-    set_package_version(sdk_dir / "pyproject.toml", version)
+    sdk_pyproject = sdk_dir / "pyproject.toml"
+    set_package_version(sdk_pyproject, version)
+    sync_dependency_floors(
+        sdk_pyproject,
+        ["agent-control-evaluators", *discover_contrib_distribution_names()],
+        version,
+    )
 
     try:
         subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=sdk_dir, check=True)
@@ -188,7 +222,13 @@ def build_server() -> None:
         version,
     )
 
-    set_package_version(server_dir / "pyproject.toml", version)
+    server_pyproject = server_dir / "pyproject.toml"
+    set_package_version(server_pyproject, version)
+    sync_dependency_floors(
+        server_pyproject,
+        ["agent-control-evaluators", *discover_contrib_distribution_names()],
+        version,
+    )
 
     try:
         subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=server_dir, check=True)
@@ -206,12 +246,18 @@ def build_evaluators() -> None:
         "agent-control-evaluators",
         ROOT / "evaluators" / "builtin",
         get_global_version(),
+        ["agent-control-models", *discover_contrib_distribution_names()],
     )
 
 
 def build_contrib_package(package: ContribPackage, version: str) -> None:
     """Build a discovered contrib evaluator package."""
-    build_python_package(package.package, ROOT / Path(package.directory), version)
+    build_python_package(
+        package.package,
+        ROOT / Path(package.directory),
+        version,
+        ["agent-control-evaluators", "agent-control-models"],
+    )
 
 
 def build_contrib() -> None:
@@ -222,7 +268,8 @@ def build_contrib() -> None:
         print("No contrib evaluator packages discovered.")
         return
 
-    print(f"Building discovered contrib packages ({', '.join(package.name for package in packages)})")
+    package_names = ", ".join(package.name for package in packages)
+    print(f"Building discovered contrib packages ({package_names})")
     for package in packages:
         build_contrib_package(package, version)
 
@@ -234,7 +281,8 @@ def build_named_contrib_package(target: str) -> None:
     if package is None:
         available_targets = ", ".join(sorted(packages))
         raise ValueError(
-            f"Unknown build target {target!r}. Available contrib targets: {available_targets or '(none)'}"
+            "Unknown build target "
+            f"{target!r}. Available contrib targets: {available_targets or '(none)'}"
         )
     build_contrib_package(package, get_global_version())
 
@@ -252,7 +300,10 @@ def build_all() -> None:
 
 def usage() -> str:
     """Return the CLI usage string."""
-    return "Usage: python scripts/build.py [models|evaluators|sdk|server|contrib|all|<contrib-name>]"
+    return (
+        "Usage: python scripts/build.py "
+        "[models|evaluators|sdk|server|contrib|all|<contrib-name>]"
+    )
 
 
 if __name__ == "__main__":
