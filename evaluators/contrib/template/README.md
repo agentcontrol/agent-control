@@ -16,9 +16,16 @@ Pick `<name>` as a short lowercase single-word identifier such as `galileo`, `ci
 - pip package: `agent-control-evaluator-<name>`
 - Python module: `agent_control_evaluator_<name>`
 - extra name: `agent-control-evaluators[<name>]`
-- entry-point namespace: `<name>.<evaluator_id>`
 
 The template uses `{{NAME}}` for that package identifier. It does not use `{{ORG}}`.
+
+Keep the public evaluator reference separate from the package identifier:
+
+- `{{ENTRY_POINT}}` is the user-facing evaluator name and should match
+  `EvaluatorMetadata.name` in your package code.
+- Single-evaluator packages can keep that public name flat, such as `budget`.
+- Packages that expose a family of evaluator ids should namespace it, such as
+  `cisco.ai_defense` or `galileo.luna2`.
 
 ## Scaffold a new contrib package
 
@@ -33,9 +40,13 @@ The template uses `{{NAME}}` for that package identifier. It does not use `{{ORG
 2. Replace placeholders in `pyproject.toml`:
 
    - `{{NAME}}` -> contrib package identifier
-   - `{{EVALUATOR}}` -> evaluator snake_case id
+   - `{{ENTRY_POINT}}` -> public evaluator reference / `EvaluatorMetadata.name`
+   - `{{EVALUATOR}}` -> evaluator module path segment (for example `budget` or `ai_defense`)
    - `{{CLASS}}` -> evaluator class name
    - `{{AUTHOR}}` -> authoring team
+
+   For a package with one primary evaluator, `{{ENTRY_POINT}}` is often just `<name>`. For a
+   package that groups provider-specific evaluators, use `<name>.<evaluator_id>`.
 
    The template starts new packages at `0.1.0`; change that if your release plan differs.
    Also replace the copied `README.md` with package-specific install, configuration, and usage

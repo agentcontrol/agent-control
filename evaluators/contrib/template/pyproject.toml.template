@@ -22,8 +22,9 @@ dev = [
 ]
 
 [project.entry-points."agent_control.evaluators"]
-# Format: "<name>.<evaluator_name>" = "package.module:Class"
-"{{NAME}}.{{EVALUATOR}}" = "agent_control_evaluator_{{NAME}}.{{EVALUATOR}}:{{CLASS}}"
+# Keep this aligned with EvaluatorMetadata.name (for example "budget" or
+# "cisco.ai_defense").
+"{{ENTRY_POINT}}" = "agent_control_evaluator_{{NAME}}.{{EVALUATOR}}:{{CLASS}}"
 
 [build-system]
 requires = ["hatchling"]
