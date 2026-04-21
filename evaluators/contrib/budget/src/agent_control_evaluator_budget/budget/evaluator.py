@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import math
 import threading
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
@@ -26,6 +27,11 @@ from .memory_store import InMemoryBudgetStore, _scope_matches
 from .store import BudgetStore
 
 logger = logging.getLogger(__name__)
+
+try:
+    _PACKAGE_VERSION = version("agent-control-evaluator-budget")
+except PackageNotFoundError:
+    _PACKAGE_VERSION = "0.0.0.dev"
 
 # ---------------------------------------------------------------------------
 # Module-level store registry
@@ -173,7 +179,7 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
 
     metadata = EvaluatorMetadata(
         name="budget",
-        version="3.0.0",
+        version=_PACKAGE_VERSION,
         description="Cumulative LLM token and cost budget tracking",
     )
     config_model = BudgetEvaluatorConfig

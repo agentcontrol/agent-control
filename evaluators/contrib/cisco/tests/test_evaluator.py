@@ -1,3 +1,5 @@
+from importlib.metadata import version
+
 import pytest
 from pydantic import ValidationError
 
@@ -11,6 +13,10 @@ from agent_control_evaluator_cisco.ai_defense.client import AIDefenseClient
 @pytest.fixture(autouse=True)
 def _env_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AI_DEFENSE_API_KEY", "test-key")
+
+
+def test_metadata_version_matches_distribution_version() -> None:
+    assert CiscoAIDefenseEvaluator.metadata.version == version("agent-control-evaluator-cisco")
 
 
 @pytest.mark.asyncio

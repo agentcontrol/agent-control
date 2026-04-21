@@ -109,7 +109,7 @@ class BudgetEvaluatorConfig(EvaluatorConfig):
     metadata_paths: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def require_pricing_for_cost_rules(self) -> "BudgetEvaluatorConfig":
+    def require_pricing_for_cost_rules(self) -> BudgetEvaluatorConfig:
         has_cost_rule = any(rule.limit_unit == "usd_cents" for rule in self.limits)
         if has_cost_rule and self.pricing is None:
             raise ValueError('pricing is required when any rule uses limit_unit="usd_cents"')
