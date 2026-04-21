@@ -29,6 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
+from ..authz import ManagementOperation, ManagementPrincipal, require_management_auth
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
@@ -727,9 +728,12 @@ async def list_controls(
     stage: str | None = Query(None, description="Filter by stage ('pre' or 'post')"),
     execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
     tag: str | None = Query(None, description="Filter by tag"),
-    tenant_id: str = Depends(get_tenant_id),
+    principal: ManagementPrincipal = Depends(
+        require_management_auth(ManagementOperation.controls_read)
+    ),
     db: AsyncSession = Depends(get_async_db),
 ) -> ListControlsResponse:
+    tenant_id = principal.tenant_id
     """
     List all controls with optional filtering and cursor-based pagination.
 

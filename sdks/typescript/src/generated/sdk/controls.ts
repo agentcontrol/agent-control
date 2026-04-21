@@ -37,29 +37,6 @@ export class Controls extends ClientSDK {
 
   /**
    * List all controls
-   *
-   * @remarks
-   * List all controls with optional filtering and cursor-based pagination.
-   *
-   * Controls are returned ordered by ID descending (newest first).
-   *
-   * Args:
-   *     cursor: ID of the last control from the previous page (for pagination)
-   *     limit: Maximum number of controls to return (default 20, max 100)
-   *     name: Optional filter by name (partial, case-insensitive match)
-   *     enabled: Optional filter by enabled status
-   *     template_backed: Optional filter by whether the control is template-backed
-   *     step_type: Optional filter by step type (built-ins: 'tool', 'llm')
-   *     stage: Optional filter by stage ('pre' or 'post')
-   *     execution: Optional filter by execution ('server' or 'sdk')
-   *     tag: Optional filter by tag
-   *     db: Database session (injected)
-   *
-   * Returns:
-   *     ListControlsResponse with control summaries and pagination info
-   *
-   * Example:
-   *     GET /controls?limit=10&enabled=true&step_type=tool
    */
   async list(
     request?: operations.ListControlsApiV1ControlsGetRequest | undefined,

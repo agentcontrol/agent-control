@@ -162,17 +162,6 @@ export class Targets extends ClientSDK {
 
   /**
    * List controls attached to a target identified by natural key
-   *
-   * @remarks
-   * List controls attached to a target addressed by natural key.
-   *
-   * Returns 200 with an empty ``controls`` list when the target does not
-   * exist in the caller's tenant. This matches desired-state semantics:
-   * clients rendering a controls panel for a log_stream treat "target not
-   * yet created" identically to "target exists but no controls attached."
-   * Distinguishing the two would force every caller to handle a 404 that
-   * carries no additional signal, given that a subsequent PUT creates
-   * the target lazily anyway.
    */
   async listControlsForTargetByNaturalKey(
     request:
@@ -188,15 +177,6 @@ export class Targets extends ClientSDK {
 
   /**
    * Detach a control from a target identified by natural key
-   *
-   * @remarks
-   * Idempotently detach a control from a target addressed by natural key.
-   *
-   * Final-state semantics: returns 204 whether the attachment existed and
-   * was removed, the attachment never existed, or the target row itself
-   * does not exist in the caller's tenant. A control that does not exist
-   * in the caller's tenant still surfaces as 404 to avoid masking caller
-   * errors under detach idempotency.
    */
   async deleteControlByNaturalKey(
     request:
@@ -212,16 +192,6 @@ export class Targets extends ClientSDK {
 
   /**
    * Attach a control to a target identified by natural key
-   *
-   * @remarks
-   * Idempotently attach a control to a target addressed by natural key.
-   *
-   * Desired-state semantics: the attachment converges to ``enabled``
-   * regardless of prior existence. If the target row does not exist yet
-   * in the caller's tenant, it is created lazily with empty metadata. A
-   * control that does not exist in the caller's tenant surfaces as 404
-   * with the same shape as a control that exists in another tenant, so
-   * cross-tenant non-disclosure is preserved.
    */
   async putControlByNaturalKey(
     request:

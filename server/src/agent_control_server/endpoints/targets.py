@@ -33,11 +33,12 @@ from agent_control_models import (
     ToggleTargetControlRequest,
 )
 from agent_control_models.errors import ErrorCode
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
+from ..authz import ManagementOperation, ManagementPrincipal, require_management_auth
 from ..db import get_async_db
 from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
@@ -45,6 +46,18 @@ from ..models import Target
 from ..services import targets as targets_service
 from ..services.tenant_scoped_lookups import get_control_in_tenant_or_404
 from ..tenancy import get_tenant_id
+
+
+def _target_binding_context(request: Request) -> dict[str, object]:
+    """Extract the target-binding context for management authz from the request.
+
+    Reads ``target_type`` and ``external_id`` straight from the matched path
+    params. The natural-key path is guaranteed to have both.
+    """
+    return {
+        "target_type": request.path_params["target_type"],
+        "external_id": request.path_params["external_id"],
+    }
 
 # Path-parameter charset guards. Kept in sync with ``TargetTypeStr`` and
 # ``ExternalIdStr`` in agent_control_models.target. Duplicated here because
@@ -372,9 +385,15 @@ async def list_controls_for_target(
 async def list_controls_for_target_by_natural_key(
     target_type: _TargetTypePath,
     external_id: _ExternalIdPath,
-    tenant_id: str = Depends(get_tenant_id),
+    principal: ManagementPrincipal = Depends(
+        require_management_auth(
+            ManagementOperation.target_bindings_read,
+            context_builder=_target_binding_context,
+        )
+    ),
     db: AsyncSession = Depends(get_async_db),
 ) -> ListTargetControlsByNaturalKeyResponse:
+    tenant_id = principal.tenant_id
     """List controls attached to a target addressed by natural key.
 
     Returns 200 with an empty ``controls`` list when the target does not
@@ -421,9 +440,15 @@ async def put_target_control_by_natural_key(
     external_id: _ExternalIdPath,
     control_id: int,
     request: AttachTargetControlRequest | None = None,
-    tenant_id: str = Depends(get_tenant_id),
+    principal: ManagementPrincipal = Depends(
+        require_management_auth(
+            ManagementOperation.target_bindings_write,
+            context_builder=_target_binding_context,
+        )
+    ),
     db: AsyncSession = Depends(get_async_db),
 ) -> TargetControlSummary:
+    tenant_id = principal.tenant_id
     """Idempotently attach a control to a target addressed by natural key.
 
     Desired-state semantics: the attachment converges to ``enabled``
@@ -480,9 +505,15 @@ async def delete_target_control_by_natural_key(
     target_type: _TargetTypePath,
     external_id: _ExternalIdPath,
     control_id: int,
-    tenant_id: str = Depends(get_tenant_id),
+    principal: ManagementPrincipal = Depends(
+        require_management_auth(
+            ManagementOperation.target_bindings_write,
+            context_builder=_target_binding_context,
+        )
+    ),
     db: AsyncSession = Depends(get_async_db),
 ) -> None:
+    tenant_id = principal.tenant_id
     """Idempotently detach a control from a target addressed by natural key.
 
     Final-state semantics: returns 204 whether the attachment existed and

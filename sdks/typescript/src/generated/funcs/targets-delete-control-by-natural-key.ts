@@ -28,15 +28,6 @@ import { Result } from "../types/fp.js";
 
 /**
  * Detach a control from a target identified by natural key
- *
- * @remarks
- * Idempotently detach a control from a target addressed by natural key.
- *
- * Final-state semantics: returns 204 whether the attachment existed and
- * was removed, the attachment never existed, or the target row itself
- * does not exist in the caller's tenant. A control that does not exist
- * in the caller's tenant still surfaces as 404 to avoid masking caller
- * errors under detach idempotency.
  */
 export function targetsDeleteControlByNaturalKey(
   client: AgentControlSDKCore,

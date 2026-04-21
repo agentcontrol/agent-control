@@ -29,17 +29,6 @@ import { Result } from "../types/fp.js";
 
 /**
  * List controls attached to a target identified by natural key
- *
- * @remarks
- * List controls attached to a target addressed by natural key.
- *
- * Returns 200 with an empty ``controls`` list when the target does not
- * exist in the caller's tenant. This matches desired-state semantics:
- * clients rendering a controls panel for a log_stream treat "target not
- * yet created" identically to "target exists but no controls attached."
- * Distinguishing the two would force every caller to handle a 404 that
- * carries no additional signal, given that a subsequent PUT creates
- * the target lazily anyway.
  */
 export function targetsListControlsForTargetByNaturalKey(
   client: AgentControlSDKCore,

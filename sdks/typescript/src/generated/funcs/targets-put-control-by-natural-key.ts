@@ -29,16 +29,6 @@ import { Result } from "../types/fp.js";
 
 /**
  * Attach a control to a target identified by natural key
- *
- * @remarks
- * Idempotently attach a control to a target addressed by natural key.
- *
- * Desired-state semantics: the attachment converges to ``enabled``
- * regardless of prior existence. If the target row does not exist yet
- * in the caller's tenant, it is created lazily with empty metadata. A
- * control that does not exist in the caller's tenant surfaces as 404
- * with the same shape as a control that exists in another tenant, so
- * cross-tenant non-disclosure is preserved.
  */
 export function targetsPutControlByNaturalKey(
   client: AgentControlSDKCore,

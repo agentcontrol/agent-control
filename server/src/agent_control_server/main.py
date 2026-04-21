@@ -16,6 +16,7 @@ from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from . import __version__ as server_version
 from .auth import require_api_key
+from .authz.config import configure_management_auth_from_env
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal
 from .endpoints.agents import router as agent_router
@@ -85,6 +86,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager for FastAPI app startup and shutdown."""
     # Startup: Configure logging
     configure_logging(default_level=_default_log_level())
+
+    # Select and install the management authorizer based on env vars.
+    # Defaults to the header provider; enterprise deployments set
+    # AGENT_CONTROL_MANAGEMENT_AUTH_MODE=http_upstream and related vars.
+    configure_management_auth_from_env()
 
     # Discover evaluators at startup
     discover_evaluators()
