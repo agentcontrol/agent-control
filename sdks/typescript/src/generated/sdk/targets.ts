@@ -8,6 +8,7 @@ import { targetsDeleteControlByNaturalKey } from "../funcs/targets-delete-contro
 import { targetsDelete } from "../funcs/targets-delete.js";
 import { targetsDetachControl } from "../funcs/targets-detach-control.js";
 import { targetsGet } from "../funcs/targets-get.js";
+import { targetsListControlsForTargetByNaturalKey } from "../funcs/targets-list-controls-for-target-by-natural-key.js";
 import { targetsListControls } from "../funcs/targets-list-controls.js";
 import { targetsList } from "../funcs/targets-list.js";
 import { targetsPutControlByNaturalKey } from "../funcs/targets-put-control-by-natural-key.js";
@@ -153,6 +154,32 @@ export class Targets extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.TargetControlSummary> {
     return unwrapAsync(targetsAttachControl(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * List controls attached to a target identified by natural key
+   *
+   * @remarks
+   * List controls attached to a target addressed by natural key.
+   *
+   * Returns 200 with an empty ``controls`` list when the target does not
+   * exist in the caller's tenant. This matches desired-state semantics:
+   * clients rendering a controls panel for a log_stream treat "target not
+   * yet created" identically to "target exists but no controls attached."
+   * Distinguishing the two would force every caller to handle a 404 that
+   * carries no additional signal, given that a subsequent PUT creates
+   * the target lazily anyway.
+   */
+  async listControlsForTargetByNaturalKey(
+    request:
+      operations.ListControlsForTargetByNaturalKeyApiV1TargetsTargetTypeExternalIdControlsGetRequest,
+    options?: RequestOptions,
+  ): Promise<models.ListTargetControlsByNaturalKeyResponse> {
+    return unwrapAsync(targetsListControlsForTargetByNaturalKey(
       this,
       request,
       options,

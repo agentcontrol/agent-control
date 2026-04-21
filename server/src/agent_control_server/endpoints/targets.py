@@ -25,6 +25,7 @@ from agent_control_models import (
     AttachTargetControlRequest,
     CreateTargetRequest,
     CreateTargetResponse,
+    ListTargetControlsByNaturalKeyResponse,
     ListTargetControlsResponse,
     ListTargetsResponse,
     TargetControlSummary,
@@ -358,8 +359,54 @@ async def list_controls_for_target(
 
 
 # ---------------------------------------------------------------------------
-# Natural-key attach / detach
+# Natural-key attach / detach / list
 # ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{target_type}/{external_id}/controls",
+    response_model=ListTargetControlsByNaturalKeyResponse,
+    summary="List controls attached to a target identified by natural key",
+    response_description="Attachments for the target; empty list if target absent",
+)
+async def list_controls_for_target_by_natural_key(
+    target_type: _TargetTypePath,
+    external_id: _ExternalIdPath,
+    tenant_id: str = Depends(get_tenant_id),
+    db: AsyncSession = Depends(get_async_db),
+) -> ListTargetControlsByNaturalKeyResponse:
+    """List controls attached to a target addressed by natural key.
+
+    Returns 200 with an empty ``controls`` list when the target does not
+    exist in the caller's tenant. This matches desired-state semantics:
+    clients rendering a controls panel for a log_stream treat "target not
+    yet created" identically to "target exists but no controls attached."
+    Distinguishing the two would force every caller to handle a 404 that
+    carries no additional signal, given that a subsequent PUT creates
+    the target lazily anyway.
+    """
+    target = await targets_service.get_target_by_natural_key(
+        tenant_id=tenant_id,
+        target_type=target_type,
+        external_id=external_id,
+        db=db,
+    )
+    if target is None:
+        return ListTargetControlsByNaturalKeyResponse(
+            target_type=target_type,
+            external_id=external_id,
+            controls=[],
+        )
+
+    rows = await targets_service.list_target_controls(target_id=target.id, db=db)
+    return ListTargetControlsByNaturalKeyResponse(
+        target_type=target_type,
+        external_id=external_id,
+        controls=[
+            TargetControlSummary(id=row.id, control_id=row.control_id, enabled=row.enabled)
+            for row in rows
+        ],
+    )
 
 
 @router.put(

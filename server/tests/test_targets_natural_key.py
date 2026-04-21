@@ -56,6 +56,95 @@ def _create_control(client: TestClient, *, tenant: str | None = None) -> int:
 
 
 # ---------------------------------------------------------------------------
+# GET natural-key list — returns 200 [] for absent target
+# ---------------------------------------------------------------------------
+
+
+def test_get_natural_key_controls_returns_empty_when_target_absent(
+    client: TestClient,
+) -> None:
+    # Given: no target exists for (environment, external_id)
+    external_id = _unique("ls-absent")
+
+    # When: we GET the controls via natural key
+    resp = client.get(f"{API_PREFIX}/targets/environment/{external_id}/controls")
+
+    # Then: 200 with an empty controls list, and the natural key echoed back
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["target_type"] == "environment"
+    assert body["external_id"] == external_id
+    assert body["controls"] == []
+
+
+def test_get_natural_key_controls_returns_attachments_when_target_exists(
+    client: TestClient,
+) -> None:
+    # Given: a target with two attached controls (one enabled, one disabled)
+    control_a = _create_control(client)
+    control_b = _create_control(client)
+    external_id = _unique("ls-present")
+
+    client.put(
+        f"{API_PREFIX}/targets/environment/{external_id}/controls/{control_a}",
+        json={"enabled": True},
+    ).raise_for_status()
+    client.put(
+        f"{API_PREFIX}/targets/environment/{external_id}/controls/{control_b}",
+        json={"enabled": False},
+    ).raise_for_status()
+
+    # When: we GET via natural key
+    resp = client.get(f"{API_PREFIX}/targets/environment/{external_id}/controls")
+
+    # Then: both attachments returned, with their enabled flags
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["target_type"] == "environment"
+    assert body["external_id"] == external_id
+    by_control = {c["control_id"]: c for c in body["controls"]}
+    assert set(by_control) == {control_a, control_b}
+    assert by_control[control_a]["enabled"] is True
+    assert by_control[control_b]["enabled"] is False
+
+
+def test_get_natural_key_controls_is_tenant_scoped(client: TestClient) -> None:
+    # Given: tenant-a creates a target + attachment
+    control_a = _create_control(client, tenant="tenant-a")
+    external_id = _unique("shared-ls")
+    client.put(
+        f"{API_PREFIX}/targets/environment/{external_id}/controls/{control_a}",
+        headers={TENANT_HEADER: "tenant-a"},
+        json={"enabled": True},
+    ).raise_for_status()
+
+    # When: tenant-b GETs the same natural key
+    resp = client.get(
+        f"{API_PREFIX}/targets/environment/{external_id}/controls",
+        headers={TENANT_HEADER: "tenant-b"},
+    )
+
+    # Then: 200 with empty list — tenant-b sees no attachments (and, in
+    # effect, does not even know that tenant-a has this target)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["controls"] == []
+
+
+@pytest.mark.parametrize(
+    "bad_target_type",
+    ["Log-Stream", "log stream", "1log"],
+)
+def test_get_natural_key_controls_rejects_invalid_target_type(
+    client: TestClient, bad_target_type: str
+) -> None:
+    resp = client.get(
+        f"{API_PREFIX}/targets/{bad_target_type}/some-id/controls"
+    )
+    assert resp.status_code in (404, 422), resp.text
+
+
+# ---------------------------------------------------------------------------
 # PUT happy path — lazy target creation
 # ---------------------------------------------------------------------------
 

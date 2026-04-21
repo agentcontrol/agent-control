@@ -245,6 +245,11 @@ actions:
       x-speakeasy-group: targets
       x-speakeasy-name-override: detachControl
 
+  - target: $["paths"]["/api/v1/targets/{target_type}/{external_id}/controls"]["get"]
+    update:
+      x-speakeasy-group: targets
+      x-speakeasy-name-override: listControlsForTargetByNaturalKey
+
   - target: $["paths"]["/api/v1/targets/{target_type}/{external_id}/controls/{control_id}"]["put"]
     update:
       x-speakeasy-group: targets

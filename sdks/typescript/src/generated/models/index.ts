@@ -65,6 +65,7 @@ export * from "./json-value-output1.js";
 export * from "./list-agents-response.js";
 export * from "./list-controls-response.js";
 export * from "./list-evaluators-response.js";
+export * from "./list-target-controls-by-natural-key-response.js";
 export * from "./list-target-controls-response.js";
 export * from "./list-targets-response.js";
 export * from "./login-request.js";

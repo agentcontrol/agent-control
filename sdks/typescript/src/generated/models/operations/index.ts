@@ -25,6 +25,7 @@ export * from "./list-agent-evaluators-api-v1-agents-agent-name-evaluators-get.j
 export * from "./list-agents-api-v1-agents-get.js";
 export * from "./list-controls-api-v1-controls-get.js";
 export * from "./list-controls-for-target-api-v1-targets-target-id-controls-get.js";
+export * from "./list-controls-for-target-by-natural-key-api-v1-targets-target-type-external-id-controls-get.js";
 export * from "./list-policy-controls-api-v1-policies-policy-id-controls-get.js";
 export * from "./list-targets-api-v1-targets-get.js";
 export * from "./patch-agent-api-v1-agents-agent-name-patch.js";

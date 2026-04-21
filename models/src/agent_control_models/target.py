@@ -129,6 +129,23 @@ class ListTargetControlsResponse(BaseModel):
     )
 
 
+class ListTargetControlsByNaturalKeyResponse(BaseModel):
+    """Response for listing controls attached to a target by natural key.
+
+    Echoes the caller's natural key back instead of exposing the internal
+    ``target_id``. When no target exists for the natural key yet, ``controls``
+    is an empty list — consistent with desired-state semantics: an untouched
+    target behaves like a target with no attachments.
+    """
+
+    target_type: TargetTypeStr = Field(..., description="Target type slug the caller provided.")
+    external_id: ExternalIdStr = Field(..., description="External ID the caller provided.")
+    controls: list[TargetControlSummary] = Field(
+        default_factory=list,
+        description="Controls attached to the target.",
+    )
+
+
 __all__ = [
     "TargetTypeStr",
     "ExternalIdStr",
@@ -140,4 +157,5 @@ __all__ = [
     "ToggleTargetControlRequest",
     "TargetControlSummary",
     "ListTargetControlsResponse",
+    "ListTargetControlsByNaturalKeyResponse",
 ]
