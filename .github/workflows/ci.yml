@@ -48,7 +48,7 @@ jobs:
           python --version
 
       - name: Verify contrib packaging contract
-        run: python3 scripts/contrib_packages.py verify
+        run: make contrib-verify
 
       - name: Sync dependencies
         run: make sync
@@ -59,7 +59,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: coverage-models.xml,coverage-engine.xml,coverage-telemetry.xml,coverage-server.xml,coverage-sdk.xml
+          files: coverage-models.xml,coverage-engine.xml,coverage-telemetry.xml,coverage-server.xml,coverage-sdk.xml,coverage-evaluators-budget.xml,coverage-evaluators-cisco.xml,coverage-evaluators-galileo.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 

@@ -1,4 +1,4 @@
-.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all scripts-test models-test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build contrib-test contrib-lint contrib-lint-fix contrib-typecheck contrib-build sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish telemetry-test telemetry-lint telemetry-lint-fix telemetry-typecheck telemetry-build telemetry-publish
+.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all contrib-verify scripts-test models-test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build contrib-test contrib-lint contrib-lint-fix contrib-typecheck contrib-build sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish telemetry-test telemetry-lint telemetry-lint-fix telemetry-typecheck telemetry-build telemetry-publish
 
 # Workspace package names
 PACK_MODELS := agent-control-models
@@ -42,6 +42,7 @@ help:
 	@echo ""
 	@echo "Test:"
 	@echo "  make test            - run tests for core packages and all discovered contrib evaluators"
+	@echo "  make contrib-verify  - verify root contrib packaging contract wiring"
 	@echo "  make scripts-test    - run root contrib packaging contract tests"
 	@echo "  make models-test     - run shared model tests with coverage"
 	@echo "  make test-extras     - run tests for all discovered contrib evaluators"
@@ -93,7 +94,10 @@ openapi-spec-check: openapi-spec
 # Test
 # ---------------------------
 
-test: scripts-test models-test telemetry-test server-test engine-test sdk-test evaluators-test contrib-test
+test: contrib-verify scripts-test models-test telemetry-test server-test engine-test sdk-test evaluators-test contrib-test
+
+contrib-verify:
+	python3 scripts/contrib_packages.py verify
 
 scripts-test:
 	uv run --with pytest pytest scripts/tests -q
