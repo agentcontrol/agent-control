@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 EVALUATOR_ENTRY_GROUP = "agent_control.evaluators"
+CONTRIB_PACKAGE_PREFIX = "agent-control-evaluator-"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONTRIB_ROOT = REPO_ROOT / "evaluators" / "contrib"
 
@@ -113,6 +114,30 @@ def dependency_name(requirement: str) -> str:
             end = index
             break
     return requirement[:end].strip().lower()
+
+
+def contrib_name_from_distribution(distribution: str) -> str | None:
+    """Return the contrib package name when the distribution matches repo naming."""
+
+    if distribution.startswith(CONTRIB_PACKAGE_PREFIX):
+        return distribution.removeprefix(CONTRIB_PACKAGE_PREFIX)
+    return None
+
+
+def contrib_name_from_version_toml_entry(entry: str) -> str | None:
+    """Return the contrib package name when a version_toml entry targets a contrib package."""
+
+    path_text, separator, version_field = entry.partition(":")
+    if separator != ":" or version_field != "project.version":
+        return None
+
+    entry_path = Path(path_text)
+    if entry_path.parts[:2] != ("evaluators", "contrib"):
+        return None
+    if len(entry_path.parts) != 4 or entry_path.name != "pyproject.toml":
+        return None
+
+    return entry_path.parts[2]
 
 
 def discover_contrib_packages() -> list[ContribPackage]:
@@ -236,6 +261,7 @@ def verify_contrib_packages(packages: list[ContribPackage]) -> list[str]:
     )
 
     errors: list[str] = []
+    discovered_names = {package.name for package in packages}
     for package in packages:
         if package.version_toml_entry not in version_toml:
             errors.append(
@@ -281,6 +307,55 @@ def verify_contrib_packages(packages: list[ContribPackage]) -> list[str]:
             errors.append(
                 f"Builtin uv source {package.package!r} in {display_path(builtin_pyproject_path)} "
                 "must be a TOML table."
+            )
+        else:
+            source_path = source_entry.get("path")
+            if source_path != package.builtin_uv_source_path:
+                errors.append(
+                    f"Builtin uv source {package.package!r} in "
+                    f"{display_path(builtin_pyproject_path)} must set "
+                    f'path = "{package.builtin_uv_source_path}".'
+                )
+
+            if source_entry.get("editable") is not True:
+                errors.append(
+                    f"Builtin uv source {package.package!r} in "
+                    f"{display_path(builtin_pyproject_path)} must set editable = true."
+                )
+
+    for entry in version_toml:
+        contrib_name = contrib_name_from_version_toml_entry(entry)
+        if contrib_name is not None and contrib_name not in discovered_names:
+            errors.append(
+                f"Unexpected semantic-release version wiring for unknown contrib package "
+                f"{contrib_name!r}: remove {entry!r} from [tool.semantic_release].version_toml "
+                f"in {display_path(root_pyproject_path)}."
+            )
+
+    for extra_name, extra_dependencies in optional_dependencies.items():
+        if not isinstance(extra_dependencies, list) or not all(
+            isinstance(item, str) for item in extra_dependencies
+        ):
+            continue
+
+        dependency_names = {dependency_name(item) for item in extra_dependencies}
+        has_contrib_dependency = any(
+            contrib_name_from_distribution(name) is not None for name in dependency_names
+        )
+        if has_contrib_dependency and extra_name not in discovered_names:
+            errors.append(
+                f"Unexpected builtin extra {extra_name!r} in "
+                f"{display_path(builtin_pyproject_path)}: "
+                "no discovered contrib package matches this extra."
+            )
+
+    for source_name in builtin_sources:
+        contrib_name = contrib_name_from_distribution(source_name)
+        if contrib_name is not None and contrib_name not in discovered_names:
+            errors.append(
+                f"Unexpected uv source for unknown contrib package {contrib_name!r}: "
+                f"remove [tool.uv.sources].{source_name} from "
+                f"{display_path(builtin_pyproject_path)}."
             )
 
     return errors
