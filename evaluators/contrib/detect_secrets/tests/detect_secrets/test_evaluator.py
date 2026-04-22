@@ -349,6 +349,21 @@ async def test_non_json_serializable_payload_routes_through_on_error_allow() -> 
 
 
 @pytest.mark.asyncio
+async def test_recursive_payload_routes_through_normalization_error() -> None:
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+    payload: dict[str, Any] = {}
+    payload["self"] = payload
+
+    result = await evaluator.evaluate(payload)
+
+    assert result.matched is False
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "normalization_error"
+    assert result.metadata["fallback_action"] == "allow"
+
+
+@pytest.mark.asyncio
 async def test_oversized_payload_routes_through_on_error_allow() -> None:
     evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(max_bytes=8))
 
@@ -359,6 +374,36 @@ async def test_oversized_payload_routes_through_on_error_allow() -> None:
     assert result.metadata is not None
     assert result.metadata["failure_mode"] == "payload_too_large"
     assert result.metadata["normalized_payload_type"] == "str"
+    assert result.metadata["fallback_action"] == "allow"
+
+
+@pytest.mark.asyncio
+async def test_exhausted_timeout_budget_short_circuits_before_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monotonic_values = [100.0, 100.02]
+
+    def fake_monotonic() -> float:
+        if monotonic_values:
+            return monotonic_values.pop(0)
+        return 100.02
+
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.time.monotonic",
+        fake_monotonic,
+    )
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
+        lambda config=None: pytest.fail("runtime should not be invoked"),
+    )
+
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(timeout_ms=10))
+    result = await evaluator.evaluate("safe content only")
+
+    assert result.matched is False
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "queue_timeout"
     assert result.metadata["fallback_action"] == "allow"
 
 

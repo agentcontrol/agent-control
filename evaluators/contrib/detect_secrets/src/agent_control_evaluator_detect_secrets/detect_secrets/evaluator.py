@@ -77,7 +77,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         started_at = time.monotonic()
         try:
             normalized = normalize_payload(data)
-        except NormalizationError:
+        except (NormalizationError, RecursionError):
             return self._failure_result(
                 failure_mode="normalization_error",
                 normalized_payload_type=None,
@@ -105,6 +105,13 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         if len(filtered_text.encode("utf-8")) > self.config.max_bytes:
             return self._failure_result(
                 failure_mode="payload_too_large",
+                normalized_payload_type=normalized.payload_type,
+                detect_secrets_version=runtime_info.detect_secrets_version,
+            )
+
+        if self._remaining_timeout_ms(started_at) <= 0:
+            return self._failure_result(
+                failure_mode="queue_timeout",
                 normalized_payload_type=normalized.payload_type,
                 detect_secrets_version=runtime_info.detect_secrets_version,
             )
