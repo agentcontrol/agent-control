@@ -201,7 +201,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         if line_assignments:
             return line_assignments.popleft()
 
-        return location.parent_pointer
+        return None
 
     async def _build_structured_pointer_assignments(
         self,

@@ -167,7 +167,7 @@ def _render_dict_lines(
             child=child,
             child_lines=child_lines,
             child_pointer=child_pointer,
-            parent_pointer=pointer or None,
+            parent_pointer=pointer if pointer else ("" if isinstance(child, dict | list) else None),
             key_literal=key_literal,
         )
         child_lines[-1] = RenderedLine(

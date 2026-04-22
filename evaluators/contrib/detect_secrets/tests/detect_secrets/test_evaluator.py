@@ -121,6 +121,31 @@ async def test_dict_key_with_container_value_maps_findings_to_json_pointer() -> 
 
 
 @pytest.mark.asyncio
+async def test_root_dict_key_with_container_value_maps_findings_to_root_pointer() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    result = await evaluator.evaluate(
+        {
+            "ghp_123456789012345678901234567890123456": {
+                "nested": "safe",
+            }
+        }
+    )
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["normalized_payload_type"] == "dict"
+    assert result.metadata["findings"] == [
+        {
+            "type": "GitHub Token",
+            "json_pointer": "",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_dict_key_with_scalar_value_omits_json_pointer() -> None:
     evaluator = DetectSecretsEvaluator(
         DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
@@ -265,6 +290,31 @@ async def test_structured_key_probe_disambiguates_same_detector_type() -> None:
         "findings"
     ]
     assert {"type": "Secret Keyword", "json_pointer": "/secret"} in result.metadata["findings"]
+
+
+@pytest.mark.asyncio
+async def test_structured_pointer_fallback_omits_ambiguous_pointer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_scan_line_batch(self: DetectSecretsEvaluator, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(
+        DetectSecretsEvaluator,
+        "_scan_line_batch",
+        fail_scan_line_batch,
+    )
+
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+    result = await evaluator.evaluate(
+        {"outer": {"token": "ghp_123456789012345678901234567890123456"}}
+    )
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["findings"] == [{"type": "GitHub Token"}]
 
 
 @pytest.mark.asyncio
