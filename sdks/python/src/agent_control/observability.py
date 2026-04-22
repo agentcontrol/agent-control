@@ -1046,8 +1046,6 @@ def init_observability(
 
     settings_updates: dict[str, object] = {}
     current_settings = get_settings()
-    if enabled is not None:
-        settings_updates["observability_enabled"] = enabled
     if sink_name is not None:
         settings_updates["observability_sink_name"] = sink_name
         if (
