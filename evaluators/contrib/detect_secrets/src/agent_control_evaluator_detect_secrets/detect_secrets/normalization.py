@@ -29,6 +29,7 @@ class LineLocation:
     json_pointer: str | None
     parent_pointer: str | None = None
     key_probe_text: str | None = None
+    key_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +198,7 @@ def _render_dict_lines(
             child_pointer=child_pointer,
             parent_pointer=pointer if pointer else "",
             key_literal=key_literal,
+            key_name=key_name,
         )
         child_lines[-1] = RenderedLine(
             text=f"{child_lines[-1].text}{suffix}",
@@ -262,6 +264,7 @@ def _attach_dict_child_location(
     child_pointer: str,
     parent_pointer: str | None,
     key_literal: str,
+    key_name: str,
 ) -> list[RenderedLine]:
     if child_lines:
         first_line = child_lines[0]
@@ -271,6 +274,7 @@ def _attach_dict_child_location(
                 json_pointer=child_pointer,
                 parent_pointer=parent_pointer,
                 key_probe_text=_build_key_probe_text(key_literal, child),
+                key_name=key_name,
             ),
         )
     return child_lines

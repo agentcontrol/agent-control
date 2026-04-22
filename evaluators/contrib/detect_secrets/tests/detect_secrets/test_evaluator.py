@@ -37,6 +37,28 @@ async def test_none_input_returns_no_match() -> None:
 
 
 @pytest.mark.asyncio
+async def test_none_input_short_circuits_runtime_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime_info",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(on_error="deny"))
+    result = await evaluator.evaluate(None)
+
+    assert result.matched is False
+    assert result.error is None
+    assert result.metadata == {
+        "findings_count": 0,
+        "findings": [],
+        "normalized_payload_type": "none",
+        "detect_secrets_version": "unknown",
+    }
+
+
+@pytest.mark.asyncio
 async def test_string_secret_matches() -> None:
     evaluator = DetectSecretsEvaluator(
         DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
@@ -190,6 +212,25 @@ async def test_list_payload_maps_findings_to_json_pointer() -> None:
             "json_pointer": "/1/token",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_secret_bearing_object_keys_do_not_leak_through_json_pointer() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    key_secret = "ghp_123456789012345678901234567890123456"
+    value_secret = "ghp_abcdefabcdefabcdefabcdefabcdefabcdef"
+    result = await evaluator.evaluate({key_secret: {"nested": value_secret}})
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert {"type": "GitHub Token", "json_pointer": ""} in result.metadata["findings"]
+    assert {"type": "GitHub Token"} in result.metadata["findings"]
+    assert all(
+        key_secret not in finding.get("json_pointer", "") for finding in result.metadata["findings"]
+    )
 
 
 @pytest.mark.asyncio
