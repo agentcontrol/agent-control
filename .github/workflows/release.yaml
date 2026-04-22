@@ -42,7 +42,7 @@ jobs:
           uv sync
           uv run python scripts/build.py all
 
-      # Publish in dependency order: models -> evaluators -> sdk -> evaluator-galileo
+      # Publish in dependency order: models -> evaluators -> sdk -> evaluator-galileo -> evaluator-financial-governance
       - name: Publish agent-control-models to PyPI
         if: steps.release.outputs.released == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -75,6 +75,14 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
+      - name: Publish agent-control-evaluator-financial-governance to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: evaluators/contrib/financial-governance/dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
       - name: Upload to GitHub Release
         if: steps.release.outputs.released == 'true'
         uses: python-semantic-release/upload-to-gh-release@main
@@ -88,3 +96,4 @@ jobs:
             sdks/python/dist/*
             server/dist/*
             evaluators/contrib/galileo/dist/*
+            evaluators/contrib/financial-governance/dist/*

@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 galileo = ["agent-control-evaluator-galileo>=3.0.0"]
 cisco = ["agent-control-evaluator-cisco>=0.1.0"]
+financial-governance = ["agent-control-evaluator-financial-governance>=0.1.0"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
 
 [project.entry-points."agent_control.evaluators"]
@@ -38,3 +39,4 @@ agent-control-models = { workspace = true }
 # For local dev: use local galileo package instead of PyPI
 agent-control-evaluator-galileo = { path = "../contrib/galileo", editable = true }
 agent-control-evaluator-cisco = { path = "../contrib/cisco", editable = true }
+agent-control-evaluator-financial-governance = { path = "../contrib/financial-governance", editable = true }
