@@ -4,14 +4,24 @@ from importlib.metadata import entry_points
 from typing import Any
 
 import pytest
-from detect_secrets_async import RuntimeScanError, ScanFailureCode, get_runtime_info
+from detect_secrets_async import (
+    RuntimeScanError,
+    ScanFailureCode,
+    ScanFinding,
+    ScanResult,
+    get_runtime_info,
+)
 
 from agent_control_evaluator_detect_secrets.detect_secrets import (
     DetectSecretsEvaluator,
     DetectSecretsEvaluatorConfig,
 )
 from agent_control_evaluator_detect_secrets.detect_secrets.evaluator import FAILURE_MESSAGES
-from agent_control_evaluator_detect_secrets.detect_secrets.normalization import normalize_payload
+from agent_control_evaluator_detect_secrets.detect_secrets.normalization import (
+    LineLocation,
+    NormalizedPayload,
+    normalize_payload,
+)
 
 
 @pytest.mark.asyncio
@@ -242,6 +252,67 @@ async def test_explicit_runtime_failure_is_sanitized(monkeypatch: pytest.MonkeyP
     assert result.metadata["failure_mode"] == "worker_crash"
     assert result.message is not None
     assert FAILURE_MESSAGES["worker_crash"] in result.message
+
+
+@pytest.mark.asyncio
+async def test_structured_key_probes_are_batched(monkeypatch: pytest.MonkeyPatch) -> None:
+    normalized = NormalizedPayload(
+        payload_type="dict",
+        text='{"ignored": true}',
+        line_locations_by_line={
+            1: LineLocation(
+                json_pointer="/safe-one",
+                parent_pointer="/parent-one",
+                key_probe_text='"probe-one": null',
+            ),
+            2: LineLocation(
+                json_pointer="/safe-two",
+                parent_pointer="/parent-two",
+                key_probe_text='"probe-two": null',
+            ),
+        },
+    )
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.requests: list[Any] = []
+
+        async def scan(self, request: Any) -> ScanResult:
+            self.requests.append(request)
+            if len(self.requests) == 1:
+                return ScanResult(
+                    findings=(
+                        ScanFinding(type="GitHub Token", line_number=1),
+                        ScanFinding(type="GitHub Token", line_number=2),
+                    ),
+                    detect_secrets_version="1.5.0",
+                )
+            return ScanResult(
+                findings=(ScanFinding(type="GitHub Token", line_number=1),),
+                detect_secrets_version="1.5.0",
+            )
+
+    fake_runtime = FakeRuntime()
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.normalize_payload",
+        lambda data: normalized,
+    )
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
+        lambda: fake_runtime,
+    )
+
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+    result = await evaluator.evaluate({"ignored": "ignored"})
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert fake_runtime.requests[1].content == '"probe-one": null\n"probe-two": null'
+    assert len(fake_runtime.requests) == 2
+    assert result.metadata["findings"] == [
+        {"type": "GitHub Token", "json_pointer": "/parent-one"},
+        {"type": "GitHub Token", "json_pointer": "/safe-two"},
+    ]
 
 
 @pytest.mark.asyncio

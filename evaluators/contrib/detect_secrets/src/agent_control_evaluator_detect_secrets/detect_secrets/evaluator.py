@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
@@ -67,6 +68,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
 
     async def evaluate(self, data: Any) -> EvaluatorResult:
         """Normalize selector output, run detect-secrets, and map results into EvaluatorResult."""
+        started_at = time.monotonic()
         runtime_info = get_runtime_info()
 
         try:
@@ -120,6 +122,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
             findings=scan_result.findings,
             runtime=runtime,
             scan_config=request.config,
+            started_at=started_at,
         )
         return self._success_result(
             normalized=normalized,
@@ -134,9 +137,16 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         findings: tuple[Any, ...],
         runtime: DetectSecretsRuntime,
         scan_config: ScanConfig,
+        started_at: float,
     ) -> list[dict[str, Any]]:
         mapped: list[dict[str, Any]] = []
-        key_probe_cache: dict[str, set[str]] = {}
+        key_probe_results = await self._collect_key_probe_results(
+            normalized=normalized,
+            findings=findings,
+            runtime=runtime,
+            scan_config=scan_config,
+            started_at=started_at,
+        )
 
         for finding in findings:
             finding_metadata: dict[str, Any] = {"type": finding.type}
@@ -149,9 +159,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
                     json_pointer = await self._safe_structured_pointer(
                         location=location,
                         finding_type=finding.type,
-                        runtime=runtime,
-                        scan_config=scan_config,
-                        key_probe_cache=key_probe_cache,
+                        key_probe_results=key_probe_results,
                     )
                     if json_pointer is not None:
                         finding_metadata["json_pointer"] = json_pointer
@@ -165,9 +173,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         *,
         location: LineLocation | None,
         finding_type: str,
-        runtime: DetectSecretsRuntime,
-        scan_config: ScanConfig,
-        key_probe_cache: dict[str, set[str]],
+        key_probe_results: dict[str, set[str]] | None,
     ) -> str | None:
         if location is None:
             return None
@@ -175,27 +181,74 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         if location.key_probe_text is None:
             return location.json_pointer
 
-        key_probe_text = location.key_probe_text
-        probe_findings = key_probe_cache.get(key_probe_text)
-        if probe_findings is None:
-            try:
-                probe_result = await runtime.scan(
-                    ScanRequest(
-                        content=key_probe_text,
-                        timeout_ms=self.config.timeout_ms,
-                        config=scan_config,
-                    )
-                )
-            except RuntimeScanError:
-                return location.parent_pointer
+        if key_probe_results is None:
+            return location.parent_pointer
 
-            probe_findings = {finding.type for finding in probe_result.findings}
-            key_probe_cache[key_probe_text] = probe_findings
-
+        probe_findings = key_probe_results.get(location.key_probe_text, set())
         if finding_type in probe_findings:
             return location.parent_pointer
 
         return location.json_pointer
+
+    async def _collect_key_probe_results(
+        self,
+        *,
+        normalized: NormalizedPayload,
+        findings: tuple[Any, ...],
+        runtime: DetectSecretsRuntime,
+        scan_config: ScanConfig,
+        started_at: float,
+    ) -> dict[str, set[str]] | None:
+        if normalized.payload_type not in {"dict", "list"}:
+            return {}
+
+        key_probe_texts = self._collect_unique_key_probe_texts(normalized, findings)
+        if not key_probe_texts:
+            return {}
+
+        remaining_ms = int(self.config.timeout_ms - ((time.monotonic() - started_at) * 1000))
+        if remaining_ms <= 0:
+            return None
+
+        try:
+            probe_result = await runtime.scan(
+                ScanRequest(
+                    content="\n".join(key_probe_texts),
+                    timeout_ms=remaining_ms,
+                    config=scan_config,
+                )
+            )
+        except RuntimeScanError:
+            return None
+
+        results_by_probe = {probe_text: set[str]() for probe_text in key_probe_texts}
+        for finding in probe_result.findings:
+            if finding.line_number is None:
+                continue
+            line_index = finding.line_number - 1
+            if 0 <= line_index < len(key_probe_texts):
+                results_by_probe[key_probe_texts[line_index]].add(finding.type)
+        return results_by_probe
+
+    def _collect_unique_key_probe_texts(
+        self,
+        normalized: NormalizedPayload,
+        findings: tuple[Any, ...],
+    ) -> list[str]:
+        key_probe_texts: list[str] = []
+        seen: set[str] = set()
+
+        for finding in findings:
+            if finding.line_number is None:
+                continue
+            location = normalized.line_locations_by_line.get(finding.line_number)
+            key_probe_text = None if location is None else location.key_probe_text
+            if key_probe_text is None or key_probe_text in seen:
+                continue
+            seen.add(key_probe_text)
+            key_probe_texts.append(key_probe_text)
+
+        return key_probe_texts
 
     def _success_result(
         self,
