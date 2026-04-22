@@ -6,6 +6,7 @@ the full galileo-sdk package. Only httpx is needed as a dependency.
 
 import logging
 import os
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
@@ -14,6 +15,17 @@ from agent_control_models import EvaluatorResult
 from agent_control_evaluator_galileo.luna2.config import Luna2EvaluatorConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_package_version() -> str:
+    """Return the installed package version, or a dev fallback during local imports."""
+    try:
+        return version("agent-control-evaluator-galileo")
+    except PackageNotFoundError:
+        return "0.0.0.dev"
+
+
+_PACKAGE_VERSION = _resolve_package_version()
 
 # Check if httpx is available
 try:
@@ -84,7 +96,7 @@ class Luna2Evaluator(Evaluator[Luna2EvaluatorConfig]):
 
     metadata = EvaluatorMetadata(
         name="galileo.luna2",
-        version="3.0.0",
+        version=_PACKAGE_VERSION,
         description="Galileo Luna-2 enterprise runtime protection (direct API)",
         requires_api_key=True,
         timeout_ms=10000,

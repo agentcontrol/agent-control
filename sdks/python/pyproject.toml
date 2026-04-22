@@ -14,7 +14,7 @@ dependencies = [
     "docstring-parser>=0.15",  # For @tool decorator schema inference
     "google-re2>=1.1",  # For engine (bundled)
     "jsonschema>=4.0.0",  # For models/engine (bundled)
-    "agent-control-evaluators>=3.0.0",  # NOT vendored - avoid conflict with galileo
+    "agent-control-evaluators>=7.5.0",  # NOT vendored - avoid conflict with galileo
 ]
 authors = [
     {name = "Agent Control Team"}
@@ -38,7 +38,7 @@ Repository = "https://github.com/yourusername/agent-control"
 [project.optional-dependencies]
 strands-agents = ["strands-agents>=1.26.0"]
 google-adk = ["google-adk>=1.0.0"]
-galileo = ["agent-control-evaluator-galileo>=3.0.0"]
+galileo = ["agent-control-evaluator-galileo>=7.5.0"]
 
 [dependency-groups]
 dev = [

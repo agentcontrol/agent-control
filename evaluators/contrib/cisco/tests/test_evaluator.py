@@ -1,4 +1,7 @@
+from importlib.metadata import PackageNotFoundError, version
+
 import pytest
+import agent_control_evaluator_cisco.ai_defense.evaluator as cisco_evaluator_module
 from pydantic import ValidationError
 
 from agent_control_evaluator_cisco.ai_defense import (
@@ -11,6 +14,21 @@ from agent_control_evaluator_cisco.ai_defense.client import AIDefenseClient
 @pytest.fixture(autouse=True)
 def _env_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AI_DEFENSE_API_KEY", "test-key")
+
+
+def test_metadata_version_matches_distribution_version() -> None:
+    assert CiscoAIDefenseEvaluator.metadata.version == version("agent-control-evaluator-cisco")
+
+
+def test_metadata_version_falls_back_without_distribution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_not_found(_: str) -> str:
+        raise PackageNotFoundError
+
+    monkeypatch.setattr(cisco_evaluator_module, "version", _raise_not_found)
+
+    assert cisco_evaluator_module._resolve_package_version() == "0.0.0.dev"
 
 
 @pytest.mark.asyncio

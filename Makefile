@@ -1,4 +1,4 @@
-.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all models-test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish telemetry-test telemetry-lint telemetry-lint-fix telemetry-typecheck telemetry-build telemetry-publish
+.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all contrib-verify scripts-test models-test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build contrib-test contrib-lint contrib-lint-fix contrib-typecheck contrib-build sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish telemetry-test telemetry-lint telemetry-lint-fix telemetry-typecheck telemetry-build telemetry-publish
 
 # Workspace package names
 PACK_MODELS := agent-control-models
@@ -17,8 +17,16 @@ TS_SDK_DIR := sdks/typescript
 ENGINE_DIR := engine
 TELEMETRY_DIR := telemetry
 EVALUATORS_DIR := evaluators/builtin
-GALILEO_DIR := evaluators/contrib/galileo
+CONTRIB_DIR := evaluators/contrib
 UI_DIR := ui
+
+define run-contrib-target
+	@set -e; \
+	packages=$$(uv run python scripts/contrib_packages.py names); \
+	for package in $$packages; do \
+		$(MAKE) -C $(CONTRIB_DIR)/$$package $(1); \
+	done
+endef
 
 help:
 	@echo "Agent Control - Makefile commands"
@@ -33,10 +41,12 @@ help:
 	@echo "  make openapi-spec-check - verify OpenAPI generation succeeds"
 	@echo ""
 	@echo "Test:"
-	@echo "  make test            - run tests for core packages (models, telemetry, server, engine, sdk, evaluators)"
+	@echo "  make test            - run tests for core packages and all discovered contrib evaluators"
+	@echo "  make contrib-verify  - verify root contrib packaging contract wiring"
+	@echo "  make scripts-test    - run root contrib packaging contract tests"
 	@echo "  make models-test     - run shared model tests with coverage"
-	@echo "  make test-extras     - run tests for contrib evaluators (galileo, etc.)"
-	@echo "  make test-all        - run all tests (core + extras)"
+	@echo "  make test-extras     - run tests for all discovered contrib evaluators"
+	@echo "  make test-all        - alias for make test"
 	@echo "  make sdk-ts-test     - run TypeScript SDK tests"
 	@echo ""
 	@echo "Quality:"
@@ -84,7 +94,13 @@ openapi-spec-check: openapi-spec
 # Test
 # ---------------------------
 
-test: models-test telemetry-test server-test engine-test sdk-test evaluators-test
+test: contrib-verify scripts-test models-test telemetry-test server-test engine-test sdk-test evaluators-test contrib-test
+
+contrib-verify:
+	uv run python scripts/contrib_packages.py verify
+
+scripts-test:
+	uv run --with pytest pytest scripts/tests -q
 
 models-test:
 	cd $(MODELS_DIR) && uv run pytest --cov=src --cov-report=xml:../coverage-models.xml -q
@@ -94,11 +110,11 @@ test-models: models-test
 telemetry-test:
 	$(MAKE) -C $(TELEMETRY_DIR) test
 
-# Run tests for contrib evaluators (not included in default test target)
-test-extras: galileo-test
+# Run tests for discovered contrib evaluators
+test-extras: contrib-test
 
-# Run all tests (core + extras)
-test-all: test test-extras
+# Run all tests (alias for test)
+test-all: test
 
 # Run tests, lint, and typecheck
 check: test lint typecheck
@@ -107,17 +123,17 @@ check: test lint typecheck
 # Quality
 # ---------------------------
 
-lint: engine-lint telemetry-lint evaluators-lint
+lint: engine-lint telemetry-lint evaluators-lint contrib-lint
 	uv run --package $(PACK_MODELS) ruff check --config pyproject.toml models/src
 	uv run --package $(PACK_SERVER) ruff check --config pyproject.toml server/src
 	uv run --package $(PACK_SDK) ruff check --config pyproject.toml sdks/python/src
 
-lint-fix: engine-lint-fix telemetry-lint-fix evaluators-lint-fix
+lint-fix: engine-lint-fix telemetry-lint-fix evaluators-lint-fix contrib-lint-fix
 	uv run --package $(PACK_MODELS) ruff check --config pyproject.toml --fix models/src
 	uv run --package $(PACK_SERVER) ruff check --config pyproject.toml --fix server/src
 	uv run --package $(PACK_SDK) ruff check --config pyproject.toml --fix sdks/python/src
 
-typecheck: engine-typecheck telemetry-typecheck evaluators-typecheck
+typecheck: engine-typecheck telemetry-typecheck evaluators-typecheck contrib-typecheck
 	uv run --package $(PACK_MODELS) mypy --config-file pyproject.toml models/src
 	uv run --package $(PACK_SERVER) mypy --config-file pyproject.toml server/src
 	uv run --package $(PACK_SDK) mypy --config-file pyproject.toml sdks/python/src
@@ -135,7 +151,7 @@ telemetry-typecheck:
 # Build / Publish
 # ---------------------------
 
-build: build-models build-server build-sdk engine-build telemetry-build evaluators-build
+build: build-models build-server build-sdk engine-build telemetry-build evaluators-build contrib-build
 
 build-models:
 	cd $(MODELS_DIR) && uv build
@@ -246,21 +262,17 @@ server-%:
 ui-%:
 	$(MAKE) -C $(UI_DIR) $(patsubst ui-%,%,$@)
 
-# ---------------------------
-# Contrib Evaluators (Galileo)
-# ---------------------------
+contrib-test:
+	$(call run-contrib-target,test)
 
-galileo-test:
-	$(MAKE) -C $(GALILEO_DIR) test
+contrib-lint:
+	$(call run-contrib-target,lint)
 
-galileo-lint:
-	$(MAKE) -C $(GALILEO_DIR) lint
+contrib-lint-fix:
+	$(call run-contrib-target,lint-fix)
 
-galileo-lint-fix:
-	$(MAKE) -C $(GALILEO_DIR) lint-fix
+contrib-typecheck:
+	$(call run-contrib-target,typecheck)
 
-galileo-typecheck:
-	$(MAKE) -C $(GALILEO_DIR) typecheck
-
-galileo-build:
-	$(MAKE) -C $(GALILEO_DIR) build
+contrib-build:
+	$(call run-contrib-target,build)

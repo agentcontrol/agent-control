@@ -7,10 +7,12 @@ Evaluators take config at __init__, evaluate() only takes data.
 The evaluator uses direct HTTP API calls instead of the galileo SDK.
 """
 
+from importlib.metadata import PackageNotFoundError, version
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import agent_control_evaluator_galileo.luna2.evaluator as galileo_evaluator_module
 from agent_control_evaluators import Evaluator
 from agent_control_models import EvaluatorResult
 from pydantic import ValidationError
@@ -282,7 +284,19 @@ class TestLuna2EvaluatorImport:
 
         assert Luna2Evaluator is not None
         assert Luna2Evaluator.metadata.name == "galileo.luna2"
-        assert Luna2Evaluator.metadata.version == "3.0.0"
+        assert Luna2Evaluator.metadata.version == version("agent-control-evaluator-galileo")
+
+    def test_luna2_evaluator_version_falls_back_without_distribution(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test package version falls back when distribution metadata is unavailable."""
+
+        def _raise_not_found(_: str) -> str:
+            raise PackageNotFoundError
+
+        monkeypatch.setattr(galileo_evaluator_module, "version", _raise_not_found)
+
+        assert galileo_evaluator_module._resolve_package_version() == "0.0.0.dev"
 
     @patch("agent_control_evaluator_galileo.luna2.evaluator.LUNA2_AVAILABLE", False)
     def test_luna2_evaluator_is_available_false_without_httpx(self):

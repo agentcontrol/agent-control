@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Agent Control Team" }]
 dependencies = [
-    "agent-control-models",
+    "agent-control-models>=7.5.0",
     "pydantic>=2.12.4",
     "google-re2>=1.1",
     "jsonschema>=4.0.0",
@@ -16,8 +16,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-galileo = ["agent-control-evaluator-galileo>=3.0.0"]
-cisco = ["agent-control-evaluator-cisco>=0.1.0"]
+galileo = ["agent-control-evaluator-galileo>=7.5.0"]
+budget = ["agent-control-evaluator-budget>=7.5.0"]
+cisco = ["agent-control-evaluator-cisco>=7.5.0"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
 
 [project.entry-points."agent_control.evaluators"]
@@ -35,6 +36,7 @@ packages = ["src/agent_control_evaluators"]
 
 [tool.uv.sources]
 agent-control-models = { workspace = true }
-# For local dev: use local galileo package instead of PyPI
+# For local dev: use local contrib packages instead of PyPI
 agent-control-evaluator-galileo = { path = "../contrib/galileo", editable = true }
+agent-control-evaluator-budget = { path = "../contrib/budget", editable = true }
 agent-control-evaluator-cisco = { path = "../contrib/cisco", editable = true }

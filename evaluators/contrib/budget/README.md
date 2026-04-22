@@ -5,7 +5,19 @@ Budget evaluator for agent-control that tracks cumulative LLM token and cost usa
 ## Install
 
 ```bash
+pip install "agent-control-evaluators[budget]"
+```
+
+Fallback direct wheel install:
+
+```bash
 pip install agent-control-evaluator-budget
+```
+
+For local development:
+
+```bash
+uv pip install -e evaluators/contrib/budget
 ```
 
 ## Quickstart
@@ -87,7 +99,7 @@ ModelPricing(input_per_1k=0.04, output_per_1k=0.16)
 
 `input_per_1k` is applied to input tokens. `output_per_1k` is applied to output tokens.
 
-Pricing is required when any rule uses `limit_unit="usd_cents"`. Token-only rules can omit pricing. If an event uses a model that is not in the pricing table and a cost rule exists, `unknown_model_behavior="block"` fails closed. Use `"warn"` to log a warning and treat the cost as 0.
+Pricing and `model_path` are required when any rule uses `limit_unit="usd_cents"`. Token-only rules can omit both. If an event uses a model that is not in the pricing table and a cost rule exists, `unknown_model_behavior="block"` fails closed. Use `"warn"` to log a warning and treat the cost as 0.
 
 ## Dual Ceiling Pattern
 
