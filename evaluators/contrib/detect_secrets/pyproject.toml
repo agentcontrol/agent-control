@@ -1,0 +1,60 @@
+[project]
+name = "agent-control-evaluator-detect-secrets"
+version = "0.1.0"
+description = "detect-secrets evaluator for agent-control"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Agent Control Team" }]
+dependencies = [
+    "agent-control-evaluators>=3.0.0",
+    "agent-control-models>=3.0.0",
+    "detect-secrets-async>=0.2.0,<0.3.0",
+    "google-re2>=1.1",
+    "pydantic>=2.12.4",
+]
+
+[project.entry-points."agent_control.evaluators"]
+"yelp.detect_secrets" = "agent_control_evaluator_detect_secrets.detect_secrets:DetectSecretsEvaluator"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_control_evaluator_detect_secrets"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = "re2"
+ignore_missing_imports = true
+
+[tool.uv.sources]
+agent-control-evaluators = { path = "../../builtin", editable = true }
+agent-control-models = { path = "../../../models", editable = true }
+
+[tool.uv]
+default-groups = ["dev"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.8.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+]
