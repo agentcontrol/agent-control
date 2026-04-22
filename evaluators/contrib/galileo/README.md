@@ -14,7 +14,6 @@ Grandfathered convenience aliases remain available:
 
 ```bash
 pip install "agent-control-sdk[galileo]"
-pip install "agent-control-server[galileo]"
 ```
 
 Fallback direct wheel install:

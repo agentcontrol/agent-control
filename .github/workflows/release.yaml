@@ -92,30 +92,9 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-  publish-evaluators:
-    runs-on: ubuntu-latest
-    needs: [release, publish-models]
-    if: needs.release.outputs.released == 'true'
-    permissions:
-      id-token: write
-
-    steps:
-      - name: Download built distributions
-        uses: actions/download-artifact@v4
-        with:
-          name: release-dists
-          path: .
-
-      - name: Publish agent-control-evaluators to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: evaluators/builtin/dist/
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
-
   publish-contrib:
     runs-on: ubuntu-latest
-    needs: [release, publish-evaluators]
+    needs: [release, publish-models]
     if: needs.release.outputs.released == 'true'
     permissions:
       id-token: write
@@ -138,14 +117,38 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-  publish-sdk:
+  publish-evaluators:
     runs-on: ubuntu-latest
-    needs: [release, publish-evaluators, publish-contrib]
+    needs: [release, publish-models, publish-contrib]
     if: >-
       always() &&
       needs.release.outputs.released == 'true' &&
-      needs.publish-evaluators.result == 'success' &&
+      needs.publish-models.result == 'success' &&
       (needs.publish-contrib.result == 'success' || needs.publish-contrib.result == 'skipped')
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: .
+
+      - name: Publish agent-control-evaluators to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: evaluators/builtin/dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-sdk:
+    runs-on: ubuntu-latest
+    needs: [release, publish-evaluators]
+    if: >-
+      always() &&
+      needs.release.outputs.released == 'true' &&
+      needs.publish-evaluators.result == 'success'
     permissions:
       id-token: write
 
