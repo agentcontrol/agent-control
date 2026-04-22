@@ -82,6 +82,11 @@ pip install "agent-control-evaluators[<name>]"
 Direct wheel installs such as `pip install agent-control-evaluator-<name>` can still be
 documented, but they are secondary to the extra on `agent-control-evaluators`.
 
+In `pyproject.toml`, replace `<minimum-compatible-version>` intentionally before the
+first build. For an in-repo contrib package on the shared Agent Control release train,
+use the current monorepo release version. For an independently maintained package,
+choose and document the minimum supported Agent Control version explicitly.
+
 ## Expected repo wiring
 
 After the new package exists as a real contrib package, wire it into the repo contract:

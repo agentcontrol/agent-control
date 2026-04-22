@@ -140,8 +140,12 @@ jobs:
 
   publish-sdk:
     runs-on: ubuntu-latest
-    needs: [release, publish-contrib]
-    if: needs.release.outputs.released == 'true'
+    needs: [release, publish-evaluators, publish-contrib]
+    if: >-
+      always() &&
+      needs.release.outputs.released == 'true' &&
+      needs.publish-evaluators.result == 'success' &&
+      (needs.publish-contrib.result == 'success' || needs.publish-contrib.result == 'skipped')
     permissions:
       id-token: write
 

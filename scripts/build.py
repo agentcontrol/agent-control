@@ -49,7 +49,7 @@ def sync_dependency_floors(pyproject_path: Path, dependency_names: list[str], ve
     updated = content
     for dependency_name in dependency_names:
         updated = re.sub(
-            rf'("{re.escape(dependency_name)}>=)([^",;\]\s]+)',
+            rf'("{re.escape(dependency_name)}\s*>=\s*)([^",;\]\s]+)',
             rf"\g<1>{version}",
             updated,
         )

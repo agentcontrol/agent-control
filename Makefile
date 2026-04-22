@@ -22,7 +22,7 @@ UI_DIR := ui
 
 define run-contrib-target
 	@set -e; \
-	packages=$$(python3 scripts/contrib_packages.py names); \
+	packages=$$(uv run python scripts/contrib_packages.py names); \
 	for package in $$packages; do \
 		$(MAKE) -C $(CONTRIB_DIR)/$$package $(1); \
 	done
@@ -97,7 +97,7 @@ openapi-spec-check: openapi-spec
 test: contrib-verify scripts-test models-test telemetry-test server-test engine-test sdk-test evaluators-test contrib-test
 
 contrib-verify:
-	python3 scripts/contrib_packages.py verify
+	uv run python scripts/contrib_packages.py verify
 
 scripts-test:
 	uv run --with pytest pytest scripts/tests -q
