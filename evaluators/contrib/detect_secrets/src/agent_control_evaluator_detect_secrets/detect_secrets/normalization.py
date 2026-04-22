@@ -149,6 +149,7 @@ def _render_dict_lines(
             prefix=child_prefix,
             pointer=child_pointer,
         )
+        child_lines = _attach_container_pointer(child, child_lines, child_pointer)
         child_lines[-1] = RenderedLine(
             text=f"{child_lines[-1].text}{suffix}",
             json_pointer=child_lines[-1].json_pointer,
@@ -182,6 +183,7 @@ def _render_list_lines(
             prefix="",
             pointer=child_pointer,
         )
+        child_lines = _attach_container_pointer(child, child_lines, child_pointer)
         child_lines[-1] = RenderedLine(
             text=f"{child_lines[-1].text}{suffix}",
             json_pointer=child_lines[-1].json_pointer,
@@ -204,6 +206,17 @@ def _json_object_key_name(key: Any) -> str:
     if isinstance(key, int | float):
         return json.dumps(key, ensure_ascii=False, allow_nan=False)
     raise TypeError(f"Unsupported JSON object key type: {type(key).__name__}")
+
+
+def _attach_container_pointer(
+    child: Any,
+    child_lines: list[RenderedLine],
+    child_pointer: str,
+) -> list[RenderedLine]:
+    if isinstance(child, dict | list) and child_lines:
+        first_line = child_lines[0]
+        child_lines[0] = RenderedLine(text=first_line.text, json_pointer=child_pointer)
+    return child_lines
 
 
 def _append_json_pointer(pointer: str, segment: str) -> str:

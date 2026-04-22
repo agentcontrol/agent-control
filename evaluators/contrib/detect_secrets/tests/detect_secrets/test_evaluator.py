@@ -88,6 +88,31 @@ async def test_dict_payload_maps_findings_to_json_pointer() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dict_key_with_container_value_maps_findings_to_json_pointer() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    result = await evaluator.evaluate(
+        {
+            "ghp_123456789012345678901234567890123456": {
+                "nested": "safe",
+            }
+        }
+    )
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["normalized_payload_type"] == "dict"
+    assert result.metadata["findings"] == [
+        {
+            "type": "GitHub Token",
+            "json_pointer": "/ghp_123456789012345678901234567890123456",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_list_payload_maps_findings_to_json_pointer() -> None:
     evaluator = DetectSecretsEvaluator(
         DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
