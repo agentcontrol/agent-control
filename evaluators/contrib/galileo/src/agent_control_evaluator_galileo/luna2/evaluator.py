@@ -16,10 +16,16 @@ from agent_control_evaluator_galileo.luna2.config import Luna2EvaluatorConfig
 
 logger = logging.getLogger(__name__)
 
-try:
-    _PACKAGE_VERSION = version("agent-control-evaluator-galileo")
-except PackageNotFoundError:
-    _PACKAGE_VERSION = "0.0.0.dev"
+
+def _resolve_package_version() -> str:
+    """Return the installed package version, or a dev fallback during local imports."""
+    try:
+        return version("agent-control-evaluator-galileo")
+    except PackageNotFoundError:
+        return "0.0.0.dev"
+
+
+_PACKAGE_VERSION = _resolve_package_version()
 
 # Check if httpx is available
 try:

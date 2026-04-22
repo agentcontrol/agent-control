@@ -5,13 +5,14 @@ Given/When/Then comment style per reviewer request.
 
 from __future__ import annotations
 
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 import threading
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
+import agent_control_evaluator_budget.budget.evaluator as budget_evaluator_module
 from agent_control_evaluator_budget.budget.config import (
     WINDOW_DAILY,
     WINDOW_MONTHLY,
@@ -42,6 +43,17 @@ def _clean_store_registry() -> None:
 
 def test_metadata_version_matches_distribution_version() -> None:
     assert BudgetEvaluator.metadata.version == version("agent-control-evaluator-budget")
+
+
+def test_metadata_version_falls_back_without_distribution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_not_found(_: str) -> str:
+        raise PackageNotFoundError
+
+    monkeypatch.setattr(budget_evaluator_module, "version", _raise_not_found)
+
+    assert budget_evaluator_module._resolve_package_version() == "0.0.0.dev"
 
 
 # ---------------------------------------------------------------------------

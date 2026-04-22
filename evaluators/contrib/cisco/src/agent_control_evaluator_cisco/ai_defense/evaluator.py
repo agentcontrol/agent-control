@@ -15,10 +15,16 @@ from agent_control_models import EvaluatorResult
 from .client import AI_DEFENSE_HTTPX_AVAILABLE, REGION_BASE_URLS, AIDefenseClient, build_endpoint
 from .config import CiscoAIDefenseConfig
 
-try:
-    _PACKAGE_VERSION = version("agent-control-evaluator-cisco")
-except PackageNotFoundError:
-    _PACKAGE_VERSION = "0.0.0.dev"
+
+def _resolve_package_version() -> str:
+    """Return the installed package version, or a dev fallback during local imports."""
+    try:
+        return version("agent-control-evaluator-cisco")
+    except PackageNotFoundError:
+        return "0.0.0.dev"
+
+
+_PACKAGE_VERSION = _resolve_package_version()
 
 
 def _load_api_key(env_name: str) -> str:
