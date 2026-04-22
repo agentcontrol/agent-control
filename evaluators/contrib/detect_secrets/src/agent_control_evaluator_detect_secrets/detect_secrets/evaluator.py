@@ -72,7 +72,14 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
     async def evaluate(self, data: Any) -> EvaluatorResult:
         """Normalize selector output, run detect-secrets, and map results into EvaluatorResult."""
         started_at = time.monotonic()
-        runtime_info = get_runtime_info()
+        try:
+            runtime_info = get_runtime_info()
+        except Exception:
+            return self._failure_result(
+                failure_mode="runtime_error",
+                normalized_payload_type=None,
+                detect_secrets_version="unknown",
+            )
 
         try:
             normalized = normalize_payload(data)
@@ -125,6 +132,12 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
             failure_mode = exc.code.value
             return self._failure_result(
                 failure_mode=failure_mode,
+                normalized_payload_type=normalized.payload_type,
+                detect_secrets_version=runtime_info.detect_secrets_version,
+            )
+        except Exception:
+            return self._failure_result(
+                failure_mode="runtime_error",
                 normalized_payload_type=normalized.payload_type,
                 detect_secrets_version=runtime_info.detect_secrets_version,
             )
@@ -347,6 +360,8 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
                 )
             )
         except RuntimeScanError:
+            return None
+        except Exception:
             return None
 
         findings_by_line: dict[int, list[ScanFinding]] = defaultdict(list)

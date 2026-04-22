@@ -163,6 +163,7 @@ async def test_dict_key_with_scalar_value_omits_json_pointer() -> None:
     assert result.metadata["findings"] == [
         {
             "type": "GitHub Token",
+            "json_pointer": "",
         }
     ]
 
@@ -285,7 +286,7 @@ async def test_structured_key_probe_disambiguates_same_detector_type() -> None:
     assert result.metadata is not None
     assert result.metadata["normalized_payload_type"] == "dict"
     assert result.metadata["findings_count"] == 3
-    assert {"type": "Hex High Entropy String"} in result.metadata["findings"]
+    assert {"type": "Hex High Entropy String", "json_pointer": ""} in result.metadata["findings"]
     assert {"type": "Hex High Entropy String", "json_pointer": "/secret"} in result.metadata[
         "findings"
     ]
@@ -345,6 +346,25 @@ async def test_preconfigured_runtime_is_reused(monkeypatch: pytest.MonkeyPatch) 
 
     assert result.matched is False
     assert runtime_calls == [runtime_config]
+
+
+@pytest.mark.asyncio
+async def test_unexpected_runtime_errors_honor_on_error_deny(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
+        lambda config=None: (_ for _ in ()).throw(ValueError("boom")),
+    )
+
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(on_error="deny"))
+    result = await evaluator.evaluate("safe content only")
+
+    assert result.matched is True
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "runtime_error"
+    assert result.metadata["fallback_action"] == "deny"
 
 
 @pytest.mark.asyncio
