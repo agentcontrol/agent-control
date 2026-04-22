@@ -32,7 +32,7 @@ from agent_control_models.server import (
 from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import delete, func, or_, select, union_all
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,16 +51,13 @@ from ..models import (
     AgentData,
     Control,
     Policy,
-    agent_controls,
     agent_policies,
-    policy_controls,
 )
 from ..services.agent_names import normalize_agent_name_or_422
 from ..services.controls import (
     AgentControlEnabledState,
     AgentControlRenderedState,
-    list_controls_for_agent,
-    list_controls_for_policy,
+    ControlService,
 )
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
@@ -114,9 +111,6 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
     agent_evaluators = {e.name: e for e in (agent_data.evaluators or [])}
 
     for control in controls:
-        if not control.data:
-            continue
-
         # Skip unrendered template controls — they have no evaluators to validate.
         if (
             isinstance(control.data, dict)
@@ -197,7 +191,7 @@ async def _validate_policy_controls_for_agent(
     agent: Agent, policy_id: int, db: AsyncSession
 ) -> list[str]:
     """Validate all controls in a policy can run on this agent."""
-    controls = await list_controls_for_policy(policy_id, db)
+    controls = await ControlService(db).list_controls_for_policy(policy_id)
     return _validate_controls_for_agent(agent, controls)
 
 
@@ -227,9 +221,8 @@ async def _build_overwrite_evaluator_removals(
         return []
 
     try:
-        controls = await list_controls_for_agent(
+        controls = await ControlService(db).list_controls_for_agent(
             agent.name,
-            db,
             allow_invalid_step_name_regex=True,
         )
     except APIValidationError:
@@ -359,6 +352,8 @@ async def list_agents(
 
     control_counts_map: dict[str, int] = {}
     policy_ids_map: dict[str, list[int]] = {}
+    control_service = ControlService(db)
+
     if agents:
         agent_names = [agent.name for agent in agents]
 
@@ -374,40 +369,9 @@ async def list_agents(
         for assoc_agent_name, policy_id in policy_ids_result.all():
             policy_ids_map.setdefault(assoc_agent_name, []).append(policy_id)
 
-        policy_associations = (
-            select(
-                agent_policies.c.agent_name.label("agent_name"),
-                policy_controls.c.control_id.label("control_id"),
-            )
-            .select_from(
-                agent_policies.join(
-                    policy_controls, agent_policies.c.policy_id == policy_controls.c.policy_id
-                )
-            )
-            .where(agent_policies.c.agent_name.in_(agent_names))
+        control_counts_map = await control_service.list_active_control_counts_by_agent(
+            agent_names
         )
-        direct_associations = select(
-            agent_controls.c.agent_name.label("agent_name"),
-            agent_controls.c.control_id.label("control_id"),
-        ).where(agent_controls.c.agent_name.in_(agent_names))
-        all_associations = union_all(policy_associations, direct_associations).subquery()
-
-        control_counts_query = (
-            select(
-                all_associations.c.agent_name,
-                func.count(func.distinct(all_associations.c.control_id)).label("count"),
-            )
-            .join(Control, all_associations.c.control_id == Control.id)
-            .where(
-                or_(
-                    Control.data["enabled"].astext == "true",
-                    ~Control.data.has_key("enabled"),
-                ),
-            )
-            .group_by(all_associations.c.agent_name)
-        )
-        control_counts_result = await db.execute(control_counts_query)
-        control_counts_map = {row[0]: row[1] for row in control_counts_result.all()}
 
     # Build summaries
     summaries: list[AgentSummary] = []
@@ -810,7 +774,7 @@ async def init_agent(
                 operation="update",
             )
 
-    controls = await list_controls_for_agent(existing.name, db)
+    controls = await ControlService(db).list_controls_for_agent(existing.name)
 
     return InitAgentResponse(
         created=created,
@@ -1247,17 +1211,8 @@ async def add_agent_control(
 ) -> AssocResponse:
     """Associate a control directly with an agent (idempotent)."""
     agent = await _get_agent_or_404(agent_name, db)
-
-    control_result = await db.execute(select(Control).where(Control.id == control_id))
-    control: Control | None = control_result.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id)
 
     validation_errors = _validate_controls_for_agent(agent, [control])
     if validation_errors:
@@ -1277,12 +1232,10 @@ async def add_agent_control(
         )
 
     try:
-        stmt = (
-            pg_insert(agent_controls)
-            .values(agent_name=agent.name, control_id=control_id)
-            .on_conflict_do_nothing()
+        await control_service.add_control_to_agent(
+            agent_name=agent.name,
+            control_id=control_id,
         )
-        await db.execute(stmt)
         await db.commit()
     except Exception:
         await db.rollback()
@@ -1313,45 +1266,14 @@ async def remove_agent_control(
 ) -> RemoveAgentControlResponse:
     """Remove a direct control association from an agent (idempotent)."""
     agent = await _get_agent_or_404(agent_name, db)
-
-    control_result = await db.execute(select(Control.id).where(Control.id == control_id))
-    if control_result.first() is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control_service = ControlService(db)
+    await control_service.get_active_control_or_404(control_id)
 
     try:
-        remove_direct_stmt = (
-            delete(agent_controls)
-            .where(
-                (agent_controls.c.agent_name == agent.name)
-                & (agent_controls.c.control_id == control_id)
-            )
-            .returning(agent_controls.c.control_id)
+        removal_result = await control_service.remove_control_from_agent(
+            agent_name=agent.name,
+            control_id=control_id,
         )
-        remove_direct_result = await db.execute(remove_direct_stmt)
-        removed_direct_association = remove_direct_result.first() is not None
-
-        # The control may still be active for this agent if inherited from policy association(s).
-        policy_inheritance_result = await db.execute(
-            select(policy_controls.c.control_id)
-            .select_from(
-                agent_policies.join(
-                    policy_controls,
-                    agent_policies.c.policy_id == policy_controls.c.policy_id,
-                )
-            )
-            .where(
-                (agent_policies.c.agent_name == agent.name)
-                & (policy_controls.c.control_id == control_id)
-            )
-            .limit(1)
-        )
-        control_still_active = policy_inheritance_result.first() is not None
 
         await db.commit()
     except Exception:
@@ -1373,8 +1295,8 @@ async def remove_agent_control(
 
     return RemoveAgentControlResponse(
         success=True,
-        removed_direct_association=removed_direct_association,
-        control_still_active=control_still_active,
+        removed_direct_association=removal_result.removed_direct_association,
+        control_still_active=removal_result.control_still_active,
     )
 
 
@@ -1429,9 +1351,8 @@ async def list_agent_controls(
         HTTPException 404: Agent not found
     """
     agent = await _get_agent_or_404(agent_name, db)
-    controls = await list_controls_for_agent(
+    controls = await ControlService(db).list_controls_for_agent(
         agent.name,
-        db,
         rendered_state=rendered_state,
         enabled_state=enabled_state,
     )
@@ -1695,7 +1616,7 @@ async def patch_agent(
         remove_evaluator_set = set(request.remove_evaluators)
 
         # Check if any active controls reference evaluators being removed.
-        controls = await list_controls_for_agent(agent.name, db)
+        controls = await ControlService(db).list_controls_for_agent(agent.name)
         referencing_controls = _find_referencing_controls_for_removed_evaluators(
             controls, agent.name, remove_evaluator_set
         )

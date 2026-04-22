@@ -6,15 +6,20 @@ packages (models, engine, telemetry) into the source directories before building
 then cleans up afterward. This allows the published wheels to be self-contained.
 
 Usage:
-    python scripts/build.py [models|evaluators|sdk|server|galileo|all]
+    python scripts/build.py [models|evaluators|sdk|server|contrib|all|<contrib-name>]
 """
 
+from __future__ import annotations
+
+import re
 import shutil
 import subprocess
-import re
+import sys
 from pathlib import Path
 
-ROOT = Path(__file__).parent.parent
+from contrib_packages import ContribPackage, discover_contrib_packages
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def get_global_version() -> str:
@@ -38,11 +43,25 @@ def set_package_version(pyproject_path: Path, version: str) -> None:
     pyproject_path.write_text(updated)
 
 
+def sync_dependency_floors(pyproject_path: Path, dependency_names: list[str], version: str) -> None:
+    """Update internal dependency lower bounds to the release version."""
+    content = pyproject_path.read_text()
+    updated = content
+    for dependency_name in dependency_names:
+        updated = re.sub(
+            rf'("{re.escape(dependency_name)}\s*>=\s*)([^",;\]\s]+)',
+            rf"\g<1>{version}",
+            updated,
+        )
+
+    if updated != content:
+        pyproject_path.write_text(updated)
+
+
 def inject_bundle_metadata(init_file: Path, package_name: str, version: str) -> None:
     """Add bundling metadata to __init__.py for conflict detection."""
     content = init_file.read_text()
 
-    # Only add if not already present
     if "__bundled_by__" in content:
         return
 
@@ -53,23 +72,44 @@ __bundled_version__ = "{version}"
     init_file.write_text(metadata + content)
 
 
-def build_models() -> None:
-    """Build agent-control-models (standalone, no vendoring needed)."""
-    version = get_global_version()
-    models_dir = ROOT / "models"
-
-    print(f"Building agent-control-models v{version}")
-
-    # Clean previous builds
-    dist_dir = models_dir / "dist"
+def clean_dist_dir(package_dir: Path) -> Path:
+    """Remove any previous build output and return the dist directory path."""
+    dist_dir = package_dir / "dist"
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
+    return dist_dir
 
-    # Set version
-    set_package_version(models_dir / "pyproject.toml", version)
 
-    subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=models_dir, check=True)
-    print(f"  Built agent-control-models v{version}")
+def build_python_package(
+    distribution_name: str,
+    package_dir: Path,
+    version: str,
+    dependency_names: list[str] | None = None,
+) -> None:
+    """Build a standalone Python package into its local dist directory."""
+    print(f"Building {distribution_name} v{version}")
+    dist_dir = clean_dist_dir(package_dir)
+    pyproject_path = package_dir / "pyproject.toml"
+    set_package_version(pyproject_path, version)
+    if dependency_names:
+        sync_dependency_floors(pyproject_path, dependency_names, version)
+    subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=package_dir, check=True)
+    print(f"  Built {distribution_name} v{version}")
+
+
+def discover_contrib_by_name() -> dict[str, ContribPackage]:
+    """Return discovered contrib packages keyed by contrib name."""
+    return {package.name: package for package in discover_contrib_packages()}
+
+
+def discover_contrib_distribution_names() -> list[str]:
+    """Return the distribution names for all discovered contrib packages."""
+    return [package.package for package in discover_contrib_packages()]
+
+
+def build_models() -> None:
+    """Build agent-control-models (standalone, no vendoring needed)."""
+    build_python_package("agent-control-models", ROOT / "models", get_global_version())
 
 
 def build_sdk() -> None:
@@ -80,17 +120,13 @@ def build_sdk() -> None:
 
     print(f"Building agent-control-sdk v{version}")
 
-    # Clean previous builds and vendored code
     for pkg in ["agent_control_models", "agent_control_engine", "agent_control_telemetry"]:
         target = sdk_src / pkg
         if target.exists():
             shutil.rmtree(target)
 
-    dist_dir = sdk_dir / "dist"
-    if dist_dir.exists():
-        shutil.rmtree(dist_dir)
+    dist_dir = clean_dist_dir(sdk_dir)
 
-    # Copy vendored packages
     shutil.copytree(
         ROOT / "models" / "src" / "agent_control_models",
         sdk_src / "agent_control_models",
@@ -104,7 +140,6 @@ def build_sdk() -> None:
         sdk_src / "agent_control_telemetry",
     )
 
-    # Inject bundle metadata for conflict detection
     inject_bundle_metadata(
         sdk_src / "agent_control_models" / "__init__.py",
         "agent-control-sdk",
@@ -121,14 +156,18 @@ def build_sdk() -> None:
         version,
     )
 
-    # Set version
-    set_package_version(sdk_dir / "pyproject.toml", version)
+    sdk_pyproject = sdk_dir / "pyproject.toml"
+    set_package_version(sdk_pyproject, version)
+    sync_dependency_floors(
+        sdk_pyproject,
+        ["agent-control-evaluators", *discover_contrib_distribution_names()],
+        version,
+    )
 
     try:
         subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=sdk_dir, check=True)
         print(f"  Built agent-control-sdk v{version}")
     finally:
-        # Clean up vendored code (don't commit it)
         for pkg in ["agent_control_models", "agent_control_engine", "agent_control_telemetry"]:
             target = sdk_src / pkg
             if target.exists():
@@ -139,7 +178,7 @@ def build_server() -> None:
     """Build agent-control-server with vendored packages.
 
     Note: evaluators are NOT vendored - server uses agent-control-evaluators as a
-    runtime dependency to avoid duplicate module conflicts with galileo extras.
+    runtime dependency to avoid duplicate module conflicts with contrib extras.
     """
     version = get_global_version()
     server_dir = ROOT / "server"
@@ -147,17 +186,13 @@ def build_server() -> None:
 
     print(f"Building agent-control-server v{version}")
 
-    # Clean previous builds and vendored code
     for pkg in ["agent_control_models", "agent_control_engine", "agent_control_telemetry"]:
         target = server_src / pkg
         if target.exists():
             shutil.rmtree(target)
 
-    dist_dir = server_dir / "dist"
-    if dist_dir.exists():
-        shutil.rmtree(dist_dir)
+    dist_dir = clean_dist_dir(server_dir)
 
-    # Copy vendored packages (models, engine, and telemetry only, NOT evaluators)
     shutil.copytree(
         ROOT / "models" / "src" / "agent_control_models",
         server_src / "agent_control_models",
@@ -171,7 +206,6 @@ def build_server() -> None:
         server_src / "agent_control_telemetry",
     )
 
-    # Inject bundle metadata for conflict detection
     inject_bundle_metadata(
         server_src / "agent_control_models" / "__init__.py",
         "agent-control-server",
@@ -188,14 +222,18 @@ def build_server() -> None:
         version,
     )
 
-    # Set version
-    set_package_version(server_dir / "pyproject.toml", version)
+    server_pyproject = server_dir / "pyproject.toml"
+    set_package_version(server_pyproject, version)
+    sync_dependency_floors(
+        server_pyproject,
+        ["agent-control-evaluators", *discover_contrib_distribution_names()],
+        version,
+    )
 
     try:
         subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=server_dir, check=True)
         print(f"  Built agent-control-server v{version}")
     finally:
-        # Clean up vendored code (don't commit it)
         for pkg in ["agent_control_models", "agent_control_engine", "agent_control_telemetry"]:
             target = server_src / pkg
             if target.exists():
@@ -204,40 +242,49 @@ def build_server() -> None:
 
 def build_evaluators() -> None:
     """Build agent-control-evaluators (standalone, no vendoring needed)."""
+    build_python_package(
+        "agent-control-evaluators",
+        ROOT / "evaluators" / "builtin",
+        get_global_version(),
+        ["agent-control-models", *discover_contrib_distribution_names()],
+    )
+
+
+def build_contrib_package(package: ContribPackage, version: str) -> None:
+    """Build a discovered contrib evaluator package."""
+    build_python_package(
+        package.package,
+        ROOT / Path(package.directory),
+        version,
+        ["agent-control-evaluators", "agent-control-models"],
+    )
+
+
+def build_contrib() -> None:
+    """Build all discovered contrib evaluator packages."""
     version = get_global_version()
-    evaluators_dir = ROOT / "evaluators" / "builtin"
+    packages = discover_contrib_packages()
+    if not packages:
+        print("No contrib evaluator packages discovered.")
+        return
 
-    print(f"Building agent-control-evaluators v{version}")
-
-    # Clean previous builds
-    dist_dir = evaluators_dir / "dist"
-    if dist_dir.exists():
-        shutil.rmtree(dist_dir)
-
-    # Set version
-    set_package_version(evaluators_dir / "pyproject.toml", version)
-
-    subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=evaluators_dir, check=True)
-    print(f"  Built agent-control-evaluators v{version}")
+    package_names = ", ".join(package.name for package in packages)
+    print(f"Building discovered contrib packages ({package_names})")
+    for package in packages:
+        build_contrib_package(package, version)
 
 
-def build_evaluator_galileo() -> None:
-    """Build agent-control-evaluator-galileo (standalone, no vendoring needed)."""
-    version = get_global_version()
-    galileo_dir = ROOT / "evaluators" / "contrib" / "galileo"
-
-    print(f"Building agent-control-evaluator-galileo v{version}")
-
-    # Clean previous builds
-    dist_dir = galileo_dir / "dist"
-    if dist_dir.exists():
-        shutil.rmtree(dist_dir)
-
-    # Set version
-    set_package_version(galileo_dir / "pyproject.toml", version)
-
-    subprocess.run(["uv", "build", "-o", str(dist_dir)], cwd=galileo_dir, check=True)
-    print(f"  Built agent-control-evaluator-galileo v{version}")
+def build_named_contrib_package(target: str) -> None:
+    """Build one discovered contrib evaluator package by name."""
+    packages = discover_contrib_by_name()
+    package = packages.get(target)
+    if package is None:
+        available_targets = ", ".join(sorted(packages))
+        raise ValueError(
+            "Unknown build target "
+            f"{target!r}. Available contrib targets: {available_targets or '(none)'}"
+        )
+    build_contrib_package(package, get_global_version())
 
 
 def build_all() -> None:
@@ -245,15 +292,21 @@ def build_all() -> None:
     print(f"Building all packages (version {get_global_version()})\n")
     build_models()
     build_evaluators()
+    build_contrib()
     build_sdk()
     build_server()
-    build_evaluator_galileo()
     print("\nAll packages built successfully!")
 
 
-if __name__ == "__main__":
-    import sys
+def usage() -> str:
+    """Return the CLI usage string."""
+    return (
+        "Usage: python scripts/build.py "
+        "[models|evaluators|sdk|server|contrib|all|<contrib-name>]"
+    )
 
+
+if __name__ == "__main__":
     target = sys.argv[1] if len(sys.argv) > 1 else "all"
 
     if target == "models":
@@ -264,10 +317,14 @@ if __name__ == "__main__":
         build_sdk()
     elif target == "server":
         build_server()
-    elif target == "galileo":
-        build_evaluator_galileo()
+    elif target == "contrib":
+        build_contrib()
     elif target == "all":
         build_all()
     else:
-        print("Usage: python scripts/build.py [models|evaluators|sdk|server|galileo|all]")
-        sys.exit(1)
+        try:
+            build_named_contrib_package(target)
+        except ValueError as error:
+            print(error)
+            print(usage())
+            sys.exit(1)

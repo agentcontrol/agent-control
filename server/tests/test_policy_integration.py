@@ -508,6 +508,32 @@ def test_agent_control_endpoints_return_404_for_missing_resources(client: TestCl
     assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
 
 
+def test_agent_add_soft_deleted_control_returns_404(client: TestClient) -> None:
+    """Direct add should reject a soft-deleted control as not found."""
+    agent_name, _ = _create_agent(client)
+    control_id = _create_control(client)
+    delete_resp = client.delete(f"/api/v1/controls/{control_id}")
+    assert delete_resp.status_code == 200
+
+    resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
+
+
+def test_agent_remove_soft_deleted_control_returns_404(client: TestClient) -> None:
+    """Direct remove should reject a soft-deleted control as not found."""
+    agent_name, _ = _create_agent(client)
+    control_id = _create_control(client)
+    delete_resp = client.delete(f"/api/v1/controls/{control_id}")
+    assert delete_resp.status_code == 200
+
+    resp = client.delete(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
+
+
 def test_agent_gets_controls_from_direct_associations(client: TestClient) -> None:
     """Agent should see controls directly associated with it."""
     agent_name, _ = _create_agent(client)

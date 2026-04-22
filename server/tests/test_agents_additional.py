@@ -733,8 +733,8 @@ def test_get_agent_policy_missing_policy_returns_404(client: TestClient) -> None
     assert resp.json()["error_code"] == "POLICY_NOT_FOUND"
 
 
-def test_set_agent_policy_skips_controls_without_data(client: TestClient) -> None:
-    # Given: an agent and a policy with a control that has no data configured
+def test_set_agent_policy_rejects_controls_without_data(client: TestClient) -> None:
+    # Given: an agent and a policy with a control that has invalid empty data
     agent_name, _ = _init_agent(client)
     policy_id = _create_policy(client)
     control_id = _insert_unconfigured_control()
@@ -744,9 +744,11 @@ def test_set_agent_policy_skips_controls_without_data(client: TestClient) -> Non
     # When: assigning the policy to the agent
     resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
 
-    # Then: assignment succeeds because empty data is ignored during validation
-    assert resp.status_code == 200
-    assert resp.json()["success"] is True
+    # Then: assignment is rejected because the stored control data is corrupted
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error_code"] == "POLICY_CONTROL_INCOMPATIBLE"
+    assert any("corrupted data" in err.get("message", "").lower() for err in body["errors"])
 
 
 def test_set_agent_policy_rejects_controls_without_evaluator_name(client: TestClient) -> None:

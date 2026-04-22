@@ -98,11 +98,14 @@ from .observability import (
     get_event_sink,
     get_log_config,
     get_logger,
+    get_registered_control_event_sinks,
     init_observability,
     is_observability_enabled,
     log_control_evaluation,
+    register_control_event_sink,
     shutdown_observability,
     sync_shutdown_observability,
+    unregister_control_event_sink,
     write_events,
 )
 from .tracing import (
@@ -1055,7 +1058,7 @@ async def get_control(
         Dictionary containing:
             - id: Control ID
             - name: Control name
-            - data: Control definition or None if not configured
+            - data: Control definition or unrendered template control data
 
     Raises:
         httpx.HTTPError: If request fails or control not found
@@ -1368,6 +1371,9 @@ __all__ = [
     "is_observability_enabled",
     "get_event_batcher",
     "get_event_sink",
+    "get_registered_control_event_sinks",
+    "register_control_event_sink",
+    "unregister_control_event_sink",
     "configure_logging",
     "get_log_config",
     "log_control_evaluation",

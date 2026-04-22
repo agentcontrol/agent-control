@@ -1,12 +1,13 @@
 """Tests for reconstructed control-execution events in SDK evaluation flows."""
 
+from collections.abc import Sequence
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from agent_control import evaluation
 from agent_control.evaluation import (
-    _ControlAdapter,
     _build_server_control_lookup,
+    _ControlAdapter,
     _has_applicable_prefiltered_server_controls,
     _merge_results,
 )
@@ -15,11 +16,27 @@ from agent_control.evaluation_events import (
     enqueue_observability_events,
     map_applies_to,
 )
+from agent_control.observability import (
+    register_control_event_sink,
+    unregister_control_event_sink,
+)
+from agent_control_models import ControlDefinition, ControlExecutionEvent
+from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
 from agent_control_telemetry.trace_context import (
     clear_trace_context_provider,
     set_trace_context_provider,
 )
-from agent_control_models import ControlDefinition
+
+
+class RecordingSink(BaseControlEventSink):
+    """Test sink that records delivered control events."""
+
+    def __init__(self) -> None:
+        self.received_batches: list[list[ControlExecutionEvent]] = []
+
+    def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkResult:
+        self.received_batches.append(list(events))
+        return SinkResult(accepted=len(events), dropped=0)
 
 
 class TestMapAppliesTo:
@@ -391,6 +408,69 @@ class TestCheckEvaluationWithLocal:
         assert len(result.non_matches) == 1
 
     @pytest.mark.asyncio
+    async def test_external_sink_receives_local_events(self):
+        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+
+        sink = RecordingSink()
+        register_control_event_sink(sink)
+
+        try:
+            mock_response = EvaluationResponse(
+                is_safe=True,
+                confidence=1.0,
+                non_matches=[
+                    ControlMatch(
+                        control_id=1,
+                        control_name="test-ctrl",
+                        action="observe",
+                        result=EvaluatorResult(matched=False, confidence=0.1),
+                    )
+                ],
+            )
+            mock_engine = MagicMock()
+            mock_engine.process = AsyncMock(return_value=mock_response)
+
+            controls = [{
+                "id": 1,
+                "name": "test-ctrl",
+                "control": {
+                    "condition": {
+                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "selector": {"path": "input"},
+                    },
+                    "action": {"decision": "observe"},
+                    "execution": "sdk",
+                },
+            }]
+
+            client = MagicMock()
+            client.http_client = AsyncMock()
+            step = Step(type="llm", name="test-step", input="hello")
+
+            with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), patch(
+                "agent_control.evaluation.list_evaluators", return_value=["regex"]
+            ):
+                await evaluation.check_evaluation_with_local(
+                    client=client,
+                    agent_name="agent-000000000001",
+                    step=step,
+                    stage="pre",
+                    controls=controls,
+                    trace_id="abc123",
+                    span_id="def456",
+                    event_agent_name="test-agent",
+                )
+
+            assert len(sink.received_batches) == 1
+            assert len(sink.received_batches[0]) == 1
+            event = sink.received_batches[0][0]
+            assert event.control_id == 1
+            assert event.trace_id == "abc123"
+            assert event.span_id == "def456"
+        finally:
+            unregister_control_event_sink(sink)
+
+    @pytest.mark.asyncio
     async def test_resolves_provider_trace_context_for_local_events(self):
         from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
 
@@ -497,9 +577,13 @@ class TestCheckEvaluationWithLocal:
 
 
 class TestCheckEvaluation:
+    def teardown_method(self) -> None:
+        clear_trace_context_provider()
 
     @pytest.mark.asyncio
-    async def test_check_evaluation_enqueues_reconstructed_server_events_when_observability_enabled(self):
+    async def test_check_evaluation_enqueues_reconstructed_server_events_when_enabled(
+        self,
+    ):
         from agent_control_models import Step
 
         mock_http_response = MagicMock()
@@ -526,7 +610,10 @@ class TestCheckEvaluation:
         client.http_client.post = AsyncMock(return_value=mock_http_response)
         step = Step(type="llm", name="test-step", input="hello")
 
-        with patch("agent_control.evaluation.is_observability_enabled", return_value=True),              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+        with (
+            patch("agent_control.evaluation.is_observability_enabled", return_value=True),
+            patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue,
+        ):
             result = await evaluation.check_evaluation(
                 client=client,
                 agent_name="agent-000000000001",
@@ -541,12 +628,58 @@ class TestCheckEvaluation:
         assert result.confidence == 0.9
 
     @pytest.mark.asyncio
+    async def test_external_sink_receives_server_events(self):
+        from agent_control_models import Step
+
+        sink = RecordingSink()
+        register_control_event_sink(sink)
+
+        try:
+            mock_http_response = MagicMock()
+            mock_http_response.raise_for_status = MagicMock()
+            mock_http_response.json.return_value = {
+                "is_safe": True,
+                "confidence": 0.9,
+                "matches": None,
+                "errors": None,
+                "non_matches": [
+                    {
+                        "control_id": 1,
+                        "control_name": "ctrl-1",
+                        "action": "observe",
+                        "control_execution_id": "ce-1",
+                        "result": {"matched": False, "confidence": 0.1},
+                    }
+                ],
+            }
+
+            client = MagicMock()
+            client.base_url = "http://localhost:8000"
+            client.http_client = AsyncMock()
+            client.http_client.post = AsyncMock(return_value=mock_http_response)
+            step = Step(type="llm", name="test-step", input="hello")
+
+            await evaluation.check_evaluation(
+                client=client,
+                agent_name="agent-000000000001",
+                step=step,
+                stage="pre",
+            )
+
+            assert len(sink.received_batches) == 1
+            assert len(sink.received_batches[0]) == 1
+            assert sink.received_batches[0][0].control_execution_id == "ce-1"
+        finally:
+            unregister_control_event_sink(sink)
+
+    @pytest.mark.asyncio
     async def test_skips_local_event_reconstruction_when_observability_disabled(self):
         from agent_control_models import EvaluationResponse, Step
 
-        controls = [{
-            "id": 1,
-            "name": "local-ctrl",
+        controls = [
+            {
+                "id": 1,
+                "name": "local-ctrl",
                 "control": {
                     "condition": {
                         "evaluator": {"name": "regex", "config": {"pattern": "test"}},
@@ -555,7 +688,8 @@ class TestCheckEvaluation:
                     "action": {"decision": "observe"},
                     "execution": "sdk",
                 },
-            }]
+            }
+        ]
 
         mock_response = EvaluationResponse(is_safe=True, confidence=1.0)
         mock_engine = MagicMock()
@@ -565,7 +699,13 @@ class TestCheckEvaluation:
         client.http_client = AsyncMock()
         step = Step(type="llm", name="test-step", input="hello")
 
-        with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine),              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]),              patch("agent_control.evaluation.is_observability_enabled", return_value=False),              patch("agent_control.evaluation.build_control_execution_events") as mock_build,              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+        with (
+            patch("agent_control.evaluation.ControlEngine", return_value=mock_engine),
+            patch("agent_control.evaluation.list_evaluators", return_value=["regex"]),
+            patch("agent_control.evaluation.is_observability_enabled", return_value=False),
+            patch("agent_control.evaluation.build_control_execution_events") as mock_build,
+            patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue,
+        ):
             result = await evaluation.check_evaluation_with_local(
                 client=client,
                 agent_name="agent-000000000001",
@@ -599,7 +739,10 @@ class TestCheckEvaluation:
         client.http_client.post = AsyncMock(return_value=mock_http_response)
         step = Step(type="llm", name="test-step", input="hello")
 
-        with patch("agent_control.evaluation.is_observability_enabled", return_value=False),              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+        with (
+            patch("agent_control.evaluation.is_observability_enabled", return_value=False),
+            patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue,
+        ):
             result = await evaluation.check_evaluation(
                 client=client,
                 agent_name="agent-000000000001",
@@ -714,6 +857,100 @@ class TestMergedEventCreation:
         assert len(result.matches) == 2
 
     @pytest.mark.asyncio
+    async def test_external_sink_receives_merged_local_and_server_events(self):
+        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+
+        sink = RecordingSink()
+        register_control_event_sink(sink)
+
+        try:
+            local_response = EvaluationResponse(
+                is_safe=True,
+                confidence=1.0,
+                matches=[
+                    ControlMatch(
+                        control_id=1,
+                        control_name="local-ctrl",
+                        action="observe",
+                        result=EvaluatorResult(matched=False, confidence=0.8),
+                    )
+                ],
+            )
+            server_response = {
+                "is_safe": True,
+                "confidence": 0.9,
+                "matches": [
+                    {
+                        "control_id": 2,
+                        "control_name": "server-ctrl",
+                        "action": "observe",
+                        "control_execution_id": "ce-server",
+                        "result": {"matched": False, "confidence": 0.4},
+                    }
+                ],
+                "errors": None,
+                "non_matches": None,
+            }
+            controls = [
+                {
+                    "id": 1,
+                    "name": "local-ctrl",
+                    "control": {
+                        "condition": {
+                            "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                            "selector": {"path": "input"},
+                        },
+                        "action": {"decision": "observe"},
+                        "execution": "sdk",
+                    },
+                },
+                {
+                    "id": 2,
+                    "name": "server-ctrl",
+                    "control": {
+                        "condition": {
+                            "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                            "selector": {"path": "input"},
+                        },
+                        "action": {"decision": "observe"},
+                        "execution": "server",
+                    },
+                },
+            ]
+
+            mock_engine = MagicMock()
+            mock_engine.process = AsyncMock(return_value=local_response)
+            mock_http_response = MagicMock()
+            mock_http_response.raise_for_status = MagicMock()
+            mock_http_response.json.return_value = server_response
+
+            client = MagicMock()
+            client.http_client = AsyncMock()
+            client.http_client.post = AsyncMock(return_value=mock_http_response)
+            step = Step(type="llm", name="test-step", input="hello")
+
+            with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), patch(
+                "agent_control.evaluation.list_evaluators", return_value=["regex"]
+            ):
+                await evaluation.check_evaluation_with_local(
+                    client=client,
+                    agent_name="agent-000000000001",
+                    step=step,
+                    stage="pre",
+                    controls=controls,
+                    trace_id="abc123",
+                    span_id="def456",
+                    event_agent_name="test-agent",
+                )
+
+            assert len(sink.received_batches) == 1
+            merged_events = sink.received_batches[0]
+            assert len(merged_events) == 2
+            assert {event.control_id for event in merged_events} == {1, 2}
+        finally:
+            unregister_control_event_sink(sink)
+
+    @pytest.mark.asyncio
     async def test_merged_event_mode_enqueues_local_events_before_reraising_server_failure(self):
         from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
 
@@ -765,7 +1002,12 @@ class TestMergedEventCreation:
         client.http_client.post = AsyncMock(side_effect=RuntimeError("server unavailable"))
         step = Step(type="llm", name="test-step", input="hello")
 
-        with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine),              patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), patch("agent_control.evaluation.is_observability_enabled", return_value=True),              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
+        with (
+            patch("agent_control.evaluation.ControlEngine", return_value=mock_engine),
+            patch("agent_control.evaluation.list_evaluators", return_value=["regex"]),
+            patch("agent_control.evaluation.is_observability_enabled", return_value=True),
+            patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue,
+        ):
             with pytest.raises(RuntimeError, match="server unavailable"):
                 await evaluation.check_evaluation_with_local(
                     client=client,

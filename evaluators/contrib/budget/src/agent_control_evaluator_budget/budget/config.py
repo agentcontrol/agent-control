@@ -79,11 +79,13 @@ class BudgetEvaluatorConfig(EvaluatorConfig):
             pricing table and a cost-based rule exists. block=fail closed,
             warn=log warning and treat cost as 0.
         pricing: Optional model pricing table. Maps model name to ModelPricing.
-            Used to derive cost in USD from token counts and model name.
+            Required when any rule uses limit_unit="usd_cents". Used to
+            derive cost in USD from token counts and model name.
         token_path: Dot-notation path to extract token usage from step
             data (e.g. "usage.total_tokens"). If None, looks for standard
             fields (input_tokens, output_tokens, total_tokens, usage).
         model_path: Dot-notation path to extract model name (for pricing lookup).
+            Required when any rule uses limit_unit="usd_cents".
         metadata_paths: Mapping of metadata field name to dot-notation path
             in step data. Used to extract scope dimensions (channel, user_id, etc).
     """
@@ -109,7 +111,7 @@ class BudgetEvaluatorConfig(EvaluatorConfig):
     metadata_paths: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def require_pricing_for_cost_rules(self) -> "BudgetEvaluatorConfig":
+    def require_pricing_for_cost_rules(self) -> BudgetEvaluatorConfig:
         has_cost_rule = any(rule.limit_unit == "usd_cents" for rule in self.limits)
         if has_cost_rule and self.pricing is None:
             raise ValueError('pricing is required when any rule uses limit_unit="usd_cents"')

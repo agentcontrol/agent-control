@@ -6,14 +6,15 @@ from agent_control_models.server import (
     GetPolicyControlsResponse,
 )
 from fastapi import APIRouter, Depends
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
 from ..db import get_async_db
 from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
-from ..models import Control, Policy, policy_controls
+from ..models import Policy
+from ..services.controls import ControlService
 
 router = APIRouter(prefix="/policies", tags=["policies"])
 
@@ -117,27 +118,12 @@ async def add_control_to_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    ctl_res = await db.execute(select(Control).where(Control.id == control_id))
-    control = ctl_res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id)
 
     # Add association using INSERT ... ON CONFLICT DO NOTHING for idempotency
     try:
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-        stmt = (
-            pg_insert(policy_controls)
-            .values(policy_id=policy_id, control_id=control_id)
-            .on_conflict_do_nothing()
-        )
-        await db.execute(stmt)
+        await control_service.add_control_to_policy(policy_id=policy_id, control_id=control_id)
         await db.commit()
     except Exception:
         await db.rollback()
@@ -200,24 +186,14 @@ async def remove_control_from_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    ctl_res = await db.execute(select(Control).where(Control.id == control_id))
-    control = ctl_res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id)
 
     # Remove association (idempotent - deleting non-existent is no-op)
     try:
-        await db.execute(
-            delete(policy_controls).where(
-                (policy_controls.c.policy_id == policy_id)
-                & (policy_controls.c.control_id == control_id)
-            )
+        await control_service.remove_control_from_policy(
+            policy_id=policy_id,
+            control_id=control_id,
         )
         await db.commit()
     except Exception:
@@ -271,10 +247,5 @@ async def list_policy_controls(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    rows = await db.execute(
-        select(policy_controls.c.control_id).where(
-            policy_controls.c.policy_id == policy_id
-        )
-    )
-    control_ids = [r[0] for r in rows.fetchall()]
+    control_ids = await ControlService(db).list_policy_control_ids(policy_id)
     return GetPolicyControlsResponse(control_ids=control_ids)

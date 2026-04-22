@@ -12,7 +12,7 @@ External evaluator that scans selector-selected payloads for likely secrets usin
 Install the evaluator package:
 
 ```bash
-pip install agent-control-evaluator-detect-secrets
+pip install agent-control-evaluator-detect_secrets
 ```
 
 For local development from this repo:

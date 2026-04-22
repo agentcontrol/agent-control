@@ -5,12 +5,14 @@ Given/When/Then comment style per reviewer request.
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
 import threading
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
+import agent_control_evaluator_budget.budget.evaluator as budget_evaluator_module
 from agent_control_evaluator_budget.budget.config import (
     WINDOW_DAILY,
     WINDOW_MONTHLY,
@@ -37,6 +39,21 @@ from agent_control_evaluator_budget.budget.memory_store import (
 def _clean_store_registry() -> None:
     """Clear the module-level store registry before each test."""
     clear_budget_stores()
+
+
+def test_metadata_version_matches_distribution_version() -> None:
+    assert BudgetEvaluator.metadata.version == version("agent-control-evaluator-budget")
+
+
+def test_metadata_version_falls_back_without_distribution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_not_found(_: str) -> str:
+        raise PackageNotFoundError
+
+    monkeypatch.setattr(budget_evaluator_module, "version", _raise_not_found)
+
+    assert budget_evaluator_module._resolve_package_version() == "0.0.0.dev"
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +395,33 @@ class TestUtilities:
         # Given: OpenAI-style fields / Then: extracted
         data = {"usage": {"prompt_tokens": 80, "completion_tokens": 40}}
         assert _extract_tokens(data, None) == (80, 40)
+
+    def test_extract_tokens_falls_back_when_normalized_fields_are_none(self) -> None:
+        # Given: normalized fields present but unset, plus legacy OpenAI fields
+        data = {
+            "usage": {
+                "input_tokens": None,
+                "output_tokens": None,
+                "prompt_tokens": 80,
+                "completion_tokens": 40,
+            }
+        }
+
+        # When/Then: fallback still uses the legacy fields
+        assert _extract_tokens(data, None) == (80, 40)
+
+    def test_extract_tokens_falls_back_per_field(self) -> None:
+        # Given: one normalized field missing, the other present
+        data = {
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": None,
+                "completion_tokens": 40,
+            }
+        }
+
+        # When/Then: fallback applies independently per token side
+        assert _extract_tokens(data, None) == (100, 40)
 
     def test_extract_tokens_none(self) -> None:
         # Given: None data / Then: (0, 0)

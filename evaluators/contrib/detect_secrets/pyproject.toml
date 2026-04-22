@@ -1,5 +1,5 @@
 [project]
-name = "agent-control-evaluator-detect-secrets"
+name = "agent-control-evaluator-detect_secrets"
 version = "0.1.0"
 description = "detect-secrets evaluator for agent-control"
 readme = "README.md"

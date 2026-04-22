@@ -33,7 +33,7 @@ from agent_control_evaluator_detect_secrets.detect_secrets.normalization import 
 )
 
 try:
-    PACKAGE_VERSION = version("agent-control-evaluator-detect-secrets")
+    PACKAGE_VERSION = version("agent-control-evaluator-detect_secrets")
 except PackageNotFoundError:
     PACKAGE_VERSION = "0.0.0.dev"
 

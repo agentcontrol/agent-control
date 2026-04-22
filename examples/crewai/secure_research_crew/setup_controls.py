@@ -95,14 +95,16 @@ def researcher_controls() -> list[tuple[str, dict]]:
             "step_names": ["query_database"],
             "stages": ["pre"],
         },
-        "selector": {"path": "input.query"},
-        "evaluator": {
-            "name": "sql",
-            "config": {
-                "blocked_operations": ["DROP", "DELETE", "TRUNCATE", "ALTER", "INSERT", "UPDATE"],
-                "allow_multi_statements": False,
-                "require_limit": True,
-                "max_limit": 100,
+        "condition": {
+            "selector": {"path": "input.query"},
+            "evaluator": {
+                "name": "sql",
+                "config": {
+                    "blocked_operations": ["DROP", "DELETE", "TRUNCATE", "ALTER", "INSERT", "UPDATE"],
+                    "allow_multi_statements": False,
+                    "require_limit": True,
+                    "max_limit": 100,
+                },
             },
         },
         "action": {"decision": "deny"},
@@ -117,14 +119,16 @@ def researcher_controls() -> list[tuple[str, dict]]:
             "step_names": ["query_database"],
             "stages": ["pre"],
         },
-        "selector": {"path": "input.query"},
-        "evaluator": {
-            "name": "list",
-            "config": {
-                "values": ["salary_data", "admin_users", "credentials", "auth_tokens"],
-                "logic": "any",
-                "match_mode": "contains",
-                "case_sensitive": False,
+        "condition": {
+            "selector": {"path": "input.query"},
+            "evaluator": {
+                "name": "list",
+                "config": {
+                    "values": ["salary_data", "admin_users", "credentials", "auth_tokens"],
+                    "logic": "any",
+                    "match_mode": "contains",
+                    "case_sensitive": False,
+                },
             },
         },
         "action": {"decision": "deny"},
@@ -147,17 +151,19 @@ def analyst_controls() -> list[tuple[str, dict]]:
             "step_names": ["validate_data"],
             "stages": ["pre"],
         },
-        "selector": {"path": "input.request"},
-        "evaluator": {
-            "name": "json",
-            "config": {
-                "required_fields": ["dataset", "findings", "confidence_score"],
-                "field_constraints": {
-                    "confidence_score": {
-                        "type": "number",
-                        "min": 0,
-                        "max": 1,
-                    }
+        "condition": {
+            "selector": {"path": "input.request"},
+            "evaluator": {
+                "name": "json",
+                "config": {
+                    "required_fields": ["dataset", "findings", "confidence_score"],
+                    "field_constraints": {
+                        "confidence_score": {
+                            "type": "number",
+                            "min": 0,
+                            "max": 1,
+                        }
+                    },
                 },
             },
         },
@@ -173,21 +179,23 @@ def analyst_controls() -> list[tuple[str, dict]]:
             "step_names": ["validate_data"],
             "stages": ["pre"],
         },
-        "selector": {"path": "input.request"},
-        "evaluator": {
-            "name": "json",
-            "config": {
-                "json_schema": {
-                    "type": "object",
-                    "oneOf": [
-                        {
-                            "required": ["methodology"],
-                            "properties": {
-                                "methodology": {"type": "string", "minLength": 1}
-                            },
-                        }
-                    ],
-                }
+        "condition": {
+            "selector": {"path": "input.request"},
+            "evaluator": {
+                "name": "json",
+                "config": {
+                    "json_schema": {
+                        "type": "object",
+                        "oneOf": [
+                            {
+                                "required": ["methodology"],
+                                "properties": {
+                                    "methodology": {"type": "string", "minLength": 1}
+                                },
+                            }
+                        ],
+                    }
+                },
             },
         },
         "action": {
@@ -221,17 +229,19 @@ def writer_controls() -> list[tuple[str, dict]]:
             "step_names": ["write_report"],
             "stages": ["post"],
         },
-        "selector": {"path": "output"},
-        "evaluator": {
-            "name": "regex",
-            "config": {
-                "pattern": (
-                    r"(?:"
-                    r"\b\d{3}-\d{2}-\d{4}\b"           # SSN
-                    r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"  # Email
-                    r"|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"  # Phone
-                    r")"
-                )
+        "condition": {
+            "selector": {"path": "output"},
+            "evaluator": {
+                "name": "regex",
+                "config": {
+                    "pattern": (
+                        r"(?:"
+                        r"\b\d{3}-\d{2}-\d{4}\b"           # SSN
+                        r"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"  # Email
+                        r"|\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"  # Phone
+                        r")"
+                    )
+                },
             },
         },
         "action": {"decision": "deny"},

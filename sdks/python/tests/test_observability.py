@@ -1,26 +1,32 @@
 """Tests for the observability module (EventBatcher)."""
 
 import asyncio
-import os
-from datetime import datetime, timezone
+import logging
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import httpx
 import pytest
+from agent_control_models import ControlExecutionEvent
+from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
 
 from agent_control.observability import (
     EventBatcher,
     add_event,
     get_event_batcher,
     get_event_sink,
+    get_registered_control_event_sinks,
     init_observability,
     is_observability_enabled,
     log_span_end,
     log_span_start,
+    register_control_event_sink,
     shutdown_observability,
+    sync_shutdown_observability,
+    unregister_control_event_sink,
 )
-from agent_control.settings import get_settings
+from agent_control.settings import configure_settings, get_settings
 
 
 def create_mock_event():
@@ -29,7 +35,6 @@ def create_mock_event():
     mock_event.model_dump = MagicMock(return_value={
         "trace_id": "a" * 32,
         "span_id": "b" * 16,
-        "agent_name": str(uuid4()),
         "agent_name": "test-agent",
         "control_id": 1,
         "control_name": "test-control",
@@ -38,9 +43,49 @@ def create_mock_event():
         "action": "observe",
         "matched": False,
         "confidence": 0.95,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     })
     return mock_event
+
+
+class RecordingSink(BaseControlEventSink):
+    """Test sink that records the exact event batches it receives."""
+
+    def __init__(self, *, accepted: int | None = None):
+        self.accepted = accepted
+        self.received_batches: list[list[ControlExecutionEvent]] = []
+
+    def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkResult:
+        self.received_batches.append(list(events))
+        accepted = self.accepted if self.accepted is not None else len(events)
+        dropped = max(len(events) - accepted, 0)
+        return SinkResult(accepted=accepted, dropped=dropped)
+
+
+class LifecycleRecordingSink(RecordingSink):
+    """Test sink that exposes lifecycle hooks owned by the caller."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.flush_calls = 0
+        self.close_calls = 0
+
+    def flush(self) -> None:
+        self.flush_calls += 1
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+def reset_observability_state() -> None:
+    """Clear global observability state between tests."""
+    import agent_control.observability as obs
+
+    obs._batcher = None
+    obs._event_sink = None
+    configure_settings(observability_enabled=True)
+    with obs._external_event_sinks_lock:
+        obs._external_event_sinks.clear()
 
 
 class TestEventBatcherInit:
@@ -461,7 +506,10 @@ class TestEventBatcherSendBatchSync:
         client_context = MagicMock()
         client_context.__enter__.return_value = client
 
-        with patch("agent_control.observability.httpx.Client", return_value=client_context) as client_ctor:
+        with patch(
+            "agent_control.observability.httpx.Client",
+            return_value=client_context,
+        ) as client_ctor:
             result = batcher._send_batch_sync([create_mock_event()])
 
         assert result is True
@@ -476,7 +524,10 @@ class TestEventBatcherSendBatchSync:
         client_context = MagicMock()
         client_context.__enter__.return_value = client
 
-        with patch("agent_control.observability.httpx.Client", return_value=client_context) as client_ctor:
+        with patch(
+            "agent_control.observability.httpx.Client",
+            return_value=client_context,
+        ) as client_ctor:
             result = batcher._send_batch_sync([create_mock_event()])
 
         assert result is False
@@ -603,54 +654,60 @@ class TestGlobalBatcher:
 
     def test_get_event_batcher_not_initialized(self):
         """Test get_event_batcher returns None when not initialized."""
-        # Reset global state
         import agent_control.observability as obs
+
         old_batcher = obs._batcher
         old_sink = obs._event_sink
-        obs._batcher = None
-        obs._event_sink = None
+        old_external_sinks = obs.get_registered_control_event_sinks()
+        reset_observability_state()
 
         try:
             assert get_event_batcher() is None
         finally:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
+            for sink in old_external_sinks:
+                register_control_event_sink(sink)
 
     def test_get_event_sink_not_initialized(self):
         """Test get_event_sink returns None when not initialized."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
         old_sink = obs._event_sink
-        obs._batcher = None
-        obs._event_sink = None
+        old_external_sinks = obs.get_registered_control_event_sinks()
+        reset_observability_state()
 
         try:
             assert get_event_sink() is None
         finally:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
+            for sink in old_external_sinks:
+                register_control_event_sink(sink)
 
     def test_is_observability_enabled_false(self):
         """Test is_observability_enabled returns False when not initialized."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
         old_sink = obs._event_sink
-        obs._batcher = None
-        obs._event_sink = None
+        old_external_sinks = obs.get_registered_control_event_sinks()
+        reset_observability_state()
 
         try:
             assert is_observability_enabled() is False
         finally:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
+            for sink in old_external_sinks:
+                register_control_event_sink(sink)
 
     def test_add_event_without_batcher(self):
         """Test add_event returns False when batcher not initialized."""
         import agent_control.observability as obs
         old_batcher = obs._batcher
         old_sink = obs._event_sink
-        obs._batcher = None
-        obs._event_sink = None
+        old_external_sinks = obs.get_registered_control_event_sinks()
+        reset_observability_state()
 
         try:
             result = add_event(create_mock_event())
@@ -658,6 +715,112 @@ class TestGlobalBatcher:
         finally:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
+            for sink in old_external_sinks:
+                register_control_event_sink(sink)
+
+
+class TestExternalControlEventSinks:
+    """Tests for vendor-neutral external control-event sink registration."""
+
+    def setup_method(self) -> None:
+        self._import_and_reset()
+
+    def teardown_method(self) -> None:
+        sync_shutdown_observability()
+        self._import_and_reset()
+
+    @staticmethod
+    def _import_and_reset() -> None:
+        reset_observability_state()
+
+    def test_register_and_unregister_external_sink(self):
+        sink = RecordingSink()
+
+        register_control_event_sink(sink)
+        register_control_event_sink(sink)
+
+        assert get_registered_control_event_sinks() == (sink,)
+        assert is_observability_enabled() is True
+
+        unregister_control_event_sink(sink)
+
+        assert get_registered_control_event_sinks() == ()
+        assert is_observability_enabled() is False
+
+    def test_registered_sink_does_not_activate_when_observability_disabled(self):
+        sink = RecordingSink()
+        register_control_event_sink(sink)
+        configure_settings(observability_enabled=False)
+
+        result = add_event(create_mock_event())
+
+        assert result is False
+        assert sink.received_batches == []
+        assert is_observability_enabled() is False
+
+    def test_write_events_delivers_to_external_sink_without_builtin_batcher(self):
+        sink = RecordingSink()
+        event = create_mock_event()
+
+        register_control_event_sink(sink)
+
+        result = add_event(event)
+
+        assert result is True
+        assert sink.received_batches == [[event]]
+        assert get_event_sink() is None
+
+    def test_registered_sink_overrides_builtin_sink(self):
+        sink = RecordingSink()
+        register_control_event_sink(sink)
+
+        batcher = init_observability(enabled=True)
+        assert batcher is not None
+        batcher.add_event = MagicMock(return_value=True)
+        event = create_mock_event()
+
+        result = add_event(event)
+
+        assert result is True
+        batcher.add_event.assert_not_called()
+        assert sink.received_batches == [[event]]
+
+    def test_external_sink_failure_does_not_fall_back_to_builtin_sink(self):
+        sink = RecordingSink()
+        sink.write_events = MagicMock(side_effect=RuntimeError("boom"))
+        register_control_event_sink(sink)
+
+        batcher = init_observability(enabled=True)
+        assert batcher is not None
+        batcher.add_event = MagicMock(return_value=True)
+
+        result = add_event(create_mock_event())
+
+        assert result is False
+        batcher.add_event.assert_not_called()
+
+    def test_unregistering_external_sink_restores_builtin_sink(self):
+        sink = RecordingSink()
+        register_control_event_sink(sink)
+
+        batcher = init_observability(enabled=True)
+        assert batcher is not None
+        batcher.add_event = MagicMock(return_value=True)
+
+        unregister_control_event_sink(sink)
+
+        result = add_event(create_mock_event())
+
+        assert result is True
+        batcher.add_event.assert_called_once()
+
+    def test_external_only_sink_controls_write_result_when_no_builtin_sink_exists(self):
+        sink = RecordingSink(accepted=0)
+        register_control_event_sink(sink)
+
+        result = add_event(create_mock_event())
+
+        assert result is False
 
 
 class TestInitObservability:
@@ -675,6 +838,29 @@ class TestInitObservability:
             result = init_observability(enabled=False)
             assert result is None
         finally:
+            obs._batcher = old_batcher
+            obs._event_sink = old_sink
+
+    def test_enabled_override_does_not_mutate_global_settings(self):
+        """Test that enabled= only affects the current init call."""
+        import agent_control.observability as obs
+
+        old_batcher = obs._batcher
+        old_sink = obs._event_sink
+        original_settings = get_settings().model_dump()
+        obs._batcher = None
+        obs._event_sink = None
+
+        try:
+            configure_settings(observability_enabled=True)
+
+            result = init_observability(enabled=False)
+
+            assert result is None
+            assert get_settings().observability_enabled is True
+            assert is_observability_enabled() is False
+        finally:
+            configure_settings(**original_settings)
             obs._batcher = old_batcher
             obs._event_sink = old_sink
 
@@ -765,6 +951,30 @@ class TestShutdownObservability:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
 
+    def test_shutdown_does_not_manage_registered_external_sink_lifecycle(self):
+        """Caller-registered sinks remain caller-owned across shutdown."""
+        import agent_control.observability as obs
+
+        old_batcher = obs._batcher
+        old_sink = obs._event_sink
+        external_sink = LifecycleRecordingSink()
+
+        try:
+            register_control_event_sink(external_sink)
+            assert add_event(create_mock_event()) is True
+
+            sync_shutdown_observability()
+
+            assert external_sink.flush_calls == 0
+            assert external_sink.close_calls == 0
+            assert get_registered_control_event_sinks() == (external_sink,)
+            assert add_event(create_mock_event()) is True
+            assert len(external_sink.received_batches) == 2
+        finally:
+            unregister_control_event_sink(external_sink)
+            obs._batcher = old_batcher
+            obs._event_sink = old_sink
+
 
 class TestEventBatcherShutdownConfig:
     """Tests for shutdown timeout configuration."""
@@ -831,8 +1041,6 @@ class TestSpanLogging:
 
     def test_log_span_start(self, caplog):
         """Test log_span_start logs correctly."""
-        import logging
-        from agent_control.settings import configure_settings
         caplog.set_level(logging.INFO)
 
         # Ensure logging is enabled
@@ -845,8 +1053,6 @@ class TestSpanLogging:
 
     def test_log_span_end(self, caplog):
         """Test log_span_end logs correctly."""
-        import logging
-        from agent_control.settings import configure_settings
         caplog.set_level(logging.INFO)
 
         # Ensure logging is enabled
@@ -867,8 +1073,6 @@ class TestSpanLogging:
 
     def test_log_span_disabled(self, caplog):
         """Test that logging is skipped when span logging is disabled via config."""
-        import logging
-        from agent_control.settings import configure_settings
         caplog.set_level(logging.INFO)
 
         # Save original config
