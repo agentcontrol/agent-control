@@ -124,6 +124,61 @@ async def get_control(
     return cast(dict[str, Any], response.json())
 
 
+async def list_control_versions(
+    client: AgentControlClient,
+    control_id: int,
+    cursor: int | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """
+    List version-history summaries for a control.
+
+    Args:
+        client: AgentControlClient instance
+        control_id: ID of the control
+        cursor: Version number to start after (newest-first pagination)
+        limit: Maximum number of versions to return
+
+    Returns:
+        Dictionary containing:
+            - versions: List of version summaries
+            - pagination: Object with limit, total, next_cursor, has_more
+    """
+    params: dict[str, Any] = {"limit": limit}
+    if cursor is not None:
+        params["cursor"] = cursor
+
+    response = await client.http_client.get(
+        f"/api/v1/controls/{control_id}/versions",
+        params=params,
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
+async def get_control_version(
+    client: AgentControlClient,
+    control_id: int,
+    version_num: int,
+) -> dict[str, Any]:
+    """
+    Get a specific version snapshot for a control.
+
+    Args:
+        client: AgentControlClient instance
+        control_id: ID of the control
+        version_num: Control version number to fetch
+
+    Returns:
+        Dictionary containing version metadata and the raw snapshot payload.
+    """
+    response = await client.http_client.get(
+        f"/api/v1/controls/{control_id}/versions/{version_num}"
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
 async def create_control(
     client: AgentControlClient,
     name: str,
