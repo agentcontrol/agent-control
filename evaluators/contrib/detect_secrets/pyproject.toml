@@ -1,14 +1,14 @@
 [project]
 name = "agent-control-evaluator-detect_secrets"
-version = "0.1.0"
+version = "7.6.0"
 description = "detect-secrets evaluator for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Agent Control Team" }]
 dependencies = [
-    "agent-control-evaluators>=3.0.0",
-    "agent-control-models>=3.0.0",
+    "agent-control-evaluators>=7.5.0",
+    "agent-control-models>=7.5.0",
     "detect-secrets-async>=0.2.0,<0.3.0",
     "google-re2>=1.1",
     "pydantic>=2.12.4",
