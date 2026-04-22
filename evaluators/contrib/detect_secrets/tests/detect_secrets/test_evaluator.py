@@ -95,8 +95,10 @@ async def test_dict_key_with_container_value_maps_findings_to_json_pointer() -> 
 
     result = await evaluator.evaluate(
         {
-            "ghp_123456789012345678901234567890123456": {
-                "nested": "safe",
+            "outer": {
+                "ghp_123456789012345678901234567890123456": {
+                    "nested": "safe",
+                }
             }
         }
     )
@@ -107,7 +109,29 @@ async def test_dict_key_with_container_value_maps_findings_to_json_pointer() -> 
     assert result.metadata["findings"] == [
         {
             "type": "GitHub Token",
-            "json_pointer": "/ghp_123456789012345678901234567890123456",
+            "json_pointer": "/outer",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_dict_key_with_scalar_value_omits_json_pointer() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    result = await evaluator.evaluate(
+        {
+            "ghp_123456789012345678901234567890123456": "safe",
+        }
+    )
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["normalized_payload_type"] == "dict"
+    assert result.metadata["findings"] == [
+        {
+            "type": "GitHub Token",
         }
     ]
 
@@ -286,7 +310,7 @@ def test_normalize_payload_renders_expected_json_pointer_lines() -> None:
     normalized = normalize_payload({"outer": [{"inner": "secret"}]})
 
     assert normalized.payload_type == "dict"
-    assert normalized.json_pointers_by_line[4] == "/outer/0/inner"
+    assert normalized.line_locations_by_line[4].json_pointer == "/outer/0/inner"
 
 
 def test_entry_point_is_registered() -> None:

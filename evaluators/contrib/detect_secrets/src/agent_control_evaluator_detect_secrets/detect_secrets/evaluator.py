@@ -9,6 +9,7 @@ import re2
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import EvaluatorResult
 from detect_secrets_async import (
+    DetectSecretsRuntime,
     RuntimeScanError,
     ScanConfig,
     ScanRequest,
@@ -20,6 +21,7 @@ from agent_control_evaluator_detect_secrets.detect_secrets.config import (
     DetectSecretsEvaluatorConfig,
 )
 from agent_control_evaluator_detect_secrets.detect_secrets.normalization import (
+    LineLocation,
     NormalizationError,
     NormalizedPayload,
     apply_line_exclusions,
@@ -113,19 +115,28 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
                 detect_secrets_version=runtime_info.detect_secrets_version,
             )
 
-        findings = self._map_findings(normalized, scan_result.findings)
+        findings = await self._map_findings(
+            normalized=normalized,
+            findings=scan_result.findings,
+            runtime=runtime,
+            scan_config=request.config,
+        )
         return self._success_result(
             normalized=normalized,
             detect_secrets_version=scan_result.detect_secrets_version,
             findings=findings,
         )
 
-    def _map_findings(
+    async def _map_findings(
         self,
+        *,
         normalized: NormalizedPayload,
         findings: tuple[Any, ...],
+        runtime: DetectSecretsRuntime,
+        scan_config: ScanConfig,
     ) -> list[dict[str, Any]]:
         mapped: list[dict[str, Any]] = []
+        key_probe_cache: dict[str, set[str]] = {}
 
         for finding in findings:
             finding_metadata: dict[str, Any] = {"type": finding.type}
@@ -134,13 +145,57 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
                     finding_metadata["line_number"] = finding.line_number
             elif normalized.payload_type in {"dict", "list"}:
                 if finding.line_number is not None:
-                    json_pointer = normalized.json_pointers_by_line.get(finding.line_number)
+                    location = normalized.line_locations_by_line.get(finding.line_number)
+                    json_pointer = await self._safe_structured_pointer(
+                        location=location,
+                        finding_type=finding.type,
+                        runtime=runtime,
+                        scan_config=scan_config,
+                        key_probe_cache=key_probe_cache,
+                    )
                     if json_pointer is not None:
                         finding_metadata["json_pointer"] = json_pointer
 
             mapped.append(finding_metadata)
 
         return mapped
+
+    async def _safe_structured_pointer(
+        self,
+        *,
+        location: LineLocation | None,
+        finding_type: str,
+        runtime: DetectSecretsRuntime,
+        scan_config: ScanConfig,
+        key_probe_cache: dict[str, set[str]],
+    ) -> str | None:
+        if location is None:
+            return None
+
+        if location.key_probe_text is None:
+            return location.json_pointer
+
+        key_probe_text = location.key_probe_text
+        probe_findings = key_probe_cache.get(key_probe_text)
+        if probe_findings is None:
+            try:
+                probe_result = await runtime.scan(
+                    ScanRequest(
+                        content=key_probe_text,
+                        timeout_ms=self.config.timeout_ms,
+                        config=scan_config,
+                    )
+                )
+            except RuntimeScanError:
+                return location.parent_pointer
+
+            probe_findings = {finding.type for finding in probe_result.findings}
+            key_probe_cache[key_probe_text] = probe_findings
+
+        if finding_type in probe_findings:
+            return location.parent_pointer
+
+        return location.json_pointer
 
     def _success_result(
         self,

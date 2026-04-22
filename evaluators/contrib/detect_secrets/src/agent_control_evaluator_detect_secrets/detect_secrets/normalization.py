@@ -19,7 +19,16 @@ class NormalizedPayload:
 
     payload_type: NormalizedPayloadType
     text: str | None
-    json_pointers_by_line: dict[int, str]
+    line_locations_by_line: dict[int, LineLocation]
+
+
+@dataclass(frozen=True, slots=True)
+class LineLocation:
+    """Safe structured-location metadata for a rendered line."""
+
+    json_pointer: str | None
+    parent_pointer: str | None = None
+    key_probe_text: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,16 +36,16 @@ class RenderedLine:
     """A rendered JSON line plus optional structural pointer metadata."""
 
     text: str
-    json_pointer: str | None = None
+    location: LineLocation | None = None
 
 
 def normalize_payload(data: Any) -> NormalizedPayload:
     """Normalize selector output to deterministic text for detect-secrets scanning."""
     if data is None:
-        return NormalizedPayload(payload_type="none", text=None, json_pointers_by_line={})
+        return NormalizedPayload(payload_type="none", text=None, line_locations_by_line={})
 
     if isinstance(data, str):
-        return NormalizedPayload(payload_type="str", text=data, json_pointers_by_line={})
+        return NormalizedPayload(payload_type="str", text=data, line_locations_by_line={})
 
     if isinstance(data, dict):
         return _normalize_structured_payload(data, payload_type="dict")
@@ -81,15 +90,15 @@ def _normalize_structured_payload(
     if rendered_text != text:
         raise NormalizationError("Structured payload rendering mismatch during normalization")
 
-    json_pointers_by_line = {
-        line_number: rendered_line.json_pointer
+    line_locations_by_line = {
+        line_number: rendered_line.location
         for line_number, rendered_line in enumerate(rendered_lines, start=1)
-        if rendered_line.json_pointer is not None
+        if rendered_line.location is not None
     }
     return NormalizedPayload(
         payload_type=payload_type,
         text=text,
-        json_pointers_by_line=json_pointers_by_line,
+        line_locations_by_line=line_locations_by_line,
     )
 
 
@@ -99,7 +108,7 @@ def _normalize_primitive_payload(data: bool | int | float) -> NormalizedPayload:
     except (TypeError, ValueError) as exc:
         raise NormalizationError(f"Failed to normalize scalar payload: {exc}") from exc
 
-    return NormalizedPayload(payload_type="primitive", text=text, json_pointers_by_line={})
+    return NormalizedPayload(payload_type="primitive", text=text, line_locations_by_line={})
 
 
 def _render_json_lines(
@@ -119,7 +128,12 @@ def _render_json_lines(
 
     scalar_text = json.dumps(value, ensure_ascii=False, allow_nan=False)
     scalar_pointer = pointer or None
-    return [RenderedLine(text=f"{indent}{prefix}{scalar_text}", json_pointer=scalar_pointer)]
+    return [
+        RenderedLine(
+            text=f"{indent}{prefix}{scalar_text}",
+            location=LineLocation(json_pointer=scalar_pointer),
+        )
+    ]
 
 
 def _render_dict_lines(
@@ -149,10 +163,16 @@ def _render_dict_lines(
             prefix=child_prefix,
             pointer=child_pointer,
         )
-        child_lines = _attach_container_pointer(child, child_lines, child_pointer)
+        child_lines = _attach_dict_child_location(
+            child=child,
+            child_lines=child_lines,
+            child_pointer=child_pointer,
+            parent_pointer=pointer or None,
+            key_literal=key_literal,
+        )
         child_lines[-1] = RenderedLine(
             text=f"{child_lines[-1].text}{suffix}",
-            json_pointer=child_lines[-1].json_pointer,
+            location=child_lines[-1].location,
         )
         lines.extend(child_lines)
 
@@ -183,10 +203,10 @@ def _render_list_lines(
             prefix="",
             pointer=child_pointer,
         )
-        child_lines = _attach_container_pointer(child, child_lines, child_pointer)
+        child_lines = _attach_list_child_location(child, child_lines, child_pointer)
         child_lines[-1] = RenderedLine(
             text=f"{child_lines[-1].text}{suffix}",
-            json_pointer=child_lines[-1].json_pointer,
+            location=child_lines[-1].location,
         )
         lines.extend(child_lines)
 
@@ -208,15 +228,46 @@ def _json_object_key_name(key: Any) -> str:
     raise TypeError(f"Unsupported JSON object key type: {type(key).__name__}")
 
 
-def _attach_container_pointer(
+def _attach_dict_child_location(
+    child: Any,
+    child_lines: list[RenderedLine],
+    child_pointer: str,
+    parent_pointer: str | None,
+    key_literal: str,
+) -> list[RenderedLine]:
+    if child_lines:
+        first_line = child_lines[0]
+        child_lines[0] = RenderedLine(
+            text=first_line.text,
+            location=LineLocation(
+                json_pointer=child_pointer,
+                parent_pointer=parent_pointer,
+                key_probe_text=_build_key_probe_text(key_literal, child),
+            ),
+        )
+    return child_lines
+
+
+def _attach_list_child_location(
     child: Any,
     child_lines: list[RenderedLine],
     child_pointer: str,
 ) -> list[RenderedLine]:
     if isinstance(child, dict | list) and child_lines:
         first_line = child_lines[0]
-        child_lines[0] = RenderedLine(text=first_line.text, json_pointer=child_pointer)
+        child_lines[0] = RenderedLine(
+            text=first_line.text,
+            location=LineLocation(json_pointer=child_pointer),
+        )
     return child_lines
+
+
+def _build_key_probe_text(key_literal: str, child: Any) -> str:
+    if isinstance(child, dict):
+        return f"{key_literal}: {{}}"
+    if isinstance(child, list):
+        return f"{key_literal}: []"
+    return f"{key_literal}: null"
 
 
 def _append_json_pointer(pointer: str, segment: str) -> str:
