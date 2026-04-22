@@ -98,7 +98,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
 
         request = ScanRequest(
             content=filtered_text,
-            timeout_ms=self.config.timeout_ms,
+            timeout_ms=self._bounded_remaining_timeout_ms(started_at),
             config=ScanConfig(
                 enabled_plugins=tuple(self.config.enabled_plugins)
                 if self.config.enabled_plugins is not None
@@ -206,7 +206,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         if not key_probe_texts:
             return {}
 
-        remaining_ms = int(self.config.timeout_ms - ((time.monotonic() - started_at) * 1000))
+        remaining_ms = self._remaining_timeout_ms(started_at)
         if remaining_ms <= 0:
             return None
 
@@ -249,6 +249,12 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
             key_probe_texts.append(key_probe_text)
 
         return key_probe_texts
+
+    def _remaining_timeout_ms(self, started_at: float) -> int:
+        return int(self.config.timeout_ms - ((time.monotonic() - started_at) * 1000))
+
+    def _bounded_remaining_timeout_ms(self, started_at: float) -> int:
+        return max(1, self._remaining_timeout_ms(started_at))
 
     def _success_result(
         self,

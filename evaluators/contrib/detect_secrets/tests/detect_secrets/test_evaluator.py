@@ -316,6 +316,43 @@ async def test_structured_key_probes_are_batched(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.asyncio
+async def test_initial_scan_uses_remaining_timeout_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.requests: list[Any] = []
+
+        async def scan(self, request: Any) -> ScanResult:
+            self.requests.append(request)
+            return ScanResult(findings=(), detect_secrets_version="1.5.0")
+
+    fake_runtime = FakeRuntime()
+    monotonic_values = [100.0, 100.04]
+
+    def fake_monotonic() -> float:
+        if monotonic_values:
+            return monotonic_values.pop(0)
+        return 100.04
+
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
+        lambda: fake_runtime,
+    )
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.time.monotonic",
+        fake_monotonic,
+    )
+
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(timeout_ms=50))
+    result = await evaluator.evaluate("safe content only")
+
+    assert result.matched is False
+    assert len(fake_runtime.requests) == 1
+    assert 1 <= fake_runtime.requests[0].timeout_ms < 50
+
+
+@pytest.mark.asyncio
 async def test_exclude_lines_regex_suppresses_findings() -> None:
     evaluator = DetectSecretsEvaluator(
         DetectSecretsEvaluatorConfig(
