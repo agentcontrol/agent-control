@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import time
-from collections import Counter, defaultdict, deque
-from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
@@ -12,7 +10,6 @@ import re2
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import EvaluatorResult
 from detect_secrets_async import (
-    DetectSecretsRuntime,
     RuntimeConfigConflictError,
     RuntimeScanError,
     ScanConfig,
@@ -52,14 +49,9 @@ FAILURE_MESSAGES: dict[str, str] = {
 }
 
 IDENTIFIER_LIKE_KEY_PATTERN = re2.compile(r"^[A-Za-z_][A-Za-z0-9_.:-]{0,127}$")
-
-
-@dataclass(frozen=True, slots=True)
-class StructuredPointerAssignments:
-    """Structured-line pointer assignments plus secret-bearing key ancestry."""
-
-    by_line: dict[int, deque[str | None]]
-    secret_key_pointers: set[str]
+JSON_SCALAR_LIKE_KEY_PATTERN = re2.compile(
+    r"^(?:-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null)$"
+)
 
 
 @register_evaluator
@@ -153,39 +145,20 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
                 detect_secrets_version=runtime_info.detect_secrets_version,
             )
 
-        findings = await self._map_findings(
-            normalized=normalized,
-            scanned_text=filtered_text,
-            findings=scan_result.findings,
-            runtime=runtime,
-            scan_config=request.config,
-            started_at=started_at,
-        )
+        findings = self._map_findings(normalized=normalized, findings=scan_result.findings)
         return self._success_result(
             normalized=normalized,
             detect_secrets_version=scan_result.detect_secrets_version,
             findings=findings,
         )
 
-    async def _map_findings(
+    def _map_findings(
         self,
         *,
         normalized: NormalizedPayload,
-        scanned_text: str,
         findings: tuple[ScanFinding, ...],
-        runtime: DetectSecretsRuntime,
-        scan_config: ScanConfig,
-        started_at: float,
     ) -> list[dict[str, Any]]:
         mapped: list[dict[str, Any]] = []
-        structured_pointer_assignments = await self._build_structured_pointer_assignments(
-            normalized=normalized,
-            scanned_text=scanned_text,
-            findings=findings,
-            runtime=runtime,
-            scan_config=scan_config,
-            started_at=started_at,
-        )
 
         for finding in findings:
             finding_metadata: dict[str, Any] = {"type": finding.type}
@@ -195,12 +168,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
             elif normalized.payload_type in {"dict", "list"}:
                 if finding.line_number is not None:
                     location = normalized.line_locations_by_line.get(finding.line_number)
-                    json_pointer = self._safe_structured_pointer(
-                        location=location,
-                        finding=finding,
-                        structured_pointer_assignments=structured_pointer_assignments.by_line,
-                        secret_key_pointers=structured_pointer_assignments.secret_key_pointers,
-                    )
+                    json_pointer = self._safe_structured_pointer(location=location)
                     if json_pointer is not None:
                         finding_metadata["json_pointer"] = json_pointer
 
@@ -208,187 +176,51 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
 
         return mapped
 
-    def _safe_structured_pointer(
-        self,
-        *,
-        location: LineLocation | None,
-        finding: ScanFinding,
-        structured_pointer_assignments: dict[int, deque[str | None]],
-        secret_key_pointers: set[str],
-    ) -> str | None:
+    def _safe_structured_pointer(self, *, location: LineLocation | None) -> str | None:
         if location is None:
             return None
 
-        if location.key_probe_text is None:
-            pointer = location.json_pointer
+        pointer = location.json_pointer
+        if location.key_name is not None and self._key_name_is_secret_like(location.key_name):
+            pointer = location.parent_pointer
+
+        return self._truncate_pointer_at_secret_like_segment(pointer)
+
+    def _truncate_pointer_at_secret_like_segment(self, pointer: str | None) -> str | None:
+        if pointer is None or pointer == "":
+            return pointer
+
+        safe_segments: list[str] = []
+        for encoded_segment in pointer.split("/")[1:]:
+            segment = self._decode_json_pointer_segment(encoded_segment)
+            if self._pointer_segment_is_secret_like(segment):
+                break
+            safe_segments.append(segment)
         else:
-            assert finding.line_number is not None
-            line_assignments = structured_pointer_assignments.get(finding.line_number)
-            if line_assignments:
-                pointer = line_assignments.popleft()
-            else:
-                return None
+            return pointer
 
-        if self._pointer_traverses_secret_key(pointer, secret_key_pointers):
-            return None
-        return pointer
+        if not safe_segments:
+            return ""
 
-    async def _build_structured_pointer_assignments(
-        self,
-        *,
-        normalized: NormalizedPayload,
-        scanned_text: str,
-        findings: tuple[ScanFinding, ...],
-        runtime: DetectSecretsRuntime,
-        scan_config: ScanConfig,
-        started_at: float,
-    ) -> StructuredPointerAssignments:
-        if normalized.payload_type not in {"dict", "list"}:
-            return StructuredPointerAssignments(by_line={}, secret_key_pointers=set())
+        encoded_segments = [self._encode_json_pointer_segment(segment) for segment in safe_segments]
+        return "/" + "/".join(encoded_segments)
 
-        if self._remaining_timeout_ms(started_at) <= 0:
-            return StructuredPointerAssignments(by_line={}, secret_key_pointers=set())
-
-        findings_by_line: dict[int, list[ScanFinding]] = defaultdict(list)
-        for finding in findings:
-            if finding.line_number is None:
-                continue
-            findings_by_line[finding.line_number].append(finding)
-
-        if not findings_by_line:
-            return StructuredPointerAssignments(by_line={}, secret_key_pointers=set())
-
-        scanned_lines = scanned_text.splitlines()
-        candidate_lines: list[int] = []
-        full_line_batch: list[str] = []
-        probe_line_batch: list[str] = []
-
-        for line_number in sorted(findings_by_line):
-            location = normalized.line_locations_by_line.get(line_number)
-            if location is None or location.key_probe_text is None:
-                continue
-
-            line_index = line_number - 1
-            if not 0 <= line_index < len(scanned_lines):
-                continue
-
-            candidate_lines.append(line_number)
-            full_line_batch.append(scanned_lines[line_index])
-            probe_line_batch.append(location.key_probe_text)
-
-        if not candidate_lines:
-            return StructuredPointerAssignments(by_line={}, secret_key_pointers=set())
-
-        full_line_findings = await self._scan_line_batch(
-            runtime=runtime,
-            lines=full_line_batch,
-            scan_config=scan_config,
-            started_at=started_at,
-        )
-        if full_line_findings is None:
-            return StructuredPointerAssignments(by_line={}, secret_key_pointers=set())
-
-        probe_line_findings = await self._scan_line_batch(
-            runtime=runtime,
-            lines=probe_line_batch,
-            scan_config=scan_config,
-            started_at=started_at,
-        )
-        if probe_line_findings is None:
-            return StructuredPointerAssignments(by_line={}, secret_key_pointers=set())
-
-        assignments_by_line: dict[int, deque[str | None]] = {}
-        secret_key_pointers: set[str] = set()
-        for batch_index, line_number in enumerate(candidate_lines, start=1):
-            location = normalized.line_locations_by_line[line_number]
-            line_assignments, line_secret_key_pointers = self._assign_structured_line_pointers(
-                location=location,
-                line_findings=findings_by_line[line_number],
-                full_line_findings=full_line_findings.get(batch_index, []),
-                probe_line_findings=probe_line_findings.get(batch_index, []),
-            )
-            assignments_by_line[line_number] = deque(line_assignments)
-            secret_key_pointers.update(line_secret_key_pointers)
-
-        return StructuredPointerAssignments(
-            by_line=assignments_by_line,
-            secret_key_pointers=secret_key_pointers,
-        )
-
-    def _assign_structured_line_pointers(
-        self,
-        *,
-        location: LineLocation,
-        line_findings: list[ScanFinding],
-        full_line_findings: list[ScanFinding],
-        probe_line_findings: list[ScanFinding],
-    ) -> tuple[list[str | None], set[str]]:
-        if len(full_line_findings) != len(line_findings):
-            return self._fallback_structured_line_pointers(
-                location=location,
-                line_findings=line_findings,
-                probe_line_findings=probe_line_findings,
-            )
-
-        probe_type_counts = Counter(finding.type for finding in probe_line_findings)
-        line_pointers: list[str | None] = []
-        secret_key_pointers: set[str] = set()
-        for finding, full_line_finding in zip(line_findings, full_line_findings, strict=True):
-            if finding.type != full_line_finding.type:
-                return self._fallback_structured_line_pointers(
-                    location=location,
-                    line_findings=line_findings,
-                    probe_line_findings=probe_line_findings,
-                )
-
-            if probe_type_counts[full_line_finding.type] > 0:
-                line_pointers.append(location.parent_pointer)
-                if location.json_pointer is not None and self._key_name_is_secret_like(
-                    location.key_name
-                ):
-                    secret_key_pointers.add(location.json_pointer)
-                probe_type_counts[full_line_finding.type] -= 1
-            else:
-                line_pointers.append(location.json_pointer)
-
-        return line_pointers, secret_key_pointers
-
-    def _fallback_structured_line_pointers(
-        self,
-        *,
-        location: LineLocation,
-        line_findings: list[ScanFinding],
-        probe_line_findings: list[ScanFinding],
-    ) -> tuple[list[str | None], set[str]]:
-        probe_types = {finding.type for finding in probe_line_findings}
-        secret_key_pointers = (
-            {location.json_pointer}
-            if location.json_pointer
-            and probe_types
-            and self._key_name_is_secret_like(location.key_name)
-            else set()
-        )
-        return (
-            [
-                location.parent_pointer if finding.type in probe_types else location.json_pointer
-                for finding in line_findings
-            ],
-            secret_key_pointers,
-        )
-
-    def _pointer_traverses_secret_key(
-        self, pointer: str | None, secret_key_pointers: set[str]
-    ) -> bool:
-        if pointer is None:
+    def _pointer_segment_is_secret_like(self, segment: str) -> bool:
+        if segment.isdigit():
             return False
+        return self._key_name_is_secret_like(segment)
 
-        return any(
-            pointer == secret_key_pointer or pointer.startswith(f"{secret_key_pointer}/")
-            for secret_key_pointer in secret_key_pointers
-        )
+    def _decode_json_pointer_segment(self, segment: str) -> str:
+        return segment.replace("~1", "/").replace("~0", "~")
+
+    def _encode_json_pointer_segment(self, segment: str) -> str:
+        return segment.replace("~", "~0").replace("/", "~1")
 
     def _key_name_is_secret_like(self, key_name: str | None) -> bool:
         if key_name is None:
+            return False
+
+        if JSON_SCALAR_LIKE_KEY_PATTERN.fullmatch(key_name):
             return False
 
         if not IDENTIFIER_LIKE_KEY_PATTERN.fullmatch(key_name):
@@ -404,39 +236,6 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
             return get_runtime_info().detect_secrets_version
         except Exception:
             return "unknown"
-
-    async def _scan_line_batch(
-        self,
-        *,
-        runtime: DetectSecretsRuntime,
-        lines: list[str],
-        scan_config: ScanConfig,
-        started_at: float,
-    ) -> dict[int, list[ScanFinding]] | None:
-        remaining_ms = self._remaining_timeout_ms(started_at)
-        if remaining_ms <= 0:
-            return None
-
-        try:
-            result = await runtime.scan(
-                ScanRequest(
-                    content="\n".join(lines),
-                    timeout_ms=max(1, remaining_ms),
-                    config=scan_config,
-                )
-            )
-        except RuntimeScanError:
-            return None
-        except Exception:
-            return None
-
-        findings_by_line: dict[int, list[ScanFinding]] = defaultdict(list)
-        for finding in result.findings:
-            if finding.line_number is None:
-                continue
-            findings_by_line[finding.line_number].append(finding)
-
-        return findings_by_line
 
     def _remaining_timeout_ms(self, started_at: float) -> int:
         return int(self.config.timeout_ms - ((time.monotonic() - started_at) * 1000))

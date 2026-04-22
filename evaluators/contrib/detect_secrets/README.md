@@ -54,7 +54,8 @@ Safe metadata:
 - `findings[]` with `type`, plus:
   - `line_number` for plain selected strings
   - `json_pointer` for normalized `dict` / `list` payloads when a finding maps back to a structural
-    location
+    location; pointers are conservatively truncated to the nearest safe ancestor when a key segment
+    looks secret-like
 - `normalized_payload_type`
 - `detect_secrets_version`
 - `failure_mode` on evaluator failures

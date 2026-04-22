@@ -226,8 +226,27 @@ async def test_secret_bearing_object_keys_do_not_leak_through_json_pointer() -> 
 
     assert result.matched is True
     assert result.metadata is not None
-    assert {"type": "GitHub Token", "json_pointer": ""} in result.metadata["findings"]
-    assert {"type": "GitHub Token"} in result.metadata["findings"]
+    assert all(finding.get("json_pointer", "") == "" for finding in result.metadata["findings"])
+    assert all(
+        key_secret not in finding.get("json_pointer", "") for finding in result.metadata["findings"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_nested_findings_under_secret_like_key_truncate_to_safe_ancestor() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    key_secret = "ghp_123456789012345678901234567890123456"
+    value_secret = "ghp_abcdefabcdefabcdefabcdefabcdefabcdef"
+    result = await evaluator.evaluate({"outer": {key_secret: {"nested": value_secret}}})
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert all(
+        finding.get("json_pointer", "") == "/outer" for finding in result.metadata["findings"]
+    )
     assert all(
         key_secret not in finding.get("json_pointer", "") for finding in result.metadata["findings"]
     )
@@ -389,7 +408,7 @@ async def test_explicit_runtime_failure_is_sanitized(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.asyncio
-async def test_structured_key_probe_disambiguates_same_detector_type() -> None:
+async def test_structured_same_line_findings_map_to_field_pointer_without_probing() -> None:
     evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
 
     result = await evaluator.evaluate({"secret": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="})
@@ -397,37 +416,8 @@ async def test_structured_key_probe_disambiguates_same_detector_type() -> None:
     assert result.matched is True
     assert result.metadata is not None
     assert result.metadata["normalized_payload_type"] == "dict"
-    assert result.metadata["findings_count"] == 3
-    assert {"type": "Hex High Entropy String", "json_pointer": ""} in result.metadata["findings"]
-    assert {"type": "Hex High Entropy String", "json_pointer": "/secret"} in result.metadata[
-        "findings"
-    ]
+    assert all(finding.get("json_pointer") == "/secret" for finding in result.metadata["findings"])
     assert {"type": "Secret Keyword", "json_pointer": "/secret"} in result.metadata["findings"]
-
-
-@pytest.mark.asyncio
-async def test_structured_pointer_fallback_omits_ambiguous_pointer(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fail_scan_line_batch(self: DetectSecretsEvaluator, **kwargs: Any) -> None:
-        return None
-
-    monkeypatch.setattr(
-        DetectSecretsEvaluator,
-        "_scan_line_batch",
-        fail_scan_line_batch,
-    )
-
-    evaluator = DetectSecretsEvaluator(
-        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
-    )
-    result = await evaluator.evaluate(
-        {"outer": {"token": "ghp_123456789012345678901234567890123456"}}
-    )
-
-    assert result.matched is True
-    assert result.metadata is not None
-    assert result.metadata["findings"] == [{"type": "GitHub Token"}]
 
 
 @pytest.mark.asyncio
@@ -603,6 +593,22 @@ def test_normalize_payload_renders_expected_json_pointer_lines() -> None:
 
     assert normalized.payload_type == "dict"
     assert normalized.line_locations_by_line[4].json_pointer == "/outer/0/inner"
+
+
+@pytest.mark.parametrize(
+    ("key_name", "expected"),
+    [
+        ("github_token_key_name", True),
+        ("MyVeryLongFunctionName", False),
+        ("api_key_v2", False),
+        ("github_pat_11ABCDEFG1234567890123", True),
+        ("0", False),
+    ],
+)
+def test_key_name_is_secret_like_heuristic(key_name: str, expected: bool) -> None:
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    assert evaluator._key_name_is_secret_like(key_name) is expected
 
 
 def test_entry_point_is_registered() -> None:
