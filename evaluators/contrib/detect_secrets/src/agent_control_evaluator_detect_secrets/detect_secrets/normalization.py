@@ -76,7 +76,10 @@ def _normalize_structured_payload(
     *,
     payload_type: Literal["dict", "list"],
 ) -> NormalizedPayload:
-    normalized_data = _normalize_json_value(data)
+    try:
+        normalized_data = _normalize_json_value(data)
+    except (TypeError, ValueError) as exc:
+        raise NormalizationError(f"Failed to normalize structured payload: {exc}") from exc
 
     try:
         text = json.dumps(
@@ -122,10 +125,13 @@ def _normalize_primitive_payload(data: bool | int | float) -> NormalizedPayload:
 def _normalize_json_value(value: Any) -> Any:
     """Convert supported Python payloads into a deterministic JSON-compatible shape."""
     if isinstance(value, dict):
-        return {
-            _json_object_key_name(raw_key): _normalize_json_value(child)
-            for raw_key, child in value.items()
-        }
+        normalized_object: dict[str, Any] = {}
+        for raw_key, child in value.items():
+            normalized_key = _json_object_key_name(raw_key)
+            if normalized_key in normalized_object:
+                raise ValueError(f"JSON key collision after normalization: {normalized_key!r}")
+            normalized_object[normalized_key] = _normalize_json_value(child)
+        return normalized_object
 
     if isinstance(value, list | tuple):
         return [_normalize_json_value(child) for child in value]

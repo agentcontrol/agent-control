@@ -241,6 +241,25 @@ async def test_mixed_key_types_still_normalize_and_scan() -> None:
 
 
 @pytest.mark.asyncio
+async def test_colliding_normalized_keys_route_through_normalization_error() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    result = await evaluator.evaluate(
+        {
+            1: "ghp_123456789012345678901234567890123456",
+            "1": "safe",
+        }
+    )
+
+    assert result.matched is False
+    assert result.error == "detect-secrets evaluator failure: normalization_error"
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "normalization_error"
+
+
+@pytest.mark.asyncio
 async def test_primitive_payload_is_normalized_and_omits_line_numbers() -> None:
     evaluator = DetectSecretsEvaluator(
         DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
