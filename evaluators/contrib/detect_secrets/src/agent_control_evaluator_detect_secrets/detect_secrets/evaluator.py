@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-import threading
 import time
 from collections import Counter, defaultdict, deque
-from contextlib import AbstractContextManager
-from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import re2
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import EvaluatorResult
-from detect_secrets.core.scan import scan_line
-from detect_secrets.settings import default_settings, transient_settings
 from detect_secrets_async import (
+    DetectSecretsRuntime,
+    RuntimeConfigConflictError,
     RuntimeScanError,
     ScanConfig,
     ScanFinding,
@@ -52,15 +49,6 @@ FAILURE_MESSAGES: dict[str, str] = {
     "worker_protocol_error": "detect-secrets worker protocol error",
     "runtime_error": "detect-secrets runtime error",
 }
-_LOCAL_SCAN_LOCK = threading.Lock()
-
-
-@dataclass(frozen=True, slots=True)
-class _LocalLineMatch:
-    """A direct detect-secrets match for a single rendered line."""
-
-    type: str
-    secret_value: str | None
 
 
 @register_evaluator
@@ -122,8 +110,17 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         )
 
         try:
-            runtime = get_runtime()
+            configured_runtime = runtime_info.configured_runtime
+            runtime = (
+                get_runtime(configured_runtime) if configured_runtime is not None else get_runtime()
+            )
             scan_result = await runtime.scan(request)
+        except RuntimeConfigConflictError:
+            return self._failure_result(
+                failure_mode="runtime_error",
+                normalized_payload_type=normalized.payload_type,
+                detect_secrets_version=runtime_info.detect_secrets_version,
+            )
         except RuntimeScanError as exc:
             failure_mode = exc.code.value
             return self._failure_result(
@@ -136,6 +133,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
             normalized=normalized,
             scanned_text=filtered_text,
             findings=scan_result.findings,
+            runtime=runtime,
             scan_config=request.config,
             started_at=started_at,
         )
@@ -151,14 +149,16 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         normalized: NormalizedPayload,
         scanned_text: str,
         findings: tuple[ScanFinding, ...],
+        runtime: DetectSecretsRuntime,
         scan_config: ScanConfig,
         started_at: float,
     ) -> list[dict[str, Any]]:
         mapped: list[dict[str, Any]] = []
-        structured_pointer_assignments = self._build_structured_pointer_assignments(
+        structured_pointer_assignments = await self._build_structured_pointer_assignments(
             normalized=normalized,
             scanned_text=scanned_text,
             findings=findings,
+            runtime=runtime,
             scan_config=scan_config,
             started_at=started_at,
         )
@@ -203,12 +203,13 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
 
         return location.parent_pointer
 
-    def _build_structured_pointer_assignments(
+    async def _build_structured_pointer_assignments(
         self,
         *,
         normalized: NormalizedPayload,
         scanned_text: str,
         findings: tuple[ScanFinding, ...],
+        runtime: DetectSecretsRuntime,
         scan_config: ScanConfig,
         started_at: float,
     ) -> dict[int, deque[str | None]]:
@@ -228,28 +229,52 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
             return {}
 
         scanned_lines = scanned_text.splitlines()
-        assignments_by_line: dict[int, deque[str | None]] = {}
-        for line_number, line_findings in findings_by_line.items():
+        candidate_lines: list[int] = []
+        full_line_batch: list[str] = []
+        probe_line_batch: list[str] = []
+
+        for line_number in sorted(findings_by_line):
             location = normalized.line_locations_by_line.get(line_number)
             if location is None or location.key_probe_text is None:
                 continue
-
-            if self._remaining_timeout_ms(started_at) <= 0:
-                break
 
             line_index = line_number - 1
             if not 0 <= line_index < len(scanned_lines):
                 continue
 
-            full_matches = self._scan_line_matches(scanned_lines[line_index], scan_config)
-            if not full_matches:
-                continue
-            probe_matches = self._scan_line_matches(location.key_probe_text, scan_config)
+            candidate_lines.append(line_number)
+            full_line_batch.append(scanned_lines[line_index])
+            probe_line_batch.append(location.key_probe_text)
+
+        if not candidate_lines:
+            return {}
+
+        full_line_findings = await self._scan_line_batch(
+            runtime=runtime,
+            lines=full_line_batch,
+            scan_config=scan_config,
+            started_at=started_at,
+        )
+        if full_line_findings is None:
+            return {}
+
+        probe_line_findings = await self._scan_line_batch(
+            runtime=runtime,
+            lines=probe_line_batch,
+            scan_config=scan_config,
+            started_at=started_at,
+        )
+        if probe_line_findings is None:
+            return {}
+
+        assignments_by_line: dict[int, deque[str | None]] = {}
+        for batch_index, line_number in enumerate(candidate_lines, start=1):
+            location = normalized.line_locations_by_line[line_number]
             line_assignments = self._assign_structured_line_pointers(
                 location=location,
-                line_findings=line_findings,
-                full_matches=full_matches,
-                probe_matches=probe_matches,
+                line_findings=findings_by_line[line_number],
+                full_line_findings=full_line_findings.get(batch_index, []),
+                probe_line_findings=probe_line_findings.get(batch_index, []),
             )
             assignments_by_line[line_number] = deque(line_assignments)
 
@@ -260,30 +285,29 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         *,
         location: LineLocation,
         line_findings: list[ScanFinding],
-        full_matches: tuple[_LocalLineMatch, ...],
-        probe_matches: tuple[_LocalLineMatch, ...],
+        full_line_findings: list[ScanFinding],
+        probe_line_findings: list[ScanFinding],
     ) -> list[str | None]:
-        if len(full_matches) != len(line_findings):
+        if len(full_line_findings) != len(line_findings):
             return self._fallback_structured_line_pointers(
                 location=location,
                 line_findings=line_findings,
-                probe_matches=probe_matches,
+                probe_line_findings=probe_line_findings,
             )
 
-        probe_match_counts = Counter((match.type, match.secret_value) for match in probe_matches)
+        probe_type_counts = Counter(finding.type for finding in probe_line_findings)
         line_pointers: list[str | None] = []
-        for finding, full_match in zip(line_findings, full_matches, strict=True):
-            if finding.type != full_match.type:
+        for finding, full_line_finding in zip(line_findings, full_line_findings, strict=True):
+            if finding.type != full_line_finding.type:
                 return self._fallback_structured_line_pointers(
                     location=location,
                     line_findings=line_findings,
-                    probe_matches=probe_matches,
+                    probe_line_findings=probe_line_findings,
                 )
 
-            match_key = (full_match.type, full_match.secret_value)
-            if probe_match_counts[match_key] > 0:
+            if probe_type_counts[full_line_finding.type] > 0:
                 line_pointers.append(location.parent_pointer)
-                probe_match_counts[match_key] -= 1
+                probe_type_counts[full_line_finding.type] -= 1
             else:
                 line_pointers.append(location.json_pointer)
 
@@ -294,33 +318,44 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         *,
         location: LineLocation,
         line_findings: list[ScanFinding],
-        probe_matches: tuple[_LocalLineMatch, ...],
+        probe_line_findings: list[ScanFinding],
     ) -> list[str | None]:
-        probe_types = {match.type for match in probe_matches}
+        probe_types = {finding.type for finding in probe_line_findings}
         return [
             location.parent_pointer if finding.type in probe_types else location.json_pointer
             for finding in line_findings
         ]
 
-    def _scan_line_matches(
+    async def _scan_line_batch(
         self,
-        line: str,
+        *,
+        runtime: DetectSecretsRuntime,
+        lines: list[str],
         scan_config: ScanConfig,
-    ) -> tuple[_LocalLineMatch, ...]:
-        with _LOCAL_SCAN_LOCK:
-            with self._scan_settings(scan_config):
-                return tuple(
-                    _LocalLineMatch(type=secret.type, secret_value=secret.secret_value)
-                    for secret in scan_line(line)
+        started_at: float,
+    ) -> dict[int, list[ScanFinding]] | None:
+        remaining_ms = self._remaining_timeout_ms(started_at)
+        if remaining_ms <= 0:
+            return None
+
+        try:
+            result = await runtime.scan(
+                ScanRequest(
+                    content="\n".join(lines),
+                    timeout_ms=max(1, remaining_ms),
+                    config=scan_config,
                 )
+            )
+        except RuntimeScanError:
+            return None
 
-    def _scan_settings(self, scan_config: ScanConfig) -> AbstractContextManager[object]:
-        if scan_config.enabled_plugins is None:
-            return default_settings()
+        findings_by_line: dict[int, list[ScanFinding]] = defaultdict(list)
+        for finding in result.findings:
+            if finding.line_number is None:
+                continue
+            findings_by_line[finding.line_number].append(finding)
 
-        return transient_settings(
-            {"plugins_used": [{"name": plugin_name} for plugin_name in scan_config.enabled_plugins]}
-        )
+        return findings_by_line
 
     def _remaining_timeout_ms(self, started_at: float) -> int:
         return int(self.config.timeout_ms - ((time.monotonic() - started_at) * 1000))

@@ -4,7 +4,7 @@ sync:
 	uv sync --group dev
 
 test:
-	uv run --group dev pytest
+	uv run --group dev pytest --cov=src --cov-report=xml:../../../coverage-evaluators-detect-secrets.xml -q
 
 lint:
 	uv run --group dev ruff check .

@@ -1,4 +1,4 @@
-.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all models-test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish telemetry-test telemetry-lint telemetry-lint-fix telemetry-typecheck telemetry-build telemetry-publish
+.PHONY: help sync openapi-spec openapi-spec-check test test-extras test-all models-test test-models test-sdk lint lint-fix typecheck check build build-models build-server build-sdk publish publish-models publish-server publish-sdk hooks-install hooks-uninstall prepush evaluators-test evaluators-lint evaluators-lint-fix evaluators-typecheck evaluators-build galileo-test galileo-lint galileo-lint-fix galileo-typecheck galileo-build detect-secrets-test sdk-ts-generate sdk-ts-overlay-test sdk-ts-name-check sdk-ts-generate-check sdk-ts-build sdk-ts-test sdk-ts-lint sdk-ts-typecheck sdk-ts-release-check sdk-ts-publish-dry-run sdk-ts-publish telemetry-test telemetry-lint telemetry-lint-fix telemetry-typecheck telemetry-build telemetry-publish
 
 # Workspace package names
 PACK_MODELS := agent-control-models
@@ -18,6 +18,7 @@ ENGINE_DIR := engine
 TELEMETRY_DIR := telemetry
 EVALUATORS_DIR := evaluators/builtin
 GALILEO_DIR := evaluators/contrib/galileo
+DETECT_SECRETS_DIR := evaluators/contrib/detect_secrets
 UI_DIR := ui
 
 help:
@@ -252,6 +253,9 @@ ui-%:
 
 galileo-test:
 	$(MAKE) -C $(GALILEO_DIR) test
+
+detect-secrets-test:
+	$(MAKE) -C $(DETECT_SECRETS_DIR) test
 
 galileo-lint:
 	$(MAKE) -C $(GALILEO_DIR) lint

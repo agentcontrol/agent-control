@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from detect_secrets_async import (
+    RuntimeConfig,
     RuntimeScanError,
     ScanFailureCode,
     ScanResult,
@@ -213,7 +214,7 @@ async def test_on_error_deny_fails_closed(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(
         "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
-        lambda: FakeRuntime(),
+        lambda config=None: FakeRuntime(),
     )
 
     evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(on_error="deny"))
@@ -235,7 +236,7 @@ async def test_explicit_runtime_failure_is_sanitized(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(
         "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
-        lambda: FakeRuntime(),
+        lambda config=None: FakeRuntime(),
     )
 
     evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
@@ -258,11 +259,42 @@ async def test_structured_key_probe_disambiguates_same_detector_type() -> None:
     assert result.matched is True
     assert result.metadata is not None
     assert result.metadata["normalized_payload_type"] == "dict"
-    assert result.metadata["findings"] == [
-        {"type": "Hex High Entropy String"},
-        {"type": "Hex High Entropy String", "json_pointer": "/secret"},
-        {"type": "Secret Keyword", "json_pointer": "/secret"},
+    assert result.metadata["findings_count"] == 3
+    assert {"type": "Hex High Entropy String"} in result.metadata["findings"]
+    assert {"type": "Hex High Entropy String", "json_pointer": "/secret"} in result.metadata[
+        "findings"
     ]
+    assert {"type": "Secret Keyword", "json_pointer": "/secret"} in result.metadata["findings"]
+
+
+@pytest.mark.asyncio
+async def test_preconfigured_runtime_is_reused(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeRuntime:
+        async def scan(self, request: Any) -> ScanResult:
+            return ScanResult(findings=(), detect_secrets_version="1.5.0")
+
+    runtime_config = RuntimeConfig(pool_size=2, max_queue_depth=6, max_requests_per_worker=40)
+    runtime_info = get_runtime_info().model_copy(update={"configured_runtime": runtime_config})
+    runtime_calls: list[RuntimeConfig | None] = []
+
+    def fake_get_runtime(config: RuntimeConfig | None = None) -> FakeRuntime:
+        runtime_calls.append(config)
+        return FakeRuntime()
+
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime_info",
+        lambda: runtime_info,
+    )
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
+        fake_get_runtime,
+    )
+
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+    result = await evaluator.evaluate("safe content only")
+
+    assert result.matched is False
+    assert runtime_calls == [runtime_config]
 
 
 @pytest.mark.asyncio
@@ -287,7 +319,7 @@ async def test_initial_scan_uses_remaining_timeout_budget(
 
     monkeypatch.setattr(
         "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
-        lambda: fake_runtime,
+        lambda config=None: fake_runtime,
     )
     monkeypatch.setattr(
         "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.time.monotonic",

@@ -9,7 +9,6 @@ authors = [{ name = "Agent Control Team" }]
 dependencies = [
     "agent-control-evaluators>=3.0.0",
     "agent-control-models>=3.0.0",
-    "detect-secrets==1.5.0",
     "detect-secrets-async>=0.2.0,<0.3.0",
     "google-re2>=1.1",
     "pydantic>=2.12.4",
@@ -42,10 +41,6 @@ files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
 module = "re2"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "detect_secrets.*"
 ignore_missing_imports = true
 
 [tool.uv.sources]
