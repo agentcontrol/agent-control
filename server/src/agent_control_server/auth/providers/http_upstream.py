@@ -30,7 +30,7 @@ import httpx
 from fastapi import HTTPException, Request
 
 from ...logging_utils import get_logger
-from ..base import ManagementOperation, ManagementPrincipal
+from ..core import Operation, Principal
 
 _logger = get_logger(__name__)
 
@@ -45,14 +45,14 @@ _DEFAULT_FORWARDED_HEADERS: tuple[str, ...] = (
 )
 
 
-class HttpUpstreamManagementAuthorizer:
-    """Calls an upstream HTTP endpoint to authn+authz each management request.
+class HttpUpstreamAuthProvider:
+    """Calls an upstream HTTP endpoint to authn+authz each request.
 
     Configuration:
 
     - ``upstream_url`` — base URL of the upstream (e.g. ``http://api:8088``).
     - ``check_path`` — path on the upstream to POST (default
-      ``/internal/auth/check_management_access``).
+      ``/internal/agent_control/auth/check_management_access``).
     - ``service_token`` — optional service-to-service token AC presents to
       the upstream in a configured header. Separate from the caller's
       credential, which is forwarded in its own headers/cookies.
@@ -68,7 +68,7 @@ class HttpUpstreamManagementAuthorizer:
         self,
         *,
         upstream_url: str,
-        check_path: str = "/internal/auth/check_management_access",
+        check_path: str = "/internal/agent_control/auth/check_management_access",
         service_token: str | None = None,
         service_token_header: str = "X-Agent-Control-Service-Token",
         extra_forwarded_headers: tuple[str, ...] = (),
@@ -90,9 +90,9 @@ class HttpUpstreamManagementAuthorizer:
         self,
         request: Request,
         *,
-        operation: ManagementOperation,
+        operation: Operation,
         context: dict[str, object],
-    ) -> ManagementPrincipal:
+    ) -> Principal:
         outbound_headers = self._build_outbound_headers(request)
         body: dict[str, object] = {"operation": operation.value}
         body["context"] = context or None
@@ -177,7 +177,7 @@ class HttpUpstreamManagementAuthorizer:
                 detail="Management authorization service returned an incomplete principal.",
             )
         subject_id = principal_payload.get("subject_id")
-        return ManagementPrincipal(
+        return Principal(
             tenant_id=str(tenant_id),
             subject_id=str(subject_id) if subject_id else None,
         )

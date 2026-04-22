@@ -37,8 +37,7 @@ from fastapi import APIRouter, Depends, Path, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import require_admin_key
-from ..authz import ManagementOperation, ManagementPrincipal, require_management_auth
+from ..auth import Operation, Principal, require_admin_key, require_operation
 from ..db import get_async_db
 from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
@@ -58,6 +57,7 @@ def _target_binding_context(request: Request) -> dict[str, object]:
         "target_type": request.path_params["target_type"],
         "external_id": request.path_params["external_id"],
     }
+
 
 # Path-parameter charset guards. Kept in sync with ``TargetTypeStr`` and
 # ``ExternalIdStr`` in agent_control_models.target. Duplicated here because
@@ -79,6 +79,19 @@ _ExternalIdPath = Annotated[
 
 router = APIRouter(prefix="/targets", tags=["targets"])
 
+# Management router: target-binding endpoints that delegate authorization
+# to the configured :class:`auth.core.RequestAuthorizer` (provider).
+# Mounted in ``main.py`` WITHOUT the legacy ``Depends(require_api_key)``
+# router gate so upstream providers can accept alternative credentials
+# (e.g. a Galileo bearer token when running in ``http_upstream`` mode).
+#
+# TODO(auth-framework): migrate the remaining admin-gated target
+# endpoints (create/delete target, attach/detach by int id, toggle) onto
+# this router + ``require_operation`` too. Currently only the natural-key
+# binding endpoints (list/set/disable) are migrated because those are
+# what the Galileo UI calls.
+management_router = APIRouter(prefix="/targets", tags=["targets"])
+
 _logger = get_logger(__name__)
 
 
@@ -94,12 +107,8 @@ def _to_summary(target: Target) -> TargetSummary:
     )
 
 
-async def _get_target_or_404(
-    *, tenant_id: str, target_id: int, db: AsyncSession
-) -> Target:
-    target = await targets_service.get_target_by_id(
-        tenant_id=tenant_id, target_id=target_id, db=db
-    )
+async def _get_target_or_404(*, tenant_id: str, target_id: int, db: AsyncSession) -> Target:
+    target = await targets_service.get_target_by_id(tenant_id=tenant_id, target_id=target_id, db=db)
     if target is None:
         raise NotFoundError(
             error_code=ErrorCode.TARGET_NOT_FOUND,
@@ -177,9 +186,7 @@ async def list_targets(
     db: AsyncSession = Depends(get_async_db),
 ) -> ListTargetsResponse:
     """List targets for the effective tenant, optionally filtering by target_type."""
-    rows = await targets_service.list_targets(
-        tenant_id=tenant_id, target_type=target_type, db=db
-    )
+    rows = await targets_service.list_targets(tenant_id=tenant_id, target_type=target_type, db=db)
     return ListTargetsResponse(targets=[_to_summary(row) for row in rows])
 
 
@@ -211,9 +218,7 @@ async def delete_target(
     db: AsyncSession = Depends(get_async_db),
 ) -> None:
     """Delete a target. Attached ``target_controls`` rows cascade automatically."""
-    removed = await targets_service.delete_target(
-        tenant_id=tenant_id, target_id=target_id, db=db
-    )
+    removed = await targets_service.delete_target(tenant_id=tenant_id, target_id=target_id, db=db)
     if not removed:
         raise NotFoundError(
             error_code=ErrorCode.TARGET_NOT_FOUND,
@@ -304,9 +309,7 @@ async def detach_target_control(
     if not removed:
         raise NotFoundError(
             error_code=ErrorCode.TARGET_CONTROL_NOT_FOUND,
-            detail=(
-                f"Control '{control_id}' is not attached to target '{target_id}'"
-            ),
+            detail=(f"Control '{control_id}' is not attached to target '{target_id}'"),
             resource="TargetControl",
             hint="Verify the target and control IDs.",
         )
@@ -337,9 +340,7 @@ async def toggle_target_control(
     if attachment is None:
         raise NotFoundError(
             error_code=ErrorCode.TARGET_CONTROL_NOT_FOUND,
-            detail=(
-                f"Control '{control_id}' is not attached to target '{target_id}'"
-            ),
+            detail=(f"Control '{control_id}' is not attached to target '{target_id}'"),
             resource="TargetControl",
             hint="Attach the control to the target first.",
         )
@@ -376,7 +377,7 @@ async def list_controls_for_target(
 # ---------------------------------------------------------------------------
 
 
-@router.get(
+@management_router.get(
     "/{target_type}/{external_id}/controls",
     response_model=ListTargetControlsByNaturalKeyResponse,
     summary="List controls attached to a target identified by natural key",
@@ -385,9 +386,9 @@ async def list_controls_for_target(
 async def list_controls_for_target_by_natural_key(
     target_type: _TargetTypePath,
     external_id: _ExternalIdPath,
-    principal: ManagementPrincipal = Depends(
-        require_management_auth(
-            ManagementOperation.target_bindings_read,
+    principal: Principal = Depends(
+        require_operation(
+            Operation.target_bindings_read,
             context_builder=_target_binding_context,
         )
     ),
@@ -428,9 +429,8 @@ async def list_controls_for_target_by_natural_key(
     )
 
 
-@router.put(
+@management_router.put(
     "/{target_type}/{external_id}/controls/{control_id}",
-    dependencies=[Depends(require_admin_key)],
     response_model=TargetControlSummary,
     summary="Attach a control to a target identified by natural key",
     response_description="Current attachment state",
@@ -440,9 +440,9 @@ async def put_target_control_by_natural_key(
     external_id: _ExternalIdPath,
     control_id: int,
     request: AttachTargetControlRequest | None = None,
-    principal: ManagementPrincipal = Depends(
-        require_management_auth(
-            ManagementOperation.target_bindings_write,
+    principal: Principal = Depends(
+        require_operation(
+            Operation.target_bindings_write,
             context_builder=_target_binding_context,
         )
     ),
@@ -460,9 +460,7 @@ async def put_target_control_by_natural_key(
     """
     # Control existence check is tenant-scoped, so a control belonging to
     # another tenant returns AGENT_NOT_FOUND-style 404 without leaking.
-    await get_control_in_tenant_or_404(
-        tenant_id=tenant_id, control_id=control_id, db=db
-    )
+    await get_control_in_tenant_or_404(tenant_id=tenant_id, control_id=control_id, db=db)
 
     target, created = await targets_service.ensure_target_by_natural_key(
         tenant_id=tenant_id,
@@ -494,9 +492,8 @@ async def put_target_control_by_natural_key(
     )
 
 
-@router.delete(
+@management_router.delete(
     "/{target_type}/{external_id}/controls/{control_id}",
-    dependencies=[Depends(require_admin_key)],
     status_code=204,
     summary="Detach a control from a target identified by natural key",
     response_description="Empty response on success",
@@ -505,9 +502,9 @@ async def delete_target_control_by_natural_key(
     target_type: _TargetTypePath,
     external_id: _ExternalIdPath,
     control_id: int,
-    principal: ManagementPrincipal = Depends(
-        require_management_auth(
-            ManagementOperation.target_bindings_write,
+    principal: Principal = Depends(
+        require_operation(
+            Operation.target_bindings_write,
             context_builder=_target_binding_context,
         )
     ),
@@ -522,9 +519,7 @@ async def delete_target_control_by_natural_key(
     in the caller's tenant still surfaces as 404 to avoid masking caller
     errors under detach idempotency.
     """
-    await get_control_in_tenant_or_404(
-        tenant_id=tenant_id, control_id=control_id, db=db
-    )
+    await get_control_in_tenant_or_404(tenant_id=tenant_id, control_id=control_id, db=db)
 
     target = await targets_service.get_target_by_natural_key(
         tenant_id=tenant_id,

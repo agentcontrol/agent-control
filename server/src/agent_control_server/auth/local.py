@@ -38,9 +38,9 @@ from agent_control_models.errors import ErrorCode, ErrorReason
 from fastapi import Depends, Request, Security
 from fastapi.security import APIKeyHeader
 
-from .config import auth_settings
-from .errors import APIError, AuthenticationError, ForbiddenError
-from .logging_utils import get_logger
+from ..config import auth_settings
+from ..errors import APIError, AuthenticationError, ForbiddenError
+from ..logging_utils import get_logger
 
 _logger = get_logger(__name__)
 
@@ -101,7 +101,7 @@ def _authenticate_via_cookie(request: Request) -> AuthenticatedClient | None:
     ``endpoints.system`` (both share ``config`` but this module must not
     import endpoint code at module level).
     """
-    from .endpoints.system import SESSION_COOKIE_NAME, decode_session_jwt
+    from ..endpoints.system import SESSION_COOKIE_NAME, decode_session_jwt
 
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if not token:
@@ -214,6 +214,21 @@ async def _validate_api_key(
     )
 
 
+async def authenticate_request(
+    request: Request,
+    *,
+    require_admin: bool = False,
+) -> AuthenticatedClient:
+    """Run the legacy OSS credential check against a plain Request.
+
+    Same logic as :func:`require_api_key` / :func:`require_admin_key`, but
+    exposed as a regular async call (not a FastAPI dependency) so provider
+    implementations can reuse it without repeating the Security plumbing.
+    """
+    api_key = request.headers.get("x-api-key")
+    return await _validate_api_key(api_key, request, require_admin=require_admin)
+
+
 async def require_api_key(
     request: Request,
     api_key: str | None = Security(_api_key_header),
@@ -292,4 +307,3 @@ async def optional_api_key(
 RequireAPIKey = Annotated[AuthenticatedClient, Depends(require_api_key)]
 RequireAdminKey = Annotated[AuthenticatedClient, Depends(require_admin_key)]
 OptionalAPIKey = Annotated[AuthenticatedClient | None, Depends(optional_api_key)]
-

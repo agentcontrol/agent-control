@@ -3,7 +3,7 @@
 A reproducible end-to-end check for the management-vertical authz flow.
 Walks the happy path from the plan's §9 (list controls, read bindings,
 attach, detach) plus three deny cases (cross-org, cross-project,
-insufficient permissions) and an optional fail-closed check.
+insufficient permissions).
 
 Intended use: validate a locally-running stack of three services —
 Agent Control, Galileo `api`, and Galileo `authz` — without needing a UI.
@@ -15,10 +15,11 @@ Agent Control, Galileo `api`, and Galileo `authz` — without needing a UI.
 - `PUT  /api/v1/targets/log_stream/{id}/controls/{control_id}`
 - `DELETE /api/v1/targets/log_stream/{id}/controls/{control_id}`
 
-Under the hood each request runs through Agent Control's management-auth
-seam. In `http_upstream` mode AC calls `api /internal/auth/check_management_access`,
-which in turn runs a Cerbos check. The harness asserts the observable
-HTTP responses; it does not introspect Cerbos or api logs.
+Under the hood each request runs through Agent Control's pluggable auth
+seam. In `http_upstream` mode AC calls
+`api /internal/agent_control/auth/check_management_access`, which in
+turn runs a Cerbos check. The harness asserts the observable HTTP
+responses; it does not introspect Cerbos or api logs.
 
 ## Prerequisites
 
@@ -40,7 +41,6 @@ export HARNESS_CONTROL_ID=<int-id-of-a-seeded-control>
 export HARNESS_CROSS_ORG_USER_TOKEN=...
 export HARNESS_CROSS_PROJECT_USER_TOKEN=...
 export HARNESS_VIEWER_TOKEN=...
-export HARNESS_AC_URL_UNREACHABLE=http://localhost:60000
 
 uv run --package agent-control-server python tools/management_vertical_harness/harness.py
 ```

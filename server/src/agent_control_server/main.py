@@ -16,10 +16,11 @@ from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from . import __version__ as server_version
 from .auth import require_api_key
-from .authz.config import configure_management_auth_from_env
+from .auth.config import configure_auth_from_env
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal
 from .endpoints.agents import router as agent_router
+from .endpoints.controls import management_router as control_management_router
 from .endpoints.controls import router as control_router
 from .endpoints.controls import template_router as control_template_router
 from .endpoints.evaluation import router as evaluation_router
@@ -27,6 +28,7 @@ from .endpoints.evaluators import router as evaluator_router
 from .endpoints.observability import router as observability_router
 from .endpoints.policies import router as policy_router
 from .endpoints.system import router as system_router
+from .endpoints.targets import management_router as target_management_router
 from .endpoints.targets import router as target_router
 from .errors import (
     APIError,
@@ -87,10 +89,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup: Configure logging
     configure_logging(default_level=_default_log_level())
 
-    # Select and install the management authorizer based on env vars.
+    # Select and install the request authorizer based on env vars.
     # Defaults to the header provider; enterprise deployments set
     # AGENT_CONTROL_MANAGEMENT_AUTH_MODE=http_upstream and related vars.
-    configure_management_auth_from_env()
+    configure_auth_from_env()
 
     # Discover evaluators at startup
     discover_evaluators()
@@ -112,9 +114,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             log_to_stdout=observability_settings.stdout,
         )
         app.state.event_ingestor = ingestor
-        logger.info(
-            f"DirectEventIngestor initialized (stdout={observability_settings.stdout})"
-        )
+        logger.info(f"DirectEventIngestor initialized (stdout={observability_settings.stdout})")
 
         logger.info("Observability initialization complete")
 
@@ -199,7 +199,15 @@ app.add_exception_handler(Exception, generic_exception_handler)
 # API v1 prefix for all routes
 api_v1_prefix = f"{settings.api_prefix}/{settings.api_version}"
 
-# Protected routes (require valid API key)
+# Protected routes — still gated by the legacy OSS API-key check.
+#
+# TODO(auth-framework): migrate these routers onto the provider-based
+# framework. Each endpoint should declare an :class:`auth.Operation` and
+# depend on :func:`auth.require_operation`; the gate below should go
+# away. Until that happens, these endpoints only accept the OSS
+# credentials (X-API-Key header or session cookie) — they do NOT accept
+# a Galileo bearer token even in ``http_upstream`` mode. See the
+# management routers below for the migrated form.
 app.include_router(
     agent_router,
     prefix=api_v1_prefix,
@@ -237,6 +245,21 @@ app.include_router(
     dependencies=[Depends(require_api_key)],
 )
 
+# Management routes — delegated to the configured ``RequestAuthorizer``
+# per endpoint via :func:`auth.require_operation`. No router-level
+# API-key gate here: the provider owns authentication as well as
+# authorization, so these routes accept whatever credential the active
+# provider understands (OSS API key under the header provider; Galileo
+# bearer / session cookie under the http_upstream provider).
+app.include_router(
+    control_management_router,
+    prefix=api_v1_prefix,
+)
+app.include_router(
+    target_management_router,
+    prefix=api_v1_prefix,
+)
+
 # Observability routes (already has auth dependency in router)
 app.include_router(
     observability_router,
@@ -248,6 +271,7 @@ app.include_router(
     system_router,
     prefix=settings.api_prefix,
 )
+
 
 # Override OpenAPI to avoid recursive JSONValue schema issues in TS generators.
 def custom_openapi() -> dict[str, Any]:
@@ -270,6 +294,7 @@ def custom_openapi() -> dict[str, Any]:
 
 
 app.openapi = custom_openapi  # type: ignore[assignment]
+
 
 # Health check at root level (common convention)
 @app.get(

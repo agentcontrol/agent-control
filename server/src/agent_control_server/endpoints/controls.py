@@ -28,8 +28,7 @@ from sqlalchemy import Integer, String, delete, func, literal, or_, select, unio
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import require_admin_key
-from ..authz import ManagementOperation, ManagementPrincipal, require_management_auth
+from ..auth import Operation, Principal, require_admin_key, require_operation
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
@@ -69,6 +68,18 @@ _SCHEMA_VALIDATION_FAILED_MESSAGE = "Config does not satisfy the evaluator schem
 router = APIRouter(prefix="/controls", tags=["controls"])
 template_router = APIRouter(prefix="/control-templates", tags=["controls"])
 
+# Management router: endpoints that delegate authorization to the
+# configured :class:`auth.core.RequestAuthorizer` (provider). Mounted in
+# ``main.py`` WITHOUT the legacy ``Depends(require_api_key)`` router gate
+# so upstream providers can accept alternative credentials (e.g. a
+# Galileo bearer token when running in ``http_upstream`` mode).
+#
+# TODO(auth-framework): migrate the admin-gated endpoints below
+# (create/patch/delete/set_data) onto this router + ``require_operation``
+# too, so ``/controls`` is fully covered by the provider. Currently only
+# ``list_controls`` is migrated because that's what the Galileo UI calls.
+management_router = APIRouter(prefix="/controls", tags=["controls"])
+
 _logger = get_logger(__name__)
 
 
@@ -83,9 +94,7 @@ def _serialize_control_data(
         exclude_unset=True,
     )
     if "scope" in data_json and isinstance(data_json["scope"], dict):
-        data_json["scope"] = {
-            k: v for k, v in data_json["scope"].items() if v is not None
-        }
+        data_json["scope"] = {k: v for k, v in data_json["scope"].items() if v is not None}
     # Always persist enabled explicitly so _enabled_from_stored_payload reads
     # the correct value (especially for unrendered templates where enabled=False).
     if "enabled" not in data_json:
@@ -234,7 +243,8 @@ async def _materialize_control_input(
 
         validate_template_structure(control_input.template)
         validate_partial_template_values(
-            control_input.template, control_input.template_values,
+            control_input.template,
+            control_input.template_values,
         )
         return UnrenderedTemplateControl(
             template=control_input.template,
@@ -352,9 +362,7 @@ async def _validate_control_definition(
                         error_code=ErrorCode.INVALID_CONFIG,
                         detail=f"Config validation failed for evaluator '{evaluator_ref}'",
                         resource="Control",
-                        hint=(
-                            "Check the evaluator's config schema for required fields and types."
-                        ),
+                        hint=("Check the evaluator's config schema for required fields and types."),
                         errors=[
                             ValidationErrorItem(
                                 resource="Control",
@@ -481,9 +489,7 @@ async def create_control(
             hint="Choose a different name or update the existing control.",
         )
 
-    control_def = await _materialize_control_input(
-        request.data, tenant_id=tenant_id, db=db
-    )
+    control_def = await _materialize_control_input(request.data, tenant_id=tenant_id, db=db)
     control_data = _serialize_control_data(control_def)
 
     control = Control(name=request.name, tenant_id=tenant_id, data=control_data)
@@ -522,9 +528,7 @@ async def create_control(
 )
 async def get_control_schema() -> GetControlSchemaResponse:
     """Return the canonical JSON schema for ControlDefinition."""
-    return GetControlSchemaResponse(
-        schema=ControlDefinition.model_json_schema(by_alias=True)
-    )
+    return GetControlSchemaResponse(schema=ControlDefinition.model_json_schema(by_alias=True))
 
 
 @router.get(
@@ -551,9 +555,7 @@ async def get_control(
     Raises:
         HTTPException 404: Control not found
     """
-    control = await get_control_in_tenant_or_404(
-        tenant_id=tenant_id, control_id=control_id, db=db
-    )
+    control = await get_control_in_tenant_or_404(tenant_id=tenant_id, control_id=control_id, db=db)
 
     # Parse data if present and non-empty
     control_data: ControlDefinition | UnrenderedTemplateControl | None = None
@@ -609,9 +611,7 @@ async def get_control_data(
         HTTPException 404: Control not found
         HTTPException 422: Control data is corrupted
     """
-    control = await get_control_in_tenant_or_404(
-        tenant_id=tenant_id, control_id=control_id, db=db
-    )
+    control = await get_control_in_tenant_or_404(tenant_id=tenant_id, control_id=control_id, db=db)
     control_data = _parse_stored_control_data(
         control.data,
         control_name=control.name,
@@ -651,9 +651,7 @@ async def set_control_data(
         HTTPException 404: Control not found
         HTTPException 500: Database error during update
     """
-    control = await get_control_in_tenant_or_404(
-        tenant_id=tenant_id, control_id=control_id, db=db
-    )
+    control = await get_control_in_tenant_or_404(tenant_id=tenant_id, control_id=control_id, db=db)
 
     control_def = await _materialize_control_input(
         request.data,
@@ -707,7 +705,7 @@ async def validate_control_data(
     return ValidateControlDataResponse(success=True)
 
 
-@router.get(
+@management_router.get(
     "",
     response_model=ListControlsResponse,
     summary="List all controls",
@@ -728,9 +726,7 @@ async def list_controls(
     stage: str | None = Query(None, description="Filter by stage ('pre' or 'post')"),
     execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
     tag: str | None = Query(None, description="Filter by tag"),
-    principal: ManagementPrincipal = Depends(
-        require_management_auth(ManagementOperation.controls_read)
-    ),
+    principal: Principal = Depends(require_operation(Operation.controls_read)),
     db: AsyncSession = Depends(get_async_db),
 ) -> ListControlsResponse:
     tenant_id = principal.tenant_id
@@ -908,9 +904,7 @@ async def list_controls(
             current_repr = control_agent_repr_map[control_id]
             if current_repr is None or agent_name < current_repr:
                 control_agent_repr_map[control_id] = agent_name
-                control_agent_map[control_id] = AgentRef(
-                    agent_name=agent_name
-                )
+                control_agent_map[control_id] = AgentRef(agent_name=agent_name)
 
     # Build summaries (filtering already done at DB level)
     summaries: list[ControlSummary] = []
@@ -923,8 +917,7 @@ async def list_controls(
                 id=ctrl.id,
                 name=ctrl.name,
                 description=(
-                    data.get("description")
-                    or (data.get("template") or {}).get("description")
+                    data.get("description") or (data.get("template") or {}).get("description")
                 ),
                 enabled=data.get("enabled", True),
                 execution=data.get("execution"),
@@ -932,9 +925,7 @@ async def list_controls(
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
                 template_backed="template" in data,
-                template_rendered=(
-                    "condition" in data if "template" in data else None
-                ),
+                template_rendered=("condition" in data if "template" in data else None),
                 used_by_agent=control_agent_map.get(ctrl.id),
                 used_by_agents_count=len(control_agent_names_map.get(ctrl.id, set())),
             )
@@ -993,9 +984,7 @@ async def delete_control(
         HTTPException 500: Database error during deletion
     """
     # Find the control (tenant-scoped lookup)
-    control = await get_control_in_tenant_or_404(
-        tenant_id=tenant_id, control_id=control_id, db=db
-    )
+    control = await get_control_in_tenant_or_404(tenant_id=tenant_id, control_id=control_id, db=db)
 
     # Check for associations with policies and direct agent links.
     policy_assoc_query = select(
@@ -1127,9 +1116,7 @@ async def patch_control(
         HTTPException 500: Database error during update
     """
     # Find the control (tenant-scoped lookup)
-    control = await get_control_in_tenant_or_404(
-        tenant_id=tenant_id, control_id=control_id, db=db
-    )
+    control = await get_control_in_tenant_or_404(tenant_id=tenant_id, control_id=control_id, db=db)
 
     # Track if anything changed
     updated = False
@@ -1137,9 +1124,7 @@ async def patch_control(
     # Update name if provided
     if request.name is not None and request.name != control.name:
         # Check for name collision
-        existing = await db.execute(
-            select(Control.id).where(Control.name == request.name)
-        )
+        existing = await db.execute(select(Control.id).where(Control.name == request.name))
         if existing.first() is not None:
             raise ConflictError(
                 error_code=ErrorCode.CONTROL_NAME_CONFLICT,
@@ -1158,8 +1143,7 @@ async def patch_control(
             raise APIValidationError(
                 error_code=ErrorCode.VALIDATION_ERROR,
                 detail=(
-                    f"Cannot update enabled status: control '{control.name}' "
-                    "has no data configured"
+                    f"Cannot update enabled status: control '{control.name}' has no data configured"
                 ),
                 resource="Control",
                 hint=f"Use PUT /{control_id}/data to configure the control first.",
@@ -1193,8 +1177,7 @@ async def patch_control(
                             field="enabled",
                             code="unrendered_template_cannot_enable",
                             message=(
-                                "Provide parameter values to render "
-                                "the template before enabling."
+                                "Provide parameter values to render the template before enabling."
                             ),
                         )
                     ],

@@ -98,8 +98,8 @@ def setup_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def setup_management_authorizer() -> None:
-    """Install the header-based management authorizer for every test.
+def setup_request_authorizer() -> None:
+    """Install the header-based request authorizer for every test.
 
     Mirrors the OSS default mode (AGENT_CONTROL_MANAGEMENT_AUTH_MODE=header).
     In the full test run the FastAPI lifespan would install this too, but
@@ -107,10 +107,10 @@ def setup_management_authorizer() -> None:
     Tests that exercise the http_upstream provider override this inside
     their own test body.
     """
-    from agent_control_server.authz import set_management_authorizer
-    from agent_control_server.authz.providers.header import HeaderManagementAuthorizer
+    from agent_control_server.auth import set_request_authorizer
+    from agent_control_server.auth.providers.header import HeaderAuthProvider
 
-    set_management_authorizer(HeaderManagementAuthorizer())
+    set_request_authorizer(HeaderAuthProvider())
 
 
 @pytest.fixture()

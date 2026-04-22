@@ -19,7 +19,6 @@ Optional env vars (deny cases; skipped when unset):
     HARNESS_CROSS_ORG_USER_TOKEN     user in a different org
     HARNESS_CROSS_PROJECT_USER_TOKEN user in same org, different project
     HARNESS_VIEWER_TOKEN             user with viewer/editor role (no update_control_bindings)
-    HARNESS_AC_URL_UNREACHABLE       URL to a non-listening port for the fail-closed check
 
 Exits non-zero on the first failed assertion.
 """
@@ -71,7 +70,6 @@ def main() -> None:
     cross_org_token = _env_optional("HARNESS_CROSS_ORG_USER_TOKEN")
     cross_project_token = _env_optional("HARNESS_CROSS_PROJECT_USER_TOKEN")
     viewer_token = _env_optional("HARNESS_VIEWER_TOKEN")
-    unreachable_ac_url = _env_optional("HARNESS_AC_URL_UNREACHABLE")
 
     print(f"Agent Control: {ac_url}")
     print(f"log_stream_id: {log_stream_id}")
@@ -184,19 +182,10 @@ def main() -> None:
     else:
         print("  skip [insufficient_permissions] HARNESS_VIEWER_TOKEN not set")
 
-    # -----------------------------------------------------------------
-    # Fail-closed check (upstream unreachable)
-    # -----------------------------------------------------------------
-    if unreachable_ac_url is not None:
-        print("\n== Fail-closed ==")
-        r = client.get(f"{unreachable_ac_url.rstrip('/')}/api/v1/controls", headers=_bearer(user_token))
-        # The expected behavior here depends on deployment: if the unreachable
-        # URL is AC itself (with upstream auth pointed at a dead api), AC
-        # fails closed with 503. If the unreachable URL is the authz upstream,
-        # this test isn't meaningful from the client's POV.
-        _expect(r.status_code, 503, "fail-closed: upstream unreachable -> 503", r.text)
-    else:
-        print("\n  skip [fail-closed] HARNESS_AC_URL_UNREACHABLE not set")
+    # Fail-closed (upstream-api unreachable -> AC 503) is not exercised
+    # here because it's a property of the upstream provider, not of the
+    # end-to-end request flow; ``tests/test_auth_framework.py`` covers
+    # it as a unit test against ``HttpUpstreamAuthProvider`` directly.
 
     print("\nAll checks passed.")
 
