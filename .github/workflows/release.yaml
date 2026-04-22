@@ -11,7 +11,6 @@ jobs:
     outputs:
       released: ${{ steps.semantic_release.outputs.released }}
       tag: ${{ steps.semantic_release.outputs.tag }}
-      contrib_matrix: ${{ steps.contrib_matrix.outputs.matrix }}
 
     steps:
       - name: Checkout
@@ -32,15 +31,6 @@ jobs:
       - name: Verify contrib wiring
         run: python scripts/contrib_packages.py verify
 
-      - name: Compute contrib matrix
-        id: contrib_matrix
-        run: |
-          {
-            echo "matrix<<EOF"
-            python scripts/contrib_packages.py matrix
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Python Semantic Release
         id: semantic_release
         uses: python-semantic-release/python-semantic-release@v10.5.3
@@ -58,18 +48,37 @@ jobs:
           uv sync
           uv run python scripts/build.py all
 
+      - name: Stage built distributions
+        if: steps.semantic_release.outputs.released == 'true'
+        run: |
+          rm -rf release-dists
+          mkdir -p release-dists/models
+          mkdir -p release-dists/evaluators/builtin
+          mkdir -p release-dists/evaluators/contrib
+          mkdir -p release-dists/pypi/evaluators
+          mkdir -p release-dists/sdks/python
+          mkdir -p release-dists/server
+
+          cp -R models/dist release-dists/models/
+          cp -R evaluators/builtin/dist release-dists/evaluators/builtin/
+          cp evaluators/builtin/dist/* release-dists/pypi/evaluators/
+          cp -R sdks/python/dist release-dists/sdks/python/
+          cp -R server/dist release-dists/server/
+
+          for contrib_dir in evaluators/contrib/*/dist; do
+            contrib_name="$(basename "$(dirname "$contrib_dir")")"
+            mkdir -p "release-dists/evaluators/contrib/$contrib_name"
+            cp -R "$contrib_dir" "release-dists/evaluators/contrib/$contrib_name/"
+            cp "$contrib_dir"/* release-dists/pypi/evaluators/
+          done
+
       - name: Upload built distributions
         if: steps.semantic_release.outputs.released == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: release-dists
           if-no-files-found: error
-          path: |
-            models/dist/*
-            evaluators/builtin/dist/*
-            sdks/python/dist/*
-            server/dist/*
-            evaluators/contrib/*/dist/*
+          path: release-dists/
 
   publish-models:
     runs-on: ubuntu-latest
@@ -88,43 +97,14 @@ jobs:
       - name: Publish agent-control-models to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: models/dist/
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
-
-  publish-contrib:
-    runs-on: ubuntu-latest
-    needs: [release, publish-models]
-    if: needs.release.outputs.released == 'true'
-    permissions:
-      id-token: write
-    strategy:
-      fail-fast: false
-      matrix:
-        contrib: ${{ fromJSON(needs.release.outputs.contrib_matrix) }}
-
-    steps:
-      - name: Download built distributions
-        uses: actions/download-artifact@v4
-        with:
-          name: release-dists
-          path: .
-
-      - name: Publish ${{ matrix.contrib.package }} to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: ${{ matrix.contrib.dir }}/dist/
+          packages-dir: release-dists/models/dist/
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
   publish-evaluators:
     runs-on: ubuntu-latest
-    needs: [release, publish-models, publish-contrib]
-    if: >-
-      always() &&
-      needs.release.outputs.released == 'true' &&
-      needs.publish-models.result == 'success' &&
-      (needs.publish-contrib.result == 'success' || needs.publish-contrib.result == 'skipped')
+    needs: [release, publish-models]
+    if: needs.release.outputs.released == 'true'
     permissions:
       id-token: write
 
@@ -135,10 +115,10 @@ jobs:
           name: release-dists
           path: .
 
-      - name: Publish agent-control-evaluators to PyPI
+      - name: Publish evaluator distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: evaluators/builtin/dist/
+          packages-dir: release-dists/pypi/evaluators/
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
@@ -162,7 +142,7 @@ jobs:
       - name: Publish agent-control-sdk to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: sdks/python/dist/
+          packages-dir: release-dists/sdks/python/dist/
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
@@ -187,8 +167,8 @@ jobs:
           tag: ${{ needs.release.outputs.tag }}
           root_options: "-vv"
           dist_glob: |
-            models/dist/*
-            evaluators/builtin/dist/*
-            sdks/python/dist/*
-            server/dist/*
-            evaluators/contrib/*/dist/*
+            release-dists/models/dist/*
+            release-dists/evaluators/builtin/dist/*
+            release-dists/sdks/python/dist/*
+            release-dists/server/dist/*
+            release-dists/evaluators/contrib/*/dist/*
