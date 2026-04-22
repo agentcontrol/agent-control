@@ -50,7 +50,7 @@ def normalize_payload(data: Any) -> NormalizedPayload:
     if isinstance(data, dict):
         return _normalize_structured_payload(data, payload_type="dict")
 
-    if isinstance(data, list):
+    if isinstance(data, list | tuple):
         return _normalize_structured_payload(data, payload_type="list")
 
     if isinstance(data, bool | int | float):
@@ -72,17 +72,25 @@ def apply_line_exclusions(text: str, patterns: tuple[Any, ...]) -> str:
 
 
 def _normalize_structured_payload(
-    data: dict[Any, Any] | list[Any],
+    data: dict[Any, Any] | list[Any] | tuple[Any, ...],
     *,
     payload_type: Literal["dict", "list"],
 ) -> NormalizedPayload:
+    normalized_data = _normalize_json_value(data)
+
     try:
-        text = json.dumps(data, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False)
+        text = json.dumps(
+            normalized_data,
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
     except (TypeError, ValueError) as exc:
         raise NormalizationError(f"Failed to normalize structured payload: {exc}") from exc
 
     try:
-        rendered_lines = _render_json_lines(data)
+        rendered_lines = _render_json_lines(normalized_data)
     except (TypeError, ValueError) as exc:
         raise NormalizationError(f"Failed to map structured payload lines: {exc}") from exc
 
@@ -111,6 +119,20 @@ def _normalize_primitive_payload(data: bool | int | float) -> NormalizedPayload:
     return NormalizedPayload(payload_type="primitive", text=text, line_locations_by_line={})
 
 
+def _normalize_json_value(value: Any) -> Any:
+    """Convert supported Python payloads into a deterministic JSON-compatible shape."""
+    if isinstance(value, dict):
+        return {
+            _json_object_key_name(raw_key): _normalize_json_value(child)
+            for raw_key, child in value.items()
+        }
+
+    if isinstance(value, list | tuple):
+        return [_normalize_json_value(child) for child in value]
+
+    return value
+
+
 def _render_json_lines(
     value: Any,
     *,
@@ -123,7 +145,7 @@ def _render_json_lines(
     if isinstance(value, dict):
         return _render_dict_lines(value, indent_level=indent_level, prefix=prefix, pointer=pointer)
 
-    if isinstance(value, list):
+    if isinstance(value, list | tuple):
         return _render_list_lines(value, indent_level=indent_level, prefix=prefix, pointer=pointer)
 
     scalar_text = json.dumps(value, ensure_ascii=False, allow_nan=False)
@@ -148,7 +170,7 @@ def _render_dict_lines(
         return [RenderedLine(text=f"{indent}{prefix}{{}}")]
 
     lines = [RenderedLine(text=f"{indent}{prefix}{{")]
-    items = sorted(value.items(), key=lambda item: item[0])
+    items = sorted(value.items(), key=lambda item: _json_object_key_name(item[0]))
     last_index = len(items) - 1
 
     for index, (raw_key, child) in enumerate(items):
@@ -181,7 +203,7 @@ def _render_dict_lines(
 
 
 def _render_list_lines(
-    value: list[Any],
+    value: list[Any] | tuple[Any, ...],
     *,
     indent_level: int,
     prefix: str,

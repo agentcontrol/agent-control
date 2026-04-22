@@ -193,6 +193,54 @@ async def test_list_payload_maps_findings_to_json_pointer() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tuple_payload_maps_findings_like_a_list() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    result = await evaluator.evaluate(
+        (
+            {"token": "ghp_123456789012345678901234567890123456"},
+            {"kind": "safe"},
+        )
+    )
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["normalized_payload_type"] == "list"
+    assert result.metadata["findings"] == [
+        {
+            "type": "GitHub Token",
+            "json_pointer": "/0/token",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_mixed_key_types_still_normalize_and_scan() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    result = await evaluator.evaluate(
+        {
+            1: "ghp_123456789012345678901234567890123456",
+            "kind": "safe",
+        }
+    )
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["normalized_payload_type"] == "dict"
+    assert result.metadata["findings"] == [
+        {
+            "type": "GitHub Token",
+            "json_pointer": "/1",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_primitive_payload_is_normalized_and_omits_line_numbers() -> None:
     evaluator = DetectSecretsEvaluator(
         DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
