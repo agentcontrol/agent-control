@@ -67,6 +67,8 @@ class DetectSecretsEvaluatorConfig(EvaluatorConfig):
     def validate_exclude_lines_regex(cls, value: list[str]) -> list[str]:
         """Validate each configured exclude pattern as a RE2 regex."""
         for pattern in value:
+            if pattern == "":
+                raise ValueError("exclude_lines_regex entries must be non-empty")
             try:
                 re2.compile(pattern)
             except re2.error as exc:
