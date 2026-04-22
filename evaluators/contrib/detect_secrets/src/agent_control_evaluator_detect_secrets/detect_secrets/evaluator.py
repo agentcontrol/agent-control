@@ -494,10 +494,10 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
                 metadata=metadata,
             )
 
+        metadata["fallback_action"] = "allow"
         return EvaluatorResult(
             matched=False,
             confidence=0.0,
             message=f"Secret scan failed ({failure_mode}): {detail}; allowing request",
             metadata=metadata,
-            error=f"detect-secrets evaluator failure: {failure_mode}",
         )

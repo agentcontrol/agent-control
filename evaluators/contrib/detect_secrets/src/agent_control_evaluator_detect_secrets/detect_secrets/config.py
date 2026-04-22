@@ -46,7 +46,12 @@ class DetectSecretsEvaluatorConfig(EvaluatorConfig):
         if value is None:
             return None
 
-        available = set(get_runtime_info().available_plugin_names)
+        try:
+            available = set(get_runtime_info().available_plugin_names)
+        except Exception as exc:
+            raise ValueError(
+                "Unable to validate detect-secrets plugins because runtime introspection failed"
+            ) from exc
         normalized: list[str] = []
         seen: set[str] = set()
 

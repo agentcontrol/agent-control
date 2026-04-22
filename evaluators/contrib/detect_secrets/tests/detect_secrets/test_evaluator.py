@@ -295,9 +295,10 @@ async def test_colliding_normalized_keys_route_through_normalization_error() -> 
     )
 
     assert result.matched is False
-    assert result.error == "detect-secrets evaluator failure: normalization_error"
+    assert result.error is None
     assert result.metadata is not None
     assert result.metadata["failure_mode"] == "normalization_error"
+    assert result.metadata["fallback_action"] == "allow"
 
 
 @pytest.mark.asyncio
@@ -322,9 +323,10 @@ async def test_non_json_serializable_payload_routes_through_on_error_allow() -> 
 
     assert result.matched is False
     assert result.confidence == 0.0
-    assert result.error == "detect-secrets evaluator failure: normalization_error"
+    assert result.error is None
     assert result.metadata is not None
     assert result.metadata["failure_mode"] == "normalization_error"
+    assert result.metadata["fallback_action"] == "allow"
 
 
 @pytest.mark.asyncio
@@ -334,10 +336,11 @@ async def test_oversized_payload_routes_through_on_error_allow() -> None:
     result = await evaluator.evaluate("0123456789")
 
     assert result.matched is False
-    assert result.error == "detect-secrets evaluator failure: payload_too_large"
+    assert result.error is None
     assert result.metadata is not None
     assert result.metadata["failure_mode"] == "payload_too_large"
     assert result.metadata["normalized_payload_type"] == "str"
+    assert result.metadata["fallback_action"] == "allow"
 
 
 @pytest.mark.asyncio
@@ -377,9 +380,10 @@ async def test_explicit_runtime_failure_is_sanitized(monkeypatch: pytest.MonkeyP
     result = await evaluator.evaluate("hello")
 
     assert result.matched is False
-    assert result.error == "detect-secrets evaluator failure: worker_crash"
+    assert result.error is None
     assert result.metadata is not None
     assert result.metadata["failure_mode"] == "worker_crash"
+    assert result.metadata["fallback_action"] == "allow"
     assert result.message is not None
     assert FAILURE_MESSAGES["worker_crash"] in result.message
 
@@ -564,6 +568,21 @@ def test_blank_regex_is_rejected() -> None:
 def test_unknown_plugin_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unknown detect-secrets plugin"):
         DetectSecretsEvaluatorConfig(enabled_plugins=["NoSuchPlugin"])
+
+
+def test_plugin_validation_runtime_failures_are_wrapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.config.get_runtime_info",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Unable to validate detect-secrets plugins because runtime introspection failed",
+    ):
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
 
 
 @pytest.mark.asyncio
