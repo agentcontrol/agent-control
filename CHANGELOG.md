@@ -2,6 +2,28 @@
 
 <!-- version list -->
 
+## v7.6.0 (2026-04-22)
+
+### Bug Fixes
+
+- **examples**: Fix crewai examples ([#179](https://github.com/agentcontrol/agent-control/pull/179),
+  [`9004ea3`](https://github.com/agentcontrol/agent-control/commit/9004ea3a7ac15c28dc1dcae83f6758df33be2627))
+
+### Chores
+
+- **release**: Ts sdk v2.4.0 [skip ci]
+  ([`694067c`](https://github.com/agentcontrol/agent-control/commit/694067c860dd04ca802126c465ee5525f1de70f9))
+
+### Features
+
+- **sdk**: Add external sink ([#175](https://github.com/agentcontrol/agent-control/pull/175),
+  [`45f3645`](https://github.com/agentcontrol/agent-control/commit/45f3645ae3a7815d2c59cfa6629f7d65906d093b))
+
+- **server**: Phase 0: add control version history and soft-delete unusable legacy controls
+  ([#172](https://github.com/agentcontrol/agent-control/pull/172),
+  [`e5b2b33`](https://github.com/agentcontrol/agent-control/commit/e5b2b33ce86cdfbd395d5ee03652ba4baabe23a2))
+
+
 ## v7.5.0 (2026-04-20)
 
 ### Bug Fixes

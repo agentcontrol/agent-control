@@ -1,16 +1,21 @@
+import datetime as dt
+
 from agent_control_engine import list_evaluators
 from agent_control_models import ControlDefinition, TemplateControlInput, UnrenderedTemplateControl
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentRef,
     ControlSummary,
+    ControlVersionSummary,
     CreateControlRequest,
     CreateControlResponse,
     DeleteControlResponse,
     GetControlDataResponse,
     GetControlResponse,
     GetControlSchemaResponse,
+    GetControlVersionResponse,
     ListControlsResponse,
+    ListControlVersionsResponse,
     PaginationInfo,
     PatchControlRequest,
     PatchControlResponse,
@@ -24,7 +29,7 @@ from agent_control_models.server import (
 from fastapi import APIRouter, Depends, Query
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import ValidationError
-from sqlalchemy import Integer, String, delete, func, literal, or_, select, union_all
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,7 +42,7 @@ from ..errors import (
     NotFoundError,
 )
 from ..logging_utils import get_logger
-from ..models import Agent, AgentData, Control, agent_controls, agent_policies, policy_controls
+from ..models import Agent, AgentData
 from ..services.condition_traversal import iter_condition_leaves_with_paths
 from ..services.control_definitions import parse_control_definition_or_api_error
 from ..services.control_templates import (
@@ -47,11 +52,11 @@ from ..services.control_templates import (
     validate_partial_template_values,
     validate_template_structure,
 )
+from ..services.controls import ControlService
 from ..services.evaluator_utils import (
     parse_evaluator_ref_full,
     validate_config_against_schema,
 )
-from ..services.query_utils import escape_like_pattern
 from ..services.validation_paths import format_field_path
 
 # Pagination constants
@@ -65,6 +70,11 @@ router = APIRouter(prefix="/controls", tags=["controls"])
 template_router = APIRouter(prefix="/control-templates", tags=["controls"])
 
 _logger = get_logger(__name__)
+
+_CONTROL_NAME_UNIQUE_CONSTRAINTS = {
+    "controls_name_key",
+    "idx_controls_name_active",
+}
 
 
 def _serialize_control_data(
@@ -165,6 +175,18 @@ def _template_backed_raw_update_conflict(control_id: int) -> ConflictError:
             )
         ],
     )
+
+
+def _is_control_name_conflict(error: IntegrityError) -> bool:
+    """Return whether an IntegrityError came from the active-control name uniqueness guard."""
+    diag = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    if diag in _CONTROL_NAME_UNIQUE_CONSTRAINTS:
+        return True
+
+    error_text = " ".join(
+        part for part in (str(error.orig), str(error)) if part and part != "None"
+    )
+    return any(name in error_text for name in _CONTROL_NAME_UNIQUE_CONSTRAINTS)
 
 
 async def _render_and_validate_template_input(
@@ -462,9 +484,10 @@ async def create_control(
         HTTPException 409: Control with this name already exists
         HTTPException 500: Database error during creation
     """
+    control_service = ControlService(db)
+
     # Uniqueness check
-    existing = await db.execute(select(Control.id).where(Control.name == request.name))
-    if existing.first() is not None:
+    if await control_service.active_control_name_exists(request.name):
         raise ConflictError(
             error_code=ErrorCode.CONTROL_NAME_CONFLICT,
             detail=f"Control with name '{request.name}' already exists",
@@ -476,19 +499,33 @@ async def create_control(
     control_def = await _materialize_control_input(request.data, db=db)
     control_data = _serialize_control_data(control_def)
 
-    control = Control(name=request.name, data=control_data)
-    db.add(control)
+    control = control_service.create_control(name=request.name, data=control_data)
     try:
+        await control_service.create_version(
+            control,
+            event_type="created",
+            note="Initial creation",
+        )
         await db.commit()
-        await db.refresh(control)
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
-        raise ConflictError(
-            error_code=ErrorCode.CONTROL_NAME_CONFLICT,
-            detail=f"Control with name '{request.name}' already exists",
+        if _is_control_name_conflict(exc):
+            raise ConflictError(
+                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                detail=f"Control with name '{request.name}' already exists",
+                resource="Control",
+                resource_id=request.name,
+                hint="Choose a different name or update the existing control.",
+            )
+        _logger.error(
+            "Failed to create control '%s' due to integrity error",
+            request.name,
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail=f"Failed to create control '{request.name}': database error",
             resource="Control",
-            resource_id=request.name,
-            hint="Choose a different name or update the existing control.",
+            operation="create",
         )
     except Exception:
         await db.rollback()
@@ -539,35 +576,12 @@ async def get_control(
     Raises:
         HTTPException 404: Control not found
     """
-    res = await db.execute(select(Control).where(Control.id == control_id))
-    control = res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
-
-    # Parse data if present and non-empty
-    control_data: ControlDefinition | UnrenderedTemplateControl | None = None
-    if control.data:
-        try:
-            control_data = _parse_stored_control_data(
-                control.data,
-                control_name=control.name,
-                control_id=control_id,
-            )
-        except Exception:
-            # Data exists but is corrupted - log and return None
-            _logger.warning(
-                "Control '%s' (id=%s) has corrupted data that failed validation",
-                control.name,
-                control_id,
-                exc_info=True,
-            )
-            control_data = None
+    control = await ControlService(db).get_active_control_or_404(control_id)
+    control_data = _parse_stored_control_data(
+        control.data,
+        control_name=control.name,
+        control_id=control_id,
+    )
 
     return GetControlResponse(
         id=control.id,
@@ -602,22 +616,71 @@ async def get_control_data(
         HTTPException 404: Control not found
         HTTPException 422: Control data is corrupted
     """
-    res = await db.execute(select(Control).where(Control.id == control_id))
-    control = res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control = await ControlService(db).get_active_control_or_404(control_id)
     control_data = _parse_stored_control_data(
         control.data,
         control_name=control.name,
         control_id=control_id,
     )
     return GetControlDataResponse(data=control_data)
+
+
+@router.get(
+    "/{control_id}/versions",
+    response_model=ListControlVersionsResponse,
+    summary="List control version history",
+    response_description="Paginated control version summaries",
+)
+async def list_control_versions(
+    control_id: int,
+    cursor: int | None = Query(
+        None, description="Version number to start after (newest-first pagination)"
+    ),
+    limit: int = Query(_DEFAULT_PAGINATION_LIMIT, ge=1, le=_MAX_PAGINATION_LIMIT),
+    db: AsyncSession = Depends(get_async_db),
+) -> ListControlVersionsResponse:
+    """List control versions ordered newest-first using cursor-based pagination."""
+    page = await ControlService(db).list_versions(control_id, cursor=cursor, limit=limit)
+
+    return ListControlVersionsResponse(
+        versions=[
+            ControlVersionSummary(
+                version_num=version.version_num,
+                event_type=version.event_type,
+                note=version.note,
+                created_at=version.created_at.isoformat(),
+            )
+            for version in page.versions
+        ],
+        pagination=PaginationInfo(
+            limit=limit,
+            total=page.total,
+            next_cursor=page.next_cursor,
+            has_more=page.has_more,
+        ),
+    )
+
+
+@router.get(
+    "/{control_id}/versions/{version_num}",
+    response_model=GetControlVersionResponse,
+    summary="Get a specific control version",
+    response_description="Full control version snapshot",
+)
+async def get_control_version(
+    control_id: int,
+    version_num: int,
+    db: AsyncSession = Depends(get_async_db),
+) -> GetControlVersionResponse:
+    """Return a specific control version, including its raw persisted snapshot."""
+    version = await ControlService(db).get_version_or_404(control_id, version_num)
+    return GetControlVersionResponse(
+        version_num=version.version_num,
+        event_type=version.event_type,
+        note=version.note,
+        created_at=version.created_at.isoformat(),
+        snapshot=version.snapshot,
+    )
 
 
 @router.put(
@@ -650,16 +713,8 @@ async def set_control_data(
         HTTPException 404: Control not found
         HTTPException 500: Database error during update
     """
-    res = await db.execute(select(Control).where(Control.id == control_id))
-    control = res.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
 
     control_def = await _materialize_control_input(
         request.data,
@@ -668,17 +723,26 @@ async def set_control_data(
         control_id=control_id,
     )
 
-    control.data = _serialize_control_data(control_def)
+    control_service.replace_control_data(
+        control,
+        data=_serialize_control_data(control_def),
+    )
+    control_name = control.name
     try:
+        await control_service.create_version(
+            control,
+            event_type="updated",
+            note="Edited",
+        )
         await db.commit()
     except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to update data for control '{control.name}' ({control_id})",
+            f"Failed to update data for control '{control_name}' ({control_id})",
             exc_info=True,
         )
         raise DatabaseError(
-            detail=f"Failed to update data for control '{control.name}': database error",
+            detail=f"Failed to update data for control '{control_name}': database error",
             resource="Control",
             operation="update data",
         )
@@ -756,167 +820,29 @@ async def list_controls(
     Example:
         GET /controls?limit=10&enabled=true&step_type=tool
     """
-    query = select(Control).order_by(Control.id.desc())
-
-    # Apply cursor
-    if cursor is not None:
-        query = query.where(Control.id < cursor)
-
-    # Apply name filter (case-insensitive partial match)
-    if name is not None:
-        query = query.where(Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\"))
-        # Don't apply to count_query - total should be pre-filter
-
-    # Apply JSONB filters at database level
-    if enabled is not None:
-        if enabled:
-            # enabled=True: include if enabled is true OR key doesn't exist (default is True)
-            query = query.where(
-                or_(
-                    Control.data["enabled"].astext == "true",
-                    ~Control.data.has_key("enabled"),
-                )
-            )
-        else:
-            # enabled=False: only include if explicitly false
-            query = query.where(Control.data["enabled"].astext == "false")
-
-    if template_backed is not None:
-        if template_backed:
-            query = query.where(Control.data.has_key("template"))
-        else:
-            query = query.where(~Control.data.has_key("template"))
-
-    # Filters that reference rendered-only fields exclude unrendered templates
-    # (which lack condition/execution/scope/tags).
-    has_rendered_filter = any(f is not None for f in (step_type, stage, execution, tag))
-    if has_rendered_filter:
-        query = query.where(Control.data.has_key("condition"))
-
-    if step_type is not None:
-        query = query.where(
-            or_(
-                Control.data["scope"]["step_types"].contains([step_type]),
-                ~Control.data.has_key("scope"),
-                ~Control.data["scope"].has_key("step_types"),
-            )
-        )
-    if stage is not None:
-        query = query.where(
-            or_(
-                Control.data["scope"]["stages"].contains([stage]),
-                ~Control.data.has_key("scope"),
-                ~Control.data["scope"].has_key("stages"),
-            )
-        )
-    if execution is not None:
-        query = query.where(Control.data["execution"].astext == execution)
-
-    if tag is not None:
-        query = query.where(Control.data["tags"].contains([tag]))
-
-    # Fetch limit + 1 to check for more pages
-    query = query.limit(limit + 1)
-    result = await db.execute(query)
-    controls = list(result.scalars().all())
-
-    # Get total count (with same filters, but without cursor/limit)
-    total_query = select(func.count()).select_from(Control)
-    if name is not None:
-        total_query = total_query.where(
-            Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
-        )
-    if enabled is not None:
-        if enabled:
-            total_query = total_query.where(
-                or_(
-                    Control.data["enabled"].astext == "true",
-                    ~Control.data.has_key("enabled"),
-                )
-            )
-        else:
-            total_query = total_query.where(Control.data["enabled"].astext == "false")
-    if template_backed is not None:
-        if template_backed:
-            total_query = total_query.where(Control.data.has_key("template"))
-        else:
-            total_query = total_query.where(~Control.data.has_key("template"))
-    if has_rendered_filter:
-        total_query = total_query.where(Control.data.has_key("condition"))
-    if step_type is not None:
-        total_query = total_query.where(
-            or_(
-                Control.data["scope"]["step_types"].contains([step_type]),
-                ~Control.data.has_key("scope"),
-                ~Control.data["scope"].has_key("step_types"),
-            )
-        )
-    if stage is not None:
-        total_query = total_query.where(
-            or_(
-                Control.data["scope"]["stages"].contains([stage]),
-                ~Control.data.has_key("scope"),
-                ~Control.data["scope"].has_key("stages"),
-            )
-        )
-    if execution is not None:
-        total_query = total_query.where(Control.data["execution"].astext == execution)
-    if tag is not None:
-        total_query = total_query.where(Control.data["tags"].contains([tag]))
-    total_result = await db.execute(total_query)
-    total = total_result.scalar() or 0
-
-    # Check if there are more pages
-    has_more = len(controls) > limit
-    if has_more:
-        controls = controls[:-1]
-
-    # Build mapping of control_id -> usage attribution
-    # Traversal includes both:
-    # - Control -> policy_controls -> agent_policies -> Agent
-    # - Control -> agent_controls -> Agent
-    control_agent_map: dict[int, AgentRef | None] = {ctrl.id: None for ctrl in controls}
-    control_agent_names_map: dict[int, set[str]] = {ctrl.id: set() for ctrl in controls}
-    control_agent_repr_map: dict[int, str | None] = {ctrl.id: None for ctrl in controls}
-    if controls:
-        control_ids = [ctrl.id for ctrl in controls]
-        policy_agents_query = (
-            select(
-                policy_controls.c.control_id,
-                agent_policies.c.agent_name,
-            )
-            .select_from(policy_controls)
-            .join(agent_policies, policy_controls.c.policy_id == agent_policies.c.policy_id)
-            .where(policy_controls.c.control_id.in_(control_ids))
-        )
-        direct_agents_query = (
-            select(
-                agent_controls.c.control_id,
-                agent_controls.c.agent_name,
-            )
-            .select_from(agent_controls)
-            .where(agent_controls.c.control_id.in_(control_ids))
-        )
-        agents_query = union_all(policy_agents_query, direct_agents_query)
-        agents_result = await db.execute(agents_query)
-        for row in agents_result.all():
-            control_id, agent_name = row
-            control_agent_names_map[control_id].add(agent_name)
-
-            # Keep a deterministic representative agent for backwards compatibility.
-            current_repr = control_agent_repr_map[control_id]
-            if current_repr is None or agent_name < current_repr:
-                control_agent_repr_map[control_id] = agent_name
-                control_agent_map[control_id] = AgentRef(
-                    agent_name=agent_name
-                )
+    control_service = ControlService(db)
+    page = await control_service.list_controls_page(
+        cursor=cursor,
+        limit=limit,
+        name=name,
+        enabled=enabled,
+        template_backed=template_backed,
+        step_type=step_type,
+        stage=stage,
+        execution=execution,
+        tag=tag,
+    )
+    usage_by_control_id = await control_service.list_control_usage(
+        [control.id for control in page.controls]
+    )
 
     # Build summaries (filtering already done at DB level)
     summaries: list[ControlSummary] = []
-    for ctrl in controls:
+    for ctrl in page.controls:
         # Extract summary fields from JSONB data
         data = ctrl.data or {}
         scope = data.get("scope") or {}
+        usage = usage_by_control_id.get(ctrl.id)
         summaries.append(
             ControlSummary(
                 id=ctrl.id,
@@ -934,23 +860,22 @@ async def list_controls(
                 template_rendered=(
                     "condition" in data if "template" in data else None
                 ),
-                used_by_agent=control_agent_map.get(ctrl.id),
-                used_by_agents_count=len(control_agent_names_map.get(ctrl.id, set())),
+                used_by_agent=(
+                    AgentRef(agent_name=usage.representative_agent_name)
+                    if usage is not None and usage.representative_agent_name is not None
+                    else None
+                ),
+                used_by_agents_count=usage.used_by_agents_count if usage is not None else 0,
             )
         )
-
-    # Determine next cursor
-    next_cursor: str | None = None
-    if has_more and controls:
-        next_cursor = str(controls[-1].id)
 
     return ListControlsResponse(
         controls=summaries,
         pagination=PaginationInfo(
             limit=limit,
-            total=total,
-            next_cursor=next_cursor,
-            has_more=has_more,
+            total=page.total,
+            next_cursor=page.next_cursor,
+            has_more=page.has_more,
         ),
     )
 
@@ -990,36 +915,12 @@ async def delete_control(
         HTTPException 409: Control is in use (and force=false)
         HTTPException 500: Database error during deletion
     """
-    # Find the control
-    result = await db.execute(select(Control).where(Control.id == control_id))
-    control = result.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
 
-    # Check for associations with policies and direct agent links.
-    policy_assoc_query = select(
-        policy_controls.c.policy_id.label("policy_id"),
-        literal(None, type_=String).label("agent_name"),
-    ).where(policy_controls.c.control_id == control_id)
-    agent_assoc_query = select(
-        literal(None, type_=Integer).label("policy_id"),
-        agent_controls.c.agent_name.label("agent_name"),
-    ).where(agent_controls.c.control_id == control_id)
-    assoc_result = await db.execute(union_all(policy_assoc_query, agent_assoc_query))
-
-    associated_policy_ids: list[int] = []
-    associated_agent_names: list[str] = []
-    for policy_id, agent_name in assoc_result.all():
-        if policy_id is not None:
-            associated_policy_ids.append(policy_id)
-        if agent_name is not None:
-            associated_agent_names.append(agent_name)
+    associations = await control_service.list_control_associations(control_id)
+    associated_policy_ids = associations.policy_ids
+    associated_agent_names = associations.agent_names
 
     if (associated_policy_ids or associated_agent_names) and not force:
         errors = [
@@ -1057,12 +958,10 @@ async def delete_control(
     # Remove associations if force=true.
     dissociated_from_policies: list[int] = []
     dissociated_from_agents: list[str] = []
-    if associated_policy_ids:
-        await db.execute(delete(policy_controls).where(policy_controls.c.control_id == control_id))
-        dissociated_from_policies = associated_policy_ids
-    if associated_agent_names:
-        await db.execute(delete(agent_controls).where(agent_controls.c.control_id == control_id))
-        dissociated_from_agents = associated_agent_names
+    if associated_policy_ids or associated_agent_names:
+        dissociated = await control_service.remove_all_control_associations(control_id)
+        dissociated_from_policies = dissociated.policy_ids
+        dissociated_from_agents = dissociated.agent_names
     if dissociated_from_policies or dissociated_from_agents:
         _logger.info(
             "Dissociated control '%s' (%s) from %s policy/policies and %s agent(s)",
@@ -1072,19 +971,25 @@ async def delete_control(
             len(dissociated_from_agents),
         )
 
-    # Delete the control
-    await db.delete(control)
+    # Tombstone the control so backfilled version history remains referentially intact.
+    control_service.mark_control_deleted(control, deleted_at=dt.datetime.now(dt.UTC))
+    control_name = control.name
     try:
+        await control_service.create_version(
+            control,
+            event_type="deleted",
+            note="Deleted",
+        )
         await db.commit()
-        _logger.info(f"Deleted control '{control.name}' ({control_id})")
+        _logger.info("Soft-deleted control '%s' (%s)", control.name, control_id)
     except Exception:
         await db.rollback()
         _logger.error(
-            f"Failed to delete control '{control.name}' ({control_id})",
+            f"Failed to soft-delete control '{control_name}' ({control_id})",
             exc_info=True,
         )
         raise DatabaseError(
-            detail=f"Failed to delete control '{control.name}': database error",
+            detail=f"Failed to delete control '{control_name}': database error",
             resource="Control",
             operation="delete",
         )
@@ -1127,20 +1032,16 @@ async def patch_control(
     Raises:
         HTTPException 404: Control not found
         HTTPException 409: New name conflicts with existing control
-        HTTPException 422: Cannot update enabled status (control has no data configured)
+        HTTPException 422: Cannot update metadata for corrupted control data
         HTTPException 500: Database error during update
     """
-    # Find the control
-    result = await db.execute(select(Control).where(Control.id == control_id))
-    control = result.scalars().first()
-    if control is None:
-        raise NotFoundError(
-            error_code=ErrorCode.CONTROL_NOT_FOUND,
-            detail=f"Control with ID '{control_id}' not found",
-            resource="Control",
-            resource_id=str(control_id),
-            hint="Verify the control ID is correct and the control has been created.",
-        )
+    control_service = ControlService(db)
+    control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    parsed_control = _parse_stored_control_data(
+        control.data,
+        control_name=control.name,
+        control_id=control_id,
+    )
 
     # Track if anything changed
     updated = False
@@ -1148,10 +1049,10 @@ async def patch_control(
     # Update name if provided
     if request.name is not None and request.name != control.name:
         # Check for name collision
-        existing = await db.execute(
-            select(Control.id).where(Control.name == request.name)
-        )
-        if existing.first() is not None:
+        if await control_service.active_control_name_exists(
+            request.name,
+            exclude_control_id=control_id,
+        ):
             raise ConflictError(
                 error_code=ErrorCode.CONTROL_NAME_CONFLICT,
                 detail=f"Control with name '{request.name}' already exists",
@@ -1159,32 +1060,13 @@ async def patch_control(
                 resource_id=request.name,
                 hint="Choose a different name or update the existing control.",
             )
-        control.name = request.name
+        control_service.rename_control(control, name=request.name)
         updated = True
 
     # Update enabled status if provided
     current_enabled: bool | None = None
     if request.enabled is not None:
-        if not control.data:
-            raise APIValidationError(
-                error_code=ErrorCode.VALIDATION_ERROR,
-                detail=(
-                    f"Cannot update enabled status: control '{control.name}' "
-                    "has no data configured"
-                ),
-                resource="Control",
-                hint=f"Use PUT /{control_id}/data to configure the control first.",
-                errors=[
-                    ValidationErrorItem(
-                        resource="Control",
-                        field="enabled",
-                        code="no_data_configured",
-                        message="Control must have data configured before enabling/disabling",
-                    )
-                ],
-            )
-
-        if _is_unrendered_template(control.data):
+        if isinstance(parsed_control, UnrenderedTemplateControl):
             if request.enabled:
                 raise APIValidationError(
                     error_code=ErrorCode.VALIDATION_ERROR,
@@ -1213,72 +1095,54 @@ async def patch_control(
             # enabled=False on an unrendered template is a no-op (already false).
             current_enabled = False
         else:
-            try:
-                ctrl_def = ControlDefinition.model_validate(control.data)
-                if ctrl_def.enabled != request.enabled:
-                    new_data = dict(control.data)
-                    new_data["enabled"] = request.enabled
-                    control.data = new_data
-                    updated = True
-                current_enabled = request.enabled if updated else ctrl_def.enabled
-            except ValidationError:
-                _logger.error(
-                    "Control '%s' (%s) has corrupted data in patch request",
-                    control.name,
-                    control_id,
-                    exc_info=True,
-                )
-                raise APIValidationError(
-                    error_code=ErrorCode.CORRUPTED_DATA,
-                    detail=f"Control '{control.name}' has corrupted data",
-                    resource="Control",
-                    hint="Update the control data using PUT /{control_id}/data.",
-                    errors=[
-                        ValidationErrorItem(
-                            resource="Control",
-                            field="data",
-                            code="corrupted_data",
-                            message=_CORRUPTED_CONTROL_DATA_MESSAGE,
-                        )
-                    ],
-                )
-    elif control.data:
-        # Get current enabled status for response
-        if _is_unrendered_template(control.data):
-            current_enabled = False
-        else:
-            try:
-                ctrl_def = ControlDefinition.model_validate(control.data)
-                current_enabled = ctrl_def.enabled
-            except ValidationError:
-                _logger.warning(
-                    "Control '%s' has invalid data, using default",
-                    control.name,
-                )
+            if parsed_control.enabled != request.enabled:
+                control_service.set_control_enabled(control, enabled=request.enabled)
+                updated = True
+            current_enabled = request.enabled if updated else parsed_control.enabled
+    else:
+        current_enabled = parsed_control.enabled
 
     # Commit if anything changed
     if updated:
+        attempted_control_name = control.name
         try:
+            await control_service.create_version(
+                control,
+                event_type="updated",
+                note="Edited",
+            )
             await db.commit()
             _logger.info(f"Updated control '{control.name}' ({control_id})")
-        except IntegrityError:
+        except IntegrityError as exc:
             await db.rollback()
-            conflicting_name = request.name or control.name
-            raise ConflictError(
-                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
-                detail=f"Control with name '{conflicting_name}' already exists",
+            if _is_control_name_conflict(exc):
+                conflicting_name = request.name or control.name
+                raise ConflictError(
+                    error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                    detail=f"Control with name '{conflicting_name}' already exists",
+                    resource="Control",
+                    resource_id=conflicting_name,
+                    hint="Choose a different name or update the existing control.",
+                )
+            _logger.error(
+                "Failed to update control '%s' (%s) due to integrity error",
+                attempted_control_name,
+                control_id,
+                exc_info=True,
+            )
+            raise DatabaseError(
+                detail=f"Failed to update control '{attempted_control_name}': database error",
                 resource="Control",
-                resource_id=conflicting_name,
-                hint="Choose a different name or update the existing control.",
+                operation="update",
             )
         except Exception:
             await db.rollback()
             _logger.error(
-                f"Failed to update control '{control.name}' ({control_id})",
+                f"Failed to update control '{attempted_control_name}' ({control_id})",
                 exc_info=True,
             )
             raise DatabaseError(
-                detail=f"Failed to update control '{control.name}': database error",
+                detail=f"Failed to update control '{attempted_control_name}': database error",
                 resource="Control",
                 operation="update",
             )

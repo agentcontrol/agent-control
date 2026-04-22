@@ -166,6 +166,36 @@ def test_policy_remove_control_missing_control_returns_404(client: TestClient) -
     assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
 
 
+def test_policy_add_soft_deleted_control_returns_404(client: TestClient) -> None:
+    # Given: an existing policy and a control that has been soft-deleted
+    policy_id = _create_policy(client)
+    control_id = _create_control(client)
+    delete_resp = client.delete(f"/api/v1/controls/{control_id}")
+    assert delete_resp.status_code == 200
+
+    # When: adding the soft-deleted control to the policy
+    resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+
+    # Then: the deleted control is treated as not found
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
+
+
+def test_policy_remove_soft_deleted_control_returns_404(client: TestClient) -> None:
+    # Given: an existing policy and a control that has been soft-deleted
+    policy_id = _create_policy(client)
+    control_id = _create_control(client)
+    delete_resp = client.delete(f"/api/v1/controls/{control_id}")
+    assert delete_resp.status_code == 200
+
+    # When: removing the soft-deleted control from the policy
+    resp = client.delete(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+
+    # Then: the deleted control is treated as not found
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
+
+
 def test_policy_add_control_db_error_returns_500(
     app: FastAPI, client: TestClient
 ) -> None:

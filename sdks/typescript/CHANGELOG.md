@@ -1,3 +1,16 @@
+## [2.4.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.3.0...ts-sdk-v2.4.0) (2026-04-22)
+
+### Features
+
+* **evaluators:** add built-in budget evaluator for per-agent cost tracking ([#144](https://github.com/agentcontrol/agent-control/issues/144)) ([d4ce113](https://github.com/agentcontrol/agent-control/commit/d4ce113488c42e47cbba9364f47a2905e4cc5b35)), closes [#130](https://github.com/agentcontrol/agent-control/issues/130)
+* **sdk:** add external sink ([#175](https://github.com/agentcontrol/agent-control/issues/175)) ([45f3645](https://github.com/agentcontrol/agent-control/commit/45f3645ae3a7815d2c59cfa6629f7d65906d093b))
+* **server:** Align condition and template depth limits ([#166](https://github.com/agentcontrol/agent-control/issues/166)) ([03f402e](https://github.com/agentcontrol/agent-control/commit/03f402e4ddf36697579f2e6a4d4a9d279cb39ce1))
+* **server:** Phase 0: add control version history and soft-delete unusable legacy controls ([#172](https://github.com/agentcontrol/agent-control/issues/172)) ([e5b2b33](https://github.com/agentcontrol/agent-control/commit/e5b2b33ce86cdfbd395d5ee03652ba4baabe23a2))
+
+### Bug Fixes
+
+* **examples:** fix crewai examples ([#179](https://github.com/agentcontrol/agent-control/issues/179)) ([9004ea3](https://github.com/agentcontrol/agent-control/commit/9004ea3a7ac15c28dc1dcae83f6758df33be2627))
+
 ## [2.3.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.2.0...ts-sdk-v2.3.0) (2026-04-19)
 
 ### Features

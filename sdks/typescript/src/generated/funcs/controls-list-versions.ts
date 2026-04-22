@@ -4,7 +4,7 @@
 
 import * as z from "zod/v4-mini";
 import { AgentControlSDKCore } from "../core.js";
-import { encodeJSON, encodeSimple } from "../lib/encodings.js";
+import { encodeFormQuery, encodeSimple } from "../lib/encodings.js";
 import * as M from "../lib/matchers.js";
 import { compactMap } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
@@ -28,36 +28,19 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Update control metadata
+ * List control version history
  *
  * @remarks
- * Update control metadata (name and/or enabled status).
- *
- * This endpoint allows partial updates:
- * - To rename: provide 'name' field
- * - To enable/disable: provide 'enabled' field (updates the control's data)
- *
- * Args:
- *     control_id: ID of the control to update
- *     request: Fields to update (name, enabled)
- *     db: Database session (injected)
- *
- * Returns:
- *     PatchControlResponse with current control state
- *
- * Raises:
- *     HTTPException 404: Control not found
- *     HTTPException 409: New name conflicts with existing control
- *     HTTPException 422: Cannot update metadata for corrupted control data
- *     HTTPException 500: Database error during update
+ * List control versions ordered newest-first using cursor-based pagination.
  */
-export function controlsUpdateMetadata(
+export function controlsListVersions(
   client: AgentControlSDKCore,
-  request: operations.PatchControlApiV1ControlsControlIdPatchRequest,
+  request:
+    operations.ListControlVersionsApiV1ControlsControlIdVersionsGetRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.PatchControlResponse,
+    models.ListControlVersionsResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -78,12 +61,13 @@ export function controlsUpdateMetadata(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.PatchControlApiV1ControlsControlIdPatchRequest,
+  request:
+    operations.ListControlVersionsApiV1ControlsControlIdVersionsGetRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.PatchControlResponse,
+      models.ListControlVersionsResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -102,7 +86,7 @@ async function $do(
     (value) =>
       z.parse(
         operations
-          .PatchControlApiV1ControlsControlIdPatchRequest$outboundSchema,
+          .ListControlVersionsApiV1ControlsControlIdVersionsGetRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -111,7 +95,7 @@ async function $do(
     return [parsed, { status: "invalid" }];
   }
   const payload = parsed.value;
-  const body = encodeJSON("body", payload.body, { explode: true });
+  const body = null;
 
   const pathParams = {
     control_id: encodeSimple("control_id", payload.control_id, {
@@ -120,10 +104,14 @@ async function $do(
     }),
   };
 
-  const path = pathToFunc("/api/v1/controls/{control_id}")(pathParams);
+  const path = pathToFunc("/api/v1/controls/{control_id}/versions")(pathParams);
+
+  const query = encodeFormQuery({
+    "cursor": payload.cursor,
+    "limit": payload.limit,
+  });
 
   const headers = new Headers(compactMap({
-    "Content-Type": "application/json",
     Accept: "application/json",
   }));
 
@@ -134,7 +122,8 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "patch_control_api_v1_controls__control_id__patch",
+    operationID:
+      "list_control_versions_api_v1_controls__control_id__versions_get",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -148,10 +137,11 @@ async function $do(
 
   const requestRes = client._createRequest(context, {
     security: requestSecurity,
-    method: "PATCH",
+    method: "GET",
     baseURL: options?.serverURL,
     path: path,
     headers: headers,
+    query: query,
     body: body,
     userAgent: client._options.userAgent,
     timeoutMs: options?.timeoutMs || client._options.timeoutMs || -1,
@@ -177,7 +167,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.PatchControlResponse,
+    models.ListControlVersionsResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -188,7 +178,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.PatchControlResponse$inboundSchema),
+    M.json(200, models.ListControlVersionsResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

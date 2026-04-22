@@ -26,6 +26,13 @@ from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
 
 
+def _make_integrity_error(constraint_name: str) -> IntegrityError:
+    diag = SimpleNamespace(constraint_name=constraint_name)
+    orig = Exception(f'duplicate key value violates unique constraint "{constraint_name}"')
+    setattr(orig, "diag", diag)
+    return IntegrityError("statement", {}, orig)
+
+
 def _create_control(
     client: TestClient,
     name: str | None = None,
@@ -65,11 +72,7 @@ def test_create_control_integrity_error_returns_conflict(client: TestClient) -> 
         mock_session.add = MagicMock()
         mock_session.refresh = AsyncMock()
         mock_session.commit = AsyncMock(
-            side_effect=IntegrityError(
-                "INSERT INTO controls ...",
-                {"name": "duplicate-control"},
-                Exception("duplicate key value violates unique constraint"),
-            )
+            side_effect=_make_integrity_error("idx_controls_name_active")
         )
         yield mock_session
 
@@ -88,7 +91,12 @@ def test_create_control_integrity_error_returns_conflict(client: TestClient) -> 
 
 def test_patch_control_rename_integrity_error_returns_conflict(client: TestClient) -> None:
     """DB uniqueness violations during rename should be surfaced as 409 conflicts."""
-    control_obj = SimpleNamespace(id=1, name="old-control", data={})
+    control_obj = SimpleNamespace(
+        id=1,
+        name="old-control",
+        data=deepcopy(VALID_CONTROL_PAYLOAD),
+        deleted_at=None,
+    )
 
     async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
         mock_session = AsyncMock(spec=AsyncSession)
@@ -99,15 +107,20 @@ def test_patch_control_rename_integrity_error_returns_conflict(client: TestClien
         name_lookup_result = MagicMock()
         name_lookup_result.first.return_value = None
 
+        lock_result = MagicMock()
+        version_lookup_result = MagicMock()
+        version_lookup_result.scalar_one.return_value = 1
+
         mock_session.execute = AsyncMock(
-            side_effect=[control_lookup_result, name_lookup_result]
+            side_effect=[
+                control_lookup_result,
+                name_lookup_result,
+                lock_result,
+                version_lookup_result,
+            ]
         )
         mock_session.commit = AsyncMock(
-            side_effect=IntegrityError(
-                "UPDATE controls ...",
-                {"name": "existing-control"},
-                Exception("duplicate key value violates unique constraint"),
-            )
+            side_effect=_make_integrity_error("idx_controls_name_active")
         )
         yield mock_session
 
@@ -119,6 +132,47 @@ def test_patch_control_rename_integrity_error_returns_conflict(client: TestClien
 
     assert resp.status_code == 409
     assert resp.json()["error_code"] == "CONTROL_NAME_CONFLICT"
+
+
+def test_patch_control_non_name_integrity_error_returns_500(client: TestClient) -> None:
+    """Non-name integrity failures during patch should surface as database errors."""
+    control_obj = SimpleNamespace(
+        id=1,
+        name="old-control",
+        data=deepcopy(VALID_CONTROL_PAYLOAD),
+        deleted_at=None,
+    )
+
+    async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
+        mock_session = AsyncMock(spec=AsyncSession)
+
+        control_lookup_result = MagicMock()
+        control_lookup_result.scalars.return_value.first.return_value = control_obj
+
+        lock_result = MagicMock()
+        version_lookup_result = MagicMock()
+        version_lookup_result.scalar_one.return_value = 1
+
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                control_lookup_result,
+                lock_result,
+                version_lookup_result,
+            ]
+        )
+        mock_session.commit = AsyncMock(
+            side_effect=_make_integrity_error("uq_control_versions_control_version")
+        )
+        yield mock_session
+
+    app.dependency_overrides[get_async_db] = mock_db_integrity_error
+    try:
+        resp = client.patch("/api/v1/controls/1", json={"enabled": False})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 500
+    assert resp.json()["error_code"] == "DATABASE_ERROR"
 
 
 def test_list_controls_filters_and_pagination(client: TestClient) -> None:
@@ -215,18 +269,19 @@ def test_list_controls_filters_and_pagination(client: TestClient) -> None:
     assert page2["controls"][0]["id"] != first_id
 
 
-def test_patch_control_enabled_requires_data(client: TestClient) -> None:
-    # Given: a control without configured data
+def test_patch_control_enabled_with_invalid_data_returns_corrupted_data(
+    client: TestClient,
+) -> None:
+    # Given: a control with an invalid empty payload
     control_id, _ = _insert_unconfigured_control()
 
-    # When: toggling enabled without data
+    # When: toggling enabled
     resp = client.patch(f"/api/v1/controls/{control_id}", json={"enabled": False})
 
-    # Then: validation error
+    # Then: corrupted-data validation is returned
     assert resp.status_code == 422
     data = resp.json()
-    assert data["error_code"] == "VALIDATION_ERROR"
-    assert any(err.get("code") == "no_data_configured" for err in data.get("errors", []))
+    assert data["error_code"] == "CORRUPTED_DATA"
 
 
 def test_patch_control_rename_conflict(client: TestClient) -> None:
@@ -297,7 +352,10 @@ def test_patch_control_legacy_name_preserved_when_name_omitted(
             text(
                 "INSERT INTO controls (name, data) VALUES (:name, CAST(:data AS JSONB))"
             ),
-            {"name": "legacy control name", "data": json.dumps({})},
+            {
+                "name": "legacy control name",
+                "data": json.dumps(VALID_CONTROL_PAYLOAD),
+            },
         )
         row = conn.execute(
             text("SELECT id FROM controls WHERE name = 'legacy control name'")
@@ -589,10 +647,14 @@ def test_delete_control_force_dissociates(client: TestClient) -> None:
     assert list_resp.status_code == 200
     assert control_id not in list_resp.json()["control_ids"]
 
+    # And: the deleted control is hidden from active lookups
+    get_resp = client.get(f"/api/v1/controls/{control_id}")
+    assert get_resp.status_code == 404
+
 
 def test_delete_control_force_dissociates_direct_agent_links(client: TestClient) -> None:
     # Given: a control directly associated with an agent
-    control_id, _ = _create_control(client)
+    control_id, control_name = _create_control(client)
     _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
 
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
@@ -615,10 +677,49 @@ def test_delete_control_force_dissociates_direct_agent_links(client: TestClient)
     assert body.get("dissociated_from_policies", []) == []
     assert body.get("dissociated_from_agents", []) == [agent_name]
 
+    # And: the deleted control no longer appears in list results
+    list_resp = client.get("/api/v1/controls", params={"name": control_name})
+    assert list_resp.status_code == 200
+    assert list_resp.json()["controls"] == []
+    assert list_resp.json()["pagination"]["total"] == 0
 
-def test_get_control_corrupted_data_returns_none(client: TestClient) -> None:
+
+def test_create_control_allows_reusing_soft_deleted_name(client: TestClient) -> None:
+    # Given: a control name that has been soft-deleted
+    name = f"control-{uuid.uuid4()}"
+    original_id, _ = _create_control(client, name=name)
+
+    delete_resp = client.delete(f"/api/v1/controls/{original_id}", params={"force": True})
+    assert delete_resp.status_code == 200
+
+    # When: creating a new control with the same name
+    recreate_resp = client.put("/api/v1/controls", json={"name": name, "data": VALID_CONTROL_PAYLOAD})
+
+    # Then: creation succeeds because uniqueness only applies to active rows
+    assert recreate_resp.status_code == 200, recreate_resp.text
+    assert recreate_resp.json()["control_id"] != original_id
+
+
+def test_patch_control_rename_allows_soft_deleted_name(client: TestClient) -> None:
+    # Given: a soft-deleted control name and a separate active control
+    deleted_name = f"control-{uuid.uuid4()}"
+    deleted_id, _ = _create_control(client, name=deleted_name)
+    delete_resp = client.delete(f"/api/v1/controls/{deleted_id}", params={"force": True})
+    assert delete_resp.status_code == 200
+
+    control_id, _ = _create_control(client)
+
+    # When: renaming the active control to the deleted control's name
+    resp = client.patch(f"/api/v1/controls/{control_id}", json={"name": deleted_name})
+
+    # Then: rename succeeds
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == deleted_name
+
+
+def test_get_control_corrupted_data_returns_422(client: TestClient) -> None:
     # Given: a control with corrupted data in DB
-    control_id, control_name = _create_control(client)
+    control_id, _ = _create_control(client)
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
@@ -628,11 +729,10 @@ def test_get_control_corrupted_data_returns_none(client: TestClient) -> None:
     # When: fetching the control
     resp = client.get(f"/api/v1/controls/{control_id}")
 
-    # Then: data is None but the control metadata is intact
-    assert resp.status_code == 200
+    # Then: corrupted-data validation is returned
+    assert resp.status_code == 422
     body = resp.json()
-    assert body["name"] == control_name
-    assert body["data"] is None
+    assert body["error_code"] == "CORRUPTED_DATA"
 
 
 def test_get_control_data_corrupted_returns_422(client: TestClient) -> None:
@@ -669,8 +769,7 @@ def test_patch_control_enabled_with_corrupted_data(client: TestClient) -> None:
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "CORRUPTED_DATA"
-    assert body["errors"][0]["message"] == "Stored control data is corrupted and cannot be parsed."
-    assert "ValidationError" not in body["errors"][0]["message"]
+    assert "ValidationError" not in resp.text
 
 
 def test_set_control_data_agent_scoped_agent_not_found(client: TestClient) -> None:
@@ -991,7 +1090,7 @@ def test_patch_control_enabled_preserves_extra_fields(client: TestClient) -> Non
         assert control.data.get("custom_meta") == {"source": "unit-test"}
 
 
-def test_patch_control_rename_with_corrupted_data_returns_enabled_none(
+def test_patch_control_rename_with_corrupted_data_returns_422(
     client: TestClient,
 ) -> None:
     # Given: a control with corrupted data in DB
@@ -1008,6 +1107,6 @@ def test_patch_control_rename_with_corrupted_data_returns_enabled_none(
         json={"name": f"{control_name}-renamed"},
     )
 
-    # Then: rename succeeds and enabled is omitted (None)
-    assert resp.status_code == 200
-    assert resp.json()["enabled"] is None
+    # Then: corrupted-data validation is returned
+    assert resp.status_code == 422
+    assert resp.json()["error_code"] == "CORRUPTED_DATA"

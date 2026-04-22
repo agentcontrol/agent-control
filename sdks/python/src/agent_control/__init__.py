@@ -1069,7 +1069,7 @@ async def get_control(
         Dictionary containing:
             - id: Control ID
             - name: Control name
-            - data: Control definition or None if not configured
+            - data: Control definition or unrendered template control data
 
     Raises:
         httpx.HTTPError: If request fails or control not found

@@ -72,6 +72,39 @@ async def test_create_control_accepts_template_control_input() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_control_versions_forwards_cursor_and_limit() -> None:
+    # Given: an SDK client stub and version-history pagination params
+    response = Mock()
+    response.raise_for_status = Mock()
+    response.json = Mock(return_value={"versions": [], "pagination": {}})
+    client = SimpleNamespace(http_client=SimpleNamespace(get=AsyncMock(return_value=response)))
+
+    # When: listing control versions through the SDK wrapper
+    await agent_control.controls.list_control_versions(client, control_id=123, cursor=7, limit=5)
+
+    # Then: the request is sent to the correct endpoint with pagination params
+    client.http_client.get.assert_awaited_once_with(
+        "/api/v1/controls/123/versions",
+        params={"limit": 5, "cursor": 7},
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_control_version_calls_specific_version_endpoint() -> None:
+    # Given: an SDK client stub for fetching a specific version
+    response = Mock()
+    response.raise_for_status = Mock()
+    response.json = Mock(return_value={"version_num": 2, "snapshot": {}})
+    client = SimpleNamespace(http_client=SimpleNamespace(get=AsyncMock(return_value=response)))
+
+    # When: fetching a specific control version
+    await agent_control.controls.get_control_version(client, control_id=123, version_num=2)
+
+    # Then: the SDK calls the version-detail endpoint
+    client.http_client.get.assert_awaited_once_with("/api/v1/controls/123/versions/2")
+
+
+@pytest.mark.asyncio
 async def test_render_control_template_calls_preview_endpoint() -> None:
     # Given: an SDK client stub and template preview input
     response = Mock()
