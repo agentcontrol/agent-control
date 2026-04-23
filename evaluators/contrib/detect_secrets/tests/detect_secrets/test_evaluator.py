@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from importlib.metadata import entry_points
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from detect_secrets_async import (
     RuntimeConfig,
+    RuntimeConfigConflictError,
     RuntimeScanError,
     ScanFailureCode,
     ScanResult,
@@ -665,3 +667,537 @@ def test_entry_point_is_registered() -> None:
     assert evaluator_entry_points["yelp.detect_secrets"] == (
         "agent_control_evaluator_detect_secrets.detect_secrets:DetectSecretsEvaluator"
     )
+
+
+def test_entry_point_load_returns_evaluator_class() -> None:
+    # Given: the registered yelp.detect_secrets entry point
+    evaluator_entry_points = {
+        entry_point.name: entry_point
+        for entry_point in entry_points(group="agent_control.evaluators")
+    }
+    entry_point = evaluator_entry_points["yelp.detect_secrets"]
+
+    # When: the entry point is loaded
+    loaded_class = entry_point.load()
+
+    # Then: it resolves to the DetectSecretsEvaluator class
+    assert loaded_class is DetectSecretsEvaluator
+
+
+# ---------------------------------------------------------------------------
+# Failure-mode matrix: every ScanFailureCode x {allow, deny} combination,
+# plus evaluator-layer failures, plus a drift pin for FAILURE_MESSAGES.
+# ---------------------------------------------------------------------------
+
+_RUNTIME_FAILURE_CODES: tuple[ScanFailureCode, ...] = (
+    ScanFailureCode.INVALID_CONFIG,
+    ScanFailureCode.QUEUE_FULL,
+    ScanFailureCode.QUEUE_TIMEOUT,
+    ScanFailureCode.WORKER_STARTUP_ERROR,
+    ScanFailureCode.WORKER_TIMEOUT,
+    ScanFailureCode.WORKER_CRASH,
+    ScanFailureCode.WORKER_PROTOCOL_ERROR,
+    ScanFailureCode.RUNTIME_ERROR,
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_code", _RUNTIME_FAILURE_CODES)
+@pytest.mark.parametrize("on_error", ["allow", "deny"])
+async def test_runtime_failure_routes_through_on_error_for_each_code(
+    failure_code: ScanFailureCode,
+    on_error: Literal["allow", "deny"],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: a runtime that raises the given ScanFailureCode on every scan
+    class FakeRuntime:
+        async def scan(self, request: Any) -> Any:
+            raise RuntimeScanError(failure_code)
+
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
+        lambda config=None: FakeRuntime(),
+    )
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(on_error=on_error))
+
+    # When: a valid string payload is evaluated
+    result = await evaluator.evaluate("safe content only")
+
+    # Then: the failure_mode reflects the code and fallback_action mirrors on_error
+    assert result.error is None
+    assert result.confidence == 0.0
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == failure_code.value
+    assert result.metadata["fallback_action"] == on_error
+    assert result.message is not None
+    assert FAILURE_MESSAGES[failure_code.value] in result.message
+    assert result.matched is (on_error == "deny")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_error", ["allow", "deny"])
+@pytest.mark.parametrize(
+    ("failure_mode", "config_kwargs", "payload"),
+    [
+        ("normalization_error", {}, {"bad": {1, 2, 3}}),
+        ("payload_too_large", {"max_bytes": 8}, "0123456789"),
+    ],
+    ids=["normalization_error", "payload_too_large"],
+)
+async def test_evaluator_layer_failure_routes_through_on_error(
+    failure_mode: str,
+    config_kwargs: dict[str, Any],
+    payload: Any,
+    on_error: Literal["allow", "deny"],
+) -> None:
+    # Given: an evaluator configured to hit the given evaluator-layer failure
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(on_error=on_error, **config_kwargs)
+    )
+
+    # When: the triggering payload is evaluated
+    result = await evaluator.evaluate(payload)
+
+    # Then: metadata carries the expected failure_mode and fallback_action for both modes
+    assert result.error is None
+    assert result.confidence == 0.0
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == failure_mode
+    assert result.metadata["fallback_action"] == on_error
+    assert result.matched is (on_error == "deny")
+
+
+def test_failure_messages_cover_all_runtime_scan_failure_codes() -> None:
+    # Given: the detect-secrets-async ScanFailureCode enum and the evaluator's two
+    #        evaluator-layer failure modes
+    runtime_code_values = {code.value for code in ScanFailureCode}
+    evaluator_layer_codes = {"normalization_error", "payload_too_large"}
+
+    # When: the expected key set is formed
+    expected_keys = runtime_code_values | evaluator_layer_codes
+
+    # Then: FAILURE_MESSAGES has exactly that set, with a non-empty message for each
+    assert set(FAILURE_MESSAGES) == expected_keys
+    assert all(message for message in FAILURE_MESSAGES.values())
+
+
+# ---------------------------------------------------------------------------
+# Normalization edge cases (top-level types, NaN, empty containers,
+# non-string dict keys).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_top_level_set_routes_through_normalization_error() -> None:
+    # Given: a payload whose top-level type is not supported (a plain set)
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When: the evaluator evaluates it
+    result = await evaluator.evaluate({"abc", "def"})
+
+    # Then: the failure is classified as normalization_error
+    assert result.matched is False
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "normalization_error"
+    assert result.metadata["fallback_action"] == "allow"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_scalar", [float("nan"), float("inf"), float("-inf")])
+async def test_nan_or_infinity_primitive_routes_through_normalization_error(
+    bad_scalar: float,
+) -> None:
+    # Given: a non-finite float which json.dumps(allow_nan=False) rejects
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When: the evaluator evaluates it
+    result = await evaluator.evaluate(bad_scalar)
+
+    # Then: normalization fails safely through on_error=allow
+    assert result.matched is False
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "normalization_error"
+    assert result.metadata["fallback_action"] == "allow"
+
+
+@pytest.mark.asyncio
+async def test_empty_dict_payload_yields_no_findings() -> None:
+    # Given: an empty dict
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When: the evaluator evaluates it
+    result = await evaluator.evaluate({})
+
+    # Then: it scans successfully with no findings
+    assert result.matched is False
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["normalized_payload_type"] == "dict"
+    assert result.metadata["findings"] == []
+    assert result.metadata["findings_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_empty_list_payload_yields_no_findings() -> None:
+    # Given: an empty list
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When: the evaluator evaluates it
+    result = await evaluator.evaluate([])
+
+    # Then: it scans successfully with no findings
+    assert result.matched is False
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["normalized_payload_type"] == "list"
+    assert result.metadata["findings"] == []
+    assert result.metadata["findings_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_boolean_and_none_dict_keys_are_normalized_as_scalar_strings() -> None:
+    # Given: a dict keyed by True/False/None alongside a GitHub token under the True key
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    # When: the evaluator normalizes and scans
+    result = await evaluator.evaluate(
+        {
+            True: "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            False: "safe value",
+            None: "also safe",
+        }
+    )
+
+    # Then: the True key normalizes to "true" and the finding resolves to /true
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["normalized_payload_type"] == "dict"
+    assert result.metadata["findings"] == [{"type": "GitHub Token", "json_pointer": "/true"}]
+
+
+@pytest.mark.asyncio
+async def test_unsupported_dict_key_type_routes_through_normalization_error() -> None:
+    # Given: a dict keyed by a tuple (unsupported JSON key type)
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When: the evaluator evaluates it
+    result = await evaluator.evaluate({("a", "b"): "value"})
+
+    # Then: normalization fails safely
+    assert result.matched is False
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "normalization_error"
+    assert result.metadata["fallback_action"] == "allow"
+
+
+# ---------------------------------------------------------------------------
+# Runtime-side failure paths that aren't exercised elsewhere.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_runtime_info_failure_during_non_none_evaluate_returns_runtime_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: a get_runtime_info reference inside the evaluator module that always raises
+    def raise_runtime_error() -> Any:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime_info",
+        raise_runtime_error,
+    )
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When: a non-None payload is evaluated (the None short-circuit doesn't apply)
+    result = await evaluator.evaluate("safe content only")
+
+    # Then: the evaluator returns runtime_error with unknown detect-secrets version
+    assert result.matched is False
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "runtime_error"
+    assert result.metadata["fallback_action"] == "allow"
+    assert result.metadata["detect_secrets_version"] == "unknown"
+    assert "normalized_payload_type" not in result.metadata
+
+
+@pytest.mark.asyncio
+async def test_runtime_config_conflict_routes_through_runtime_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: get_runtime that raises RuntimeConfigConflictError
+    def raise_conflict(config: Any = None) -> Any:
+        raise RuntimeConfigConflictError("conflict")
+
+    monkeypatch.setattr(
+        "agent_control_evaluator_detect_secrets.detect_secrets.evaluator.get_runtime",
+        raise_conflict,
+    )
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When: a valid payload is evaluated
+    result = await evaluator.evaluate("safe content only")
+
+    # Then: the conflict is sanitized to a runtime_error failure
+    assert result.matched is False
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "runtime_error"
+    assert result.metadata["fallback_action"] == "allow"
+    assert result.metadata["normalized_payload_type"] == "str"
+
+
+# ---------------------------------------------------------------------------
+# exclude_lines_regex on structured payloads.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_exclude_lines_regex_on_dict_payload_blanks_matching_line() -> None:
+    # Given: an evaluator configured to exclude JSON lines that contain "authorization"
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(
+            enabled_plugins=["GitHubTokenDetector"],
+            exclude_lines_regex=[r'"authorization"'],
+        )
+    )
+
+    # When: a dict carries the secret on the excluded line
+    result = await evaluator.evaluate(
+        {
+            "authorization": "ghp_123456789012345678901234567890123456",
+            "other": "safe",
+        }
+    )
+
+    # Then: the excluded line is blanked and no finding is surfaced
+    assert result.matched is False
+    assert result.metadata is not None
+    assert result.metadata["findings"] == []
+
+
+@pytest.mark.asyncio
+async def test_exclude_lines_regex_on_dict_payload_preserves_pointers_for_other_findings() -> None:
+    # Given: a dict where one line matches the exclusion and a DIFFERENT line has a secret
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(
+            enabled_plugins=["GitHubTokenDetector"],
+            exclude_lines_regex=[r'"skip"'],
+        )
+    )
+
+    # When: the evaluator scans
+    result = await evaluator.evaluate(
+        {
+            "skip": "ghp_abcdefabcdefabcdefabcdefabcdefabcdef",
+            "keep": "ghp_111111111111111111111111111111111111",
+        }
+    )
+
+    # Then: line-number blanking does not disturb the surviving finding's pointer
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["findings"] == [{"type": "GitHub Token", "json_pointer": "/keep"}]
+
+
+# ---------------------------------------------------------------------------
+# max_bytes boundary behavior.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_payload_exactly_at_max_bytes_is_accepted() -> None:
+    # Given: a payload whose UTF-8 byte length exactly equals max_bytes
+    payload = "a" * 64
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(max_bytes=64))
+
+    # When: the evaluator evaluates it
+    result = await evaluator.evaluate(payload)
+
+    # Then: the scan proceeds without tripping payload_too_large
+    assert result.metadata is not None
+    assert result.metadata.get("failure_mode") is None
+    assert result.metadata["normalized_payload_type"] == "str"
+
+
+@pytest.mark.asyncio
+async def test_payload_one_byte_over_max_bytes_is_rejected() -> None:
+    # Given: a payload one byte over the configured max_bytes
+    payload = "a" * 65
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(max_bytes=64))
+
+    # When: the evaluator evaluates it
+    result = await evaluator.evaluate(payload)
+
+    # Then: failure_mode is payload_too_large
+    assert result.matched is False
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "payload_too_large"
+    assert result.metadata["fallback_action"] == "allow"
+
+
+# ---------------------------------------------------------------------------
+# Scan-mapping edge cases and concurrency.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_multi_line_string_preserves_distinct_line_numbers() -> None:
+    # Given: a multi-line string with GitHub tokens on lines 1 and 3
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+    content = "\n".join(
+        [
+            "first = 'ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'",
+            "safe middle line",
+            "third = 'ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'",
+        ]
+    )
+
+    # When: the evaluator evaluates it
+    result = await evaluator.evaluate(content)
+
+    # Then: findings carry their respective original line numbers
+    assert result.matched is True
+    assert result.metadata is not None
+    line_numbers = sorted(finding["line_number"] for finding in result.metadata["findings"])
+    assert line_numbers == [1, 3]
+
+
+@pytest.mark.asyncio
+async def test_list_with_scalar_elements_maps_pointer_to_index() -> None:
+    # Given: a list whose element at index 1 is a bare secret string
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    # When: the evaluator scans it
+    result = await evaluator.evaluate(["safe", "ghp_123456789012345678901234567890123456"])
+
+    # Then: the finding pointer names the list index
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["normalized_payload_type"] == "list"
+    assert result.metadata["findings"] == [{"type": "GitHub Token", "json_pointer": "/1"}]
+
+
+@pytest.mark.asyncio
+async def test_evaluate_is_safe_under_concurrent_calls() -> None:
+    # Given: a single evaluator instance and several distinct secret-bearing payloads
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+    payloads = [
+        f"github_token_{index} = 'ghp_{str(index).zfill(2)}3456789012345678901234567890123456'"
+        for index in range(5)
+    ]
+
+    # When: many evaluate() calls run in parallel on the cached instance
+    results = await asyncio.gather(*(evaluator.evaluate(payload) for payload in payloads))
+
+    # Then: every call produces the correct finding with line_number=1 and no cross-talk
+    assert all(result.matched for result in results)
+    assert all(
+        result.metadata is not None
+        and result.metadata["findings"] == [{"type": "GitHub Token", "line_number": 1}]
+        for result in results
+    )
+
+
+def test_safe_structured_pointer_returns_none_for_missing_location() -> None:
+    # Given: an evaluator instance and no location metadata
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When: the pointer helper is invoked without a location
+    pointer = evaluator._safe_structured_pointer(location=None)
+
+    # Then: the helper returns None so the finding is emitted without a pointer
+    assert pointer is None
+
+
+# ---------------------------------------------------------------------------
+# Additional _key_name_is_secret_like coverage (None, non-identifier keys).
+# ---------------------------------------------------------------------------
+
+
+def test_key_name_is_secret_like_returns_false_for_none() -> None:
+    # Given: an evaluator instance
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When/Then: a None key name is treated as not secret-like
+    assert evaluator._key_name_is_secret_like(None) is False
+
+
+@pytest.mark.parametrize(
+    ("key_name", "expected"),
+    [
+        # Starts with digit then letters -> fails IDENTIFIER_LIKE_KEY_PATTERN -> secret-like.
+        ("12abcd", True),
+        # Starts with symbol -> fails IDENTIFIER_LIKE_KEY_PATTERN -> secret-like.
+        ("!bang", True),
+        # Matches JSON_SCALAR_LIKE_KEY_PATTERN -> not secret-like.
+        ("true", False),
+        ("-1.5e10", False),
+    ],
+)
+def test_key_name_is_secret_like_for_non_identifier_and_scalar_keys(
+    key_name: str, expected: bool
+) -> None:
+    # Given: an evaluator instance
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
+
+    # When/Then: the heuristic honors the non-identifier and JSON-scalar branches
+    assert evaluator._key_name_is_secret_like(key_name) is expected
+
+
+# ---------------------------------------------------------------------------
+# Config validator edge cases.
+# ---------------------------------------------------------------------------
+
+
+def test_explicit_none_enabled_plugins_is_accepted() -> None:
+    # Given: enabled_plugins explicitly set to None
+    config = DetectSecretsEvaluatorConfig(enabled_plugins=None)
+
+    # Then: the config is accepted and enabled_plugins stays None
+    assert config.enabled_plugins is None
+
+
+def test_whitespace_only_enabled_plugin_name_is_rejected() -> None:
+    # Given: a plugin list containing only whitespace
+    # When/Then: construction raises a non-empty validation error
+    with pytest.raises(ValueError, match="non-empty"):
+        DetectSecretsEvaluatorConfig(enabled_plugins=["   "])
+
+
+def test_enabled_plugins_strips_whitespace_and_dedups() -> None:
+    # Given: duplicate and whitespace-padded plugin names
+    config = DetectSecretsEvaluatorConfig(
+        enabled_plugins=["  GitHubTokenDetector  ", "GitHubTokenDetector"]
+    )
+
+    # Then: names are stripped and duplicates removed in first-seen order
+    assert config.enabled_plugins == ["GitHubTokenDetector"]
+
+
+def test_zero_timeout_ms_is_rejected() -> None:
+    # Given/When/Then: timeout_ms must be strictly positive
+    with pytest.raises(ValueError):
+        DetectSecretsEvaluatorConfig(timeout_ms=0)
+
+
+def test_zero_max_bytes_is_rejected() -> None:
+    # Given/When/Then: max_bytes must be strictly positive
+    with pytest.raises(ValueError):
+        DetectSecretsEvaluatorConfig(max_bytes=0)
+
+
+def test_invalid_on_error_value_is_rejected() -> None:
+    # Given/When/Then: on_error only accepts "allow" or "deny"
+    with pytest.raises(ValueError):
+        DetectSecretsEvaluatorConfig(on_error="maybe")  # type: ignore[arg-type]
