@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from agent_control_engine import list_evaluators
 from agent_control_models import (
@@ -73,6 +73,22 @@ def serialize_control_data(
     return data_json
 
 
+def serialize_control_data_for_response(
+    control_data: ControlDefinition | UnrenderedTemplateControl,
+) -> dict[str, Any]:
+    """Serialize control data for API responses in canonical form."""
+    data_json = control_data.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+    )
+    if "scope" in data_json and isinstance(data_json["scope"], dict):
+        data_json["scope"] = {k: v for k, v in data_json["scope"].items() if v is not None}
+    if "enabled" not in data_json:
+        data_json["enabled"] = control_data.enabled
+    return data_json
+
+
 def is_template_backed_payload(data: object) -> bool:
     """Return whether stored control JSON contains template metadata."""
     return isinstance(data, dict) and data.get("template") is not None
@@ -120,6 +136,62 @@ def parse_stored_control_data(
         hint=f"Update the control data using PUT /api/v1/controls/{control_id}/data.",
         field_prefix=None,
     )
+
+
+def normalize_control_data_for_response(
+    raw_data: dict[str, Any],
+    *,
+    parsed_data: ControlDefinition | UnrenderedTemplateControl,
+) -> dict[str, Any]:
+    """Return canonical control data while preserving forward-compatible fields."""
+    canonical_data = serialize_control_data_for_response(parsed_data)
+    return cast(
+        dict[str, Any],
+        _merge_response_control_data(raw_data, canonical_data, top_level=True),
+    )
+
+
+def _merge_response_control_data(
+    raw_data: Any,
+    canonical_data: Any,
+    *,
+    top_level: bool = False,
+) -> Any:
+    if isinstance(raw_data, dict) and isinstance(canonical_data, dict):
+        result: dict[str, Any] = {}
+        dropped_raw_keys = (
+            {"selector", "evaluator"}
+            if top_level and "condition" in canonical_data
+            else set()
+        )
+
+        for key, canonical_value in canonical_data.items():
+            if key in raw_data:
+                result[key] = _merge_response_control_data(
+                    raw_data[key],
+                    canonical_value,
+                )
+            else:
+                result[key] = canonical_value
+
+        for key, raw_value in raw_data.items():
+            if key in result or key in dropped_raw_keys:
+                continue
+            result[key] = raw_value
+
+        return result
+
+    if (
+        isinstance(raw_data, list)
+        and isinstance(canonical_data, list)
+        and len(raw_data) == len(canonical_data)
+    ):
+        return [
+            _merge_response_control_data(raw_item, canonical_item)
+            for raw_item, canonical_item in zip(raw_data, canonical_data, strict=False)
+        ]
+
+    return canonical_data
 
 
 def enabled_from_stored_payload(data: object) -> bool:

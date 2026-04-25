@@ -6,32 +6,16 @@ import * as z from "zod/v4-mini";
 import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
-import { smartUnion } from "../types/smart-union.js";
-import {
-  ControlDefinitionOutput,
-  ControlDefinitionOutput$inboundSchema,
-} from "./control-definition-output.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
-import {
-  UnrenderedTemplateControl,
-  UnrenderedTemplateControl$inboundSchema,
-} from "./unrendered-template-control.js";
-
-/**
- * Control configuration data. A ControlDefinition for raw/rendered controls or an UnrenderedTemplateControl for unrendered templates.
- */
-export type GetControlResponseData =
-  | ControlDefinitionOutput
-  | UnrenderedTemplateControl;
 
 /**
  * Response containing control details.
  */
 export type GetControlResponse = {
   /**
-   * Control configuration data. A ControlDefinition for raw/rendered controls or an UnrenderedTemplateControl for unrendered templates.
+   * Canonical control payload after validation. Forward-compatible fields are preserved for round-tripping.
    */
-  data: ControlDefinitionOutput | UnrenderedTemplateControl;
+  data: { [k: string]: any };
   /**
    * Control ID
    */
@@ -43,33 +27,11 @@ export type GetControlResponse = {
 };
 
 /** @internal */
-export const GetControlResponseData$inboundSchema: z.ZodMiniType<
-  GetControlResponseData,
-  unknown
-> = smartUnion([
-  ControlDefinitionOutput$inboundSchema,
-  UnrenderedTemplateControl$inboundSchema,
-]);
-
-export function getControlResponseDataFromJSON(
-  jsonString: string,
-): SafeParseResult<GetControlResponseData, SDKValidationError> {
-  return safeParse(
-    jsonString,
-    (x) => GetControlResponseData$inboundSchema.parse(JSON.parse(x)),
-    `Failed to parse 'GetControlResponseData' from JSON`,
-  );
-}
-
-/** @internal */
 export const GetControlResponse$inboundSchema: z.ZodMiniType<
   GetControlResponse,
   unknown
 > = z.object({
-  data: smartUnion([
-    ControlDefinitionOutput$inboundSchema,
-    UnrenderedTemplateControl$inboundSchema,
-  ]),
+  data: z.record(z.string(), z.any()),
   id: types.number(),
   name: types.string(),
 });

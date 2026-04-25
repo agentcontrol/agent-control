@@ -486,6 +486,83 @@ test.describe('Agent Detail Page', () => {
     ).toBeDisabled();
   });
 
+  test('keeps restore enabled when only preserved snapshot fields differ', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    await mockRoutes.controlVersions(mockedPage, {
+      details: {
+        ...mockData.controlVersionDetails,
+        2: {
+          ...mockData.controlVersionDetails[2],
+          snapshot: {
+            ...mockData.controlVersionDetails[2].snapshot,
+            data: {
+              ...(mockData.controlVersionDetails[2].snapshot.data as Record<
+                string,
+                unknown
+              >),
+              x_future_metadata: { mode: 'legacy' },
+            },
+          },
+        },
+      },
+    });
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+
+    await expect(
+      modal.getByRole('button', { name: 'Restore this version' })
+    ).toBeEnabled();
+    await expect(modal.getByText('data.x_future_metadata')).toBeVisible();
+  });
+
+  test('summarizes nested scope diffs as scope changes', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    await mockRoutes.controlVersions(mockedPage, {
+      details: {
+        ...mockData.controlVersionDetails,
+        2: {
+          ...mockData.controlVersionDetails[2],
+          snapshot: {
+            ...mockData.controlVersionDetails[2].snapshot,
+            data: {
+              ...(mockData.controlVersionDetails[2].snapshot.data as Record<
+                string,
+                unknown
+              >),
+              scope: {
+                ...(
+                  (mockData.controlVersionDetails[2].snapshot.data as Record<
+                    string,
+                    unknown
+                  >).scope as Record<string, unknown>
+                ),
+                stages: ['pre'],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+
+    await expect(modal.getByText('Scope changed')).toBeVisible();
+  });
+
   test('fetches predecessor detail when selected version is at a page boundary', async ({
     mockedPage,
   }) => {

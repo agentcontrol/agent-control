@@ -189,7 +189,7 @@ export class Controls extends ClientSDK {
    *     db: Database session (injected)
    *
    * Returns:
-   *     GetControlResponse with control id, name, and data
+   *     GetControlResponse with control id, name, and canonical validated data
    *
    * Raises:
    *     HTTPException 404: Control not found
@@ -253,7 +253,7 @@ export class Controls extends ClientSDK {
    *     db: Database session (injected)
    *
    * Returns:
-   *     GetControlDataResponse with validated ControlDefinition
+   *     GetControlDataResponse with canonical validated control data
    *
    * Raises:
    *     HTTPException 404: Control not found

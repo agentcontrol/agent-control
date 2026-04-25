@@ -10,7 +10,6 @@ from .controls import (
     TemplateControlInput,
     TemplateDefinition,
     TemplateValue,
-    UnrenderedTemplateControl,
 )
 from .policy import Control
 
@@ -311,10 +310,10 @@ class GetControlResponse(BaseModel):
 
     id: int = Field(..., description="Control ID")
     name: str = Field(..., description="Control name")
-    data: ControlDefinition | UnrenderedTemplateControl = Field(
+    data: dict[str, Any] = Field(
         description=(
-            "Control configuration data. A ControlDefinition for raw/rendered "
-            "controls or an UnrenderedTemplateControl for unrendered templates."
+            "Canonical control payload after validation. Forward-compatible "
+            "fields are preserved for round-tripping."
         ),
     )
 
@@ -344,8 +343,11 @@ class RemoveAgentControlResponse(BaseModel):
 
 
 class GetControlDataResponse(BaseModel):
-    data: ControlDefinition | UnrenderedTemplateControl = Field(
-        description="Control data payload (rendered control or unrendered template)"
+    data: dict[str, Any] = Field(
+        description=(
+            "Canonical control payload after validation. Forward-compatible "
+            "fields are preserved for round-tripping."
+        )
     )
 
 
@@ -565,8 +567,12 @@ class RestoreControlVersionResponse(BaseModel):
         ),
     )
     name: str = Field(..., description="Current control name after restore")
-    data: ControlDefinition | UnrenderedTemplateControl = Field(
-        ..., description="Current control data after restore"
+    data: dict[str, Any] = Field(
+        ...,
+        description=(
+            "Current canonical control payload after restore. "
+            "Forward-compatible fields are preserved for round-tripping."
+        ),
     )
 
 

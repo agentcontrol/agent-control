@@ -44,6 +44,9 @@ export function useUpdateControlMetadata() {
         queryClient.invalidateQueries({
           queryKey: ['agent', variables.agentId, 'controls'],
         }),
+        queryClient.invalidateQueries({
+          queryKey: ['controls'],
+        }),
         // Invalidate agents list query to refresh active controls count
         queryClient.invalidateQueries({
           queryKey: ['agents', 'infinite'],

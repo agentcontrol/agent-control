@@ -20,18 +20,6 @@ export type ControlVersionDiffResult = {
   isEqual: boolean;
 };
 
-const COMPARED_DATA_FIELDS = [
-  'description',
-  'enabled',
-  'execution',
-  'scope',
-  'condition',
-  'action',
-  'tags',
-  'template',
-  'template_values',
-] as const;
-
 export function snapshotFromVersion(
   version: GetControlVersionResponse | null | undefined
 ): ControlVersionSnapshot | null {
@@ -73,22 +61,9 @@ export function formatDiffValue(value: unknown): string {
 function normalizeSnapshot(
   snapshot: ControlVersionSnapshot | null
 ): Record<string, unknown> {
-  const data = snapshot?.data ?? {};
-  const normalizedData: Record<string, unknown> = {};
-  for (const field of COMPARED_DATA_FIELDS) {
-    normalizedData[field] = data[field];
-  }
-
-  if (normalizedData.enabled === undefined) {
-    normalizedData.enabled = true;
-  }
-  if (normalizedData.tags === undefined) {
-    normalizedData.tags = [];
-  }
-
   return {
     name: snapshot?.name ?? null,
-    data: normalizedData,
+    data: sortValue(snapshot?.data ?? {}),
   };
 }
 
@@ -98,14 +73,28 @@ function collectChanges(
 ): ControlVersionChange[] {
   const changes: ControlVersionChange[] = [];
   compareValue('name', before.name, after.name, changes);
-
-  const beforeData = isRecord(before.data) ? before.data : {};
-  const afterData = isRecord(after.data) ? after.data : {};
-  for (const field of COMPARED_DATA_FIELDS) {
-    compareValue(`data.${field}`, beforeData[field], afterData[field], changes);
-  }
+  compareRecursive('data', before.data, after.data, changes);
 
   return changes;
+}
+
+function compareRecursive(
+  path: string,
+  before: unknown,
+  after: unknown,
+  changes: ControlVersionChange[]
+) {
+  if (stableStringify(before) === stableStringify(after)) return;
+
+  if (isRecord(before) && isRecord(after)) {
+    const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+    for (const key of keys) {
+      compareRecursive(`${path}.${key}`, before[key], after[key], changes);
+    }
+    return;
+  }
+
+  compareValue(path, before, after, changes);
 }
 
 function compareValue(
@@ -136,14 +125,24 @@ function buildSummary(changes: ControlVersionChange[]): string[] {
   if (paths.has('data.enabled')) summary.push('Enabled toggled');
   if (paths.has('data.execution')) summary.push('Execution changed');
   if (paths.has('data.tags')) summary.push('Tags changed');
-  if (paths.has('data.template_values'))
+  if (hasPathOrChild(paths, 'data.template_values'))
     summary.push('Template values changed');
-  if (paths.has('data.condition')) summary.push('Condition changed');
-  if (paths.has('data.action')) summary.push('Action changed');
-  if (paths.has('data.scope')) summary.push('Scope changed');
+  if (hasPathOrChild(paths, 'data.condition')) summary.push('Condition changed');
+  if (hasPathOrChild(paths, 'data.action')) summary.push('Action changed');
+  if (hasPathOrChild(paths, 'data.scope')) summary.push('Scope changed');
   if (paths.has('data.description')) summary.push('Description changed');
 
-  return summary.length > 0 ? summary : ['No changes'];
+  return summary.length > 0 ? summary : ['Other fields changed'];
+}
+
+function hasPathOrChild(paths: Set<string>, prefix: string): boolean {
+  const childPrefix = `${prefix}.`;
+  for (const path of paths) {
+    if (path === prefix || path.startsWith(childPrefix)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function stableStringify(value: unknown): string {

@@ -5,59 +5,21 @@
 import * as z from "zod/v4-mini";
 import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
-import { smartUnion } from "../types/smart-union.js";
-import {
-  ControlDefinitionOutput,
-  ControlDefinitionOutput$inboundSchema,
-} from "./control-definition-output.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
-import {
-  UnrenderedTemplateControl,
-  UnrenderedTemplateControl$inboundSchema,
-} from "./unrendered-template-control.js";
-
-/**
- * Control data payload (rendered control or unrendered template)
- */
-export type GetControlDataResponseData =
-  | ControlDefinitionOutput
-  | UnrenderedTemplateControl;
 
 export type GetControlDataResponse = {
   /**
-   * Control data payload (rendered control or unrendered template)
+   * Canonical control payload after validation. Forward-compatible fields are preserved for round-tripping.
    */
-  data: ControlDefinitionOutput | UnrenderedTemplateControl;
+  data: { [k: string]: any };
 };
-
-/** @internal */
-export const GetControlDataResponseData$inboundSchema: z.ZodMiniType<
-  GetControlDataResponseData,
-  unknown
-> = smartUnion([
-  ControlDefinitionOutput$inboundSchema,
-  UnrenderedTemplateControl$inboundSchema,
-]);
-
-export function getControlDataResponseDataFromJSON(
-  jsonString: string,
-): SafeParseResult<GetControlDataResponseData, SDKValidationError> {
-  return safeParse(
-    jsonString,
-    (x) => GetControlDataResponseData$inboundSchema.parse(JSON.parse(x)),
-    `Failed to parse 'GetControlDataResponseData' from JSON`,
-  );
-}
 
 /** @internal */
 export const GetControlDataResponse$inboundSchema: z.ZodMiniType<
   GetControlDataResponse,
   unknown
 > = z.object({
-  data: smartUnion([
-    ControlDefinitionOutput$inboundSchema,
-    UnrenderedTemplateControl$inboundSchema,
-  ]),
+  data: z.record(z.string(), z.any()),
 });
 
 export function getControlDataResponseFromJSON(

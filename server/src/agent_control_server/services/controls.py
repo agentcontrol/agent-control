@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from agent_control_models import (
-    ControlDefinition,
     ControlDefinitionRuntime,
     UnrenderedTemplateControl,
 )
@@ -20,7 +19,12 @@ from sqlalchemy.sql import Select
 
 from ..errors import APIValidationError, ConflictError, NotFoundError
 from ..models import Control, ControlVersion, agent_controls, agent_policies, policy_controls
-from .control_data_validation import parse_restorable_snapshot
+from .control_data_validation import (
+    enabled_from_stored_payload,
+    is_unrendered_template,
+    normalize_control_data_for_response,
+    parse_restorable_snapshot,
+)
 from .control_definitions import (
     parse_control_definition_or_api_error,
     parse_runtime_control_definition_or_api_error,
@@ -818,7 +822,14 @@ def _parse_associated_control_or_api_error(
     """Parse an associated control row into the API model or raise a validation error."""
     if _is_unrendered_template_payload(control.data):
         unrendered = _parse_unrendered_template_or_api_error(control)
-        return APIControl(id=control.id, name=control.name, control=unrendered)
+        return APIControl(
+            id=control.id,
+            name=control.name,
+            control=normalize_control_data_for_response(
+                control.data,
+                parsed_data=unrendered,
+            ),
+        )
 
     context = (
         {"allow_invalid_step_name_regex": True}
@@ -833,7 +844,14 @@ def _parse_associated_control_or_api_error(
         context=context,
         field_prefix="data",
     )
-    return APIControl(id=control.id, name=control.name, control=control_def)
+    return APIControl(
+        id=control.id,
+        name=control.name,
+        control=normalize_control_data_for_response(
+            control.data,
+            parsed_data=control_def,
+        ),
+    )
 
 
 def _matches_rendered_state(
@@ -841,7 +859,7 @@ def _matches_rendered_state(
     rendered_state: AgentControlRenderedState,
 ) -> bool:
     """Return whether a parsed control matches the requested rendered-state filter."""
-    is_rendered = isinstance(control.control, ControlDefinition)
+    is_rendered = not is_unrendered_template(control.control)
     if rendered_state == "all":
         return True
     if rendered_state == "rendered":
@@ -856,7 +874,7 @@ def _matches_enabled_state(
     """Return whether a parsed control matches the requested enabled-state filter."""
     if enabled_state == "all":
         return True
-    is_enabled = control.control.enabled
+    is_enabled = enabled_from_stored_payload(control.control)
     if enabled_state == "enabled":
         return is_enabled
     return not is_enabled

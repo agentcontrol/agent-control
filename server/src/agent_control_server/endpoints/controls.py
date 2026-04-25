@@ -41,6 +41,7 @@ from ..errors import (
 from ..logging_utils import get_logger
 from ..services.control_data_validation import (
     materialize_control_input,
+    normalize_control_data_for_response,
     parse_stored_control_data,
     render_and_validate_template_input,
     serialize_control_data,
@@ -209,7 +210,7 @@ async def get_control(
         db: Database session (injected)
 
     Returns:
-        GetControlResponse with control id, name, and data
+        GetControlResponse with control id, name, and canonical validated data
 
     Raises:
         HTTPException 404: Control not found
@@ -224,7 +225,10 @@ async def get_control(
     return GetControlResponse(
         id=control.id,
         name=control.name,
-        data=control_data,
+        data=normalize_control_data_for_response(
+            control.data,
+            parsed_data=control_data,
+        ),
     )
 
 
@@ -248,7 +252,7 @@ async def get_control_data(
         db: Database session (injected)
 
     Returns:
-        GetControlDataResponse with validated ControlDefinition
+        GetControlDataResponse with canonical validated control data
 
     Raises:
         HTTPException 404: Control not found
@@ -260,7 +264,12 @@ async def get_control_data(
         control_name=control.name,
         control_id=control_id,
     )
-    return GetControlDataResponse(data=control_data)
+    return GetControlDataResponse(
+        data=normalize_control_data_for_response(
+            control.data,
+            parsed_data=control_data,
+        )
+    )
 
 
 @router.get(
@@ -388,7 +397,10 @@ async def restore_control_version(
         restored_from_version_num=result.restored_from_version_num,
         current_version_num=result.current_version_num,
         name=result.control.name,
-        data=control_data,
+        data=normalize_control_data_for_response(
+            result.control.data,
+            parsed_data=control_data,
+        ),
     )
 
 
@@ -431,10 +443,14 @@ async def set_control_data(
         current_payload=control.data,
         control_id=control_id,
     )
+    serialized_control_data = serialize_control_data(control_def)
+
+    if control.data == serialized_control_data:
+        return SetControlDataResponse(success=True)
 
     control_service.replace_control_data(
         control,
-        data=serialize_control_data(control_def),
+        data=serialized_control_data,
     )
     control_name = control.name
     try:

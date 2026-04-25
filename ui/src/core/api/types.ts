@@ -82,9 +82,7 @@ export type ControlDefinitionOutput =
 export type ControlDefinition =
   | ControlDefinitionInput
   | ControlDefinitionOutput;
-export type UnrenderedTemplateControl =
-  components['schemas']['UnrenderedTemplateControl'];
-export type StoredControlData = ControlDefinition | UnrenderedTemplateControl;
+export type StoredControlData = Record<string, unknown>;
 export type Control = components['schemas']['Control'];
 export type AgentControlsResponse =
   components['schemas']['AgentControlsResponse'];

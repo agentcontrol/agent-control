@@ -556,7 +556,7 @@ export interface paths {
          *         db: Database session (injected)
          *
          *     Returns:
-         *         GetControlResponse with control id, name, and data
+         *         GetControlResponse with control id, name, and canonical validated data
          *
          *     Raises:
          *         HTTPException 404: Control not found
@@ -630,7 +630,7 @@ export interface paths {
          *         db: Database session (injected)
          *
          *     Returns:
-         *         GetControlDataResponse with validated ControlDefinition
+         *         GetControlDataResponse with canonical validated control data
          *
          *     Raises:
          *         HTTPException 404: Control not found
@@ -1471,13 +1471,15 @@ export interface components {
          * Control
          * @description A control with identity and configuration.
          *
-         *     For rendered controls (raw or template-backed), ``control`` is a
-         *     ``ControlDefinition``.  For unrendered template controls, ``control``
-         *     is an ``UnrenderedTemplateControl``.
+         *     ``control`` contains the canonical payload after server-side validation.
+         *     Forward-compatible stored fields are preserved so clients can round-trip
+         *     historical snapshots without data loss.
          */
         Control: {
             /** Control */
-            control: components["schemas"]["ControlDefinition-Output"] | components["schemas"]["UnrenderedTemplateControl"];
+            control: {
+                [key: string]: unknown;
+            };
             /** Id */
             id: number;
             /** Name */
@@ -2679,9 +2681,11 @@ export interface components {
         GetControlDataResponse: {
             /**
              * Data
-             * @description Control data payload (rendered control or unrendered template)
+             * @description Canonical control payload after validation. Forward-compatible fields are preserved for round-tripping.
              */
-            data: components["schemas"]["ControlDefinition-Output"] | components["schemas"]["UnrenderedTemplateControl"];
+            data: {
+                [key: string]: unknown;
+            };
         };
         /**
          * GetControlResponse
@@ -2690,9 +2694,11 @@ export interface components {
         GetControlResponse: {
             /**
              * Data
-             * @description Control configuration data. A ControlDefinition for raw/rendered controls or an UnrenderedTemplateControl for unrendered templates.
+             * @description Canonical control payload after validation. Forward-compatible fields are preserved for round-tripping.
              */
-            data: components["schemas"]["ControlDefinition-Output"] | components["schemas"]["UnrenderedTemplateControl"];
+            data: {
+                [key: string]: unknown;
+            };
             /**
              * Id
              * @description Control ID
@@ -3223,9 +3229,11 @@ export interface components {
             current_version_num: number;
             /**
              * Data
-             * @description Current control data after restore
+             * @description Current canonical control payload after restore. Forward-compatible fields are preserved for round-tripping.
              */
-            data: components["schemas"]["ControlDefinition-Output"] | components["schemas"]["UnrenderedTemplateControl"];
+            data: {
+                [key: string]: unknown;
+            };
             /**
              * Name
              * @description Current control name after restore
@@ -3700,32 +3708,6 @@ export interface components {
              * @description Start time of the bucket (UTC)
              */
             timestamp: string;
-        };
-        /**
-         * UnrenderedTemplateControl
-         * @description Stored state of a template control that hasn't been rendered yet.
-         *
-         *     An unrendered template has a template definition and possibly partial
-         *     parameter values, but no concrete condition/action/execution fields.
-         *     It is always ``enabled=False`` and excluded from evaluation.
-         */
-        UnrenderedTemplateControl: {
-            /**
-             * Enabled
-             * @description Unrendered templates are always disabled
-             * @default false
-             * @constant
-             */
-            enabled: false;
-            /** @description Template definition awaiting parameter values */
-            template: components["schemas"]["TemplateDefinition-Output"];
-            /**
-             * Template Values
-             * @description Partial or empty parameter values
-             */
-            template_values?: {
-                [key: string]: components["schemas"]["TemplateValue"];
-            };
         };
         /**
          * ValidateControlDataRequest

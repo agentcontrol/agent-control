@@ -40,7 +40,7 @@ import { Result } from "../types/fp.js";
  *     db: Database session (injected)
  *
  * Returns:
- *     GetControlDataResponse with validated ControlDefinition
+ *     GetControlDataResponse with canonical validated control data
  *
  * Raises:
  *     HTTPException 404: Control not found

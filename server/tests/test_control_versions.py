@@ -134,6 +134,22 @@ def test_set_control_data_creates_edited_version_row(client: TestClient) -> None
     assert latest.snapshot["data"]["description"] == "Updated description"
 
 
+def test_set_control_data_noop_does_not_create_extra_version(client: TestClient) -> None:
+    # Given: an existing control
+    control_id, _ = _create_control(client)
+
+    # When: replacing the control data with the already-current payload
+    resp = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": deepcopy(VALID_CONTROL_PAYLOAD)},
+    )
+
+    # Then: no new version is recorded
+    assert resp.status_code == 200, resp.text
+    versions = _fetch_versions(control_id)
+    assert [version.version_num for version in versions] == [1]
+
+
 def test_patch_control_creates_edited_version_row(client: TestClient) -> None:
     # Given: an existing control
     control_id, _ = _create_control(client)
@@ -167,6 +183,30 @@ def test_patch_control_noop_does_not_create_extra_version(client: TestClient) ->
     assert resp.status_code == 200, resp.text
     versions = _fetch_versions(control_id)
     assert [version.version_num for version in versions] == [1]
+
+
+def test_rename_followed_by_noop_set_data_does_not_create_extra_version(
+    client: TestClient,
+) -> None:
+    # Given: an existing control
+    control_id, _ = _create_control(client)
+    new_name = f"control-{uuid.uuid4()}"
+
+    # When: renaming the control, then saving unchanged data
+    patch_resp = client.patch(
+        f"/api/v1/controls/{control_id}",
+        json={"name": new_name},
+    )
+    assert patch_resp.status_code == 200, patch_resp.text
+    set_resp = client.put(
+        f"/api/v1/controls/{control_id}/data",
+        json={"data": deepcopy(VALID_CONTROL_PAYLOAD)},
+    )
+
+    # Then: the rename version is preserved without an extra empty data version
+    assert set_resp.status_code == 200, set_resp.text
+    versions = _fetch_versions(control_id)
+    assert [version.version_num for version in versions] == [1, 2]
 
 
 def test_delete_control_creates_deleted_version_row(client: TestClient) -> None:
@@ -386,11 +426,49 @@ def test_restore_control_version_preserves_unknown_snapshot_fields(
     # When: restoring that version
     resp = client.post(f"/api/v1/controls/{control_id}/versions/1/restore")
 
-    # Then: validation still succeeds and the stored payload replays the snapshot shape
+    # Then: validation still succeeds and responses preserve the snapshot shape
     assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["x_future_metadata"] == {
+        "source": "future-server",
+        "flags": ["preserve-me"],
+    }
     active_data = _fetch_control_data(control_id)
     assert active_data["description"] == "Original with future metadata"
     assert active_data["x_future_metadata"] == {
+        "source": "future-server",
+        "flags": ["preserve-me"],
+    }
+    get_resp = client.get(f"/api/v1/controls/{control_id}")
+    assert get_resp.status_code == 200, get_resp.text
+    assert get_resp.json()["data"]["x_future_metadata"] == {
+        "source": "future-server",
+        "flags": ["preserve-me"],
+    }
+
+    get_data_resp = client.get(f"/api/v1/controls/{control_id}/data")
+    assert get_data_resp.status_code == 200, get_data_resp.text
+    assert get_data_resp.json()["data"]["x_future_metadata"] == {
+        "source": "future-server",
+        "flags": ["preserve-me"],
+    }
+
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert init_resp.status_code == 200, init_resp.text
+    assoc_resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert assoc_resp.status_code == 200, assoc_resp.text
+
+    agent_controls_resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert agent_controls_resp.status_code == 200, agent_controls_resp.text
+    restored_control = next(
+        control
+        for control in agent_controls_resp.json()["controls"]
+        if control["id"] == control_id
+    )
+    assert restored_control["control"]["x_future_metadata"] == {
         "source": "future-server",
         "flags": ["preserve-me"],
     }

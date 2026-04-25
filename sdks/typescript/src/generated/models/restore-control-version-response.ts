@@ -7,23 +7,7 @@ import { remap as remap$ } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
-import { smartUnion } from "../types/smart-union.js";
-import {
-  ControlDefinitionOutput,
-  ControlDefinitionOutput$inboundSchema,
-} from "./control-definition-output.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
-import {
-  UnrenderedTemplateControl,
-  UnrenderedTemplateControl$inboundSchema,
-} from "./unrendered-template-control.js";
-
-/**
- * Current control data after restore
- */
-export type RestoreControlVersionResponseData =
-  | ControlDefinitionOutput
-  | UnrenderedTemplateControl;
 
 /**
  * Response for restoring a control to a historical version.
@@ -38,9 +22,9 @@ export type RestoreControlVersionResponse = {
    */
   currentVersionNum: number;
   /**
-   * Current control data after restore
+   * Current canonical control payload after restore. Forward-compatible fields are preserved for round-tripping.
    */
-  data: ControlDefinitionOutput | UnrenderedTemplateControl;
+  data: { [k: string]: any };
   /**
    * Current control name after restore
    */
@@ -56,25 +40,6 @@ export type RestoreControlVersionResponse = {
 };
 
 /** @internal */
-export const RestoreControlVersionResponseData$inboundSchema: z.ZodMiniType<
-  RestoreControlVersionResponseData,
-  unknown
-> = smartUnion([
-  ControlDefinitionOutput$inboundSchema,
-  UnrenderedTemplateControl$inboundSchema,
-]);
-
-export function restoreControlVersionResponseDataFromJSON(
-  jsonString: string,
-): SafeParseResult<RestoreControlVersionResponseData, SDKValidationError> {
-  return safeParse(
-    jsonString,
-    (x) => RestoreControlVersionResponseData$inboundSchema.parse(JSON.parse(x)),
-    `Failed to parse 'RestoreControlVersionResponseData' from JSON`,
-  );
-}
-
-/** @internal */
 export const RestoreControlVersionResponse$inboundSchema: z.ZodMiniType<
   RestoreControlVersionResponse,
   unknown
@@ -82,10 +47,7 @@ export const RestoreControlVersionResponse$inboundSchema: z.ZodMiniType<
   z.object({
     control_id: types.number(),
     current_version_num: types.number(),
-    data: smartUnion([
-      ControlDefinitionOutput$inboundSchema,
-      UnrenderedTemplateControl$inboundSchema,
-    ]),
+    data: z.record(z.string(), z.any()),
     name: types.string(),
     restored_from_version_num: types.number(),
     success: types.boolean(),
