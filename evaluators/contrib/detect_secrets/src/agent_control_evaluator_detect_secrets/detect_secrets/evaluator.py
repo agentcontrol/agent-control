@@ -102,7 +102,16 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
 
         assert normalized.text is not None
         filtered_text = apply_line_exclusions(normalized.text, self._exclude_line_patterns)
-        if len(filtered_text.encode("utf-8")) > self.config.max_bytes:
+        try:
+            filtered_bytes = filtered_text.encode("utf-8")
+        except UnicodeError:
+            return self._failure_result(
+                failure_mode="normalization_error",
+                normalized_payload_type=normalized.payload_type,
+                detect_secrets_version=runtime_info.detect_secrets_version,
+            )
+
+        if len(filtered_bytes) > self.config.max_bytes:
             return self._failure_result(
                 failure_mode="payload_too_large",
                 normalized_payload_type=normalized.payload_type,

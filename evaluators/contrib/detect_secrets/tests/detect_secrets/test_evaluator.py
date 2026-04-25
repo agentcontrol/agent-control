@@ -351,6 +351,19 @@ async def test_non_json_serializable_payload_routes_through_on_error_allow() -> 
 
 
 @pytest.mark.asyncio
+async def test_invalid_unicode_payload_routes_through_on_error_deny() -> None:
+    evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(on_error="deny"))
+
+    result = await evaluator.evaluate("\ud800")
+
+    assert result.matched is True
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "normalization_error"
+    assert result.metadata["fallback_action"] == "deny"
+
+
+@pytest.mark.asyncio
 async def test_recursive_payload_routes_through_normalization_error() -> None:
     evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig())
     payload: dict[str, Any] = {}
