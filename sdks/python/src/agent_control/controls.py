@@ -179,6 +179,29 @@ async def get_control_version(
     return cast(dict[str, Any], response.json())
 
 
+async def restore_control_version(
+    client: AgentControlClient,
+    control_id: int,
+    version_num: int,
+) -> dict[str, Any]:
+    """
+    Restore an active control to a historical version.
+
+    Args:
+        client: AgentControlClient instance
+        control_id: ID of the control
+        version_num: Control version number to restore
+
+    Returns:
+        Dictionary containing the restored control state and current version number.
+    """
+    response = await client.http_client.post(
+        f"/api/v1/controls/{control_id}/versions/{version_num}/restore"
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
+
+
 async def create_control(
     client: AgentControlClient,
     name: str,

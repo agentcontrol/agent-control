@@ -7,6 +7,7 @@ import {
   Paper,
   SegmentedControl,
   Stack,
+  Tabs,
   Text,
   TextInput,
   Tooltip,
@@ -42,6 +43,7 @@ import {
   getControlConditionState,
 } from './control-condition';
 import { ControlDefinitionForm } from './control-definition-form';
+import { ControlVersionHistoryPanel } from './control-version-history-panel';
 import { EvaluatorConfigSection } from './evaluator-config-section';
 import { TemplateEditContent } from './template-edit-content';
 import type {
@@ -56,6 +58,10 @@ import { applyApiErrorsToForms } from './utils';
 function isTemplateBacked(control: Control): boolean {
   const def = control.control as Record<string, unknown> | undefined;
   return def?.template != null && def?.template_values != null;
+}
+
+function getControlEditorKey(control: Control): string {
+  return `${control.id}:${control.name}:${JSON.stringify(control.control)}`;
 }
 
 const EVALUATOR_CONFIG_HEIGHT = 450;
@@ -104,23 +110,60 @@ export type EditControlContentProps = {
    * also triggers the dirty check.
    */
   onCloseRef?: React.MutableRefObject<(() => void) | null>;
+  /** Emits editor dirty-state changes to shared wrappers such as History. */
+  onDirtyChange?: (isDirty: boolean) => void;
 };
 
 export const EditControlContent = (props: EditControlContentProps) => {
-  // Template-backed controls use a dedicated editor in edit mode
-  if (props.mode !== 'create' && isTemplateBacked(props.control)) {
-    return (
-      <TemplateEditContent
-        key={props.control.id}
-        control={props.control}
-        agentId={props.agentId}
-        onClose={props.onClose}
-        onSuccess={props.onSuccess}
-      />
-    );
+  if (props.mode === 'create') {
+    return <RawEditControlContent {...props} />;
   }
 
-  return <RawEditControlContent {...props} />;
+  return <EditControlHistoryShell {...props} />;
+};
+
+const EditControlHistoryShell = (props: EditControlContentProps) => {
+  const [activeTab, setActiveTab] = useState<string | null>('editor');
+  const [editorIsDirty, setEditorIsDirty] = useState(false);
+  const editorKey = getControlEditorKey(props.control);
+
+  const editor = isTemplateBacked(props.control) ? (
+    <TemplateEditContent
+      key={editorKey}
+      control={props.control}
+      agentId={props.agentId}
+      onClose={props.onClose}
+      onSuccess={props.onSuccess}
+      onCloseRef={props.onCloseRef}
+      onDirtyChange={setEditorIsDirty}
+    />
+  ) : (
+    <RawEditControlContent
+      {...props}
+      key={editorKey}
+      onDirtyChange={setEditorIsDirty}
+    />
+  );
+
+  return (
+    <Tabs value={activeTab} onChange={setActiveTab} keepMounted>
+      <Tabs.List mb="md">
+        <Tabs.Tab value="editor">Editor</Tabs.Tab>
+        <Tabs.Tab value="history">History</Tabs.Tab>
+      </Tabs.List>
+
+      <Tabs.Panel value="editor">{editor}</Tabs.Panel>
+      <Tabs.Panel value="history">
+        {activeTab === 'history' ? (
+          <ControlVersionHistoryPanel
+            control={props.control}
+            agentId={props.agentId}
+            editorIsDirty={editorIsDirty}
+          />
+        ) : null}
+      </Tabs.Panel>
+    </Tabs>
+  );
 };
 
 const RawEditControlContent = ({
@@ -131,6 +174,7 @@ const RawEditControlContent = ({
   onSuccess,
   initialEditorMode = 'form',
   onCloseRef,
+  onDirtyChange,
 }: EditControlContentProps) => {
   const { data: agentResponse } = useAgent(agentId);
   const { data: controlSchemaResponse } = useControlSchema();
@@ -139,7 +183,7 @@ const RawEditControlContent = ({
   const agentName = agentResponse?.agent?.agent_name ?? agentId;
 
   const [workingDefinition, setWorkingDefinition] = useState<ControlDefinition>(
-    control.control
+    control.control as ControlDefinition
   );
   const [editorMode, setEditorMode] =
     useState<ControlEditorMode>(initialEditorMode);
@@ -352,6 +396,15 @@ const RawEditControlContent = ({
   });
 
   const { reset } = evaluatorConfig;
+  const handleEvaluatorConfigJsonChange = useCallback(
+    (value: string) => {
+      evaluatorConfig.handleJsonChange(value);
+      setIsDirty(true);
+    },
+    [evaluatorConfig]
+  );
+  const hasUnsavedChanges =
+    isDirty || definitionForm.isDirty() || evaluatorForm.isDirty();
 
   const getDefinitionFromFormState =
     useCallback((): ControlDefinition | null => {
@@ -500,7 +553,7 @@ const RawEditControlContent = ({
   }, [definitionForm.values.action_decision]);
 
   useEffect(() => {
-    setWorkingDefinition(control.control);
+    setWorkingDefinition(control.control as ControlDefinition);
     setEditorMode(initialEditorMode);
     setDefinitionJsonText(
       initialEditorMode === 'json'
@@ -514,6 +567,14 @@ const RawEditControlContent = ({
     setDefinitionValidationStatus('idle');
     setIsDirty(false);
   }, [control.control, initialEditorMode, mode]);
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
+
+  useEffect(() => {
+    return () => onDirtyChange?.(false);
+  }, [onDirtyChange]);
 
   useEffect(() => {
     reset();
@@ -556,9 +617,11 @@ const RawEditControlContent = ({
     definitionForm.resetDirty(syncedValues);
 
     if (leafCondition && evaluator) {
-      evaluatorForm.setValues(
-        evaluator.fromConfig(leafCondition.evaluatorConfig)
+      const evaluatorValues = evaluator.fromConfig(
+        leafCondition.evaluatorConfig
       );
+      evaluatorForm.setValues(evaluatorValues);
+      evaluatorForm.resetDirty(evaluatorValues);
       formInitializedForEvaluator.current = evaluatorId;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -802,7 +865,7 @@ const RawEditControlContent = ({
   }, []);
 
   const handleClose = useCallback(() => {
-    if (!isCreating && isDirty) {
+    if (!isCreating && hasUnsavedChanges) {
       openDestructiveConfirmModal({
         title: 'Discard unsaved changes?',
         children: (
@@ -821,7 +884,7 @@ const RawEditControlContent = ({
     // Clear the ref so the parent's onClose won't re-enter handleClose.
     if (onCloseRef) onCloseRef.current = null;
     onClose();
-  }, [isDirty, onClose, isCreating, onCloseRef]);
+  }, [hasUnsavedChanges, onClose, isCreating, onCloseRef]);
 
   // Expose handleClose to the parent so the Modal X button also checks dirty state.
   useEffect(() => {
@@ -950,7 +1013,10 @@ const RawEditControlContent = ({
             <Grid.Col span={8}>
               {canEditLeafCondition ? (
                 <EvaluatorConfigSection
-                  config={evaluatorConfig}
+                  config={{
+                    ...evaluatorConfig,
+                    handleJsonChange: handleEvaluatorConfigJsonChange,
+                  }}
                   evaluatorForm={evaluatorForm}
                   formComponent={formComponent}
                   height={EVALUATOR_CONFIG_HEIGHT}

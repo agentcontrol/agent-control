@@ -181,6 +181,27 @@ export const api = {
       apiClient.GET('/api/v1/controls/{control_id}/data', {
         params: { path: { control_id: controlId } },
       }),
+    listVersions: (
+      controlId: number,
+      params?: { cursor?: number; limit?: number }
+    ) =>
+      apiClient.GET('/api/v1/controls/{control_id}/versions', {
+        params: {
+          path: { control_id: controlId },
+          query: params,
+        },
+      }),
+    getVersion: (controlId: number, versionNum: number) =>
+      apiClient.GET('/api/v1/controls/{control_id}/versions/{version_num}', {
+        params: { path: { control_id: controlId, version_num: versionNum } },
+      }),
+    restoreVersion: (controlId: number, versionNum: number) =>
+      apiClient.POST(
+        '/api/v1/controls/{control_id}/versions/{version_num}/restore',
+        {
+          params: { path: { control_id: controlId, version_num: versionNum } },
+        }
+      ),
     updateMetadata: (controlId: number, data: PatchControlRequest) =>
       apiClient.PATCH('/api/v1/controls/{control_id}', {
         params: { path: { control_id: controlId } },

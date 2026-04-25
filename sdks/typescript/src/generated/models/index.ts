@@ -76,6 +76,7 @@ export * from "./regex-template-parameter.js";
 export * from "./remove-agent-control-response.js";
 export * from "./render-control-template-request.js";
 export * from "./render-control-template-response.js";
+export * from "./restore-control-version-response.js";
 export * from "./security.js";
 export * from "./set-control-data-request.js";
 export * from "./set-control-data-response.js";

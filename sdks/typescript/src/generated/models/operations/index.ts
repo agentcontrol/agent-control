@@ -28,5 +28,6 @@ export * from "./remove-agent-control-api-v1-agents-agent-name-controls-control-
 export * from "./remove-agent-policy-api-v1-agents-agent-name-policies-policy-id-delete.js";
 export * from "./remove-all-agent-policies-api-v1-agents-agent-name-policies-delete.js";
 export * from "./remove-control-from-policy-api-v1-policies-policy-id-controls-control-id-delete.js";
+export * from "./restore-control-version-api-v1-controls-control-id-versions-version-num-restore-post.js";
 export * from "./set-agent-policy-api-v1-agents-agent-name-policy-policy-id-post.js";
 export * from "./set-control-data-api-v1-controls-control-id-data-put.js";

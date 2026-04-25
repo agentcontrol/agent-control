@@ -105,6 +105,35 @@ async def test_get_control_version_calls_specific_version_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_restore_control_version_calls_restore_endpoint() -> None:
+    # Given: an SDK client stub for restoring a version
+    response = Mock()
+    response.raise_for_status = Mock()
+    response.json = Mock(
+        return_value={
+            "success": True,
+            "control_id": 123,
+            "restored_from_version_num": 2,
+            "current_version_num": 4,
+            "name": "restored-control",
+            "data": {},
+        }
+    )
+    client = SimpleNamespace(http_client=SimpleNamespace(post=AsyncMock(return_value=response)))
+
+    # When: restoring a specific control version
+    result = await agent_control.controls.restore_control_version(
+        client,
+        control_id=123,
+        version_num=2,
+    )
+
+    # Then: the SDK calls the restore endpoint
+    client.http_client.post.assert_awaited_once_with("/api/v1/controls/123/versions/2/restore")
+    assert result["current_version_num"] == 4
+
+
+@pytest.mark.asyncio
 async def test_render_control_template_calls_preview_endpoint() -> None:
     # Given: an SDK client stub and template preview input
     response = Mock()

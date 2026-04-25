@@ -66,6 +66,7 @@ from agent_control_models import (
     EvaluatorResult,
     EvaluatorSpec,
     JSONObject,
+    RestoreControlVersionResponse,
     Step,
     StepSchema,
     TemplateControlInput,
@@ -1409,4 +1410,5 @@ __all__ = [
     "EvaluatorSpec",
     "EvaluatorResult",
     "TemplateValue",
+    "RestoreControlVersionResponse",
 ]

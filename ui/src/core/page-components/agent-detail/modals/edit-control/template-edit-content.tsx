@@ -13,7 +13,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { Button } from '@rungalileo/jupiter-ds';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { JsonEditorMonaco } from '@/components/json-editor-monaco';
 import { api } from '@/core/api/client';
@@ -31,7 +31,10 @@ import { useControlSchema } from '@/core/hooks/query-hooks/use-control-schema';
 import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
-import { openActionConfirmModal } from '@/core/utils/modals';
+import {
+  openActionConfirmModal,
+  openDestructiveConfirmModal,
+} from '@/core/utils/modals';
 
 import { ApiErrorAlert } from './api-error-alert';
 import type { JsonEditorEvaluatorOption } from './types';
@@ -41,6 +44,8 @@ type TemplateEditContentProps = {
   agentId: string;
   onClose: () => void;
   onSuccess?: () => void;
+  onCloseRef?: React.MutableRefObject<(() => void) | null>;
+  onDirtyChange?: (isDirty: boolean) => void;
 };
 
 type EditorMode = 'params' | 'json';
@@ -54,6 +59,8 @@ export function TemplateEditContent({
   agentId,
   onClose,
   onSuccess,
+  onCloseRef,
+  onDirtyChange,
 }: TemplateEditContentProps) {
   // Access template fields via cast — these exist at runtime but aren't in the
   // generated API types yet. Will be cleaned up after type regeneration.
@@ -88,6 +95,32 @@ export function TemplateEditContent({
   const { data: agentResponse } = useAgent(agentId);
   const steps = agentResponse?.steps ?? [];
   const agentName = agentResponse?.agent?.agent_name ?? agentId;
+
+  const initialTemplateInput = useMemo(
+    () => ({
+      template,
+      template_values: storedValues ?? {},
+    }),
+    [storedValues, template]
+  );
+
+  const isDirty = useMemo(() => {
+    if (controlName.trim() !== control.name.trim()) return true;
+    if (editorMode === 'json') {
+      return jsonText !== JSON.stringify(initialTemplateInput, null, 2);
+    }
+    return (
+      stableStringify(templateValues) !== stableStringify(storedValues ?? {})
+    );
+  }, [
+    control.name,
+    controlName,
+    editorMode,
+    initialTemplateInput,
+    jsonText,
+    storedValues,
+    templateValues,
+  ]);
 
   const availableEvaluators = useMemo<JsonEditorEvaluatorOption[]>(() => {
     const merged = new Map<string, JsonEditorEvaluatorOption>();
@@ -156,6 +189,14 @@ export function TemplateEditContent({
     };
   }, [template, templateValues]);
 
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    return () => onDirtyChange?.(false);
+  }, [onDirtyChange]);
+
   const handleEditorModeChange = (value: string) => {
     const next = value as EditorMode;
     if (next === editorMode) return;
@@ -187,6 +228,34 @@ export function TemplateEditContent({
       );
     }
   };
+
+  const handleClose = useCallback(() => {
+    if (isDirty) {
+      openDestructiveConfirmModal({
+        title: 'Discard unsaved changes?',
+        confirmLabel: 'Discard',
+        children: (
+          <Text size="sm" c="dimmed">
+            You have unsaved changes. Are you sure you want to close?
+          </Text>
+        ),
+        onConfirm: () => {
+          if (onCloseRef) onCloseRef.current = null;
+          onClose();
+        },
+      });
+      return;
+    }
+    if (onCloseRef) onCloseRef.current = null;
+    onClose();
+  }, [isDirty, onClose, onCloseRef]);
+
+  useEffect(() => {
+    if (onCloseRef) onCloseRef.current = handleClose;
+    return () => {
+      if (onCloseRef) onCloseRef.current = null;
+    };
+  }, [handleClose, onCloseRef]);
 
   const handleSave = () => {
     if (!controlName.trim()) {
@@ -457,7 +526,7 @@ export function TemplateEditContent({
       <Group justify="flex-end">
         <Button
           variant="outline"
-          onClick={onClose}
+          onClick={handleClose}
           type="button"
           data-testid="cancel-button"
         >
@@ -473,5 +542,20 @@ export function TemplateEditContent({
         </Button>
       </Group>
     </Box>
+  );
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(sortValue(value));
+}
+
+function sortValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortValue);
+  if (value === null || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(record)
+      .sort()
+      .map((key) => [key, sortValue(record[key])])
   );
 }

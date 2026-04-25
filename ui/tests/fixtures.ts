@@ -8,8 +8,11 @@ import type {
   EvaluatorsResponse,
   GetAgentResponse,
   GetControlSchemaResponse,
+  GetControlVersionResponse,
   ListAgentsResponse,
   ListControlsResponse,
+  ListControlVersionsResponse,
+  RestoreControlVersionResponse,
 } from '@/core/api/types';
 import type { StatsResponse } from '@/core/hooks/query-hooks/use-agent-monitor';
 
@@ -156,6 +159,7 @@ const templateBackedControl: Control = {
           type: 'regex_re2',
           label: 'Regex Pattern',
           description: 'RE2 pattern to match against input',
+          required: true,
         },
         step_name: {
           type: 'string',
@@ -266,6 +270,82 @@ const controlsWithTemplateResponse: AgentControlsResponse = {
   controls: controlsWithTemplateList,
 };
 
+const controlVersionDetails: Record<number, GetControlVersionResponse> = {
+  1: {
+    version_num: 1,
+    event_type: 'created',
+    note: 'Initial creation',
+    created_at: '2024-01-01T00:00:00Z',
+    snapshot: {
+      name: 'PII Detection',
+      data: {
+        ...controlsList[0].control,
+        description: 'Original PII description',
+        enabled: true,
+      },
+      deleted_at: null,
+      cloned_control_id: null,
+    },
+  },
+  2: {
+    version_num: 2,
+    event_type: 'updated',
+    note: 'Edited',
+    created_at: '2024-01-02T00:00:00Z',
+    snapshot: {
+      name: 'PII Detection',
+      data: {
+        ...controlsList[0].control,
+        description: 'Changed PII description',
+        enabled: true,
+      },
+      deleted_at: null,
+      cloned_control_id: null,
+    },
+  },
+  3: {
+    version_num: 3,
+    event_type: 'updated',
+    note: 'Edited',
+    created_at: '2024-01-03T00:00:00Z',
+    snapshot: {
+      name: 'PII Detection',
+      data: controlsList[0].control,
+      deleted_at: null,
+      cloned_control_id: null,
+    },
+  },
+};
+
+const controlVersionsResponse: ListControlVersionsResponse = {
+  versions: [
+    {
+      version_num: 3,
+      event_type: 'updated',
+      note: 'Edited',
+      created_at: '2024-01-03T00:00:00Z',
+    },
+    {
+      version_num: 2,
+      event_type: 'updated',
+      note: 'Edited',
+      created_at: '2024-01-02T00:00:00Z',
+    },
+    {
+      version_num: 1,
+      event_type: 'created',
+      note: 'Initial creation',
+      created_at: '2024-01-01T00:00:00Z',
+    },
+  ],
+  pagination: {
+    total: 3,
+    limit: 20,
+    has_more: false,
+    next_cursor: null,
+  },
+};
+
 // Control summaries for GET /api/v1/controls (list all controls)
 const controlSummariesList: (ControlSummary & {
   used_by_agent?: { agent_name: string } | null;
@@ -279,6 +359,8 @@ const controlSummariesList: (ControlSummary & {
     step_types: ['llm'],
     stages: ['post'],
     tags: ['pii', 'compliance'],
+    template_backed: false,
+    template_rendered: null,
     used_by_agent: { agent_name: 'customer-support-bot' },
     used_by_agents_count: 1,
   },
@@ -291,6 +373,8 @@ const controlSummariesList: (ControlSummary & {
     step_types: ['tool'],
     stages: ['pre'],
     tags: ['security'],
+    template_backed: false,
+    template_rendered: null,
     used_by_agent: { agent_name: 'data-analysis-agent' },
     used_by_agents_count: 1,
   },
@@ -303,6 +387,8 @@ const controlSummariesList: (ControlSummary & {
     step_types: ['llm'],
     stages: ['pre'],
     tags: [],
+    template_backed: false,
+    template_rendered: null,
     used_by_agent: null,
     used_by_agents_count: 0,
   },
@@ -321,6 +407,7 @@ const templateControlSummary: ControlSummary & {
   stages: ['pre'],
   tags: [],
   template_backed: true,
+  template_rendered: true,
   used_by_agent: { agent_name: 'customer-support-bot' },
   used_by_agents_count: 1,
 };
@@ -621,6 +708,8 @@ export const mockData = {
   agentWithSteps: agentWithStepsResponse,
   controls: controlsResponse,
   controlsWithTemplate: controlsWithTemplateResponse,
+  controlVersions: controlVersionsResponse,
+  controlVersionDetails,
   templateControl: templateBackedControl,
   listControls: listControlsResponse,
   templateControlSummary: templateControlSummary,
@@ -936,6 +1025,79 @@ export const mockRoutes = {
     });
   },
 
+  /** Mock control version list/detail/restore endpoints */
+  controlVersions: async (
+    page: Page,
+    options: {
+      list?: MockResponseOptions<ListControlVersionsResponse>;
+      details?: Record<number, GetControlVersionResponse>;
+      restore?: MockResponseOptions<RestoreControlVersionResponse>;
+    } = {}
+  ) => {
+    const listOptions = options.list ?? { data: mockData.controlVersions };
+    const details = options.details ?? mockData.controlVersionDetails;
+    const restoreOptions =
+      options.restore ??
+      ({
+        data: {
+          success: true,
+          control_id: 1,
+          restored_from_version_num: 2,
+          current_version_num: 4,
+          name: 'PII Detection',
+          data: controlsList[0]
+            .control as RestoreControlVersionResponse['data'],
+        },
+      } satisfies MockResponseOptions<RestoreControlVersionResponse>);
+
+    await page.route(
+      '**/api/v1/controls/*/versions**',
+      async (route, request) => {
+        const url = new URL(request.url());
+        const restoreMatch = url.pathname.match(
+          /\/api\/v1\/controls\/\d+\/versions\/(\d+)\/restore$/
+        );
+        if (request.method() === 'POST' && restoreMatch) {
+          await fulfillRoute(route, restoreOptions, {
+            success: true,
+            control_id: 1,
+            restored_from_version_num: Number(restoreMatch[1]),
+            current_version_num: 4,
+            name: 'PII Detection',
+            data: controlsList[0]
+              .control as RestoreControlVersionResponse['data'],
+          });
+          return;
+        }
+
+        const detailMatch = url.pathname.match(
+          /\/api\/v1\/controls\/\d+\/versions\/(\d+)$/
+        );
+        if (request.method() === 'GET' && detailMatch) {
+          const versionNum = Number(detailMatch[1]);
+          await route.fulfill({
+            status: details[versionNum] ? 200 : 404,
+            contentType: 'application/json',
+            body: JSON.stringify(
+              details[versionNum] ?? {
+                error_code: 'CONTROL_VERSION_NOT_FOUND',
+                detail: 'Version not found',
+              }
+            ),
+          });
+          return;
+        }
+
+        if (request.method() === 'GET') {
+          await fulfillRoute(route, listOptions, mockData.controlVersions);
+          return;
+        }
+
+        await route.continue();
+      }
+    );
+  },
+
   /** Mock POST /api/v1/controls/validate */
   controlValidate: async (
     page: Page,
@@ -1032,6 +1194,7 @@ export async function mockApiRoutes(page: Page) {
   await mockRoutes.controlSchema(page);
   await mockRoutes.controlsList(page);
   await mockRoutes.controlGetData(page);
+  await mockRoutes.controlVersions(page);
   await mockRoutes.controlValidate(page);
   await mockRoutes.controlCreate(page);
   await mockRoutes.controlUpdate(page);
@@ -1057,6 +1220,7 @@ export async function mockApiRoutesWithAuthRequired(page: Page) {
   await mockRoutes.controlSchema(page);
   await mockRoutes.controlsList(page);
   await mockRoutes.controlGetData(page);
+  await mockRoutes.controlVersions(page);
   await mockRoutes.controlValidate(page);
   await mockRoutes.controlCreate(page);
   await mockRoutes.controlUpdate(page);

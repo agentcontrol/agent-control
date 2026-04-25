@@ -549,6 +549,27 @@ class GetControlVersionResponse(BaseModel):
     )
 
 
+class RestoreControlVersionResponse(BaseModel):
+    """Response for restoring a control to a historical version."""
+
+    success: bool = Field(..., description="Whether the restore request succeeded")
+    control_id: int = Field(..., description="Identifier of the restored control")
+    restored_from_version_num: int = Field(
+        ..., description="Historical version number used as the restore source"
+    )
+    current_version_num: int = Field(
+        ...,
+        description=(
+            "Current latest version number after restore. For no-op restores, "
+            "this is the existing latest version."
+        ),
+    )
+    name: str = Field(..., description="Current control name after restore")
+    data: ControlDefinition | UnrenderedTemplateControl = Field(
+        ..., description="Current control data after restore"
+    )
+
+
 class DeleteControlResponse(BaseModel):
     """Response for deleting a control."""
 

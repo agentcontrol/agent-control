@@ -82,6 +82,9 @@ export type ControlDefinitionOutput =
 export type ControlDefinition =
   | ControlDefinitionInput
   | ControlDefinitionOutput;
+export type UnrenderedTemplateControl =
+  components['schemas']['UnrenderedTemplateControl'];
+export type StoredControlData = ControlDefinition | UnrenderedTemplateControl;
 export type Control = components['schemas']['Control'];
 export type AgentControlsResponse =
   components['schemas']['AgentControlsResponse'];
@@ -102,6 +105,14 @@ export type GetControlDataResponse =
   components['schemas']['GetControlDataResponse'];
 export type GetControlSchemaResponse =
   components['schemas']['GetControlSchemaResponse'];
+export type ControlVersionSummary =
+  components['schemas']['ControlVersionSummary'];
+export type ListControlVersionsResponse =
+  components['schemas']['ListControlVersionsResponse'];
+export type GetControlVersionResponse =
+  components['schemas']['GetControlVersionResponse'];
+export type RestoreControlVersionResponse =
+  components['schemas']['RestoreControlVersionResponse'];
 
 export type ValidateControlDataRequest =
   components['schemas']['ValidateControlDataRequest'];

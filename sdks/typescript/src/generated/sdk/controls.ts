@@ -11,6 +11,7 @@ import { controlsGet } from "../funcs/controls-get.js";
 import { controlsListVersions } from "../funcs/controls-list-versions.js";
 import { controlsList } from "../funcs/controls-list.js";
 import { controlsRenderTemplate } from "../funcs/controls-render-template.js";
+import { controlsRestoreVersion } from "../funcs/controls-restore-version.js";
 import { controlsUpdateData } from "../funcs/controls-update-data.js";
 import { controlsUpdateMetadata } from "../funcs/controls-update-metadata.js";
 import { controlsValidateData } from "../funcs/controls-validate-data.js";
@@ -331,6 +332,24 @@ export class Controls extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.GetControlVersionResponse> {
     return unwrapAsync(controlsGetVersion(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * Restore a control version
+   *
+   * @remarks
+   * Restore an active control to a historical version in one atomic write.
+   */
+  async restoreVersion(
+    request:
+      operations.RestoreControlVersionApiV1ControlsControlIdVersionsVersionNumRestorePostRequest,
+    options?: RequestOptions,
+  ): Promise<models.RestoreControlVersionResponse> {
+    return unwrapAsync(controlsRestoreVersion(
       this,
       request,
       options,
