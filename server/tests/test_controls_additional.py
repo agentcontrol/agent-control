@@ -19,6 +19,7 @@ from agent_control_server.db import get_async_db
 from agent_control_server.models import Control
 
 from agent_control_evaluators import RegexEvaluatorConfig
+from agent_control_server.services import control_data_validation
 from agent_control_server.endpoints import controls as controls_module
 from agent_control_server.main import app
 
@@ -960,7 +961,7 @@ def test_set_control_data_builtin_evaluator_validation_error(
         config_model = RegexEvaluatorConfig
 
     monkeypatch.setattr(
-        controls_module,
+        control_data_validation,
         "list_evaluators",
         lambda: {"dummy": DummyEvaluator},
     )
@@ -993,7 +994,7 @@ def test_set_control_data_builtin_evaluator_invalid_parameters(
             raise TypeError("unexpected parameter")
 
     monkeypatch.setattr(
-        controls_module,
+        control_data_validation,
         "list_evaluators",
         lambda: {"dummy": DummyEvaluator},
     )
