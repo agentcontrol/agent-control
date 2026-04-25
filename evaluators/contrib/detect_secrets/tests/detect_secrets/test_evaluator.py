@@ -1046,6 +1046,30 @@ async def test_exclude_lines_regex_on_dict_payload_preserves_pointers_for_other_
     assert result.metadata["findings"] == [{"type": "GitHub Token", "json_pointer": "/keep"}]
 
 
+@pytest.mark.asyncio
+async def test_exclude_lines_regex_does_not_treat_unicode_nel_as_line_break() -> None:
+    # Given: a structured payload with a secret after U+0085 and an unrelated excluded line
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(
+            enabled_plugins=["GitHubTokenDetector"],
+            exclude_lines_regex=[r'"skip"'],
+        )
+    )
+
+    # When: exclusions are applied before scanning
+    result = await evaluator.evaluate(
+        {
+            "skip": "safe",
+            "keep": "prefix\u0085ghp_123456789012345678901234567890123456",
+        }
+    )
+
+    # Then: only actual JSON newlines affect line numbering, so the pointer stays on /keep
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["findings"] == [{"type": "GitHub Token", "json_pointer": "/keep"}]
+
+
 # ---------------------------------------------------------------------------
 # max_bytes boundary behavior.
 # ---------------------------------------------------------------------------

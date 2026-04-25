@@ -43,7 +43,11 @@ class RenderedLine:
 def _json_dumps(value: Any, **kwargs: Any) -> str:
     """Serialize JSON while keeping Unicode line separators escaped on one logical line."""
     dumped = json.dumps(value, **kwargs)
-    return dumped.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    return (
+        dumped.replace("\u0085", "\\u0085")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
 
 
 def normalize_payload(data: Any) -> NormalizedPayload:
@@ -73,7 +77,7 @@ def apply_line_exclusions(text: str, patterns: tuple[Any, ...]) -> str:
 
     filtered_lines = [
         "" if any(pattern.search(line) for pattern in patterns) else line
-        for line in text.splitlines()
+        for line in text.split("\n")
     ]
     return "\n".join(filtered_lines)
 
