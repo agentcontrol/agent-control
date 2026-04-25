@@ -23,6 +23,7 @@ dependencies = [
     "PyJWT>=2.8.0",
     "google-re2>=1.1",  # For engine (bundled)
     "agent-control-evaluators>=3.0.0",  # NOT vendored - avoid conflict with galileo
+    "httpx>=0.27.0",  # HttpUpstreamAuthProvider (PR8)
 ]
 authors = [
     {name = "Agent Control Team"}
