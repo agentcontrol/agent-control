@@ -481,7 +481,7 @@ def test_set_control_data_rollback_on_failure(
         app.dependency_overrides[get_async_db] = mock_db_returns_control
         try:
             valid_payload = {
-                "description": "Valid Control",
+                "description": "Valid Control Updated",
                 "enabled": True,
                 "execution": "server",
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},

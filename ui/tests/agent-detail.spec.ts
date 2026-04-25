@@ -372,6 +372,445 @@ test.describe('Agent Detail Page', () => {
     );
   });
 
+  test('shows history tab in edit mode but not create mode', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const editModal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(editModal).toBeVisible();
+    await expect(editModal.getByRole('tab', { name: 'Editor' })).toBeVisible();
+    await expect(editModal.getByRole('tab', { name: 'History' })).toBeVisible();
+
+    await editModal.getByRole('button', { name: 'Cancel' }).click();
+    await expect(editModal).not.toBeVisible();
+
+    await mockedPage.getByTestId('add-control-button').first().click();
+    const storeModal = mockedPage
+      .getByRole('dialog')
+      .filter({ hasText: 'Browse existing controls or create a new one' });
+    await expect(storeModal).toBeVisible();
+    await storeModal
+      .locator('tbody tr')
+      .first()
+      .getByTestId('copy-control-button')
+      .click();
+
+    const createModal = mockedPage.getByRole('dialog', {
+      name: 'Create Control',
+    });
+    await expect(createModal).toBeVisible();
+    await expect(createModal.getByRole('tab', { name: 'History' })).toHaveCount(
+      0
+    );
+  });
+
+  test('loads version history and diffs selected version against predecessor', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await expect(
+      modal.getByRole('button', { name: 'Version 3' })
+    ).toBeVisible();
+    await expect(
+      modal.getByRole('button', { name: 'Version 2' })
+    ).toBeVisible();
+    await expect(
+      modal.getByRole('button', { name: 'Version 3' }).getByText('Current')
+    ).toBeVisible();
+
+    await expect(
+      modal.getByRole('button', { name: 'Restore this version' })
+    ).toBeDisabled();
+
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+    await expect(modal.getByText('Description changed')).toBeVisible();
+    await expect(
+      modal.getByText('Original PII description', { exact: true })
+    ).toBeVisible();
+    await expect(
+      modal.getByText('Changed PII description', { exact: true })
+    ).toBeVisible();
+    await expect(
+      modal.getByRole('button', { name: 'Restore this version' })
+    ).toBeEnabled();
+  });
+
+  test('compares restore eligibility against latest saved version snapshot', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    const currentEquivalentSnapshot = {
+      ...mockData.controlVersionDetails[3].snapshot,
+      data: {
+        ...(mockData.controlVersionDetails[3].snapshot.data as Record<
+          string,
+          unknown
+        >),
+        description: 'Already restored description',
+      },
+    };
+    await mockRoutes.controlVersions(mockedPage, {
+      details: {
+        ...mockData.controlVersionDetails,
+        2: {
+          ...mockData.controlVersionDetails[2],
+          snapshot: currentEquivalentSnapshot,
+        },
+        3: {
+          ...mockData.controlVersionDetails[3],
+          snapshot: currentEquivalentSnapshot,
+        },
+      },
+    });
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+
+    await expect(
+      modal.getByText('This version matches the current saved control.')
+    ).toBeVisible();
+    await expect(
+      modal.getByRole('button', { name: 'Restore this version' })
+    ).toBeDisabled();
+  });
+
+  test('keeps restore enabled when only preserved snapshot fields differ', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    await mockRoutes.controlVersions(mockedPage, {
+      details: {
+        ...mockData.controlVersionDetails,
+        2: {
+          ...mockData.controlVersionDetails[2],
+          snapshot: {
+            ...mockData.controlVersionDetails[2].snapshot,
+            data: {
+              ...(mockData.controlVersionDetails[2].snapshot.data as Record<
+                string,
+                unknown
+              >),
+              x_future_metadata: { mode: 'legacy' },
+            },
+          },
+        },
+      },
+    });
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+
+    await expect(
+      modal.getByRole('button', { name: 'Restore this version' })
+    ).toBeEnabled();
+    await expect(modal.getByText('data.x_future_metadata')).toBeVisible();
+  });
+
+  test('summarizes nested scope diffs as scope changes', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    await mockRoutes.controlVersions(mockedPage, {
+      details: {
+        ...mockData.controlVersionDetails,
+        2: {
+          ...mockData.controlVersionDetails[2],
+          snapshot: {
+            ...mockData.controlVersionDetails[2].snapshot,
+            data: {
+              ...(mockData.controlVersionDetails[2].snapshot.data as Record<
+                string,
+                unknown
+              >),
+              scope: {
+                ...((
+                  mockData.controlVersionDetails[2].snapshot.data as Record<
+                    string,
+                    unknown
+                  >
+                ).scope as Record<string, unknown>),
+                stages: ['pre'],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+
+    await expect(modal.getByText('Scope changed')).toBeVisible();
+  });
+
+  test('fetches predecessor detail when selected version is at a page boundary', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    const details = mockData.controlVersionDetails;
+
+    await mockedPage.route(
+      '**/api/v1/controls/1/versions**',
+      async (route, request) => {
+        const url = new URL(request.url());
+        const detailMatch = url.pathname.match(/\/versions\/(\d+)$/);
+        if (request.method() === 'GET' && detailMatch) {
+          const versionNum = Number(detailMatch[1]);
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(details[versionNum]),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            versions: mockData.controlVersions.versions.filter((version) =>
+              [3, 2].includes(version.version_num)
+            ),
+            pagination: {
+              total: 3,
+              limit: 2,
+              has_more: true,
+              next_cursor: '2',
+            },
+          }),
+        });
+      }
+    );
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await expect(
+      modal.getByRole('button', { name: 'Version 2' })
+    ).toBeVisible();
+
+    const predecessorRequest = mockedPage.waitForRequest(
+      (request) =>
+        request.method() === 'GET' &&
+        /\/api\/v1\/controls\/1\/versions\/1$/.test(
+          new URL(request.url()).pathname
+        )
+    );
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+    await predecessorRequest;
+
+    await expect(
+      modal.getByText('Original PII description', { exact: true })
+    ).toBeVisible();
+  });
+
+  test('shows an error instead of diffing against an unavailable predecessor', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    const details = mockData.controlVersionDetails;
+
+    await mockedPage.route(
+      '**/api/v1/controls/1/versions**',
+      async (route, request) => {
+        const url = new URL(request.url());
+        const detailMatch = url.pathname.match(/\/versions\/(\d+)$/);
+        if (request.method() === 'GET' && detailMatch) {
+          const versionNum = Number(detailMatch[1]);
+          if (versionNum === 1) {
+            await route.fulfill({
+              status: 404,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                error_code: 'CONTROL_VERSION_NOT_FOUND',
+                detail: 'Version not found',
+              }),
+            });
+            return;
+          }
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(details[versionNum]),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(mockData.controlVersions),
+        });
+      }
+    );
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+
+    await expect(
+      modal.getByText(
+        'Previous version could not be loaded, so the diff cannot be shown.'
+      )
+    ).toBeVisible();
+    await expect(
+      modal.getByText('Original PII description', { exact: true })
+    ).toHaveCount(0);
+  });
+
+  test('restore warns before discarding dirty editor drafts', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+
+    await modal.getByLabel('Description').fill('Local draft description');
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+    await modal.getByRole('button', { name: 'Restore this version' }).click();
+
+    await expect(
+      mockedPage.getByRole('dialog', {
+        name: 'Discard unsaved draft changes?',
+      })
+    ).toBeVisible();
+  });
+
+  test('successful restore syncs the open editor before save can reuse stale state', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    let restored = false;
+    const restoredControl: Control = {
+      ...mockData.controls.controls[0],
+      control: {
+        ...(mockData.controls.controls[0].control as Record<string, unknown>),
+        description: 'Restored from version 2',
+      } as Control['control'],
+    };
+
+    await mockedPage.route(
+      '**/api/v1/agents/agent-1/controls',
+      async (route, request) => {
+        if (request.method() !== 'GET') {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            controls: restored
+              ? [restoredControl, ...mockData.controls.controls.slice(1)]
+              : mockData.controls.controls,
+          } satisfies AgentControlsResponse),
+        });
+      }
+    );
+    await mockedPage.route(
+      '**/api/v1/controls/*/versions/*/restore',
+      async (route) => {
+        restored = true;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            control_id: 1,
+            restored_from_version_num: 2,
+            current_version_num: 4,
+            name: restoredControl.name,
+            data: restoredControl.control,
+          }),
+        });
+      }
+    );
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+    await modal.getByRole('button', { name: 'Restore this version' }).click();
+    await mockedPage
+      .getByRole('button', { name: 'Restore', exact: true })
+      .click();
+
+    await expect(modal.getByText('Restored version 2.')).toBeVisible();
+    await modal.getByRole('tab', { name: 'Editor' }).click();
+    await expect(modal.getByLabel('Description')).toHaveValue(
+      'Restored from version 2'
+    );
+  });
+
+  test('failed restore keeps local editor state and shows inline error', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.stats(mockedPage, { data: mockData.emptyStats });
+    await mockedPage.route(
+      '**/api/v1/controls/*/versions/*/restore',
+      async (route) => {
+        await route.fulfill({
+          status: 422,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            type: 'about:blank',
+            title: 'Validation Error',
+            status: 422,
+            detail: 'Snapshot no longer valid',
+            error_code: 'INVALID_CONFIG',
+            reason: 'UnprocessableEntity',
+            errors: [],
+          }),
+        });
+      }
+    );
+
+    await mockedPage.goto(getAgentControlsUrl({ modal: 'edit', controlId: 1 }));
+    const modal = mockedPage.getByRole('dialog', { name: 'Edit Control' });
+    await expect(modal).toBeVisible();
+
+    await modal.getByLabel('Description').fill('Draft that should remain');
+    await modal.getByRole('tab', { name: 'History' }).click();
+    await modal.getByRole('button', { name: 'Version 2' }).click();
+    await modal.getByRole('button', { name: 'Restore this version' }).click();
+    await mockedPage
+      .getByRole('button', { name: 'Discard and continue' })
+      .click();
+    await mockedPage
+      .getByRole('button', { name: 'Restore', exact: true })
+      .click();
+
+    await expect(modal.getByText('Snapshot no longer valid')).toBeVisible();
+    await modal.getByRole('tab', { name: 'Editor' }).click();
+    await expect(modal.getByLabel('Description')).toHaveValue(
+      'Draft that should remain'
+    );
+  });
+
   test('opens edit control modal when edit button is clicked', async ({
     mockedPage,
   }) => {

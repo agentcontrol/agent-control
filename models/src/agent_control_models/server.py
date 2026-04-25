@@ -10,7 +10,6 @@ from .controls import (
     TemplateControlInput,
     TemplateDefinition,
     TemplateValue,
-    UnrenderedTemplateControl,
 )
 from .policy import Control
 
@@ -311,10 +310,10 @@ class GetControlResponse(BaseModel):
 
     id: int = Field(..., description="Control ID")
     name: str = Field(..., description="Control name")
-    data: ControlDefinition | UnrenderedTemplateControl = Field(
+    data: dict[str, Any] = Field(
         description=(
-            "Control configuration data. A ControlDefinition for raw/rendered "
-            "controls or an UnrenderedTemplateControl for unrendered templates."
+            "Canonical control payload after validation. Forward-compatible "
+            "fields are preserved for round-tripping."
         ),
     )
 
@@ -344,8 +343,11 @@ class RemoveAgentControlResponse(BaseModel):
 
 
 class GetControlDataResponse(BaseModel):
-    data: ControlDefinition | UnrenderedTemplateControl = Field(
-        description="Control data payload (rendered control or unrendered template)"
+    data: dict[str, Any] = Field(
+        description=(
+            "Canonical control payload after validation. Forward-compatible "
+            "fields are preserved for round-tripping."
+        )
     )
 
 
@@ -545,6 +547,31 @@ class GetControlVersionResponse(BaseModel):
         description=(
             "Raw persisted snapshot of the control state at this version, including "
             "metadata such as name, deleted_at, and cloned_control_id."
+        ),
+    )
+
+
+class RestoreControlVersionResponse(BaseModel):
+    """Response for restoring a control to a historical version."""
+
+    success: bool = Field(..., description="Whether the restore request succeeded")
+    control_id: int = Field(..., description="Identifier of the restored control")
+    restored_from_version_num: int = Field(
+        ..., description="Historical version number used as the restore source"
+    )
+    current_version_num: int = Field(
+        ...,
+        description=(
+            "Current latest version number after restore. For no-op restores, "
+            "this is the existing latest version."
+        ),
+    )
+    name: str = Field(..., description="Current control name after restore")
+    data: dict[str, Any] = Field(
+        ...,
+        description=(
+            "Current canonical control payload after restore. "
+            "Forward-compatible fields are preserved for round-tripping."
         ),
     )
 

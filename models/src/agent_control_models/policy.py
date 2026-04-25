@@ -1,18 +1,19 @@
+from typing import Any
+
 from .base import BaseModel
-from .controls import ControlDefinition, UnrenderedTemplateControl
 
 
 class Control(BaseModel):
     """A control with identity and configuration.
 
-    For rendered controls (raw or template-backed), ``control`` is a
-    ``ControlDefinition``.  For unrendered template controls, ``control``
-    is an ``UnrenderedTemplateControl``.
+    ``control`` contains the canonical payload after server-side validation.
+    Forward-compatible stored fields are preserved so clients can round-trip
+    historical snapshots without data loss.
     """
 
     id: int
     name: str
-    control: ControlDefinition | UnrenderedTemplateControl
+    control: dict[str, Any]
 
 
 class Policy(BaseModel):

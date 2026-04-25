@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from agent_control_models import (
-    ControlDefinition,
     ControlDefinitionRuntime,
     UnrenderedTemplateControl,
 )
@@ -18,8 +17,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from ..errors import APIValidationError, NotFoundError
+from ..errors import APIValidationError, ConflictError, NotFoundError
 from ..models import Control, ControlVersion, agent_controls, agent_policies, policy_controls
+from .control_data_validation import (
+    enabled_from_stored_payload,
+    is_unrendered_template,
+    normalize_control_data_for_response,
+    parse_restorable_snapshot,
+)
 from .control_definitions import (
     parse_control_definition_or_api_error,
     parse_runtime_control_definition_or_api_error,
@@ -81,6 +86,16 @@ class RemoveAgentControlResult:
 
     removed_direct_association: bool
     control_still_active: bool
+
+
+@dataclass(frozen=True)
+class RestoreControlVersionResult:
+    """Outcome for restoring a control-version snapshot."""
+
+    control: Control
+    restored_from_version_num: int
+    current_version_num: int
+    version_created: bool
 
 
 class ControlService:
@@ -262,6 +277,56 @@ class ControlService:
                 hint="Verify the control ID and version number are correct.",
             )
         return version
+
+    async def restore_version(
+        self,
+        control_id: int,
+        version_num: int,
+    ) -> RestoreControlVersionResult:
+        """Restore an active control to a previously recorded version snapshot."""
+        control = await self.get_active_control_or_404(control_id, for_update=True)
+        version = await self.get_version_or_404(control_id, version_num)
+        snapshot = await parse_restorable_snapshot(
+            version.snapshot,
+            db=self._db,
+            control_id=control_id,
+            version_num=version_num,
+        )
+
+        if await self.active_control_name_exists(
+            snapshot.name,
+            exclude_control_id=control_id,
+        ):
+            raise ConflictError(
+                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                detail=f"Control with name '{snapshot.name}' already exists",
+                resource="Control",
+                resource_id=snapshot.name,
+                hint="Choose a different version or rename the conflicting control.",
+            )
+
+        if control.name == snapshot.name and control.data == snapshot.data:
+            return RestoreControlVersionResult(
+                control=control,
+                restored_from_version_num=version_num,
+                current_version_num=await self._latest_version_num(control_id),
+                version_created=False,
+            )
+
+        control.name = snapshot.name
+        control.data = snapshot.data
+        control.deleted_at = None
+        restored_version = await self.create_version(
+            control,
+            event_type="restored",
+            note=f"Restored from version {version_num}",
+        )
+        return RestoreControlVersionResult(
+            control=control,
+            restored_from_version_num=version_num,
+            current_version_num=restored_version.version_num,
+            version_created=True,
+        )
 
     async def list_controls_for_policy(self, policy_id: int) -> list[Control]:
         """Return DB control rows directly associated with a policy."""
@@ -602,6 +667,15 @@ class ControlService:
         )
         return cast(int, result.scalar_one())
 
+    async def _latest_version_num(self, control_id: int) -> int:
+        """Return the current highest version number for a control."""
+        result = await self._db.execute(
+            select(func.coalesce(func.max(ControlVersion.version_num), 0)).where(
+                ControlVersion.control_id == control_id
+            )
+        )
+        return cast(int, result.scalar_one())
+
     async def _lock_control_row(self, control_id: int) -> None:
         """Serialize version creation on a control by taking a row-level lock."""
         await self._db.execute(
@@ -748,7 +822,14 @@ def _parse_associated_control_or_api_error(
     """Parse an associated control row into the API model or raise a validation error."""
     if _is_unrendered_template_payload(control.data):
         unrendered = _parse_unrendered_template_or_api_error(control)
-        return APIControl(id=control.id, name=control.name, control=unrendered)
+        return APIControl(
+            id=control.id,
+            name=control.name,
+            control=normalize_control_data_for_response(
+                control.data,
+                parsed_data=unrendered,
+            ),
+        )
 
     context = (
         {"allow_invalid_step_name_regex": True}
@@ -763,7 +844,14 @@ def _parse_associated_control_or_api_error(
         context=context,
         field_prefix="data",
     )
-    return APIControl(id=control.id, name=control.name, control=control_def)
+    return APIControl(
+        id=control.id,
+        name=control.name,
+        control=normalize_control_data_for_response(
+            control.data,
+            parsed_data=control_def,
+        ),
+    )
 
 
 def _matches_rendered_state(
@@ -771,7 +859,7 @@ def _matches_rendered_state(
     rendered_state: AgentControlRenderedState,
 ) -> bool:
     """Return whether a parsed control matches the requested rendered-state filter."""
-    is_rendered = isinstance(control.control, ControlDefinition)
+    is_rendered = not is_unrendered_template(control.control)
     if rendered_state == "all":
         return True
     if rendered_state == "rendered":
@@ -786,7 +874,7 @@ def _matches_enabled_state(
     """Return whether a parsed control matches the requested enabled-state filter."""
     if enabled_state == "all":
         return True
-    is_enabled = control.control.enabled
+    is_enabled = enabled_from_stored_payload(control.control)
     if enabled_state == "enabled":
         return is_enabled
     return not is_enabled

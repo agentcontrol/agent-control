@@ -4,6 +4,8 @@ import { api } from '@/core/api/client';
 import { parseApiError } from '@/core/api/errors';
 import type { ControlDefinition } from '@/core/api/types';
 
+import { controlVersionKeys } from './control-version-keys';
+
 type UpdateControlParams = {
   agentId: string;
   controlId: number;
@@ -32,16 +34,27 @@ export function useUpdateControl() {
 
       return data;
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       // Invalidate agent controls query to refresh the list
-      queryClient.invalidateQueries({
-        queryKey: ['agent', variables.agentId, 'controls'],
-      });
-      // Invalidate agents list query to refresh active controls count
-      // (enabled status affects the active_controls_count shown on agents home page)
-      queryClient.invalidateQueries({
-        queryKey: ['agents', 'infinite'],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['agent', variables.agentId, 'controls'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['controls'],
+        }),
+        // Invalidate agents list query to refresh active controls count
+        // (enabled status affects the active_controls_count shown on agents home page)
+        queryClient.invalidateQueries({
+          queryKey: ['agents', 'infinite'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: controlVersionKeys.list(variables.controlId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: controlVersionKeys.details(variables.controlId),
+        }),
+      ]);
     },
   });
 }

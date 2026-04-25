@@ -129,7 +129,8 @@ export interface paths {
      *         db: Database session (injected)
      *
      *     Returns:
-     *         InitAgentResponse with created flag and active controls (policy-derived + direct)
+     *         InitAgentResponse with created flag and active controls currently associated
+     *         through policies or direct links
      */
     post: operations['init_agent_api_v1_agents_initAgent_post'];
     delete?: never;
@@ -198,17 +199,23 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List agent's active controls
-     * @description List all protection controls active for an agent.
+     * List agent's associated controls
+     * @description List protection controls associated with an agent.
      *
-     *     Controls include the union of policy-derived and directly associated controls.
+     *     By default, the endpoint returns all associated controls, including rendered
+     *     controls, disabled controls, and unrendered template drafts. Callers can
+     *     narrow the response via the state filters on this endpoint. Filters
+     *     intersect, so unrendered drafts require rendered_state='unrendered'
+     *     together with enabled_state='all' or 'disabled'.
      *
      *     Args:
      *         agent_name: Agent identifier
+     *         rendered_state: Whether to return rendered controls, unrendered drafts, or both
+     *         enabled_state: Whether to return enabled controls, disabled controls, or both
      *         db: Database session (injected)
      *
      *     Returns:
-     *         AgentControlsResponse with list of active controls
+     *         AgentControlsResponse with controls matching the requested state filters
      *
      *     Raises:
      *         HTTPException 404: Agent not found
@@ -408,6 +415,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/control-templates/render': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Render a control template preview
+     * @description Render a template-backed control without persisting it.
+     */
+    post: operations['render_control_template_api_v1_control_templates_render_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/controls': {
     parameters: {
       query?: never;
@@ -426,6 +453,7 @@ export interface paths {
      *         limit: Maximum number of controls to return (default 20, max 100)
      *         name: Optional filter by name (partial, case-insensitive match)
      *         enabled: Optional filter by enabled status
+     *         template_backed: Optional filter by whether the control is template-backed
      *         step_type: Optional filter by step type (built-ins: 'tool', 'llm')
      *         stage: Optional filter by stage ('pre' or 'post')
      *         execution: Optional filter by execution ('server' or 'sdk')
@@ -528,7 +556,7 @@ export interface paths {
      *         db: Database session (injected)
      *
      *     Returns:
-     *         GetControlResponse with control id, name, and data
+     *         GetControlResponse with control id, name, and canonical validated data
      *
      *     Raises:
      *         HTTPException 404: Control not found
@@ -578,7 +606,7 @@ export interface paths {
      *     Raises:
      *         HTTPException 404: Control not found
      *         HTTPException 409: New name conflicts with existing control
-     *         HTTPException 422: Cannot update enabled status (control has no data configured)
+     *         HTTPException 422: Cannot update metadata for corrupted control data
      *         HTTPException 500: Database error during update
      */
     patch: operations['patch_control_api_v1_controls__control_id__patch'];
@@ -602,7 +630,7 @@ export interface paths {
      *         db: Database session (injected)
      *
      *     Returns:
-     *         GetControlDataResponse with validated ControlDefinition
+     *         GetControlDataResponse with canonical validated control data
      *
      *     Raises:
      *         HTTPException 404: Control not found
@@ -636,6 +664,66 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/controls/{control_id}/versions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List control version history
+     * @description List control versions ordered newest-first using cursor-based pagination.
+     */
+    get: operations['list_control_versions_api_v1_controls__control_id__versions_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/controls/{control_id}/versions/{version_num}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a specific control version
+     * @description Return a specific control version, including its raw persisted snapshot.
+     */
+    get: operations['get_control_version_api_v1_controls__control_id__versions__version_num__get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/controls/{control_id}/versions/{version_num}/restore': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Restore a control version
+     * @description Restore an active control to a historical version in one atomic write.
+     */
+    post: operations['restore_control_version_api_v1_controls__control_id__versions__version_num__restore_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/evaluation': {
     parameters: {
       query?: never;
@@ -649,15 +737,10 @@ export interface paths {
      * Analyze content safety
      * @description Analyze content for safety and control violations.
      *
-     *     Runs all controls assigned to the agent via policy through the
-     *     evaluation engine. Controls are evaluated in parallel with
-     *     cancel-on-deny for efficiency.
-     *
-     *     Custom evaluators must be deployed as Evaluator classes
-     *     with the engine. Their schemas are registered via initAgent.
-     *
-     *     Optionally accepts X-Trace-Id and X-Span-Id headers for
-     *     OpenTelemetry-compatible distributed tracing.
+     *     This endpoint is intentionally evaluation-only. It returns the semantic
+     *     ``EvaluationResponse`` and does not build or ingest observability events
+     *     on the server; SDKs reconstruct and emit those events separately through
+     *     the observability ingestion endpoint.
      */
     post: operations['evaluate_api_v1_evaluation_post'];
     delete?: never;
@@ -1056,7 +1139,7 @@ export interface components {
     AgentControlsResponse: {
       /**
        * Controls
-       * @description List of active controls associated with the agent
+       * @description List of agent-associated controls matching the requested state filters (all associated controls by default, including disabled and unrendered controls)
        */
       controls: components['schemas']['Control'][];
     };
@@ -1189,6 +1272,43 @@ export interface components {
        * @enum {string}
        */
       status: 'queued' | 'partial' | 'failed';
+    };
+    /**
+     * BooleanTemplateParameter
+     * @description Boolean template parameter.
+     */
+    BooleanTemplateParameter: {
+      /**
+       * Default
+       * @description Optional default value
+       */
+      default?: boolean | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'boolean';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
     };
     /**
      * ConditionNode
@@ -1351,11 +1471,15 @@ export interface components {
      * Control
      * @description A control with identity and configuration.
      *
-     *     Note: Only fully-configured controls (with valid ControlDefinition)
-     *     are returned from API endpoints. Unconfigured controls are filtered out.
+     *     ``control`` contains the canonical payload after server-side validation.
+     *     Forward-compatible stored fields are preserved so clients can round-trip
+     *     historical snapshots without data loss.
      */
     Control: {
-      control: components['schemas']['ControlDefinition-Output'];
+      /** Control */
+      control: {
+        [key: string]: unknown;
+      };
       /** Id */
       id: number;
       /** Name */
@@ -1438,6 +1562,15 @@ export interface components {
        * @description Tags for categorization
        */
       tags?: string[];
+      /** @description Template metadata for template-backed controls */
+      template?: components['schemas']['TemplateDefinition-Input'] | null;
+      /**
+       * Template Values
+       * @description Resolved parameter values for template-backed controls
+       */
+      template_values?: {
+        [key: string]: components['schemas']['TemplateValue'];
+      } | null;
     };
     /**
      * ControlDefinition
@@ -1506,6 +1639,15 @@ export interface components {
        * @description Tags for categorization
        */
       tags?: string[];
+      /** @description Template metadata for template-backed controls */
+      template?: components['schemas']['TemplateDefinition-Output'] | null;
+      /**
+       * Template Values
+       * @description Resolved parameter values for template-backed controls
+       */
+      template_values?: {
+        [key: string]: components['schemas']['TemplateValue'];
+      } | null;
     };
     /**
      * ControlExecutionEvent
@@ -1718,6 +1860,16 @@ export interface components {
       /**
        * Step Types
        * @description Step types this control applies to (omit to apply to all types). Built-in types are 'tool' and 'llm'.
+       * @example [
+       *       "llm"
+       *     ]
+       * @example [
+       *       "tool"
+       *     ]
+       * @example [
+       *       "llm",
+       *       "tool"
+       *     ]
        */
       step_types?: string[] | null;
     };
@@ -1770,6 +1922,9 @@ export interface components {
      *         error_count: Number of errors during evaluation
      *         avg_confidence: Average confidence score
      *         avg_duration_ms: Average execution duration in milliseconds
+     *
+     *     Invariant:
+     *         deny_count + steer_count + observe_count == match_count
      */
     ControlStats: {
       /**
@@ -1911,6 +2066,17 @@ export interface components {
        * @description Control tags
        */
       tags?: string[];
+      /**
+       * Template Backed
+       * @description Whether the control was created from a template
+       * @default false
+       */
+      template_backed: boolean;
+      /**
+       * Template Rendered
+       * @description Whether a template-backed control has been rendered. True for rendered templates, False for unrendered templates, None for non-template controls.
+       */
+      template_rendered?: boolean | null;
       /** @description Agent using this control */
       used_by_agent?: components['schemas']['AgentRef'] | null;
       /**
@@ -1920,10 +2086,41 @@ export interface components {
        */
       used_by_agents_count: number;
     };
+    /**
+     * ControlVersionSummary
+     * @description Summary of a single control version.
+     */
+    ControlVersionSummary: {
+      /**
+       * Created At
+       * @description ISO 8601 timestamp when this version was created
+       */
+      created_at: string;
+      /**
+       * Event Type
+       * @description Machine-readable event type for this version
+       */
+      event_type: string;
+      /**
+       * Note
+       * @description Human-readable note describing the change
+       */
+      note?: string | null;
+      /**
+       * Version Num
+       * @description Monotonic version number for the control
+       */
+      version_num: number;
+    };
     /** CreateControlRequest */
     CreateControlRequest: {
-      /** @description Control definition to validate and store during creation */
-      data: components['schemas']['ControlDefinition-Input'];
+      /**
+       * Data
+       * @description Control definition to validate and store during creation
+       */
+      data:
+        | components['schemas']['ControlDefinition-Input']
+        | components['schemas']['TemplateControlInput'];
       /**
        * Name
        * @description Unique control name (letters, numbers, hyphens, underscores)
@@ -1990,6 +2187,48 @@ export interface components {
        * @description Whether the request succeeded
        */
       success: boolean;
+    };
+    /**
+     * EnumTemplateParameter
+     * @description String enum template parameter.
+     */
+    EnumTemplateParameter: {
+      /**
+       * Allowed Values
+       * @description Allowed string values for the parameter
+       */
+      allowed_values: string[];
+      /**
+       * Default
+       * @description Optional default value
+       */
+      default?: string | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'enum';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
     };
     /**
      * EvaluationRequest
@@ -2442,16 +2681,26 @@ export interface components {
     };
     /** GetControlDataResponse */
     GetControlDataResponse: {
-      /** @description Control data payload */
-      data: components['schemas']['ControlDefinition-Output'];
+      /**
+       * Data
+       * @description Canonical control payload after validation. Forward-compatible fields are preserved for round-tripping.
+       */
+      data: {
+        [key: string]: unknown;
+      };
     };
     /**
      * GetControlResponse
      * @description Response containing control details.
      */
     GetControlResponse: {
-      /** @description Control configuration data (None if not yet configured) */
-      data?: components['schemas']['ControlDefinition-Output'] | null;
+      /**
+       * Data
+       * @description Canonical control payload after validation. Forward-compatible fields are preserved for round-tripping.
+       */
+      data: {
+        [key: string]: unknown;
+      };
       /**
        * Id
        * @description Control ID
@@ -2472,6 +2721,39 @@ export interface components {
       schema: {
         [key: string]: unknown;
       };
+    };
+    /**
+     * GetControlVersionResponse
+     * @description Response containing a full control version snapshot.
+     */
+    GetControlVersionResponse: {
+      /**
+       * Created At
+       * @description ISO 8601 timestamp when this version was created
+       */
+      created_at: string;
+      /**
+       * Event Type
+       * @description Machine-readable event type for this version
+       */
+      event_type: string;
+      /**
+       * Note
+       * @description Human-readable note describing the change
+       */
+      note?: string | null;
+      /**
+       * Snapshot
+       * @description Raw persisted snapshot of the control state at this version, including metadata such as name, deleted_at, and cloned_control_id.
+       */
+      snapshot: {
+        [key: string]: unknown;
+      };
+      /**
+       * Version Num
+       * @description Monotonic version number for the control
+       */
+      version_num: number;
     };
     /**
      * GetPolicyControlsResponse
@@ -2679,10 +2961,12 @@ export interface components {
       overwrite_changes?: components['schemas']['InitAgentOverwriteChanges'];
     };
     JSONObject: {
-      [key: string]: components['schemas']['JSONValue'];
+      [key: string]: unknown;
     };
-    /** @description Any JSON value */
-    JSONValue: unknown;
+    'JSONValue-Input': unknown;
+    'JSONValue-Output': unknown;
+    'JsonValue-Input': unknown;
+    'JsonValue-Output': unknown;
     /**
      * ListAgentsResponse
      * @description Response for listing agents.
@@ -2695,6 +2979,19 @@ export interface components {
       agents: components['schemas']['AgentSummary'][];
       /** @description Pagination metadata */
       pagination: components['schemas']['PaginationInfo'];
+    };
+    /**
+     * ListControlVersionsResponse
+     * @description Response for listing control versions.
+     */
+    ListControlVersionsResponse: {
+      /** @description Pagination metadata */
+      pagination: components['schemas']['PaginationInfo'];
+      /**
+       * Versions
+       * @description Control versions ordered newest-first
+       */
+      versions: components['schemas']['ControlVersionSummary'][];
     };
     /**
      * ListControlsResponse
@@ -2832,6 +3129,48 @@ export interface components {
       success: boolean;
     };
     /**
+     * RegexTemplateParameter
+     * @description RE2 regex template parameter.
+     */
+    RegexTemplateParameter: {
+      /**
+       * Default
+       * @description Optional default regex pattern
+       */
+      default?: string | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Placeholder
+       * @description Optional placeholder regex
+       */
+      placeholder?: string | null;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'regex_re2';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+    };
+    /**
      * RemoveAgentControlResponse
      * @description Response for removing a direct agent-control association.
      */
@@ -2853,12 +3192,78 @@ export interface components {
       success: boolean;
     };
     /**
+     * RenderControlTemplateRequest
+     * @description Request to render a template-backed control without persisting it.
+     */
+    RenderControlTemplateRequest: {
+      /** @description Template definition to render */
+      template: components['schemas']['TemplateDefinition-Input'];
+      /**
+       * Template Values
+       * @description Template parameter values used during rendering
+       */
+      template_values?: {
+        [key: string]: components['schemas']['TemplateValue'];
+      };
+    };
+    /**
+     * RenderControlTemplateResponse
+     * @description Rendered template preview response.
+     */
+    RenderControlTemplateResponse: {
+      /** @description Rendered control definition including template metadata */
+      control: components['schemas']['ControlDefinition-Output'];
+    };
+    /**
+     * RestoreControlVersionResponse
+     * @description Response for restoring a control to a historical version.
+     */
+    RestoreControlVersionResponse: {
+      /**
+       * Control Id
+       * @description Identifier of the restored control
+       */
+      control_id: number;
+      /**
+       * Current Version Num
+       * @description Current latest version number after restore. For no-op restores, this is the existing latest version.
+       */
+      current_version_num: number;
+      /**
+       * Data
+       * @description Current canonical control payload after restore. Forward-compatible fields are preserved for round-tripping.
+       */
+      data: {
+        [key: string]: unknown;
+      };
+      /**
+       * Name
+       * @description Current control name after restore
+       */
+      name: string;
+      /**
+       * Restored From Version Num
+       * @description Historical version number used as the restore source
+       */
+      restored_from_version_num: number;
+      /**
+       * Success
+       * @description Whether the restore request succeeded
+       */
+      success: boolean;
+    };
+    /**
      * SetControlDataRequest
      * @description Request to update control configuration data.
      */
     SetControlDataRequest: {
-      /** @description Control configuration data (replaces existing) */
-      data: components['schemas']['ControlDefinition-Input'];
+      /**
+       * Data
+       * @description Control configuration data (replaces existing)
+       */
+      data:
+        | components['schemas']['ControlDefinition-Input']
+        | components['schemas']['TemplateControlInput'];
     };
     /** SetControlDataResponse */
     SetControlDataResponse: {
@@ -2997,14 +3402,14 @@ export interface components {
       /** @description Optional context (conversation history, metadata, etc.) */
       context?: components['schemas']['JSONObject'] | null;
       /** @description Input content for this step */
-      input: components['schemas']['JSONValue'];
+      input: components['schemas']['JSONValue-Input'];
       /**
        * Name
        * @description Step name (tool name or model/chain id)
        */
       name: string;
       /** @description Output content for this step (None for pre-checks) */
-      output?: components['schemas']['JSONValue'] | null;
+      output?: components['schemas']['JSONValue-Input'] | null;
       /**
        * Type
        * @description Step type (e.g., 'tool', 'llm')
@@ -3107,6 +3512,152 @@ export interface components {
       type: string;
     };
     /**
+     * StringListTemplateParameter
+     * @description List-of-strings template parameter.
+     */
+    StringListTemplateParameter: {
+      /**
+       * Default
+       * @description Optional default value
+       */
+      default?: string[] | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Placeholder
+       * @description Optional placeholder/example list
+       */
+      placeholder?: string[] | null;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'string_list';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+    };
+    /**
+     * StringTemplateParameter
+     * @description String-valued template parameter.
+     */
+    StringTemplateParameter: {
+      /**
+       * Default
+       * @description Optional default value
+       */
+      default?: string | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Placeholder
+       * @description Optional placeholder text
+       */
+      placeholder?: string | null;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'string';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+    };
+    /**
+     * TemplateControlInput
+     * @description Template-backed input payload for control create/update requests.
+     */
+    TemplateControlInput: {
+      /** @description Template definition to render */
+      template: components['schemas']['TemplateDefinition-Input'];
+      /**
+       * Template Values
+       * @description Template parameter values keyed by parameter name
+       */
+      template_values?: {
+        [key: string]: components['schemas']['TemplateValue'];
+      };
+    };
+    /**
+     * TemplateDefinition
+     * @description Reusable template with typed parameters and a JSON definition template.
+     */
+    'TemplateDefinition-Input': {
+      /** @description Template payload containing $param binding objects */
+      definition_template: components['schemas']['JsonValue-Input'];
+      /**
+       * Description
+       * @description Metadata describing the template itself
+       */
+      description?: string | null;
+      /**
+       * Parameters
+       * @description Typed parameter definitions keyed by parameter name
+       */
+      parameters?: {
+        [key: string]: components['schemas']['TemplateParameterDefinition'];
+      };
+    };
+    /**
+     * TemplateDefinition
+     * @description Reusable template with typed parameters and a JSON definition template.
+     */
+    'TemplateDefinition-Output': {
+      /** @description Template payload containing $param binding objects */
+      definition_template: components['schemas']['JsonValue-Output'];
+      /**
+       * Description
+       * @description Metadata describing the template itself
+       */
+      description?: string | null;
+      /**
+       * Parameters
+       * @description Typed parameter definitions keyed by parameter name
+       */
+      parameters?: {
+        [key: string]: components['schemas']['TemplateParameterDefinition'];
+      };
+    };
+    TemplateParameterDefinition:
+      | components['schemas']['StringTemplateParameter']
+      | components['schemas']['StringListTemplateParameter']
+      | components['schemas']['EnumTemplateParameter']
+      | components['schemas']['BooleanTemplateParameter']
+      | components['schemas']['RegexTemplateParameter'];
+    TemplateValue: string | boolean | string[];
+    /**
      * TimeseriesBucket
      * @description Single data point in a time-series.
      *
@@ -3172,8 +3723,13 @@ export interface components {
      * @description Request to validate control configuration data without saving.
      */
     ValidateControlDataRequest: {
-      /** @description Control configuration data to validate */
-      data: components['schemas']['ControlDefinition-Input'];
+      /**
+       * Data
+       * @description Control configuration data to validate
+       */
+      data:
+        | components['schemas']['ControlDefinition-Input']
+        | components['schemas']['TemplateControlInput'];
     };
     /** ValidateControlDataResponse */
     ValidateControlDataResponse: {
@@ -3410,7 +3966,12 @@ export interface operations {
   };
   list_agent_controls_api_v1_agents__agent_name__controls_get: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Rendered-state filter. Default 'all' returns both rendered controls and unrendered template drafts. */
+        rendered_state?: 'rendered' | 'unrendered' | 'all';
+        /** @description Enabled-state filter. Default 'all' returns both enabled and disabled associated controls. Unrendered template drafts are disabled, so combine with rendered_state='rendered' to exclude them. */
+        enabled_state?: 'enabled' | 'disabled' | 'all';
+      };
       header?: never;
       path: {
         agent_name: string;
@@ -3419,7 +3980,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description List of controls from agent policy and direct associations */
+      /** @description List of associated controls by default, including rendered, unrendered, enabled, and disabled controls */
       200: {
         headers: {
           [name: string]: unknown;
@@ -3789,6 +4350,39 @@ export interface operations {
       };
     };
   };
+  render_control_template_api_v1_control_templates_render_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RenderControlTemplateRequest'];
+      };
+    };
+    responses: {
+      /** @description Rendered control preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RenderControlTemplateResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   list_controls_api_v1_controls_get: {
     parameters: {
       query?: {
@@ -3799,6 +4393,8 @@ export interface operations {
         name?: string | null;
         /** @description Filter by enabled status */
         enabled?: boolean | null;
+        /** @description Filter by whether the control is template-backed */
+        template_backed?: boolean | null;
         /** @description Filter by step type (built-ins: 'tool', 'llm') */
         step_type?: string | null;
         /** @description Filter by stage ('pre' or 'post') */
@@ -4086,13 +4682,109 @@ export interface operations {
       };
     };
   };
+  list_control_versions_api_v1_controls__control_id__versions_get: {
+    parameters: {
+      query?: {
+        /** @description Version number to start after (newest-first pagination) */
+        cursor?: number | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Paginated control version summaries */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ListControlVersionsResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_control_version_api_v1_controls__control_id__versions__version_num__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        control_id: number;
+        version_num: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Full control version snapshot */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GetControlVersionResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  restore_control_version_api_v1_controls__control_id__versions__version_num__restore_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        control_id: number;
+        version_num: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Restored control state and current version number */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RestoreControlVersionResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   evaluate_api_v1_evaluation_post: {
     parameters: {
       query?: never;
-      header?: {
-        'X-Trace-Id'?: string | null;
-        'X-Span-Id'?: string | null;
-      };
+      header?: never;
       path?: never;
       cookie?: never;
     };

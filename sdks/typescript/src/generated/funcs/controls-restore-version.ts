@@ -28,31 +28,19 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Get control configuration data
+ * Restore a control version
  *
  * @remarks
- * Retrieve the configuration data for a control.
- *
- * Control data is a JSONB field that must follow the ControlDefinition schema.
- *
- * Args:
- *     control_id: ID of the control
- *     db: Database session (injected)
- *
- * Returns:
- *     GetControlDataResponse with canonical validated control data
- *
- * Raises:
- *     HTTPException 404: Control not found
- *     HTTPException 422: Control data is corrupted
+ * Restore an active control to a historical version in one atomic write.
  */
-export function controlsGetData(
+export function controlsRestoreVersion(
   client: AgentControlSDKCore,
-  request: operations.GetControlDataApiV1ControlsControlIdDataGetRequest,
+  request:
+    operations.RestoreControlVersionApiV1ControlsControlIdVersionsVersionNumRestorePostRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.GetControlDataResponse,
+    models.RestoreControlVersionResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -73,12 +61,13 @@ export function controlsGetData(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: operations.GetControlDataApiV1ControlsControlIdDataGetRequest,
+  request:
+    operations.RestoreControlVersionApiV1ControlsControlIdVersionsVersionNumRestorePostRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.GetControlDataResponse,
+      models.RestoreControlVersionResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -97,7 +86,7 @@ async function $do(
     (value) =>
       z.parse(
         operations
-          .GetControlDataApiV1ControlsControlIdDataGetRequest$outboundSchema,
+          .RestoreControlVersionApiV1ControlsControlIdVersionsVersionNumRestorePostRequest$outboundSchema,
         value,
       ),
     "Input validation failed",
@@ -113,9 +102,15 @@ async function $do(
       explode: false,
       charEncoding: "percent",
     }),
+    version_num: encodeSimple("version_num", payload.version_num, {
+      explode: false,
+      charEncoding: "percent",
+    }),
   };
 
-  const path = pathToFunc("/api/v1/controls/{control_id}/data")(pathParams);
+  const path = pathToFunc(
+    "/api/v1/controls/{control_id}/versions/{version_num}/restore",
+  )(pathParams);
 
   const headers = new Headers(compactMap({
     Accept: "application/json",
@@ -128,7 +123,8 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "get_control_data_api_v1_controls__control_id__data_get",
+    operationID:
+      "restore_control_version_api_v1_controls__control_id__versions__version_num__restore_post",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -142,7 +138,7 @@ async function $do(
 
   const requestRes = client._createRequest(context, {
     security: requestSecurity,
-    method: "GET",
+    method: "POST",
     baseURL: options?.serverURL,
     path: path,
     headers: headers,
@@ -171,7 +167,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.GetControlDataResponse,
+    models.RestoreControlVersionResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -182,7 +178,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.GetControlDataResponse$inboundSchema),
+    M.json(200, models.RestoreControlVersionResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

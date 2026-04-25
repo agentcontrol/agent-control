@@ -54,6 +54,7 @@ from ..models import (
     agent_policies,
 )
 from ..services.agent_names import normalize_agent_name_or_422
+from ..services.control_data_validation import is_unrendered_template
 from ..services.controls import (
     AgentControlEnabledState,
     AgentControlRenderedState,
@@ -174,9 +175,10 @@ def _find_referencing_controls_for_removed_evaluators(
     referencing_control_set: set[tuple[str, str]] = set()
 
     for ctrl in controls:
-        if not isinstance(ctrl.control, ControlDefinition):
-            continue  # Skip unrendered template controls
-        for _, evaluator_spec in ctrl.control.iter_condition_leaf_parts():
+        control_def = _as_rendered_control_definition(ctrl)
+        if control_def is None:
+            continue
+        for _, evaluator_spec in control_def.iter_condition_leaf_parts():
             evaluator_ref = evaluator_spec.name
             if ":" not in evaluator_ref:
                 continue
@@ -236,9 +238,13 @@ async def _build_overwrite_evaluator_removals(
 
     references_by_evaluator: dict[str, set[tuple[int, str]]] = {}
     for control in controls:
-        if not isinstance(control.control, ControlDefinition):
-            continue  # Skip unrendered template controls
-        for _, evaluator_spec in control.control.iter_condition_leaf_parts():
+        control_def = _as_rendered_control_definition(
+            control,
+            allow_invalid_step_name_regex=True,
+        )
+        if control_def is None:
+            continue
+        for _, evaluator_spec in control_def.iter_condition_leaf_parts():
             evaluator_ref = evaluator_spec.name
             parsed = parse_evaluator_ref_full(evaluator_ref)
             if parsed.type != "agent":
@@ -267,6 +273,22 @@ async def _build_overwrite_evaluator_removals(
             )
         )
     return removals
+
+
+def _as_rendered_control_definition(
+    control: APIControl,
+    *,
+    allow_invalid_step_name_regex: bool = False,
+) -> ControlDefinition | None:
+    """Return a rendered control definition from an API control payload when available."""
+    if is_unrendered_template(control.control):
+        return None
+    context = (
+        {"allow_invalid_step_name_regex": True}
+        if allow_invalid_step_name_regex
+        else None
+    )
+    return ControlDefinition.model_validate(control.control, context=context)
 
 
 @router.get(

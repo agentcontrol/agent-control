@@ -66,6 +66,7 @@ from agent_control_models import (
     EvaluatorResult,
     EvaluatorSpec,
     JSONObject,
+    RestoreControlVersionResponse,
     Step,
     StepSchema,
     TemplateControlInput,
@@ -967,6 +968,59 @@ async def list_controls(
         )
 
 
+async def list_control_versions(
+    control_id: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+    cursor: int | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """List version-history summaries for a control."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await controls.list_control_versions(
+            client,
+            control_id=control_id,
+            cursor=cursor,
+            limit=limit,
+        )
+
+
+async def get_control_version(
+    control_id: int,
+    version_num: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Get a specific version snapshot for a control."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await controls.get_control_version(
+            client,
+            control_id=control_id,
+            version_num=version_num,
+        )
+
+
+async def restore_control_version(
+    control_id: int,
+    version_num: int,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Restore an active control to a historical version."""
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+        return await controls.restore_control_version(
+            client,
+            control_id=control_id,
+            version_num=version_num,
+        )
+
+
 async def create_control(
     name: str,
     data: dict[str, Any] | ControlDefinition | TemplateControlInput,
@@ -1341,6 +1395,9 @@ __all__ = [
     "create_control",
     "list_controls",
     "get_control",
+    "list_control_versions",
+    "get_control_version",
+    "restore_control_version",
     "delete_control",
     "update_control",
     "validate_control_data",
@@ -1409,4 +1466,5 @@ __all__ = [
     "EvaluatorSpec",
     "EvaluatorResult",
     "TemplateValue",
+    "RestoreControlVersionResponse",
 ]

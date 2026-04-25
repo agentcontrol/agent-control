@@ -159,7 +159,7 @@ export function ControlStoreModal({
           if (controlSummary) {
             setSelectedControl({
               summary: controlSummary,
-              definition: controlData.data,
+              definition: controlData.data as ControlDefinition,
             });
           }
         } finally {

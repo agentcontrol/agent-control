@@ -4,7 +4,7 @@ import { IconPencil, IconTrash } from '@tabler/icons-react';
 import { type ColumnDef } from '@tanstack/react-table';
 import { useMemo } from 'react';
 
-import type { Control } from '@/core/api/types';
+import type { Control, ControlDefinition } from '@/core/api/types';
 import type { useRemoveControlFromAgent } from '@/core/hooks/query-hooks/use-remove-control-from-agent';
 import type { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import type { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
@@ -37,8 +37,9 @@ export function useControlsTableColumns({
         size: 60,
         cell: ({ row }: { row: { original: Control } }) => {
           const control = row.original;
-          const enabled = control.control?.enabled ?? false;
           const ctrl = control.control as Record<string, unknown> | undefined;
+          const enabled =
+            typeof ctrl?.enabled === 'boolean' ? ctrl.enabled : false;
           const isTemplate = ctrl?.template != null;
           return (
             <Switch
@@ -92,7 +93,7 @@ export function useControlsTableColumns({
                           agentId,
                           controlId: control.id,
                           definition: {
-                            ...control.control,
+                            ...(control.control as ControlDefinition),
                             enabled: newEnabled,
                           },
                         },
@@ -136,7 +137,17 @@ export function useControlsTableColumns({
         accessorKey: 'control.scope.step_types',
         size: 180,
         cell: ({ row }: { row: { original: Control } }) => {
-          const stepTypes = row.original.control?.scope?.step_types ?? [];
+          const controlData = row.original.control as
+            | Record<string, unknown>
+            | undefined;
+          const scope = controlData?.scope as
+            | Record<string, unknown>
+            | undefined;
+          const stepTypes = Array.isArray(scope?.step_types)
+            ? scope.step_types.filter(
+                (value): value is string => typeof value === 'string'
+              )
+            : [];
           if (stepTypes.length === 0) {
             return (
               <Badge variant="light" color="gray" size="sm">
@@ -164,7 +175,17 @@ export function useControlsTableColumns({
         accessorKey: 'control.scope.stages',
         size: 120,
         cell: ({ row }: { row: { original: Control } }) => {
-          const stages = row.original.control?.scope?.stages ?? [];
+          const controlData = row.original.control as
+            | Record<string, unknown>
+            | undefined;
+          const scope = controlData?.scope as
+            | Record<string, unknown>
+            | undefined;
+          const stages = Array.isArray(scope?.stages)
+            ? scope.stages.filter(
+                (value): value is string => typeof value === 'string'
+              )
+            : [];
           if (stages.length === 0) {
             return (
               <Badge variant="light" color="gray" size="sm">
