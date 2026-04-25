@@ -481,6 +481,40 @@ def test_restore_control_version_preserves_unknown_snapshot_fields(
     }
 
 
+def test_restore_control_version_canonicalizes_legacy_snapshot_shape(
+    client: TestClient,
+) -> None:
+    # Given: a historical snapshot rewritten into the legacy flat selector/evaluator shape
+    control_id, _ = _create_control(client)
+    version = _fetch_versions(control_id)[0]
+    snapshot = deepcopy(version.snapshot)
+    snapshot["data"]["selector"] = snapshot["data"]["condition"]["selector"]
+    snapshot["data"]["evaluator"] = snapshot["data"]["condition"]["evaluator"]
+    snapshot["data"].pop("condition")
+    _replace_version_snapshot(control_id, 1, snapshot)
+
+    updated_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    updated_payload["description"] = "Updated description"
+    set_resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": updated_payload})
+    assert set_resp.status_code == 200, set_resp.text
+
+    # When: restoring that legacy-shaped version
+    resp = client.post(f"/api/v1/controls/{control_id}/versions/1/restore")
+
+    # Then: the restored active row and new version snapshot are persisted canonically
+    assert resp.status_code == 200, resp.text
+    active_data = _fetch_control_data(control_id)
+    assert "selector" not in active_data
+    assert "evaluator" not in active_data
+    assert active_data["condition"]["selector"]["path"] == "input"
+
+    latest = _fetch_versions(control_id)[-1]
+    assert latest.event_type == "restored"
+    assert "selector" not in latest.snapshot["data"]
+    assert "evaluator" not in latest.snapshot["data"]
+    assert latest.snapshot["data"]["condition"]["selector"]["path"] == "input"
+
+
 def test_restore_control_version_replays_unrendered_template_payload(
     client: TestClient,
 ) -> None:

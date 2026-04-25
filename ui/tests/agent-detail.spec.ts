@@ -539,12 +539,12 @@ test.describe('Agent Detail Page', () => {
                 unknown
               >),
               scope: {
-                ...(
-                  (mockData.controlVersionDetails[2].snapshot.data as Record<
+                ...((
+                  mockData.controlVersionDetails[2].snapshot.data as Record<
                     string,
                     unknown
-                  >).scope as Record<string, unknown>
-                ),
+                  >
+                ).scope as Record<string, unknown>),
                 stages: ['pre'],
               },
             },

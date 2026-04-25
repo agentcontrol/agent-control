@@ -151,6 +151,19 @@ def normalize_control_data_for_response(
     )
 
 
+def normalize_control_data_for_storage(
+    raw_data: dict[str, Any],
+    *,
+    parsed_data: ControlDefinition | UnrenderedTemplateControl,
+) -> dict[str, Any]:
+    """Return canonical persisted control data while preserving unknown fields."""
+    canonical_data = serialize_control_data(parsed_data)
+    return cast(
+        dict[str, Any],
+        _merge_response_control_data(raw_data, canonical_data, top_level=True),
+    )
+
+
 def _merge_response_control_data(
     raw_data: Any,
     canonical_data: Any,
@@ -502,7 +515,7 @@ async def parse_restorable_snapshot(
         control_id=control_id,
         version_num=version_num,
     )
-    await validate_restored_control_data(
+    parsed_control_data = await validate_restored_control_data(
         snapshot_data,
         db=db,
         control_name=snapshot_name,
@@ -510,7 +523,10 @@ async def parse_restorable_snapshot(
     )
     return RestorableControlSnapshot(
         name=snapshot_name,
-        data=snapshot_data,
+        data=normalize_control_data_for_storage(
+            snapshot_data,
+            parsed_data=parsed_control_data,
+        ),
     )
 
 

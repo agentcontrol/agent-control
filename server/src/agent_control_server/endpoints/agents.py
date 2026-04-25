@@ -238,7 +238,10 @@ async def _build_overwrite_evaluator_removals(
 
     references_by_evaluator: dict[str, set[tuple[int, str]]] = {}
     for control in controls:
-        control_def = _as_rendered_control_definition(control)
+        control_def = _as_rendered_control_definition(
+            control,
+            allow_invalid_step_name_regex=True,
+        )
         if control_def is None:
             continue
         for _, evaluator_spec in control_def.iter_condition_leaf_parts():
@@ -272,11 +275,20 @@ async def _build_overwrite_evaluator_removals(
     return removals
 
 
-def _as_rendered_control_definition(control: APIControl) -> ControlDefinition | None:
+def _as_rendered_control_definition(
+    control: APIControl,
+    *,
+    allow_invalid_step_name_regex: bool = False,
+) -> ControlDefinition | None:
     """Return a rendered control definition from an API control payload when available."""
     if is_unrendered_template(control.control):
         return None
-    return ControlDefinition.model_validate(control.control)
+    context = (
+        {"allow_invalid_step_name_regex": True}
+        if allow_invalid_step_name_regex
+        else None
+    )
+    return ControlDefinition.model_validate(control.control, context=context)
 
 
 @router.get(

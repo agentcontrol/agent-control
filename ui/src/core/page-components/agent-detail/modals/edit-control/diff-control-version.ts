@@ -87,7 +87,9 @@ function compareRecursive(
   if (stableStringify(before) === stableStringify(after)) return;
 
   if (isRecord(before) && isRecord(after)) {
-    const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+    const keys = [
+      ...new Set([...Object.keys(before), ...Object.keys(after)]),
+    ].sort();
     for (const key of keys) {
       compareRecursive(`${path}.${key}`, before[key], after[key], changes);
     }
@@ -127,7 +129,8 @@ function buildSummary(changes: ControlVersionChange[]): string[] {
   if (paths.has('data.tags')) summary.push('Tags changed');
   if (hasPathOrChild(paths, 'data.template_values'))
     summary.push('Template values changed');
-  if (hasPathOrChild(paths, 'data.condition')) summary.push('Condition changed');
+  if (hasPathOrChild(paths, 'data.condition'))
+    summary.push('Condition changed');
   if (hasPathOrChild(paths, 'data.action')) summary.push('Action changed');
   if (hasPathOrChild(paths, 'data.scope')) summary.push('Scope changed');
   if (paths.has('data.description')) summary.push('Description changed');

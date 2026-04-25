@@ -7,7 +7,9 @@ from copy import deepcopy
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
+from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
 
 
@@ -267,6 +269,61 @@ def test_init_agent_overwrite_dedupes_composite_references_for_removed_evaluator
             "control_names": [control_name],
         }
     ]
+
+
+def test_init_agent_overwrite_preserves_invalid_step_name_regex_context(
+    client: TestClient,
+) -> None:
+    # Given: an assigned control that references an agent evaluator and has a legacy-invalid regex
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    evaluator_name = "custom-eval"
+
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(
+            agent_name=agent_name,
+            evaluators=[{"name": evaluator_name, "config_schema": {"type": "object"}}],
+        ),
+    )
+    assert init_resp.status_code == 200
+
+    policy_id, control_id, control_name = _create_policy_with_agent_evaluator_control(
+        client,
+        agent_name=agent_name,
+        evaluator_name=evaluator_name,
+    )
+    assign_resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
+    assert assign_resp.status_code == 200
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE controls "
+                "SET data = jsonb_set(data, '{scope,step_name_regex}', "
+                "to_jsonb(CAST(:regex AS text)), true) "
+                "WHERE id = :id"
+            ),
+            {"regex": "(", "id": control_id},
+        )
+
+    # When: overwrite mode removes the referenced evaluator
+    overwrite_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(
+            agent_name=agent_name,
+            evaluators=[],
+            conflict_mode="overwrite",
+        ),
+    )
+
+    # Then: overwrite does not crash with a raw 500 during evaluator-removal reference checks
+    assert overwrite_resp.status_code == 422, overwrite_resp.text
+    assert overwrite_resp.json()["error_code"] == "CORRUPTED_DATA"
+
+    # And: the evaluator removal still committed before the response hit the corrupted control
+    get_resp = client.get(f"/api/v1/agents/{agent_name}/evaluators")
+    assert get_resp.status_code == 200, get_resp.text
+    assert get_resp.json()["evaluators"] == []
 
 
 def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> None:
