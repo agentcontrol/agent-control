@@ -24,7 +24,7 @@ Additive, behavior-preserving migration:
       tenant yet, so unused indexes would just add write cost).
 
 Revision ID: 7c1a9b4e2d30
-Revises: 5f2b5f4e1a90
+Revises: c1e9f9c4a1d2
 Create Date: 2026-04-20 00:00:00.000000
 
 """
@@ -33,7 +33,7 @@ import sqlalchemy as sa
 
 
 revision = "7c1a9b4e2d30"
-down_revision = "5f2b5f4e1a90"
+down_revision = "c1e9f9c4a1d2"
 branch_labels = None
 depends_on = None
 
