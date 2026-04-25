@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from agent_control_server.models import Agent, ControlVersion
+from agent_control_server.models import Agent, Control, ControlVersion
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -35,6 +35,12 @@ def _fetch_versions(control_id: int) -> list[ControlVersion]:
                 .order_by(ControlVersion.version_num)
             ).all()
         )
+
+
+def _fetch_control_data(control_id: int) -> dict[str, object]:
+    with Session(engine) as session:
+        control = session.scalars(select(Control).where(Control.id == control_id)).one()
+        return deepcopy(control.data)
 
 
 def _replace_version_snapshot(
@@ -354,6 +360,47 @@ def test_restore_control_version_replays_name_and_data_in_one_version(
     assert latest.note == "Restored from version 1"
     assert latest.snapshot["name"] == original_name
     assert latest.snapshot["data"]["description"] == "Original description"
+
+
+def test_restore_control_version_preserves_unknown_snapshot_fields(
+    client: TestClient,
+) -> None:
+    # Given: a historical snapshot with a forward-compatible field unknown to current models
+    original_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    original_payload["description"] = "Original with future metadata"
+    control_id, _ = _create_control(client, data=original_payload)
+
+    version = _fetch_versions(control_id)[0]
+    snapshot = deepcopy(version.snapshot)
+    snapshot["data"]["x_future_metadata"] = {
+        "source": "future-server",
+        "flags": ["preserve-me"],
+    }
+    _replace_version_snapshot(control_id, 1, snapshot)
+
+    updated_payload = deepcopy(VALID_CONTROL_PAYLOAD)
+    updated_payload["description"] = "Updated description"
+    set_resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": updated_payload})
+    assert set_resp.status_code == 200, set_resp.text
+
+    # When: restoring that version
+    resp = client.post(f"/api/v1/controls/{control_id}/versions/1/restore")
+
+    # Then: validation still succeeds and the stored payload replays the snapshot shape
+    assert resp.status_code == 200, resp.text
+    active_data = _fetch_control_data(control_id)
+    assert active_data["description"] == "Original with future metadata"
+    assert active_data["x_future_metadata"] == {
+        "source": "future-server",
+        "flags": ["preserve-me"],
+    }
+
+    versions = _fetch_versions(control_id)
+    assert versions[-1].event_type == "restored"
+    assert versions[-1].snapshot["data"]["x_future_metadata"] == {
+        "source": "future-server",
+        "flags": ["preserve-me"],
+    }
 
 
 def test_restore_control_version_replays_unrendered_template_payload(

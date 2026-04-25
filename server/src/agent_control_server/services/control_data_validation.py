@@ -430,7 +430,7 @@ async def parse_restorable_snapshot(
         control_id=control_id,
         version_num=version_num,
     )
-    parsed_data = await validate_restored_control_data(
+    await validate_restored_control_data(
         snapshot_data,
         db=db,
         control_name=snapshot_name,
@@ -438,7 +438,7 @@ async def parse_restorable_snapshot(
     )
     return RestorableControlSnapshot(
         name=snapshot_name,
-        data=serialize_control_data(parsed_data),
+        data=snapshot_data,
     )
 
 

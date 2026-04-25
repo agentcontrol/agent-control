@@ -1,4 +1,4 @@
-import type { Control, GetControlVersionResponse } from '@/core/api/types';
+import type { GetControlVersionResponse } from '@/core/api/types';
 
 export type ControlVersionSnapshot = {
   name: string | null;
@@ -40,13 +40,6 @@ export function snapshotFromVersion(
   return {
     name: typeof raw.name === 'string' ? raw.name : null,
     data: isRecord(raw.data) ? raw.data : {},
-  };
-}
-
-export function snapshotFromControl(control: Control): ControlVersionSnapshot {
-  return {
-    name: control.name,
-    data: isRecord(control.control) ? control.control : {},
   };
 }
 

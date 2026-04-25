@@ -11,6 +11,17 @@ import agent_control
 from agent_control_models import TemplateControlInput
 
 
+class _AsyncClientContext:
+    def __init__(self, client: object) -> None:
+        self.client = client
+
+    async def __aenter__(self) -> object:
+        return self.client
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
 @pytest.mark.asyncio
 async def test_list_controls_passes_template_backed_filter() -> None:
     # Given: an SDK client stub and a template-backed list filter
@@ -131,6 +142,51 @@ async def test_restore_control_version_calls_restore_endpoint() -> None:
     # Then: the SDK calls the restore endpoint
     client.http_client.post.assert_awaited_once_with("/api/v1/controls/123/versions/2/restore")
     assert result["current_version_num"] == 4
+
+
+@pytest.mark.asyncio
+async def test_top_level_control_version_helpers_delegate_to_controls_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: top-level SDK helpers and a fake client context
+    client = object()
+    created_clients: list[tuple[str, str | None]] = []
+
+    def fake_client_factory(base_url: str, api_key: str | None = None) -> _AsyncClientContext:
+        created_clients.append((base_url, api_key))
+        return _AsyncClientContext(client)
+
+    list_versions = AsyncMock(return_value={"versions": []})
+    get_version = AsyncMock(return_value={"version_num": 2})
+    restore_version = AsyncMock(return_value={"success": True})
+    monkeypatch.setattr(agent_control, "AgentControlClient", fake_client_factory)
+    monkeypatch.setattr(agent_control.controls, "list_control_versions", list_versions)
+    monkeypatch.setattr(agent_control.controls, "get_control_version", get_version)
+    monkeypatch.setattr(agent_control.controls, "restore_control_version", restore_version)
+
+    # When: calling the public top-level version helpers
+    await agent_control.list_control_versions(
+        123,
+        server_url="http://server.test",
+        api_key="secret",
+        cursor=7,
+        limit=5,
+    )
+    await agent_control.get_control_version(123, 2, server_url="http://server.test")
+    await agent_control.restore_control_version(123, 2, server_url="http://server.test")
+
+    # Then: they are exported and delegate to the lower-level controls module
+    assert "list_control_versions" in agent_control.__all__
+    assert "get_control_version" in agent_control.__all__
+    assert "restore_control_version" in agent_control.__all__
+    assert created_clients == [
+        ("http://server.test", "secret"),
+        ("http://server.test", None),
+        ("http://server.test", None),
+    ]
+    list_versions.assert_awaited_once_with(client, control_id=123, cursor=7, limit=5)
+    get_version.assert_awaited_once_with(client, control_id=123, version_num=2)
+    restore_version.assert_awaited_once_with(client, control_id=123, version_num=2)
 
 
 @pytest.mark.asyncio

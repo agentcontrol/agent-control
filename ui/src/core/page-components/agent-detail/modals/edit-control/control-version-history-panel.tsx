@@ -30,7 +30,6 @@ import { ControlVersionDiff } from './control-version-diff';
 import { ControlVersionList } from './control-version-list';
 import {
   diffControlVersions,
-  snapshotFromControl,
   snapshotFromVersion,
 } from './diff-control-version';
 
@@ -80,25 +79,39 @@ export function ControlVersionHistoryPanel({
     control.id,
     predecessorVersionNum
   );
+  const currentVersionQuery = useControlVersion(control.id, currentVersionNum);
 
   const selectedSnapshot = snapshotFromVersion(selectedVersionQuery.data);
   const predecessorSnapshot = snapshotFromVersion(predecessorVersion.data);
-  const currentSnapshot = useMemo(
-    () => snapshotFromControl(control),
-    [control]
-  );
+  const currentSnapshot = snapshotFromVersion(currentVersionQuery.data);
+  const predecessorRequired = predecessorVersionNum != null;
+  const selectedVersionFailed =
+    selectedVersionQuery.isError ||
+    (!selectedVersionQuery.isLoading && !selectedVersionQuery.data);
+  const predecessorVersionFailed =
+    predecessorRequired &&
+    (predecessorVersion.isError ||
+      (!predecessorVersion.isLoading && !predecessorVersion.data));
+  const currentVersionFailed =
+    currentVersionQuery.isError ||
+    (!currentVersionQuery.isLoading && !currentVersionQuery.data);
 
-  const historyDiff = selectedSnapshot
-    ? diffControlVersions(predecessorSnapshot, selectedSnapshot)
-    : null;
-  const restoreDiff = selectedSnapshot
-    ? diffControlVersions(currentSnapshot, selectedSnapshot)
-    : null;
+  const historyDiff =
+    selectedSnapshot && (!predecessorRequired || predecessorSnapshot)
+      ? diffControlVersions(predecessorSnapshot, selectedSnapshot)
+      : null;
+  const restoreDiff =
+    selectedSnapshot && currentSnapshot
+      ? diffControlVersions(currentSnapshot, selectedSnapshot)
+      : null;
   const isCurrentSelection =
     selectedVersionNum != null && selectedVersionNum === currentVersionNum;
   const restoreDisabled =
     !selectedSnapshot ||
+    !currentSnapshot ||
     isCurrentSelection ||
+    currentVersionQuery.isLoading ||
+    currentVersionFailed ||
     restoreDiff == null ||
     restoreDiff.isEqual ||
     restoreMutation.isPending;
@@ -284,23 +297,40 @@ export function ControlVersionHistoryPanel({
                 <Alert color="gray" variant="light">
                   This version matches the current saved control.
                 </Alert>
+              ) : currentVersionFailed ? (
+                <Alert color="red" variant="light">
+                  Current version could not be loaded, so restore is
+                  unavailable.
+                </Alert>
               ) : null}
 
               <Divider />
 
               {selectedVersionQuery.isLoading ||
-              (predecessorVersionNum != null &&
-                predecessorVersion.isLoading) ? (
+              (predecessorRequired && predecessorVersion.isLoading) ? (
                 <Group justify="center" py="xl">
                   <Loader size="sm" />
                   <Text size="sm" c="dimmed">
                     Loading selected version...
                   </Text>
                 </Group>
+              ) : selectedVersionFailed ? (
+                <Alert color="red" variant="light">
+                  Selected version could not be loaded.
+                </Alert>
+              ) : predecessorVersionFailed ? (
+                <Alert color="red" variant="light">
+                  Previous version could not be loaded, so the diff cannot be
+                  shown.
+                </Alert>
               ) : historyDiff ? (
                 <ControlVersionDiff
                   diff={historyDiff}
-                  beforeLabel={`Version ${predecessorVersionNum}`}
+                  beforeLabel={
+                    predecessorVersionNum == null
+                      ? 'No predecessor'
+                      : `Version ${predecessorVersionNum}`
+                  }
                   afterLabel={`Version ${selectedVersionNum}`}
                   initialVersion={predecessorVersionNum == null}
                 />

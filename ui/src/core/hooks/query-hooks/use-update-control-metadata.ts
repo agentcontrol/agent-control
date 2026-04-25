@@ -4,6 +4,8 @@ import { api } from '@/core/api/client';
 import { parseApiError } from '@/core/api/errors';
 import type { PatchControlRequest } from '@/core/api/types';
 
+import { controlVersionKeys } from './control-version-keys';
+
 type UpdateControlMetadataParams = {
   agentId: string;
   controlId: number;
@@ -36,15 +38,23 @@ export function useUpdateControlMetadata() {
 
       return result;
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       // Invalidate agent controls query to refresh the list
-      queryClient.invalidateQueries({
-        queryKey: ['agent', variables.agentId, 'controls'],
-      });
-      // Invalidate agents list query to refresh active controls count
-      queryClient.invalidateQueries({
-        queryKey: ['agents', 'infinite'],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['agent', variables.agentId, 'controls'],
+        }),
+        // Invalidate agents list query to refresh active controls count
+        queryClient.invalidateQueries({
+          queryKey: ['agents', 'infinite'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: controlVersionKeys.list(variables.controlId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: controlVersionKeys.details(variables.controlId),
+        }),
+      ]);
     },
   });
 }
