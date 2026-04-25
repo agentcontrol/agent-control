@@ -101,8 +101,8 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
             )
 
         assert normalized.text is not None
-        filtered_text = apply_line_exclusions(normalized.text, self._exclude_line_patterns)
         try:
+            filtered_text = apply_line_exclusions(normalized.text, self._exclude_line_patterns)
             filtered_bytes = filtered_text.encode("utf-8")
         except UnicodeError:
             return self._failure_result(
@@ -242,10 +242,7 @@ class DetectSecretsEvaluator(Evaluator[DetectSecretsEvaluatorConfig]):
         if not IDENTIFIER_LIKE_KEY_PATTERN.fullmatch(key_name):
             return True
 
-        has_alpha = any(character.isalpha() for character in key_name)
-        has_digit = any(character.isdigit() for character in key_name)
-        has_token_separator = any(character in "._:-" for character in key_name)
-        return len(key_name) >= 20 and has_alpha and (has_digit or has_token_separator)
+        return len(key_name) >= 20
 
     def _runtime_version_or_unknown(self) -> str:
         try:

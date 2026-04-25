@@ -40,6 +40,12 @@ class RenderedLine:
     location: LineLocation | None = None
 
 
+def _json_dumps(value: Any, **kwargs: Any) -> str:
+    """Serialize JSON while keeping Unicode line separators escaped on one logical line."""
+    dumped = json.dumps(value, **kwargs)
+    return dumped.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+
 def normalize_payload(data: Any) -> NormalizedPayload:
     """Normalize selector output to deterministic text for detect-secrets scanning."""
     if data is None:
@@ -83,7 +89,7 @@ def _normalize_structured_payload(
         raise NormalizationError(f"Failed to normalize structured payload: {exc}") from exc
 
     try:
-        text = json.dumps(
+        text = _json_dumps(
             normalized_data,
             sort_keys=True,
             indent=2,
@@ -116,7 +122,7 @@ def _normalize_structured_payload(
 
 def _normalize_primitive_payload(data: bool | int | float) -> NormalizedPayload:
     try:
-        text = json.dumps(data, ensure_ascii=False, allow_nan=False)
+        text = _json_dumps(data, ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError) as exc:
         raise NormalizationError(f"Failed to normalize scalar payload: {exc}") from exc
 
@@ -155,7 +161,7 @@ def _render_json_lines(
     if isinstance(value, list | tuple):
         return _render_list_lines(value, indent_level=indent_level, prefix=prefix, pointer=pointer)
 
-    scalar_text = json.dumps(value, ensure_ascii=False, allow_nan=False)
+    scalar_text = _json_dumps(value, ensure_ascii=False, allow_nan=False)
     scalar_pointer = pointer or None
     return [
         RenderedLine(
@@ -183,7 +189,7 @@ def _render_dict_lines(
     for index, (raw_key, child) in enumerate(items):
         suffix = "," if index < last_index else ""
         key_name = _json_object_key_name(raw_key)
-        key_literal = json.dumps(key_name, ensure_ascii=False, allow_nan=False)
+        key_literal = _json_dumps(key_name, ensure_ascii=False, allow_nan=False)
         child_prefix = f"{key_literal}: "
         child_pointer = _append_json_pointer(pointer, key_name)
         child_lines = _render_json_lines(
@@ -254,7 +260,7 @@ def _json_object_key_name(key: Any) -> str:
     if key is None:
         return "null"
     if isinstance(key, int | float):
-        return json.dumps(key, ensure_ascii=False, allow_nan=False)
+        return _json_dumps(key, ensure_ascii=False, allow_nan=False)
     raise TypeError(f"Unsupported JSON object key type: {type(key).__name__}")
 
 

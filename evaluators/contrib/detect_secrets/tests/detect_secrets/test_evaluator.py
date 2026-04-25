@@ -217,6 +217,19 @@ async def test_list_payload_maps_findings_to_json_pointer() -> None:
 
 
 @pytest.mark.asyncio
+async def test_structured_unicode_line_separator_preserves_json_pointer() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
+    )
+
+    result = await evaluator.evaluate({"x": "prefix\u2028ghp_123456789012345678901234567890123456"})
+
+    assert result.matched is True
+    assert result.metadata is not None
+    assert result.metadata["findings"] == [{"type": "GitHub Token", "json_pointer": "/x"}]
+
+
+@pytest.mark.asyncio
 async def test_secret_bearing_object_keys_do_not_leak_through_json_pointer() -> None:
     evaluator = DetectSecretsEvaluator(
         DetectSecretsEvaluatorConfig(enabled_plugins=["GitHubTokenDetector"])
@@ -353,6 +366,21 @@ async def test_non_json_serializable_payload_routes_through_on_error_allow() -> 
 @pytest.mark.asyncio
 async def test_invalid_unicode_payload_routes_through_on_error_deny() -> None:
     evaluator = DetectSecretsEvaluator(DetectSecretsEvaluatorConfig(on_error="deny"))
+
+    result = await evaluator.evaluate("\ud800")
+
+    assert result.matched is True
+    assert result.error is None
+    assert result.metadata is not None
+    assert result.metadata["failure_mode"] == "normalization_error"
+    assert result.metadata["fallback_action"] == "deny"
+
+
+@pytest.mark.asyncio
+async def test_invalid_unicode_with_exclusions_routes_through_on_error_deny() -> None:
+    evaluator = DetectSecretsEvaluator(
+        DetectSecretsEvaluatorConfig(on_error="deny", exclude_lines_regex=["x"])
+    )
 
     result = await evaluator.evaluate("\ud800")
 
@@ -659,10 +687,11 @@ def test_normalize_payload_renders_expected_json_pointer_lines() -> None:
     ("key_name", "expected"),
     [
         ("github_token_key_name", True),
-        ("MyVeryLongFunctionName", False),
+        ("MyVeryLongFunctionName", True),
         ("api_key_v2", False),
         ("github_pat_11ABCDEFG1234567890123", True),
         ("0", False),
+        ("abcdefghijklmnopqrstuvwxyzabcdef", True),
     ],
 )
 def test_key_name_is_secret_like_heuristic(key_name: str, expected: bool) -> None:
