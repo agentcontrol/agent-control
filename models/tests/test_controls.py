@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 from agent_control_models import (
     ControlDefinition,
-    ControlDefinitionBase,
     ControlDefinitionRuntime,
 )
+from agent_control_models.controls import ControlDefinitionBase
 from pydantic import ValidationError
 
 
