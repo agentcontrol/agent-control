@@ -30,6 +30,7 @@ from .controls import (
     ConditionNode,
     ControlAction,
     ControlDefinition,
+    ControlDefinitionBase,
     ControlDefinitionRuntime,
     ControlMatch,
     ControlScope,
@@ -126,6 +127,7 @@ __all__ = [
     "EvaluationResult",
     # Controls
     "ControlDefinition",
+    "ControlDefinitionBase",
     "ConditionNode",
     "ControlAction",
     "ControlMatch",

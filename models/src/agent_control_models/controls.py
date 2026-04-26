@@ -752,12 +752,38 @@ class _ConditionBackedControlMixin:
         return _build_observability_identity(self.condition)
 
 
-class ControlDefinition(_ConditionBackedControlMixin, BaseModel):
-    """A control definition to evaluate agent interactions.
+def canonicalize_control_payload(data: Any) -> Any:
+    """Rewrite legacy selector/evaluator payloads into canonical condition shape."""
+    if not isinstance(data, dict):
+        return data
 
-    This model contains only the logic and configuration.
-    Identity fields (id, name) are managed by the database.
-    """
+    has_condition = "condition" in data
+    has_selector = "selector" in data
+    has_evaluator = "evaluator" in data
+
+    if has_condition and (has_selector or has_evaluator):
+        raise ValueError(
+            "Control definition mixes canonical condition fields "
+            "with legacy selector/evaluator fields."
+        )
+    if has_selector != has_evaluator:
+        raise ValueError(
+            "Legacy control definition must include both selector and evaluator."
+        )
+    if not has_condition and has_selector:
+        canonical = dict(data)
+        selector = canonical.pop("selector")
+        evaluator = canonical.pop("evaluator")
+        canonical["condition"] = {
+            "selector": selector,
+            "evaluator": evaluator,
+        }
+        return canonical
+    return data
+
+
+class ControlDefinitionBase(_ConditionBackedControlMixin, BaseModel):
+    """Runtime-relevant fields shared by authored and runtime controls."""
 
     description: str | None = Field(None, description="Detailed description of the control")
     enabled: bool = Field(True, description="Whether this control is active")
@@ -785,6 +811,32 @@ class ControlDefinition(_ConditionBackedControlMixin, BaseModel):
 
     # Metadata
     tags: list[str] = Field(default_factory=list, description="Tags for categorization")
+
+    @classmethod
+    def canonicalize_payload(cls, data: Any) -> Any:
+        """Rewrite legacy selector/evaluator payloads into canonical condition shape."""
+        return canonicalize_control_payload(data)
+
+    @model_validator(mode="before")
+    @classmethod
+    def canonicalize_legacy_condition_shape(cls, data: Any) -> Any:
+        """Accept legacy flat leaf payloads during condition-tree rollout."""
+        return canonicalize_control_payload(data)
+
+    @model_validator(mode="after")
+    def validate_condition_constraints(self) -> Self:
+        """Validate runtime-relevant control constraints."""
+        _validate_common_control_constraints(self.condition, self.action)
+        return self
+
+
+class ControlDefinition(ControlDefinitionBase):
+    """A control definition to evaluate agent interactions.
+
+    This model contains only the logic and configuration.
+    Identity fields (id, name) are managed by the database.
+    """
+
     template: TemplateDefinition | None = Field(
         None,
         description="Template metadata for template-backed controls",
@@ -794,46 +846,9 @@ class ControlDefinition(_ConditionBackedControlMixin, BaseModel):
         description="Resolved parameter values for template-backed controls",
     )
 
-    @classmethod
-    def canonicalize_payload(cls, data: Any) -> Any:
-        """Rewrite legacy selector/evaluator payloads into canonical condition shape."""
-        if not isinstance(data, dict):
-            return data
-
-        has_condition = "condition" in data
-        has_selector = "selector" in data
-        has_evaluator = "evaluator" in data
-
-        if has_condition and (has_selector or has_evaluator):
-            raise ValueError(
-                "Control definition mixes canonical condition fields "
-                "with legacy selector/evaluator fields."
-            )
-        if has_selector != has_evaluator:
-            raise ValueError(
-                "Legacy control definition must include both selector and evaluator."
-            )
-        if not has_condition and has_selector:
-            canonical = dict(data)
-            selector = canonical.pop("selector")
-            evaluator = canonical.pop("evaluator")
-            canonical["condition"] = {
-                "selector": selector,
-                "evaluator": evaluator,
-            }
-            return canonical
-        return data
-
-    @model_validator(mode="before")
-    @classmethod
-    def canonicalize_legacy_condition_shape(cls, data: Any) -> Any:
-        """Accept legacy flat leaf payloads during condition-tree rollout."""
-        return cls.canonicalize_payload(data)
-
     @model_validator(mode="after")
-    def validate_condition_constraints(self) -> Self:
-        """Validate cross-field control constraints."""
-        _validate_common_control_constraints(self.condition, self.action)
+    def validate_template_pairing(self) -> Self:
+        """Validate authoring-only template constraints."""
         has_template = self.template is not None
         has_template_values = self.template_values is not None
         if has_template != has_template_values:
@@ -884,41 +899,10 @@ class ControlDefinition(_ConditionBackedControlMixin, BaseModel):
     }
 
 
-class ControlDefinitionRuntime(_ConditionBackedControlMixin, BaseModel):
+class ControlDefinitionRuntime(ControlDefinitionBase):
     """Slim runtime control model that ignores template authoring metadata."""
 
     model_config = ConfigDict(extra="ignore")
-
-    description: str | None = Field(None, description="Detailed description of the control")
-    enabled: bool = Field(True, description="Whether this control is active")
-    execution: Literal["server", "sdk"] = Field(
-        ..., description="Where this control executes"
-    )
-    scope: ControlScope = Field(
-        default_factory=ControlScope,
-        description="Which steps and stages this control applies to",
-    )
-    condition: ConditionNode = Field(
-        ...,
-        description=(
-            "Recursive boolean condition tree. Leaf nodes contain selector + evaluator; "
-            "composite nodes contain and/or/not."
-        ),
-    )
-    action: ControlAction = Field(..., description="What action to take when control matches")
-    tags: list[str] = Field(default_factory=list, description="Tags for categorization")
-
-    @model_validator(mode="before")
-    @classmethod
-    def canonicalize_legacy_condition_shape(cls, data: Any) -> Any:
-        """Accept legacy flat leaf payloads during runtime parsing."""
-        return ControlDefinition.canonicalize_payload(data)
-
-    @model_validator(mode="after")
-    def validate_condition_constraints(self) -> Self:
-        """Validate runtime-relevant control constraints."""
-        _validate_common_control_constraints(self.condition, self.action)
-        return self
 
 
 class EvaluatorResult(BaseModel):
