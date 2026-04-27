@@ -177,7 +177,7 @@ def test_binding_rejects_cross_namespace_control_reference(
         )
 
 
-def test_binding_cascades_on_control_delete(
+def test_binding_cascades_on_control_hard_delete(
     db_engine: Engine, clean_tables: None
 ) -> None:
     control_id = _insert_control(db_engine, namespace_key="ns-one", name="pii")
@@ -200,3 +200,47 @@ def test_binding_cascades_on_control_delete(
         ).scalar_one()
 
     assert remaining == 0
+
+
+def test_binding_survives_control_soft_delete(
+    db_engine: Engine, clean_tables: None
+) -> None:
+    control_id = _insert_control(db_engine, namespace_key="ns-one", name="pii")
+    binding_id = _insert_binding(
+        db_engine,
+        namespace_key="ns-one",
+        target_type="env",
+        target_id="prod",
+        control_id=control_id,
+    )
+
+    # Soft-deleting a control sets deleted_at; bindings remain intact. The
+    # runtime resolver is responsible for excluding soft-deleted controls.
+    with db_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE controls SET deleted_at = NOW() WHERE id = :id"),
+            {"id": control_id},
+        )
+        remaining = conn.execute(
+            text("SELECT COUNT(*) FROM control_bindings WHERE id = :id"),
+            {"id": binding_id},
+        ).scalar_one()
+
+    assert remaining == 1
+
+
+def test_binding_rejects_malformed_agent_name(
+    db_engine: Engine, clean_tables: None
+) -> None:
+    control_id = _insert_control(db_engine, namespace_key="ns-one", name="pii")
+    # Mixed case violates the agent_name format check constraint. NULL and
+    # well-formed values are accepted; this exercises the rejection path.
+    with pytest.raises(IntegrityError):
+        _insert_binding(
+            db_engine,
+            namespace_key="ns-one",
+            target_type="env",
+            target_id="prod",
+            control_id=control_id,
+            agent_name="Support-Router",
+        )

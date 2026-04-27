@@ -172,7 +172,7 @@ def upgrade() -> None:
         "control_bindings",
         sa.Column(
             "id",
-            sa.BigInteger(),
+            sa.Integer(),
             autoincrement=True,
             nullable=False,
         ),
@@ -184,7 +184,7 @@ def upgrade() -> None:
         ),
         sa.Column("target_type", sa.Text(), nullable=False),
         sa.Column("target_id", sa.Text(), nullable=False),
-        sa.Column("agent_name", sa.Text(), nullable=True),
+        sa.Column("agent_name", sa.String(length=255), nullable=True),
         sa.Column("control_id", sa.Integer(), nullable=False),
         sa.Column(
             "enabled",
@@ -211,6 +211,13 @@ def upgrade() -> None:
             name="control_bindings_control_fkey",
             ondelete="CASCADE",
         ),
+        sa.CheckConstraint(
+            "agent_name IS NULL OR ("
+            "char_length(agent_name) >= 10 AND "
+            "agent_name ~ '^[a-z0-9:_-]+$'"
+            ")",
+            name="ck_control_bindings_agent_name_format",
+        ),
     )
     op.create_index(
         "idx_control_bindings_lookup",
@@ -231,6 +238,13 @@ def upgrade() -> None:
         unique=True,
         postgresql_where=sa.text("agent_name IS NOT NULL"),
     )
+
+    # 7. Restore natural-key index coverage. The composite primary keys and
+    #    unique constraints lead with namespace_key, so name-only lookups
+    #    (existing service code) no longer have a leading-column index. These
+    #    plain indexes preserve that lookup shape during the rollout window.
+    op.create_index("ix_agents_name", "agents", ["name"])
+    op.create_index("ix_policies_name", "policies", ["name"])
 
 
 def downgrade() -> None:
@@ -274,7 +288,11 @@ def downgrade() -> None:
             "conflict. Resolve duplicates before downgrading."
         )
 
-    # 1. Drop control_bindings.
+    # 1. Drop natural-key indexes added by upgrade.
+    op.drop_index("ix_policies_name", table_name="policies")
+    op.drop_index("ix_agents_name", table_name="agents")
+
+    # 2. Drop control_bindings.
     op.drop_index(
         "uq_control_bindings_target_agent", table_name="control_bindings"
     )
@@ -284,7 +302,7 @@ def downgrade() -> None:
     op.drop_index("idx_control_bindings_lookup", table_name="control_bindings")
     op.drop_table("control_bindings")
 
-    # 2. Drop composite same-namespace foreign keys on association tables.
+    # 3. Drop composite same-namespace foreign keys on association tables.
     op.drop_constraint(
         "policy_controls_control_fkey", "policy_controls", type_="foreignkey"
     )
@@ -304,7 +322,7 @@ def downgrade() -> None:
         "agent_controls_agent_fkey", "agent_controls", type_="foreignkey"
     )
 
-    # 3. Drop namespace-scoped uniqueness and primary keys.
+    # 4. Drop namespace-scoped uniqueness and primary keys.
     op.drop_constraint("policy_controls_pkey", "policy_controls", type_="primary")
     op.drop_constraint("agent_policies_pkey", "agent_policies", type_="primary")
     op.drop_constraint("agent_controls_pkey", "agent_controls", type_="primary")
@@ -314,7 +332,7 @@ def downgrade() -> None:
     op.drop_constraint("uq_policies_namespace_name", "policies", type_="unique")
     op.drop_constraint("agents_pkey", "agents", type_="primary")
 
-    # 4. Restore original primary keys, unique constraint, and partial unique
+    # 5. Restore original primary keys, unique constraint, and partial unique
     #    index on the natural-key columns.
     op.create_primary_key("agents_pkey", "agents", ["name"])
     op.create_unique_constraint("policies_name_key", "policies", ["name"])
@@ -335,7 +353,7 @@ def downgrade() -> None:
         "policy_controls_pkey", "policy_controls", ["policy_id", "control_id"]
     )
 
-    # 5. Restore original single-column foreign keys on association tables.
+    # 6. Restore original single-column foreign keys on association tables.
     op.create_foreign_key(
         "agent_controls_agent_name_fkey",
         "agent_controls",
@@ -379,7 +397,7 @@ def downgrade() -> None:
         ["id"],
     )
 
-    # 6. Drop namespace_key columns.
+    # 7. Drop namespace_key columns.
     for table in (
         "policy_controls",
         "agent_policies",

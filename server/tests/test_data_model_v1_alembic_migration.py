@@ -149,6 +149,11 @@ def test_upgrade_applies_namespace_columns_and_constraints(
         "policy_controls_control_fkey",
     } <= _foreign_key_names(temp_engine, "policy_controls")
 
+    # Plain natural-key indexes preserve name-only lookup performance while
+    # service code is still namespace-blind.
+    assert "ix_agents_name" in _index_names(temp_engine, "agents")
+    assert "ix_policies_name" in _index_names(temp_engine, "policies")
+
 
 def test_upgrade_creates_control_bindings(
     alembic_config: Config, temp_engine: Engine
@@ -203,6 +208,8 @@ def test_downgrade_restores_original_constraints(
     ]
     assert "control_bindings" not in inspect(temp_engine).get_table_names()
     assert "idx_controls_name_active" in _index_names(temp_engine, "controls")
+    assert "ix_agents_name" not in _index_names(temp_engine, "agents")
+    assert "ix_policies_name" not in _index_names(temp_engine, "policies")
 
 
 def test_downgrade_round_trip(alembic_config: Config, temp_engine: Engine) -> None:

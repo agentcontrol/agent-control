@@ -123,6 +123,9 @@ class Policy(Base):
         UniqueConstraint(
             "namespace_key", "id", name="uq_policies_namespace_id"
         ),
+        # Plain index on name preserves name-only lookup performance while
+        # service code is still namespace-blind.
+        Index("ix_policies_name", "name"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -202,6 +205,9 @@ class Agent(Base):
     __table_args__ = (
         CheckConstraint("char_length(name) >= 10", name="ck_agents_name_min_length"),
         CheckConstraint("name ~ '^[a-z0-9:_-]+$'", name="ck_agents_name_format"),
+        # Plain index on name preserves name-only lookup performance while
+        # service code is still namespace-blind.
+        Index("ix_agents_name", "name"),
     )
 
     namespace_key: Mapped[str] = mapped_column(
@@ -242,6 +248,17 @@ class ControlBinding(Base):
 
     Same-namespace integrity is enforced by the composite foreign key on
     ``(namespace_key, control_id)``.
+
+    ``agent_name`` is intentionally not a foreign key: bindings may be created
+    before the referenced agent registers. Callers must normalize
+    ``agent_name`` before insert (lower-case, ``[a-z0-9:_-]+`` characters,
+    minimum length 10); a check constraint enforces the same shape used by
+    the agents table.
+
+    Soft deletes on the parent control (``deleted_at IS NOT NULL``) do not
+    cascade to bindings; only hard deletes do. The runtime resolver is
+    responsible for excluding soft-deleted controls when computing the
+    effective control set.
     """
 
     __tablename__ = "control_bindings"
@@ -251,6 +268,13 @@ class ControlBinding(Base):
             ["controls.namespace_key", "controls.id"],
             name="control_bindings_control_fkey",
             ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "agent_name IS NULL OR ("
+            "char_length(agent_name) >= 10 AND "
+            "agent_name ~ '^[a-z0-9:_-]+$'"
+            ")",
+            name="ck_control_bindings_agent_name_format",
         ),
         Index(
             "idx_control_bindings_lookup",
@@ -289,7 +313,7 @@ class ControlBinding(Base):
     )
     target_type: Mapped[str] = mapped_column(Text, nullable=False)
     target_id: Mapped[str] = mapped_column(Text, nullable=False)
-    agent_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     control_id: Mapped[int] = mapped_column(Integer, nullable=False)
     enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("TRUE")
