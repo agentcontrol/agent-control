@@ -6,10 +6,12 @@ from agent_control_models.base import BaseModel
 from agent_control_models.server import EvaluatorSchema
 from pydantic import Field
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -23,6 +25,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from .db import Base
 
+DEFAULT_NAMESPACE_KEY = "default"
+_NAMESPACE_SERVER_DEFAULT = text("'default'")
+
 
 class AgentData(BaseModel):
     """Agent metadata stored in JSONB."""
@@ -32,36 +37,99 @@ class AgentData(BaseModel):
     evaluators: list[EvaluatorSchema] = Field(default_factory=list)
 
 
-# Association table for Policy <> Control many-to-many relationship
+# Association table for Policy <> Control many-to-many relationship.
+# Composite FKs enforce same-namespace references on both sides.
 policy_controls: Table = Table(
     "policy_controls",
     Base.metadata,
-    Column("policy_id", ForeignKey("policies.id"), primary_key=True, index=True),
-    Column("control_id", ForeignKey("controls.id"), primary_key=True, index=True),
+    Column(
+        "namespace_key",
+        Text,
+        primary_key=True,
+        nullable=False,
+        server_default=_NAMESPACE_SERVER_DEFAULT,
+    ),
+    Column("policy_id", Integer, primary_key=True, index=True),
+    Column("control_id", Integer, primary_key=True, index=True),
+    ForeignKeyConstraint(
+        ["namespace_key", "policy_id"],
+        ["policies.namespace_key", "policies.id"],
+        name="policy_controls_policy_fkey",
+    ),
+    ForeignKeyConstraint(
+        ["namespace_key", "control_id"],
+        ["controls.namespace_key", "controls.id"],
+        name="policy_controls_control_fkey",
+    ),
 )
 
-# Association table for Agent <> Policy many-to-many relationship
+# Association table for Agent <> Policy many-to-many relationship.
 agent_policies: Table = Table(
     "agent_policies",
     Base.metadata,
-    Column("agent_name", ForeignKey("agents.name"), primary_key=True, index=True),
-    Column("policy_id", ForeignKey("policies.id"), primary_key=True, index=True),
+    Column(
+        "namespace_key",
+        Text,
+        primary_key=True,
+        nullable=False,
+        server_default=_NAMESPACE_SERVER_DEFAULT,
+    ),
+    Column("agent_name", String(255), primary_key=True, index=True),
+    Column("policy_id", Integer, primary_key=True, index=True),
+    ForeignKeyConstraint(
+        ["namespace_key", "agent_name"],
+        ["agents.namespace_key", "agents.name"],
+        name="agent_policies_agent_fkey",
+    ),
+    ForeignKeyConstraint(
+        ["namespace_key", "policy_id"],
+        ["policies.namespace_key", "policies.id"],
+        name="agent_policies_policy_fkey",
+    ),
 )
 
-# Association table for Agent <> Control many-to-many direct relationship
+# Association table for Agent <> Control direct many-to-many relationship.
 agent_controls: Table = Table(
     "agent_controls",
     Base.metadata,
-    Column("agent_name", ForeignKey("agents.name"), primary_key=True, index=True),
-    Column("control_id", ForeignKey("controls.id"), primary_key=True, index=True),
+    Column(
+        "namespace_key",
+        Text,
+        primary_key=True,
+        nullable=False,
+        server_default=_NAMESPACE_SERVER_DEFAULT,
+    ),
+    Column("agent_name", String(255), primary_key=True, index=True),
+    Column("control_id", Integer, primary_key=True, index=True),
+    ForeignKeyConstraint(
+        ["namespace_key", "agent_name"],
+        ["agents.namespace_key", "agents.name"],
+        name="agent_controls_agent_fkey",
+    ),
+    ForeignKeyConstraint(
+        ["namespace_key", "control_id"],
+        ["controls.namespace_key", "controls.id"],
+        name="agent_controls_control_fkey",
+    ),
 )
 
 
 class Policy(Base):
     __tablename__ = "policies"
+    __table_args__ = (
+        UniqueConstraint(
+            "namespace_key", "name", name="uq_policies_namespace_name"
+        ),
+        UniqueConstraint(
+            "namespace_key", "id", name="uq_policies_namespace_id"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    namespace_key: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     agents: Mapped[list["Agent"]] = relationship(
         "Agent", secondary=lambda: agent_policies, back_populates="policies"
     )
@@ -75,15 +143,22 @@ class Control(Base):
     __tablename__ = "controls"
     __table_args__ = (
         Index(
-            "idx_controls_name_active",
+            "idx_controls_namespace_name_active",
+            "namespace_key",
             "name",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
+        UniqueConstraint(
+            "namespace_key", "id", name="uq_controls_namespace_id"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    namespace_key: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # JSONB payload describing control specifics
     data: Mapped[dict[str, Any]] = mapped_column(
@@ -129,6 +204,12 @@ class Agent(Base):
         CheckConstraint("name ~ '^[a-z0-9:_-]+$'", name="ck_agents_name_format"),
     )
 
+    namespace_key: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        nullable=False,
+        server_default=_NAMESPACE_SERVER_DEFAULT,
+    )
     name: Mapped[str] = mapped_column(String(255), primary_key=True)
     data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
@@ -146,6 +227,83 @@ class Agent(Base):
     @validates("name")
     def _normalize_name(self, _key: str, value: str) -> str:
         return normalize_agent_name(value)
+
+
+class ControlBinding(Base):
+    """Attaches a control to an opaque external target, optionally narrowed
+    to a specific agent inside that target.
+
+    Two binding shapes are supported:
+
+    - target-default: ``agent_name IS NULL``; applies to all agents that
+      reference the target at runtime.
+    - target-agent: ``agent_name`` is set; narrows the attachment to one agent
+      within the target, or exempts that agent via ``enabled = False``.
+
+    Same-namespace integrity is enforced by the composite foreign key on
+    ``(namespace_key, control_id)``.
+    """
+
+    __tablename__ = "control_bindings"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["namespace_key", "control_id"],
+            ["controls.namespace_key", "controls.id"],
+            name="control_bindings_control_fkey",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "idx_control_bindings_lookup",
+            "namespace_key",
+            "target_type",
+            "target_id",
+        ),
+        Index(
+            "uq_control_bindings_target_default",
+            "namespace_key",
+            "target_type",
+            "target_id",
+            "control_id",
+            unique=True,
+            postgresql_where=text("agent_name IS NULL"),
+            sqlite_where=text("agent_name IS NULL"),
+        ),
+        Index(
+            "uq_control_bindings_target_agent",
+            "namespace_key",
+            "target_type",
+            "target_id",
+            "agent_name",
+            "control_id",
+            unique=True,
+            postgresql_where=text("agent_name IS NOT NULL"),
+            sqlite_where=text("agent_name IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )
+    namespace_key: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
+    )
+    target_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_id: Mapped[str] = mapped_column(Text, nullable=False)
+    agent_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    control_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
 
 
 # =============================================================================
