@@ -668,3 +668,67 @@ class DeleteControlBindingResponse(BaseModel):
     """Response from deleting a control binding."""
 
     success: bool = Field(..., description="Whether the deletion succeeded.")
+
+
+class UpsertControlBindingRequest(BaseModel):
+    """Request to attach (or update) a control binding by natural key.
+
+    Idempotent: an existing binding with the same
+    ``(target_type, target_id, agent_name, control_id)`` is updated
+    in-place; otherwise a new binding is created.
+    """
+
+    target_type: ControlBindingTargetField = Field(
+        ..., description="Opaque attachment kind."
+    )
+    target_id: ControlBindingTargetField = Field(
+        ..., description="Opaque external identifier within the target_type."
+    )
+    agent_name: str | None = Field(
+        default=None,
+        description=(
+            "Optional narrower selector. Omit (or pass null) to address the "
+            "target-default binding for the control."
+        ),
+    )
+    control_id: int = Field(
+        ..., gt=0, description="ID of the control to attach."
+    )
+    enabled: bool = Field(
+        default=True, description="Whether the binding is active."
+    )
+
+
+class UpsertControlBindingResponse(BaseModel):
+    """Response from a natural-key upsert."""
+
+    binding_id: int = Field(..., description="Identifier of the binding.")
+    created: bool = Field(
+        ...,
+        description=(
+            "True when a new binding was created; False when an existing "
+            "binding was updated in place."
+        ),
+    )
+    enabled: bool = Field(..., description="Current enabled value.")
+
+
+class DeleteControlBindingByKeyRequest(BaseModel):
+    """Request to detach a control binding by natural key (idempotent)."""
+
+    target_type: ControlBindingTargetField = Field(...)
+    target_id: ControlBindingTargetField = Field(...)
+    agent_name: str | None = Field(default=None)
+    control_id: int = Field(..., gt=0)
+
+
+class DeleteControlBindingByKeyResponse(BaseModel):
+    """Response from a natural-key detach."""
+
+    deleted: bool = Field(
+        ...,
+        description=(
+            "True when a binding was deleted; False when no matching "
+            "binding existed."
+        ),
+    )

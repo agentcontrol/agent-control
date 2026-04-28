@@ -232,3 +232,123 @@ def test_non_admin_can_read(non_admin_client: TestClient, client: TestClient) ->
 
     resp = non_admin_client.get(_BINDINGS_URL)
     assert resp.status_code == 200, resp.text
+
+
+# Natural-key (idempotent) endpoints.
+
+
+def test_upsert_by_key_creates_new_binding(client: TestClient) -> None:
+    control_id = _create_control(client)
+    body = {
+        "target_type": "env",
+        "target_id": "prod",
+        "control_id": control_id,
+        "enabled": True,
+    }
+    resp = client.put(f"{_BINDINGS_URL}/by-key", json=body)
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    assert payload["created"] is True
+    assert payload["enabled"] is True
+    assert isinstance(payload["binding_id"], int)
+
+
+def test_upsert_by_key_is_idempotent_and_updates_enabled(
+    client: TestClient,
+) -> None:
+    control_id = _create_control(client)
+    body = {
+        "target_type": "env",
+        "target_id": "prod",
+        "control_id": control_id,
+        "enabled": True,
+    }
+    first = client.put(f"{_BINDINGS_URL}/by-key", json=body).json()
+    second = client.put(
+        f"{_BINDINGS_URL}/by-key", json={**body, "enabled": False}
+    ).json()
+
+    assert second["created"] is False
+    assert second["enabled"] is False
+    assert second["binding_id"] == first["binding_id"]
+
+
+def test_upsert_by_key_distinguishes_target_default_from_agent_override(
+    client: TestClient,
+) -> None:
+    control_id = _create_control(client)
+    target_default = client.put(
+        f"{_BINDINGS_URL}/by-key",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+        },
+    ).json()
+    agent_override = client.put(
+        f"{_BINDINGS_URL}/by-key",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+            "agent_name": "support-router",
+        },
+    ).json()
+
+    assert target_default["created"] is True
+    assert agent_override["created"] is True
+    assert target_default["binding_id"] != agent_override["binding_id"]
+
+
+def test_delete_by_key_removes_existing_binding(client: TestClient) -> None:
+    control_id = _create_control(client)
+    client.put(
+        f"{_BINDINGS_URL}/by-key",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+        },
+    )
+    resp = client.post(
+        f"{_BINDINGS_URL}/by-key:delete",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": True}
+
+
+def test_delete_by_key_is_idempotent_when_missing(client: TestClient) -> None:
+    control_id = _create_control(client)
+    resp = client.post(
+        f"{_BINDINGS_URL}/by-key:delete",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": False}
+
+
+def test_non_admin_cannot_use_by_key_endpoints(
+    non_admin_client: TestClient, client: TestClient
+) -> None:
+    control_id = _create_control(client)
+    body = {
+        "target_type": "env",
+        "target_id": "prod",
+        "control_id": control_id,
+    }
+    upsert_resp = non_admin_client.put(f"{_BINDINGS_URL}/by-key", json=body)
+    assert upsert_resp.status_code == 403
+
+    delete_resp = non_admin_client.post(
+        f"{_BINDINGS_URL}/by-key:delete", json=body
+    )
+    assert delete_resp.status_code == 403

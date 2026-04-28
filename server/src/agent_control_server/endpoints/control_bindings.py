@@ -5,11 +5,15 @@ from __future__ import annotations
 from agent_control_models.server import (
     CreateControlBindingRequest,
     CreateControlBindingResponse,
+    DeleteControlBindingByKeyRequest,
+    DeleteControlBindingByKeyResponse,
     DeleteControlBindingResponse,
     GetControlBindingResponse,
     ListControlBindingsResponse,
     PatchControlBindingRequest,
     PatchControlBindingResponse,
+    UpsertControlBindingRequest,
+    UpsertControlBindingResponse,
 )
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,3 +164,64 @@ async def delete_control_binding(
     )
     await db.commit()
     return DeleteControlBindingResponse(success=True)
+
+
+@router.put(
+    "/by-key",
+    dependencies=[Depends(require_admin_key)],
+    response_model=UpsertControlBindingResponse,
+    summary="Attach a control to a target by natural key (idempotent)",
+    response_description="Created or updated binding",
+)
+async def upsert_control_binding_by_key(
+    request: UpsertControlBindingRequest,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
+) -> UpsertControlBindingResponse:
+    """Idempotent attach using ``(target_type, target_id, agent_name?, control_id)``
+    as the natural key. Updates ``enabled`` on an existing match; creates a
+    new row otherwise.
+    """
+    service = ControlBindingsService(db)
+    binding, created = await service.upsert_by_natural_key(
+        namespace_key=namespace_key,
+        target_type=request.target_type,
+        target_id=request.target_id,
+        agent_name=request.agent_name,
+        control_id=request.control_id,
+        enabled=request.enabled,
+    )
+    await db.commit()
+    await db.refresh(binding)
+    return UpsertControlBindingResponse(
+        binding_id=binding.id,
+        created=created,
+        enabled=binding.enabled,
+    )
+
+
+@router.post(
+    "/by-key:delete",
+    dependencies=[Depends(require_admin_key)],
+    response_model=DeleteControlBindingByKeyResponse,
+    summary="Detach a control from a target by natural key (idempotent)",
+    response_description="Whether a row was deleted",
+)
+async def delete_control_binding_by_key(
+    request: DeleteControlBindingByKeyRequest,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
+) -> DeleteControlBindingByKeyResponse:
+    """Idempotent detach by natural key. Returns ``deleted=False`` when no
+    matching binding exists.
+    """
+    service = ControlBindingsService(db)
+    deleted = await service.delete_by_natural_key(
+        namespace_key=namespace_key,
+        target_type=request.target_type,
+        target_id=request.target_id,
+        agent_name=request.agent_name,
+        control_id=request.control_id,
+    )
+    await db.commit()
+    return DeleteControlBindingByKeyResponse(deleted=deleted)

@@ -65,6 +65,97 @@ class ControlBindingsService:
             ) from exc
         return binding
 
+    async def upsert_by_natural_key(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str,
+        target_id: str,
+        control_id: int,
+        agent_name: str | None = None,
+        enabled: bool = True,
+    ) -> tuple[ControlBinding, bool]:
+        """Idempotent attach by natural key.
+
+        Returns ``(binding, created)``. If a binding with the same
+        ``(namespace_key, target_type, target_id, agent_name, control_id)``
+        already exists, ``enabled`` is updated to the supplied value;
+        otherwise a new binding is created.
+        """
+        await self._require_control(
+            namespace_key=namespace_key, control_id=control_id
+        )
+        existing = await self._find_by_natural_key(
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+            agent_name=agent_name,
+            control_id=control_id,
+        )
+        if existing is not None:
+            existing.enabled = enabled
+            await self._db.flush()
+            return existing, False
+
+        binding = ControlBinding(
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+            agent_name=agent_name,
+            control_id=control_id,
+            enabled=enabled,
+        )
+        self._db.add(binding)
+        await self._db.flush()
+        return binding, True
+
+    async def delete_by_natural_key(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str,
+        target_id: str,
+        control_id: int,
+        agent_name: str | None = None,
+    ) -> bool:
+        """Idempotent detach by natural key. Returns whether a row was deleted."""
+        existing = await self._find_by_natural_key(
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+            agent_name=agent_name,
+            control_id=control_id,
+        )
+        if existing is None:
+            return False
+        await self._db.delete(existing)
+        await self._db.flush()
+        return True
+
+    async def _find_by_natural_key(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str,
+        target_id: str,
+        agent_name: str | None,
+        control_id: int,
+    ) -> ControlBinding | None:
+        agent_match: ColumnElement[bool]
+        if agent_name is None:
+            agent_match = ControlBinding.agent_name.is_(None)
+        else:
+            agent_match = ControlBinding.agent_name == agent_name
+        stmt = select(ControlBinding).where(
+            ControlBinding.namespace_key == namespace_key,
+            ControlBinding.target_type == target_type,
+            ControlBinding.target_id == target_id,
+            ControlBinding.control_id == control_id,
+            agent_match,
+        )
+        result = await self._db.execute(stmt)
+        return cast(ControlBinding | None, result.scalars().first())
+
     async def get_binding_or_404(
         self, *, namespace_key: str, binding_id: int
     ) -> ControlBinding:
