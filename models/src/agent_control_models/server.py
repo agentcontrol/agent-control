@@ -1,3 +1,4 @@
+import datetime as dt
 from enum import StrEnum
 from typing import Annotated, Any
 
@@ -585,3 +586,85 @@ class PatchControlResponse(BaseModel):
     enabled: bool | None = Field(
         None, description="Current enabled status (if control has data configured)"
     )
+
+
+# Control binding requests / responses.
+
+ControlBindingTargetField = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=255),
+]
+
+
+class CreateControlBindingRequest(BaseModel):
+    """Request to attach a control to an opaque external target."""
+
+    target_type: ControlBindingTargetField = Field(
+        ...,
+        description="Opaque attachment kind (caller-defined; e.g. 'env', 'log_stream').",
+    )
+    target_id: ControlBindingTargetField = Field(
+        ..., description="Opaque external identifier within the target_type."
+    )
+    agent_name: str | None = Field(
+        default=None,
+        description=(
+            "Optional narrower selector. When set, the binding applies only to "
+            "the named agent inside the target."
+        ),
+    )
+    control_id: int = Field(
+        ..., gt=0, description="ID of the control to attach."
+    )
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Whether the binding is active. Set to False to express an explicit "
+            "exemption that overrides a less-specific binding."
+        ),
+    )
+
+
+class CreateControlBindingResponse(BaseModel):
+    """Response from creating a control binding."""
+
+    binding_id: int = Field(..., description="Identifier of the created binding.")
+
+
+class GetControlBindingResponse(BaseModel):
+    """Detail view of a single control binding."""
+
+    id: int
+    namespace_key: str
+    target_type: str
+    target_id: str
+    agent_name: str | None
+    control_id: int
+    enabled: bool
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class ListControlBindingsResponse(BaseModel):
+    """Paginated/filtered list of control bindings."""
+
+    bindings: list[GetControlBindingResponse] = Field(default_factory=list)
+
+
+class PatchControlBindingRequest(BaseModel):
+    """Request to update a control binding's enabled flag."""
+
+    enabled: bool = Field(..., description="New enabled value for the binding.")
+
+
+class PatchControlBindingResponse(BaseModel):
+    """Response from updating a control binding."""
+
+    success: bool = Field(..., description="Whether the update succeeded.")
+    enabled: bool = Field(..., description="Current enabled value.")
+
+
+class DeleteControlBindingResponse(BaseModel):
+    """Response from deleting a control binding."""
+
+    success: bool = Field(..., description="Whether the deletion succeeded.")

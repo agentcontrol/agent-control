@@ -21,6 +21,7 @@ from .auth import require_api_key
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal
 from .endpoints.agents import router as agent_router
+from .endpoints.control_bindings import router as control_binding_router
 from .endpoints.controls import router as control_router
 from .endpoints.controls import template_router as control_template_router
 from .endpoints.evaluation import router as evaluation_router
@@ -263,6 +264,11 @@ app.include_router(
 )
 app.include_router(
     control_router,
+    prefix=api_v1_prefix,
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    control_binding_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(require_api_key)],
 )

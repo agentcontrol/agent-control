@@ -3,19 +3,153 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from typing import cast
 
+from agent_control_models.errors import ErrorCode
 from sqlalchemy import and_, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
+from ..errors import ConflictError, NotFoundError
 from ..models import Control, ControlBinding
 
 
 class ControlBindingsService:
-    """Resolve effective controls for target-bearing requests."""
+    """Persistence and resolution helpers for control bindings."""
 
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+
+    async def create_binding(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str,
+        target_id: str,
+        control_id: int,
+        agent_name: str | None = None,
+        enabled: bool = True,
+    ) -> ControlBinding:
+        """Insert a new binding row.
+
+        Raises ``NotFoundError`` if the referenced control does not exist in
+        the same namespace, and ``ConflictError`` if a binding with the same
+        shape already exists.
+        """
+        await self._require_control(
+            namespace_key=namespace_key, control_id=control_id
+        )
+        binding = ControlBinding(
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+            agent_name=agent_name,
+            control_id=control_id,
+            enabled=enabled,
+        )
+        self._db.add(binding)
+        try:
+            await self._db.flush()
+        except IntegrityError as exc:
+            await self._db.rollback()
+            raise ConflictError(
+                error_code=ErrorCode.CONTROL_BINDING_CONFLICT,
+                detail=(
+                    "A binding with this (target_type, target_id, agent_name, "
+                    "control_id) already exists in this namespace."
+                ),
+                resource="ControlBinding",
+                hint="Update the existing binding instead of creating a new one.",
+            ) from exc
+        return binding
+
+    async def get_binding_or_404(
+        self, *, namespace_key: str, binding_id: int
+    ) -> ControlBinding:
+        """Load a binding row scoped to ``namespace_key`` or raise 404."""
+        stmt = select(ControlBinding).where(
+            ControlBinding.id == binding_id,
+            ControlBinding.namespace_key == namespace_key,
+        )
+        result = await self._db.execute(stmt)
+        binding = cast(ControlBinding | None, result.scalars().first())
+        if binding is None:
+            raise NotFoundError(
+                error_code=ErrorCode.CONTROL_BINDING_NOT_FOUND,
+                detail=f"Control binding with ID '{binding_id}' not found",
+                resource="ControlBinding",
+                resource_id=str(binding_id),
+                hint="Verify the binding ID and that it belongs to this namespace.",
+            )
+        return binding
+
+    async def list_bindings(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        agent_name: str | None = None,
+        control_id: int | None = None,
+    ) -> list[ControlBinding]:
+        """List bindings scoped to ``namespace_key`` with optional filters."""
+        stmt = select(ControlBinding).where(
+            ControlBinding.namespace_key == namespace_key
+        )
+        if target_type is not None:
+            stmt = stmt.where(ControlBinding.target_type == target_type)
+        if target_id is not None:
+            stmt = stmt.where(ControlBinding.target_id == target_id)
+        if agent_name is not None:
+            stmt = stmt.where(ControlBinding.agent_name == agent_name)
+        if control_id is not None:
+            stmt = stmt.where(ControlBinding.control_id == control_id)
+        stmt = stmt.order_by(ControlBinding.id)
+        result = await self._db.execute(stmt)
+        return list(result.scalars())
+
+    async def set_enabled(
+        self, *, namespace_key: str, binding_id: int, enabled: bool
+    ) -> ControlBinding:
+        """Update the ``enabled`` flag on a single binding."""
+        binding = await self.get_binding_or_404(
+            namespace_key=namespace_key, binding_id=binding_id
+        )
+        binding.enabled = enabled
+        await self._db.flush()
+        return binding
+
+    async def delete_binding(
+        self, *, namespace_key: str, binding_id: int
+    ) -> None:
+        """Delete a single binding. Raises 404 if it does not exist."""
+        binding = await self.get_binding_or_404(
+            namespace_key=namespace_key, binding_id=binding_id
+        )
+        await self._db.delete(binding)
+        await self._db.flush()
+
+    async def _require_control(
+        self, *, namespace_key: str, control_id: int
+    ) -> None:
+        stmt = select(Control.id).where(
+            Control.id == control_id,
+            Control.namespace_key == namespace_key,
+            Control.deleted_at.is_(None),
+        )
+        result = await self._db.execute(stmt)
+        if result.first() is None:
+            raise NotFoundError(
+                error_code=ErrorCode.CONTROL_NOT_FOUND,
+                detail=f"Control with ID '{control_id}' not found",
+                resource="Control",
+                resource_id=str(control_id),
+                hint=(
+                    "Verify the control ID, that it has not been deleted, "
+                    "and that it belongs to the same namespace as the binding."
+                ),
+            )
 
     async def resolve_effective_controls(
         self,
