@@ -672,8 +672,8 @@ class UpsertControlBindingRequest(BaseModel):
     """Request to attach (or update) a control binding by natural key.
 
     Idempotent: an existing binding with the same
-    ``(target_type, target_id, agent_name, control_id)`` is updated
-    in-place; otherwise a new binding is created.
+    ``(target_type, target_id, control_id)`` is updated in-place;
+    otherwise a new binding is created.
     """
 
     target_type: ControlBindingTargetField = Field(
