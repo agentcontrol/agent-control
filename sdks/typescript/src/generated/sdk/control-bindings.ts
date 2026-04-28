@@ -20,7 +20,9 @@ export class ControlBindings extends ClientSDK {
    * List control bindings
    *
    * @remarks
-   * Return bindings in the current namespace with optional filters.
+   * Return bindings in the current namespace with optional filters and
+   * cursor-based pagination. Bindings are ordered by ID descending (newest
+   * first).
    */
   async list(
     request?:

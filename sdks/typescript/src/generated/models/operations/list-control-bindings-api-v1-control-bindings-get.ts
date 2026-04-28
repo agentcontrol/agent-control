@@ -6,6 +6,14 @@ import * as z from "zod/v4-mini";
 import { remap as remap$ } from "../../lib/primitives.js";
 
 export type ListControlBindingsApiV1ControlBindingsGetRequest = {
+  /**
+   * Binding ID to start after (cursor pagination). Pass the ``next_cursor`` from a previous page.
+   */
+  cursor?: number | null | undefined;
+  /**
+   * Maximum bindings to return (default 20, max 100).
+   */
+  limit?: number | undefined;
   targetType?: string | null | undefined;
   targetId?: string | null | undefined;
   controlId?: number | null | undefined;
@@ -13,6 +21,8 @@ export type ListControlBindingsApiV1ControlBindingsGetRequest = {
 
 /** @internal */
 export type ListControlBindingsApiV1ControlBindingsGetRequest$Outbound = {
+  cursor?: number | null | undefined;
+  limit: number;
   target_type?: string | null | undefined;
   target_id?: string | null | undefined;
   control_id?: number | null | undefined;
@@ -25,6 +35,8 @@ export const ListControlBindingsApiV1ControlBindingsGetRequest$outboundSchema:
     ListControlBindingsApiV1ControlBindingsGetRequest
   > = z.pipe(
     z.object({
+      cursor: z.optional(z.nullable(z.int())),
+      limit: z._default(z.int(), 20),
       targetType: z.optional(z.nullable(z.string())),
       targetId: z.optional(z.nullable(z.string())),
       controlId: z.optional(z.nullable(z.int())),

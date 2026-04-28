@@ -31,7 +31,9 @@ import { Result } from "../types/fp.js";
  * List control bindings
  *
  * @remarks
- * Return bindings in the current namespace with optional filters.
+ * Return bindings in the current namespace with optional filters and
+ * cursor-based pagination. Bindings are ordered by ID descending (newest
+ * first).
  */
 export function controlBindingsList(
   client: AgentControlSDKCore,
@@ -105,6 +107,8 @@ async function $do(
 
   const query = encodeFormQuery({
     "control_id": payload?.control_id,
+    "cursor": payload?.cursor,
+    "limit": payload?.limit,
     "target_id": payload?.target_id,
     "target_type": payload?.target_type,
   });

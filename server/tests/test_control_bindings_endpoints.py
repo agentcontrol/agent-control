@@ -117,6 +117,46 @@ def test_list_bindings_returns_all(client: TestClient) -> None:
     }
 
 
+def test_list_bindings_returns_pagination_metadata(client: TestClient) -> None:
+    control_id = _create_control(client)
+    _create_binding(client, control_id=control_id, target_id="prod")
+    _create_binding(client, control_id=control_id, target_id="dev")
+
+    resp = client.get(_BINDINGS_URL, params={"limit": 1})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["bindings"]) == 1
+    assert body["pagination"]["has_more"] is True
+    assert body["pagination"]["next_cursor"] is not None
+    assert body["pagination"]["limit"] == 1
+    assert body["pagination"]["total"] == 2
+
+
+def test_list_bindings_cursor_walks_pages(client: TestClient) -> None:
+    control_id = _create_control(client)
+    first_id = _create_binding(client, control_id=control_id, target_id="prod")[
+        "binding_id"
+    ]
+    second_id = _create_binding(client, control_id=control_id, target_id="dev")[
+        "binding_id"
+    ]
+
+    page_one = client.get(_BINDINGS_URL, params={"limit": 1}).json()
+    cursor = page_one["pagination"]["next_cursor"]
+    assert cursor is not None
+
+    page_two = client.get(
+        _BINDINGS_URL, params={"limit": 1, "cursor": cursor}
+    ).json()
+
+    page_one_ids = [b["id"] for b in page_one["bindings"]]
+    page_two_ids = [b["id"] for b in page_two["bindings"]]
+    # Cursor walks newest-first; the first page returns the most recent
+    # binding, the second page returns the older one.
+    assert {*page_one_ids, *page_two_ids} == {first_id, second_id}
+    assert page_two["pagination"]["has_more"] is False
+
+
 def test_list_bindings_with_target_filter(client: TestClient) -> None:
     control_id = _create_control(client)
     _create_binding(

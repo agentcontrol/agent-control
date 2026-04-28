@@ -11,12 +11,13 @@ from agent_control_models.server import (
     EffectiveTargetControlsResponse,
     GetControlBindingResponse,
     ListControlBindingsResponse,
+    PaginationInfo,
     PatchControlBindingRequest,
     PatchControlBindingResponse,
     UpsertControlBindingRequest,
     UpsertControlBindingResponse,
 )
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
@@ -27,6 +28,9 @@ from ..services.control_bindings import ControlBindingsService
 from ..services.controls import parse_associated_control_or_api_error
 
 router = APIRouter(prefix="/control-bindings", tags=["control-bindings"])
+
+_DEFAULT_LIST_LIMIT = 20
+_MAX_LIST_LIMIT = 100
 
 
 def _to_response(binding: ControlBinding) -> GetControlBindingResponse:
@@ -117,22 +121,46 @@ async def list_effective_target_controls(
     response_description="Bindings matching the supplied filters",
 )
 async def list_control_bindings(
+    cursor: int | None = Query(
+        None,
+        description=(
+            "Binding ID to start after (cursor pagination). Pass the "
+            "``next_cursor`` from a previous page."
+        ),
+    ),
+    limit: int = Query(
+        _DEFAULT_LIST_LIMIT,
+        ge=1,
+        le=_MAX_LIST_LIMIT,
+        description="Maximum bindings to return (default 20, max 100).",
+    ),
     target_type: str | None = None,
     target_id: str | None = None,
     control_id: int | None = None,
     db: AsyncSession = Depends(get_async_db),
     namespace_key: str = Depends(get_namespace_key),
 ) -> ListControlBindingsResponse:
-    """Return bindings in the current namespace with optional filters."""
+    """Return bindings in the current namespace with optional filters and
+    cursor-based pagination. Bindings are ordered by ID descending (newest
+    first).
+    """
     service = ControlBindingsService(db)
-    bindings = await service.list_bindings(
+    page = await service.list_bindings(
         namespace_key=namespace_key,
+        cursor=cursor,
+        limit=limit,
         target_type=target_type,
         target_id=target_id,
         control_id=control_id,
     )
     return ListControlBindingsResponse(
-        bindings=[_to_response(b) for b in bindings]
+        bindings=[_to_response(b) for b in page.bindings],
+        pagination=PaginationInfo(
+            limit=limit,
+            total=page.total,
+            next_cursor=page.next_cursor,
+            has_more=page.has_more,
+        ),
     )
 
 

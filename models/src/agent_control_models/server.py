@@ -651,6 +651,10 @@ class ListControlBindingsResponse(BaseModel):
     """Paginated/filtered list of control bindings."""
 
     bindings: list[GetControlBindingResponse] = Field(default_factory=list)
+    pagination: PaginationInfo = Field(
+        ...,
+        description="Cursor-based pagination metadata.",
+    )
 
 
 class PatchControlBindingRequest(BaseModel):

@@ -11,12 +11,20 @@ import {
   GetControlBindingResponse,
   GetControlBindingResponse$inboundSchema,
 } from "./get-control-binding-response.js";
+import {
+  PaginationInfo,
+  PaginationInfo$inboundSchema,
+} from "./pagination-info.js";
 
 /**
  * Paginated/filtered list of control bindings.
  */
 export type ListControlBindingsResponse = {
   bindings?: Array<GetControlBindingResponse> | undefined;
+  /**
+   * Pagination metadata for cursor-based pagination.
+   */
+  pagination: PaginationInfo;
 };
 
 /** @internal */
@@ -25,6 +33,7 @@ export const ListControlBindingsResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.object({
   bindings: types.optional(z.array(GetControlBindingResponse$inboundSchema)),
+  pagination: PaginationInfo$inboundSchema,
 });
 
 export function listControlBindingsResponseFromJSON(

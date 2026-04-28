@@ -9,16 +9,27 @@ paths if and when they become a product requirement.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import cast
 
 from agent_control_models.errors import ErrorCode
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import ConflictError, NotFoundError
 from ..models import Control, ControlBinding
 from .controls import RuntimeControl, parse_runtime_controls
+
+
+@dataclass(frozen=True)
+class ControlBindingListPage:
+    """Paginated control-binding rows for list endpoints."""
+
+    bindings: list[ControlBinding]
+    total: int
+    has_more: bool
+    next_cursor: str | None
 
 
 class ControlBindingsService:
@@ -194,23 +205,52 @@ class ControlBindingsService:
         self,
         *,
         namespace_key: str,
+        cursor: int | None = None,
+        limit: int = 20,
         target_type: str | None = None,
         target_id: str | None = None,
         control_id: int | None = None,
-    ) -> list[ControlBinding]:
-        """List bindings scoped to ``namespace_key`` with optional filters."""
-        stmt = select(ControlBinding).where(
-            ControlBinding.namespace_key == namespace_key
+    ) -> ControlBindingListPage:
+        """List bindings scoped to ``namespace_key`` with optional filters and
+        cursor-based pagination.
+
+        Bindings are returned ordered by ID descending (newest first). Pass
+        the ``next_cursor`` returned from one page as ``cursor`` to fetch the
+        next page.
+        """
+
+        def _apply_filters(stmt):  # type: ignore[no-untyped-def]
+            stmt = stmt.where(ControlBinding.namespace_key == namespace_key)
+            if target_type is not None:
+                stmt = stmt.where(ControlBinding.target_type == target_type)
+            if target_id is not None:
+                stmt = stmt.where(ControlBinding.target_id == target_id)
+            if control_id is not None:
+                stmt = stmt.where(ControlBinding.control_id == control_id)
+            return stmt
+
+        page_stmt = _apply_filters(select(ControlBinding)).order_by(
+            ControlBinding.id.desc()
         )
-        if target_type is not None:
-            stmt = stmt.where(ControlBinding.target_type == target_type)
-        if target_id is not None:
-            stmt = stmt.where(ControlBinding.target_id == target_id)
-        if control_id is not None:
-            stmt = stmt.where(ControlBinding.control_id == control_id)
-        stmt = stmt.order_by(ControlBinding.id)
-        result = await self._db.execute(stmt)
-        return list(result.scalars())
+        if cursor is not None:
+            page_stmt = page_stmt.where(ControlBinding.id < cursor)
+        result = await self._db.execute(page_stmt.limit(limit + 1))
+        rows = list(result.scalars().all())
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
+        next_cursor = str(rows[-1].id) if has_more and rows else None
+
+        total_stmt = _apply_filters(select(func.count()).select_from(ControlBinding))
+        total_result = await self._db.execute(total_stmt)
+        total = int(total_result.scalar_one())
+
+        return ControlBindingListPage(
+            bindings=rows,
+            total=total,
+            has_more=has_more,
+            next_cursor=next_cursor,
+        )
 
     async def set_enabled(
         self, *, namespace_key: str, binding_id: int, enabled: bool
