@@ -121,6 +121,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup: Configure logging
     configure_logging(default_level=_default_log_level())
 
+    # Install the request-auth provider selected by environment variables.
+    from .auth_framework.config import configure_auth_from_env
+    configure_auth_from_env()
+
     # Discover evaluators at startup
     discover_evaluators()
     available = list(list_evaluators().keys())
@@ -268,9 +272,12 @@ app.include_router(
     dependencies=[Depends(require_api_key)],
 )
 app.include_router(
+    # The auth framework on each endpoint owns authentication and
+    # authorization for control bindings, so this router is mounted
+    # without the legacy router-level gate. See ``auth_framework`` for
+    # the provider contract.
     control_binding_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
 )
 app.include_router(
     control_template_router,

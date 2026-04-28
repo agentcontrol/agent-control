@@ -139,6 +139,22 @@ def clean_db():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _install_default_authorizer():
+    """Install the OSS HeaderAuthProvider for the duration of each test.
+
+    The framework's authorizer is normally wired by the FastAPI lifespan,
+    but TestClient bypasses lifespan unless used as a context manager.
+    Installing it here keeps tests isolated and matches OSS behavior.
+    """
+    from agent_control_server.auth_framework.core import set_authorizer
+    from agent_control_server.auth_framework.providers import HeaderAuthProvider
+
+    set_authorizer(HeaderAuthProvider())
+    yield
+    set_authorizer(None)
+
+
 @pytest.fixture
 async def async_db():
     """Provide async database session for tests."""
