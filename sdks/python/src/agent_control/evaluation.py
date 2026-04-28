@@ -243,12 +243,12 @@ async def check_evaluation_with_local(
     step: Step,
     stage: Literal["pre", "post"],
     controls: list[dict[str, Any]],
-    *,
-    target_type: str | None = None,
-    target_id: str | None = None,
     trace_id: str | None = None,
     span_id: str | None = None,
     event_agent_name: str | None = None,
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
 ) -> EvaluationResult:
     """Evaluate controls with local-first execution and SDK-owned event emission.
 
