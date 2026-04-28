@@ -16,11 +16,13 @@ from agent_control_server.auth_framework.core import (
     set_authorizer,
 )
 from agent_control_server.auth_framework.providers import (
+    AccessLevel,
     HeaderAuthProvider,
     HttpUpstreamAuthProvider,
-    OssAccessLevel,
 )
-from agent_control_server.auth_framework.providers.header import OSS_OPERATION_ACCESS
+from agent_control_server.auth_framework.providers.header import (
+    DEFAULT_OPERATION_ACCESS,
+)
 from agent_control_server.auth_framework.providers.http_upstream import (
     HttpUpstreamConfig,
 )
@@ -50,10 +52,10 @@ def _build_request(
 # ---------------------------------------------------------------------------
 
 
-def test_oss_operation_access_covers_every_operation():
-    """Every Operation member must declare an OSS access level."""
-    missing = [op for op in Operation if op not in OSS_OPERATION_ACCESS]
-    assert not missing, f"Operations missing OSS access mapping: {missing}"
+def test_default_operation_access_covers_every_operation():
+    """Every Operation member must declare a default access level."""
+    missing = [op for op in Operation if op not in DEFAULT_OPERATION_ACCESS]
+    assert not missing, f"Operations missing default access mapping: {missing}"
 
 
 # ---------------------------------------------------------------------------
@@ -62,9 +64,30 @@ def test_oss_operation_access_covers_every_operation():
 
 
 @pytest.mark.asyncio
+async def test_header_provider_no_auth_mode_passes_admin_op():
+    """When ``api_key_enabled`` is False, even admin operations succeed.
+
+    Preserves the pre-framework behavior where setting the server into
+    no-auth mode opens every endpoint regardless of access level.
+    """
+    provider = HeaderAuthProvider()
+
+    with patch(
+        "agent_control_server.auth.auth_settings.api_key_enabled", False
+    ):
+        principal = await provider.authorize(
+            _build_request(),
+            Operation.CONTROL_BINDINGS_WRITE,
+        )
+
+    assert principal.namespace_key == DEFAULT_NAMESPACE_KEY
+    assert principal.is_admin is False
+
+
+@pytest.mark.asyncio
 async def test_header_provider_public_returns_default_namespace():
     provider = HeaderAuthProvider(
-        operation_access={Operation.CONTROL_BINDINGS_READ: OssAccessLevel.PUBLIC}
+        operation_access={Operation.CONTROL_BINDINGS_READ: AccessLevel.PUBLIC}
     )
     principal = await provider.authorize(
         _build_request(),
@@ -119,7 +142,7 @@ async def test_header_provider_admin_op_requires_admin():
 async def test_header_provider_v1_ignores_namespace_header():
     """V1 always returns the default namespace regardless of header value."""
     provider = HeaderAuthProvider(
-        operation_access={Operation.CONTROL_BINDINGS_READ: OssAccessLevel.PUBLIC}
+        operation_access={Operation.CONTROL_BINDINGS_READ: AccessLevel.PUBLIC}
     )
     principal = await provider.authorize(
         _build_request(headers={"X-Namespace-Key": "org-foo"}),
@@ -131,7 +154,7 @@ async def test_header_provider_v1_ignores_namespace_header():
 @pytest.mark.asyncio
 async def test_header_provider_unknown_operation_raises():
     provider = HeaderAuthProvider(operation_access={})
-    with pytest.raises(RuntimeError, match="No OSS access level"):
+    with pytest.raises(RuntimeError, match="No access level"):
         await provider.authorize(
             _build_request(),
             Operation.CONTROL_BINDINGS_READ,

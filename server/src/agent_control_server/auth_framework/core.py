@@ -1,8 +1,9 @@
 """Generic primitives for the pluggable request-auth framework.
 
-This module is intentionally OSS-neutral: no upstream-specific nouns,
-no transport assumptions, no policy engine references. Providers wire
-those concerns in :mod:`agent_control_server.auth_framework.providers`.
+This module is intentionally provider-neutral: no upstream-specific
+nouns, no transport assumptions, no policy engine references.
+Providers wire those concerns in
+:mod:`agent_control_server.auth_framework.providers`.
 
 Concepts:
 
