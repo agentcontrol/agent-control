@@ -3,7 +3,10 @@
 Wired to the runtime resolution path. Reads a Bearer token from the
 ``Authorization`` header, verifies the signature against the runtime
 secret, checks the token's scope covers the requested operation, and
-returns a :class:`Principal` carrying the bound target.
+returns a :class:`Principal` carrying the bound target. When a
+``context_builder`` on the dependency surfaces ``target_type`` /
+``target_id``, the provider also enforces that they match the token's
+binding — runtime endpoints get the request-target check for free.
 """
 
 from __future__ import annotations
@@ -14,7 +17,6 @@ from agent_control_models.errors import ErrorCode
 from fastapi import Request
 
 from ...errors import AuthenticationError, ForbiddenError
-from ...models import DEFAULT_NAMESPACE_KEY
 from ..core import Operation, Principal, RequestAuthorizer
 from ..runtime_token import RuntimeTokenError, verify_runtime_token
 
@@ -22,16 +24,10 @@ from ..runtime_token import RuntimeTokenError, verify_runtime_token
 class LocalJwtVerifyProvider(RequestAuthorizer):
     """Verifies a runtime Bearer token and emits a target-bound :class:`Principal`."""
 
-    def __init__(
-        self,
-        *,
-        secret: str,
-        default_namespace_key: str = DEFAULT_NAMESPACE_KEY,
-    ) -> None:
+    def __init__(self, *, secret: str) -> None:
         if not secret:
             raise ValueError("LocalJwtVerifyProvider requires a non-empty secret.")
         self._secret = secret
-        self._default_namespace_key = default_namespace_key
 
     async def authorize(
         self,
@@ -39,8 +35,6 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
         operation: Operation,
         context: dict[str, Any] | None = None,
     ) -> Principal:
-        del context
-
         token = self._extract_bearer_token(request)
         try:
             claims = verify_runtime_token(token, self._secret)
@@ -61,8 +55,28 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
                 hint="Request a token with the required scope.",
             )
 
+        if context is not None:
+            requested_target_type = context.get("target_type")
+            requested_target_id = context.get("target_id")
+            if requested_target_type is not None and requested_target_type != claims.target_type:
+                raise ForbiddenError(
+                    error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                    detail=(
+                        "Runtime token target_type does not match the request."
+                    ),
+                    hint="Re-exchange a token bound to the request target.",
+                )
+            if requested_target_id is not None and requested_target_id != claims.target_id:
+                raise ForbiddenError(
+                    error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                    detail=(
+                        "Runtime token target_id does not match the request."
+                    ),
+                    hint="Re-exchange a token bound to the request target.",
+                )
+
         return Principal(
-            namespace_key=self._default_namespace_key,
+            namespace_key=claims.namespace_key,
             caller_id=claims.actor_id,
             target_type=claims.target_type,
             target_id=claims.target_id,

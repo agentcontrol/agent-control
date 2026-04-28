@@ -181,3 +181,64 @@ async def test_exchange_then_verify_full_round_trip(client: TestClient):
     assert principal.target_type == "log_stream"
     assert principal.target_id == "ls-99"
     assert principal.caller_id == "actor-rt"
+
+
+def test_exchange_endpoint_rejects_grant_without_runtime_use(client: TestClient):
+    """If the upstream grant lists scopes but omits runtime.use, fail closed.
+
+    Adding runtime.use here would mint a token with more authority than
+    the upstream granted.
+    """
+    stub = _StubExchangeAuthorizer(scopes=("runtime.read_only",))
+    clear_authorizers()
+    set_authorizer(stub)
+
+    with patch.dict(
+        "os.environ",
+        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
+    ):
+        response = client.post(
+            "/api/v1/auth/runtime-token-exchange",
+            json={"target_type": "log_stream", "target_id": "ls-1"},
+        )
+    assert response.status_code == 400, response.text
+
+
+@pytest.mark.asyncio
+async def test_exchange_propagates_non_default_namespace_into_token(
+    client: TestClient,
+):
+    """A token minted in org A must verify back into org A, not the default."""
+    from unittest.mock import MagicMock
+
+    class _OrgAuthorizer:
+        async def authorize(self, request, operation, context=None):
+            return Principal(
+                namespace_key="org-A",
+                caller_id="actor-A",
+                target_type=context.get("target_type") if context else None,
+                target_id=context.get("target_id") if context else None,
+                scopes=("runtime.use",),
+            )
+
+    clear_authorizers()
+    set_authorizer(_OrgAuthorizer())
+
+    with patch.dict(
+        "os.environ",
+        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
+    ):
+        response = client.post(
+            "/api/v1/auth/runtime-token-exchange",
+            json={"target_type": "log_stream", "target_id": "ls-org-a"},
+        )
+    assert response.status_code == 200, response.text
+    token = response.json()["token"]
+
+    verify_provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
+    req = MagicMock()
+    req.headers = {"Authorization": f"Bearer {token}"}
+    principal = await verify_provider.authorize(req, Operation.RUNTIME_USE)
+
+    assert principal.namespace_key == "org-A"
+    assert principal.target_id == "ls-org-a"

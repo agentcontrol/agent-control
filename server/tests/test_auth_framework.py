@@ -392,6 +392,7 @@ def test_runtime_token_round_trips():
     )
 
     token, claims = mint_runtime_token(
+        namespace_key="default",
         actor_id="actor-1",
         target_type="log_stream",
         target_id="ls-9",
@@ -414,6 +415,7 @@ def test_runtime_token_rejects_wrong_secret():
     )
 
     token, _ = mint_runtime_token(
+        namespace_key="default",
         actor_id="x",
         target_type="t",
         target_id="i",
@@ -436,6 +438,7 @@ def test_runtime_token_rejects_expired():
 
     past = datetime.now(UTC) - timedelta(hours=1)
     token, _ = mint_runtime_token(
+        namespace_key="default",
         actor_id="x",
         target_type="t",
         target_id="i",
@@ -458,6 +461,7 @@ def test_runtime_token_caps_ttl_at_upstream_grant():
     now = datetime.now(UTC)
     grant_expires = now + timedelta(seconds=5)
     _, claims = mint_runtime_token(
+        namespace_key="default",
         actor_id="x",
         target_type="t",
         target_id="i",
@@ -506,6 +510,7 @@ async def test_local_jwt_provider_returns_target_bound_principal():
     )
 
     token, _ = mint_runtime_token(
+        namespace_key="default",
         actor_id="actor-7",
         target_type="log_stream",
         target_id="ls-42",
@@ -543,6 +548,7 @@ async def test_local_jwt_provider_wrong_scope_raises_403():
     from agent_control_server.errors import ForbiddenError
 
     token, _ = mint_runtime_token(
+        namespace_key="default",
         actor_id="x",
         target_type="t",
         target_id="i",
@@ -566,3 +572,156 @@ async def test_local_jwt_provider_rejects_non_bearer_authorization():
     request = _build_request(headers={"Authorization": "Basic abc"})
     with pytest.raises(AuthenticationError):
         await provider.authorize(request, Operation.RUNTIME_USE)
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_carries_token_namespace_to_principal():
+    """Tokens minted in a non-default namespace must verify under that namespace."""
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.auth_framework.runtime_token import (
+        mint_runtime_token,
+    )
+
+    token, _ = mint_runtime_token(
+        namespace_key="org-7",
+        actor_id="a",
+        target_type="log_stream",
+        target_id="ls",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
+    request = _build_request(headers={"Authorization": f"Bearer {token}"})
+
+    principal = await provider.authorize(request, Operation.RUNTIME_USE)
+    assert principal.namespace_key == "org-7"
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_enforces_target_context_match():
+    """When the dependency surfaces a target context, the provider enforces it."""
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.auth_framework.runtime_token import (
+        mint_runtime_token,
+    )
+    from agent_control_server.errors import ForbiddenError
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="a",
+        target_type="log_stream",
+        target_id="bound-target",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
+    request = _build_request(headers={"Authorization": f"Bearer {token}"})
+
+    with pytest.raises(ForbiddenError, match="target_id does not match"):
+        await provider.authorize(
+            request,
+            Operation.RUNTIME_USE,
+            context={
+                "target_type": "log_stream",
+                "target_id": "different-target",
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_target_context_mismatch_on_type():
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.auth_framework.runtime_token import (
+        mint_runtime_token,
+    )
+    from agent_control_server.errors import ForbiddenError
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="a",
+        target_type="log_stream",
+        target_id="ls",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
+    request = _build_request(headers={"Authorization": f"Bearer {token}"})
+
+    with pytest.raises(ForbiddenError, match="target_type does not match"):
+        await provider.authorize(
+            request,
+            Operation.RUNTIME_USE,
+            context={"target_type": "agent_session", "target_id": "ls"},
+        )
+
+
+# ---------------------------------------------------------------------------
+# HttpUpstreamAuthProvider strict grant parsing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_wrong_typed_is_admin():
+    """A string ``is_admin`` must not coerce to True; fail closed (502)."""
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200, json={"namespace_key": "n", "is_admin": "false"}
+        )
+    )
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(
+            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
+        )
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_malformed_scopes():
+    """Non-string entries in ``scopes`` should fail closed, not be silently dropped."""
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200, json={"namespace_key": "n", "scopes": ["runtime.use", 7]}
+        )
+    )
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(
+            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
+        )
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_malformed_expires_at():
+    """A non-ISO ``expires_at`` should fail closed instead of removing the TTL cap."""
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200, json={"namespace_key": "n", "expires_at": "not a date"}
+        )
+    )
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(
+            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
+        )
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_non_string_target_fields():
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "namespace_key": "n",
+                "target_type": 1,
+                "target_id": "ls",
+            },
+        )
+    )
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(
+            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
+        )
+    assert exc_info.value.status_code == 502

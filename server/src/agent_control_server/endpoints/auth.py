@@ -137,13 +137,32 @@ async def runtime_token_exchange(
         )
 
     actor_id = principal.caller_id or "anonymous"
-    scopes: tuple[str, ...] = principal.scopes or (Operation.RUNTIME_USE.value,)
-    if Operation.RUNTIME_USE.value not in scopes:
-        # Defensive: provider granted exchange but not runtime use itself.
-        scopes = scopes + (Operation.RUNTIME_USE.value,)
+    if principal.scopes:
+        # Provider returned an explicit grant; honor it as-is. Adding
+        # runtime.use here would be privilege escalation when the
+        # upstream chose to omit it.
+        if Operation.RUNTIME_USE.value not in principal.scopes:
+            raise BadRequestError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail=(
+                    "Authorizer grant does not include runtime.use; "
+                    "cannot mint a runtime token."
+                ),
+                hint=(
+                    "The upstream credential is not authorized for runtime "
+                    "use on this target."
+                ),
+            )
+        scopes = principal.scopes
+    else:
+        # No scoped grant from the provider (e.g., header provider with no
+        # upstream). Default to runtime.use, the only runtime scope V1
+        # tokens are intended to carry.
+        scopes = (Operation.RUNTIME_USE.value,)
 
     try:
         token, claims = mint_runtime_token(
+            namespace_key=principal.namespace_key,
             actor_id=actor_id,
             target_type=body.target_type,
             target_id=body.target_id,

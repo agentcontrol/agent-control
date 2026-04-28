@@ -47,6 +47,7 @@ class RuntimeTokenError(Exception):
 class RuntimeTokenClaims:
     """Fields baked into a runtime token."""
 
+    namespace_key: str
     actor_id: str
     target_type: str
     target_id: str
@@ -58,6 +59,7 @@ class RuntimeTokenClaims:
 
 def mint_runtime_token(
     *,
+    namespace_key: str,
     actor_id: str,
     target_type: str,
     target_id: str,
@@ -78,6 +80,8 @@ def mint_runtime_token(
             "Runtime token secret is not configured. Set "
             "AGENT_CONTROL_RUNTIME_TOKEN_SECRET to enable runtime auth."
         )
+    if not namespace_key:
+        raise RuntimeTokenError("namespace_key is required to mint a runtime token")
     if ttl_seconds <= 0:
         raise RuntimeTokenError("ttl_seconds must be positive")
 
@@ -92,6 +96,7 @@ def mint_runtime_token(
     payload: dict[str, Any] = {
         "iss": _ISSUER,
         "domain": _DOMAIN,
+        "namespace_key": namespace_key,
         "actor_id": actor_id,
         "target_type": target_type,
         "target_id": target_id,
@@ -102,6 +107,7 @@ def mint_runtime_token(
     }
     token = jwt.encode(payload, secret, algorithm=_ALGORITHM)
     claims = RuntimeTokenClaims(
+        namespace_key=namespace_key,
         actor_id=actor_id,
         target_type=target_type,
         target_id=target_id,
@@ -144,9 +150,12 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
             "Token is not a runtime token; refusing to use it here."
         )
 
+    namespace_key = payload.get("namespace_key")
     actor_id = payload.get("actor_id")
     target_type = payload.get("target_type")
     target_id = payload.get("target_id")
+    if not isinstance(namespace_key, str) or not namespace_key:
+        raise RuntimeTokenError("Runtime token missing namespace_key.")
     if not isinstance(actor_id, str) or not actor_id:
         raise RuntimeTokenError("Runtime token missing actor_id.")
     if not isinstance(target_type, str) or not target_type:
@@ -166,6 +175,7 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
         jti = ""
 
     return RuntimeTokenClaims(
+        namespace_key=namespace_key,
         actor_id=actor_id,
         target_type=target_type,
         target_id=target_id,

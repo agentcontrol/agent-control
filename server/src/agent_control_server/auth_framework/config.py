@@ -47,6 +47,9 @@ _RUNTIME_TOKEN_TTL_ENV = "AGENT_CONTROL_RUNTIME_TOKEN_TTL_SECONDS"
 _DEFAULT_RUNTIME_TOKEN_TTL_SECONDS = 300
 
 
+_active_providers: list[RequestAuthorizer] = []
+
+
 def configure_auth_from_env() -> None:
     """Install the authorizers selected by environment variables.
 
@@ -61,11 +64,36 @@ def configure_auth_from_env() -> None:
     - When ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET`` is set, register
       :class:`LocalJwtVerifyProvider` as an override for
       :data:`Operation.RUNTIME_USE`.
+
+    Tracks installed providers so :func:`teardown_auth` can release any
+    long-lived resources (e.g., the upstream HTTP client) at shutdown.
     """
-    set_authorizer(_build_default_provider())
+    _active_providers.clear()
+    default = _build_default_provider()
+    set_authorizer(default)
+    _active_providers.append(default)
+
     runtime_provider = _maybe_build_runtime_provider()
     if runtime_provider is not None:
         set_authorizer(runtime_provider, operation=Operation.RUNTIME_USE)
+        _active_providers.append(runtime_provider)
+
+
+async def teardown_auth() -> None:
+    """Close any long-lived resources held by installed authorizers.
+
+    Called from the FastAPI lifespan at shutdown. Authorizers that own
+    a persistent client (e.g., :class:`HttpUpstreamAuthProvider`) expose
+    an async ``aclose`` method.
+    """
+    for provider in _active_providers:
+        aclose = getattr(provider, "aclose", None)
+        if callable(aclose):
+            try:
+                await aclose()
+            except Exception:  # noqa: BLE001  shutdown best-effort
+                _logger.exception("Error closing auth provider %s", provider)
+    _active_providers.clear()
 
 
 def _build_default_provider() -> RequestAuthorizer:

@@ -46,6 +46,7 @@ from typing import Any
 import httpx
 from agent_control_models.errors import ErrorCode, ErrorReason
 from fastapi import Request
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ...errors import APIError, AuthenticationError, ForbiddenError, NotFoundError
 from ...logging_utils import get_logger
@@ -54,6 +55,25 @@ from ..core import Operation, Principal, RequestAuthorizer
 _logger = get_logger(__name__)
 
 _FORWARDED_HEADERS = ("X-API-Key", "Authorization", "Cookie")
+
+
+class _UpstreamGrant(BaseModel):
+    """Strict schema for the upstream authorization-service response.
+
+    Unknown fields are tolerated (so the upstream can evolve), but every
+    *known* field is type-checked. A wrong type on any field causes the
+    provider to fail closed with a 502.
+    """
+
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    namespace_key: str = Field(min_length=1)
+    is_admin: bool = False
+    caller_id: str | None = None
+    target_type: str | None = Field(default=None, min_length=1)
+    target_id: str | None = Field(default=None, min_length=1)
+    scopes: tuple[str, ...] = ()
+    expires_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -188,10 +208,13 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 hint="Contact the operator.",
             ) from exc
 
-        namespace_key = payload.get("namespace_key")
-        if not isinstance(namespace_key, str) or not namespace_key:
+        try:
+            grant = _UpstreamGrant.model_validate(payload)
+        except ValidationError as exc:
             _logger.error(
-                "Auth upstream payload missing or empty 'namespace_key': %r", payload
+                "Auth upstream returned a malformed grant: %s | payload=%r",
+                exc.errors(),
+                payload,
             )
             raise APIError(
                 status_code=502,
@@ -199,44 +222,14 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 reason=ErrorReason.INTERNAL_ERROR,
                 detail="Authorization service returned a malformed principal.",
                 hint="Contact the operator.",
-            )
-
-        is_admin = bool(payload.get("is_admin", False))
-        caller_id = payload.get("caller_id")
-        if caller_id is not None and not isinstance(caller_id, str):
-            caller_id = None
-
-        target_type = payload.get("target_type")
-        if target_type is not None and not isinstance(target_type, str):
-            target_type = None
-        target_id = payload.get("target_id")
-        if target_id is not None and not isinstance(target_id, str):
-            target_id = None
-
-        raw_scopes = payload.get("scopes", ())
-        scopes: tuple[str, ...] = tuple(
-            s for s in raw_scopes if isinstance(s, str)
-        ) if isinstance(raw_scopes, (list, tuple)) else ()
-
-        grant_expires_at = _parse_iso_datetime(payload.get("expires_at"))
+            ) from exc
 
         return Principal(
-            namespace_key=namespace_key,
-            is_admin=is_admin,
-            caller_id=caller_id,
-            target_type=target_type,
-            target_id=target_id,
-            scopes=scopes,
-            grant_expires_at=grant_expires_at,
+            namespace_key=grant.namespace_key,
+            is_admin=grant.is_admin,
+            caller_id=grant.caller_id,
+            target_type=grant.target_type,
+            target_id=grant.target_id,
+            scopes=grant.scopes,
+            grant_expires_at=grant.expires_at,
         )
-
-
-def _parse_iso_datetime(value: Any) -> datetime | None:
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        # Tolerate trailing "Z" by mapping to "+00:00".
-        normalized = value.replace("Z", "+00:00") if value.endswith("Z") else value
-        return datetime.fromisoformat(normalized)
-    except ValueError:
-        return None

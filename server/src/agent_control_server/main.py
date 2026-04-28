@@ -173,6 +173,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
+    # Shutdown: release auth provider resources (e.g., upstream HTTP clients)
+    from .auth_framework.config import teardown_auth
+    await teardown_auth()
+
     # Shutdown: Clean up observability
     if observability_settings.enabled and hasattr(app.state, "event_store"):
         logger.info("Shutting down observability components...")
