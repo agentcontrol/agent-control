@@ -179,16 +179,23 @@ async def test_evaluate_controls_forwards_target_context(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_target_bearing_request_bypasses_cached_agent_controls():
-    """A target-bearing request must hit the server even when cached
-    agent-attached controls would otherwise apply locally.
+async def test_target_bearing_request_uses_target_bound_controls():
+    """A target-bearing request fetches the effective target-bound controls
+    from the server and ignores cached agent-attached controls.
 
-    Without this bypass, the SDK would resolve from cached agent controls
-    (which the server-side documentation says target-bearing requests must
-    NOT use) and could return a result without ever calling the server.
+    Without this, the SDK would resolve from agent-cached controls (which
+    target-bearing requests must NOT consult) and return a result derived
+    from the wrong attachment set.
     """
 
-    class DummyResponse:
+    class TargetControlsResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"controls": []}
+
+    class EvaluationDummyResponse:
         def raise_for_status(self) -> None:
             return None
 
@@ -197,10 +204,11 @@ async def test_target_bearing_request_bypasses_cached_agent_controls():
 
     client = MagicMock()
     client.http_client = MagicMock()
-    client.http_client.post = AsyncMock(return_value=DummyResponse())
+    client.http_client.get = AsyncMock(return_value=TargetControlsResponse())
+    client.http_client.post = AsyncMock(return_value=EvaluationDummyResponse())
 
     # A cached agent-attached control that would have run locally for an
-    # agent-only request. The bypass must ignore it.
+    # agent-only request. Target-bearing flow must ignore this.
     cached_local_control = {
         "id": 1,
         "name": "local-control",
@@ -227,8 +235,59 @@ async def test_target_bearing_request_bypasses_cached_agent_controls():
         target_id="prod",
     )
 
-    # The server must be called even though a local control exists.
-    client.http_client.post.assert_awaited_once()
-    sent = client.http_client.post.await_args.kwargs["json"]
-    assert sent["target_type"] == "env"
-    assert sent["target_id"] == "prod"
+    # Effective target controls were fetched once, not the cached set.
+    client.http_client.get.assert_awaited_once()
+    fetch_url = client.http_client.get.await_args.args[0]
+    fetch_params = client.http_client.get.await_args.kwargs["params"]
+    assert fetch_url == "/api/v1/control-bindings/effective"
+    assert fetch_params == {"target_type": "env", "target_id": "prod"}
+
+
+@pytest.mark.asyncio
+async def test_target_bearing_request_runs_sdk_execution_controls_locally():
+    """A target-bearing request runs ``execution='sdk'`` controls locally
+    (using controls fetched from /control-bindings/effective) and only sends
+    server-execution controls to the evaluation endpoint."""
+
+    target_local_control = {
+        "id": 1,
+        "name": "target-local-control",
+        "control": {
+            "description": "local",
+            "enabled": True,
+            "execution": "sdk",
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {"name": "regex", "config": {"pattern": "block"}},
+            },
+            "action": {"decision": "deny"},
+        },
+    }
+
+    class TargetControlsResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"controls": [target_local_control]}
+
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.get = AsyncMock(return_value=TargetControlsResponse())
+    post = AsyncMock()
+    client.http_client.post = post
+
+    result = await evaluation.check_evaluation_with_local(
+        client=client,
+        agent_name="mytestagent01",
+        step={"type": "llm", "name": "chat", "input": "block this"},
+        stage="pre",
+        controls=[],  # cached agent set is unused for target-bearing
+        target_type="env",
+        target_id="prod",
+    )
+
+    # Local engine produced a deny without ever calling the server.
+    assert result.is_safe is False
+    post.assert_not_awaited()

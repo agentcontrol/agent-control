@@ -310,7 +310,7 @@ class ControlService:
         db_controls = await self._list_db_controls_for_agent(agent_name)
 
         parsed_controls = [
-            _parse_associated_control_or_api_error(
+            parse_associated_control_or_api_error(
                 control,
                 allow_invalid_step_name_regex=allow_invalid_step_name_regex,
             )
@@ -754,7 +754,7 @@ def _parse_unrendered_template_or_api_error(control: Control) -> UnrenderedTempl
         ) from exc
 
 
-def _parse_associated_control_or_api_error(
+def parse_associated_control_or_api_error(
     control: Control,
     *,
     allow_invalid_step_name_regex: bool = False,

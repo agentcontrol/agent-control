@@ -722,3 +722,18 @@ class DeleteControlBindingByKeyResponse(BaseModel):
             "binding existed."
         ),
     )
+
+
+class EffectiveTargetControlsResponse(BaseModel):
+    """Runtime-ready controls effective for a target.
+
+    Returned in the same shape as ``InitAgentResponse.controls`` so SDKs can
+    feed the result through their existing local-vs-server execution split
+    (controls with ``execution='sdk'`` run locally; ``execution='server'``
+    are sent to the evaluation endpoint).
+    """
+
+    controls: list[Control] = Field(
+        default_factory=list,
+        description="Effective controls for the target, in runtime-ready form.",
+    )

@@ -220,6 +220,48 @@ def test_non_admin_can_read(non_admin_client: TestClient, client: TestClient) ->
     assert resp.status_code == 200, resp.text
 
 
+# Effective controls endpoint.
+
+
+def test_effective_returns_bound_controls(client: TestClient) -> None:
+    control_id = _create_control(client)
+    _create_binding(client, control_id=control_id)
+
+    resp = client.get(
+        "/api/v1/control-bindings/effective",
+        params={"target_type": "env", "target_id": "prod"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    ids = [c["id"] for c in body["controls"]]
+    assert ids == [control_id]
+    # Each entry has runtime-ready shape: {id, name, control}.
+    assert "control" in body["controls"][0]
+    assert "id" in body["controls"][0]
+    assert "name" in body["controls"][0]
+
+
+def test_effective_omits_disabled_bindings(client: TestClient) -> None:
+    control_id = _create_control(client)
+    _create_binding(client, control_id=control_id, enabled=False)
+
+    resp = client.get(
+        "/api/v1/control-bindings/effective",
+        params={"target_type": "env", "target_id": "prod"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["controls"] == []
+
+
+def test_effective_returns_empty_when_no_bindings(client: TestClient) -> None:
+    resp = client.get(
+        "/api/v1/control-bindings/effective",
+        params={"target_type": "env", "target_id": "nope"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["controls"] == []
+
+
 # Natural-key (idempotent) endpoints.
 
 

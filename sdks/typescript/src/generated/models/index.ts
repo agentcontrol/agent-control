@@ -39,6 +39,7 @@ export * from "./delete-control-binding-by-key-response.js";
 export * from "./delete-control-binding-response.js";
 export * from "./delete-control-response.js";
 export * from "./delete-policy-response.js";
+export * from "./effective-target-controls-response.js";
 export * from "./enum-template-parameter.js";
 export * from "./evaluation-request.js";
 export * from "./evaluation-response.js";

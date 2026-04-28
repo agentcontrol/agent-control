@@ -120,6 +120,11 @@ actions:
       x-speakeasy-group: controlBindings
       x-speakeasy-name-override: deleteByKey
 
+  - target: $["paths"]["/api/v1/control-bindings/effective"]["get"]
+    update:
+      x-speakeasy-group: controlBindings
+      x-speakeasy-name-override: listEffectiveTargetControls
+
   - target: $["paths"]["/api/v1/control-bindings/{binding_id}"]["get"]
     update:
       x-speakeasy-group: controlBindings

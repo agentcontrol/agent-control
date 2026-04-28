@@ -8,6 +8,7 @@ from agent_control_models.server import (
     DeleteControlBindingByKeyRequest,
     DeleteControlBindingByKeyResponse,
     DeleteControlBindingResponse,
+    EffectiveTargetControlsResponse,
     GetControlBindingResponse,
     ListControlBindingsResponse,
     PatchControlBindingRequest,
@@ -23,6 +24,7 @@ from ..db import get_async_db
 from ..models import ControlBinding
 from ..namespace import get_namespace_key
 from ..services.control_bindings import ControlBindingsService
+from ..services.controls import parse_associated_control_or_api_error
 
 router = APIRouter(prefix="/control-bindings", tags=["control-bindings"])
 
@@ -69,6 +71,43 @@ async def create_control_binding(
     await db.commit()
     await db.refresh(binding)
     return CreateControlBindingResponse(binding_id=binding.id)
+
+
+@router.get(
+    "/effective",
+    response_model=EffectiveTargetControlsResponse,
+    summary="List effective controls for a target",
+    response_description=(
+        "Runtime-ready controls for the target, in the same shape as "
+        "InitAgentResponse.controls. Soft-deleted controls and disabled "
+        "bindings are excluded."
+    ),
+)
+async def list_effective_target_controls(
+    target_type: str,
+    target_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
+) -> EffectiveTargetControlsResponse:
+    """Return the effective control set for a target-bearing request.
+
+    Used by the Python SDK to perform local-first execution on
+    ``execution='sdk'`` controls bound to a target. The same set of
+    controls is what ``/evaluation`` resolves on the server when a
+    target-bearing request arrives.
+    """
+    service = ControlBindingsService(db)
+    db_controls = await service.resolve_effective_controls(
+        namespace_key=namespace_key,
+        target_type=target_type,
+        target_id=target_id,
+    )
+    return EffectiveTargetControlsResponse(
+        controls=[
+            parse_associated_control_or_api_error(control)
+            for control in db_controls
+        ]
+    )
 
 
 @router.get(
