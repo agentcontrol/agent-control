@@ -725,3 +725,92 @@ async def test_http_upstream_rejects_non_string_target_fields():
             _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
         )
     assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
+    """Upstream wire shapes must round-trip cleanly.
+
+    A real upstream returns ``expires_at`` as an ISO string and
+    ``scopes`` as a JSON array. The strict parser must accept them both
+    while still rejecting type-coercion bugs (covered by the
+    is_admin/scopes tests above).
+    """
+    iso_expiry = "2030-01-01T00:00:00+00:00"
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "namespace_key": "org-1",
+                "is_admin": False,
+                "scopes": ["runtime.use", "runtime.read_only"],
+                "target_type": "log_stream",
+                "target_id": "ls-1",
+                "expires_at": iso_expiry,
+            },
+        )
+    )
+    principal = await provider.authorize(
+        _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
+    )
+    assert principal.namespace_key == "org-1"
+    assert principal.scopes == ("runtime.use", "runtime.read_only")
+    assert principal.target_type == "log_stream"
+    assert principal.target_id == "ls-1"
+    assert principal.grant_expires_at is not None
+    assert principal.grant_expires_at.isoformat() == iso_expiry
+
+
+# ---------------------------------------------------------------------------
+# configure_auth_from_env / teardown_auth lifecycle
+# ---------------------------------------------------------------------------
+
+
+def test_configure_then_reconfigure_clears_runtime_override(monkeypatch):
+    """Reconfiguring without a runtime secret must drop the override."""
+    from agent_control_server.auth_framework import config as auth_config
+    from agent_control_server.auth_framework.providers import (
+        LocalJwtVerifyProvider,
+    )
+
+    clear_authorizers()
+
+    monkeypatch.setenv(
+        "AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET
+    )
+    auth_config.configure_auth_from_env()
+    assert isinstance(
+        get_authorizer(Operation.RUNTIME_USE), LocalJwtVerifyProvider
+    )
+
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+    auth_config.configure_auth_from_env()
+
+    runtime_authorizer = get_authorizer(Operation.RUNTIME_USE)
+    assert not isinstance(runtime_authorizer, LocalJwtVerifyProvider)
+
+
+@pytest.mark.asyncio
+async def test_teardown_auth_clears_registry():
+    """After teardown, the registry must be empty (default + overrides)."""
+    from agent_control_server.auth_framework import config as auth_config
+    from agent_control_server.auth_framework.core import _operation_authorizers
+
+    clear_authorizers()
+    set_authorizer(HeaderAuthProvider())
+    set_authorizer(
+        HeaderAuthProvider(),
+        operation=Operation.CONTROL_BINDINGS_WRITE,
+    )
+
+    auth_config._active_providers.clear()
+    auth_config._active_providers.extend(
+        [HeaderAuthProvider(), HeaderAuthProvider()]
+    )
+
+    await auth_config.teardown_auth()
+
+    assert not auth_config._active_providers
+    assert not _operation_authorizers
+    with pytest.raises(RuntimeError, match="No RequestAuthorizer"):
+        get_authorizer(Operation.CONTROL_BINDINGS_WRITE)

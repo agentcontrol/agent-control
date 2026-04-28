@@ -196,25 +196,19 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         )
 
     def _parse_principal(self, response: httpx.Response) -> Principal:
+        # Validate against the raw JSON bytes so Pydantic's JSON parser
+        # accepts ISO datetimes, JSON arrays (for ``scopes``), etc.,
+        # while strict mode still rejects type-coercion mistakes like
+        # ``"false"`` for ``is_admin`` or non-string entries in
+        # ``scopes``. Validating ``response.json()`` output instead
+        # would round-trip through Python types and fail on legitimate
+        # wire-shape input (datetimes-as-strings, tuples-as-lists).
         try:
-            payload = response.json()
-        except ValueError as exc:
-            _logger.error("Auth upstream returned non-JSON payload: %s", exc)
-            raise APIError(
-                status_code=502,
-                error_code=ErrorCode.AUTH_MISCONFIGURED,
-                reason=ErrorReason.INTERNAL_ERROR,
-                detail="Authorization service returned an invalid response.",
-                hint="Contact the operator.",
-            ) from exc
-
-        try:
-            grant = _UpstreamGrant.model_validate(payload)
+            grant = _UpstreamGrant.model_validate_json(response.content)
         except ValidationError as exc:
             _logger.error(
-                "Auth upstream returned a malformed grant: %s | payload=%r",
+                "Auth upstream returned a malformed grant: %s",
                 exc.errors(),
-                payload,
             )
             raise APIError(
                 status_code=502,

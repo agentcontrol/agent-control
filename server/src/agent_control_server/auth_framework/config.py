@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 
 from ..logging_utils import get_logger
-from .core import Operation, RequestAuthorizer, set_authorizer
+from .core import Operation, RequestAuthorizer, clear_authorizers, set_authorizer
 from .providers import (
     HeaderAuthProvider,
     HttpUpstreamAuthProvider,
@@ -65,10 +65,17 @@ def configure_auth_from_env() -> None:
       :class:`LocalJwtVerifyProvider` as an override for
       :data:`Operation.RUNTIME_USE`.
 
-    Tracks installed providers so :func:`teardown_auth` can release any
-    long-lived resources (e.g., the upstream HTTP client) at shutdown.
+    Clears any previously-installed default and operation overrides
+    before installing fresh ones, so reconfiguration cannot leave
+    stale routes pointing at a no-longer-relevant provider (e.g., a
+    runtime override sticking around after the runtime secret is
+    removed). Tracks installed providers so :func:`teardown_auth` can
+    release any long-lived resources (e.g., the upstream HTTP client)
+    at shutdown.
     """
+    clear_authorizers()
     _active_providers.clear()
+
     default = _build_default_provider()
     set_authorizer(default)
     _active_providers.append(default)
@@ -80,11 +87,14 @@ def configure_auth_from_env() -> None:
 
 
 async def teardown_auth() -> None:
-    """Close any long-lived resources held by installed authorizers.
+    """Close long-lived resources and clear every installed authorizer.
 
     Called from the FastAPI lifespan at shutdown. Authorizers that own
     a persistent client (e.g., :class:`HttpUpstreamAuthProvider`) expose
-    an async ``aclose`` method.
+    an async ``aclose`` method that gets invoked here. The default and
+    operation-specific authorizers are then both removed from the
+    registry so no stale state can survive into a subsequent
+    :func:`configure_auth_from_env` call.
     """
     for provider in _active_providers:
         aclose = getattr(provider, "aclose", None)
@@ -94,6 +104,7 @@ async def teardown_auth() -> None:
             except Exception:  # noqa: BLE001  shutdown best-effort
                 _logger.exception("Error closing auth provider %s", provider)
     _active_providers.clear()
+    clear_authorizers()
 
 
 def _build_default_provider() -> RequestAuthorizer:
