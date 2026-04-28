@@ -341,6 +341,7 @@ async def _refresh_target_controls_for_keys_async(
     from ._target_controls_cache import get_target_controls_cache
 
     cache = get_target_controls_cache()
+    epoch = cache.current_epoch()
     refreshed = 0
     async with AgentControlClient(
         base_url=context.server_url,
@@ -354,11 +355,18 @@ async def _refresh_target_controls_for_keys_async(
                 )
                 response.raise_for_status()
                 payload = response.json()
-                cache.put(
+                stored = cache.put(
                     target_type,
                     target_id,
                     list(payload.get("controls", [])),
+                    epoch=epoch,
                 )
+                if not stored:
+                    logger.info(
+                        "Discarding stale target controls refresh for "
+                        "superseded SDK session"
+                    )
+                    return refreshed
                 refreshed += 1
             except Exception as exc:
                 logger.warning(
@@ -710,6 +718,14 @@ def init(
     _stop_policy_refresh_loop()
     _stop_target_controls_refresh_loop()
 
+    # Drop any cached target-bound controls from a prior session before the
+    # new session takes over, so a re-init against a different server/api_key
+    # cannot serve controls fetched under the previous identity. ``reset()``
+    # also advances the cache epoch, so any in-flight write from the old
+    # session is rejected when it lands.
+    from ._target_controls_cache import get_target_controls_cache
+    get_target_controls_cache().reset()
+
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
         configure_logging(log_config)
@@ -880,6 +896,8 @@ def init(
 
 def _reset_state() -> None:
     """Clear all global SDK state."""
+    from ._target_controls_cache import get_target_controls_cache
+
     global _session_generation
 
     with _session_lock:
@@ -889,6 +907,8 @@ def _reset_state() -> None:
         state.server_controls = None
         state.server_url = None
         state.api_key = None
+
+    get_target_controls_cache().reset()
 
 
 async def ashutdown() -> None:

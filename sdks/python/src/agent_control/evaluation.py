@@ -239,6 +239,7 @@ async def _fetch_effective_target_controls(
     if cached is not None:
         return cached
 
+    epoch = cache.current_epoch()
     response = await client.http_client.get(
         "/api/v1/control-bindings/effective",
         params={"target_type": target_type, "target_id": target_id},
@@ -246,7 +247,7 @@ async def _fetch_effective_target_controls(
     response.raise_for_status()
     payload = response.json()
     controls = list(payload.get("controls", []))
-    cache.put(target_type, target_id, controls)
+    cache.put(target_type, target_id, controls, epoch=epoch)
     return controls
 
 

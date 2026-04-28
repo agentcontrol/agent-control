@@ -291,3 +291,48 @@ async def test_target_bearing_request_runs_sdk_execution_controls_locally():
     # Local engine produced a deny without ever calling the server.
     assert result.is_safe is False
     post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_target_bearing_fetch_does_not_leak_across_session_reset():
+    """A fetch in flight when the cache is reset must not populate the new session."""
+    from agent_control._target_controls_cache import get_target_controls_cache
+
+    cache = get_target_controls_cache()
+
+    server_a_control = {
+        "id": 1,
+        "name": "server-a-control",
+        "control": {
+            "description": "from server A",
+            "enabled": True,
+            "execution": "server",
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {"name": "regex", "config": {"pattern": "x"}},
+            },
+            "action": {"decision": "deny"},
+        },
+    }
+
+    class ServerAResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            # Reset the cache between fetch and put so the put captures the
+            # pre-reset epoch and is rejected when it tries to land.
+            cache.reset()
+            return {"controls": [server_a_control]}
+
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.get = AsyncMock(return_value=ServerAResponse())
+
+    controls = await evaluation._fetch_effective_target_controls(
+        client, "env", "prod"
+    )
+
+    assert controls == [server_a_control]
+    assert cache.get("env", "prod") is None

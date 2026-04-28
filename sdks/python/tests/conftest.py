@@ -39,18 +39,20 @@ def pytest_exception_interact(node, call, report):
 
 @pytest.fixture(autouse=True)
 def _reset_target_controls_cache():
-    """Drop any cached effective target-bound controls between tests.
+    """Reset the SDK target controls cache between tests.
 
-    The cache is a process-wide singleton; without this fixture, an entry
-    populated by one test would leak into the next one and skip the
-    HTTP fetch the next test relies on observing.
+    The cache is a process-wide singleton; without this fixture an entry
+    populated by one test would leak into the next one and skip the HTTP
+    fetch the next test relies on observing. ``reset()`` also advances
+    the cache epoch so any test that asserts on stale-write rejection
+    starts from a known state.
     """
     from agent_control._target_controls_cache import get_target_controls_cache
 
     cache = get_target_controls_cache()
-    cache.clear()
+    cache.reset()
     yield
-    cache.clear()
+    cache.reset()
 
 
 @pytest.fixture(scope="session")
