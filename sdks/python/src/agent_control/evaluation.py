@@ -16,9 +16,11 @@ from agent_control_models import (
 )
 
 from ._state import state
+from ._target_controls_cache import get_target_controls_cache
 from .client import AgentControlClient
 from .evaluation_events import build_control_execution_events, enqueue_observability_events
 from .observability import is_observability_enabled
+from .settings import get_settings
 from .tracing import get_trace_and_span_ids
 from .validation import ensure_agent_name
 
@@ -225,16 +227,27 @@ async def _fetch_effective_target_controls(
 ) -> list[dict[str, Any]]:
     """Fetch the runtime-ready controls bound to a target.
 
-    Returned in the same shape as ``state.server_controls`` so the result
-    can be fed through the existing local-vs-server split.
+    Cached per ``(target_type, target_id)`` and kept fresh by the SDK's
+    target-controls refresh loop. Returned in the same shape as
+    ``state.server_controls`` so the result can be fed through the
+    existing local-vs-server split.
     """
+    cache = get_target_controls_cache()
+    cache.configure(max_size=get_settings().target_controls_cache_max_size)
+
+    cached = cache.get(target_type, target_id)
+    if cached is not None:
+        return cached
+
     response = await client.http_client.get(
         "/api/v1/control-bindings/effective",
         params={"target_type": target_type, "target_id": target_id},
     )
     response.raise_for_status()
     payload = response.json()
-    return list(payload.get("controls", []))
+    controls = list(payload.get("controls", []))
+    cache.put(target_type, target_id, controls)
+    return controls
 
 
 async def check_evaluation_with_local(
@@ -255,9 +268,13 @@ async def check_evaluation_with_local(
     When ``target_type`` and ``target_id`` are both supplied, the cached
     agent-attached controls are bypassed; the SDK fetches the effective
     target-bound controls from the server and runs the same local-vs-server
-    split against that set. Controls with ``execution='sdk'`` run locally;
-    ``execution='server'`` controls are evaluated by the server through
-    ``/evaluation`` with the target context preserved.
+    split against that set. Per-target results are cached; freshness is
+    maintained by the SDK's target-controls refresh loop, started by
+    ``init()``. Call :func:`refresh_target_controls` to refetch on
+    demand or :func:`invalidate_target_controls_cache` to drop entries.
+    Controls with ``execution='sdk'`` run locally; ``execution='server'``
+    controls are evaluated by the server through ``/evaluation`` with the
+    target context preserved.
     """
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id = trace_id

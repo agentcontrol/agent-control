@@ -106,6 +106,17 @@ class SDKSettings(BaseSettings):
         description="Maximum consecutive failed flushes before giving up",
     )
 
+    # Target-bound controls cache (per-target, used by check_evaluation_with_local
+    # when target_type/target_id are supplied).
+    target_controls_cache_max_size: int = Field(
+        default=1024,
+        ge=1,
+        description=(
+            "Maximum number of (target_type, target_id) entries to retain "
+            "in the target-bound controls cache."
+        ),
+    )
+
     # Logging configuration
     log_enabled: bool = Field(
         default=True,
