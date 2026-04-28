@@ -1,15 +1,20 @@
-"""Persistence and resolution helpers for the ``control_bindings`` table."""
+"""Persistence and resolution helpers for the ``control_bindings`` table.
+
+Each binding row attaches one control to one target inside a namespace.
+Per-agent overrides and exemptions within a target are intentionally not
+modeled at this stage; see ``ControlBinding`` for the documented forward
+paths if and when they become a product requirement.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import cast
 
 from agent_control_models.errors import ErrorCode
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import ColumnElement
 
 from ..errors import ConflictError, NotFoundError
 from ..models import Control, ControlBinding
@@ -29,14 +34,14 @@ class ControlBindingsService:
         target_type: str,
         target_id: str,
         control_id: int,
-        agent_name: str | None = None,
         enabled: bool = True,
     ) -> ControlBinding:
         """Insert a new binding row.
 
         Raises ``NotFoundError`` if the referenced control does not exist in
-        the same namespace, and ``ConflictError`` if a binding with the same
-        shape already exists.
+        the same namespace, and ``ConflictError`` if a binding for the same
+        ``(namespace_key, target_type, target_id, control_id)`` already
+        exists.
         """
         await self._require_control(
             namespace_key=namespace_key, control_id=control_id
@@ -45,7 +50,6 @@ class ControlBindingsService:
             namespace_key=namespace_key,
             target_type=target_type,
             target_id=target_id,
-            agent_name=agent_name,
             control_id=control_id,
             enabled=enabled,
         )
@@ -57,8 +61,8 @@ class ControlBindingsService:
             raise ConflictError(
                 error_code=ErrorCode.CONTROL_BINDING_CONFLICT,
                 detail=(
-                    "A binding with this (target_type, target_id, agent_name, "
-                    "control_id) already exists in this namespace."
+                    "A binding for this (target_type, target_id, control_id) "
+                    "already exists in this namespace."
                 ),
                 resource="ControlBinding",
                 hint="Update the existing binding instead of creating a new one.",
@@ -72,15 +76,14 @@ class ControlBindingsService:
         target_type: str,
         target_id: str,
         control_id: int,
-        agent_name: str | None = None,
         enabled: bool = True,
     ) -> tuple[ControlBinding, bool]:
         """Idempotent attach by natural key.
 
-        Returns ``(binding, created)``. If a binding with the same
-        ``(namespace_key, target_type, target_id, agent_name, control_id)``
-        already exists, ``enabled`` is updated to the supplied value;
-        otherwise a new binding is created.
+        Returns ``(binding, created)``. If a binding for the same
+        ``(namespace_key, target_type, target_id, control_id)`` already
+        exists, ``enabled`` is updated to the supplied value; otherwise a
+        new binding is created.
         """
         await self._require_control(
             namespace_key=namespace_key, control_id=control_id
@@ -89,7 +92,6 @@ class ControlBindingsService:
             namespace_key=namespace_key,
             target_type=target_type,
             target_id=target_id,
-            agent_name=agent_name,
             control_id=control_id,
         )
         if existing is not None:
@@ -101,7 +103,6 @@ class ControlBindingsService:
             namespace_key=namespace_key,
             target_type=target_type,
             target_id=target_id,
-            agent_name=agent_name,
             control_id=control_id,
             enabled=enabled,
         )
@@ -116,14 +117,12 @@ class ControlBindingsService:
         target_type: str,
         target_id: str,
         control_id: int,
-        agent_name: str | None = None,
     ) -> bool:
         """Idempotent detach by natural key. Returns whether a row was deleted."""
         existing = await self._find_by_natural_key(
             namespace_key=namespace_key,
             target_type=target_type,
             target_id=target_id,
-            agent_name=agent_name,
             control_id=control_id,
         )
         if existing is None:
@@ -138,20 +137,13 @@ class ControlBindingsService:
         namespace_key: str,
         target_type: str,
         target_id: str,
-        agent_name: str | None,
         control_id: int,
     ) -> ControlBinding | None:
-        agent_match: ColumnElement[bool]
-        if agent_name is None:
-            agent_match = ControlBinding.agent_name.is_(None)
-        else:
-            agent_match = ControlBinding.agent_name == agent_name
         stmt = select(ControlBinding).where(
             ControlBinding.namespace_key == namespace_key,
             ControlBinding.target_type == target_type,
             ControlBinding.target_id == target_id,
             ControlBinding.control_id == control_id,
-            agent_match,
         )
         result = await self._db.execute(stmt)
         return cast(ControlBinding | None, result.scalars().first())
@@ -182,7 +174,6 @@ class ControlBindingsService:
         namespace_key: str,
         target_type: str | None = None,
         target_id: str | None = None,
-        agent_name: str | None = None,
         control_id: int | None = None,
     ) -> list[ControlBinding]:
         """List bindings scoped to ``namespace_key`` with optional filters."""
@@ -193,8 +184,6 @@ class ControlBindingsService:
             stmt = stmt.where(ControlBinding.target_type == target_type)
         if target_id is not None:
             stmt = stmt.where(ControlBinding.target_id == target_id)
-        if agent_name is not None:
-            stmt = stmt.where(ControlBinding.agent_name == agent_name)
         if control_id is not None:
             stmt = stmt.where(ControlBinding.control_id == control_id)
         stmt = stmt.order_by(ControlBinding.id)
@@ -222,6 +211,91 @@ class ControlBindingsService:
         await self._db.delete(binding)
         await self._db.flush()
 
+    async def resolve_runtime_controls(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str,
+        target_id: str,
+        allow_invalid_step_name_regex: bool = False,
+    ) -> list[RuntimeControl]:
+        """Return runtime-parsed effective controls for a target-bearing request.
+
+        Same selection logic as :meth:`resolve_effective_controls`; the
+        returned controls are parsed into the form used by the evaluation
+        engine.
+        """
+        controls = await self.resolve_effective_controls(
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+        )
+        return parse_runtime_controls(
+            controls,
+            allow_invalid_step_name_regex=allow_invalid_step_name_regex,
+        )
+
+    async def resolve_effective_controls(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str,
+        target_id: str,
+    ) -> list[Control]:
+        """Return the effective set of active controls for a target-bearing request.
+
+        Returns every active (not soft-deleted) control attached to the target
+        whose binding has ``enabled = True``. ``enabled = False`` excludes the
+        control. Soft-deleted controls (``deleted_at IS NOT NULL``) are
+        filtered out.
+
+        Per-agent narrowing is intentionally out of scope at this stage; the
+        resolver returns the full target-level set.
+        """
+        candidates = await self._fetch_candidate_bindings(
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+        )
+        enabled_control_ids = [
+            binding.control_id for binding in candidates if binding.enabled
+        ]
+        if not enabled_control_ids:
+            return []
+        return await self._fetch_active_controls(
+            namespace_key=namespace_key,
+            control_ids=enabled_control_ids,
+        )
+
+    async def _fetch_candidate_bindings(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str,
+        target_id: str,
+    ) -> Sequence[ControlBinding]:
+        stmt = select(ControlBinding).where(
+            ControlBinding.namespace_key == namespace_key,
+            ControlBinding.target_type == target_type,
+            ControlBinding.target_id == target_id,
+        )
+        result = await self._db.execute(stmt)
+        return result.scalars().all()
+
+    async def _fetch_active_controls(
+        self,
+        *,
+        namespace_key: str,
+        control_ids: Sequence[int],
+    ) -> list[Control]:
+        stmt = select(Control).where(
+            Control.namespace_key == namespace_key,
+            Control.id.in_(control_ids),
+            Control.deleted_at.is_(None),
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars())
+
     async def _require_control(
         self, *, namespace_key: str, control_id: int
     ) -> None:
@@ -242,131 +316,3 @@ class ControlBindingsService:
                     "and that it belongs to the same namespace as the binding."
                 ),
             )
-
-    async def resolve_runtime_controls(
-        self,
-        *,
-        namespace_key: str,
-        target_type: str,
-        target_id: str,
-        agent_name: str | None = None,
-        allow_invalid_step_name_regex: bool = False,
-    ) -> list[RuntimeControl]:
-        """Return runtime-parsed effective controls for a target-bearing request.
-
-        Same selection logic as :meth:`resolve_effective_controls`; the
-        returned controls are parsed into the form used by the evaluation
-        engine.
-        """
-        controls = await self.resolve_effective_controls(
-            namespace_key=namespace_key,
-            target_type=target_type,
-            target_id=target_id,
-            agent_name=agent_name,
-        )
-        return parse_runtime_controls(
-            controls,
-            allow_invalid_step_name_regex=allow_invalid_step_name_regex,
-        )
-
-    async def resolve_effective_controls(
-        self,
-        *,
-        namespace_key: str,
-        target_type: str,
-        target_id: str,
-        agent_name: str | None = None,
-    ) -> list[Control]:
-        """Return the effective set of active controls for a target-bearing request.
-
-        Two binding shapes are considered:
-
-        - target-default: ``agent_name IS NULL``; applies to all agents.
-        - target-agent: ``agent_name`` matches the request; narrower.
-
-        For each control_id, the most-specific binding wins (target-agent
-        beats target-default). A binding with ``enabled = False`` excludes
-        the control. Soft-deleted controls (``deleted_at IS NOT NULL``) are
-        filtered out.
-        """
-        candidates = await self._fetch_candidate_bindings(
-            namespace_key=namespace_key,
-            target_type=target_type,
-            target_id=target_id,
-            agent_name=agent_name,
-        )
-        winners = self._most_specific_per_control(candidates)
-        enabled_control_ids = [
-            control_id
-            for control_id, binding in winners.items()
-            if binding.enabled
-        ]
-        if not enabled_control_ids:
-            return []
-        return await self._fetch_active_controls(
-            namespace_key=namespace_key,
-            control_ids=enabled_control_ids,
-        )
-
-    async def _fetch_candidate_bindings(
-        self,
-        *,
-        namespace_key: str,
-        target_type: str,
-        target_id: str,
-        agent_name: str | None,
-    ) -> Sequence[ControlBinding]:
-        agent_filter: ColumnElement[bool]
-        if agent_name is None:
-            agent_filter = ControlBinding.agent_name.is_(None)
-        else:
-            agent_filter = or_(
-                ControlBinding.agent_name.is_(None),
-                ControlBinding.agent_name == agent_name,
-            )
-        stmt = select(ControlBinding).where(
-            and_(
-                ControlBinding.namespace_key == namespace_key,
-                ControlBinding.target_type == target_type,
-                ControlBinding.target_id == target_id,
-                agent_filter,
-            )
-        )
-        result = await self._db.execute(stmt)
-        return result.scalars().all()
-
-    async def _fetch_active_controls(
-        self,
-        *,
-        namespace_key: str,
-        control_ids: Sequence[int],
-    ) -> list[Control]:
-        stmt = select(Control).where(
-            Control.namespace_key == namespace_key,
-            Control.id.in_(control_ids),
-            Control.deleted_at.is_(None),
-        )
-        result = await self._db.execute(stmt)
-        return list(result.scalars())
-
-    @staticmethod
-    def _most_specific_per_control(
-        bindings: Iterable[ControlBinding],
-    ) -> dict[int, ControlBinding]:
-        """Pick the most-specific binding per ``control_id``.
-
-        Specificity: a binding with ``agent_name`` set is more specific than
-        a target-default binding for the same ``control_id``. Per-shape
-        uniqueness on the binding row guarantees there is at most one
-        candidate per (control, agent) combination, so iteration order is
-        irrelevant for the final result.
-        """
-        winners: dict[int, ControlBinding] = {}
-        for binding in bindings:
-            current = winners.get(binding.control_id)
-            if current is None:
-                winners[binding.control_id] = binding
-                continue
-            if binding.agent_name is not None and current.agent_name is None:
-                winners[binding.control_id] = binding
-        return winners

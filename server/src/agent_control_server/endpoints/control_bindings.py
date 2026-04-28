@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from agent_control_models.agent import normalize_optional_agent_name
 from agent_control_models.server import (
     CreateControlBindingRequest,
     CreateControlBindingResponse,
@@ -34,7 +33,6 @@ def _to_response(binding: ControlBinding) -> GetControlBindingResponse:
         namespace_key=binding.namespace_key,
         target_type=binding.target_type,
         target_id=binding.target_id,
-        agent_name=binding.agent_name,
         control_id=binding.control_id,
         enabled=binding.enabled,
         created_at=binding.created_at,
@@ -56,19 +54,15 @@ async def create_control_binding(
 ) -> CreateControlBindingResponse:
     """Attach a control to an opaque external target.
 
-    Two binding shapes are supported:
-
-    - target-default: ``agent_name`` omitted; applies to all agents that
-      reference the target at runtime.
-    - target-agent: ``agent_name`` set; narrows the attachment to one agent
-      within the target, or exempts that agent via ``enabled = false``.
+    Each binding row is an attachment scoped to the request's namespace; the
+    ``enabled`` flag is a soft toggle. Per-agent overrides and exemptions are
+    intentionally out of scope; see ``ControlBinding`` for the forward path.
     """
     service = ControlBindingsService(db)
     binding = await service.create_binding(
         namespace_key=namespace_key,
         target_type=request.target_type,
         target_id=request.target_id,
-        agent_name=request.agent_name,
         control_id=request.control_id,
         enabled=request.enabled,
     )
@@ -86,19 +80,16 @@ async def create_control_binding(
 async def list_control_bindings(
     target_type: str | None = None,
     target_id: str | None = None,
-    agent_name: str | None = None,
     control_id: int | None = None,
     db: AsyncSession = Depends(get_async_db),
     namespace_key: str = Depends(get_namespace_key),
 ) -> ListControlBindingsResponse:
     """Return bindings in the current namespace with optional filters."""
-    normalized_agent_name = normalize_optional_agent_name(agent_name)
     service = ControlBindingsService(db)
     bindings = await service.list_bindings(
         namespace_key=namespace_key,
         target_type=target_type,
         target_id=target_id,
-        agent_name=normalized_agent_name,
         control_id=control_id,
     )
     return ListControlBindingsResponse(
@@ -180,16 +171,15 @@ async def upsert_control_binding_by_key(
     db: AsyncSession = Depends(get_async_db),
     namespace_key: str = Depends(get_namespace_key),
 ) -> UpsertControlBindingResponse:
-    """Idempotent attach using ``(target_type, target_id, agent_name?, control_id)``
-    as the natural key. Updates ``enabled`` on an existing match; creates a
-    new row otherwise.
+    """Idempotent attach using ``(target_type, target_id, control_id)`` as the
+    natural key. Updates ``enabled`` on an existing match; creates a new row
+    otherwise.
     """
     service = ControlBindingsService(db)
     binding, created = await service.upsert_by_natural_key(
         namespace_key=namespace_key,
         target_type=request.target_type,
         target_id=request.target_id,
-        agent_name=request.agent_name,
         control_id=request.control_id,
         enabled=request.enabled,
     )
@@ -222,7 +212,6 @@ async def delete_control_binding_by_key(
         namespace_key=namespace_key,
         target_type=request.target_type,
         target_id=request.target_id,
-        agent_name=request.agent_name,
         control_id=request.control_id,
     )
     await db.commit()

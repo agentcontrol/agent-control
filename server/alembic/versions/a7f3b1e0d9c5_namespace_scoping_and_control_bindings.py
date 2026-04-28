@@ -164,10 +164,19 @@ def upgrade() -> None:
         ["namespace_key", "id"],
     )
 
-    # 6. Create the control_bindings table. Two binding shapes are supported
-    #    via partial unique indexes: target-default rows (agent_name IS NULL)
-    #    and target-agent rows (agent_name IS NOT NULL). Both shapes can
-    #    coexist for the same control_id within a target.
+    # 6. Create the control_bindings table. Each row attaches one control to
+    #    one target; uniqueness is enforced on
+    #    (namespace_key, target_type, target_id, control_id).
+    #
+    #    Per-agent overrides and exemptions within a target are intentionally
+    #    out of scope at this stage. If they become a product requirement, two
+    #    forward paths exist:
+    #      - re-introduce an `agent_name` column with a partial-index pair
+    #        and an `enabled`-aware most-specific-wins resolver (supports
+    #        both additions and exemptions)
+    #      - or merge target-bearing resolution with the existing
+    #        `agent_controls` table at runtime (supports per-agent additions
+    #        only; exemptions still need a schema change)
     op.create_table(
         "control_bindings",
         sa.Column(
@@ -184,7 +193,6 @@ def upgrade() -> None:
         ),
         sa.Column("target_type", sa.Text(), nullable=False),
         sa.Column("target_id", sa.Text(), nullable=False),
-        sa.Column("agent_name", sa.String(length=255), nullable=True),
         sa.Column("control_id", sa.Integer(), nullable=False),
         sa.Column(
             "enabled",
@@ -211,32 +219,18 @@ def upgrade() -> None:
             name="control_bindings_control_fkey",
             ondelete="CASCADE",
         ),
-        sa.CheckConstraint(
-            "agent_name IS NULL OR ("
-            "char_length(agent_name) >= 10 AND "
-            "agent_name ~ '^[a-z0-9:_-]+$'"
-            ")",
-            name="ck_control_bindings_agent_name_format",
+        sa.UniqueConstraint(
+            "namespace_key",
+            "target_type",
+            "target_id",
+            "control_id",
+            name="uq_control_bindings_target_control",
         ),
     )
     op.create_index(
         "idx_control_bindings_lookup",
         "control_bindings",
         ["namespace_key", "target_type", "target_id"],
-    )
-    op.create_index(
-        "uq_control_bindings_target_default",
-        "control_bindings",
-        ["namespace_key", "target_type", "target_id", "control_id"],
-        unique=True,
-        postgresql_where=sa.text("agent_name IS NULL"),
-    )
-    op.create_index(
-        "uq_control_bindings_target_agent",
-        "control_bindings",
-        ["namespace_key", "target_type", "target_id", "agent_name", "control_id"],
-        unique=True,
-        postgresql_where=sa.text("agent_name IS NOT NULL"),
     )
 
     # 7. Restore natural-key index coverage. The composite primary keys and
@@ -293,12 +287,6 @@ def downgrade() -> None:
     op.drop_index("ix_agents_name", table_name="agents")
 
     # 2. Drop control_bindings.
-    op.drop_index(
-        "uq_control_bindings_target_agent", table_name="control_bindings"
-    )
-    op.drop_index(
-        "uq_control_bindings_target_default", table_name="control_bindings"
-    )
     op.drop_index("idx_control_bindings_lookup", table_name="control_bindings")
     op.drop_table("control_bindings")
 

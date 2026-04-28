@@ -8,10 +8,9 @@ from pydantic import (
     Field,
     StringConstraints,
     TypeAdapter,
-    field_validator,
 )
 
-from .agent import Agent, StepSchema, normalize_optional_agent_name
+from .agent import Agent, StepSchema
 from .base import BaseModel
 from .controls import (
     ControlDefinition,
@@ -613,29 +612,16 @@ class CreateControlBindingRequest(BaseModel):
     target_id: ControlBindingTargetField = Field(
         ..., description="Opaque external identifier within the target_type."
     )
-    agent_name: str | None = Field(
-        default=None,
-        description=(
-            "Optional narrower selector. When set, the binding applies only to "
-            "the named agent inside the target. Normalized to lowercase and "
-            "validated against the agent-name format."
-        ),
-    )
     control_id: int = Field(
         ..., gt=0, description="ID of the control to attach."
     )
     enabled: bool = Field(
         default=True,
         description=(
-            "Whether the binding is active. Set to False to express an explicit "
-            "exemption that overrides a less-specific binding."
+            "Whether the binding is active. Disabled bindings are preserved "
+            "but excluded from the effective control set at runtime."
         ),
     )
-
-    @field_validator("agent_name", mode="before")
-    @classmethod
-    def _normalize_agent_name(cls, value: object) -> object:
-        return normalize_optional_agent_name(value)
 
 
 class CreateControlBindingResponse(BaseModel):
@@ -651,7 +637,6 @@ class GetControlBindingResponse(BaseModel):
     namespace_key: str
     target_type: str
     target_id: str
-    agent_name: str | None
     control_id: int
     enabled: bool
     created_at: dt.datetime
@@ -697,24 +682,12 @@ class UpsertControlBindingRequest(BaseModel):
     target_id: ControlBindingTargetField = Field(
         ..., description="Opaque external identifier within the target_type."
     )
-    agent_name: str | None = Field(
-        default=None,
-        description=(
-            "Optional narrower selector. Omit (or pass null) to address the "
-            "target-default binding for the control."
-        ),
-    )
     control_id: int = Field(
         ..., gt=0, description="ID of the control to attach."
     )
     enabled: bool = Field(
         default=True, description="Whether the binding is active."
     )
-
-    @field_validator("agent_name", mode="before")
-    @classmethod
-    def _normalize_agent_name(cls, value: object) -> object:
-        return normalize_optional_agent_name(value)
 
 
 class UpsertControlBindingResponse(BaseModel):
@@ -736,13 +709,7 @@ class DeleteControlBindingByKeyRequest(BaseModel):
 
     target_type: ControlBindingTargetField = Field(...)
     target_id: ControlBindingTargetField = Field(...)
-    agent_name: str | None = Field(default=None)
     control_id: int = Field(..., gt=0)
-
-    @field_validator("agent_name", mode="before")
-    @classmethod
-    def _normalize_agent_name(cls, value: object) -> object:
-        return normalize_optional_agent_name(value)
 
 
 class DeleteControlBindingByKeyResponse(BaseModel):

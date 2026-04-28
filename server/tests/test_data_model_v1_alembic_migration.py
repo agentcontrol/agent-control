@@ -168,18 +168,18 @@ def test_upgrade_creates_control_bindings(
         "namespace_key",
         "target_type",
         "target_id",
-        "agent_name",
         "control_id",
         "enabled",
         "created_at",
         "updated_at",
     } <= columns
 
-    indexes = _index_names(temp_engine, "control_bindings")
-    assert "idx_control_bindings_lookup" in indexes
-    assert "uq_control_bindings_target_default" in indexes
-    assert "uq_control_bindings_target_agent" in indexes
-
+    assert "idx_control_bindings_lookup" in _index_names(
+        temp_engine, "control_bindings"
+    )
+    assert "uq_control_bindings_target_control" in _unique_constraint_names(
+        temp_engine, "control_bindings"
+    )
     assert "control_bindings_control_fkey" in _foreign_key_names(
         temp_engine, "control_bindings"
     )

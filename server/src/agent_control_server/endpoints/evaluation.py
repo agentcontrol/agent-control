@@ -153,7 +153,6 @@ async def evaluate(
             namespace_key=namespace_key,
             target_type=request.target_type,
             target_id=request.target_id,
-            agent_name=request.agent_name,
             allow_invalid_step_name_regex=True,
         )
     else:

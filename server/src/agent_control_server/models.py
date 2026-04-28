@@ -236,29 +236,34 @@ class Agent(Base):
 
 
 class ControlBinding(Base):
-    """Attaches a control to an opaque external target, optionally narrowed
-    to a specific agent inside that target.
+    """Attaches a control to an opaque external target.
 
-    Two binding shapes are supported:
-
-    - target-default: ``agent_name IS NULL``; applies to all agents that
-      reference the target at runtime.
-    - target-agent: ``agent_name`` is set; narrows the attachment to one agent
-      within the target, or exempts that agent via ``enabled = False``.
+    Each row is a single attachment scoped to a namespace. Uniqueness is
+    enforced on ``(namespace_key, target_type, target_id, control_id)``.
+    The ``enabled`` flag is a soft toggle - a disabled binding is preserved
+    but excluded from the effective control set at runtime.
 
     Same-namespace integrity is enforced by the composite foreign key on
-    ``(namespace_key, control_id)``.
-
-    ``agent_name`` is intentionally not a foreign key: bindings may be created
-    before the referenced agent registers. Callers must normalize
-    ``agent_name`` before insert (lower-case, ``[a-z0-9:_-]+`` characters,
-    minimum length 10); a check constraint enforces the same shape used by
-    the agents table.
+    ``(namespace_key, control_id)``: a binding cannot reference a control
+    from another namespace.
 
     Soft deletes on the parent control (``deleted_at IS NOT NULL``) do not
     cascade to bindings; only hard deletes do. The runtime resolver is
     responsible for excluding soft-deleted controls when computing the
     effective control set.
+
+    Future evolution: per-agent overrides and exemptions within a target
+    are intentionally not modeled here. Two paths are possible if and when
+    they become a product requirement:
+
+    - re-introduce an ``agent_name`` column (with a partial-index pair on
+      ``agent_name IS NULL`` / ``IS NOT NULL``) and an ``enabled``-aware
+      most-specific-wins resolver. Supports both per-agent additions and
+      per-agent exemptions.
+    - or merge target-bearing resolution with the existing
+      ``agent_controls`` table at runtime. Supports per-agent additions
+      only; exemptions still require schema work because ``agent_controls``
+      has no ``enabled`` flag.
     """
 
     __tablename__ = "control_bindings"
@@ -269,39 +274,18 @@ class ControlBinding(Base):
             name="control_bindings_control_fkey",
             ondelete="CASCADE",
         ),
-        CheckConstraint(
-            "agent_name IS NULL OR ("
-            "char_length(agent_name) >= 10 AND "
-            "agent_name ~ '^[a-z0-9:_-]+$'"
-            ")",
-            name="ck_control_bindings_agent_name_format",
+        UniqueConstraint(
+            "namespace_key",
+            "target_type",
+            "target_id",
+            "control_id",
+            name="uq_control_bindings_target_control",
         ),
         Index(
             "idx_control_bindings_lookup",
             "namespace_key",
             "target_type",
             "target_id",
-        ),
-        Index(
-            "uq_control_bindings_target_default",
-            "namespace_key",
-            "target_type",
-            "target_id",
-            "control_id",
-            unique=True,
-            postgresql_where=text("agent_name IS NULL"),
-            sqlite_where=text("agent_name IS NULL"),
-        ),
-        Index(
-            "uq_control_bindings_target_agent",
-            "namespace_key",
-            "target_type",
-            "target_id",
-            "agent_name",
-            "control_id",
-            unique=True,
-            postgresql_where=text("agent_name IS NOT NULL"),
-            sqlite_where=text("agent_name IS NOT NULL"),
         ),
     )
 
@@ -313,7 +297,6 @@ class ControlBinding(Base):
     )
     target_type: Mapped[str] = mapped_column(Text, nullable=False)
     target_id: Mapped[str] = mapped_column(Text, nullable=False)
-    agent_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     control_id: Mapped[int] = mapped_column(Integer, nullable=False)
     enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("TRUE")

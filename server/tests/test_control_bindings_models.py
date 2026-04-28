@@ -1,4 +1,4 @@
-"""Coverage for the ``control_bindings`` table: shape uniqueness, foreign-key
+"""Coverage for the ``control_bindings`` table: uniqueness, foreign-key
 behavior, and same-namespace integrity."""
 
 from __future__ import annotations
@@ -46,7 +46,6 @@ def _insert_binding(
     target_type: str,
     target_id: str,
     control_id: int,
-    agent_name: str | None = None,
     enabled: bool = True,
 ) -> int:
     with engine.begin() as conn:
@@ -54,16 +53,14 @@ def _insert_binding(
             conn.execute(
                 text(
                     "INSERT INTO control_bindings "
-                    "(namespace_key, target_type, target_id, agent_name, "
-                    " control_id, enabled) "
-                    "VALUES (:ns, :ttype, :tid, :agent, :ctrl, :enabled) "
+                    "(namespace_key, target_type, target_id, control_id, enabled) "
+                    "VALUES (:ns, :ttype, :tid, :ctrl, :enabled) "
                     "RETURNING id"
                 ),
                 {
                     "ns": namespace_key,
                     "ttype": target_type,
                     "tid": target_id,
-                    "agent": agent_name,
                     "ctrl": control_id,
                     "enabled": enabled,
                 },
@@ -71,9 +68,7 @@ def _insert_binding(
         )
 
 
-def test_target_default_binding_inserts(
-    db_engine: Engine, clean_tables: None
-) -> None:
+def test_target_binding_inserts(db_engine: Engine, clean_tables: None) -> None:
     control_id = _insert_control(db_engine, namespace_key="ns-one", name="pii")
     _insert_binding(
         db_engine,
@@ -84,42 +79,7 @@ def test_target_default_binding_inserts(
     )
 
 
-def test_target_agent_binding_inserts(
-    db_engine: Engine, clean_tables: None
-) -> None:
-    control_id = _insert_control(db_engine, namespace_key="ns-one", name="pii")
-    _insert_binding(
-        db_engine,
-        namespace_key="ns-one",
-        target_type="env",
-        target_id="prod",
-        control_id=control_id,
-        agent_name="support-router",
-    )
-
-
-def test_target_default_and_target_agent_can_coexist_for_same_control(
-    db_engine: Engine, clean_tables: None
-) -> None:
-    control_id = _insert_control(db_engine, namespace_key="ns-one", name="pii")
-    _insert_binding(
-        db_engine,
-        namespace_key="ns-one",
-        target_type="env",
-        target_id="prod",
-        control_id=control_id,
-    )
-    _insert_binding(
-        db_engine,
-        namespace_key="ns-one",
-        target_type="env",
-        target_id="prod",
-        control_id=control_id,
-        agent_name="support-router",
-    )
-
-
-def test_duplicate_target_default_binding_rejected(
+def test_duplicate_binding_rejected(
     db_engine: Engine, clean_tables: None
 ) -> None:
     control_id = _insert_control(db_engine, namespace_key="ns-one", name="pii")
@@ -140,7 +100,7 @@ def test_duplicate_target_default_binding_rejected(
         )
 
 
-def test_duplicate_target_agent_binding_rejected(
+def test_same_control_can_bind_to_different_targets(
     db_engine: Engine, clean_tables: None
 ) -> None:
     control_id = _insert_control(db_engine, namespace_key="ns-one", name="pii")
@@ -150,17 +110,14 @@ def test_duplicate_target_agent_binding_rejected(
         target_type="env",
         target_id="prod",
         control_id=control_id,
-        agent_name="support-router",
     )
-    with pytest.raises(IntegrityError):
-        _insert_binding(
-            db_engine,
-            namespace_key="ns-one",
-            target_type="env",
-            target_id="prod",
-            control_id=control_id,
-            agent_name="support-router",
-        )
+    _insert_binding(
+        db_engine,
+        namespace_key="ns-one",
+        target_type="env",
+        target_id="dev",
+        control_id=control_id,
+    )
 
 
 def test_binding_rejects_cross_namespace_control_reference(
@@ -227,20 +184,3 @@ def test_binding_survives_control_soft_delete(
         ).scalar_one()
 
     assert remaining == 1
-
-
-def test_binding_rejects_malformed_agent_name(
-    db_engine: Engine, clean_tables: None
-) -> None:
-    control_id = _insert_control(db_engine, namespace_key="ns-one", name="pii")
-    # Mixed case violates the agent_name format check constraint. NULL and
-    # well-formed values are accepted; this exercises the rejection path.
-    with pytest.raises(IntegrityError):
-        _insert_binding(
-            db_engine,
-            namespace_key="ns-one",
-            target_type="env",
-            target_id="prod",
-            control_id=control_id,
-            agent_name="Support-Router",
-        )

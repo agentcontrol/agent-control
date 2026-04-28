@@ -33,7 +33,6 @@ def _create_binding(
     control_id: int,
     target_type: str = "env",
     target_id: str = "prod",
-    agent_name: str | None = None,
     enabled: bool = True,
 ) -> int:
     body: dict[str, Any] = {
@@ -42,8 +41,6 @@ def _create_binding(
         "control_id": control_id,
         "enabled": enabled,
     }
-    if agent_name is not None:
-        body["agent_name"] = agent_name
     resp = client.put("/api/v1/control-bindings", json=body)
     assert resp.status_code == 200, resp.text
     return int(resp.json()["binding_id"])
@@ -97,19 +94,13 @@ def test_target_bearing_request_with_no_matching_bindings_returns_safe(
     assert result["body"]["is_safe"] is True
 
 
-def test_agent_disable_overrides_target_default_at_runtime(
+def test_disabled_binding_excludes_control_at_runtime(
     client: TestClient,
 ) -> None:
     control_id = _create_control(client)
-    _create_binding(client, control_id=control_id)
-    _create_binding(
-        client,
-        control_id=control_id,
-        agent_name="mytestagent01",
-        enabled=False,
-    )
+    _create_binding(client, control_id=control_id, enabled=False)
 
-    # Target-default would deny; agent-specific exemption wins.
+    # The binding is disabled; the control must not run.
     result = _evaluate(client, target_type="env", target_id="prod")
     assert result["status"] == 200
     assert result["body"]["is_safe"] is True
