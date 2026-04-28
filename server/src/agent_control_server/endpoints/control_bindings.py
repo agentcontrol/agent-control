@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from agent_control_models.agent import normalize_optional_agent_name
 from agent_control_models.server import (
     CreateControlBindingRequest,
     CreateControlBindingResponse,
@@ -91,12 +92,13 @@ async def list_control_bindings(
     namespace_key: str = Depends(get_namespace_key),
 ) -> ListControlBindingsResponse:
     """Return bindings in the current namespace with optional filters."""
+    normalized_agent_name = normalize_optional_agent_name(agent_name)
     service = ControlBindingsService(db)
     bindings = await service.list_bindings(
         namespace_key=namespace_key,
         target_type=target_type,
         target_id=target_id,
-        agent_name=agent_name,
+        agent_name=normalized_agent_name,
         control_id=control_id,
     )
     return ListControlBindingsResponse(

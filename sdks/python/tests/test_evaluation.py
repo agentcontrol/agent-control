@@ -176,3 +176,59 @@ async def test_evaluate_controls_forwards_target_context(monkeypatch):
     kwargs = mock_check.call_args.kwargs
     assert kwargs["target_type"] == "env"
     assert kwargs["target_id"] == "prod"
+
+
+@pytest.mark.asyncio
+async def test_target_bearing_request_bypasses_cached_agent_controls():
+    """A target-bearing request must hit the server even when cached
+    agent-attached controls would otherwise apply locally.
+
+    Without this bypass, the SDK would resolve from cached agent controls
+    (which the server-side documentation says target-bearing requests must
+    NOT use) and could return a result without ever calling the server.
+    """
+
+    class DummyResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"is_safe": True, "confidence": 1.0}
+
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.post = AsyncMock(return_value=DummyResponse())
+
+    # A cached agent-attached control that would have run locally for an
+    # agent-only request. The bypass must ignore it.
+    cached_local_control = {
+        "id": 1,
+        "name": "local-control",
+        "control": {
+            "description": "local",
+            "enabled": True,
+            "execution": "sdk",
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "condition": {
+                "selector": {"path": "input"},
+                "evaluator": {"name": "regex", "config": {"pattern": "x"}},
+            },
+            "action": {"decision": "deny"},
+        },
+    }
+
+    await evaluation.check_evaluation_with_local(
+        client=client,
+        agent_name="mytestagent01",
+        step={"type": "llm", "name": "chat", "input": "x"},
+        stage="pre",
+        controls=[cached_local_control],
+        target_type="env",
+        target_id="prod",
+    )
+
+    # The server must be called even though a local control exists.
+    client.http_client.post.assert_awaited_once()
+    sent = client.http_client.post.await_args.kwargs["json"]
+    assert sent["target_type"] == "env"
+    assert sent["target_id"] == "prod"

@@ -2,9 +2,16 @@ import datetime as dt
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BeforeValidator, ConfigDict, Field, StringConstraints, TypeAdapter
+from pydantic import (
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    TypeAdapter,
+    field_validator,
+)
 
-from .agent import Agent, StepSchema
+from .agent import Agent, StepSchema, normalize_optional_agent_name
 from .base import BaseModel
 from .controls import (
     ControlDefinition,
@@ -610,7 +617,8 @@ class CreateControlBindingRequest(BaseModel):
         default=None,
         description=(
             "Optional narrower selector. When set, the binding applies only to "
-            "the named agent inside the target."
+            "the named agent inside the target. Normalized to lowercase and "
+            "validated against the agent-name format."
         ),
     )
     control_id: int = Field(
@@ -623,6 +631,11 @@ class CreateControlBindingRequest(BaseModel):
             "exemption that overrides a less-specific binding."
         ),
     )
+
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def _normalize_agent_name(cls, value: object) -> object:
+        return normalize_optional_agent_name(value)
 
 
 class CreateControlBindingResponse(BaseModel):
@@ -698,6 +711,11 @@ class UpsertControlBindingRequest(BaseModel):
         default=True, description="Whether the binding is active."
     )
 
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def _normalize_agent_name(cls, value: object) -> object:
+        return normalize_optional_agent_name(value)
+
 
 class UpsertControlBindingResponse(BaseModel):
     """Response from a natural-key upsert."""
@@ -720,6 +738,11 @@ class DeleteControlBindingByKeyRequest(BaseModel):
     target_id: ControlBindingTargetField = Field(...)
     agent_name: str | None = Field(default=None)
     control_id: int = Field(..., gt=0)
+
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def _normalize_agent_name(cls, value: object) -> object:
+        return normalize_optional_agent_name(value)
 
 
 class DeleteControlBindingByKeyResponse(BaseModel):

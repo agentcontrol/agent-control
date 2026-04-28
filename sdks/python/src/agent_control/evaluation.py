@@ -218,6 +218,60 @@ async def check_evaluation(
     return cast(EvaluationResult, EvaluationResult.from_dict(evaluation_response.model_dump()))
 
 
+async def _evaluate_target_bearing(
+    *,
+    client: AgentControlClient,
+    agent_name: str,
+    step: Step,
+    stage: Literal["pre", "post"],
+    target_type: str,
+    target_id: str,
+    resolved_trace_id: str | None,
+    resolved_span_id: str | None,
+    event_agent_name: str | None,
+) -> EvaluationResult:
+    """Send a target-bearing request straight to the server.
+
+    Cached agent-attached controls (from initAgent) are intentionally NOT
+    consulted: target-bearing requests resolve from ``control_bindings``
+    only. Observability events are emitted from the server response when
+    enabled.
+    """
+    request = EvaluationRequest(
+        agent_name=agent_name,
+        step=step,
+        stage=stage,
+        target_type=target_type,
+        target_id=target_id,
+    )
+    headers: dict[str, str] = {}
+    if resolved_trace_id:
+        headers["X-Trace-Id"] = resolved_trace_id
+    if resolved_span_id:
+        headers["X-Span-Id"] = resolved_span_id
+
+    response = await client.http_client.post(
+        "/api/v1/evaluation",
+        json=request.model_dump(mode="json", exclude_none=True),
+        headers=headers or None,
+    )
+    response.raise_for_status()
+    server_result = EvaluationResponse.model_validate(response.json())
+
+    if is_observability_enabled():
+        server_events = build_control_execution_events(
+            server_result,
+            request,
+            _cached_server_control_lookup(agent_name, client),
+            resolved_trace_id,
+            resolved_span_id,
+            event_agent_name or agent_name,
+        )
+        enqueue_observability_events(server_events)
+
+    return cast(EvaluationResult, EvaluationResult.from_dict(server_result.model_dump()))
+
+
 async def check_evaluation_with_local(
     client: AgentControlClient,
     agent_name: str,
@@ -231,7 +285,13 @@ async def check_evaluation_with_local(
     span_id: str | None = None,
     event_agent_name: str | None = None,
 ) -> EvaluationResult:
-    """Evaluate controls with local-first execution and SDK-owned event emission."""
+    """Evaluate controls with local-first execution and SDK-owned event emission.
+
+    When ``target_type`` and ``target_id`` are both supplied, the cached
+    agent-attached controls are bypassed and the request is sent unconditionally
+    to the server, which resolves the effective control set from
+    ``control_bindings`` only.
+    """
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id = trace_id
     resolved_span_id = span_id
@@ -239,6 +299,19 @@ async def check_evaluation_with_local(
         current_trace_id, current_span_id = get_trace_and_span_ids()
         resolved_trace_id = trace_id or current_trace_id
         resolved_span_id = span_id or current_span_id
+
+    if target_type is not None and target_id is not None:
+        return await _evaluate_target_bearing(
+            client=client,
+            agent_name=normalized_name,
+            step=step,
+            stage=stage,
+            target_type=target_type,
+            target_id=target_id,
+            resolved_trace_id=resolved_trace_id,
+            resolved_span_id=resolved_span_id,
+            event_agent_name=event_agent_name,
+        )
 
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []

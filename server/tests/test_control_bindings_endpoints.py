@@ -88,10 +88,11 @@ def test_create_duplicate_target_default_returns_409(
     assert resp.json()["error_code"] == "CONTROL_BINDING_CONFLICT"
 
 
-def test_create_binding_with_malformed_agent_name_returns_409_or_400(
+def test_create_binding_normalizes_mixed_case_agent_name(
     client: TestClient,
 ) -> None:
-    # Mixed-case agent_name violates the agent name format check constraint.
+    # Mixed-case input is normalized at the request boundary (lowercase,
+    # whitespace stripped) before reaching the database.
     control_id = _create_control(client)
     resp = client.put(
         _BINDINGS_URL,
@@ -99,12 +100,30 @@ def test_create_binding_with_malformed_agent_name_returns_409_or_400(
             "target_type": "env",
             "target_id": "prod",
             "control_id": control_id,
-            "agent_name": "Support-Router",
+            "agent_name": "  Support-Router ",
         },
     )
-    # The exact code surfaced depends on how the IntegrityError propagates;
-    # what matters is the request is rejected.
-    assert resp.status_code >= 400
+    assert resp.status_code == 200, resp.text
+    binding_id = resp.json()["binding_id"]
+
+    detail = client.get(f"{_BINDINGS_URL}/{binding_id}").json()
+    assert detail["agent_name"] == "support-router"
+
+
+def test_create_binding_rejects_invalid_agent_name(client: TestClient) -> None:
+    # A name that fails the format/length rules is rejected at the API
+    # boundary (422) instead of leaking to the DB check constraint.
+    control_id = _create_control(client)
+    resp = client.put(
+        _BINDINGS_URL,
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+            "agent_name": "abc",
+        },
+    )
+    assert resp.status_code == 422
 
 
 def test_get_binding_returns_full_payload(client: TestClient) -> None:
@@ -334,6 +353,41 @@ def test_delete_by_key_is_idempotent_when_missing(client: TestClient) -> None:
     )
     assert resp.status_code == 200
     assert resp.json() == {"deleted": False}
+
+
+def test_patch_binding_updates_updated_at(client: TestClient) -> None:
+    control_id = _create_control(client)
+    binding_id = _create_binding(client, control_id=control_id)["binding_id"]
+
+    initial = client.get(f"{_BINDINGS_URL}/{binding_id}").json()
+    initial_updated_at = initial["updated_at"]
+
+    resp = client.patch(
+        f"{_BINDINGS_URL}/{binding_id}", json={"enabled": False}
+    )
+    assert resp.status_code == 200, resp.text
+
+    after_patch = client.get(f"{_BINDINGS_URL}/{binding_id}").json()
+    assert after_patch["updated_at"] != initial_updated_at
+
+
+def test_upsert_by_key_updates_updated_at_on_existing_row(
+    client: TestClient,
+) -> None:
+    control_id = _create_control(client)
+    body = {
+        "target_type": "env",
+        "target_id": "prod",
+        "control_id": control_id,
+        "enabled": True,
+    }
+    first_id = client.put(f"{_BINDINGS_URL}/by-key", json=body).json()["binding_id"]
+    initial = client.get(f"{_BINDINGS_URL}/{first_id}").json()
+    initial_updated_at = initial["updated_at"]
+
+    client.put(f"{_BINDINGS_URL}/by-key", json={**body, "enabled": False}).json()
+    after_upsert = client.get(f"{_BINDINGS_URL}/{first_id}").json()
+    assert after_upsert["updated_at"] != initial_updated_at
 
 
 def test_non_admin_cannot_use_by_key_endpoints(

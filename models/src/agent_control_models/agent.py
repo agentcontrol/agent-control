@@ -34,6 +34,21 @@ def normalize_agent_name(value: str) -> str:
     return normalized
 
 
+def normalize_optional_agent_name(value: object) -> str | None:
+    """Normalize an optional agent identifier; pass None through unchanged.
+
+    Empty strings (after stripping) collapse to ``None`` so callers can pass
+    either ``null`` or ``""`` to address the target-default binding.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("agent_name must be a string or null")
+    if value.strip() == "":
+        return None
+    return normalize_agent_name(value)
+
+
 class Agent(BaseModel):
     """
     Agent metadata for registration and tracking.
