@@ -14,7 +14,7 @@ The runtime auth flow is two-phase:
    ``runtime`` domain marker, and the scope; the resolved
    :class:`Principal` carries the bound target.
 
-Token rules (from RFC 3 §7):
+Token rules:
 
 - Algorithm: HS256.
 - Issuer: ``agent-control/server``; verifier: same.

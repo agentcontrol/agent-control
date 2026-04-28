@@ -1,11 +1,10 @@
 """Forwards authorization decisions to a configurable upstream HTTP service.
 
 Used by deployments that already have an authorization service of
-record (Cerbos behind an internal API, an in-house RBAC, etc.). The
-provider is generic: it speaks a small JSON protocol to a single
-configurable URL, forwards the caller's credentials so the upstream
-can identify them, and maps the upstream's HTTP status onto the
-matching error.
+record. The provider is generic: it speaks a small JSON protocol to a
+single configurable URL, forwards the caller's credentials so the
+upstream can identify them, and maps the upstream's HTTP status onto
+the matching error.
 
 Wire protocol
 -------------
@@ -46,7 +45,7 @@ from typing import Any
 import httpx
 from agent_control_models.errors import ErrorCode, ErrorReason
 from fastapi import Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ...errors import APIError, AuthenticationError, ForbiddenError, NotFoundError
 from ...logging_utils import get_logger
@@ -61,8 +60,9 @@ class _UpstreamGrant(BaseModel):
     """Strict schema for the upstream authorization-service response.
 
     Unknown fields are tolerated (so the upstream can evolve), but every
-    *known* field is type-checked. A wrong type on any field causes the
-    provider to fail closed with a 502.
+    *known* field is type-checked. A wrong type on any field — or a
+    half-supplied target binding — causes the provider to fail closed
+    with a 502.
     """
 
     model_config = ConfigDict(extra="ignore", strict=True)
@@ -74,6 +74,22 @@ class _UpstreamGrant(BaseModel):
     target_id: str | None = Field(default=None, min_length=1)
     scopes: tuple[str, ...] = ()
     expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _target_must_be_paired(self) -> _UpstreamGrant:
+        """Reject a grant that supplies only one half of the target binding.
+
+        A target is meaningful only as a ``(target_type, target_id)``
+        pair; allowing one side without the other would let a malformed
+        grant pass and the exchange endpoint mint a token for the
+        request's value of the missing half — outside the upstream's
+        intended authorization.
+        """
+        if (self.target_type is None) != (self.target_id is None):
+            raise ValueError(
+                "target_type and target_id must both be supplied or both omitted"
+            )
+        return self
 
 
 @dataclass(frozen=True)

@@ -728,6 +728,36 @@ async def test_http_upstream_rejects_non_string_target_fields():
 
 
 @pytest.mark.asyncio
+async def test_http_upstream_rejects_target_type_only_grant():
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={"namespace_key": "n", "target_type": "log_stream"},
+        )
+    )
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(
+            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
+        )
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_target_id_only_grant():
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={"namespace_key": "n", "target_id": "ls-1"},
+        )
+    )
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(
+            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
+        )
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
 async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
     """Upstream wire shapes must round-trip cleanly.
 
