@@ -220,6 +220,23 @@ async def check_evaluation(
     return cast(EvaluationResult, EvaluationResult.from_dict(evaluation_response.model_dump()))
 
 
+def _client_matches_active_session(client: AgentControlClient) -> bool:
+    """Return whether the supplied client points at the SDK's active session.
+
+    The target-controls cache is keyed only by ``(target_type, target_id)``;
+    sharing it across clients with different identities would let a binding
+    fetched against one server/api_key serve evaluations against another.
+    The cache is therefore only consulted when ``state.server_url`` /
+    ``state.api_key`` (set by ``init()``) match the supplied client.
+    """
+    if state.server_url is None:
+        return False
+    return (
+        client.base_url == state.server_url.rstrip("/")
+        and client.api_key == state.api_key
+    )
+
+
 async def _fetch_effective_target_controls(
     client: AgentControlClient,
     target_type: str,
@@ -227,19 +244,24 @@ async def _fetch_effective_target_controls(
 ) -> list[dict[str, Any]]:
     """Fetch the runtime-ready controls bound to a target.
 
-    Cached per ``(target_type, target_id)`` and kept fresh by the SDK's
-    target-controls refresh loop. Returned in the same shape as
-    ``state.server_controls`` so the result can be fed through the
-    existing local-vs-server split.
+    When the client matches the SDK's active session (``init()``-managed),
+    results are cached per ``(target_type, target_id)`` and kept fresh by
+    the target-controls refresh loop. Calls with a different-identity
+    client bypass the cache to avoid cross-identity leaks. Returned in
+    the same shape as ``state.server_controls`` so the result can be fed
+    through the existing local-vs-server split.
     """
-    cache = get_target_controls_cache()
-    cache.configure(max_size=get_settings().target_controls_cache_max_size)
+    use_cache = _client_matches_active_session(client)
 
-    cached = cache.get(target_type, target_id)
-    if cached is not None:
-        return cached
+    if use_cache:
+        cache = get_target_controls_cache()
+        cache.configure(max_size=get_settings().target_controls_cache_max_size)
 
-    epoch = cache.current_epoch()
+        cached = cache.get(target_type, target_id)
+        if cached is not None:
+            return cached
+        epoch = cache.current_epoch()
+
     response = await client.http_client.get(
         "/api/v1/control-bindings/effective",
         params={"target_type": target_type, "target_id": target_id},
@@ -247,7 +269,9 @@ async def _fetch_effective_target_controls(
     response.raise_for_status()
     payload = response.json()
     controls = list(payload.get("controls", []))
-    cache.put(target_type, target_id, controls, epoch=epoch)
+
+    if use_cache:
+        cache.put(target_type, target_id, controls, epoch=epoch)
     return controls
 
 

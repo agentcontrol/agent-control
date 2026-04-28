@@ -296,6 +296,7 @@ async def test_target_bearing_request_runs_sdk_execution_controls_locally():
 @pytest.mark.asyncio
 async def test_target_bearing_fetch_does_not_leak_across_session_reset():
     """A fetch in flight when the cache is reset must not populate the new session."""
+    from agent_control._state import state
     from agent_control._target_controls_cache import get_target_controls_cache
 
     cache = get_target_controls_cache()
@@ -327,12 +328,85 @@ async def test_target_bearing_fetch_does_not_leak_across_session_reset():
             return {"controls": [server_a_control]}
 
     client = MagicMock()
+    client.base_url = "http://server-a"
+    client.api_key = "key-a"
     client.http_client = MagicMock()
     client.http_client.get = AsyncMock(return_value=ServerAResponse())
 
-    controls = await evaluation._fetch_effective_target_controls(
-        client, "env", "prod"
-    )
+    with patch.object(state, "server_url", "http://server-a"), patch.object(
+        state, "api_key", "key-a"
+    ):
+        controls = await evaluation._fetch_effective_target_controls(
+            client, "env", "prod"
+        )
 
     assert controls == [server_a_control]
+    assert cache.get("env", "prod") is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_bypasses_cache_for_client_with_different_identity():
+    """A client that doesn't match state.server_url/api_key must not share the cache."""
+    from agent_control._state import state
+    from agent_control._target_controls_cache import get_target_controls_cache
+
+    cache = get_target_controls_cache()
+
+    response_payload = {"controls": [{"id": 1, "name": "x", "control": {}}]}
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return response_payload
+
+    client = MagicMock()
+    # Active session is server-A; client points at server-B.
+    client.base_url = "http://server-b"
+    client.api_key = "key-b"
+    client.http_client = MagicMock()
+    client.http_client.get = AsyncMock(return_value=_Resp())
+
+    with patch.object(state, "server_url", "http://server-a"), patch.object(
+        state, "api_key", "key-a"
+    ):
+        controls = await evaluation._fetch_effective_target_controls(
+            client, "env", "prod"
+        )
+
+    # Network call happened, but cache was not populated.
+    assert controls == response_payload["controls"]
+    client.http_client.get.assert_awaited_once()
+    assert cache.get("env", "prod") is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_bypasses_cache_when_no_active_session():
+    """Direct-client use without init() must not touch the cache."""
+    from agent_control._state import state
+    from agent_control._target_controls_cache import get_target_controls_cache
+
+    cache = get_target_controls_cache()
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"controls": [{"id": 7, "name": "y", "control": {}}]}
+
+    client = MagicMock()
+    client.base_url = "http://anywhere"
+    client.api_key = None
+    client.http_client = MagicMock()
+    client.http_client.get = AsyncMock(return_value=_Resp())
+
+    with patch.object(state, "server_url", None), patch.object(
+        state, "api_key", None
+    ):
+        await evaluation._fetch_effective_target_controls(
+            client, "env", "prod"
+        )
+
     assert cache.get("env", "prod") is None
