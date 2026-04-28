@@ -170,12 +170,19 @@ async def check_evaluation(
     agent_name: str,
     step: Step,
     stage: Literal["pre", "post"],
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
 ) -> EvaluationResult:
     """Check if agent interaction is safe through the public SDK helper.
 
     The server returns only evaluation semantics. When SDK observability is
     enabled, this helper reconstructs server-side control-execution events
     from the response and enqueues them through the built-in SDK batcher.
+
+    When ``target_type`` and ``target_id`` are both supplied, the request
+    is treated as target-bearing and the server resolves controls from
+    control bindings instead of from the agent's direct attachments.
     """
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id, resolved_span_id = get_trace_and_span_ids()
@@ -183,6 +190,8 @@ async def check_evaluation(
         agent_name=normalized_name,
         step=step,
         stage=stage,
+        target_type=target_type,
+        target_id=target_id,
     )
     request_payload = request.model_dump(mode="json")
 
@@ -215,6 +224,9 @@ async def check_evaluation_with_local(
     step: Step,
     stage: Literal["pre", "post"],
     controls: list[dict[str, Any]],
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
     trace_id: str | None = None,
     span_id: str | None = None,
     event_agent_name: str | None = None,
@@ -299,6 +311,8 @@ async def check_evaluation_with_local(
         agent_name=normalized_name,
         step=step,
         stage=stage,
+        target_type=target_type,
+        target_id=target_id,
     )
 
     def _with_parse_errors(result: EvaluationResult) -> EvaluationResult:
@@ -400,10 +414,18 @@ async def evaluate_controls(
     step_type: Literal["tool", "llm"] = "llm",
     stage: Literal["pre", "post"] = "pre",
     agent_name: str,
+    target_type: str | None = None,
+    target_id: str | None = None,
     trace_id: str | None = None,
     span_id: str | None = None,
 ) -> EvaluationResult:
-    """Evaluate controls for a step."""
+    """Evaluate controls for a step.
+
+    When ``target_type`` and ``target_id`` are both supplied, the request
+    is treated as target-bearing: the server resolves the effective control
+    set from control bindings instead of from the agent's direct
+    attachments. The two fields must be supplied together.
+    """
     if state.server_url is None:
         raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
 
@@ -427,6 +449,8 @@ async def evaluate_controls(
             step=step_obj,
             stage=stage,
             controls=resolved_controls,
+            target_type=target_type,
+            target_id=target_id,
             trace_id=trace_id,
             span_id=span_id,
             event_agent_name=agent_name,
