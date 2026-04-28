@@ -40,6 +40,7 @@ Statuses other than 200 / 401 / 403 / 404 / 5xx fail closed (503).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -205,8 +206,37 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         if caller_id is not None and not isinstance(caller_id, str):
             caller_id = None
 
+        target_type = payload.get("target_type")
+        if target_type is not None and not isinstance(target_type, str):
+            target_type = None
+        target_id = payload.get("target_id")
+        if target_id is not None and not isinstance(target_id, str):
+            target_id = None
+
+        raw_scopes = payload.get("scopes", ())
+        scopes: tuple[str, ...] = tuple(
+            s for s in raw_scopes if isinstance(s, str)
+        ) if isinstance(raw_scopes, (list, tuple)) else ()
+
+        grant_expires_at = _parse_iso_datetime(payload.get("expires_at"))
+
         return Principal(
             namespace_key=namespace_key,
             is_admin=is_admin,
             caller_id=caller_id,
+            target_type=target_type,
+            target_id=target_id,
+            scopes=scopes,
+            grant_expires_at=grant_expires_at,
         )
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        # Tolerate trailing "Z" by mapping to "+00:00".
+        normalized = value.replace("Z", "+00:00") if value.endswith("Z") else value
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None

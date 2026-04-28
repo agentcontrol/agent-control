@@ -4,6 +4,7 @@
 
 import { ClientSDK } from "../lib/sdks.js";
 import { Agents } from "./agents.js";
+import { Auth } from "./auth.js";
 import { ControlBindings } from "./control-bindings.js";
 import { Controls } from "./controls.js";
 import { Evaluation } from "./evaluation.js";
@@ -21,6 +22,11 @@ export class AgentControlSDK extends ClientSDK {
   private _agents?: Agents;
   get agents(): Agents {
     return (this._agents ??= new Agents(this._options));
+  }
+
+  private _auth?: Auth;
+  get auth(): Auth {
+    return (this._auth ??= new Auth(this._options));
   }
 
   private _controlBindings?: ControlBindings;

@@ -141,18 +141,24 @@ def clean_db():
 
 @pytest.fixture(autouse=True)
 def _install_default_authorizer():
-    """Install the OSS HeaderAuthProvider for the duration of each test.
+    """Install the default HeaderAuthProvider for the duration of each test.
 
     The framework's authorizer is normally wired by the FastAPI lifespan,
     but TestClient bypasses lifespan unless used as a context manager.
-    Installing it here keeps tests isolated and matches OSS behavior.
+    Installing it here keeps tests isolated and matches the local-credential
+    flow. ``clear_authorizers`` runs both around the test so any
+    operation-specific overrides installed by a test cannot leak.
     """
-    from agent_control_server.auth_framework.core import set_authorizer
+    from agent_control_server.auth_framework.core import (
+        clear_authorizers,
+        set_authorizer,
+    )
     from agent_control_server.auth_framework.providers import HeaderAuthProvider
 
+    clear_authorizers()
     set_authorizer(HeaderAuthProvider())
     yield
-    set_authorizer(None)
+    clear_authorizers()
 
 
 @pytest.fixture

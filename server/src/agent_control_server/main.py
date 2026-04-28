@@ -21,6 +21,7 @@ from .auth import require_api_key
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal
 from .endpoints.agents import router as agent_router
+from .endpoints.auth import router as auth_router
 from .endpoints.control_bindings import router as control_binding_router
 from .endpoints.controls import router as control_router
 from .endpoints.controls import template_router as control_template_router
@@ -277,6 +278,13 @@ app.include_router(
     # without the legacy router-level gate. See ``auth_framework`` for
     # the provider contract.
     control_binding_router,
+    prefix=api_v1_prefix,
+)
+
+# Auth endpoints (runtime token exchange). Same rationale as control
+# bindings: framework on each endpoint owns authn + authz.
+app.include_router(
+    auth_router,
     prefix=api_v1_prefix,
 )
 app.include_router(

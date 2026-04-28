@@ -51,6 +51,7 @@ DEFAULT_OPERATION_ACCESS: dict[Operation, AccessLevel] = {
     Operation.CONTROLS_CREATE: AccessLevel.ADMIN,
     Operation.CONTROLS_UPDATE: AccessLevel.ADMIN,
     Operation.CONTROLS_DELETE: AccessLevel.ADMIN,
+    Operation.RUNTIME_TOKEN_EXCHANGE: AccessLevel.AUTHENTICATED,
     Operation.RUNTIME_USE: AccessLevel.AUTHENTICATED,
 }
 

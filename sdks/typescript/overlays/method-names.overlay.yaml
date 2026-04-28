@@ -100,6 +100,11 @@ actions:
       x-speakeasy-group: agents
       x-speakeasy-name-override: updatePolicy
 
+  - target: $["paths"]["/api/v1/auth/runtime-token-exchange"]["post"]
+    update:
+      x-speakeasy-group: auth
+      x-speakeasy-name-override: runtimeTokenExchange
+
   - target: $["paths"]["/api/v1/control-bindings"]["get"]
     update:
       x-speakeasy-group: controlBindings
