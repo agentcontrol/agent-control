@@ -331,30 +331,10 @@ class ControlService:
     ) -> list[RuntimeControl]:
         """Return runtime-parsed controls for evaluation hot paths."""
         db_controls = await self._list_db_controls_for_agent(agent_name)
-
-        runtime_controls: list[RuntimeControl] = []
-        for control in db_controls:
-            # Skip unrendered template controls - they have no condition to evaluate.
-            if _is_unrendered_template_payload(control.data):
-                continue
-
-            context = (
-                {"allow_invalid_step_name_regex": True}
-                if allow_invalid_step_name_regex
-                else None
-            )
-            control_def = parse_runtime_control_definition_or_api_error(
-                control.data,
-                detail=f"Control '{control.name}' has corrupted data",
-                resource_id=str(control.id),
-                hint=f"Update the control data using PUT /api/v1/controls/{control.id}/data.",
-                context=context,
-                field_prefix="data",
-            )
-            runtime_controls.append(
-                RuntimeControl(id=control.id, name=control.name, control=control_def)
-            )
-        return runtime_controls
+        return parse_runtime_controls(
+            db_controls,
+            allow_invalid_step_name_regex=allow_invalid_step_name_regex,
+        )
 
     async def list_controls_page(
         self,
@@ -716,6 +696,40 @@ def _is_unrendered_template_payload(data: object) -> bool:
         and data.get("template") is not None
         and data.get("condition") is None
     )
+
+
+def parse_runtime_controls(
+    controls: Sequence[Control],
+    *,
+    allow_invalid_step_name_regex: bool = False,
+) -> list[RuntimeControl]:
+    """Parse stored controls into the runtime form used by the evaluation engine.
+
+    Unrendered template controls are skipped (they have no condition to
+    evaluate). All other controls are validated; corrupted data raises
+    ``APIValidationError`` so the caller can surface a useful error.
+    """
+    context = (
+        {"allow_invalid_step_name_regex": True}
+        if allow_invalid_step_name_regex
+        else None
+    )
+    runtime_controls: list[RuntimeControl] = []
+    for control in controls:
+        if _is_unrendered_template_payload(control.data):
+            continue
+        control_def = parse_runtime_control_definition_or_api_error(
+            control.data,
+            detail=f"Control '{control.name}' has corrupted data",
+            resource_id=str(control.id),
+            hint=f"Update the control data using PUT /api/v1/controls/{control.id}/data.",
+            context=context,
+            field_prefix="data",
+        )
+        runtime_controls.append(
+            RuntimeControl(id=control.id, name=control.name, control=control_def)
+        )
+    return runtime_controls
 
 
 def _parse_unrendered_template_or_api_error(control: Control) -> UnrenderedTemplateControl:

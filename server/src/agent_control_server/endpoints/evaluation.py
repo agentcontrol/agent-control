@@ -19,6 +19,8 @@ from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
+from ..namespace import get_namespace_key
+from ..services.control_bindings import ControlBindingsService
 from ..services.controls import ControlService
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
@@ -127,8 +129,17 @@ async def evaluate(
     request: EvaluationRequest,
     client: RequireAPIKey,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> EvaluationResponse:
     """Analyze content for safety and control violations.
+
+    Two resolution paths are supported:
+
+    - Target-bearing: when both ``target_type`` and ``target_id`` are set on
+      the request, the effective control set is resolved from
+      ``control_bindings`` only. Direct agent attachments are not consulted.
+    - Agent-attached (default): the effective control set is resolved from
+      the agent's direct controls and policy-derived controls.
 
     This endpoint is intentionally evaluation-only. It returns the semantic
     ``EvaluationResponse`` and does not build or ingest observability events
@@ -137,23 +148,32 @@ async def evaluate(
     """
     del client  # Authentication is still required by dependency injection.
 
-    agent_result = await db.execute(
-        select(Agent).where(Agent.name == request.agent_name)
-    )
-    agent = agent_result.scalar_one_or_none()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent '{request.agent_name}' not found",
-            resource="Agent",
-            resource_id=request.agent_name,
-            hint="Register the agent via initAgent before evaluating.",
+    if request.target_type is not None and request.target_id is not None:
+        runtime_controls = await ControlBindingsService(db).resolve_runtime_controls(
+            namespace_key=namespace_key,
+            target_type=request.target_type,
+            target_id=request.target_id,
+            agent_name=request.agent_name,
+            allow_invalid_step_name_regex=True,
+        )
+    else:
+        agent_result = await db.execute(
+            select(Agent).where(Agent.name == request.agent_name)
+        )
+        agent = agent_result.scalar_one_or_none()
+        if agent is None:
+            raise NotFoundError(
+                error_code=ErrorCode.AGENT_NOT_FOUND,
+                detail=f"Agent '{request.agent_name}' not found",
+                resource="Agent",
+                resource_id=request.agent_name,
+                hint="Register the agent via initAgent before evaluating.",
+            )
+        runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
+            request.agent_name,
+            allow_invalid_step_name_regex=True,
         )
 
-    runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
-        request.agent_name,
-        allow_invalid_step_name_regex=True,
-    )
     engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
 
     engine = ControlEngine(engine_controls)

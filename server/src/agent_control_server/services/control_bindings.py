@@ -13,6 +13,7 @@ from sqlalchemy.sql import ColumnElement
 
 from ..errors import ConflictError, NotFoundError
 from ..models import Control, ControlBinding
+from .controls import RuntimeControl, parse_runtime_controls
 
 
 class ControlBindingsService:
@@ -150,6 +151,32 @@ class ControlBindingsService:
                     "and that it belongs to the same namespace as the binding."
                 ),
             )
+
+    async def resolve_runtime_controls(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str,
+        target_id: str,
+        agent_name: str | None = None,
+        allow_invalid_step_name_regex: bool = False,
+    ) -> list[RuntimeControl]:
+        """Return runtime-parsed effective controls for a target-bearing request.
+
+        Same selection logic as :meth:`resolve_effective_controls`; the
+        returned controls are parsed into the form used by the evaluation
+        engine.
+        """
+        controls = await self.resolve_effective_controls(
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+            agent_name=agent_name,
+        )
+        return parse_runtime_controls(
+            controls,
+            allow_invalid_step_name_regex=allow_invalid_step_name_regex,
+        )
 
     async def resolve_effective_controls(
         self,
