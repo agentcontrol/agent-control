@@ -27,31 +27,20 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Analyze content safety
+ * Attach a control to a target by natural key (idempotent)
  *
  * @remarks
- * Analyze content for safety and control violations.
- *
- * Two resolution paths are supported:
- *
- * - Target-bearing: when both ``target_type`` and ``target_id`` are set on
- *   the request, the effective control set is resolved from
- *   ``control_bindings`` only. Direct agent attachments are not consulted.
- * - Agent-attached (default): the effective control set is resolved from
- *   the agent's direct controls and policy-derived controls.
- *
- * This endpoint is intentionally evaluation-only. It returns the semantic
- * ``EvaluationResponse`` and does not build or ingest observability events
- * on the server; SDKs reconstruct and emit those events separately through
- * the observability ingestion endpoint.
+ * Idempotent attach using ``(target_type, target_id, control_id)`` as the
+ * natural key. Updates ``enabled`` on an existing match; creates a new row
+ * otherwise.
  */
-export function evaluationEvaluate(
+export function controlBindingsUpsertByKey(
   client: AgentControlSDKCore,
-  request: models.EvaluationRequest,
+  request: models.UpsertControlBindingRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.EvaluationResponse,
+    models.UpsertControlBindingResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -72,12 +61,12 @@ export function evaluationEvaluate(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: models.EvaluationRequest,
+  request: models.UpsertControlBindingRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.EvaluationResponse,
+      models.UpsertControlBindingResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -93,7 +82,8 @@ async function $do(
 > {
   const parsed = safeParse(
     request,
-    (value) => z.parse(models.EvaluationRequest$outboundSchema, value),
+    (value) =>
+      z.parse(models.UpsertControlBindingRequest$outboundSchema, value),
     "Input validation failed",
   );
   if (!parsed.ok) {
@@ -102,7 +92,7 @@ async function $do(
   const payload = parsed.value;
   const body = encodeJSON("body", payload, { explode: true });
 
-  const path = pathToFunc("/api/v1/evaluation")();
+  const path = pathToFunc("/api/v1/control-bindings/by-key")();
 
   const headers = new Headers(compactMap({
     "Content-Type": "application/json",
@@ -116,7 +106,8 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "evaluate_api_v1_evaluation_post",
+    operationID:
+      "upsert_control_binding_by_key_api_v1_control_bindings_by_key_put",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -130,7 +121,7 @@ async function $do(
 
   const requestRes = client._createRequest(context, {
     security: requestSecurity,
-    method: "POST",
+    method: "PUT",
     baseURL: options?.serverURL,
     path: path,
     headers: headers,
@@ -159,7 +150,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.EvaluationResponse,
+    models.UpsertControlBindingResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -170,7 +161,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.EvaluationResponse$inboundSchema),
+    M.json(200, models.UpsertControlBindingResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

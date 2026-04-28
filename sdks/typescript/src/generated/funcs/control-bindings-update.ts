@@ -4,7 +4,7 @@
 
 import * as z from "zod/v4-mini";
 import { AgentControlSDKCore } from "../core.js";
-import { encodeJSON } from "../lib/encodings.js";
+import { encodeJSON, encodeSimple } from "../lib/encodings.js";
 import * as M from "../lib/matchers.js";
 import { compactMap } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
@@ -23,35 +23,24 @@ import * as errors from "../models/errors/index.js";
 import { ResponseValidationError } from "../models/errors/response-validation-error.js";
 import { SDKValidationError } from "../models/errors/sdk-validation-error.js";
 import * as models from "../models/index.js";
+import * as operations from "../models/operations/index.js";
 import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Analyze content safety
+ * Update a control binding
  *
  * @remarks
- * Analyze content for safety and control violations.
- *
- * Two resolution paths are supported:
- *
- * - Target-bearing: when both ``target_type`` and ``target_id`` are set on
- *   the request, the effective control set is resolved from
- *   ``control_bindings`` only. Direct agent attachments are not consulted.
- * - Agent-attached (default): the effective control set is resolved from
- *   the agent's direct controls and policy-derived controls.
- *
- * This endpoint is intentionally evaluation-only. It returns the semantic
- * ``EvaluationResponse`` and does not build or ingest observability events
- * on the server; SDKs reconstruct and emit those events separately through
- * the observability ingestion endpoint.
+ * Update the ``enabled`` flag on a control binding.
  */
-export function evaluationEvaluate(
+export function controlBindingsUpdate(
   client: AgentControlSDKCore,
-  request: models.EvaluationRequest,
+  request:
+    operations.PatchControlBindingApiV1ControlBindingsBindingIdPatchRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.EvaluationResponse,
+    models.PatchControlBindingResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -72,12 +61,13 @@ export function evaluationEvaluate(
 
 async function $do(
   client: AgentControlSDKCore,
-  request: models.EvaluationRequest,
+  request:
+    operations.PatchControlBindingApiV1ControlBindingsBindingIdPatchRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.EvaluationResponse,
+      models.PatchControlBindingResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -93,16 +83,28 @@ async function $do(
 > {
   const parsed = safeParse(
     request,
-    (value) => z.parse(models.EvaluationRequest$outboundSchema, value),
+    (value) =>
+      z.parse(
+        operations
+          .PatchControlBindingApiV1ControlBindingsBindingIdPatchRequest$outboundSchema,
+        value,
+      ),
     "Input validation failed",
   );
   if (!parsed.ok) {
     return [parsed, { status: "invalid" }];
   }
   const payload = parsed.value;
-  const body = encodeJSON("body", payload, { explode: true });
+  const body = encodeJSON("body", payload.body, { explode: true });
 
-  const path = pathToFunc("/api/v1/evaluation")();
+  const pathParams = {
+    binding_id: encodeSimple("binding_id", payload.binding_id, {
+      explode: false,
+      charEncoding: "percent",
+    }),
+  };
+
+  const path = pathToFunc("/api/v1/control-bindings/{binding_id}")(pathParams);
 
   const headers = new Headers(compactMap({
     "Content-Type": "application/json",
@@ -116,7 +118,8 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "evaluate_api_v1_evaluation_post",
+    operationID:
+      "patch_control_binding_api_v1_control_bindings__binding_id__patch",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -130,7 +133,7 @@ async function $do(
 
   const requestRes = client._createRequest(context, {
     security: requestSecurity,
-    method: "POST",
+    method: "PATCH",
     baseURL: options?.serverURL,
     path: path,
     headers: headers,
@@ -159,7 +162,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.EvaluationResponse,
+    models.PatchControlBindingResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -170,7 +173,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.EvaluationResponse$inboundSchema),
+    M.json(200, models.PatchControlBindingResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

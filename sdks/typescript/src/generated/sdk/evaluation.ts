@@ -14,6 +14,14 @@ export class Evaluation extends ClientSDK {
    * @remarks
    * Analyze content for safety and control violations.
    *
+   * Two resolution paths are supported:
+   *
+   * - Target-bearing: when both ``target_type`` and ``target_id`` are set on
+   *   the request, the effective control set is resolved from
+   *   ``control_bindings`` only. Direct agent attachments are not consulted.
+   * - Agent-attached (default): the effective control set is resolved from
+   *   the agent's direct controls and policy-derived controls.
+   *
    * This endpoint is intentionally evaluation-only. It returns the semantic
    * ``EvaluationResponse`` and does not build or ingest observability events
    * on the server; SDKs reconstruct and emit those events separately through
