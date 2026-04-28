@@ -22,7 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
 from ..db import get_async_db
-from ..models import DEFAULT_NAMESPACE_KEY, ControlBinding
+from ..models import ControlBinding
+from ..namespace import get_namespace_key
 from ..services.control_bindings import ControlBindingsService
 from ..services.controls import parse_associated_control_or_api_error
 
@@ -55,6 +56,7 @@ def _to_response(binding: ControlBinding) -> GetControlBindingResponse:
 async def create_control_binding(
     request: CreateControlBindingRequest,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> CreateControlBindingResponse:
     """Attach a control to an opaque external target.
 
@@ -64,7 +66,7 @@ async def create_control_binding(
     """
     service = ControlBindingsService(db)
     binding = await service.create_binding(
-        namespace_key=DEFAULT_NAMESPACE_KEY,
+        namespace_key=namespace_key,
         target_type=request.target_type,
         target_id=request.target_id,
         control_id=request.control_id,
@@ -89,6 +91,7 @@ async def list_effective_target_controls(
     target_type: str,
     target_id: str,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> EffectiveTargetControlsResponse:
     """Return the effective control set for a target-bearing request.
 
@@ -99,7 +102,7 @@ async def list_effective_target_controls(
     """
     service = ControlBindingsService(db)
     db_controls = await service.resolve_effective_controls(
-        namespace_key=DEFAULT_NAMESPACE_KEY,
+        namespace_key=namespace_key,
         target_type=target_type,
         target_id=target_id,
     )
@@ -135,6 +138,7 @@ async def list_control_bindings(
     target_id: str | None = None,
     control_id: int | None = None,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> ListControlBindingsResponse:
     """Return bindings in the current namespace with optional filters and
     cursor-based pagination. Bindings are ordered by ID descending (newest
@@ -142,7 +146,7 @@ async def list_control_bindings(
     """
     service = ControlBindingsService(db)
     page = await service.list_bindings(
-        namespace_key=DEFAULT_NAMESPACE_KEY,
+        namespace_key=namespace_key,
         cursor=cursor,
         limit=limit,
         target_type=target_type,
@@ -169,10 +173,11 @@ async def list_control_bindings(
 async def get_control_binding(
     binding_id: int,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> GetControlBindingResponse:
     service = ControlBindingsService(db)
     binding = await service.get_binding_or_404(
-        namespace_key=DEFAULT_NAMESPACE_KEY, binding_id=binding_id
+        namespace_key=namespace_key, binding_id=binding_id
     )
     return _to_response(binding)
 
@@ -188,11 +193,12 @@ async def patch_control_binding(
     binding_id: int,
     request: PatchControlBindingRequest,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> PatchControlBindingResponse:
     """Update the ``enabled`` flag on a control binding."""
     service = ControlBindingsService(db)
     binding = await service.set_enabled(
-        namespace_key=DEFAULT_NAMESPACE_KEY,
+        namespace_key=namespace_key,
         binding_id=binding_id,
         enabled=request.enabled,
     )
@@ -210,10 +216,11 @@ async def patch_control_binding(
 async def delete_control_binding(
     binding_id: int,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> DeleteControlBindingResponse:
     service = ControlBindingsService(db)
     await service.delete_binding(
-        namespace_key=DEFAULT_NAMESPACE_KEY, binding_id=binding_id
+        namespace_key=namespace_key, binding_id=binding_id
     )
     await db.commit()
     return DeleteControlBindingResponse(success=True)
@@ -229,6 +236,7 @@ async def delete_control_binding(
 async def upsert_control_binding_by_key(
     request: UpsertControlBindingRequest,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> UpsertControlBindingResponse:
     """Idempotent attach using ``(target_type, target_id, control_id)`` as the
     natural key. Updates ``enabled`` on an existing match; creates a new row
@@ -236,7 +244,7 @@ async def upsert_control_binding_by_key(
     """
     service = ControlBindingsService(db)
     binding, created = await service.upsert_by_natural_key(
-        namespace_key=DEFAULT_NAMESPACE_KEY,
+        namespace_key=namespace_key,
         target_type=request.target_type,
         target_id=request.target_id,
         control_id=request.control_id,
@@ -261,13 +269,14 @@ async def upsert_control_binding_by_key(
 async def delete_control_binding_by_key(
     request: DeleteControlBindingByKeyRequest,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> DeleteControlBindingByKeyResponse:
     """Idempotent detach by natural key. Returns ``deleted=False`` when no
     matching binding exists.
     """
     service = ControlBindingsService(db)
     deleted = await service.delete_by_natural_key(
-        namespace_key=DEFAULT_NAMESPACE_KEY,
+        namespace_key=namespace_key,
         target_type=request.target_type,
         target_id=request.target_id,
         control_id=request.control_id,
