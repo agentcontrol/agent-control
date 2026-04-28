@@ -221,12 +221,11 @@ def test_downgrade_round_trip(alembic_config: Config, temp_engine: Engine) -> No
     assert "control_bindings" in inspect(temp_engine).get_table_names()
 
 
-def test_downgrade_rejects_cross_namespace_duplicates(
+def test_downgrade_rejects_cross_namespace_agents_duplicates(
     alembic_config: Config, temp_engine: Engine
 ) -> None:
     command.upgrade(alembic_config, MIGRATION_REVISION)
 
-    # Create two agents with the same name in different namespaces.
     with temp_engine.begin() as conn:
         conn.execute(
             text(
@@ -241,5 +240,80 @@ def test_downgrade_rejects_cross_namespace_duplicates(
             )
         )
 
-    with pytest.raises(RuntimeError, match="Cannot downgrade"):
+    with pytest.raises(RuntimeError, match="agents"):
         command.downgrade(alembic_config, PRE_MIGRATION_REVISION)
+
+
+def test_downgrade_rejects_cross_namespace_policies_duplicates(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    command.upgrade(alembic_config, MIGRATION_REVISION)
+
+    with temp_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO policies (namespace_key, name) "
+                "VALUES ('ns-one', 'shared-policy')"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO policies (namespace_key, name) "
+                "VALUES ('ns-two', 'shared-policy')"
+            )
+        )
+
+    with pytest.raises(RuntimeError, match="policies"):
+        command.downgrade(alembic_config, PRE_MIGRATION_REVISION)
+
+
+def test_downgrade_rejects_cross_namespace_live_controls_duplicates(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    command.upgrade(alembic_config, MIGRATION_REVISION)
+
+    with temp_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO controls (namespace_key, name, data) "
+                "VALUES ('ns-one', 'shared-control', '{}'::jsonb)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO controls (namespace_key, name, data) "
+                "VALUES ('ns-two', 'shared-control', '{}'::jsonb)"
+            )
+        )
+
+    with pytest.raises(RuntimeError, match="controls"):
+        command.downgrade(alembic_config, PRE_MIGRATION_REVISION)
+
+
+def test_downgrade_allows_cross_namespace_soft_deleted_controls(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    """Soft-deleted controls don't block downgrade.
+
+    The legacy partial unique index on controls.name is also restricted to
+    ``deleted_at IS NULL``, so a name shared across namespaces is fine as long
+    as at most one row per name is live.
+    """
+    command.upgrade(alembic_config, MIGRATION_REVISION)
+
+    with temp_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO controls (namespace_key, name, data, deleted_at) "
+                "VALUES ('ns-one', 'tombstoned', '{}'::jsonb, CURRENT_TIMESTAMP)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO controls (namespace_key, name, data, deleted_at) "
+                "VALUES ('ns-two', 'tombstoned', '{}'::jsonb, CURRENT_TIMESTAMP)"
+            )
+        )
+
+    command.downgrade(alembic_config, PRE_MIGRATION_REVISION)
+    assert "namespace_key" not in _column_names(temp_engine, "controls")
