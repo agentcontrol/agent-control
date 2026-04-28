@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from typing import cast
 
 from agent_control_models.errors import ErrorCode
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -210,6 +210,35 @@ class ControlBindingsService:
         )
         await self._db.delete(binding)
         await self._db.flush()
+
+    async def list_binding_ids_for_control(
+        self, *, namespace_key: str, control_id: int
+    ) -> list[int]:
+        """Return binding IDs that reference a single control."""
+        stmt = select(ControlBinding.id).where(
+            ControlBinding.namespace_key == namespace_key,
+            ControlBinding.control_id == control_id,
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars())
+
+    async def delete_bindings_for_control(
+        self, *, namespace_key: str, control_id: int
+    ) -> list[int]:
+        """Delete every binding referencing a control. Returns the deleted binding IDs."""
+        binding_ids = await self.list_binding_ids_for_control(
+            namespace_key=namespace_key, control_id=control_id
+        )
+        if not binding_ids:
+            return []
+        await self._db.execute(
+            delete(ControlBinding).where(
+                ControlBinding.namespace_key == namespace_key,
+                ControlBinding.control_id == control_id,
+            )
+        )
+        await self._db.flush()
+        return binding_ids
 
     async def resolve_runtime_controls(
         self,

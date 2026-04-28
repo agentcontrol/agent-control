@@ -572,6 +572,10 @@ class DeleteControlResponse(BaseModel):
         default_factory=list,
         description="Agent names the control was removed from before deletion",
     )
+    detached_target_bindings: list[int] = Field(
+        default_factory=list,
+        description="Control binding IDs that were removed before deletion",
+    )
 
 
 class PatchControlRequest(BaseModel):

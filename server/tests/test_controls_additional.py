@@ -684,6 +684,62 @@ def test_delete_control_force_dissociates_direct_agent_links(client: TestClient)
     assert list_resp.json()["pagination"]["total"] == 0
 
 
+def _create_target_binding(client: TestClient, *, control_id: int) -> int:
+    resp = client.put(
+        "/api/v1/control-bindings",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return int(resp.json()["binding_id"])
+
+
+def test_delete_control_blocks_when_target_binding_exists(
+    client: TestClient,
+) -> None:
+    # Given: a control attached via a target binding
+    control_id, control_name = _create_control(client)
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    binding_id = _create_target_binding(client, control_id=control_id)
+
+    # When: deleting without force
+    resp = client.delete(f"/api/v1/controls/{control_id}")
+
+    # Then: 409 with the binding listed as the in-use cause
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["error_code"] == "CONTROL_IN_USE"
+    binding_messages = [
+        e for e in body.get("errors", []) if e.get("resource") == "ControlBinding"
+    ]
+    assert any(e.get("value") == binding_id for e in binding_messages)
+
+
+def test_delete_control_force_detaches_target_bindings(
+    client: TestClient,
+) -> None:
+    # Given: a control attached via a target binding
+    control_id, control_name = _create_control(client)
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    binding_id = _create_target_binding(client, control_id=control_id)
+
+    # When: force-deleting the control
+    resp = client.delete(f"/api/v1/controls/{control_id}?force=true")
+
+    # Then: success and the detached binding ID is returned
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body.get("detached_target_bindings", []) == [binding_id]
+
+    # And: the binding no longer exists
+    fetch = client.get(f"/api/v1/control-bindings/{binding_id}")
+    assert fetch.status_code == 404
+
+
 def test_create_control_allows_reusing_soft_deleted_name(client: TestClient) -> None:
     # Given: a control name that has been soft-deleted
     name = f"control-{uuid.uuid4()}"
