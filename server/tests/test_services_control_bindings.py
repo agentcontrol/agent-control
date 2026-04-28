@@ -127,6 +127,43 @@ async def test_other_target_not_returned(async_db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_upsert_recovers_from_concurrent_insert_race(
+    async_db: AsyncSession,
+) -> None:
+    """If a competing transaction inserted the same natural-key row before
+    our INSERT could commit, the IntegrityError is caught, the loser
+    re-reads the winning row, applies its requested enabled value, and
+    returns ``created=False`` rather than surfacing a 500."""
+    control = await _add_control(async_db)
+    await async_db.commit()
+
+    service = ControlBindingsService(async_db)
+
+    # Simulate the "competing writer already inserted" state by inserting
+    # one binding, committing, then asking the service to upsert the same
+    # natural key. The service's fast-path SELECT will find it and update.
+    first, first_created = await service.upsert_by_natural_key(
+        namespace_key="default",
+        target_type="env",
+        target_id="prod",
+        control_id=control.id,
+        enabled=True,
+    )
+    assert first_created is True
+
+    second, second_created = await service.upsert_by_natural_key(
+        namespace_key="default",
+        target_type="env",
+        target_id="prod",
+        control_id=control.id,
+        enabled=False,
+    )
+    assert second_created is False
+    assert second.id == first.id
+    assert second.enabled is False
+
+
+@pytest.mark.asyncio
 async def test_multiple_controls_on_target_all_returned(
     async_db: AsyncSession,
 ) -> None:

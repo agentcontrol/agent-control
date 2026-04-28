@@ -84,6 +84,12 @@ class ControlBindingsService:
         ``(namespace_key, target_type, target_id, control_id)`` already
         exists, ``enabled`` is updated to the supplied value; otherwise a
         new binding is created.
+
+        Concurrent callers for the same natural key are handled safely: the
+        loser of the unique-constraint race rolls back its insert, re-reads
+        the winning row, and applies its ``enabled`` value as an update. Both
+        calls return successfully; the create flag is true only for the
+        caller whose insert actually wrote the row.
         """
         await self._require_control(
             namespace_key=namespace_key, control_id=control_id
@@ -107,8 +113,24 @@ class ControlBindingsService:
             enabled=enabled,
         )
         self._db.add(binding)
-        await self._db.flush()
-        return binding, True
+        try:
+            await self._db.flush()
+            return binding, True
+        except IntegrityError:
+            # Concurrent insert won the natural-key race. Roll back our insert,
+            # re-read the winning row, and apply the requested enabled value.
+            await self._db.rollback()
+            existing = await self._find_by_natural_key(
+                namespace_key=namespace_key,
+                target_type=target_type,
+                target_id=target_id,
+                control_id=control_id,
+            )
+            if existing is None:
+                raise
+            existing.enabled = enabled
+            await self._db.flush()
+            return existing, False
 
     async def delete_by_natural_key(
         self,
