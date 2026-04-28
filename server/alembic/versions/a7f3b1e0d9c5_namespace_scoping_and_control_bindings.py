@@ -244,8 +244,16 @@ def upgrade() -> None:
     #    unique constraints lead with namespace_key, so name-only lookups
     #    (existing service code) no longer have a leading-column index. These
     #    plain indexes preserve that lookup shape during the rollout window.
+    #    The controls index mirrors the partial filter on the existing
+    #    name-based call sites, which all require deleted_at IS NULL.
     op.create_index("ix_agents_name", "agents", ["name"])
     op.create_index("ix_policies_name", "policies", ["name"])
+    op.create_index(
+        "ix_controls_name",
+        "controls",
+        ["name"],
+        postgresql_where=sa.text("deleted_at IS NULL"),
+    )
 
 
 def downgrade() -> None:
@@ -290,6 +298,7 @@ def downgrade() -> None:
         )
 
     # 1. Drop natural-key indexes added by upgrade.
+    op.drop_index("ix_controls_name", table_name="controls")
     op.drop_index("ix_policies_name", table_name="policies")
     op.drop_index("ix_agents_name", table_name="agents")
 

@@ -60,7 +60,13 @@ def _set_control_data(client: TestClient, control_id: int, data: dict) -> None:
     assert resp.status_code == 200, resp.text
 
 
-def test_create_control_integrity_error_returns_conflict(client: TestClient) -> None:
+@pytest.mark.parametrize(
+    "constraint_name",
+    ["idx_controls_name_active", "idx_controls_namespace_name_active"],
+)
+def test_create_control_integrity_error_returns_conflict(
+    client: TestClient, constraint_name: str
+) -> None:
     """DB uniqueness violations during create should be surfaced as 409 conflicts."""
 
     async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
@@ -72,7 +78,7 @@ def test_create_control_integrity_error_returns_conflict(client: TestClient) -> 
         mock_session.add = MagicMock()
         mock_session.refresh = AsyncMock()
         mock_session.commit = AsyncMock(
-            side_effect=_make_integrity_error("idx_controls_name_active")
+            side_effect=_make_integrity_error(constraint_name)
         )
         yield mock_session
 
@@ -89,7 +95,13 @@ def test_create_control_integrity_error_returns_conflict(client: TestClient) -> 
     assert resp.json()["error_code"] == "CONTROL_NAME_CONFLICT"
 
 
-def test_patch_control_rename_integrity_error_returns_conflict(client: TestClient) -> None:
+@pytest.mark.parametrize(
+    "constraint_name",
+    ["idx_controls_name_active", "idx_controls_namespace_name_active"],
+)
+def test_patch_control_rename_integrity_error_returns_conflict(
+    client: TestClient, constraint_name: str
+) -> None:
     """DB uniqueness violations during rename should be surfaced as 409 conflicts."""
     control_obj = SimpleNamespace(
         id=1,
@@ -120,7 +132,7 @@ def test_patch_control_rename_integrity_error_returns_conflict(client: TestClien
             ]
         )
         mock_session.commit = AsyncMock(
-            side_effect=_make_integrity_error("idx_controls_name_active")
+            side_effect=_make_integrity_error(constraint_name)
         )
         yield mock_session
 

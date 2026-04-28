@@ -75,6 +75,7 @@ _logger = get_logger(__name__)
 _CONTROL_NAME_UNIQUE_CONSTRAINTS = {
     "controls_name_key",
     "idx_controls_name_active",
+    "idx_controls_namespace_name_active",
 }
 
 

@@ -156,6 +156,16 @@ class Control(Base):
         UniqueConstraint(
             "namespace_key", "id", name="uq_controls_namespace_id"
         ),
+        # Plain partial index on name preserves name-only lookup performance
+        # while service code is still namespace-blind. Mirrors the pattern
+        # used for agents and policies; the partial filter matches the
+        # existing call sites that already require deleted_at IS NULL.
+        Index(
+            "ix_controls_name",
+            "name",
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

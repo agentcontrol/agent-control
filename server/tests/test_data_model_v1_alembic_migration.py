@@ -153,6 +153,7 @@ def test_upgrade_applies_namespace_columns_and_constraints(
     # service code is still namespace-blind.
     assert "ix_agents_name" in _index_names(temp_engine, "agents")
     assert "ix_policies_name" in _index_names(temp_engine, "policies")
+    assert "ix_controls_name" in _index_names(temp_engine, "controls")
 
 
 def test_upgrade_creates_control_bindings(
@@ -210,6 +211,7 @@ def test_downgrade_restores_original_constraints(
     assert "idx_controls_name_active" in _index_names(temp_engine, "controls")
     assert "ix_agents_name" not in _index_names(temp_engine, "agents")
     assert "ix_policies_name" not in _index_names(temp_engine, "policies")
+    assert "ix_controls_name" not in _index_names(temp_engine, "controls")
 
 
 def test_downgrade_round_trip(alembic_config: Config, temp_engine: Engine) -> None:
