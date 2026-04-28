@@ -287,6 +287,13 @@ class ControlBinding(Base):
             "target_type",
             "target_id",
         ),
+        # Leading-control_id index covers list_bindings(control_id=...)
+        # filters and the ON DELETE CASCADE path from controls.
+        Index(
+            "idx_control_bindings_control",
+            "namespace_key",
+            "control_id",
+        ),
     )
 
     id: Mapped[int] = mapped_column(

@@ -232,6 +232,13 @@ def upgrade() -> None:
         "control_bindings",
         ["namespace_key", "target_type", "target_id"],
     )
+    # Leading-control_id index covers list_bindings(control_id=...) and the
+    # ON DELETE CASCADE path from controls.
+    op.create_index(
+        "idx_control_bindings_control",
+        "control_bindings",
+        ["namespace_key", "control_id"],
+    )
 
     # 7. Restore natural-key index coverage. The composite primary keys and
     #    unique constraints lead with namespace_key, so name-only lookups
@@ -287,6 +294,7 @@ def downgrade() -> None:
     op.drop_index("ix_agents_name", table_name="agents")
 
     # 2. Drop control_bindings.
+    op.drop_index("idx_control_bindings_control", table_name="control_bindings")
     op.drop_index("idx_control_bindings_lookup", table_name="control_bindings")
     op.drop_table("control_bindings")
 

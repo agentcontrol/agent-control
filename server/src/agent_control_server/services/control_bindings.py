@@ -8,7 +8,6 @@ paths if and when they become a product requirement.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -342,47 +341,24 @@ class ControlBindingsService:
 
         Per-agent narrowing is intentionally out of scope at this stage; the
         resolver returns the full target-level set.
+
+        Uses a single JOIN query so both filters (binding match + enabled +
+        live control) are pushed to Postgres in one round-trip.
         """
-        candidates = await self._fetch_candidate_bindings(
-            namespace_key=namespace_key,
-            target_type=target_type,
-            target_id=target_id,
-        )
-        enabled_control_ids = [
-            binding.control_id for binding in candidates if binding.enabled
-        ]
-        if not enabled_control_ids:
-            return []
-        return await self._fetch_active_controls(
-            namespace_key=namespace_key,
-            control_ids=enabled_control_ids,
-        )
-
-    async def _fetch_candidate_bindings(
-        self,
-        *,
-        namespace_key: str,
-        target_type: str,
-        target_id: str,
-    ) -> Sequence[ControlBinding]:
-        stmt = select(ControlBinding).where(
-            ControlBinding.namespace_key == namespace_key,
-            ControlBinding.target_type == target_type,
-            ControlBinding.target_id == target_id,
-        )
-        result = await self._db.execute(stmt)
-        return result.scalars().all()
-
-    async def _fetch_active_controls(
-        self,
-        *,
-        namespace_key: str,
-        control_ids: Sequence[int],
-    ) -> list[Control]:
-        stmt = select(Control).where(
-            Control.namespace_key == namespace_key,
-            Control.id.in_(control_ids),
-            Control.deleted_at.is_(None),
+        stmt = (
+            select(Control)
+            .join(
+                ControlBinding,
+                (ControlBinding.namespace_key == Control.namespace_key)
+                & (ControlBinding.control_id == Control.id),
+            )
+            .where(
+                ControlBinding.namespace_key == namespace_key,
+                ControlBinding.target_type == target_type,
+                ControlBinding.target_id == target_id,
+                ControlBinding.enabled.is_(True),
+                Control.deleted_at.is_(None),
+            )
         )
         result = await self._db.execute(stmt)
         return list(result.scalars())
