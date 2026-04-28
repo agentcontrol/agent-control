@@ -44,7 +44,7 @@ policy_controls: Table = Table(
     Base.metadata,
     Column(
         "namespace_key",
-        Text,
+        String(255),
         primary_key=True,
         nullable=False,
         server_default=_NAMESPACE_SERVER_DEFAULT,
@@ -69,7 +69,7 @@ agent_policies: Table = Table(
     Base.metadata,
     Column(
         "namespace_key",
-        Text,
+        String(255),
         primary_key=True,
         nullable=False,
         server_default=_NAMESPACE_SERVER_DEFAULT,
@@ -94,7 +94,7 @@ agent_controls: Table = Table(
     Base.metadata,
     Column(
         "namespace_key",
-        Text,
+        String(255),
         primary_key=True,
         nullable=False,
         server_default=_NAMESPACE_SERVER_DEFAULT,
@@ -130,7 +130,7 @@ class Policy(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     namespace_key: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
+        String(255), nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     agents: Mapped[list["Agent"]] = relationship(
@@ -160,7 +160,7 @@ class Control(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     namespace_key: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
+        String(255), nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # JSONB payload describing control specifics
@@ -211,7 +211,7 @@ class Agent(Base):
     )
 
     namespace_key: Mapped[str] = mapped_column(
-        Text,
+        String(255),
         primary_key=True,
         nullable=False,
         server_default=_NAMESPACE_SERVER_DEFAULT,
@@ -300,7 +300,7 @@ class ControlBinding(Base):
         Integer, primary_key=True, autoincrement=True
     )
     namespace_key: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
+        String(255), nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
     )
     target_type: Mapped[str] = mapped_column(Text, nullable=False)
     target_id: Mapped[str] = mapped_column(Text, nullable=False)

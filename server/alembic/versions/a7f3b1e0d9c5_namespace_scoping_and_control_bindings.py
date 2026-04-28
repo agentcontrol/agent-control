@@ -48,7 +48,7 @@ def upgrade() -> None:
             table,
             sa.Column(
                 "namespace_key",
-                sa.Text(),
+                sa.String(255),
                 nullable=False,
                 server_default=_NAMESPACE_DEFAULT,
             ),
@@ -187,7 +187,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "namespace_key",
-            sa.Text(),
+            sa.String(255),
             nullable=False,
             server_default=_NAMESPACE_DEFAULT,
         ),
