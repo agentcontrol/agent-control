@@ -18,8 +18,7 @@ from ..auth import RequireAPIKey
 from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
-from ..models import Agent
-from ..namespace import get_namespace_key
+from ..models import DEFAULT_NAMESPACE_KEY, Agent
 from ..services.control_bindings import ControlBindingsService
 from ..services.controls import ControlService
 
@@ -129,7 +128,6 @@ async def evaluate(
     request: EvaluationRequest,
     client: RequireAPIKey,
     db: AsyncSession = Depends(get_async_db),
-    namespace_key: str = Depends(get_namespace_key),
 ) -> EvaluationResponse:
     """Analyze content for safety and control violations.
 
@@ -150,7 +148,7 @@ async def evaluate(
 
     if request.target_type is not None and request.target_id is not None:
         runtime_controls = await ControlBindingsService(db).resolve_runtime_controls(
-            namespace_key=namespace_key,
+            namespace_key=DEFAULT_NAMESPACE_KEY,
             target_type=request.target_type,
             target_id=request.target_id,
             allow_invalid_step_name_regex=True,
