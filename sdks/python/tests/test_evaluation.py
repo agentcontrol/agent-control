@@ -228,6 +228,31 @@ async def test_check_evaluation_partial_target_pair_rejected():
 
 
 @pytest.mark.asyncio
+async def test_per_call_target_must_match_session_target():
+    """A per-call target that disagrees with init()'s target is rejected.
+
+    The cached controls are fetched for the session target; accepting a
+    mismatched per-call target would drive stale local-first evaluation.
+    """
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.post = AsyncMock()
+
+    with patch("agent_control._state.state.target_type", "env"), patch(
+        "agent_control._state.state.target_id", "prod"
+    ):
+        with pytest.raises(ValueError, match="must match the target context fixed at init"):
+            await evaluation.check_evaluation(
+                client=client,
+                agent_name="Agent-Example_01",
+                step={"type": "llm", "name": "chat", "input": "hello"},
+                stage="pre",
+                target_type="env",
+                target_id="staging",  # session is "prod"
+            )
+
+
+@pytest.mark.asyncio
 async def test_evaluate_controls_defaults_target_from_state(monkeypatch):
     """``evaluate_controls`` falls back to state target when params omitted."""
     mock_result = EvaluationResult(is_safe=True, confidence=1.0)

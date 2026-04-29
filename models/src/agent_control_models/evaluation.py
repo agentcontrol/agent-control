@@ -25,9 +25,9 @@ class EvaluationRequest(BaseModel):
         step: Step payload for evaluation
         stage: 'pre' (before execution) or 'post' (after execution)
         target_type: Optional opaque target kind. When set together with
-            ``target_id``, the request resolves controls from the
-            target-bearing path (control bindings) instead of the
-            agent-attached path.
+            ``target_id``, the server merges controls bound to that target
+            into the effective set, in addition to the agent's direct and
+            policy-derived controls.
         target_id: Optional opaque target identifier. Required when
             ``target_type`` is set.
     """
@@ -47,7 +47,9 @@ class EvaluationRequest(BaseModel):
         default=None,
         description=(
             "Optional opaque target kind. When set together with target_id, "
-            "the request resolves controls from the target-bearing path."
+            "the server merges controls bound to that target into the "
+            "effective set, in addition to the agent's direct and "
+            "policy-derived controls."
         ),
     )
     target_id: _TARGET_FIELD = Field(

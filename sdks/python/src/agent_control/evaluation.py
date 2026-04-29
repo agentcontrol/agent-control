@@ -32,6 +32,37 @@ class _ControlAdapter:
     control: ControlDefinitionRuntime
 
 
+def _resolve_session_target(
+    target_type: str | None, target_id: str | None
+) -> tuple[str | None, str | None]:
+    """Default per-call target from state, and reject mismatches.
+
+    The SDK supports one target per session, fixed at ``init()`` time. The
+    cached controls (``state.server_controls``) are fetched for that
+    session target. A per-call override that disagrees with the session
+    target would evaluate against the wrong cache and could return safe
+    without contacting the server. Reject the mismatch instead so callers
+    re-init when they need to change targets.
+
+    Returns the resolved ``(target_type, target_id)`` to forward.
+    """
+    if target_type is None and target_id is None:
+        return state.target_type, state.target_id
+    if (target_type is None) != (target_id is None):
+        raise ValueError(
+            "target_type and target_id must be supplied together."
+        )
+    if state.target_type is not None and (
+        target_type != state.target_type or target_id != state.target_id
+    ):
+        raise ValueError(
+            "Per-call target context must match the target context fixed at "
+            "init() time. The SDK supports one target per session; re-init "
+            "to change it."
+        )
+    return target_type, target_id
+
+
 def _get_applicable_controls(
     controls: list[_ControlAdapter],
     request: EvaluationRequest,
@@ -183,15 +214,10 @@ async def check_evaluation(
     When ``target_type`` and ``target_id`` are both supplied, the request
     is target-bearing and the server merges target bindings into the
     effective control set. If they are omitted, the SDK falls back to the
-    target context fixed at ``init()`` time when present.
+    target context fixed at ``init()`` time when present. A per-call
+    override that disagrees with the session target is rejected.
     """
-    if target_type is None and target_id is None:
-        target_type = state.target_type
-        target_id = state.target_id
-    elif (target_type is None) != (target_id is None):
-        raise ValueError(
-            "target_type and target_id must be supplied together."
-        )
+    target_type, target_id = _resolve_session_target(target_type, target_id)
 
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id, resolved_span_id = get_trace_and_span_ids()
@@ -251,15 +277,12 @@ async def check_evaluation_with_local(
 
     When ``target_type`` and ``target_id`` are both omitted, the SDK falls
     back to the target context fixed at ``init()`` time when present so
-    the server resolves the same merged set on the runtime call.
+    the server resolves the same merged set on the runtime call. A
+    per-call override that disagrees with the session target is rejected
+    because the supplied ``controls`` were fetched for the session target
+    and would otherwise produce stale local-first results.
     """
-    if target_type is None and target_id is None:
-        target_type = state.target_type
-        target_id = state.target_id
-    elif (target_type is None) != (target_id is None):
-        raise ValueError(
-            "target_type and target_id must be supplied together."
-        )
+    target_type, target_id = _resolve_session_target(target_type, target_id)
 
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id = trace_id
@@ -453,19 +476,15 @@ async def evaluate_controls(
     When ``target_type`` and ``target_id`` are both supplied, the request
     is target-bearing: the server merges target bindings into the
     effective control set. If they are omitted, the SDK falls back to the
-    target context fixed at ``init()`` time when present. The two fields
-    must be supplied together when used per-call.
+    target context fixed at ``init()`` time when present. A per-call
+    override that disagrees with the session target is rejected because
+    the cached controls were fetched for the session target and would
+    otherwise drive stale local-first evaluation.
     """
     if state.server_url is None:
         raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
 
-    if target_type is None and target_id is None:
-        target_type = state.target_type
-        target_id = state.target_id
-    elif (target_type is None) != (target_id is None):
-        raise ValueError(
-            "target_type and target_id must be supplied together."
-        )
+    target_type, target_id = _resolve_session_target(target_type, target_id)
 
     default_value = {} if step_type == "tool" else ""
     step_dict: dict[str, Any] = {
