@@ -37,12 +37,18 @@ def _resolve_session_target(
 ) -> tuple[str | None, str | None]:
     """Default per-call target from state, and reject mismatches.
 
-    The SDK supports one target per session, fixed at ``init()`` time. The
-    cached controls (``state.server_controls``) are fetched for that
-    session target. A per-call override that disagrees with the session
-    target would evaluate against the wrong cache and could return safe
-    without contacting the server. Reject the mismatch instead so callers
-    re-init when they need to change targets.
+    The SDK supports one target per session, fixed at ``init()`` time —
+    including no-target sessions, where the session target is
+    ``(None, None)``. The cached controls (``state.server_controls``) are
+    fetched for that session target. A per-call override that disagrees
+    with the session target — including supplying an explicit target on a
+    no-target session — would evaluate against the wrong cache and could
+    return safe without contacting the server. Reject the mismatch so
+    callers re-init when they need to change targets.
+
+    Outside an active session (no ``init()`` call), the helper does not
+    enforce the rule: callers using lower-level APIs with their own
+    client manage their own controls.
 
     Returns the resolved ``(target_type, target_id)`` to forward.
     """
@@ -52,13 +58,13 @@ def _resolve_session_target(
         raise ValueError(
             "target_type and target_id must be supplied together."
         )
-    if state.target_type is not None and (
+    if state.current_agent is not None and (
         target_type != state.target_type or target_id != state.target_id
     ):
         raise ValueError(
             "Per-call target context must match the target context fixed at "
-            "init() time. The SDK supports one target per session; re-init "
-            "to change it."
+            "init() time. The SDK supports one target per session "
+            "(including no-target sessions); re-init to change it."
         )
     return target_type, target_id
 

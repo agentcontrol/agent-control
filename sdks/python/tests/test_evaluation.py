@@ -157,21 +157,29 @@ async def test_check_evaluation_forwards_target_context():
 
 @pytest.mark.asyncio
 async def test_evaluate_controls_forwards_target_context(monkeypatch):
-    """evaluate_controls passes target_type/target_id into check_evaluation_with_local."""
+    """evaluate_controls passes target_type/target_id into check_evaluation_with_local.
+
+    Per the V1 contract, per-call target must match the session target.
+    The test pins forwarding behavior with state.target_type/state.target_id
+    set to the same values as the per-call args.
+    """
     mock_result = EvaluationResult(is_safe=True, confidence=1.0)
     mock_check = AsyncMock(return_value=mock_result)
     monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
 
-    with patch("agent_control.state.server_url", "http://localhost:8000"):
-        with patch("agent_control.state.api_key", None):
-            await evaluation.evaluate_controls(
-                step_name="chat",
-                input="hello",
-                stage="pre",
-                agent_name="test-bot",
-                target_type="env",
-                target_id="prod",
-            )
+    with patch("agent_control.state.server_url", "http://localhost:8000"), patch(
+        "agent_control.state.api_key", None
+    ), patch("agent_control._state.state.target_type", "env"), patch(
+        "agent_control._state.state.target_id", "prod"
+    ):
+        await evaluation.evaluate_controls(
+            step_name="chat",
+            input="hello",
+            stage="pre",
+            agent_name="test-bot",
+            target_type="env",
+            target_id="prod",
+        )
 
     kwargs = mock_check.call_args.kwargs
     assert kwargs["target_type"] == "env"
@@ -238,9 +246,11 @@ async def test_per_call_target_must_match_session_target():
     client.http_client = MagicMock()
     client.http_client.post = AsyncMock()
 
-    with patch("agent_control._state.state.target_type", "env"), patch(
-        "agent_control._state.state.target_id", "prod"
-    ):
+    session_agent = MagicMock(name="session_agent")
+
+    with patch("agent_control._state.state.current_agent", session_agent), patch(
+        "agent_control._state.state.target_type", "env"
+    ), patch("agent_control._state.state.target_id", "prod"):
         with pytest.raises(ValueError, match="must match the target context fixed at init"):
             await evaluation.check_evaluation(
                 client=client,
@@ -249,6 +259,36 @@ async def test_per_call_target_must_match_session_target():
                 stage="pre",
                 target_type="env",
                 target_id="staging",  # session is "prod"
+            )
+
+
+@pytest.mark.asyncio
+async def test_no_target_session_rejects_per_call_target():
+    """An init() without target context is itself a fixed (None, None) session.
+
+    The session's cached controls were fetched without target context, so a
+    per-call target that supplies an explicit (target_type, target_id) would
+    drive stale local-first evaluation. Reject the mismatch.
+    """
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.post = AsyncMock()
+
+    session_agent = MagicMock(name="session_agent")
+
+    with patch("agent_control._state.state.current_agent", session_agent), patch(
+        "agent_control._state.state.target_type", None
+    ), patch("agent_control._state.state.target_id", None):
+        with pytest.raises(
+            ValueError, match="must match the target context fixed at init"
+        ):
+            await evaluation.check_evaluation(
+                client=client,
+                agent_name="Agent-Example_01",
+                step={"type": "llm", "name": "chat", "input": "hello"},
+                stage="pre",
+                target_type="env",
+                target_id="prod",
             )
 
 
