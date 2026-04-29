@@ -16,11 +16,9 @@ from agent_control_models import (
 )
 
 from ._state import state
-from ._target_controls_cache import get_target_controls_cache
 from .client import AgentControlClient
 from .evaluation_events import build_control_execution_events, enqueue_observability_events
 from .observability import is_observability_enabled
-from .settings import get_settings
 from .tracing import get_trace_and_span_ids
 from .validation import ensure_agent_name
 
@@ -183,9 +181,18 @@ async def check_evaluation(
     from the response and enqueues them through the built-in SDK batcher.
 
     When ``target_type`` and ``target_id`` are both supplied, the request
-    is treated as target-bearing and the server resolves controls from
-    control bindings instead of from the agent's direct attachments.
+    is target-bearing and the server merges target bindings into the
+    effective control set. If they are omitted, the SDK falls back to the
+    target context fixed at ``init()`` time when present.
     """
+    if target_type is None and target_id is None:
+        target_type = state.target_type
+        target_id = state.target_id
+    elif (target_type is None) != (target_id is None):
+        raise ValueError(
+            "target_type and target_id must be supplied together."
+        )
+
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id, resolved_span_id = get_trace_and_span_ids()
     request = EvaluationRequest(
@@ -220,61 +227,6 @@ async def check_evaluation(
     return cast(EvaluationResult, EvaluationResult.from_dict(evaluation_response.model_dump()))
 
 
-def _client_matches_active_session(client: AgentControlClient) -> bool:
-    """Return whether the supplied client points at the SDK's active session.
-
-    The target-controls cache is keyed only by ``(target_type, target_id)``;
-    sharing it across clients with different identities would let a binding
-    fetched against one server/api_key serve evaluations against another.
-    The cache is therefore only consulted when ``state.server_url`` /
-    ``state.api_key`` (set by ``init()``) match the supplied client.
-    """
-    if state.server_url is None:
-        return False
-    return (
-        client.base_url == state.server_url.rstrip("/")
-        and client.api_key == state.api_key
-    )
-
-
-async def _fetch_effective_target_controls(
-    client: AgentControlClient,
-    target_type: str,
-    target_id: str,
-) -> list[dict[str, Any]]:
-    """Fetch the runtime-ready controls bound to a target.
-
-    When the client matches the SDK's active session (``init()``-managed),
-    results are cached per ``(target_type, target_id)`` and kept fresh by
-    the target-controls refresh loop. Calls with a different-identity
-    client bypass the cache to avoid cross-identity leaks. Returned in
-    the same shape as ``state.server_controls`` so the result can be fed
-    through the existing local-vs-server split.
-    """
-    use_cache = _client_matches_active_session(client)
-
-    if use_cache:
-        cache = get_target_controls_cache()
-        cache.configure(max_size=get_settings().target_controls_cache_max_size)
-
-        cached = cache.get(target_type, target_id)
-        if cached is not None:
-            return cached
-        epoch = cache.current_epoch()
-
-    response = await client.http_client.get(
-        "/api/v1/control-bindings/effective",
-        params={"target_type": target_type, "target_id": target_id},
-    )
-    response.raise_for_status()
-    payload = response.json()
-    controls = list(payload.get("controls", []))
-
-    if use_cache:
-        cache.put(target_type, target_id, controls, epoch=epoch)
-    return controls
-
-
 async def check_evaluation_with_local(
     client: AgentControlClient,
     agent_name: str,
@@ -290,17 +242,25 @@ async def check_evaluation_with_local(
 ) -> EvaluationResult:
     """Evaluate controls with local-first execution and SDK-owned event emission.
 
-    When ``target_type`` and ``target_id`` are both supplied, the cached
-    agent-attached controls are bypassed; the SDK fetches the effective
-    target-bound controls from the server and runs the same local-vs-server
-    split against that set. Per-target results are cached; freshness is
-    maintained by the SDK's target-controls refresh loop, started by
-    ``init()``. Call :func:`refresh_target_controls` to refetch on
-    demand or :func:`invalidate_target_controls_cache` to drop entries.
-    Controls with ``execution='sdk'`` run locally; ``execution='server'``
-    controls are evaluated by the server through ``/evaluation`` with the
-    target context preserved.
+    The supplied ``controls`` are the effective set returned by the server
+    for the active session (the merged result of the agent's direct
+    attachments, policy-derived controls, and target bindings when target
+    context is set). Controls with ``execution='sdk'`` run locally;
+    ``execution='server'`` controls are evaluated by the server through
+    ``/evaluation`` with the request's target context preserved.
+
+    When ``target_type`` and ``target_id`` are both omitted, the SDK falls
+    back to the target context fixed at ``init()`` time when present so
+    the server resolves the same merged set on the runtime call.
     """
+    if target_type is None and target_id is None:
+        target_type = state.target_type
+        target_id = state.target_id
+    elif (target_type is None) != (target_id is None):
+        raise ValueError(
+            "target_type and target_id must be supplied together."
+        )
+
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id = trace_id
     resolved_span_id = span_id
@@ -308,11 +268,6 @@ async def check_evaluation_with_local(
         current_trace_id, current_span_id = get_trace_and_span_ids()
         resolved_trace_id = trace_id or current_trace_id
         resolved_span_id = span_id or current_span_id
-
-    if target_type is not None and target_id is not None:
-        controls = await _fetch_effective_target_controls(
-            client, target_type, target_id
-        )
 
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []
@@ -496,12 +451,21 @@ async def evaluate_controls(
     """Evaluate controls for a step.
 
     When ``target_type`` and ``target_id`` are both supplied, the request
-    is treated as target-bearing: the server resolves the effective control
-    set from control bindings instead of from the agent's direct
-    attachments. The two fields must be supplied together.
+    is target-bearing: the server merges target bindings into the
+    effective control set. If they are omitted, the SDK falls back to the
+    target context fixed at ``init()`` time when present. The two fields
+    must be supplied together when used per-call.
     """
     if state.server_url is None:
         raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
+
+    if target_type is None and target_id is None:
+        target_type = state.target_type
+        target_id = state.target_id
+    elif (target_type is None) != (target_id is None):
+        raise ValueError(
+            "target_type and target_id must be supplied together."
+        )
 
     default_value = {} if step_type == "tool" else ""
     step_dict: dict[str, Any] = {

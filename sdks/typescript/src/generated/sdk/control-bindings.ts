@@ -6,7 +6,6 @@ import { controlBindingsCreate } from "../funcs/control-bindings-create.js";
 import { controlBindingsDeleteByKey } from "../funcs/control-bindings-delete-by-key.js";
 import { controlBindingsDelete } from "../funcs/control-bindings-delete.js";
 import { controlBindingsGet } from "../funcs/control-bindings-get.js";
-import { controlBindingsListEffectiveTargetControls } from "../funcs/control-bindings-list-effective-target-controls.js";
 import { controlBindingsList } from "../funcs/control-bindings-list.js";
 import { controlBindingsUpdate } from "../funcs/control-bindings-update.js";
 import { controlBindingsUpsertByKey } from "../funcs/control-bindings-upsert-by-key.js";
@@ -89,29 +88,6 @@ export class ControlBindings extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.DeleteControlBindingByKeyResponse> {
     return unwrapAsync(controlBindingsDeleteByKey(
-      this,
-      request,
-      options,
-    ));
-  }
-
-  /**
-   * List effective controls for a target
-   *
-   * @remarks
-   * Return the effective control set for a target-bearing request.
-   *
-   * Used by the Python SDK to perform local-first execution on
-   * ``execution='sdk'`` controls bound to a target. The same set of
-   * controls is what ``/evaluation`` resolves on the server when a
-   * target-bearing request arrives.
-   */
-  async listEffectiveTargetControls(
-    request:
-      operations.ListEffectiveTargetControlsApiV1ControlBindingsEffectiveGetRequest,
-    options?: RequestOptions,
-  ): Promise<models.EffectiveTargetControlsResponse> {
-    return unwrapAsync(controlBindingsListEffectiveTargetControls(
       this,
       request,
       options,

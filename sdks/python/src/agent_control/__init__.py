@@ -140,12 +140,6 @@ _policy_refresh_interval_seconds: int | None = None
 _refresh_thread: threading.Thread | None = None
 _refresh_stop_event: threading.Event | None = None
 
-# Target-bound controls refresh loop state
-_target_refresh_lock = threading.Lock()
-_target_refresh_interval_seconds: int | None = None
-_target_refresh_thread: threading.Thread | None = None
-_target_refresh_stop_event: threading.Event | None = None
-
 # Session lifecycle state used to discard stale manual refresh results.
 _session_lock = threading.Lock()
 _session_generation = 0
@@ -153,12 +147,20 @@ _session_generation = 0
 
 @dataclass(frozen=True)
 class _RefreshContext:
-    """Connection/session snapshot for a single refresh request."""
+    """Connection/session snapshot for a single refresh request.
+
+    The session-level target context, when set, is captured here so the
+    refresh worker forwards it on each ``GET /agents/{name}/controls``
+    call. The server returns the merged effective set, which is what
+    ``state.server_controls`` is published from.
+    """
 
     session_generation: int
     agent_name: str
     server_url: str
     api_key: str | None
+    target_type: str | None
+    target_id: str | None
 
 
 def get_server_controls() -> list[dict[str, Any]] | None:
@@ -218,6 +220,8 @@ def _snapshot_refresh_context() -> _RefreshContext:
         agent = state.current_agent
         server_url = state.server_url
         api_key = state.api_key
+        target_type = state.target_type
+        target_id = state.target_id
 
     if agent is None:
         raise RuntimeError("Agent not initialized. Call agent_control.init() first.")
@@ -229,6 +233,8 @@ def _snapshot_refresh_context() -> _RefreshContext:
         agent_name=agent.agent_name,
         server_url=server_url,
         api_key=api_key,
+        target_type=target_type,
+        target_id=target_id,
     )
 
 
@@ -243,6 +249,8 @@ async def _fetch_controls_for_context_async(context: _RefreshContext) -> list[di
             context.agent_name,
             rendered_state="rendered",
             enabled_state="enabled",
+            target_type=context.target_type,
+            target_id=context.target_id,
         )
         controls: list[dict[str, Any]] = response.get("controls", [])
         return controls
@@ -329,135 +337,6 @@ def _start_policy_refresh_loop(interval_seconds: int) -> None:
     logger.info("Started policy refresh loop (interval=%ss)", interval_seconds)
 
 
-async def _refresh_target_controls_for_keys_async(
-    context: _RefreshContext,
-    keys: list[tuple[str, str]],
-) -> int:
-    """Refresh the cache entry for each (target_type, target_id) key.
-
-    Returns the number of keys whose cache entry was successfully refreshed.
-    A failure on one key is logged and skipped so the rest still update.
-    """
-    from ._target_controls_cache import get_target_controls_cache
-
-    cache = get_target_controls_cache()
-    epoch = cache.current_epoch()
-    refreshed = 0
-    async with AgentControlClient(
-        base_url=context.server_url,
-        api_key=context.api_key,
-    ) as client:
-        for target_type, target_id in keys:
-            try:
-                response = await client.http_client.get(
-                    "/api/v1/control-bindings/effective",
-                    params={"target_type": target_type, "target_id": target_id},
-                )
-                response.raise_for_status()
-                payload = response.json()
-                stored = cache.put(
-                    target_type,
-                    target_id,
-                    list(payload.get("controls", [])),
-                    epoch=epoch,
-                )
-                if not stored:
-                    logger.info(
-                        "Discarding stale target controls refresh for "
-                        "superseded SDK session"
-                    )
-                    return refreshed
-                refreshed += 1
-            except Exception as exc:
-                logger.warning(
-                    "Failed to refresh target controls for (%s, %s): %s",
-                    target_type,
-                    target_id,
-                    exc,
-                    exc_info=True,
-                )
-    return refreshed
-
-
-def _target_controls_refresh_worker(
-    stop_event: threading.Event, interval_seconds: int
-) -> None:
-    """Background worker that periodically refreshes cached target controls."""
-    from ._target_controls_cache import get_target_controls_cache
-
-    while not stop_event.wait(interval_seconds):
-        if stop_event.is_set():
-            break
-        keys = get_target_controls_cache().keys_snapshot()
-        if not keys:
-            continue
-        try:
-            context = _snapshot_refresh_context()
-        except RuntimeError:
-            continue
-        try:
-            refreshed = _run_coro_in_new_loop(
-                _refresh_target_controls_for_keys_async(context, keys)
-            )
-        except Exception as exc:
-            logger.error(
-                "Background target controls refresh loop iteration failed: %s",
-                exc,
-                exc_info=True,
-            )
-            continue
-        if stop_event.is_set():
-            break
-        logger.info("Refreshed %d target control entr(ies)", refreshed)
-
-
-def _stop_target_controls_refresh_loop() -> None:
-    """Stop the background target controls refresh loop if running."""
-    global _target_refresh_interval_seconds, _target_refresh_thread, _target_refresh_stop_event
-
-    with _target_refresh_lock:
-        stop_event = _target_refresh_stop_event
-        refresh_thread = _target_refresh_thread
-        _target_refresh_interval_seconds = None
-        _target_refresh_stop_event = None
-        _target_refresh_thread = None
-
-    if stop_event is not None:
-        stop_event.set()
-
-    if refresh_thread is not None and refresh_thread.is_alive():
-        refresh_thread.join(timeout=2)
-        if refresh_thread.is_alive():
-            logger.warning(
-                "Timed out while stopping target controls refresh loop thread"
-            )
-
-
-def _start_target_controls_refresh_loop(interval_seconds: int) -> None:
-    """Start a background loop that refreshes cached target controls on a fixed interval."""
-    global _target_refresh_interval_seconds, _target_refresh_thread, _target_refresh_stop_event
-
-    if interval_seconds <= 0:
-        return
-
-    stop_event = threading.Event()
-    refresh_thread = threading.Thread(
-        target=_target_controls_refresh_worker,
-        args=(stop_event, interval_seconds),
-        name="agent-control-target-refresh",
-        daemon=True,
-    )
-    with _target_refresh_lock:
-        _target_refresh_interval_seconds = interval_seconds
-        _target_refresh_stop_event = stop_event
-        _target_refresh_thread = refresh_thread
-
-    refresh_thread.start()
-    logger.info(
-        "Started target controls refresh loop (interval=%ss)", interval_seconds
-    )
-
-
 async def refresh_controls_async() -> list[dict[str, Any]] | None:
     """Refresh controls from the server asynchronously.
 
@@ -540,77 +419,6 @@ def refresh_controls() -> list[dict[str, Any]] | None:
         return _run_coro_in_new_loop(refresh_controls_async())
 
 
-async def refresh_target_controls_async() -> int:
-    """Refresh every cached target-bound control entry asynchronously.
-
-    Refetches ``/api/v1/control-bindings/effective`` for every
-    ``(target_type, target_id)`` currently in the cache and updates each
-    entry. Use this after mutating bindings if you do not want to wait
-    for the background refresh loop's next tick.
-
-    Returns:
-        The number of cache entries that were successfully refreshed.
-    """
-    from ._target_controls_cache import get_target_controls_cache
-
-    keys = get_target_controls_cache().keys_snapshot()
-    if not keys:
-        return 0
-    context = _snapshot_refresh_context()
-    return await _refresh_target_controls_for_keys_async(context, keys)
-
-
-def refresh_target_controls() -> int:
-    """Refresh every cached target-bound control entry synchronously.
-
-    See :func:`refresh_target_controls_async` for behavior. Returns the
-    number of cache entries that were successfully refreshed.
-    """
-    try:
-        asyncio.get_running_loop()
-        result_container: list[int] = [0]
-        exception_container: list[Exception | None] = [None]
-
-        def run_in_thread() -> None:
-            try:
-                result_container[0] = _run_coro_in_new_loop(
-                    refresh_target_controls_async()
-                )
-            except Exception as e:
-                exception_container[0] = e
-
-        thread = threading.Thread(target=run_in_thread, daemon=True)
-        thread.start()
-        thread.join(timeout=10)
-
-        if exception_container[0]:
-            raise exception_container[0]
-        return result_container[0]
-
-    except RuntimeError:
-        return _run_coro_in_new_loop(refresh_target_controls_async())
-
-
-def invalidate_target_controls_cache(
-    target_type: str | None = None,
-    target_id: str | None = None,
-) -> None:
-    """Drop cached effective target-bound controls.
-
-    With both ``target_type`` and ``target_id`` supplied, invalidates that
-    one entry. Otherwise clears the entire cache. Call after mutating a
-    binding when the next evaluation must observe the change without
-    waiting for the refresh loop.
-    """
-    from ._target_controls_cache import get_target_controls_cache
-
-    cache = get_target_controls_cache()
-    if target_type is not None and target_id is not None:
-        cache.invalidate(target_type, target_id)
-    else:
-        cache.clear()
-
-
 # ============================================================================
 # Public API Functions
 # ============================================================================
@@ -629,7 +437,8 @@ def init(
     observability_sink_config: JSONObject | None = None,
     log_config: dict[str, Any] | None = None,
     policy_refresh_interval_seconds: int = 60,
-    target_controls_refresh_interval_seconds: int = 60,
+    target_type: str | None = None,
+    target_id: str | None = None,
     **kwargs: object
 ) -> Agent:
     """
@@ -642,6 +451,14 @@ def init(
     3. Fetch controls from the server
     4. Auto-discover and load local controls.yaml as fallback
     5. Enable the @control decorator
+
+    Target context (``target_type`` and ``target_id``) is fixed for the
+    lifetime of the SDK session: it is sent on the registration call and
+    on every subsequent refresh of ``GET /agents/{name}/controls``. The
+    server returns the merged effective set (direct attachments,
+    policy-derived controls, and bindings for the supplied target). The
+    SDK does not support switching target context per-request; re-init to
+    change it.
 
     Args:
         agent_name: Unique identifier for your agent (will be normalized to lowercase)
@@ -657,16 +474,17 @@ def init(
             Defaults to "overwrite" in SDK flows.
         observability_enabled: Optional bool to enable/disable observability (defaults to env var)
         observability_sink_name: Optional sink selection name. Use "default" to preserve
-            SDK -> server OSS delivery or "registered" / a named sink factory for custom sinks.
+            SDK -> server delivery or "registered" / a named sink factory for custom sinks.
         observability_sink_config: Optional JSON config payload for the selected sink.
         log_config: Optional logging configuration dict:
                {"enabled": True, "span_start": True, "span_end": True, "control_eval": True}
         policy_refresh_interval_seconds: Interval for background policy refresh loop.
             Defaults to 60 seconds. Set to 0 to disable background refresh.
-        target_controls_refresh_interval_seconds: Interval for the background
-            loop that refreshes cached target-bound controls keyed by
-            (target_type, target_id). Defaults to 60 seconds. Set to 0 to
-            disable the background refresh.
+        target_type: Optional opaque target kind. Required iff target_id is
+            also supplied. The server merges target-bound controls into the
+            returned set when both are present.
+        target_id: Optional opaque target identifier. Required iff target_type
+            is also supplied.
         **kwargs: Additional metadata to store with the agent
 
     Returns:
@@ -711,20 +529,15 @@ def init(
 
     if policy_refresh_interval_seconds < 0:
         raise ValueError("policy_refresh_interval_seconds must be >= 0")
-    if target_controls_refresh_interval_seconds < 0:
-        raise ValueError("target_controls_refresh_interval_seconds must be >= 0")
 
-    # Re-init behavior: always stop existing loops before mutating shared agent/session globals.
+    if (target_type is None) != (target_id is None):
+        raise ValueError(
+            "target_type and target_id must be supplied together."
+        )
+
+    # Re-init behavior: always stop the existing refresh loop before mutating
+    # shared agent/session globals.
     _stop_policy_refresh_loop()
-    _stop_target_controls_refresh_loop()
-
-    # Drop any cached target-bound controls from a prior session before the
-    # new session takes over, so a re-init against a different server/api_key
-    # cannot serve controls fetched under the previous identity. ``reset()``
-    # also advances the cache epoch, so any in-flight write from the old
-    # session is rejected when it lands.
-    from ._target_controls_cache import get_target_controls_cache
-    get_target_controls_cache().reset()
 
     # Configure logging if provided (do this early before any logging happens)
     if log_config:
@@ -748,6 +561,8 @@ def init(
         state.current_agent = next_agent
         state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
         state.api_key = api_key
+        state.target_type = target_type
+        state.target_id = target_id
 
     # Merge auto-discovered steps from @control() decorators with explicit steps.
     # Explicit steps take precedence when (type, name) collides.
@@ -799,6 +614,8 @@ def init(
                         state.current_agent,
                         steps=registration_steps,
                         conflict_mode=conflict_mode,
+                        target_type=state.target_type,
+                        target_id=state.target_id,
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])
@@ -878,14 +695,6 @@ def init(
     else:
         logger.debug("Policy refresh loop disabled (policy_refresh_interval_seconds=0)")
 
-    if target_controls_refresh_interval_seconds > 0:
-        _start_target_controls_refresh_loop(target_controls_refresh_interval_seconds)
-    else:
-        logger.debug(
-            "Target controls refresh loop disabled "
-            "(target_controls_refresh_interval_seconds=0)"
-        )
-
     return state.current_agent
 
 
@@ -896,8 +705,6 @@ def init(
 
 def _reset_state() -> None:
     """Clear all global SDK state."""
-    from ._target_controls_cache import get_target_controls_cache
-
     global _session_generation
 
     with _session_lock:
@@ -907,8 +714,8 @@ def _reset_state() -> None:
         state.server_controls = None
         state.server_url = None
         state.api_key = None
-
-    get_target_controls_cache().reset()
+        state.target_type = None
+        state.target_id = None
 
 
 async def ashutdown() -> None:
@@ -920,7 +727,6 @@ async def ashutdown() -> None:
     Use this from async code.  For sync code use :func:`shutdown`.
     """
     await asyncio.to_thread(_stop_policy_refresh_loop)
-    await asyncio.to_thread(_stop_target_controls_refresh_loop)
     await shutdown_observability()
     _reset_state()
     logger.info("Agent Control SDK shut down")
@@ -935,7 +741,6 @@ def shutdown() -> None:
     Use this from sync code.  For async code use :func:`ashutdown`.
     """
     _stop_policy_refresh_loop()
-    _stop_target_controls_refresh_loop()
     sync_shutdown_observability()
     _reset_state()
     logger.info("Agent Control SDK shut down")
@@ -1558,9 +1363,6 @@ __all__ = [
     "get_server_controls",
     "refresh_controls",
     "refresh_controls_async",
-    "refresh_target_controls",
-    "refresh_target_controls_async",
-    "invalidate_target_controls_cache",
     # Step registry (auto-discovered from @control decorators)
     "get_registered_steps",
     "clear_step_registry",

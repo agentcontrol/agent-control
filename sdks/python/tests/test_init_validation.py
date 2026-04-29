@@ -20,6 +20,21 @@ def test_init_rejects_negative_policy_refresh_interval() -> None:
         )
 
 
+def test_init_rejects_partial_target_pair() -> None:
+    """target_type and target_id must be supplied together."""
+    with pytest.raises(ValueError, match="target_type and target_id must be supplied together"):
+        agent_control.init(
+            agent_name="partial-target-agent",
+            target_type="env",  # target_id omitted
+        )
+
+    with pytest.raises(ValueError, match="target_type and target_id must be supplied together"):
+        agent_control.init(
+            agent_name="partial-target-agent",
+            target_id="prod",  # target_type omitted
+        )
+
+
 def test_init_exports_control_scope() -> None:
     assert agent_control.ControlScope is ModelControlScope
     assert "ControlScope" in agent_control.__all__

@@ -32,13 +32,12 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Analyze content for safety and control violations.
  *
- * Two resolution paths are supported:
- *
- * - Target-bearing: when both ``target_type`` and ``target_id`` are set on
- *   the request, the effective control set is resolved from
- *   ``control_bindings`` only. Direct agent attachments are not consulted.
- * - Agent-attached (default): the effective control set is resolved from
- *   the agent's direct controls and policy-derived controls.
+ * The effective control set is the de-duplicated union of the agent's
+ * direct controls, policy-derived controls, and (when ``target_type`` and
+ * ``target_id`` are both supplied) controls attached to that target via
+ * enabled bindings in the same namespace. The same merge applies on
+ * ``initAgent`` and ``GET /agents/{name}/controls`` so all three surfaces
+ * return the same set for the same inputs.
  *
  * This endpoint is intentionally evaluation-only. It returns the semantic
  * ``EvaluationResponse`` and does not build or ingest observability events

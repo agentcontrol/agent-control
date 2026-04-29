@@ -19,7 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
 from ..errors import APIValidationError, NotFoundError
-from ..models import Control, ControlVersion, agent_controls, agent_policies, policy_controls
+from ..models import (
+    Control,
+    ControlBinding,
+    ControlVersion,
+    agent_controls,
+    agent_policies,
+    policy_controls,
+)
 from .control_definitions import (
     parse_control_definition_or_api_error,
     parse_runtime_control_definition_or_api_error,
@@ -288,15 +295,25 @@ class ControlService:
         self,
         agent_name: str,
         *,
+        namespace_key: str,
+        target_type: str | None = None,
+        target_id: str | None = None,
         allow_invalid_step_name_regex: bool = False,
         rendered_state: AgentControlRenderedState = "rendered",
         enabled_state: AgentControlEnabledState = "enabled",
     ) -> list[APIControl]:
-        """Return API control models for controls associated with an agent.
+        """Return API control models for controls effective for an agent.
 
-        Associated controls are the de-duplicated union of:
+        The effective set is the de-duplicated union of:
         - controls inherited from all assigned policies
         - controls directly associated with the agent
+        - when ``target_type`` and ``target_id`` are both supplied, controls
+          attached to that target through enabled bindings in the same
+          namespace
+
+        ``namespace_key`` scopes every joined table; bindings, agent
+        attachments, policies, and the controls themselves must all live in
+        the supplied namespace.
 
         By default, only active controls are returned. "Active" means rendered
         and enabled. Callers can broaden the returned set via rendered_state and
@@ -307,7 +324,12 @@ class ControlService:
         Note: Any corrupted associated control row triggers APIValidationError,
         even if filters would otherwise exclude it.
         """
-        db_controls = await self._list_db_controls_for_agent(agent_name)
+        db_controls = await self._list_db_controls_for_agent(
+            agent_name,
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+        )
 
         parsed_controls = [
             parse_associated_control_or_api_error(
@@ -327,10 +349,23 @@ class ControlService:
         self,
         agent_name: str,
         *,
+        namespace_key: str,
+        target_type: str | None = None,
+        target_id: str | None = None,
         allow_invalid_step_name_regex: bool = False,
     ) -> list[RuntimeControl]:
-        """Return runtime-parsed controls for evaluation hot paths."""
-        db_controls = await self._list_db_controls_for_agent(agent_name)
+        """Return runtime-parsed controls for evaluation hot paths.
+
+        See :meth:`list_controls_for_agent` for the merge semantics; this
+        method applies the same selection logic and parses each row into the
+        runtime form used by the evaluation engine.
+        """
+        db_controls = await self._list_db_controls_for_agent(
+            agent_name,
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+        )
         return parse_runtime_controls(
             db_controls,
             allow_invalid_step_name_regex=allow_invalid_step_name_regex,
@@ -588,26 +623,70 @@ class ControlService:
             select(Control.id).where(Control.id == control_id).with_for_update()
         )
 
-    async def _list_db_controls_for_agent(self, agent_name: str) -> Sequence[Control]:
-        """Return DB control rows associated with an agent."""
+    async def _list_db_controls_for_agent(
+        self,
+        agent_name: str,
+        *,
+        namespace_key: str,
+        target_type: str | None = None,
+        target_id: str | None = None,
+    ) -> Sequence[Control]:
+        """Return the de-duplicated set of effective DB control rows for an agent.
+
+        Composite foreign keys make cross-namespace writes impossible, but
+        every read must still scope to ``namespace_key`` explicitly so a
+        compromised or mis-routed caller cannot observe rows it did not
+        ask for. Each joined table is filtered on the supplied namespace.
+        """
         policy_control_ids = (
             select(policy_controls.c.control_id.label("control_id"))
             .select_from(
                 policy_controls.join(
-                    agent_policies, policy_controls.c.policy_id == agent_policies.c.policy_id
+                    agent_policies,
+                    (policy_controls.c.policy_id == agent_policies.c.policy_id)
+                    & (
+                        policy_controls.c.namespace_key
+                        == agent_policies.c.namespace_key
+                    ),
                 )
             )
-            .where(agent_policies.c.agent_name == agent_name)
+            .where(
+                agent_policies.c.agent_name == agent_name,
+                agent_policies.c.namespace_key == namespace_key,
+                policy_controls.c.namespace_key == namespace_key,
+            )
         )
-        direct_control_ids = select(agent_controls.c.control_id.label("control_id")).where(
-            agent_controls.c.agent_name == agent_name
+        direct_control_ids = select(
+            agent_controls.c.control_id.label("control_id")
+        ).where(
+            agent_controls.c.agent_name == agent_name,
+            agent_controls.c.namespace_key == namespace_key,
         )
-        control_ids_subquery = union(policy_control_ids, direct_control_ids).subquery()
+
+        sources = [policy_control_ids, direct_control_ids]
+        if target_type is not None and target_id is not None:
+            binding_control_ids = select(
+                ControlBinding.control_id.label("control_id")
+            ).where(
+                ControlBinding.namespace_key == namespace_key,
+                ControlBinding.target_type == target_type,
+                ControlBinding.target_id == target_id,
+                ControlBinding.enabled.is_(True),
+            )
+            sources.append(binding_control_ids)
+
+        control_ids_subquery = union(*sources).subquery()
 
         stmt = (
             select(Control)
-            .join(control_ids_subquery, Control.id == control_ids_subquery.c.control_id)
-            .where(Control.deleted_at.is_(None))
+            .join(
+                control_ids_subquery,
+                Control.id == control_ids_subquery.c.control_id,
+            )
+            .where(
+                Control.namespace_key == namespace_key,
+                Control.deleted_at.is_(None),
+            )
             .order_by(Control.id.desc())
         )
 

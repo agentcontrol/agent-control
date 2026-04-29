@@ -1,6 +1,6 @@
 import datetime as dt
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
 from pydantic import (
     BeforeValidator,
@@ -8,6 +8,7 @@ from pydantic import (
     Field,
     StringConstraints,
     TypeAdapter,
+    model_validator,
 )
 
 from .agent import Agent, StepSchema
@@ -206,6 +207,34 @@ class InitAgentRequest(BaseModel):
             "'overwrite' applies latest-init-wins replacement for steps and evaluators."
         ),
     )
+    target_type: Annotated[
+        str | None, StringConstraints(min_length=1, max_length=255)
+    ] = Field(
+        default=None,
+        description=(
+            "Optional opaque target kind. When supplied with target_id, the "
+            "returned controls include controls bound to that target via "
+            "control bindings, in addition to the agent's direct and "
+            "policy-derived controls."
+        ),
+    )
+    target_id: Annotated[
+        str | None, StringConstraints(min_length=1, max_length=255)
+    ] = Field(
+        default=None,
+        description=(
+            "Optional opaque target identifier. Required when target_type is "
+            "supplied."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _check_target_pair(self) -> Self:
+        if (self.target_type is None) != (self.target_id is None):
+            raise ValueError(
+                "target_type and target_id must be supplied together."
+            )
+        return self
 
     model_config = {
         "json_schema_extra": {
@@ -732,16 +761,3 @@ class DeleteControlBindingByKeyResponse(BaseModel):
     )
 
 
-class EffectiveTargetControlsResponse(BaseModel):
-    """Runtime-ready controls effective for a target.
-
-    Returned in the same shape as ``InitAgentResponse.controls`` so SDKs can
-    feed the result through their existing local-vs-server execution split
-    (controls with ``execution='sdk'`` run locally; ``execution='server'``
-    are sent to the evaluation endpoint).
-    """
-
-    controls: list[Control] = Field(
-        default_factory=list,
-        description="Effective controls for the target, in runtime-ready form.",
-    )

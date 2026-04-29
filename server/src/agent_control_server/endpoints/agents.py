@@ -53,6 +53,7 @@ from ..models import (
     Policy,
     agent_policies,
 )
+from ..namespace import get_namespace_key
 from ..services.agent_names import normalize_agent_name_or_422
 from ..services.controls import (
     AgentControlEnabledState,
@@ -215,6 +216,8 @@ async def _build_overwrite_evaluator_removals(
     agent: Agent,
     removed_evaluators: set[str],
     db: AsyncSession,
+    *,
+    namespace_key: str,
 ) -> list[InitAgentEvaluatorRemoval]:
     """Build evaluator removal details, including active-control references."""
     if not removed_evaluators:
@@ -223,6 +226,7 @@ async def _build_overwrite_evaluator_removals(
     try:
         controls = await ControlService(db).list_controls_for_agent(
             agent.name,
+            namespace_key=namespace_key,
             allow_invalid_step_name_regex=True,
         )
     except APIValidationError:
@@ -425,6 +429,7 @@ async def init_agent(
     request: InitAgentRequest,
     client: RequireAPIKey,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> InitAgentResponse:
     """
     Register a new agent or update an existing agent's steps and metadata.
@@ -437,13 +442,20 @@ async def init_agent(
     - strict (default): preserve compatibility checks and conflict errors
     - overwrite: latest init payload replaces steps/evaluators and returns change summary
 
+    The returned ``controls`` list is the de-duplicated union of the agent's
+    direct controls, policy-derived controls, and (when ``target_type`` and
+    ``target_id`` are both supplied on the request) controls attached to that
+    target via enabled bindings in the same namespace. The same merge applies
+    on ``GET /agents/{name}/controls`` and ``POST /evaluation``. Bindings can
+    pre-exist the agent row, so a newly created agent that registers with
+    target context can observe target controls immediately.
+
     Args:
         request: Agent metadata and step schemas
         db: Database session (injected)
 
     Returns:
-        InitAgentResponse with created flag and active controls currently associated
-        through policies or direct links
+        InitAgentResponse with created flag and the effective controls
     """
     # Check for evaluator name collisions with built-in evaluators
     builtin_names = _get_builtin_evaluator_names()
@@ -489,7 +501,12 @@ async def init_agent(
             )
         incoming_steps_by_key[step_key] = step
 
-    result = await db.execute(select(Agent).where(Agent.name == request.agent.agent_name))
+    result = await db.execute(
+        select(Agent).where(
+            Agent.name == request.agent.agent_name,
+            Agent.namespace_key == namespace_key,
+        )
+    )
     existing: Agent | None = result.scalars().first()
 
     created = False
@@ -505,6 +522,7 @@ async def init_agent(
 
         new_agent = Agent(
             name=request.agent.agent_name,
+            namespace_key=namespace_key,
             data=data_model.model_dump(mode="json"),
         )
         db.add(new_agent)
@@ -525,7 +543,16 @@ async def init_agent(
                 resource="Agent",
                 operation="create",
             )
-        return InitAgentResponse(created=created, controls=[])
+
+        # Fall through to the terminal resolution so a newly created agent
+        # registering with target context picks up pre-existing bindings.
+        controls = await ControlService(db).list_controls_for_agent(
+            new_agent.name,
+            namespace_key=namespace_key,
+            target_type=request.target_type,
+            target_id=request.target_id,
+        )
+        return InitAgentResponse(created=created, controls=controls)
 
     # Parse existing data via AgentData Pydantic model
     try:
@@ -619,6 +646,7 @@ async def init_agent(
                 existing,
                 set(evaluators_removed_names),
                 db,
+                namespace_key=namespace_key,
             )
 
         overwrite_changes = InitAgentOverwriteChanges(
@@ -774,7 +802,12 @@ async def init_agent(
                 operation="update",
             )
 
-    controls = await ControlService(db).list_controls_for_agent(existing.name)
+    controls = await ControlService(db).list_controls_for_agent(
+        existing.name,
+        namespace_key=namespace_key,
+        target_type=request.target_type,
+        target_id=request.target_id,
+    )
 
     return InitAgentResponse(
         created=created,
@@ -1327,14 +1360,39 @@ async def list_agent_controls(
             "combine with rendered_state='rendered' to exclude them."
         ),
     ),
+    target_type: str | None = Query(
+        None,
+        min_length=1,
+        max_length=255,
+        description=(
+            "Optional opaque target kind. When supplied with target_id, the "
+            "response includes controls bound to that target via enabled "
+            "bindings, in addition to the agent's direct and policy-derived "
+            "controls."
+        ),
+    ),
+    target_id: str | None = Query(
+        None,
+        min_length=1,
+        max_length=255,
+        description="Optional opaque target identifier. Required when target_type is supplied.",
+    ),
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> AgentControlsResponse:
     """
-    List protection controls associated with an agent.
+    List protection controls effective for an agent.
 
-    By default, the endpoint returns all associated controls, including rendered
-    controls, disabled controls, and unrendered template drafts. Callers can
-    narrow the response via the state filters on this endpoint. Filters
+    The effective set is the de-duplicated union of the agent's direct
+    controls, policy-derived controls, and (when ``target_type`` and
+    ``target_id`` are both supplied) controls attached to that target via
+    enabled bindings in the same namespace. The same merge applies on
+    ``initAgent`` and ``POST /evaluation`` so all three surfaces return the
+    same set for the same inputs.
+
+    By default, the endpoint returns all effective controls, including
+    rendered controls, disabled controls, and unrendered template drafts.
+    Callers can narrow the response via the state filters. Filters
     intersect, so unrendered drafts require rendered_state='unrendered'
     together with enabled_state='all' or 'disabled'.
 
@@ -1342,17 +1400,38 @@ async def list_agent_controls(
         agent_name: Agent identifier
         rendered_state: Whether to return rendered controls, unrendered drafts, or both
         enabled_state: Whether to return enabled controls, disabled controls, or both
+        target_type: Optional opaque target kind (paired with target_id)
+        target_id: Optional opaque target identifier (paired with target_type)
         db: Database session (injected)
+        namespace_key: Namespace scoping for the resolution (injected)
 
     Returns:
         AgentControlsResponse with controls matching the requested state filters
 
     Raises:
+        HTTPException 400: target_type and target_id were not supplied together
         HTTPException 404: Agent not found
     """
+    if (target_type is None) != (target_id is None):
+        raise BadRequestError(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="target_type and target_id must be supplied together.",
+            errors=[
+                ValidationErrorItem(
+                    resource="AgentControls",
+                    field="target_type" if target_type is None else "target_id",
+                    code="missing_target_pair",
+                    message="target_type and target_id must be supplied together.",
+                )
+            ],
+        )
+
     agent = await _get_agent_or_404(agent_name, db)
     controls = await ControlService(db).list_controls_for_agent(
         agent.name,
+        namespace_key=namespace_key,
+        target_type=target_type,
+        target_id=target_id,
         rendered_state=rendered_state,
         enabled_state=enabled_state,
     )
@@ -1553,6 +1632,7 @@ async def patch_agent(
     agent_name: str,
     request: PatchAgentRequest,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> PatchAgentResponse:
     """
     Remove steps and/or evaluators from an agent.
@@ -1573,7 +1653,12 @@ async def patch_agent(
         HTTPException 500: Database error during update
     """
     agent_name = normalize_agent_name_or_422(agent_name)
-    result = await db.execute(select(Agent).where(Agent.name == agent_name))
+    result = await db.execute(
+        select(Agent).where(
+            Agent.name == agent_name,
+            Agent.namespace_key == namespace_key,
+        )
+    )
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
@@ -1616,7 +1701,10 @@ async def patch_agent(
         remove_evaluator_set = set(request.remove_evaluators)
 
         # Check if any active controls reference evaluators being removed.
-        controls = await ControlService(db).list_controls_for_agent(agent.name)
+        controls = await ControlService(db).list_controls_for_agent(
+            agent.name,
+            namespace_key=namespace_key,
+        )
         referencing_controls = _find_referencing_controls_for_removed_evaluators(
             controls, agent.name, remove_evaluator_set
         )

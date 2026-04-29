@@ -24,6 +24,10 @@ class _StateContainer:
         self.server_controls: list[dict[str, Any]] | None = None
         self.server_url: str | None = None
         self.api_key: str | None = None
+        # Optional target context fixed at init() time; both fields are set
+        # together or both remain None.
+        self.target_type: str | None = None
+        self.target_id: str | None = None
 
 
 # Singleton state instance

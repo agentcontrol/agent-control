@@ -179,23 +179,12 @@ async def test_evaluate_controls_forwards_target_context(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_target_bearing_request_uses_target_bound_controls():
-    """A target-bearing request fetches the effective target-bound controls
-    from the server and ignores cached agent-attached controls.
+async def test_check_evaluation_defaults_target_from_state():
+    """When the caller omits target params, the SDK falls back to the
+    target context fixed at init() time so the server resolves the same
+    merged set on the runtime call."""
 
-    Without this, the SDK would resolve from agent-cached controls (which
-    target-bearing requests must NOT consult) and return a result derived
-    from the wrong attachment set.
-    """
-
-    class TargetControlsResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict[str, object]:
-            return {"controls": []}
-
-    class EvaluationDummyResponse:
+    class DummyResponse:
         def raise_for_status(self) -> None:
             return None
 
@@ -204,209 +193,59 @@ async def test_target_bearing_request_uses_target_bound_controls():
 
     client = MagicMock()
     client.http_client = MagicMock()
-    client.http_client.get = AsyncMock(return_value=TargetControlsResponse())
-    client.http_client.post = AsyncMock(return_value=EvaluationDummyResponse())
+    client.http_client.post = AsyncMock(return_value=DummyResponse())
 
-    # A cached agent-attached control that would have run locally for an
-    # agent-only request. Target-bearing flow must ignore this.
-    cached_local_control = {
-        "id": 1,
-        "name": "local-control",
-        "control": {
-            "description": "local",
-            "enabled": True,
-            "execution": "sdk",
-            "scope": {"step_types": ["llm"], "stages": ["pre"]},
-            "condition": {
-                "selector": {"path": "input"},
-                "evaluator": {"name": "regex", "config": {"pattern": "x"}},
-            },
-            "action": {"decision": "deny"},
-        },
-    }
-
-    await evaluation.check_evaluation_with_local(
-        client=client,
-        agent_name="mytestagent01",
-        step={"type": "llm", "name": "chat", "input": "x"},
-        stage="pre",
-        controls=[cached_local_control],
-        target_type="env",
-        target_id="prod",
-    )
-
-    # Effective target controls were fetched once, not the cached set.
-    client.http_client.get.assert_awaited_once()
-    fetch_url = client.http_client.get.await_args.args[0]
-    fetch_params = client.http_client.get.await_args.kwargs["params"]
-    assert fetch_url == "/api/v1/control-bindings/effective"
-    assert fetch_params == {"target_type": "env", "target_id": "prod"}
-
-
-@pytest.mark.asyncio
-async def test_target_bearing_request_runs_sdk_execution_controls_locally():
-    """A target-bearing request runs ``execution='sdk'`` controls locally
-    (using controls fetched from /control-bindings/effective) and only sends
-    server-execution controls to the evaluation endpoint."""
-
-    target_local_control = {
-        "id": 1,
-        "name": "target-local-control",
-        "control": {
-            "description": "local",
-            "enabled": True,
-            "execution": "sdk",
-            "scope": {"step_types": ["llm"], "stages": ["pre"]},
-            "condition": {
-                "selector": {"path": "input"},
-                "evaluator": {"name": "regex", "config": {"pattern": "block"}},
-            },
-            "action": {"decision": "deny"},
-        },
-    }
-
-    class TargetControlsResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict[str, object]:
-            return {"controls": [target_local_control]}
-
-    client = MagicMock()
-    client.http_client = MagicMock()
-    client.http_client.get = AsyncMock(return_value=TargetControlsResponse())
-    post = AsyncMock()
-    client.http_client.post = post
-
-    result = await evaluation.check_evaluation_with_local(
-        client=client,
-        agent_name="mytestagent01",
-        step={"type": "llm", "name": "chat", "input": "block this"},
-        stage="pre",
-        controls=[],  # cached agent set is unused for target-bearing
-        target_type="env",
-        target_id="prod",
-    )
-
-    # Local engine produced a deny without ever calling the server.
-    assert result.is_safe is False
-    post.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_target_bearing_fetch_does_not_leak_across_session_reset():
-    """A fetch in flight when the cache is reset must not populate the new session."""
-    from agent_control._state import state
-    from agent_control._target_controls_cache import get_target_controls_cache
-
-    cache = get_target_controls_cache()
-
-    server_a_control = {
-        "id": 1,
-        "name": "server-a-control",
-        "control": {
-            "description": "from server A",
-            "enabled": True,
-            "execution": "server",
-            "scope": {"step_types": ["llm"], "stages": ["pre"]},
-            "condition": {
-                "selector": {"path": "input"},
-                "evaluator": {"name": "regex", "config": {"pattern": "x"}},
-            },
-            "action": {"decision": "deny"},
-        },
-    }
-
-    class ServerAResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict[str, object]:
-            # Reset the cache between fetch and put so the put captures the
-            # pre-reset epoch and is rejected when it tries to land.
-            cache.reset()
-            return {"controls": [server_a_control]}
-
-    client = MagicMock()
-    client.base_url = "http://server-a"
-    client.api_key = "key-a"
-    client.http_client = MagicMock()
-    client.http_client.get = AsyncMock(return_value=ServerAResponse())
-
-    with patch.object(state, "server_url", "http://server-a"), patch.object(
-        state, "api_key", "key-a"
+    with patch("agent_control._state.state.target_type", "env"), patch(
+        "agent_control._state.state.target_id", "prod"
     ):
-        controls = await evaluation._fetch_effective_target_controls(
-            client, "env", "prod"
+        await evaluation.check_evaluation(
+            client=client,
+            agent_name="Agent-Example_01",
+            step={"type": "llm", "name": "chat", "input": "hello"},
+            stage="pre",
         )
 
-    assert controls == [server_a_control]
-    assert cache.get("env", "prod") is None
+    sent = client.http_client.post.await_args.kwargs["json"]
+    assert sent["target_type"] == "env"
+    assert sent["target_id"] == "prod"
 
 
 @pytest.mark.asyncio
-async def test_fetch_bypasses_cache_for_client_with_different_identity():
-    """A client that doesn't match state.server_url/api_key must not share the cache."""
-    from agent_control._state import state
-    from agent_control._target_controls_cache import get_target_controls_cache
-
-    cache = get_target_controls_cache()
-
-    response_payload = {"controls": [{"id": 1, "name": "x", "control": {}}]}
-
-    class _Resp:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict[str, object]:
-            return response_payload
-
+async def test_check_evaluation_partial_target_pair_rejected():
+    """Per-call target params must be supplied together."""
     client = MagicMock()
-    # Active session is server-A; client points at server-B.
-    client.base_url = "http://server-b"
-    client.api_key = "key-b"
     client.http_client = MagicMock()
-    client.http_client.get = AsyncMock(return_value=_Resp())
+    client.http_client.post = AsyncMock()
 
-    with patch.object(state, "server_url", "http://server-a"), patch.object(
-        state, "api_key", "key-a"
-    ):
-        controls = await evaluation._fetch_effective_target_controls(
-            client, "env", "prod"
+    with pytest.raises(ValueError):
+        await evaluation.check_evaluation(
+            client=client,
+            agent_name="Agent-Example_01",
+            step={"type": "llm", "name": "chat", "input": "hello"},
+            stage="pre",
+            target_type="env",  # target_id missing
         )
-
-    # Network call happened, but cache was not populated.
-    assert controls == response_payload["controls"]
-    client.http_client.get.assert_awaited_once()
-    assert cache.get("env", "prod") is None
 
 
 @pytest.mark.asyncio
-async def test_fetch_bypasses_cache_when_no_active_session():
-    """Direct-client use without init() must not touch the cache."""
-    from agent_control._state import state
-    from agent_control._target_controls_cache import get_target_controls_cache
+async def test_evaluate_controls_defaults_target_from_state(monkeypatch):
+    """``evaluate_controls`` falls back to state target when params omitted."""
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_check = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
 
-    cache = get_target_controls_cache()
-
-    class _Resp:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict[str, object]:
-            return {"controls": [{"id": 7, "name": "y", "control": {}}]}
-
-    client = MagicMock()
-    client.base_url = "http://anywhere"
-    client.api_key = None
-    client.http_client = MagicMock()
-    client.http_client.get = AsyncMock(return_value=_Resp())
-
-    with patch.object(state, "server_url", None), patch.object(
-        state, "api_key", None
+    with patch("agent_control.state.server_url", "http://localhost:8000"), patch(
+        "agent_control.state.api_key", None
+    ), patch("agent_control._state.state.target_type", "env"), patch(
+        "agent_control._state.state.target_id", "prod"
     ):
-        await evaluation._fetch_effective_target_controls(
-            client, "env", "prod"
+        await evaluation.evaluate_controls(
+            step_name="chat",
+            input="hello",
+            stage="pre",
+            agent_name="test-bot",
         )
 
-    assert cache.get("env", "prod") is None
+    kwargs = mock_check.call_args.kwargs
+    assert kwargs["target_type"] == "env"
+    assert kwargs["target_id"] == "prod"

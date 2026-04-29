@@ -131,10 +131,7 @@ class TestAshutdownAsync:
             await agent_control.ashutdown()
 
         awaited_targets = [call.args[0] for call in to_thread_mock.await_args_list]
-        assert awaited_targets == [
-            agent_control._stop_policy_refresh_loop,
-            agent_control._stop_target_controls_refresh_loop,
-        ]
+        assert awaited_targets == [agent_control._stop_policy_refresh_loop]
         shutdown_observability_mock.assert_awaited_once()
 
 

@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import ConflictError, NotFoundError
 from ..models import Control, ControlBinding
-from .controls import RuntimeControl, parse_runtime_controls
 
 
 @dataclass(frozen=True)
@@ -300,68 +299,6 @@ class ControlBindingsService:
         )
         await self._db.flush()
         return binding_ids
-
-    async def resolve_runtime_controls(
-        self,
-        *,
-        namespace_key: str,
-        target_type: str,
-        target_id: str,
-        allow_invalid_step_name_regex: bool = False,
-    ) -> list[RuntimeControl]:
-        """Return runtime-parsed effective controls for a target-bearing request.
-
-        Same selection logic as :meth:`resolve_effective_controls`; the
-        returned controls are parsed into the form used by the evaluation
-        engine.
-        """
-        controls = await self.resolve_effective_controls(
-            namespace_key=namespace_key,
-            target_type=target_type,
-            target_id=target_id,
-        )
-        return parse_runtime_controls(
-            controls,
-            allow_invalid_step_name_regex=allow_invalid_step_name_regex,
-        )
-
-    async def resolve_effective_controls(
-        self,
-        *,
-        namespace_key: str,
-        target_type: str,
-        target_id: str,
-    ) -> list[Control]:
-        """Return the effective set of active controls for a target-bearing request.
-
-        Returns every active (not soft-deleted) control attached to the target
-        whose binding has ``enabled = True``. ``enabled = False`` excludes the
-        control. Soft-deleted controls (``deleted_at IS NOT NULL``) are
-        filtered out.
-
-        Per-agent narrowing is intentionally out of scope at this stage; the
-        resolver returns the full target-level set.
-
-        Uses a single JOIN query so both filters (binding match + enabled +
-        live control) are pushed to Postgres in one round-trip.
-        """
-        stmt = (
-            select(Control)
-            .join(
-                ControlBinding,
-                (ControlBinding.namespace_key == Control.namespace_key)
-                & (ControlBinding.control_id == Control.id),
-            )
-            .where(
-                ControlBinding.namespace_key == namespace_key,
-                ControlBinding.target_type == target_type,
-                ControlBinding.target_id == target_id,
-                ControlBinding.enabled.is_(True),
-                Control.deleted_at.is_(None),
-            )
-        )
-        result = await self._db.execute(stmt)
-        return list(result.scalars())
 
     async def _require_control(
         self, *, namespace_key: str, control_id: int
