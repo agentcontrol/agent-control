@@ -543,6 +543,7 @@ async def test_remove_control_from_agent_reports_policy_inheritance(async_db) ->
     first_result = await service.remove_control_from_agent(
         agent_name=agent.name,
         control_id=control.id,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
     )
 
     # Then: the direct link is removed but the control is still active via policy inheritance
@@ -553,6 +554,7 @@ async def test_remove_control_from_agent_reports_policy_inheritance(async_db) ->
     second_result = await service.remove_control_from_agent(
         agent_name=agent.name,
         control_id=control.id,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
     )
 
     # Then: the service reports that only the inherited policy link remains
@@ -633,9 +635,10 @@ async def test_create_version_allocates_sequential_numbers_under_concurrent_muta
         "updated",
         "updated",
     ]
-    assert {
-        version.snapshot["data"]["description"] for version in versions[1:]
-    } == {"Concurrent update A", "Concurrent update B"}
+    assert {version.snapshot["data"]["description"] for version in versions[1:]} == {
+        "Concurrent update A",
+        "Concurrent update B",
+    }
 
 
 @pytest.mark.asyncio
@@ -759,9 +762,7 @@ async def test_target_bindings_merged_into_effective_set(async_db) -> None:
     target_control = await _make_control(async_db)
 
     await async_db.execute(
-        insert(agent_controls).values(
-            {"agent_name": agent.name, "control_id": direct_control.id}
-        )
+        insert(agent_controls).values({"agent_name": agent.name, "control_id": direct_control.id})
     )
     await _bind_control_to_target(async_db, control_id=target_control.id)
     await async_db.commit()
@@ -808,9 +809,7 @@ async def test_disabled_binding_excluded_from_effective_set(async_db) -> None:
     """Bindings with enabled=False are filtered out at the SQL layer."""
     agent = await _make_agent(async_db)
     target_control = await _make_control(async_db)
-    await _bind_control_to_target(
-        async_db, control_id=target_control.id, enabled=False
-    )
+    await _bind_control_to_target(async_db, control_id=target_control.id, enabled=False)
     await async_db.commit()
 
     controls = await ControlService(async_db).list_controls_for_agent(
@@ -875,9 +874,7 @@ async def test_no_target_context_omits_bindings(async_db) -> None:
     target_only = await _make_control(async_db)
 
     await async_db.execute(
-        insert(agent_controls).values(
-            {"agent_name": agent.name, "control_id": direct_control.id}
-        )
+        insert(agent_controls).values({"agent_name": agent.name, "control_id": direct_control.id})
     )
     await _bind_control_to_target(async_db, control_id=target_only.id)
     await async_db.commit()

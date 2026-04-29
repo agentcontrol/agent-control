@@ -120,14 +120,21 @@ class ControlBindingsService:
             control_id=control_id,
             enabled=enabled,
         )
-        self._db.add(binding)
+        # ``begin_nested`` opens a SAVEPOINT so a unique-constraint
+        # collision rolls back only the conflicting insert. A bare
+        # ``session.rollback()`` would discard every pending change in
+        # the surrounding transaction, including unrelated writes from a
+        # caller that composed this service after another flush.
         try:
-            await self._db.flush()
+            async with self._db.begin_nested():
+                self._db.add(binding)
+                await self._db.flush()
             return binding, True
         except IntegrityError:
-            # Concurrent insert won the natural-key race. Roll back our insert,
-            # re-read the winning row, and apply the requested enabled value.
-            await self._db.rollback()
+            # Concurrent insert won the natural-key race. Re-read the
+            # winning row and apply the requested enabled value; the
+            # surrounding transaction is intact because the rollback was
+            # scoped to the savepoint above.
             existing = await self._find_by_natural_key(
                 namespace_key=namespace_key,
                 target_type=target_type,

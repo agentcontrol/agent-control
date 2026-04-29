@@ -189,10 +189,12 @@ def _find_referencing_controls_for_removed_evaluators(
 
 
 async def _validate_policy_controls_for_agent(
-    agent: Agent, policy_id: int, db: AsyncSession
+    agent: Agent, policy_id: int, db: AsyncSession, *, namespace_key: str
 ) -> list[str]:
     """Validate all controls in a policy can run on this agent."""
-    controls = await ControlService(db).list_controls_for_policy(policy_id)
+    controls = await ControlService(db).list_controls_for_policy(
+        policy_id, namespace_key=namespace_key
+    )
     return _validate_controls_for_agent(agent, controls)
 
 
@@ -885,19 +887,20 @@ async def _get_agent_or_404(
     agent_name: str,
     db: AsyncSession,
     *,
-    namespace_key: str | None = None,
+    namespace_key: str,
 ) -> Agent:
-    """Get an agent or raise AGENT_NOT_FOUND.
+    """Get an agent in ``namespace_key`` or raise AGENT_NOT_FOUND.
 
-    When ``namespace_key`` is supplied, the lookup is scoped to that
-    namespace. An agent that exists only in another namespace surfaces
-    as 404 (non-disclosing), matching the cross-namespace behavior
-    elsewhere in the request-scoped paths.
+    The lookup is always namespace-scoped: an agent that exists only in
+    another namespace surfaces as 404 (non-disclosing) so duplicate
+    names across namespaces — which the schema explicitly permits —
+    cannot be addressed across the namespace boundary.
     """
     normalized_agent_name = normalize_agent_name_or_422(agent_name)
-    stmt = select(Agent).where(Agent.name == normalized_agent_name)
-    if namespace_key is not None:
-        stmt = stmt.where(Agent.namespace_key == namespace_key)
+    stmt = select(Agent).where(
+        Agent.name == normalized_agent_name,
+        Agent.namespace_key == namespace_key,
+    )
     result = await db.execute(stmt)
     agent: Agent | None = result.scalars().first()
     if agent is None:
@@ -919,12 +922,17 @@ async def _get_agent_or_404(
     response_description="Success confirmation",
 )
 async def add_agent_policy(
-    agent_name: str, policy_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    policy_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> AssocResponse:
     """Associate a policy with an agent (idempotent)."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
 
-    policy_result = await db.execute(select(Policy).where(Policy.id == policy_id))
+    policy_result = await db.execute(
+        select(Policy).where(Policy.id == policy_id, Policy.namespace_key == namespace_key)
+    )
     policy: Policy | None = policy_result.scalars().first()
     if policy is None:
         raise NotFoundError(
@@ -935,7 +943,9 @@ async def add_agent_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    validation_errors = await _validate_policy_controls_for_agent(agent, policy_id, db)
+    validation_errors = await _validate_policy_controls_for_agent(
+        agent, policy_id, db, namespace_key=namespace_key
+    )
     if validation_errors:
         raise BadRequestError(
             error_code=ErrorCode.POLICY_CONTROL_INCOMPATIBLE,
@@ -955,7 +965,11 @@ async def add_agent_policy(
     try:
         stmt = (
             pg_insert(agent_policies)
-            .values(agent_name=agent.name, policy_id=policy_id)
+            .values(
+                namespace_key=namespace_key,
+                agent_name=agent.name,
+                policy_id=policy_id,
+            )
             .on_conflict_do_nothing()
         )
         await db.execute(stmt)
@@ -985,12 +999,17 @@ async def add_agent_policy(
     response_description="Success status with previous policy ID",
 )
 async def set_agent_policy(
-    agent_name: str, policy_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    policy_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> SetPolicyResponse:
     """Compatibility endpoint that replaces all policy associations with one policy."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
 
-    policy_result = await db.execute(select(Policy).where(Policy.id == policy_id))
+    policy_result = await db.execute(
+        select(Policy).where(Policy.id == policy_id, Policy.namespace_key == namespace_key)
+    )
     policy: Policy | None = policy_result.scalars().first()
     if policy is None:
         raise NotFoundError(
@@ -1001,7 +1020,9 @@ async def set_agent_policy(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    validation_errors = await _validate_policy_controls_for_agent(agent, policy_id, db)
+    validation_errors = await _validate_policy_controls_for_agent(
+        agent, policy_id, db, namespace_key=namespace_key
+    )
     if validation_errors:
         raise BadRequestError(
             error_code=ErrorCode.POLICY_CONTROL_INCOMPATIBLE,
@@ -1020,17 +1041,29 @@ async def set_agent_policy(
 
     existing_policies_result = await db.execute(
         select(agent_policies.c.policy_id)
-        .where(agent_policies.c.agent_name == agent.name)
+        .where(
+            agent_policies.c.namespace_key == namespace_key,
+            agent_policies.c.agent_name == agent.name,
+        )
         .order_by(agent_policies.c.policy_id)
     )
     existing_policy_ids = [row[0] for row in existing_policies_result.all()]
     old_policy_id = existing_policy_ids[0] if existing_policy_ids else None
 
     try:
-        await db.execute(delete(agent_policies).where(agent_policies.c.agent_name == agent.name))
+        await db.execute(
+            delete(agent_policies).where(
+                agent_policies.c.namespace_key == namespace_key,
+                agent_policies.c.agent_name == agent.name,
+            )
+        )
         await db.execute(
             pg_insert(agent_policies)
-            .values(agent_name=agent.name, policy_id=policy_id)
+            .values(
+                namespace_key=namespace_key,
+                agent_name=agent.name,
+                policy_id=policy_id,
+            )
             .on_conflict_do_nothing()
         )
         await db.commit()
@@ -1058,13 +1091,18 @@ async def set_agent_policy(
     response_description="List of policy IDs",
 )
 async def get_agent_policies(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> GetAgentPoliciesResponse:
     """List policy IDs associated with an agent."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
     result = await db.execute(
         select(agent_policies.c.policy_id)
-        .where(agent_policies.c.agent_name == agent.name)
+        .where(
+            agent_policies.c.namespace_key == namespace_key,
+            agent_policies.c.agent_name == agent.name,
+        )
         .order_by(agent_policies.c.policy_id)
     )
     return GetAgentPoliciesResponse(policy_ids=[row[0] for row in result.all()])
@@ -1077,14 +1115,23 @@ async def get_agent_policies(
     response_description="Policy ID",
 )
 async def get_agent_policy(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> GetPolicyResponse:
     """Compatibility endpoint that returns the first associated policy."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
     policy_result = await db.execute(
         select(Policy.id)
-        .join(agent_policies, agent_policies.c.policy_id == Policy.id)
-        .where(agent_policies.c.agent_name == agent.name)
+        .join(
+            agent_policies,
+            (agent_policies.c.policy_id == Policy.id)
+            & (agent_policies.c.namespace_key == Policy.namespace_key),
+        )
+        .where(
+            agent_policies.c.namespace_key == namespace_key,
+            agent_policies.c.agent_name == agent.name,
+        )
         .order_by(Policy.id)
         .limit(1)
     )
@@ -1107,16 +1154,21 @@ async def get_agent_policy(
     response_description="Success confirmation",
 )
 async def remove_agent_policy(
-    agent_name: str, policy_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    policy_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> AssocResponse:
     """Remove a policy association from an agent.
 
     Idempotent for existing resources: removing a non-associated link is a no-op.
     Missing agent/policy resources still return 404.
     """
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
 
-    policy_result = await db.execute(select(Policy.id).where(Policy.id == policy_id))
+    policy_result = await db.execute(
+        select(Policy.id).where(Policy.id == policy_id, Policy.namespace_key == namespace_key)
+    )
     if policy_result.first() is None:
         raise NotFoundError(
             error_code=ErrorCode.POLICY_NOT_FOUND,
@@ -1129,7 +1181,8 @@ async def remove_agent_policy(
     try:
         await db.execute(
             delete(agent_policies).where(
-                (agent_policies.c.agent_name == agent.name)
+                (agent_policies.c.namespace_key == namespace_key)
+                & (agent_policies.c.agent_name == agent.name)
                 & (agent_policies.c.policy_id == policy_id)
             )
         )
@@ -1159,13 +1212,20 @@ async def remove_agent_policy(
     response_description="Success confirmation",
 )
 async def remove_all_agent_policies(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> AssocResponse:
     """Remove all policy associations from an agent."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
 
     try:
-        await db.execute(delete(agent_policies).where(agent_policies.c.agent_name == agent.name))
+        await db.execute(
+            delete(agent_policies).where(
+                agent_policies.c.namespace_key == namespace_key,
+                agent_policies.c.agent_name == agent.name,
+            )
+        )
         await db.commit()
     except Exception:
         await db.rollback()
@@ -1193,13 +1253,20 @@ async def remove_all_agent_policies(
     response_description="Success confirmation",
 )
 async def delete_agent_policy(
-    agent_name: str, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> DeletePolicyResponse:
     """Compatibility endpoint that removes all policy associations."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
 
     existing_policy_result = await db.execute(
-        select(agent_policies.c.policy_id).where(agent_policies.c.agent_name == agent.name).limit(1)
+        select(agent_policies.c.policy_id)
+        .where(
+            agent_policies.c.namespace_key == namespace_key,
+            agent_policies.c.agent_name == agent.name,
+        )
+        .limit(1)
     )
     if existing_policy_result.first() is None:
         raise NotFoundError(
@@ -1210,7 +1277,12 @@ async def delete_agent_policy(
         )
 
     try:
-        await db.execute(delete(agent_policies).where(agent_policies.c.agent_name == agent.name))
+        await db.execute(
+            delete(agent_policies).where(
+                agent_policies.c.namespace_key == namespace_key,
+                agent_policies.c.agent_name == agent.name,
+            )
+        )
         await db.commit()
     except Exception:
         await db.rollback()
@@ -1238,12 +1310,17 @@ async def delete_agent_policy(
     response_description="Success confirmation",
 )
 async def add_agent_control(
-    agent_name: str, control_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> AssocResponse:
     """Associate a control directly with an agent (idempotent)."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(
+        control_id, namespace_key=namespace_key
+    )
 
     validation_errors = _validate_controls_for_agent(agent, [control])
     if validation_errors:
@@ -1266,6 +1343,7 @@ async def add_agent_control(
         await control_service.add_control_to_agent(
             agent_name=agent.name,
             control_id=control_id,
+            namespace_key=namespace_key,
         )
         await db.commit()
     except Exception:
@@ -1293,17 +1371,21 @@ async def add_agent_control(
     response_description="Success confirmation",
 )
 async def remove_agent_control(
-    agent_name: str, control_id: int, db: AsyncSession = Depends(get_async_db)
+    agent_name: str,
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> RemoveAgentControlResponse:
     """Remove a direct control association from an agent (idempotent)."""
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
     control_service = ControlService(db)
-    await control_service.get_active_control_or_404(control_id)
+    await control_service.get_active_control_or_404(control_id, namespace_key=namespace_key)
 
     try:
         removal_result = await control_service.remove_control_from_agent(
             agent_name=agent.name,
             control_id=control_id,
+            namespace_key=namespace_key,
         )
 
         await db.commit()

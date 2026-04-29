@@ -18,6 +18,7 @@ export interface AgentControlInitOptions {
 }
 
 export type AgentsApi = AgentControlSDK["agents"];
+export type ControlBindingsApi = AgentControlSDK["controlBindings"];
 export type ControlsApi = AgentControlSDK["controls"];
 export type EvaluationApi = AgentControlSDK["evaluation"];
 export type EvaluatorsApi = AgentControlSDK["evaluators"];
@@ -49,6 +50,10 @@ export class AgentControlClient {
 
   get agents(): AgentsApi {
     return this.requireSDK().agents;
+  }
+
+  get controlBindings(): ControlBindingsApi {
+    return this.requireSDK().controlBindings;
   }
 
   get controls(): ControlsApi {

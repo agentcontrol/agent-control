@@ -129,9 +129,7 @@ def test_initAgent_with_target_merges_direct_and_target_controls(
     _register_agent(client, agent_name)
     _attach_direct(client, agent_name, direct_id)
 
-    body = _register_agent(
-        client, agent_name, target_type="env", target_id="prod"
-    )
+    body = _register_agent(client, agent_name, target_type="env", target_id="prod")
     returned_ids = {c["id"] for c in body["controls"]}
     assert returned_ids == {direct_id, target_id_ctrl}
 
@@ -150,9 +148,7 @@ def test_initAgent_newly_created_with_target_picks_up_pre_existing_bindings(
     _bind(client, control_id=pre_existing)
 
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    body = _register_agent(
-        client, agent_name, target_type="env", target_id="prod"
-    )
+    body = _register_agent(client, agent_name, target_type="env", target_id="prod")
     assert body["created"] is True
     returned_ids = [c["id"] for c in body["controls"]]
     assert returned_ids == [pre_existing]
@@ -182,15 +178,11 @@ def test_get_agent_controls_with_target_matches_initAgent_response(
     _attach_direct(client, agent_name, direct_id)
     _bind(client, control_id=target_id_ctrl)
 
-    init_body = _register_agent(
-        client, agent_name, target_type="env", target_id="prod"
-    )
+    init_body = _register_agent(client, agent_name, target_type="env", target_id="prod")
     init_ids = sorted(c["id"] for c in init_body["controls"])
 
     get_ids = sorted(
-        _list_effective_via_get(
-            client, agent_name, target_type="env", target_id="prod"
-        )
+        _list_effective_via_get(client, agent_name, target_type="env", target_id="prod")
     )
     assert init_ids == get_ids == sorted([direct_id, target_id_ctrl])
 
@@ -233,9 +225,7 @@ def test_target_binding_de_duplicated_against_direct_attachment(
     _attach_direct(client, agent_name, shared)
     _bind(client, control_id=shared)
 
-    ids = _list_effective_via_get(
-        client, agent_name, target_type="env", target_id="prod"
-    )
+    ids = _list_effective_via_get(client, agent_name, target_type="env", target_id="prod")
     assert ids == [shared]
 
 
@@ -257,9 +247,7 @@ import pytest  # noqa: E402  (kept local; the rest of the file is sync)
 
 
 @pytest.mark.asyncio
-async def test_get_agent_controls_cross_namespace_returns_404(
-    client: TestClient, async_db
-) -> None:
+async def test_get_agent_controls_cross_namespace_returns_404(client: TestClient, async_db) -> None:
     """Agent existing only in another namespace must not surface here.
 
     The merged-resolver contract is namespace-scoped end-to-end; if the
@@ -268,12 +256,32 @@ async def test_get_agent_controls_cross_namespace_returns_404(
     exist across namespaces.
     """
     agent_name = f"foreign-agent-{uuid.uuid4().hex[:12]}"
-    await _insert_agent_in_namespace(
-        async_db, name=agent_name, namespace_key="other-ns"
-    )
+    await _insert_agent_in_namespace(async_db, name=agent_name, namespace_key="other-ns")
 
     resp = client.get(f"/api/v1/agents/{agent_name}/controls")
     assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.asyncio
+async def test_agent_association_endpoints_reject_cross_namespace_agent(
+    client: TestClient, async_db
+) -> None:
+    """Agent association endpoints must not act on a cross-namespace agent.
+
+    Even when the FK constraints would prevent a successful write, a
+    name-only lookup leaks existence and lets the caller probe foreign
+    namespaces. The agent association routes must surface 404 in that
+    situation, just like the effective-controls route.
+    """
+    agent_name = f"foreign-agent-{uuid.uuid4().hex[:12]}"
+    await _insert_agent_in_namespace(async_db, name=agent_name, namespace_key="other-ns")
+
+    # Both read and write association routes should 404, not 200.
+    list_resp = client.get(f"/api/v1/agents/{agent_name}/policies")
+    assert list_resp.status_code == 404, list_resp.text
+
+    delete_resp = client.delete(f"/api/v1/agents/{agent_name}/policies")
+    assert delete_resp.status_code == 404, delete_resp.text
 
 
 def test_disabled_binding_excluded_via_get_endpoint(client: TestClient) -> None:
@@ -283,7 +291,5 @@ def test_disabled_binding_excluded_via_get_endpoint(client: TestClient) -> None:
     bound = _create_control(client)
     _bind(client, control_id=bound, enabled=False)
 
-    ids = _list_effective_via_get(
-        client, agent_name, target_type="env", target_id="prod"
-    )
+    ids = _list_effective_via_get(client, agent_name, target_type="env", target_id="prod")
     assert ids == []

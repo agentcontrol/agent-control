@@ -151,9 +151,17 @@ class ControlService:
         control_id: int,
         *,
         for_update: bool = False,
+        namespace_key: str | None = None,
     ) -> Control:
-        """Load an active control row or raise CONTROL_NOT_FOUND."""
+        """Load an active control row or raise CONTROL_NOT_FOUND.
+
+        When ``namespace_key`` is supplied, the lookup is scoped to that
+        namespace; a control that exists only in another namespace
+        surfaces as 404 (non-disclosing).
+        """
         stmt = select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
+        if namespace_key is not None:
+            stmt = stmt.where(Control.namespace_key == namespace_key)
         if for_update:
             stmt = stmt.with_for_update()
         result = await self._db.execute(stmt)
@@ -261,23 +269,37 @@ class ControlService:
         if version is None:
             raise NotFoundError(
                 error_code=ErrorCode.CONTROL_VERSION_NOT_FOUND,
-                detail=(
-                    f"Version '{version_num}' for control with ID '{control_id}' not found"
-                ),
+                detail=(f"Version '{version_num}' for control with ID '{control_id}' not found"),
                 resource="ControlVersion",
                 resource_id=f"{control_id}:{version_num}",
                 hint="Verify the control ID and version number are correct.",
             )
         return version
 
-    async def list_controls_for_policy(self, policy_id: int) -> list[Control]:
-        """Return DB control rows directly associated with a policy."""
+    async def list_controls_for_policy(
+        self,
+        policy_id: int,
+        *,
+        namespace_key: str | None = None,
+    ) -> list[Control]:
+        """Return DB control rows directly associated with a policy.
+
+        When ``namespace_key`` is supplied, both the association rows
+        and the joined controls are scoped to that namespace so a
+        request in one namespace cannot read controls bound to a
+        same-id policy in another.
+        """
         stmt = (
             select(Control)
             .join(policy_controls, Control.id == policy_controls.c.control_id)
             .where(policy_controls.c.policy_id == policy_id, Control.deleted_at.is_(None))
             .order_by(Control.id)
         )
+        if namespace_key is not None:
+            stmt = stmt.where(
+                policy_controls.c.namespace_key == namespace_key,
+                Control.namespace_key == namespace_key,
+            )
         result = await self._db.execute(stmt)
         return list(result.scalars().unique().all())
 
@@ -526,11 +548,22 @@ class ControlService:
             )
         )
 
-    async def add_control_to_agent(self, *, agent_name: str, control_id: int) -> None:
-        """Create a direct agent-control association if it does not already exist."""
+    async def add_control_to_agent(
+        self, *, agent_name: str, control_id: int, namespace_key: str
+    ) -> None:
+        """Create a direct agent-control association if it does not already exist.
+
+        ``namespace_key`` is part of the association table's primary key
+        and the agent/control composite FKs, so writes must include it
+        explicitly rather than relying on the column's server default.
+        """
         await self._db.execute(
             pg_insert(agent_controls)
-            .values(agent_name=agent_name, control_id=control_id)
+            .values(
+                namespace_key=namespace_key,
+                agent_name=agent_name,
+                control_id=control_id,
+            )
             .on_conflict_do_nothing()
         )
 
@@ -539,12 +572,20 @@ class ControlService:
         *,
         agent_name: str,
         control_id: int,
+        namespace_key: str,
     ) -> RemoveAgentControlResult:
-        """Remove a direct agent-control association and report remaining active state."""
+        """Remove a direct agent-control association and report remaining active state.
+
+        ``namespace_key`` scopes both the deletion target and the
+        policy-inheritance probe so an association in one namespace
+        cannot be removed by — or affect the active state seen from —
+        another namespace.
+        """
         remove_direct_result = await self._db.execute(
             delete(agent_controls)
             .where(
-                (agent_controls.c.agent_name == agent_name)
+                (agent_controls.c.namespace_key == namespace_key)
+                & (agent_controls.c.agent_name == agent_name)
                 & (agent_controls.c.control_id == control_id)
             )
             .returning(agent_controls.c.control_id)
@@ -556,11 +597,13 @@ class ControlService:
             .select_from(
                 agent_policies.join(
                     policy_controls,
-                    agent_policies.c.policy_id == policy_controls.c.policy_id,
+                    (agent_policies.c.policy_id == policy_controls.c.policy_id)
+                    & (agent_policies.c.namespace_key == policy_controls.c.namespace_key),
                 )
             )
             .where(
-                (agent_policies.c.agent_name == agent_name)
+                (agent_policies.c.namespace_key == namespace_key)
+                & (agent_policies.c.agent_name == agent_name)
                 & (policy_controls.c.control_id == control_id)
             )
             .limit(1)
@@ -619,9 +662,7 @@ class ControlService:
 
     async def _lock_control_row(self, control_id: int) -> None:
         """Serialize version creation on a control by taking a row-level lock."""
-        await self._db.execute(
-            select(Control.id).where(Control.id == control_id).with_for_update()
-        )
+        await self._db.execute(select(Control.id).where(Control.id == control_id).with_for_update())
 
     async def _list_db_controls_for_agent(
         self,
@@ -644,10 +685,7 @@ class ControlService:
                 policy_controls.join(
                     agent_policies,
                     (policy_controls.c.policy_id == agent_policies.c.policy_id)
-                    & (
-                        policy_controls.c.namespace_key
-                        == agent_policies.c.namespace_key
-                    ),
+                    & (policy_controls.c.namespace_key == agent_policies.c.namespace_key),
                 )
             )
             .where(
@@ -656,18 +694,14 @@ class ControlService:
                 policy_controls.c.namespace_key == namespace_key,
             )
         )
-        direct_control_ids = select(
-            agent_controls.c.control_id.label("control_id")
-        ).where(
+        direct_control_ids = select(agent_controls.c.control_id.label("control_id")).where(
             agent_controls.c.agent_name == agent_name,
             agent_controls.c.namespace_key == namespace_key,
         )
 
         sources = [policy_control_ids, direct_control_ids]
         if target_type is not None and target_id is not None:
-            binding_control_ids = select(
-                ControlBinding.control_id.label("control_id")
-            ).where(
+            binding_control_ids = select(ControlBinding.control_id.label("control_id")).where(
                 ControlBinding.namespace_key == namespace_key,
                 ControlBinding.target_type == target_type,
                 ControlBinding.target_id == target_id,
@@ -707,9 +741,7 @@ class ControlService:
     ) -> Select[Any]:
         """Apply browse/list filters to a control query."""
         if name is not None:
-            stmt = stmt.where(
-                Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\")
-            )
+            stmt = stmt.where(Control.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\"))
 
         if enabled is not None:
             if enabled:
@@ -788,11 +820,7 @@ def parse_runtime_controls(
     evaluate). All other controls are validated; corrupted data raises
     ``APIValidationError`` so the caller can surface a useful error.
     """
-    context = (
-        {"allow_invalid_step_name_regex": True}
-        if allow_invalid_step_name_regex
-        else None
-    )
+    context = {"allow_invalid_step_name_regex": True} if allow_invalid_step_name_regex else None
     runtime_controls: list[RuntimeControl] = []
     for control in controls:
         if _is_unrendered_template_payload(control.data):
@@ -843,11 +871,7 @@ def parse_associated_control_or_api_error(
         unrendered = _parse_unrendered_template_or_api_error(control)
         return APIControl(id=control.id, name=control.name, control=unrendered)
 
-    context = (
-        {"allow_invalid_step_name_regex": True}
-        if allow_invalid_step_name_regex
-        else None
-    )
+    context = {"allow_invalid_step_name_regex": True} if allow_invalid_step_name_regex else None
     control_def = parse_control_definition_or_api_error(
         control.data,
         detail=f"Control '{control.name}' has corrupted data",
