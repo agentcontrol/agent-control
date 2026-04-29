@@ -33,7 +33,8 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Return bindings in the current namespace with optional filters and
  * cursor-based pagination. Bindings are ordered by ID descending (newest
- * first).
+ * first). The cursor is opaque to clients: pass back the
+ * ``next_cursor`` value verbatim to fetch the following page.
  */
 export function controlBindingsList(
   client: AgentControlSDKCore,

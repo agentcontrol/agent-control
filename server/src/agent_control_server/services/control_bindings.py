@@ -11,13 +11,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
+from agent_control_models.controls import ControlDefinitionRuntime
 from agent_control_models.errors import ErrorCode
+from pydantic import ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..errors import ConflictError, NotFoundError
+from ..errors import BadRequestError, ConflictError, NotFoundError
 from ..models import Control, ControlBinding
+from .evaluator_utils import parse_evaluator_ref_full
 
 
 @dataclass(frozen=True)
@@ -52,9 +55,7 @@ class ControlBindingsService:
         ``(namespace_key, target_type, target_id, control_id)`` already
         exists.
         """
-        await self._require_control(
-            namespace_key=namespace_key, control_id=control_id
-        )
+        await self._require_control(namespace_key=namespace_key, control_id=control_id)
         binding = ControlBinding(
             namespace_key=namespace_key,
             target_type=target_type,
@@ -100,9 +101,7 @@ class ControlBindingsService:
         calls return successfully; the create flag is true only for the
         caller whose insert actually wrote the row.
         """
-        await self._require_control(
-            namespace_key=namespace_key, control_id=control_id
-        )
+        await self._require_control(namespace_key=namespace_key, control_id=control_id)
         existing = await self._find_by_natural_key(
             namespace_key=namespace_key,
             target_type=target_type,
@@ -179,9 +178,7 @@ class ControlBindingsService:
         result = await self._db.execute(stmt)
         return cast(ControlBinding | None, result.scalars().first())
 
-    async def get_binding_or_404(
-        self, *, namespace_key: str, binding_id: int
-    ) -> ControlBinding:
+    async def get_binding_or_404(self, *, namespace_key: str, binding_id: int) -> ControlBinding:
         """Load a binding row scoped to ``namespace_key`` or raise 404."""
         stmt = select(ControlBinding).where(
             ControlBinding.id == binding_id,
@@ -227,9 +224,7 @@ class ControlBindingsService:
                 stmt = stmt.where(ControlBinding.control_id == control_id)
             return stmt
 
-        page_stmt = _apply_filters(select(ControlBinding)).order_by(
-            ControlBinding.id.desc()
-        )
+        page_stmt = _apply_filters(select(ControlBinding)).order_by(ControlBinding.id.desc())
         if cursor is not None:
             page_stmt = page_stmt.where(ControlBinding.id < cursor)
         result = await self._db.execute(page_stmt.limit(limit + 1))
@@ -254,20 +249,14 @@ class ControlBindingsService:
         self, *, namespace_key: str, binding_id: int, enabled: bool
     ) -> ControlBinding:
         """Update the ``enabled`` flag on a single binding."""
-        binding = await self.get_binding_or_404(
-            namespace_key=namespace_key, binding_id=binding_id
-        )
+        binding = await self.get_binding_or_404(namespace_key=namespace_key, binding_id=binding_id)
         binding.enabled = enabled
         await self._db.flush()
         return binding
 
-    async def delete_binding(
-        self, *, namespace_key: str, binding_id: int
-    ) -> None:
+    async def delete_binding(self, *, namespace_key: str, binding_id: int) -> None:
         """Delete a single binding. Raises 404 if it does not exist."""
-        binding = await self.get_binding_or_404(
-            namespace_key=namespace_key, binding_id=binding_id
-        )
+        binding = await self.get_binding_or_404(namespace_key=namespace_key, binding_id=binding_id)
         await self._db.delete(binding)
         await self._db.flush()
 
@@ -300,16 +289,26 @@ class ControlBindingsService:
         await self._db.flush()
         return binding_ids
 
-    async def _require_control(
-        self, *, namespace_key: str, control_id: int
-    ) -> None:
-        stmt = select(Control.id).where(
+    async def _require_control(self, *, namespace_key: str, control_id: int) -> None:
+        """Require an active control in this namespace, eligible for target binding.
+
+        Bindings attach a control to a target ``(target_type, target_id)``,
+        so the control must be runnable against any agent that later
+        evaluates against that target. Agent-scoped evaluators
+        (``agent_name:evaluator_name``) are tied to a specific agent's
+        registered evaluator set, so a control referencing one cannot be
+        validated at binding time without choosing an agent. Reject those
+        controls here so the misuse surfaces as a clear 400 instead of a
+        runtime evaluation failure.
+        """
+        stmt = select(Control.id, Control.name, Control.data).where(
             Control.id == control_id,
             Control.namespace_key == namespace_key,
             Control.deleted_at.is_(None),
         )
         result = await self._db.execute(stmt)
-        if result.first() is None:
+        row = result.first()
+        if row is None:
             raise NotFoundError(
                 error_code=ErrorCode.CONTROL_NOT_FOUND,
                 detail=f"Control with ID '{control_id}' not found",
@@ -320,3 +319,43 @@ class ControlBindingsService:
                     "and that it belongs to the same namespace as the binding."
                 ),
             )
+
+        _, control_name, control_data = row
+        agent_scoped_refs = _agent_scoped_evaluators(control_data)
+        if agent_scoped_refs:
+            raise BadRequestError(
+                error_code=ErrorCode.CONTROL_BINDING_INCOMPATIBLE,
+                detail=(
+                    f"Control '{control_name}' references agent-scoped "
+                    f"evaluator(s) {sorted(agent_scoped_refs)!r} and cannot "
+                    f"be attached to a target binding."
+                ),
+                hint=(
+                    "Use a control whose evaluators are all global (built-in "
+                    "or external), or attach this control directly to the "
+                    "specific agent that registered the evaluator."
+                ),
+            )
+
+
+def _agent_scoped_evaluators(control_data: object) -> set[str]:
+    """Return the set of agent-scoped evaluator references in a control.
+
+    Returns an empty set for unrendered template controls (no condition
+    tree yet) and for any control whose stored data fails to parse —
+    parse-failure validation is the responsibility of control creation,
+    not target binding.
+    """
+    if not isinstance(control_data, dict):
+        return set()
+    if control_data.get("template") is not None and control_data.get("condition") is None:
+        return set()
+    try:
+        definition = ControlDefinitionRuntime.model_validate(control_data)
+    except ValidationError:
+        return set()
+    refs: set[str] = set()
+    for _, evaluator_cfg in definition.iter_condition_leaf_parts():
+        if parse_evaluator_ref_full(evaluator_cfg.name).type == "agent":
+            refs.add(evaluator_cfg.name)
+    return refs

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from agent_control_models.errors import ErrorCode
 from agent_control_models.server import (
     CreateControlBindingRequest,
     CreateControlBindingResponse,
@@ -21,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import require_admin_key
 from ..db import get_async_db
+from ..errors import BadRequestError
 from ..models import ControlBinding
 from ..namespace import get_namespace_key
 from ..services.control_bindings import ControlBindingsService
@@ -82,11 +84,11 @@ async def create_control_binding(
     response_description="Bindings matching the supplied filters",
 )
 async def list_control_bindings(
-    cursor: int | None = Query(
+    cursor: str | None = Query(
         None,
         description=(
-            "Binding ID to start after (cursor pagination). Pass the "
-            "``next_cursor`` from a previous page."
+            "Opaque cursor returned as ``next_cursor`` on the previous page. "
+            "Pass it back unchanged to fetch the next page."
         ),
     ),
     limit: int = Query(
@@ -103,12 +105,25 @@ async def list_control_bindings(
 ) -> ListControlBindingsResponse:
     """Return bindings in the current namespace with optional filters and
     cursor-based pagination. Bindings are ordered by ID descending (newest
-    first).
+    first). The cursor is opaque to clients: pass back the
+    ``next_cursor`` value verbatim to fetch the following page.
     """
+    parsed_cursor: int | None
+    if cursor is None:
+        parsed_cursor = None
+    else:
+        try:
+            parsed_cursor = int(cursor)
+        except ValueError as exc:
+            raise BadRequestError(
+                error_code=ErrorCode.VALIDATION_ERROR,
+                detail="cursor must be a value returned by next_cursor.",
+                hint="Pass the cursor returned in the previous response unchanged.",
+            ) from exc
     service = ControlBindingsService(db)
     page = await service.list_bindings(
         namespace_key=namespace_key,
-        cursor=cursor,
+        cursor=parsed_cursor,
         limit=limit,
         target_type=target_type,
         target_id=target_id,
@@ -137,9 +152,7 @@ async def get_control_binding(
     namespace_key: str = Depends(get_namespace_key),
 ) -> GetControlBindingResponse:
     service = ControlBindingsService(db)
-    binding = await service.get_binding_or_404(
-        namespace_key=namespace_key, binding_id=binding_id
-    )
+    binding = await service.get_binding_or_404(namespace_key=namespace_key, binding_id=binding_id)
     return _to_response(binding)
 
 
@@ -180,9 +193,7 @@ async def delete_control_binding(
     namespace_key: str = Depends(get_namespace_key),
 ) -> DeleteControlBindingResponse:
     service = ControlBindingsService(db)
-    await service.delete_binding(
-        namespace_key=namespace_key, binding_id=binding_id
-    )
+    await service.delete_binding(namespace_key=namespace_key, binding_id=binding_id)
     await db.commit()
     return DeleteControlBindingResponse(success=True)
 

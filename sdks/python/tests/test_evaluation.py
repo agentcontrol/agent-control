@@ -187,10 +187,15 @@ async def test_evaluate_controls_forwards_target_context(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_check_evaluation_defaults_target_from_state():
-    """When the caller omits target params, the SDK falls back to the
-    target context fixed at init() time so the server resolves the same
-    merged set on the runtime call."""
+async def test_check_evaluation_does_not_default_target_from_state():
+    """``check_evaluation`` is not session-bound.
+
+    The caller supplies its own client; the helper does not consult
+    ``init()``-time session state. A caller that omits target params gets
+    a non-target-bearing request even when the session has a target set —
+    session-target enforcement lives on the session-bound entry point
+    (``evaluate_controls``).
+    """
 
     class DummyResponse:
         def raise_for_status(self) -> None:
@@ -214,8 +219,8 @@ async def test_check_evaluation_defaults_target_from_state():
         )
 
     sent = client.http_client.post.await_args.kwargs["json"]
-    assert sent["target_type"] == "env"
-    assert sent["target_id"] == "prod"
+    assert sent["target_type"] is None
+    assert sent["target_id"] is None
 
 
 @pytest.mark.asyncio
@@ -236,57 +241,57 @@ async def test_check_evaluation_partial_target_pair_rejected():
 
 
 @pytest.mark.asyncio
-async def test_per_call_target_must_match_session_target():
+async def test_evaluate_controls_per_call_target_must_match_session_target(monkeypatch):
     """A per-call target that disagrees with init()'s target is rejected.
 
     The cached controls are fetched for the session target; accepting a
     mismatched per-call target would drive stale local-first evaluation.
     """
-    client = MagicMock()
-    client.http_client = MagicMock()
-    client.http_client.post = AsyncMock()
-
+    mock_check = AsyncMock(return_value=EvaluationResult(is_safe=True, confidence=1.0))
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
     session_agent = MagicMock(name="session_agent")
 
-    with patch("agent_control._state.state.current_agent", session_agent), patch(
+    with patch("agent_control.state.server_url", "http://localhost:8000"), patch(
+        "agent_control.state.api_key", None
+    ), patch("agent_control._state.state.current_agent", session_agent), patch(
         "agent_control._state.state.target_type", "env"
     ), patch("agent_control._state.state.target_id", "prod"):
         with pytest.raises(ValueError, match="must match the target context fixed at init"):
-            await evaluation.check_evaluation(
-                client=client,
-                agent_name="Agent-Example_01",
-                step={"type": "llm", "name": "chat", "input": "hello"},
+            await evaluation.evaluate_controls(
+                step_name="chat",
+                input="hello",
                 stage="pre",
+                agent_name="test-bot",
                 target_type="env",
                 target_id="staging",  # session is "prod"
             )
 
 
 @pytest.mark.asyncio
-async def test_no_target_session_rejects_per_call_target():
+async def test_evaluate_controls_no_target_session_rejects_per_call_target(monkeypatch):
     """An init() without target context is itself a fixed (None, None) session.
 
     The session's cached controls were fetched without target context, so a
     per-call target that supplies an explicit (target_type, target_id) would
     drive stale local-first evaluation. Reject the mismatch.
     """
-    client = MagicMock()
-    client.http_client = MagicMock()
-    client.http_client.post = AsyncMock()
-
+    mock_check = AsyncMock(return_value=EvaluationResult(is_safe=True, confidence=1.0))
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
     session_agent = MagicMock(name="session_agent")
 
-    with patch("agent_control._state.state.current_agent", session_agent), patch(
+    with patch("agent_control.state.server_url", "http://localhost:8000"), patch(
+        "agent_control.state.api_key", None
+    ), patch("agent_control._state.state.current_agent", session_agent), patch(
         "agent_control._state.state.target_type", None
     ), patch("agent_control._state.state.target_id", None):
         with pytest.raises(
             ValueError, match="must match the target context fixed at init"
         ):
-            await evaluation.check_evaluation(
-                client=client,
-                agent_name="Agent-Example_01",
-                step={"type": "llm", "name": "chat", "input": "hello"},
+            await evaluation.evaluate_controls(
+                step_name="chat",
+                input="hello",
                 stage="pre",
+                agent_name="test-bot",
                 target_type="env",
                 target_id="prod",
             )

@@ -32,6 +32,12 @@ class _ControlAdapter:
     control: ControlDefinitionRuntime
 
 
+def _validate_target_pair(target_type: str | None, target_id: str | None) -> None:
+    """Reject half-supplied target pairs; both or neither must be present."""
+    if (target_type is None) != (target_id is None):
+        raise ValueError("target_type and target_id must be supplied together.")
+
+
 def _resolve_session_target(
     target_type: str | None, target_id: str | None
 ) -> tuple[str | None, str | None]:
@@ -46,18 +52,16 @@ def _resolve_session_target(
     return safe without contacting the server. Reject the mismatch so
     callers re-init when they need to change targets.
 
-    Outside an active session (no ``init()`` call), the helper does not
-    enforce the rule: callers using lower-level APIs with their own
-    client manage their own controls.
+    This rule applies to the session-bound entry point only
+    (``evaluate_controls``). Lower-level helpers that accept their own
+    client and controls are not session-bound and run the lighter
+    :func:`_validate_target_pair` check instead.
 
     Returns the resolved ``(target_type, target_id)`` to forward.
     """
     if target_type is None and target_id is None:
         return state.target_type, state.target_id
-    if (target_type is None) != (target_id is None):
-        raise ValueError(
-            "target_type and target_id must be supplied together."
-        )
+    _validate_target_pair(target_type, target_id)
     if state.current_agent is not None and (
         target_type != state.target_type or target_id != state.target_id
     ):
@@ -219,11 +223,12 @@ async def check_evaluation(
 
     When ``target_type`` and ``target_id`` are both supplied, the request
     is target-bearing and the server merges target bindings into the
-    effective control set. If they are omitted, the SDK falls back to the
-    target context fixed at ``init()`` time when present. A per-call
-    override that disagrees with the session target is rejected.
+    effective control set. Both or neither must be provided; otherwise
+    the helper raises ``ValueError``. The caller owns the supplied
+    ``client`` and is responsible for any session-target consistency
+    rules at higher layers.
     """
-    target_type, target_id = _resolve_session_target(target_type, target_id)
+    _validate_target_pair(target_type, target_id)
 
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id, resolved_span_id = get_trace_and_span_ids()
@@ -281,14 +286,14 @@ async def check_evaluation_with_local(
     ``execution='server'`` controls are evaluated by the server through
     ``/evaluation`` with the request's target context preserved.
 
-    When ``target_type`` and ``target_id`` are both omitted, the SDK falls
-    back to the target context fixed at ``init()`` time when present so
-    the server resolves the same merged set on the runtime call. A
-    per-call override that disagrees with the session target is rejected
-    because the supplied ``controls`` were fetched for the session target
-    and would otherwise produce stale local-first results.
+    Both ``target_type`` and ``target_id`` must be supplied together or
+    both omitted; otherwise the helper raises ``ValueError``. The caller
+    owns the supplied ``client`` and ``controls``; session-target
+    consistency is the caller's responsibility (e.g.,
+    :func:`evaluate_controls` resolves the session target before
+    invoking this helper).
     """
-    target_type, target_id = _resolve_session_target(target_type, target_id)
+    _validate_target_pair(target_type, target_id)
 
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id = trace_id

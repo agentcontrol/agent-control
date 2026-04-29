@@ -239,6 +239,43 @@ def test_target_binding_de_duplicated_against_direct_attachment(
     assert ids == [shared]
 
 
+async def _insert_agent_in_namespace(async_db, *, name: str, namespace_key: str) -> None:
+    """Insert an Agent row directly so the test can simulate a foreign namespace.
+
+    The endpoint's ``get_namespace_key`` returns the default namespace; this
+    helper sidesteps the resolver to seed an agent that the request-time
+    code path should not be able to reach.
+    """
+    from agent_control_server.models import Agent
+
+    async_db.add(Agent(name=name, namespace_key=namespace_key, data={}))
+    await async_db.flush()
+    await async_db.commit()
+
+
+import pytest  # noqa: E402  (kept local; the rest of the file is sync)
+
+
+@pytest.mark.asyncio
+async def test_get_agent_controls_cross_namespace_returns_404(
+    client: TestClient, async_db
+) -> None:
+    """Agent existing only in another namespace must not surface here.
+
+    The merged-resolver contract is namespace-scoped end-to-end; if the
+    request-time path resolves the agent only by name it can return 200
+    with the wrong/empty control set instead of 404 once duplicate names
+    exist across namespaces.
+    """
+    agent_name = f"foreign-agent-{uuid.uuid4().hex[:12]}"
+    await _insert_agent_in_namespace(
+        async_db, name=agent_name, namespace_key="other-ns"
+    )
+
+    resp = client.get(f"/api/v1/agents/{agent_name}/controls")
+    assert resp.status_code == 404, resp.text
+
+
 def test_disabled_binding_excluded_via_get_endpoint(client: TestClient) -> None:
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     _register_agent(client, agent_name)

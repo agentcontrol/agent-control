@@ -304,9 +304,7 @@ async def list_agents(
     limit = min(max(1, limit), _MAX_PAGINATION_LIMIT)
 
     # Build base filter for name search
-    name_filter = (
-        Agent.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\") if name else None
-    )
+    name_filter = Agent.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\") if name else None
 
     # Get total count (with name filter if provided)
     count_query = select(func.count()).select_from(Agent)
@@ -326,17 +324,12 @@ async def list_agents(
     # If cursor provided, filter to get items after the cursor
     if cursor:
         cursor_name = normalize_agent_name_or_422(cursor, field_name="cursor")
-        cursor_agent_result = await db.execute(
-            select(Agent).where(Agent.name == cursor_name)
-        )
+        cursor_agent_result = await db.execute(select(Agent).where(Agent.name == cursor_name))
         cursor_agent = cursor_agent_result.scalars().first()
         if cursor_agent:
             query = query.where(
                 (Agent.created_at < cursor_agent.created_at)
-                | (
-                    (Agent.created_at == cursor_agent.created_at)
-                    & (Agent.name < cursor_agent.name)
-                )
+                | ((Agent.created_at == cursor_agent.created_at) & (Agent.name < cursor_agent.name))
             )
 
     # Fetch limit + 1 to check if there are more pages
@@ -373,9 +366,7 @@ async def list_agents(
         for assoc_agent_name, policy_id in policy_ids_result.all():
             policy_ids_map.setdefault(assoc_agent_name, []).append(policy_id)
 
-        control_counts_map = await control_service.list_active_control_counts_by_agent(
-            agent_names
-        )
+        control_counts_map = await control_service.list_active_control_counts_by_agent(agent_names)
 
     # Build summaries
     summaries: list[AgentSummary] = []
@@ -850,8 +841,7 @@ async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -
             resource="Agent",
             resource_id=str(agent_name),
             hint=(
-                "Verify the agent name is correct and the agent has been "
-                "registered via initAgent."
+                "Verify the agent name is correct and the agent has been registered via initAgent."
             ),
         )
 
@@ -888,15 +878,27 @@ async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -
             hint="The agent's metadata is invalid. Re-register the agent with initAgent.",
         )
 
-    return GetAgentResponse(
-        agent=agent_meta, steps=latest_steps, evaluators=data_model.evaluators
-    )
+    return GetAgentResponse(agent=agent_meta, steps=latest_steps, evaluators=data_model.evaluators)
 
 
-async def _get_agent_or_404(agent_name: str, db: AsyncSession) -> Agent:
-    """Get an agent or raise AGENT_NOT_FOUND."""
+async def _get_agent_or_404(
+    agent_name: str,
+    db: AsyncSession,
+    *,
+    namespace_key: str | None = None,
+) -> Agent:
+    """Get an agent or raise AGENT_NOT_FOUND.
+
+    When ``namespace_key`` is supplied, the lookup is scoped to that
+    namespace. An agent that exists only in another namespace surfaces
+    as 404 (non-disclosing), matching the cross-namespace behavior
+    elsewhere in the request-scoped paths.
+    """
     normalized_agent_name = normalize_agent_name_or_422(agent_name)
-    result = await db.execute(select(Agent).where(Agent.name == normalized_agent_name))
+    stmt = select(Agent).where(Agent.name == normalized_agent_name)
+    if namespace_key is not None:
+        stmt = stmt.where(Agent.namespace_key == namespace_key)
+    result = await db.execute(stmt)
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
@@ -1174,8 +1176,7 @@ async def remove_all_agent_policies(
         )
         raise DatabaseError(
             detail=(
-                f"Failed to remove policy associations from agent '{agent.name}': "
-                "database error"
+                f"Failed to remove policy associations from agent '{agent.name}': database error"
             ),
             resource="Agent",
             operation="remove all policy associations",
@@ -1198,9 +1199,7 @@ async def delete_agent_policy(
     agent = await _get_agent_or_404(agent_name, db)
 
     existing_policy_result = await db.execute(
-        select(agent_policies.c.policy_id)
-        .where(agent_policies.c.agent_name == agent.name)
-        .limit(1)
+        select(agent_policies.c.policy_id).where(agent_policies.c.agent_name == agent.name).limit(1)
     )
     if existing_policy_result.first() is None:
         raise NotFoundError(
@@ -1222,8 +1221,7 @@ async def delete_agent_policy(
         )
         raise DatabaseError(
             detail=(
-                f"Failed to remove policy associations from agent '{agent.name}': "
-                "database error"
+                f"Failed to remove policy associations from agent '{agent.name}': database error"
             ),
             resource="Agent",
             operation="remove policy",
@@ -1319,8 +1317,7 @@ async def remove_agent_control(
         )
         raise DatabaseError(
             detail=(
-                f"Failed to remove control association from agent '{agent.name}': "
-                "database error"
+                f"Failed to remove control association from agent '{agent.name}': database error"
             ),
             resource="Agent",
             operation="remove control association",
@@ -1426,7 +1423,7 @@ async def list_agent_controls(
             ],
         )
 
-    agent = await _get_agent_or_404(agent_name, db)
+    agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
     controls = await ControlService(db).list_controls_for_agent(
         agent.name,
         namespace_key=namespace_key,
@@ -1449,8 +1446,6 @@ class EvaluatorSchemaItem(BaseModel):
     name: str
     description: str | None
     config_schema: dict[str, Any]
-
-
 
 
 class ListEvaluatorsResponse(BaseModel):
@@ -1684,9 +1679,7 @@ async def patch_agent(
 
     # Remove steps
     if request.remove_steps:
-        remove_step_set: set[StepKeyTuple] = {
-            (s.type, s.name) for s in request.remove_steps
-        }
+        remove_step_set: set[StepKeyTuple] = {(s.type, s.name) for s in request.remove_steps}
         new_steps: list[StepSchema] = []
         for step in data_model.steps or []:
             key: StepKeyTuple = (step.type, step.name)
