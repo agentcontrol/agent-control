@@ -22,10 +22,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth_framework import Operation, Principal, require_operation
-from ..auth_framework.config import (
-    runtime_token_secret,
-    runtime_token_ttl_seconds,
-)
+from ..auth_framework.config import runtime_auth_config
 from ..auth_framework.runtime_token import (
     RuntimeTokenError,
     UpstreamGrantExpiredError,
@@ -44,18 +41,14 @@ class RuntimeTokenExchangeRequest(BaseModel):
     target_type: str = Field(
         ..., description="Opaque target kind (e.g., ``log_stream``).", min_length=1
     )
-    target_id: str = Field(
-        ..., description="Opaque target identifier.", min_length=1
-    )
+    target_id: str = Field(..., description="Opaque target identifier.", min_length=1)
 
 
 class RuntimeTokenExchangeResponse(BaseModel):
     """Issued runtime token plus its expiry."""
 
     token: str = Field(..., description="Short-lived runtime token (HS256 JWT).")
-    expires_at: datetime = Field(
-        ..., description="UTC timestamp at which the token expires."
-    )
+    expires_at: datetime = Field(..., description="UTC timestamp at which the token expires.")
     target_type: str = Field(..., description="Target the token is bound to.")
     target_id: str = Field(..., description="Target the token is bound to.")
     scopes: list[str] = Field(
@@ -107,8 +100,8 @@ async def runtime_token_exchange(
     ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET``; otherwise the endpoint
     returns 503.
     """
-    secret = runtime_token_secret()
-    if not secret:
+    config = runtime_auth_config()
+    if config is None:
         raise APIError(
             status_code=503,
             error_code=ErrorCode.AUTH_MISCONFIGURED,
@@ -125,44 +118,29 @@ async def runtime_token_exchange(
     if principal.target_type is not None and principal.target_type != body.target_type:
         raise BadRequestError(
             error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-            detail=(
-                "Authorized target_type does not match the requested "
-                "target_type."
-            ),
+            detail=("Authorized target_type does not match the requested target_type."),
             hint="Ensure the credential is scoped to the requested target.",
         )
     if principal.target_id is not None and principal.target_id != body.target_id:
         raise BadRequestError(
             error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-            detail=(
-                "Authorized target_id does not match the requested target_id."
-            ),
+            detail=("Authorized target_id does not match the requested target_id."),
             hint="Ensure the credential is scoped to the requested target.",
         )
 
     actor_id = principal.caller_id or "anonymous"
-    if principal.scopes:
-        # Provider returned an explicit grant; honor it as-is. Adding
-        # runtime.use here would be privilege escalation when the
-        # upstream chose to omit it.
-        if Operation.RUNTIME_USE.value not in principal.scopes:
-            raise BadRequestError(
-                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-                detail=(
-                    "Authorizer grant does not include runtime.use; "
-                    "cannot mint a runtime token."
-                ),
-                hint=(
-                    "The upstream credential is not authorized for runtime "
-                    "use on this target."
-                ),
-            )
-        scopes = principal.scopes
-    else:
-        # No scoped grant from the provider (e.g., header provider with no
-        # upstream). Default to runtime.use, the only runtime scope V1
-        # tokens are intended to carry.
-        scopes = (Operation.RUNTIME_USE.value,)
+    # The exchange endpoint requires the authorizer to explicitly grant
+    # runtime.use. Providers that do not surface scopes (legacy local
+    # provider) supply a normalized grant for ``RUNTIME_TOKEN_EXCHANGE``;
+    # upstream providers that return an explicit empty scopes array fail
+    # closed here rather than escalating to runtime.use.
+    if Operation.RUNTIME_USE.value not in principal.scopes:
+        raise BadRequestError(
+            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+            detail=("Authorizer grant does not include runtime.use; cannot mint a runtime token."),
+            hint=("The credential is not authorized for runtime use on this target."),
+        )
+    scopes = principal.scopes
 
     try:
         token, claims = mint_runtime_token(
@@ -171,8 +149,8 @@ async def runtime_token_exchange(
             target_type=body.target_type,
             target_id=body.target_id,
             scopes=scopes,
-            secret=secret,
-            ttl_seconds=runtime_token_ttl_seconds(),
+            secret=config.secret,
+            ttl_seconds=config.ttl_seconds,
             upstream_expires_at=principal.grant_expires_at,
         )
     except UpstreamGrantExpiredError as exc:

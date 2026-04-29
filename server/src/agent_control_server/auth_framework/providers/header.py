@@ -85,9 +85,7 @@ class HeaderAuthProvider(RequestAuthorizer):
 
         access = self._operation_access.get(operation)
         if access is None:
-            raise RuntimeError(
-                f"No access level configured for operation {operation.value!r}"
-            )
+            raise RuntimeError(f"No access level configured for operation {operation.value!r}")
 
         namespace_key = self._resolve_namespace_key(request)
 
@@ -100,10 +98,18 @@ class HeaderAuthProvider(RequestAuthorizer):
             request,
             require_admin=access is AccessLevel.ADMIN,
         )
+        # Runtime token exchange returns a normalized scope grant so the
+        # exchange endpoint can require ``runtime.use`` uniformly across
+        # providers; an upstream that explicitly grants no scopes ends
+        # up with an empty tuple and is rejected.
+        scopes: tuple[str, ...] = (
+            (Operation.RUNTIME_USE.value,) if operation is Operation.RUNTIME_TOKEN_EXCHANGE else ()
+        )
         return Principal(
             namespace_key=namespace_key,
             is_admin=client.is_admin,
             caller_id=client.key_id,
+            scopes=scopes,
         )
 
     def _resolve_namespace_key(self, request: Request) -> str:

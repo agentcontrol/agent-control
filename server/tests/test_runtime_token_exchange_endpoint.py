@@ -9,23 +9,34 @@ end-to-end exchange-then-verify path: a token minted via
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from agent_control_server.auth_framework import Operation, Principal
+from agent_control_server.auth_framework.config import (
+    RuntimeAuthConfig,
+    set_runtime_auth_config,
+)
 from agent_control_server.auth_framework.core import (
     clear_authorizers,
     set_authorizer,
 )
 from agent_control_server.auth_framework.providers import (
-    HeaderAuthProvider,
     LocalJwtVerifyProvider,
 )
 
-
 _TEST_SECRET = "test-runtime-secret-12345678901234567890"
+
+
+@pytest.fixture
+def runtime_config_enabled():
+    """Install a deterministic runtime-auth config for the test, then clear."""
+    set_runtime_auth_config(RuntimeAuthConfig(secret=_TEST_SECRET, ttl_seconds=300))
+    try:
+        yield
+    finally:
+        set_runtime_auth_config(None)
 
 
 class _StubExchangeAuthorizer:
@@ -72,7 +83,7 @@ def test_exchange_endpoint_503_when_secret_not_configured(client: TestClient):
     assert response.status_code == 503
 
 
-def test_exchange_endpoint_mints_token_when_configured(client: TestClient):
+def test_exchange_endpoint_mints_token_when_configured(client: TestClient, runtime_config_enabled):
     stub = _StubExchangeAuthorizer(
         actor_id="actor-9",
         scopes=("runtime.use",),
@@ -83,14 +94,10 @@ def test_exchange_endpoint_mints_token_when_configured(client: TestClient):
     clear_authorizers()
     set_authorizer(stub)
 
-    with patch.dict(
-        "os.environ",
-        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
-    ):
-        response = client.post(
-            "/api/v1/auth/runtime-token-exchange",
-            json={"target_type": "log_stream", "target_id": "ls-42"},
-        )
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-42"},
+    )
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -101,7 +108,7 @@ def test_exchange_endpoint_mints_token_when_configured(client: TestClient):
     assert body["expires_at"]
 
 
-def test_exchange_endpoint_rejects_target_mismatch(client: TestClient):
+def test_exchange_endpoint_rejects_target_mismatch(client: TestClient, runtime_config_enabled):
     """Provider says the credential is scoped to one target; body asks for another."""
     stub = _StubExchangeAuthorizer(
         target_type="log_stream",
@@ -110,14 +117,10 @@ def test_exchange_endpoint_rejects_target_mismatch(client: TestClient):
     clear_authorizers()
     set_authorizer(stub)
 
-    with patch.dict(
-        "os.environ",
-        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
-    ):
-        response = client.post(
-            "/api/v1/auth/runtime-token-exchange",
-            json={"target_type": "log_stream", "target_id": "different-target"},
-        )
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "different-target"},
+    )
 
     assert response.status_code == 400
 
@@ -130,19 +133,17 @@ def test_exchange_endpoint_rejects_missing_target(client: TestClient):
     assert response.status_code == 422
 
 
-def test_exchange_endpoint_passes_target_to_authorizer_context(client: TestClient):
+def test_exchange_endpoint_passes_target_to_authorizer_context(
+    client: TestClient, runtime_config_enabled
+):
     stub = _StubExchangeAuthorizer()
     clear_authorizers()
     set_authorizer(stub)
 
-    with patch.dict(
-        "os.environ",
-        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
-    ):
-        response = client.post(
-            "/api/v1/auth/runtime-token-exchange",
-            json={"target_type": "log_stream", "target_id": "ls-7"},
-        )
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-7"},
+    )
 
     assert response.status_code == 200
     assert stub.calls
@@ -154,7 +155,7 @@ def test_exchange_endpoint_passes_target_to_authorizer_context(client: TestClien
 
 
 @pytest.mark.asyncio
-async def test_exchange_then_verify_full_round_trip(client: TestClient):
+async def test_exchange_then_verify_full_round_trip(client: TestClient, runtime_config_enabled):
     """End-to-end: exchange yields a token, verify provider accepts it."""
     from unittest.mock import MagicMock
 
@@ -162,14 +163,10 @@ async def test_exchange_then_verify_full_round_trip(client: TestClient):
     clear_authorizers()
     set_authorizer(stub)
 
-    with patch.dict(
-        "os.environ",
-        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
-    ):
-        response = client.post(
-            "/api/v1/auth/runtime-token-exchange",
-            json={"target_type": "log_stream", "target_id": "ls-99"},
-        )
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-99"},
+    )
     assert response.status_code == 200, response.text
     token = response.json()["token"]
 
@@ -185,6 +182,7 @@ async def test_exchange_then_verify_full_round_trip(client: TestClient):
 
 def test_exchange_endpoint_502_when_upstream_grant_already_expired(
     client: TestClient,
+    runtime_config_enabled,
 ):
     """Upstream returned a grant whose expires_at is in the past.
 
@@ -202,14 +200,10 @@ def test_exchange_endpoint_502_when_upstream_grant_already_expired(
     clear_authorizers()
     set_authorizer(stub)
 
-    with patch.dict(
-        "os.environ",
-        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
-    ):
-        response = client.post(
-            "/api/v1/auth/runtime-token-exchange",
-            json={"target_type": "log_stream", "target_id": "ls-42"},
-        )
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-42"},
+    )
 
     assert response.status_code == 502, response.text
     # Detail is sanitized at the response boundary by the error handler;
@@ -218,7 +212,9 @@ def test_exchange_endpoint_502_when_upstream_grant_already_expired(
     # for operators.
 
 
-def test_exchange_endpoint_rejects_grant_without_runtime_use(client: TestClient):
+def test_exchange_endpoint_rejects_grant_without_runtime_use(
+    client: TestClient, runtime_config_enabled
+):
     """If the upstream grant lists scopes but omits runtime.use, fail closed.
 
     Adding runtime.use here would mint a token with more authority than
@@ -228,20 +224,39 @@ def test_exchange_endpoint_rejects_grant_without_runtime_use(client: TestClient)
     clear_authorizers()
     set_authorizer(stub)
 
-    with patch.dict(
-        "os.environ",
-        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
-    ):
-        response = client.post(
-            "/api/v1/auth/runtime-token-exchange",
-            json={"target_type": "log_stream", "target_id": "ls-1"},
-        )
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-1"},
+    )
+    assert response.status_code == 400, response.text
+
+
+def test_exchange_endpoint_rejects_explicit_empty_grant_scopes(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """An upstream that returns an explicit empty scopes array must not
+    be silently upgraded to runtime.use.
+
+    The exchange endpoint always requires the authorizer to surface
+    runtime.use; an explicit empty grant is a privilege denial and must
+    fail closed.
+    """
+    stub = _StubExchangeAuthorizer(scopes=())
+    clear_authorizers()
+    set_authorizer(stub)
+
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-1"},
+    )
     assert response.status_code == 400, response.text
 
 
 @pytest.mark.asyncio
 async def test_exchange_propagates_non_default_namespace_into_token(
     client: TestClient,
+    runtime_config_enabled,
 ):
     """A token minted in org A must verify back into org A, not the default."""
     from unittest.mock import MagicMock
@@ -259,14 +274,10 @@ async def test_exchange_propagates_non_default_namespace_into_token(
     clear_authorizers()
     set_authorizer(_OrgAuthorizer())
 
-    with patch.dict(
-        "os.environ",
-        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
-    ):
-        response = client.post(
-            "/api/v1/auth/runtime-token-exchange",
-            json={"target_type": "log_stream", "target_id": "ls-org-a"},
-        )
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-org-a"},
+    )
     assert response.status_code == 200, response.text
     token = response.json()["token"]
 
