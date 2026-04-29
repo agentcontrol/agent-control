@@ -286,6 +286,33 @@ async def test_http_upstream_rejects_malformed_principal():
     assert exc_info.value.status_code == 502
 
 
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_naive_expires_at():
+    """A timezone-less ISO ``expires_at`` must fail closed at the parser.
+
+    Comparing a naive datetime against ``datetime.now(UTC)`` later in
+    the mint path raises ``TypeError`` and surfaces as a 500, so we
+    reject at the boundary instead and surface a 502 alongside the rest
+    of the malformed-grant fail-closed path.
+    """
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "namespace_key": "ns",
+                "is_admin": False,
+                "caller_id": "user",
+                "expires_at": "2030-01-01T00:00:00",  # no tz info
+            },
+        )
+    )
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(
+            _build_request(), Operation.CONTROL_BINDINGS_WRITE
+        )
+    assert exc_info.value.status_code == 502
+
+
 # ---------------------------------------------------------------------------
 # require_operation factory
 # ---------------------------------------------------------------------------
@@ -472,6 +499,59 @@ def test_runtime_token_caps_ttl_at_upstream_grant():
         now=now,
     )
     assert claims.expires_at == grant_expires
+
+
+def test_runtime_token_rejects_already_expired_upstream_grant():
+    """``upstream_expires_at <= issued_at`` must raise instead of minting.
+
+    Otherwise the exchange endpoint returns a 200 with an ``exp`` in the
+    past, handing the caller a token that's dead on arrival.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from agent_control_server.auth_framework.runtime_token import (
+        UpstreamGrantExpiredError,
+        mint_runtime_token,
+    )
+
+    now = datetime.now(UTC)
+    expired = now - timedelta(seconds=1)
+    with pytest.raises(UpstreamGrantExpiredError):
+        mint_runtime_token(
+            namespace_key="default",
+            actor_id="x",
+            target_type="t",
+            target_id="i",
+            scopes=("runtime.use",),
+            secret=_TEST_SECRET,
+            ttl_seconds=3600,
+            upstream_expires_at=expired,
+            now=now,
+        )
+
+
+def test_runtime_token_rejects_grant_expiring_at_issue_time():
+    """``upstream_expires_at == issued_at`` is also unusable: zero TTL."""
+    from datetime import UTC, datetime
+
+    from agent_control_server.auth_framework.runtime_token import (
+        UpstreamGrantExpiredError,
+        mint_runtime_token,
+    )
+
+    now = datetime.now(UTC)
+    with pytest.raises(UpstreamGrantExpiredError):
+        mint_runtime_token(
+            namespace_key="default",
+            actor_id="x",
+            target_type="t",
+            target_id="i",
+            scopes=("runtime.use",),
+            secret=_TEST_SECRET,
+            ttl_seconds=3600,
+            upstream_expires_at=now,
+            now=now,
+        )
 
 
 def test_runtime_token_rejects_management_token_passed_to_runtime_verify():

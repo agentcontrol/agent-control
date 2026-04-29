@@ -40,7 +40,17 @@ _DOMAIN = "runtime"
 
 
 class RuntimeTokenError(Exception):
-    """Raised when a runtime token cannot be verified."""
+    """Raised when a runtime token cannot be verified or minted."""
+
+
+class UpstreamGrantExpiredError(RuntimeTokenError):
+    """Raised when the upstream grant's ``expires_at`` is at or before
+    the issuing time, so the resulting token would already be expired.
+
+    Distinct from generic :class:`RuntimeTokenError` so the exchange
+    endpoint can surface this as a 502 (upstream returned an unusable
+    grant) rather than a 503 (server misconfigured).
+    """
 
 
 @dataclass(frozen=True)
@@ -86,6 +96,12 @@ def mint_runtime_token(
         raise RuntimeTokenError("ttl_seconds must be positive")
 
     issued_at = now or datetime.now(UTC)
+    if upstream_expires_at is not None and upstream_expires_at <= issued_at:
+        # Minting with an already-expired ``exp`` would return a 200 with
+        # an unusable token; surface the timing problem here instead.
+        raise UpstreamGrantExpiredError(
+            "Upstream grant has already expired; cannot mint a runtime token."
+        )
     candidate_expiry = issued_at + timedelta(seconds=ttl_seconds)
     if upstream_expires_at is not None and upstream_expires_at < candidate_expiry:
         expires_at = upstream_expires_at

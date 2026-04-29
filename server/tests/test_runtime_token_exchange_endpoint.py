@@ -183,6 +183,41 @@ async def test_exchange_then_verify_full_round_trip(client: TestClient):
     assert principal.caller_id == "actor-rt"
 
 
+def test_exchange_endpoint_502_when_upstream_grant_already_expired(
+    client: TestClient,
+):
+    """Upstream returned a grant whose expires_at is in the past.
+
+    Without this, the endpoint mints a 200 with an already-expired
+    token. The endpoint must distinguish "upstream returned bad data"
+    (502) from "server misconfigured" (503).
+    """
+    stub = _StubExchangeAuthorizer(
+        actor_id="actor-9",
+        scopes=("runtime.use",),
+        target_type="log_stream",
+        target_id="ls-42",
+        grant_expires_at=datetime.now(UTC) - timedelta(seconds=30),
+    )
+    clear_authorizers()
+    set_authorizer(stub)
+
+    with patch.dict(
+        "os.environ",
+        {"AGENT_CONTROL_RUNTIME_TOKEN_SECRET": _TEST_SECRET},
+    ):
+        response = client.post(
+            "/api/v1/auth/runtime-token-exchange",
+            json={"target_type": "log_stream", "target_id": "ls-42"},
+        )
+
+    assert response.status_code == 502, response.text
+    # Detail is sanitized at the response boundary by the error handler;
+    # the 502 (vs 503 for misconfigured server) is the public contract,
+    # the original "already-expired" message is preserved in server logs
+    # for operators.
+
+
 def test_exchange_endpoint_rejects_grant_without_runtime_use(client: TestClient):
     """If the upstream grant lists scopes but omits runtime.use, fail closed.
 

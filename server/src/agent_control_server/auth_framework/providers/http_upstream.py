@@ -45,7 +45,14 @@ from typing import Any
 import httpx
 from agent_control_models.errors import ErrorCode, ErrorReason
 from fastapi import Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from ...errors import APIError, AuthenticationError, ForbiddenError, NotFoundError
 from ...logging_utils import get_logger
@@ -74,6 +81,25 @@ class _UpstreamGrant(BaseModel):
     target_id: str | None = Field(default=None, min_length=1)
     scopes: tuple[str, ...] = ()
     expires_at: datetime | None = None
+
+    @field_validator("expires_at", mode="after")
+    @classmethod
+    def _expires_at_must_be_timezone_aware(
+        cls, value: datetime | None
+    ) -> datetime | None:
+        """Reject naive ``expires_at`` values.
+
+        A naive datetime carries no timezone, so comparing it against
+        ``datetime.now(UTC)`` during token mint raises ``TypeError`` and
+        surfaces as a 500. Fail closed at the parser instead so a
+        malformed-but-accepted grant becomes a clean 502 alongside the
+        rest of the strict-grant rejections.
+        """
+        if value is not None and value.tzinfo is None:
+            raise ValueError(
+                "expires_at must include timezone information (e.g., a UTC offset)"
+            )
+        return value
 
     @model_validator(mode="after")
     def _target_must_be_paired(self) -> _UpstreamGrant:

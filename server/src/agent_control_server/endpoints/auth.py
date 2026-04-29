@@ -26,7 +26,11 @@ from ..auth_framework.config import (
     runtime_token_secret,
     runtime_token_ttl_seconds,
 )
-from ..auth_framework.runtime_token import RuntimeTokenError, mint_runtime_token
+from ..auth_framework.runtime_token import (
+    RuntimeTokenError,
+    UpstreamGrantExpiredError,
+    mint_runtime_token,
+)
 from ..errors import APIError, BadRequestError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -171,6 +175,21 @@ async def runtime_token_exchange(
             ttl_seconds=runtime_token_ttl_seconds(),
             upstream_expires_at=principal.grant_expires_at,
         )
+    except UpstreamGrantExpiredError as exc:
+        # Upstream returned a grant whose ``expires_at`` is already in
+        # the past — minting would hand the caller a token that's dead
+        # on arrival. Distinguished from the misconfigured case so the
+        # error code and status reflect "upstream returned bad data."
+        raise APIError(
+            status_code=502,
+            error_code=ErrorCode.AUTH_MISCONFIGURED,
+            reason=ErrorReason.INTERNAL_ERROR,
+            detail="Authorization service returned an already-expired grant.",
+            hint=(
+                "Retry the request to obtain a fresh grant; "
+                "if the failure persists, contact the operator."
+            ),
+        ) from exc
     except RuntimeTokenError as exc:
         raise APIError(
             status_code=503,
