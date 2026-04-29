@@ -31,13 +31,15 @@ export class Agents extends ClientSDK {
    * List all registered agents with cursor-based pagination.
    *
    * Returns a summary of each agent including identifier, policy associations,
-   * and counts of registered steps and evaluators.
+   * and counts of registered steps and evaluators. Results are scoped to
+   * the request's namespace; agents in other namespaces are not visible.
    *
    * Args:
    *     cursor: Optional cursor for pagination (last agent name from previous page)
    *     limit: Pagination limit (default 20, max 100)
    *     name: Optional name filter (case-insensitive partial match)
    *     db: Database session (injected)
+   *     namespace_key: Resolved namespace for the request
    *
    * Returns:
    *     ListAgentsResponse with agent summaries and pagination info
@@ -104,6 +106,8 @@ export class Agents extends ClientSDK {
    * Args:
    *     agent_name: Agent identifier
    *     db: Database session (injected)
+   *     namespace_key: Resolved namespace; agents in another namespace
+   *         return 404 (non-disclosing).
    *
    * Returns:
    *     GetAgentResponse with agent metadata and step list
@@ -252,6 +256,8 @@ export class Agents extends ClientSDK {
    *     cursor: Optional cursor for pagination (name of last evaluator from previous page)
    *     limit: Pagination limit (default 20, max 100)
    *     db: Database session (injected)
+   *     namespace_key: Resolved namespace; agents in another namespace
+   *         return 404 (non-disclosing).
    *
    * Returns:
    *     ListEvaluatorsResponse with evaluator schemas and pagination
@@ -281,6 +287,8 @@ export class Agents extends ClientSDK {
    *     agent_name: Agent identifier
    *     evaluator_name: Name of the evaluator
    *     db: Database session (injected)
+   *     namespace_key: Resolved namespace; agents in another namespace
+   *         return 404 (non-disclosing).
    *
    * Returns:
    *     EvaluatorSchemaItem with schema details

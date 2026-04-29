@@ -63,11 +63,16 @@ class ControlBindingsService:
             control_id=control_id,
             enabled=enabled,
         )
-        self._db.add(binding)
+        # ``begin_nested`` opens a SAVEPOINT so a unique-constraint
+        # collision rolls back only the conflicting insert. A bare
+        # ``session.rollback()`` would discard every pending change in
+        # the surrounding transaction, including unrelated writes from a
+        # caller that composed this service after another flush.
         try:
-            await self._db.flush()
+            async with self._db.begin_nested():
+                self._db.add(binding)
+                await self._db.flush()
         except IntegrityError as exc:
-            await self._db.rollback()
             raise ConflictError(
                 error_code=ErrorCode.CONTROL_BINDING_CONFLICT,
                 detail=(

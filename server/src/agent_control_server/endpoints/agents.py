@@ -286,18 +286,21 @@ async def list_agents(
     limit: int = _DEFAULT_PAGINATION_LIMIT,
     name: str | None = None,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> ListAgentsResponse:
     """
     List all registered agents with cursor-based pagination.
 
     Returns a summary of each agent including identifier, policy associations,
-    and counts of registered steps and evaluators.
+    and counts of registered steps and evaluators. Results are scoped to
+    the request's namespace; agents in other namespaces are not visible.
 
     Args:
         cursor: Optional cursor for pagination (last agent name from previous page)
         limit: Pagination limit (default 20, max 100)
         name: Optional name filter (case-insensitive partial match)
         db: Database session (injected)
+        namespace_key: Resolved namespace for the request
 
     Returns:
         ListAgentsResponse with agent summaries and pagination info
@@ -309,7 +312,9 @@ async def list_agents(
     name_filter = Agent.name.ilike(f"%{escape_like_pattern(name)}%", escape="\\") if name else None
 
     # Get total count (with name filter if provided)
-    count_query = select(func.count()).select_from(Agent)
+    count_query = (
+        select(func.count()).select_from(Agent).where(Agent.namespace_key == namespace_key)
+    )
     if name_filter is not None:
         count_query = count_query.where(name_filter)
     count_result = await db.execute(count_query)
@@ -317,16 +322,27 @@ async def list_agents(
 
     # Build query with cursor-based pagination
     # Order by created_at DESC, then by name DESC for stable ordering
-    query = select(Agent).order_by(Agent.created_at.desc(), Agent.name.desc())
+    query = (
+        select(Agent)
+        .where(Agent.namespace_key == namespace_key)
+        .order_by(Agent.created_at.desc(), Agent.name.desc())
+    )
 
     # Apply name filter if provided
     if name_filter is not None:
         query = query.where(name_filter)
 
-    # If cursor provided, filter to get items after the cursor
+    # If cursor provided, filter to get items after the cursor.
+    # The cursor lookup is namespace-scoped so a duplicate name in
+    # another namespace cannot redirect pagination.
     if cursor:
         cursor_name = normalize_agent_name_or_422(cursor, field_name="cursor")
-        cursor_agent_result = await db.execute(select(Agent).where(Agent.name == cursor_name))
+        cursor_agent_result = await db.execute(
+            select(Agent).where(
+                Agent.name == cursor_name,
+                Agent.namespace_key == namespace_key,
+            )
+        )
         cursor_agent = cursor_agent_result.scalars().first()
         if cursor_agent:
             query = query.where(
@@ -816,7 +832,11 @@ async def init_agent(
     summary="Get agent details",
     response_description="Agent metadata and registered steps",
 )
-async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -> GetAgentResponse:
+async def get_agent(
+    agent_name: str,
+    db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
+) -> GetAgentResponse:
     """
     Retrieve agent metadata and all registered steps.
 
@@ -825,6 +845,8 @@ async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -
     Args:
         agent_name: Agent identifier
         db: Database session (injected)
+        namespace_key: Resolved namespace; agents in another namespace
+            return 404 (non-disclosing).
 
     Returns:
         GetAgentResponse with agent metadata and step list
@@ -834,7 +856,9 @@ async def get_agent(agent_name: str, db: AsyncSession = Depends(get_async_db)) -
         HTTPException 422: Agent data is corrupted
     """
     agent_name = normalize_agent_name_or_422(agent_name)
-    result = await db.execute(select(Agent).where(Agent.name == agent_name))
+    result = await db.execute(
+        select(Agent).where(Agent.name == agent_name, Agent.namespace_key == namespace_key)
+    )
     existing: Agent | None = result.scalars().first()
     if existing is None:
         raise NotFoundError(
@@ -1548,6 +1572,7 @@ async def list_agent_evaluators(
     cursor: str | None = None,
     limit: int = _DEFAULT_PAGINATION_LIMIT,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> ListEvaluatorsResponse:
     """
     List all evaluator schemas registered with an agent.
@@ -1561,6 +1586,8 @@ async def list_agent_evaluators(
         cursor: Optional cursor for pagination (name of last evaluator from previous page)
         limit: Pagination limit (default 20, max 100)
         db: Database session (injected)
+        namespace_key: Resolved namespace; agents in another namespace
+            return 404 (non-disclosing).
 
     Returns:
         ListEvaluatorsResponse with evaluator schemas and pagination
@@ -1572,7 +1599,9 @@ async def list_agent_evaluators(
     # Clamp limit
     limit = min(max(1, limit), _MAX_PAGINATION_LIMIT)
 
-    result = await db.execute(select(Agent).where(Agent.name == agent_name))
+    result = await db.execute(
+        select(Agent).where(Agent.name == agent_name, Agent.namespace_key == namespace_key)
+    )
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
@@ -1643,6 +1672,7 @@ async def get_agent_evaluator(
     agent_name: str,
     evaluator_name: str,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> EvaluatorSchemaItem:
     """
     Get a specific evaluator schema registered with an agent.
@@ -1651,6 +1681,8 @@ async def get_agent_evaluator(
         agent_name: Agent identifier
         evaluator_name: Name of the evaluator
         db: Database session (injected)
+        namespace_key: Resolved namespace; agents in another namespace
+            return 404 (non-disclosing).
 
     Returns:
         EvaluatorSchemaItem with schema details
@@ -1659,7 +1691,9 @@ async def get_agent_evaluator(
         HTTPException 404: Agent or evaluator not found
     """
     agent_name = normalize_agent_name_or_422(agent_name)
-    result = await db.execute(select(Agent).where(Agent.name == agent_name))
+    result = await db.execute(
+        select(Agent).where(Agent.name == agent_name, Agent.namespace_key == namespace_key)
+    )
     agent: Agent | None = result.scalars().first()
     if agent is None:
         raise NotFoundError(
