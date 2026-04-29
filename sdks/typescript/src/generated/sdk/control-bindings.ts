@@ -19,10 +19,12 @@ export class ControlBindings extends ClientSDK {
    * List control bindings
    *
    * @remarks
-   * Return bindings in the current namespace with optional filters and
-   * cursor-based pagination. Bindings are ordered by ID descending (newest
-   * first). The cursor is opaque to clients: pass back the
-   * ``next_cursor`` value verbatim to fetch the following page.
+   * Return bindings in the request namespace with optional filters and
+   * cursor-based pagination. Bindings are ordered by ID descending
+   * (newest first). The cursor is opaque to clients: pass back the
+   * ``next_cursor`` value verbatim to fetch the following page. The
+   * storage namespace is resolved by ``get_namespace_key`` so this
+   * listing stays in lockstep with the rest of the server's reads.
    */
   async list(
     request?:
@@ -43,9 +45,12 @@ export class ControlBindings extends ClientSDK {
    * @remarks
    * Attach a control to an opaque external target.
    *
-   * Each binding row is an attachment scoped to the request's namespace; the
-   * ``enabled`` flag is a soft toggle. Per-agent overrides and exemptions are
-   * intentionally out of scope; see ``ControlBinding`` for the forward path.
+   * Each binding row is scoped to the request namespace as resolved by
+   * ``get_namespace_key``. The auth chain still runs via
+   * ``require_operation`` for authentication and authorization, but the
+   * storage namespace is taken from the same resolver the rest of the
+   * server uses so binding writes and runtime reads stay in lockstep
+   * until auth-derived namespace resolution lands across every endpoint.
    */
   async create(
     request: models.CreateControlBindingRequest,

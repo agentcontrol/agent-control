@@ -94,12 +94,17 @@ def mint_runtime_token(
         raise RuntimeTokenError("namespace_key is required to mint a runtime token")
     if ttl_seconds <= 0:
         raise RuntimeTokenError("ttl_seconds must be positive")
-    if upstream_expires_at is not None and upstream_expires_at.tzinfo is None:
+    if upstream_expires_at is not None and (
+        upstream_expires_at.tzinfo is None or upstream_expires_at.utcoffset() is None
+    ):
         # The HTTP-upstream parser already rejects naive datetimes, but
         # this helper has other call sites (custom authorizers, tests)
         # that can supply a naive value. Comparing it against
         # ``datetime.now(UTC)`` below would raise a raw ``TypeError``;
         # surface the misuse as a typed ``RuntimeTokenError`` instead.
+        # Both ``tzinfo`` and ``utcoffset()`` are checked because a
+        # custom ``tzinfo`` subclass can set the attribute but return
+        # ``None`` from ``utcoffset()``, leaving comparisons broken.
         raise RuntimeTokenError(
             "upstream_expires_at must be timezone-aware "
             "(e.g., tz=UTC); naive datetimes are not supported."

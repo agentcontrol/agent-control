@@ -32,9 +32,12 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Attach a control to an opaque external target.
  *
- * Each binding row is an attachment scoped to the request's namespace; the
- * ``enabled`` flag is a soft toggle. Per-agent overrides and exemptions are
- * intentionally out of scope; see ``ControlBinding`` for the forward path.
+ * Each binding row is scoped to the request namespace as resolved by
+ * ``get_namespace_key``. The auth chain still runs via
+ * ``require_operation`` for authentication and authorization, but the
+ * storage namespace is taken from the same resolver the rest of the
+ * server uses so binding writes and runtime reads stay in lockstep
+ * until auth-derived namespace resolution lands across every endpoint.
  */
 export function controlBindingsCreate(
   client: AgentControlSDKCore,

@@ -31,10 +31,12 @@ import { Result } from "../types/fp.js";
  * List control bindings
  *
  * @remarks
- * Return bindings in the current namespace with optional filters and
- * cursor-based pagination. Bindings are ordered by ID descending (newest
- * first). The cursor is opaque to clients: pass back the
- * ``next_cursor`` value verbatim to fetch the following page.
+ * Return bindings in the request namespace with optional filters and
+ * cursor-based pagination. Bindings are ordered by ID descending
+ * (newest first). The cursor is opaque to clients: pass back the
+ * ``next_cursor`` value verbatim to fetch the following page. The
+ * storage namespace is resolved by ``get_namespace_key`` so this
+ * listing stays in lockstep with the rest of the server's reads.
  */
 export function controlBindingsList(
   client: AgentControlSDKCore,
