@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from agent_control_models.errors import ErrorCode
 from agent_control_models.server import (
     CreateControlBindingRequest,
@@ -17,7 +19,7 @@ from agent_control_models.server import (
     UpsertControlBindingRequest,
     UpsertControlBindingResponse,
 )
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, require_operation
@@ -30,6 +32,46 @@ router = APIRouter(prefix="/control-bindings", tags=["control-bindings"])
 
 _DEFAULT_LIST_LIMIT = 20
 _MAX_LIST_LIMIT = 100
+
+
+async def _binding_body_context(request: Request) -> dict[str, Any]:
+    """Surface ``(target_type, target_id)`` to the authorizer's context.
+
+    The body-bearing binding endpoints carry the target identifiers in
+    the request payload. Upstream authorizers that resolve the target's
+    owning project (e.g., Galileo's ``check_management_access``) need
+    those identifiers to make a project-level decision; without them the
+    upstream returns 400.
+
+    FastAPI caches the parsed body, so the endpoint's own Pydantic
+    request model still binds normally.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001  malformed JSON falls through to endpoint validation
+        return {}
+    if not isinstance(body, dict):
+        return {}
+    return {
+        "target_type": body.get("target_type"),
+        "target_id": body.get("target_id"),
+    }
+
+
+async def _binding_list_context(request: Request) -> dict[str, Any]:
+    """Surface optional target query parameters to the authorizer.
+
+    When the GET list endpoint is called with ``target_type`` and
+    ``target_id`` query params, the request is target-scoped and the
+    upstream needs the identifiers to make a project-level decision.
+    When neither is present the request is namespace-wide and forwards
+    no target context (upstream may then reject if it requires one).
+    """
+    target_type = request.query_params.get("target_type")
+    target_id = request.query_params.get("target_id")
+    if target_type is None and target_id is None:
+        return {}
+    return {"target_type": target_type, "target_id": target_id}
 
 
 def _to_response(binding: ControlBinding) -> GetControlBindingResponse:
@@ -55,7 +97,10 @@ async def create_control_binding(
     request: CreateControlBindingRequest,
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(
-        require_operation(Operation.CONTROL_BINDINGS_WRITE)
+        require_operation(
+            Operation.CONTROL_BINDINGS_WRITE,
+            context_builder=_binding_body_context,
+        )
     ),
 ) -> CreateControlBindingResponse:
     """Attach a control to an opaque external target.
@@ -102,7 +147,10 @@ async def list_control_bindings(
     control_id: int | None = None,
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(
-        require_operation(Operation.CONTROL_BINDINGS_READ)
+        require_operation(
+            Operation.CONTROL_BINDINGS_READ,
+            context_builder=_binding_list_context,
+        )
     ),
 ) -> ListControlBindingsResponse:
     """Return bindings in the current namespace with optional filters and
@@ -151,9 +199,7 @@ async def list_control_bindings(
 async def get_control_binding(
     binding_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(
-        require_operation(Operation.CONTROL_BINDINGS_READ)
-    ),
+    principal: Principal = Depends(require_operation(Operation.CONTROL_BINDINGS_READ)),
 ) -> GetControlBindingResponse:
     service = ControlBindingsService(db)
     binding = await service.get_binding_or_404(
@@ -172,9 +218,7 @@ async def patch_control_binding(
     binding_id: int,
     request: PatchControlBindingRequest,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(
-        require_operation(Operation.CONTROL_BINDINGS_WRITE)
-    ),
+    principal: Principal = Depends(require_operation(Operation.CONTROL_BINDINGS_WRITE)),
 ) -> PatchControlBindingResponse:
     """Update the ``enabled`` flag on a control binding."""
     service = ControlBindingsService(db)
@@ -196,14 +240,10 @@ async def patch_control_binding(
 async def delete_control_binding(
     binding_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(
-        require_operation(Operation.CONTROL_BINDINGS_WRITE)
-    ),
+    principal: Principal = Depends(require_operation(Operation.CONTROL_BINDINGS_WRITE)),
 ) -> DeleteControlBindingResponse:
     service = ControlBindingsService(db)
-    await service.delete_binding(
-        namespace_key=principal.namespace_key, binding_id=binding_id
-    )
+    await service.delete_binding(namespace_key=principal.namespace_key, binding_id=binding_id)
     await db.commit()
     return DeleteControlBindingResponse(success=True)
 
@@ -218,7 +258,10 @@ async def upsert_control_binding_by_key(
     request: UpsertControlBindingRequest,
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(
-        require_operation(Operation.CONTROL_BINDINGS_WRITE)
+        require_operation(
+            Operation.CONTROL_BINDINGS_WRITE,
+            context_builder=_binding_body_context,
+        )
     ),
 ) -> UpsertControlBindingResponse:
     """Idempotent attach using ``(target_type, target_id, control_id)`` as the
@@ -252,7 +295,10 @@ async def delete_control_binding_by_key(
     request: DeleteControlBindingByKeyRequest,
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(
-        require_operation(Operation.CONTROL_BINDINGS_WRITE)
+        require_operation(
+            Operation.CONTROL_BINDINGS_WRITE,
+            context_builder=_binding_body_context,
+        )
     ),
 ) -> DeleteControlBindingByKeyResponse:
     """Idempotent detach by natural key. Returns ``deleted=False`` when no
