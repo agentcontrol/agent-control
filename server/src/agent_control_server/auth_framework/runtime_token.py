@@ -94,6 +94,16 @@ def mint_runtime_token(
         raise RuntimeTokenError("namespace_key is required to mint a runtime token")
     if ttl_seconds <= 0:
         raise RuntimeTokenError("ttl_seconds must be positive")
+    if upstream_expires_at is not None and upstream_expires_at.tzinfo is None:
+        # The HTTP-upstream parser already rejects naive datetimes, but
+        # this helper has other call sites (custom authorizers, tests)
+        # that can supply a naive value. Comparing it against
+        # ``datetime.now(UTC)`` below would raise a raw ``TypeError``;
+        # surface the misuse as a typed ``RuntimeTokenError`` instead.
+        raise RuntimeTokenError(
+            "upstream_expires_at must be timezone-aware "
+            "(e.g., tz=UTC); naive datetimes are not supported."
+        )
 
     issued_at = now or datetime.now(UTC)
     if upstream_expires_at is not None and upstream_expires_at <= issued_at:
@@ -143,9 +153,7 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
     missing, or required claims are missing or malformed.
     """
     if not secret:
-        raise RuntimeTokenError(
-            "Runtime token secret is not configured."
-        )
+        raise RuntimeTokenError("Runtime token secret is not configured.")
     try:
         payload = jwt.decode(
             token,
@@ -162,9 +170,7 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
         raise RuntimeTokenError(f"Runtime token is invalid: {exc}") from exc
 
     if payload.get("domain") != _DOMAIN:
-        raise RuntimeTokenError(
-            "Token is not a runtime token; refusing to use it here."
-        )
+        raise RuntimeTokenError("Token is not a runtime token; refusing to use it here.")
 
     namespace_key = payload.get("namespace_key")
     actor_id = payload.get("actor_id")
@@ -180,9 +186,7 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
         raise RuntimeTokenError("Runtime token missing target_id.")
 
     raw_scopes = payload.get("scopes", [])
-    if not isinstance(raw_scopes, list) or not all(
-        isinstance(s, str) for s in raw_scopes
-    ):
+    if not isinstance(raw_scopes, list) or not all(isinstance(s, str) for s in raw_scopes):
         raise RuntimeTokenError("Runtime token has malformed scopes.")
     scopes = tuple(raw_scopes)
 

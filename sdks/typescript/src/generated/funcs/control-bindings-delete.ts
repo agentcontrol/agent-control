@@ -28,7 +28,15 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Delete a control binding
+ * Delete a control binding (namespace-wide)
+ *
+ * @remarks
+ * Delete a control binding by surrogate ID.
+ *
+ * See the GET-by-id docstring for the authorization scope: this route
+ * is namespace-wide because the target identifiers are not available
+ * before the binding is loaded. Use ``POST /by-key:delete`` for
+ * target-scoped detach that forwards the target to the authorizer.
  */
 export function controlBindingsDelete(
   client: AgentControlSDKCore,

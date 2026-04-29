@@ -193,7 +193,7 @@ async def list_control_bindings(
 @router.get(
     "/{binding_id}",
     response_model=GetControlBindingResponse,
-    summary="Get a control binding",
+    summary="Get a control binding (namespace-wide)",
     response_description="The requested binding",
 )
 async def get_control_binding(
@@ -201,6 +201,16 @@ async def get_control_binding(
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.CONTROL_BINDINGS_READ)),
 ) -> GetControlBindingResponse:
+    """Read a single control binding by surrogate ID.
+
+    Authorization is namespace-wide: the binding's target identifiers
+    are not forwarded to the upstream because they are only discoverable
+    after the row is loaded, and ``require_operation`` is single-pass.
+    Callers whose authorization model requires per-target permissions
+    should use the natural-key endpoints (``PUT /by-key``,
+    ``POST /by-key:delete``) and the target-filtered list endpoint, all
+    of which forward ``(target_type, target_id)`` to the authorizer.
+    """
     service = ControlBindingsService(db)
     binding = await service.get_binding_or_404(
         namespace_key=principal.namespace_key, binding_id=binding_id
@@ -211,7 +221,7 @@ async def get_control_binding(
 @router.patch(
     "/{binding_id}",
     response_model=PatchControlBindingResponse,
-    summary="Update a control binding",
+    summary="Update a control binding (namespace-wide)",
     response_description="Updated enabled flag",
 )
 async def patch_control_binding(
@@ -220,7 +230,13 @@ async def patch_control_binding(
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.CONTROL_BINDINGS_WRITE)),
 ) -> PatchControlBindingResponse:
-    """Update the ``enabled`` flag on a control binding."""
+    """Update the ``enabled`` flag on a control binding.
+
+    See the GET-by-id docstring for the authorization scope: this route
+    is namespace-wide because the target identifiers are not available
+    before the binding is loaded. Use ``PUT /by-key`` for target-scoped
+    upserts that forward the target to the authorizer.
+    """
     service = ControlBindingsService(db)
     binding = await service.set_enabled(
         namespace_key=principal.namespace_key,
@@ -234,7 +250,7 @@ async def patch_control_binding(
 @router.delete(
     "/{binding_id}",
     response_model=DeleteControlBindingResponse,
-    summary="Delete a control binding",
+    summary="Delete a control binding (namespace-wide)",
     response_description="Deletion confirmation",
 )
 async def delete_control_binding(
@@ -242,6 +258,13 @@ async def delete_control_binding(
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.CONTROL_BINDINGS_WRITE)),
 ) -> DeleteControlBindingResponse:
+    """Delete a control binding by surrogate ID.
+
+    See the GET-by-id docstring for the authorization scope: this route
+    is namespace-wide because the target identifiers are not available
+    before the binding is loaded. Use ``POST /by-key:delete`` for
+    target-scoped detach that forwards the target to the authorizer.
+    """
     service = ControlBindingsService(db)
     await service.delete_binding(namespace_key=principal.namespace_key, binding_id=binding_id)
     await db.commit()

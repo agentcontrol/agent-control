@@ -78,9 +78,7 @@ async def test_header_provider_no_auth_mode_passes_admin_op():
     """
     provider = HeaderAuthProvider()
 
-    with patch(
-        "agent_control_server.auth.auth_settings.api_key_enabled", False
-    ):
+    with patch("agent_control_server.auth.auth_settings.api_key_enabled", False):
         principal = await provider.authorize(
             _build_request(),
             Operation.CONTROL_BINDINGS_WRITE,
@@ -207,9 +205,7 @@ async def test_http_upstream_returns_principal_on_200():
     request = _build_request(headers={"X-API-Key": "caller-key"})
     principal = await provider.authorize(request, Operation.CONTROL_BINDINGS_WRITE)
 
-    assert principal == Principal(
-        namespace_key="org-7", is_admin=True, caller_id="user-42"
-    )
+    assert principal == Principal(namespace_key="org-7", is_admin=True, caller_id="user-42")
     assert captured["url"] == "https://upstream.example/check"
     assert captured["headers"]["x-api-key"] == "caller-key"
 
@@ -246,18 +242,14 @@ async def test_http_upstream_forwards_service_token():
 async def test_http_upstream_maps_client_errors(status, expected):
     provider = _build_upstream(lambda req: httpx.Response(status))
     with pytest.raises(expected):
-        await provider.authorize(
-            _build_request(), Operation.CONTROL_BINDINGS_WRITE
-        )
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
 
 
 @pytest.mark.asyncio
 async def test_http_upstream_fails_closed_on_5xx():
     provider = _build_upstream(lambda req: httpx.Response(500, text="boom"))
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.CONTROL_BINDINGS_WRITE
-        )
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
     assert exc_info.value.status_code == 503
 
 
@@ -268,21 +260,15 @@ async def test_http_upstream_fails_closed_on_network_error():
 
     provider = _build_upstream(boom)
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.CONTROL_BINDINGS_WRITE
-        )
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
     assert exc_info.value.status_code == 503
 
 
 @pytest.mark.asyncio
 async def test_http_upstream_rejects_malformed_principal():
-    provider = _build_upstream(
-        lambda req: httpx.Response(200, json={"not_namespace_key": "x"})
-    )
+    provider = _build_upstream(lambda req: httpx.Response(200, json={"not_namespace_key": "x"}))
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.CONTROL_BINDINGS_WRITE
-        )
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
     assert exc_info.value.status_code == 502
 
 
@@ -307,9 +293,7 @@ async def test_http_upstream_rejects_naive_expires_at():
         )
     )
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.CONTROL_BINDINGS_WRITE
-        )
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
     assert exc_info.value.status_code == 502
 
 
@@ -554,6 +538,36 @@ def test_runtime_token_rejects_grant_expiring_at_issue_time():
         )
 
 
+def test_runtime_token_rejects_naive_upstream_expires_at():
+    """Naive datetimes raise ``RuntimeTokenError``, not ``TypeError``.
+
+    The HTTP-upstream parser already rejects naive ``expires_at``
+    fields, but the helper has other call sites (custom authorizers,
+    tests) that can still pass one. The comparison against
+    ``datetime.now(UTC)`` would otherwise raise a raw ``TypeError`` and
+    surface as a 500 instead of a typed authorization error.
+    """
+    from datetime import datetime
+
+    from agent_control_server.auth_framework.runtime_token import (
+        RuntimeTokenError,
+        mint_runtime_token,
+    )
+
+    naive = datetime(2026, 1, 1, 12, 0, 0)  # no tzinfo
+    with pytest.raises(RuntimeTokenError, match="timezone-aware"):
+        mint_runtime_token(
+            namespace_key="default",
+            actor_id="x",
+            target_type="t",
+            target_id="i",
+            scopes=("runtime.use",),
+            secret=_TEST_SECRET,
+            ttl_seconds=3600,
+            upstream_expires_at=naive,
+        )
+
+
 def test_runtime_token_rejects_management_token_passed_to_runtime_verify():
     """A token without ``domain=runtime`` must be rejected by runtime verify."""
     import jwt
@@ -747,14 +761,10 @@ async def test_local_jwt_provider_target_context_mismatch_on_type():
 async def test_http_upstream_rejects_wrong_typed_is_admin():
     """A string ``is_admin`` must not coerce to True; fail closed (502)."""
     provider = _build_upstream(
-        lambda req: httpx.Response(
-            200, json={"namespace_key": "n", "is_admin": "false"}
-        )
+        lambda req: httpx.Response(200, json={"namespace_key": "n", "is_admin": "false"})
     )
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
-        )
+        await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
     assert exc_info.value.status_code == 502
 
 
@@ -762,14 +772,10 @@ async def test_http_upstream_rejects_wrong_typed_is_admin():
 async def test_http_upstream_rejects_malformed_scopes():
     """Non-string entries in ``scopes`` should fail closed, not be silently dropped."""
     provider = _build_upstream(
-        lambda req: httpx.Response(
-            200, json={"namespace_key": "n", "scopes": ["runtime.use", 7]}
-        )
+        lambda req: httpx.Response(200, json={"namespace_key": "n", "scopes": ["runtime.use", 7]})
     )
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
-        )
+        await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
     assert exc_info.value.status_code == 502
 
 
@@ -777,14 +783,10 @@ async def test_http_upstream_rejects_malformed_scopes():
 async def test_http_upstream_rejects_malformed_expires_at():
     """A non-ISO ``expires_at`` should fail closed instead of removing the TTL cap."""
     provider = _build_upstream(
-        lambda req: httpx.Response(
-            200, json={"namespace_key": "n", "expires_at": "not a date"}
-        )
+        lambda req: httpx.Response(200, json={"namespace_key": "n", "expires_at": "not a date"})
     )
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
-        )
+        await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
     assert exc_info.value.status_code == 502
 
 
@@ -801,9 +803,7 @@ async def test_http_upstream_rejects_non_string_target_fields():
         )
     )
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
-        )
+        await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
     assert exc_info.value.status_code == 502
 
 
@@ -816,9 +816,7 @@ async def test_http_upstream_rejects_target_type_only_grant():
         )
     )
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
-        )
+        await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
     assert exc_info.value.status_code == 502
 
 
@@ -831,9 +829,7 @@ async def test_http_upstream_rejects_target_id_only_grant():
         )
     )
     with pytest.raises(APIError) as exc_info:
-        await provider.authorize(
-            _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
-        )
+        await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
     assert exc_info.value.status_code == 502
 
 
@@ -860,9 +856,7 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
             },
         )
     )
-    principal = await provider.authorize(
-        _build_request(), Operation.RUNTIME_TOKEN_EXCHANGE
-    )
+    principal = await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
     assert principal.namespace_key == "org-1"
     assert principal.scopes == ("runtime.use", "runtime.read_only")
     assert principal.target_type == "log_stream"
@@ -885,13 +879,9 @@ def test_configure_then_reconfigure_clears_runtime_override(monkeypatch):
 
     clear_authorizers()
 
-    monkeypatch.setenv(
-        "AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET
-    )
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
     auth_config.configure_auth_from_env()
-    assert isinstance(
-        get_authorizer(Operation.RUNTIME_USE), LocalJwtVerifyProvider
-    )
+    assert isinstance(get_authorizer(Operation.RUNTIME_USE), LocalJwtVerifyProvider)
 
     monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
     auth_config.configure_auth_from_env()
@@ -914,9 +904,7 @@ async def test_teardown_auth_clears_registry():
     )
 
     auth_config._active_providers.clear()
-    auth_config._active_providers.extend(
-        [HeaderAuthProvider(), HeaderAuthProvider()]
-    )
+    auth_config._active_providers.extend([HeaderAuthProvider(), HeaderAuthProvider()])
 
     await auth_config.teardown_auth()
 

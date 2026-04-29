@@ -28,7 +28,18 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Get a control binding
+ * Get a control binding (namespace-wide)
+ *
+ * @remarks
+ * Read a single control binding by surrogate ID.
+ *
+ * Authorization is namespace-wide: the binding's target identifiers
+ * are not forwarded to the upstream because they are only discoverable
+ * after the row is loaded, and ``require_operation`` is single-pass.
+ * Callers whose authorization model requires per-target permissions
+ * should use the natural-key endpoints (``PUT /by-key``,
+ * ``POST /by-key:delete``) and the target-filtered list endpoint, all
+ * of which forward ``(target_type, target_id)`` to the authorizer.
  */
 export function controlBindingsGet(
   client: AgentControlSDKCore,
