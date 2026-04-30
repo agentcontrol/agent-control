@@ -50,6 +50,13 @@ _DEFAULT_RUNTIME_TOKEN_TTL_SECONDS = 300
 # against brute force; reject anything shorter so production deployments
 # cannot accidentally ship a weak signing key.
 _RUNTIME_TOKEN_SECRET_MIN_BYTES = 32
+# Hard ceiling on runtime token lifetime. The runtime path exists to keep
+# the credential window short; a misconfigured TTL of weeks or years
+# defeats the design. ``mint_runtime_token`` already clamps to the
+# upstream grant's ``expires_at`` when present, but that only fires when
+# the upstream surfaces an expiry; this cap closes the configuration
+# gap independent of upstream behavior.
+_MAX_RUNTIME_TOKEN_TTL_SECONDS = 86_400
 
 
 @dataclass(frozen=True)
@@ -218,4 +225,11 @@ def _load_runtime_ttl_seconds() -> int:
         raise RuntimeError(f"{_RUNTIME_TOKEN_TTL_ENV}={raw!r} is not an integer.") from exc
     if ttl <= 0:
         raise RuntimeError(f"{_RUNTIME_TOKEN_TTL_ENV}={ttl} must be positive.")
+    if ttl > _MAX_RUNTIME_TOKEN_TTL_SECONDS:
+        raise RuntimeError(
+            f"{_RUNTIME_TOKEN_TTL_ENV}={ttl} exceeds the maximum of "
+            f"{_MAX_RUNTIME_TOKEN_TTL_SECONDS} seconds. Long-lived runtime "
+            f"tokens defeat the short-credential design; configure a shorter "
+            f"TTL or rotate via re-exchange."
+        )
     return ttl

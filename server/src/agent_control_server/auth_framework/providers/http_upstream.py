@@ -223,6 +223,30 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 resource="Resource",
                 hint="Verify the resource exists in the requested namespace.",
             )
+        if status == 429:
+            # Surface upstream rate limiting distinctly. Folding it into
+            # the catch-all 503 hides a transient, retryable signal from
+            # operators and clients; a dedicated 503 with a different
+            # detail/hint preserves the structured error code while
+            # naming the failure mode.
+            retry_after = response.headers.get("Retry-After")
+            hint = (
+                "The authorization service is rate-limiting requests; "
+                "back off and retry."
+            )
+            if retry_after is not None:
+                hint = f"{hint} Retry-After: {retry_after}."
+            _logger.warning(
+                "Upstream returned 429 for operation %s",
+                operation.value,
+            )
+            raise APIError(
+                status_code=503,
+                error_code=ErrorCode.AUTH_MISCONFIGURED,
+                reason=ErrorReason.SERVICE_UNAVAILABLE,
+                detail="Authorization service is rate-limiting requests.",
+                hint=hint,
+            )
         # Fail closed on 5xx and unexpected statuses.
         _logger.warning(
             "Unexpected upstream status %d for operation %s",
@@ -233,7 +257,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             status_code=503,
             error_code=ErrorCode.AUTH_MISCONFIGURED,
             reason=ErrorReason.SERVICE_UNAVAILABLE,
-            detail="Authorization service returned an unexpected response.",
+            detail=f"Authorization service returned an unexpected response (status {status}).",
             hint="Retry the request; if the failure persists, contact the operator.",
         )
 

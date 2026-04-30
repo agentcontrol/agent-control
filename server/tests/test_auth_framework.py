@@ -251,6 +251,35 @@ async def test_http_upstream_fails_closed_on_5xx():
     with pytest.raises(APIError) as exc_info:
         await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
     assert exc_info.value.status_code == 503
+    # Status is named in the detail so operators can distinguish the
+    # catch-all path from the rate-limit branch below.
+    assert "500" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_surfaces_rate_limit_distinctly():
+    """Upstream 429 must surface a rate-limit-specific detail and hint."""
+
+    def factory(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"Retry-After": "30"})
+
+    provider = _build_upstream(factory)
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
+    assert exc_info.value.status_code == 503
+    assert "rate-limit" in exc_info.value.detail
+    assert "Retry-After: 30" in exc_info.value.hint
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rate_limit_without_retry_after_header():
+    """Rate-limit hint omits the Retry-After clause when the header is absent."""
+    provider = _build_upstream(lambda req: httpx.Response(429))
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
+    assert exc_info.value.status_code == 503
+    assert "rate-limit" in exc_info.value.detail
+    assert "Retry-After" not in exc_info.value.hint
 
 
 @pytest.mark.asyncio
@@ -868,6 +897,52 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
 # ---------------------------------------------------------------------------
 # configure_auth_from_env / teardown_auth lifecycle
 # ---------------------------------------------------------------------------
+
+
+def test_runtime_ttl_loader_rejects_non_integer(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_TTL_SECONDS", "abc")
+    with pytest.raises(RuntimeError, match="not an integer"):
+        auth_config._load_runtime_ttl_seconds()
+
+
+def test_runtime_ttl_loader_rejects_non_positive(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_TTL_SECONDS", "0")
+    with pytest.raises(RuntimeError, match="must be positive"):
+        auth_config._load_runtime_ttl_seconds()
+
+
+def test_runtime_ttl_loader_rejects_above_max(monkeypatch):
+    """TTLs above the hard cap must fail closed at startup.
+
+    A misconfigured TTL of weeks or years defeats the short-credential
+    design; cap independent of the upstream grant ``expires_at`` so the
+    guard fires even when the upstream omits an expiry.
+    """
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv(
+        "AGENT_CONTROL_RUNTIME_TOKEN_TTL_SECONDS",
+        str(auth_config._MAX_RUNTIME_TOKEN_TTL_SECONDS + 1),
+    )
+    with pytest.raises(RuntimeError, match="exceeds the maximum"):
+        auth_config._load_runtime_ttl_seconds()
+
+
+def test_runtime_ttl_loader_accepts_max(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv(
+        "AGENT_CONTROL_RUNTIME_TOKEN_TTL_SECONDS",
+        str(auth_config._MAX_RUNTIME_TOKEN_TTL_SECONDS),
+    )
+    assert (
+        auth_config._load_runtime_ttl_seconds()
+        == auth_config._MAX_RUNTIME_TOKEN_TTL_SECONDS
+    )
 
 
 def test_configure_then_reconfigure_clears_runtime_override(monkeypatch):
