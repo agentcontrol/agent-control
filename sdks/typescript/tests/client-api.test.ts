@@ -61,6 +61,44 @@ describe("AgentControlClient API wiring", () => {
     expect(request.headers.get("X-API-Key")).toBe("test-api-key");
   });
 
+  it("passes debugLogger through to the generated SDK", async () => {
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        agents: [],
+        pagination: {
+          has_more: false,
+          limit: 20,
+          next_cursor: null,
+          total: 0,
+        },
+      }),
+    );
+
+    const debugLogger = {
+      group: vi.fn(),
+      groupEnd: vi.fn(),
+      log: vi.fn(),
+    };
+
+    const client = new AgentControlClient();
+    client.init({
+      agentName: "test-agent",
+      serverUrl: "https://api.example.com",
+      debugLogger,
+    });
+
+    await client.agents.list();
+
+    expect(debugLogger.group).toHaveBeenCalledWith(
+      "> Request: GET https://api.example.com/api/v1/agents",
+    );
+    expect(debugLogger.group).toHaveBeenCalledWith(
+      "< Response: GET https://api.example.com/api/v1/agents",
+    );
+    expect(debugLogger.log).toHaveBeenCalledWith("Status Code:", 200, "");
+  });
+
   it("builds JSON request bodies for write operations", async () => {
     const fetchMock = vi.mocked(globalThis.fetch);
     fetchMock.mockResolvedValueOnce(

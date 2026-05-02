@@ -1,4 +1,5 @@
 import { AgentControlSDK } from "./generated/sdk/sdk";
+import type { Logger } from "./generated/lib/logger";
 
 export interface StepSchema {
   name: string;
@@ -15,6 +16,7 @@ export interface AgentControlInitOptions {
   steps?: StepSchema[];
   timeoutMs?: number;
   userAgent?: string;
+  debugLogger?: Logger;
 }
 
 export type AgentsApi = AgentControlSDK["agents"];
@@ -38,6 +40,7 @@ export class AgentControlClient {
       apiKeyHeader: options.apiKey,
       timeoutMs: options.timeoutMs,
       userAgent: options.userAgent,
+      debugLogger: options.debugLogger,
     });
   }
 
