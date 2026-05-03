@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 from agent_control_models import Step, normalize_action
+from agent_control_telemetry import get_trace_context_from_provider
 
 from agent_control import AgentControlClient
 from agent_control.evaluation import check_evaluation_with_local
@@ -51,6 +52,25 @@ from agent_control.tracing import _generate_span_id, get_current_trace_id, get_t
 logger = get_logger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+def _resolve_control_trace_context() -> tuple[str, str]:
+    """Resolve trace/span IDs for a decorated control site.
+
+    External providers, such as the Galileo bridge, are authoritative because
+    they may reserve the concrete span ID that the eventual LLM/tool call will
+    use. Without a provider, keep the existing behavior: share an active trace
+    but create a fresh function span for this decorated call.
+    """
+    provider_context = get_trace_context_from_provider()
+    if provider_context is not None:
+        return provider_context["trace_id"], provider_context["span_id"]
+
+    existing_trace_id = get_current_trace_id()
+    if existing_trace_id:
+        return existing_trace_id, _generate_span_id()
+
+    return get_trace_and_span_ids()
 
 
 @dataclass
@@ -697,14 +717,7 @@ async def _execute_with_control(
     # Get cached controls for local evaluation support
     controls = _get_server_controls()
 
-    # Get trace context: inherit trace_id if set, always generate new span_id
-    # This allows multiple @control() calls to share the same trace but have unique spans
-    existing_trace_id = get_current_trace_id()
-    if existing_trace_id:
-        trace_id = existing_trace_id
-        span_id = _generate_span_id()  # New span for this function
-    else:
-        trace_id, span_id = get_trace_and_span_ids()  # New trace and span
+    trace_id, span_id = _resolve_control_trace_context()
 
     ctx = ControlContext(
         agent_name=agent.agent_name,
