@@ -18,7 +18,7 @@ import {
 } from "./unrendered-template-control.js";
 
 /**
- * Control configuration data. A ControlDefinition for raw/rendered controls, an UnrenderedTemplateControl for unrendered templates, or None if not yet configured.
+ * Control configuration data. A ControlDefinition for raw/rendered controls or an UnrenderedTemplateControl for unrendered templates.
  */
 export type GetControlResponseData =
   | ControlDefinitionOutput
@@ -29,9 +29,9 @@ export type GetControlResponseData =
  */
 export type GetControlResponse = {
   /**
-   * Control configuration data. A ControlDefinition for raw/rendered controls, an UnrenderedTemplateControl for unrendered templates, or None if not yet configured.
+   * Control configuration data. A ControlDefinition for raw/rendered controls or an UnrenderedTemplateControl for unrendered templates.
    */
-  data?: ControlDefinitionOutput | UnrenderedTemplateControl | null | undefined;
+  data: ControlDefinitionOutput | UnrenderedTemplateControl;
   /**
    * Control ID
    */
@@ -66,14 +66,10 @@ export const GetControlResponse$inboundSchema: z.ZodMiniType<
   GetControlResponse,
   unknown
 > = z.object({
-  data: z.optional(
-    z.nullable(
-      smartUnion([
-        ControlDefinitionOutput$inboundSchema,
-        UnrenderedTemplateControl$inboundSchema,
-      ]),
-    ),
-  ),
+  data: smartUnion([
+    ControlDefinitionOutput$inboundSchema,
+    UnrenderedTemplateControl$inboundSchema,
+  ]),
   id: types.number(),
   name: types.string(),
 });

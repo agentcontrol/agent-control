@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from agent_control_models import ControlDefinition
+from agent_control_models import (
+    ControlDefinition,
+    ControlDefinitionRuntime,
+)
+from agent_control_models.controls import ControlDefinitionBase
 from pydantic import ValidationError
 
 
@@ -82,6 +86,27 @@ def test_legacy_leaf_payload_is_canonicalized() -> None:
     assert dumped["condition"]["evaluator"]["name"] == "regex"
 
 
+def test_runtime_legacy_leaf_payload_is_canonicalized() -> None:
+    # Given: a legacy flat selector/evaluator payload loaded for runtime evaluation
+    legacy_payload = {
+        "execution": "server",
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
+        "selector": {"path": "input"},
+        "evaluator": {"name": "regex", "config": {"pattern": "ok"}},
+        "action": {"decision": "deny"},
+    }
+
+    # When: validating the payload through the runtime model
+    control = ControlDefinitionRuntime.model_validate(legacy_payload)
+
+    # Then: runtime parsing uses the same canonical condition shape
+    dumped = control.model_dump(mode="json", exclude_none=True)
+    assert "selector" not in dumped
+    assert "evaluator" not in dumped
+    assert dumped["condition"]["selector"]["path"] == "input"
+    assert dumped["condition"]["evaluator"]["name"] == "regex"
+
+
 def test_mixed_legacy_and_condition_fields_are_rejected() -> None:
     # Given: a payload that mixes canonical condition and legacy flat fields
     payload = {
@@ -101,6 +126,27 @@ def test_mixed_legacy_and_condition_fields_are_rejected() -> None:
         # When: validating the mixed payload
         ControlDefinition.model_validate(payload)
     # Then: validation rejects the mixed shape
+
+
+def test_runtime_mixed_legacy_and_condition_fields_are_rejected() -> None:
+    # Given: a runtime payload that mixes canonical condition and legacy flat fields
+    payload = {
+        "execution": "server",
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
+        "condition": _leaf("input"),
+        "selector": {"path": "output"},
+        "evaluator": {"name": "regex", "config": {"pattern": "ok"}},
+        "action": {"decision": "deny"},
+    }
+
+    with pytest.raises(
+        ValidationError,
+        match="Control definition mixes canonical condition fields "
+        "with legacy selector/evaluator fields",
+    ):
+        # When: validating the mixed payload through the runtime model
+        ControlDefinitionRuntime.model_validate(payload)
+    # Then: runtime parsing rejects the same ambiguous legacy shape
 
 
 def test_condition_and_requires_at_least_one_child() -> None:
@@ -164,13 +210,28 @@ def test_condition_iter_leaves_preserves_left_to_right_order() -> None:
 
 def test_condition_depth_limit_is_enforced() -> None:
     # Given: a condition tree nested deeper than the allowed maximum
+    allowed_depth = _leaf("input")
+    for _ in range(11):
+        allowed_depth = {"not": allowed_depth}
+
+    control = ControlDefinition.model_validate(
+        {
+            "execution": "server",
+            "scope": {"step_types": ["llm"], "stages": ["pre"]},
+            "condition": allowed_depth,
+            "action": {"decision": "deny"},
+        }
+    )
+
+    assert control.condition.max_depth() == 12
+
     too_deep = _leaf("input")
-    for _ in range(6):
+    for _ in range(12):
         too_deep = {"not": too_deep}
 
     with pytest.raises(
         ValidationError,
-        match="Condition nesting depth exceeds maximum of 6",
+        match="Condition nesting depth exceeds maximum of 12",
     ):
         # When: validating the deep condition tree
         ControlDefinition.model_validate(
@@ -205,6 +266,53 @@ def test_composite_steer_requires_steering_context() -> None:
             }
         )
     # Then: validation rejects the steer action without guidance
+
+
+def test_runtime_composite_steer_requires_steering_context() -> None:
+    # Given: a runtime composite steer control without steering context
+    with pytest.raises(
+        ValidationError,
+        match="Composite steer controls require action.steering_context",
+    ):
+        # When: validating the runtime control definition
+        ControlDefinitionRuntime.model_validate(
+            {
+                "execution": "server",
+                "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                "condition": {
+                    "or": [
+                        _leaf("input"),
+                        _leaf("output"),
+                    ]
+                },
+                "action": {"decision": "steer"},
+            }
+        )
+    # Then: runtime validation enforces the shared condition/action constraint
+
+
+def test_control_definition_base_owns_shared_runtime_fields() -> None:
+    # Given: the runtime-relevant control fields shared by authored and runtime models
+    runtime_fields = {
+        "description",
+        "enabled",
+        "execution",
+        "scope",
+        "condition",
+        "action",
+        "tags",
+    }
+
+    # When: inspecting the public Pydantic model fields
+    base_fields = set(ControlDefinitionBase.model_fields)
+    authored_fields = set(ControlDefinition.model_fields)
+    runtime_model_fields = set(ControlDefinitionRuntime.model_fields)
+
+    # Then: those fields are declared once on the base and inherited by both models
+    assert base_fields == runtime_fields
+    assert runtime_fields.issubset(authored_fields)
+    assert runtime_model_fields == runtime_fields
+    assert {"template", "template_values"}.issubset(authored_fields)
 
 
 def test_single_leaf_control_returns_primary_leaf() -> None:

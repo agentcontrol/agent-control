@@ -2,6 +2,59 @@
 
 <!-- version list -->
 
+## v7.6.0 (2026-04-22)
+
+### Bug Fixes
+
+- **examples**: Fix crewai examples ([#179](https://github.com/agentcontrol/agent-control/pull/179),
+  [`9004ea3`](https://github.com/agentcontrol/agent-control/commit/9004ea3a7ac15c28dc1dcae83f6758df33be2627))
+
+### Chores
+
+- **release**: Ts sdk v2.4.0 [skip ci]
+  ([`694067c`](https://github.com/agentcontrol/agent-control/commit/694067c860dd04ca802126c465ee5525f1de70f9))
+
+### Features
+
+- **sdk**: Add external sink ([#175](https://github.com/agentcontrol/agent-control/pull/175),
+  [`45f3645`](https://github.com/agentcontrol/agent-control/commit/45f3645ae3a7815d2c59cfa6629f7d65906d093b))
+
+- **server**: Phase 0: add control version history and soft-delete unusable legacy controls
+  ([#172](https://github.com/agentcontrol/agent-control/pull/172),
+  [`e5b2b33`](https://github.com/agentcontrol/agent-control/commit/e5b2b33ce86cdfbd395d5ee03652ba4baabe23a2))
+
+
+## v7.5.0 (2026-04-20)
+
+### Bug Fixes
+
+- **docker**: Use 5432 for agent control server pg connection"
+  ([`c464e50`](https://github.com/agentcontrol/agent-control/commit/c464e500d45a9dc7df072697d41126e73757001a))
+
+### Chores
+
+- Update docs URLs from v2docs to docs.galileo.ai
+  ([#171](https://github.com/agentcontrol/agent-control/pull/171),
+  [`5c23e07`](https://github.com/agentcontrol/agent-control/commit/5c23e079e39d8b773b3af6d9d978797284c81608))
+
+- **release**: Ts sdk v2.3.0 [skip ci]
+  ([`d7f309a`](https://github.com/agentcontrol/agent-control/commit/d7f309a2f245ea2d57067768e25d3de52577b478))
+
+### Features
+
+- **evaluators**: Add built-in budget evaluator for per-agent cost tracking
+  ([#144](https://github.com/agentcontrol/agent-control/pull/144),
+  [`d4ce113`](https://github.com/agentcontrol/agent-control/commit/d4ce113488c42e47cbba9364f47a2905e4cc5b35))
+
+- **server**: Align condition and template depth limits
+  ([#166](https://github.com/agentcontrol/agent-control/pull/166),
+  [`03f402e`](https://github.com/agentcontrol/agent-control/commit/03f402e4ddf36697579f2e6a4d4a9d279cb39ce1))
+
+- **server**: Refactor server ingestion to sink
+  ([#165](https://github.com/agentcontrol/agent-control/pull/165),
+  [`6791d73`](https://github.com/agentcontrol/agent-control/commit/6791d738868eb80e52fa9a04e3d9a1c8dc835fec))
+
+
 ## v7.4.1 (2026-04-14)
 
 ### Documentation

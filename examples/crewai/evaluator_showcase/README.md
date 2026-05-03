@@ -66,7 +66,14 @@ make sync
 cd examples/crewai/evaluator_showcase
 
 # Install example dependencies
-uv pip install -e . --upgrade
+# Note: agent-control-sdk and crewai have an incompatible transitive dependency on pydantic
+# (crewai caps at <2.12, the SDK evaluators require >=2.12.4). Install in two steps:
+uv pip install -e .
+
+# Install agent-control-sdk separately, skipping the conflicting evaluators dep
+# (this example uses server-mode execution and does not need evaluators locally)
+uv pip install agent-control-sdk==7.5.0 --no-deps
+uv pip install httpx pydantic-settings docstring-parser google-re2 jsonschema
 
 # Set your OpenAI key (optional for SQL/LIST/REGEX scenarios)
 export OPENAI_API_KEY="your-key"

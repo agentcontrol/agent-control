@@ -19,7 +19,7 @@ from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
-from ..services.controls import list_runtime_controls_for_agent
+from ..services.controls import ControlService
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
 
@@ -150,9 +150,8 @@ async def evaluate(
             hint="Register the agent via initAgent before evaluating.",
         )
 
-    runtime_controls = await list_runtime_controls_for_agent(
+    runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
         request.agent_name,
-        db,
         allow_invalid_step_name_regex=True,
     )
     engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]

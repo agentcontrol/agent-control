@@ -311,12 +311,10 @@ class GetControlResponse(BaseModel):
 
     id: int = Field(..., description="Control ID")
     name: str = Field(..., description="Control name")
-    data: ControlDefinition | UnrenderedTemplateControl | None = Field(
-        None,
+    data: ControlDefinition | UnrenderedTemplateControl = Field(
         description=(
             "Control configuration data. A ControlDefinition for raw/rendered "
-            "controls, an UnrenderedTemplateControl for unrendered templates, "
-            "or None if not yet configured."
+            "controls or an UnrenderedTemplateControl for unrendered templates."
         ),
     )
 
@@ -515,6 +513,40 @@ class ListControlsResponse(BaseModel):
 
     controls: list[ControlSummary] = Field(..., description="List of control summaries")
     pagination: PaginationInfo = Field(..., description="Pagination metadata")
+
+
+class ControlVersionSummary(BaseModel):
+    """Summary of a single control version."""
+
+    version_num: int = Field(..., description="Monotonic version number for the control")
+    event_type: str = Field(..., description="Machine-readable event type for this version")
+    note: str | None = Field(None, description="Human-readable note describing the change")
+    created_at: str = Field(..., description="ISO 8601 timestamp when this version was created")
+
+
+class ListControlVersionsResponse(BaseModel):
+    """Response for listing control versions."""
+
+    versions: list[ControlVersionSummary] = Field(
+        ..., description="Control versions ordered newest-first"
+    )
+    pagination: PaginationInfo = Field(..., description="Pagination metadata")
+
+
+class GetControlVersionResponse(BaseModel):
+    """Response containing a full control version snapshot."""
+
+    version_num: int = Field(..., description="Monotonic version number for the control")
+    event_type: str = Field(..., description="Machine-readable event type for this version")
+    note: str | None = Field(None, description="Human-readable note describing the change")
+    created_at: str = Field(..., description="ISO 8601 timestamp when this version was created")
+    snapshot: dict[str, Any] = Field(
+        ...,
+        description=(
+            "Raw persisted snapshot of the control state at this version, including "
+            "metadata such as name, deleted_at, and cloned_control_id."
+        ),
+    )
 
 
 class DeleteControlResponse(BaseModel):

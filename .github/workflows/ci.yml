@@ -47,22 +47,36 @@ jobs:
           uv --version
           python --version
 
+      - name: Verify contrib packaging contract
+        run: make contrib-verify
+
       - name: Sync dependencies
         run: make sync
 
-      - name: Lint
-        run: make lint
+      - name: Run Python checks
+        run: make check
 
-      - name: Type check
-        run: make typecheck
+      - name: Collect coverage files
+        id: coverage_files
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          from pathlib import Path
 
-      - name: Test with coverage
-        run: make test
+          base_reports = [
+              "coverage-models.xml",
+              "coverage-engine.xml",
+              "coverage-telemetry.xml",
+              "coverage-server.xml",
+              "coverage-sdk.xml",
+          ]
+          contrib_reports = sorted(path.name for path in Path(".").glob("coverage-evaluators-*.xml"))
+          print(f"files={','.join([*base_reports, *contrib_reports])}")
+          PY
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: coverage-models.xml,coverage-engine.xml,coverage-telemetry.xml,coverage-server.xml,coverage-sdk.xml
+          files: ${{ steps.coverage_files.outputs.files }}
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 

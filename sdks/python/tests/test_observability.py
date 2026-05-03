@@ -10,6 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from agent_control_models import ControlExecutionEvent
+from agent_control_telemetry import (
+    DEFAULT_CONTROL_EVENT_SINK_NAME,
+    REGISTERED_CONTROL_EVENT_SINK_NAME,
+)
+from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
+
 from agent_control.observability import (
     EventBatcher,
     add_event,
@@ -902,7 +909,7 @@ class TestExternalControlEventSinks:
 
         assert result is False
 
-    def test_registered_sink_write_uses_best_result_across_multiple_sinks(self):
+    def test_registered_sink_write_fails_when_any_fanout_sink_fails(self):
         first_sink = RecordingSink(accepted=0)
         second_sink = RecordingSink(accepted=1)
         register_control_event_sink(first_sink)
@@ -911,9 +918,21 @@ class TestExternalControlEventSinks:
 
         result = add_event(create_mock_event())
 
-        assert result is True
+        assert result is False
         assert len(first_sink.received_batches) == 1
         assert len(second_sink.received_batches) == 1
+
+    def test_registered_sink_write_reports_partial_batch_delivery(self):
+        first_sink = RecordingSink(accepted=2)
+        second_sink = RecordingSink(accepted=3)
+        register_control_event_sink(first_sink)
+        register_control_event_sink(second_sink)
+        configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
+
+        result = write_events([create_mock_event() for _ in range(3)])
+
+        assert result.accepted == 2
+        assert result.dropped == 1
 
     def test_named_sink_factory_is_selected_by_config(self):
         sink = RecordingSink()
@@ -1012,6 +1031,29 @@ class TestInitObservability:
             result = init_observability(enabled=False)
             assert result is None
         finally:
+            obs._batcher = old_batcher
+            obs._event_sink = old_sink
+
+    def test_enabled_override_does_not_mutate_global_settings(self):
+        """Test that enabled= only affects the current init call."""
+        import agent_control.observability as obs
+
+        old_batcher = obs._batcher
+        old_sink = obs._event_sink
+        original_settings = get_settings().model_dump()
+        obs._batcher = None
+        obs._event_sink = None
+
+        try:
+            configure_settings(observability_enabled=True)
+
+            result = init_observability(enabled=False)
+
+            assert result is None
+            assert get_settings().observability_enabled is True
+            assert is_observability_enabled() is False
+        finally:
+            configure_settings(**original_settings)
             obs._batcher = old_batcher
             obs._event_sink = old_sink
 
@@ -1265,7 +1307,7 @@ class TestShutdownObservability:
         assert settings.observability_sink_name == REGISTERED_CONTROL_EVENT_SINK_NAME
         assert settings.observability_sink_config == {"project": "demo"}
 
-    def test_sync_shutdown_flushes_and_closes_registered_custom_sinks(self):
+    def test_sync_shutdown_does_not_close_registered_custom_sinks(self):
         sync_sink = LifecycleRecordingSink()
         async_sink = AsyncLifecycleRecordingSink()
         register_control_event_sink(sync_sink)
@@ -1275,10 +1317,10 @@ class TestShutdownObservability:
 
         sync_shutdown_observability()
 
-        assert sync_sink.flush_calls == 1
-        assert sync_sink.close_calls == 1
-        assert async_sink.flush_calls == 1
-        assert async_sink.close_calls == 1
+        assert sync_sink.flush_calls == 0
+        assert sync_sink.close_calls == 0
+        assert async_sink.flush_calls == 0
+        assert async_sink.close_calls == 0
 
     def test_sync_shutdown_flushes_and_closes_cached_named_sink(self):
         sink = AsyncLifecycleRecordingSink()
@@ -1309,7 +1351,7 @@ class TestShutdownObservability:
         assert second_sink.flush_calls == 0
         assert second_sink.close_calls == 0
 
-    def test_sync_shutdown_closes_registered_sinks_after_switching_back_to_default(self):
+    def test_sync_shutdown_does_not_close_registered_sinks_after_switching_back_to_default(self):
         sink = AsyncLifecycleRecordingSink()
         register_control_event_sink(sink)
         configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
@@ -1319,10 +1361,10 @@ class TestShutdownObservability:
         configure_settings(observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME)
         sync_shutdown_observability()
 
-        assert sink.flush_calls == 1
-        assert sink.close_calls == 1
+        assert sink.flush_calls == 0
+        assert sink.close_calls == 0
 
-    def test_sync_shutdown_clears_registered_sink_instances(self):
+    def test_sync_shutdown_preserves_registered_sink_instances(self):
         sink = AsyncLifecycleRecordingSink()
         register_control_event_sink(sink)
         configure_settings(observability_sink_name=REGISTERED_CONTROL_EVENT_SINK_NAME)
@@ -1331,8 +1373,7 @@ class TestShutdownObservability:
 
         sync_shutdown_observability()
 
-        assert get_registered_control_event_sinks() == ()
-        assert is_observability_enabled() is False
+        assert get_registered_control_event_sinks() == (sink,)
 
 
 class TestEventBatcherShutdownConfig:
