@@ -122,13 +122,37 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-  publish-sdk:
+  publish-server:
     runs-on: ubuntu-latest
     needs: [release, publish-evaluators]
     if: >-
       always() &&
       needs.release.outputs.released == 'true' &&
       needs.publish-evaluators.result == 'success'
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: .
+
+      - name: Publish agent-control-server to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: release-dists/server/dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-sdk:
+    runs-on: ubuntu-latest
+    needs: [release, publish-server]
+    if: >-
+      always() &&
+      needs.release.outputs.released == 'true' &&
+      needs.publish-server.result == 'success'
     permissions:
       id-token: write
 
