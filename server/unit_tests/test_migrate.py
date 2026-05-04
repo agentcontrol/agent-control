@@ -52,13 +52,13 @@ def test_main_explicit_upgrade_revision(
     upgrade.assert_called_once_with(stub_config, "abc123")
 
 
-def test_main_default_downgrade_one_step(
+def test_main_bare_downgrade_requires_explicit_revision(
     stub_config: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     downgrade = _patch_command(monkeypatch, "downgrade")
     rc = migrate.main(["downgrade"])
-    assert rc == 0
-    downgrade.assert_called_once_with(stub_config, "-1")
+    assert rc == 2
+    downgrade.assert_not_called()
 
 
 def test_main_explicit_downgrade_revision(

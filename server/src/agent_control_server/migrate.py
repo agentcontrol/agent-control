@@ -48,7 +48,16 @@ def main(argv: list[str] | None = None) -> int:
     if op == "upgrade":
         command.upgrade(cfg, rest[0] if rest else "head")
     elif op == "downgrade":
-        command.downgrade(cfg, rest[0] if rest else "-1")
+        # Require an explicit revision: downgrade is destructive and
+        # there is no safe default for an operational CLI.
+        if not rest:
+            print(
+                "agent-control-migrate downgrade requires an explicit revision "
+                "(e.g. 'downgrade -1' or 'downgrade <rev>')",
+                file=sys.stderr,
+            )
+            return 2
+        command.downgrade(cfg, rest[0])
     elif op == "current":
         command.current(cfg)
     elif op == "history":
