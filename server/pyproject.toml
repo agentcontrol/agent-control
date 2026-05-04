@@ -51,6 +51,7 @@ dev = [
 
 [project.scripts]
 agent-control-server = "agent_control_server.main:run"
+agent-control-migrate = "agent_control_server.migrate:main"
 
 
 
@@ -68,6 +69,13 @@ packages = [
     "src/agent_control_engine",
     "src/agent_control_telemetry",
 ]
+
+# Ship Alembic migration scripts and config inside the wheel so that
+# non-Docker consumers (e.g. wheel-based deployments) can run migrations
+# via the `agent-control-migrate` console script without vendoring.
+[tool.hatch.build.targets.wheel.force-include]
+"alembic" = "agent_control_server/_alembic"
+"alembic.ini" = "agent_control_server/_alembic.ini"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
