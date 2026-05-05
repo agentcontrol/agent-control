@@ -50,6 +50,7 @@ class TestLuna2EvaluatorConfig:
 
         config = Luna2EvaluatorConfig(
             stage_type="local",
+            stage_name="test-stage",
             metric="input_toxicity",
             operator="gt",
             target_value="0.5",
@@ -68,6 +69,7 @@ class TestLuna2EvaluatorConfig:
 
         config = Luna2EvaluatorConfig(
             stage_type="local",
+            stage_name="test-stage",
             metric="input_toxicity",
             operator="gt",
             target_value=0.5,  # Numeric value
@@ -133,6 +135,18 @@ class TestLuna2EvaluatorConfig:
                 galileo_project="my-project",
             )
 
+    def test_local_stage_requires_stage_name(self):
+        """Test local stage also requires stage_name field."""
+        from agent_control_evaluator_galileo.luna2 import Luna2EvaluatorConfig
+
+        with pytest.raises(ValidationError, match="stage_name.*required"):
+            Luna2EvaluatorConfig(
+                stage_type="local",
+                metric="input_toxicity",
+                operator="gt",
+                target_value="0.5",
+            )
+
     def test_timeout_ms_validation(self):
         """Test timeout_ms must be within valid range."""
         from agent_control_evaluator_galileo.luna2 import Luna2EvaluatorConfig
@@ -141,7 +155,7 @@ class TestLuna2EvaluatorConfig:
         with pytest.raises(ValidationError):
             Luna2EvaluatorConfig(
                 stage_type="central",
-                stage_name="test",
+                stage_name="test-stage",
                 timeout_ms=500,  # Below 1000
             )
 
@@ -149,14 +163,14 @@ class TestLuna2EvaluatorConfig:
         with pytest.raises(ValidationError):
             Luna2EvaluatorConfig(
                 stage_type="central",
-                stage_name="test",
+                stage_name="test-stage",
                 timeout_ms=100000,  # Above 60000
             )
 
         # Valid
         config = Luna2EvaluatorConfig(
             stage_type="central",
-            stage_name="test",
+            stage_name="test-stage",
             timeout_ms=30000,
         )
         assert config.timeout_ms == 30000
@@ -167,14 +181,14 @@ class TestLuna2EvaluatorConfig:
 
         config_allow = Luna2EvaluatorConfig(
             stage_type="central",
-            stage_name="test",
+            stage_name="test-stage",
             on_error="allow",
         )
         assert config_allow.on_error == "allow"
 
         config_deny = Luna2EvaluatorConfig(
             stage_type="central",
-            stage_name="test",
+            stage_name="test-stage",
             on_error="deny",
         )
         assert config_deny.on_error == "deny"
@@ -182,7 +196,7 @@ class TestLuna2EvaluatorConfig:
         with pytest.raises(ValidationError):
             Luna2EvaluatorConfig(
                 stage_type="central",
-                stage_name="test",
+                stage_name="test-stage",
                 on_error="invalid",
             )
 
@@ -193,15 +207,16 @@ class TestLuna2EvaluatorConfig:
         # Valid metrics
         valid_metrics = [
             "input_toxicity",
-            "output_toxicity",
+            "toxicity",
             "prompt_injection",
-            "pii_detection",
+            "pii",
             "hallucination",
             "tone",
         ]
         for metric in valid_metrics:
             config = Luna2EvaluatorConfig(
                 stage_type="local",
+                stage_name="test-stage",
                 metric=metric,
                 operator="gt",
                 target_value="0.5",
@@ -212,6 +227,7 @@ class TestLuna2EvaluatorConfig:
         with pytest.raises(ValidationError):
             Luna2EvaluatorConfig(
                 stage_type="local",
+                stage_name="test-stage",
                 metric="invalid_metric",
                 operator="gt",
                 target_value="0.5",
@@ -225,6 +241,7 @@ class TestLuna2EvaluatorConfig:
         for op in valid_operators:
             config = Luna2EvaluatorConfig(
                 stage_type="local",
+                stage_name="test-stage",
                 metric="input_toxicity",
                 operator=op,
                 target_value="0.5",
@@ -234,6 +251,7 @@ class TestLuna2EvaluatorConfig:
         with pytest.raises(ValidationError):
             Luna2EvaluatorConfig(
                 stage_type="local",
+                stage_name="test-stage",
                 metric="input_toxicity",
                 operator="invalid_op",
                 target_value="0.5",
@@ -245,6 +263,7 @@ class TestLuna2EvaluatorConfig:
 
         config = Luna2EvaluatorConfig(
             stage_type="local",
+            stage_name="test-stage",
             metric="input_toxicity",
             operator="gt",
             target_value="0.5",
@@ -254,11 +273,11 @@ class TestLuna2EvaluatorConfig:
         data = config.model_dump(exclude_none=True)
 
         assert data["stage_type"] == "local"
+        assert data["stage_name"] == "test-stage"
         assert data["metric"] == "input_toxicity"
         assert data["operator"] == "gt"
         assert data["target_value"] == "0.5"
         assert data["galileo_project"] == "test-project"
-        assert "stage_name" not in data  # None excluded
 
 
 class TestLuna2EvaluatorInheritance:
@@ -322,6 +341,7 @@ class TestLuna2EvaluatorImport:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": "0.5",
@@ -394,6 +414,7 @@ class TestLuna2EvaluatorLocalStage:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": 0.8,
@@ -433,6 +454,7 @@ class TestLuna2EvaluatorLocalStage:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": 0.8,
@@ -464,6 +486,7 @@ class TestLuna2EvaluatorLocalStage:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": 0.8,
@@ -563,6 +586,7 @@ class TestLuna2EvaluatorPayloadPreparation:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": 0.8,
@@ -583,7 +607,8 @@ class TestLuna2EvaluatorPayloadPreparation:
 
         config = {
             "stage_type": "local",
-            "metric": "output_toxicity",
+            "stage_name": "test-stage",
+            "metric": "output_sexism",
             "operator": "gt",
             "target_value": 0.7,
         }
@@ -628,6 +653,7 @@ class TestLuna2EvaluatorErrorHandling:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": 0.8,
@@ -658,6 +684,7 @@ class TestLuna2EvaluatorErrorHandling:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": 0.8,
@@ -688,6 +715,7 @@ class TestLuna2EvaluatorErrorHandling:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": 0.8,
@@ -718,6 +746,7 @@ class TestLuna2EvaluatorTimeoutHelper:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": "0.5",
@@ -735,6 +764,7 @@ class TestLuna2EvaluatorTimeoutHelper:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": "0.5",
@@ -756,6 +786,7 @@ class TestLuna2EvaluatorNumericTargetValue:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": 0.5,
@@ -772,6 +803,7 @@ class TestLuna2EvaluatorNumericTargetValue:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": 1,
@@ -788,6 +820,7 @@ class TestLuna2EvaluatorNumericTargetValue:
 
         config = {
             "stage_type": "local",
+            "stage_name": "test-stage",
             "metric": "input_toxicity",
             "operator": "gt",
             "target_value": "0.75",
@@ -795,6 +828,76 @@ class TestLuna2EvaluatorNumericTargetValue:
 
         evaluator = Luna2Evaluator.from_dict(config)
         assert evaluator._get_numeric_target_value() == 0.75
+
+
+class TestLuna2BuildMessage:
+    """Tests for _build_message helper."""
+
+    @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
+    @patch("agent_control_evaluator_galileo.luna2.evaluator.LUNA2_AVAILABLE", True)
+    def test_build_message_list_value_uses_metric_name(self):
+        """Test that list-valued metrics use the metric name, not a hardcoded label."""
+        from agent_control_evaluator_galileo.luna2 import Luna2Evaluator
+
+        for metric in ("pii", "input_pii", "tone"):
+            config = {
+                "stage_type": "local",
+                "stage_name": "test-stage",
+                "metric": metric,
+                "operator": "not_empty",
+                "target_value": None,
+            }
+            # not_empty doesn't require target_value — skip via not_empty operator path
+            from agent_control_evaluator_galileo.luna2 import Luna2EvaluatorConfig
+            cfg = Luna2EvaluatorConfig(
+                stage_type="local",
+                stage_name="test-stage",
+                metric=metric,
+                operator="not_empty",
+            )
+            evaluator = Luna2Evaluator(cfg)
+            metric_results = {metric: {"value": ["category_a", "category_b"]}}
+            msg = evaluator._build_message(triggered=True, status="triggered", metric_results=metric_results)
+            assert metric in msg
+            assert "category a" in msg
+            assert "PII detected" not in msg
+
+    @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
+    @patch("agent_control_evaluator_galileo.luna2.evaluator.LUNA2_AVAILABLE", True)
+    def test_build_message_not_triggered(self):
+        """Test message when check passes."""
+        from agent_control_evaluator_galileo.luna2 import Luna2Evaluator, Luna2EvaluatorConfig
+
+        cfg = Luna2EvaluatorConfig(
+            stage_type="local",
+            stage_name="test-stage",
+            metric="input_toxicity",
+            operator="gt",
+            target_value=0.8,
+        )
+        evaluator = Luna2Evaluator(cfg)
+        msg = evaluator._build_message(triggered=False, status="not_triggered", metric_results={})
+        assert "passed" in msg
+        assert "input_toxicity" in msg
+
+    @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
+    @patch("agent_control_evaluator_galileo.luna2.evaluator.LUNA2_AVAILABLE", True)
+    def test_build_message_numeric_value(self):
+        """Test message for numeric metric scores."""
+        from agent_control_evaluator_galileo.luna2 import Luna2Evaluator, Luna2EvaluatorConfig
+
+        cfg = Luna2EvaluatorConfig(
+            stage_type="local",
+            stage_name="test-stage",
+            metric="input_toxicity",
+            operator="gt",
+            target_value=0.8,
+        )
+        evaluator = Luna2Evaluator(cfg)
+        metric_results = {"input_toxicity": {"value": 0.95}}
+        msg = evaluator._build_message(triggered=True, status="triggered", metric_results=metric_results)
+        assert "0.95" in msg
+        assert "input_toxicity" in msg
 
 
 class TestGalileoProtectClient:

@@ -8,17 +8,17 @@ from pydantic import Field, model_validator
 # Supported Luna-2 metrics
 Luna2Metric = Literal[
     "input_toxicity",
-    "output_toxicity",
+    "toxicity",           # output toxicity
     "input_sexism",
     "output_sexism",
     "prompt_injection",
-    "pii_detection",
+    "pii",                # output PII
+    "input_pii",
     "hallucination",
     "tone",
 ]
 
-# Supported operators
-Luna2Operator = Literal["gt", "lt", "gte", "lte", "eq", "contains", "any"]
+Luna2Operator = Literal["gt", "lt", "gte", "lte", "eq", "contains", "any", "not_empty"]
 
 
 class Luna2EvaluatorConfig(EvaluatorConfig):
@@ -74,7 +74,7 @@ class Luna2EvaluatorConfig(EvaluatorConfig):
     # Central stage fields
     stage_name: str | None = Field(
         default=None,
-        description="Stage name in Galileo (required for central stage)",
+        description="Stage name in Galileo (required for both local and central stages)",
     )
     stage_version: int | None = Field(
         default=None,
@@ -113,9 +113,10 @@ class Luna2EvaluatorConfig(EvaluatorConfig):
                 raise ValueError("'metric' is required for local stage")
             if not self.operator:
                 raise ValueError("'operator' is required for local stage")
-            if self.target_value is None:
+            # not_empty / not_null operators don't need a comparison value
+            if self.target_value is None and self.operator not in ("not_empty", "not_null"):
                 raise ValueError("'target_value' is required for local stage")
-        elif self.stage_type == "central":
-            if not self.stage_name:
-                raise ValueError("'stage_name' is required for central stage")
+
+        if not self.stage_name:
+            raise ValueError("'stage_name' is required for both central and local stages")
         return self
