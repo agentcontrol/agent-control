@@ -31,6 +31,10 @@ import { Result } from "../types/fp.js";
  *
  * @remarks
  * Render a template-backed control without persisting it.
+ *
+ * Authorized as ``controls.create``: rendering is part of the authoring
+ * flow (the result feeds the create / update endpoints), so a caller
+ * who cannot create controls has no use for the materialized output.
  */
 export function controlsRenderTemplate(
   client: AgentControlSDKCore,
