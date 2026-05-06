@@ -25,10 +25,6 @@ export class Controls extends ClientSDK {
    *
    * @remarks
    * Render a template-backed control without persisting it.
-   *
-   * Authorized as ``controls.create``: rendering is part of the authoring
-   * flow (the result feeds the create / update endpoints), so a caller
-   * who cannot create controls has no use for the materialized output.
    */
   async renderTemplate(
     request: models.RenderControlTemplateRequest,
@@ -114,12 +110,6 @@ export class Controls extends ClientSDK {
    *
    * @remarks
    * Return the canonical JSON schema for ControlDefinition.
-   *
-   * Intentionally has no ``require_operation`` dependency: the schema is
-   * static metadata derived from the model class and exposes no tenant
-   * state. Routing it through the auth framework would force callers
-   * (and the upstream authorizer) to handle a meta-only operation that
-   * has no permission semantics.
    */
   async getSchema(
     options?: RequestOptions,
@@ -135,11 +125,6 @@ export class Controls extends ClientSDK {
    *
    * @remarks
    * Validate control configuration data without saving it.
-   *
-   * Authorized as ``controls.create`` rather than ``controls.read``:
-   * validation exercises the full create / update materialization path
-   * and exists to support authoring, so a caller who cannot create
-   * controls has no use for the result.
    *
    * Args:
    *     request: Control configuration data to validate
