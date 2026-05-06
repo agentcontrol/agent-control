@@ -32,11 +32,6 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Validate control configuration data without saving it.
  *
- * Authorized as ``controls.create`` rather than ``controls.read``:
- * validation exercises the full create / update materialization path
- * and exists to support authoring, so a caller who cannot create
- * controls has no use for the result.
- *
  * Args:
  *     request: Control configuration data to validate
  *     db: Database session (injected)

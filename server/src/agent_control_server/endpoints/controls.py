@@ -443,17 +443,13 @@ async def _validate_control_definition(
     summary="Render a control template preview",
     response_description="Rendered control preview",
 )
+# Rendering is part of the authoring flow, so require create access.
 async def render_control_template(
     request: RenderControlTemplateRequest,
     db: AsyncSession = Depends(get_async_db),
     _principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> RenderControlTemplateResponse:
-    """Render a template-backed control without persisting it.
-
-    Authorized as ``controls.create``: rendering is part of the authoring
-    flow (the result feeds the create / update endpoints), so a caller
-    who cannot create controls has no use for the materialized output.
-    """
+    """Render a template-backed control without persisting it."""
     control_def = await _render_and_validate_template_input(
         TemplateControlInput(
             template=request.template,
@@ -556,15 +552,9 @@ async def create_control(
     summary="Get control definition JSON schema",
     response_description="JSON schema for ControlDefinition",
 )
+# Public schema metadata: no tenant state, no auth operation.
 async def get_control_schema() -> GetControlSchemaResponse:
-    """Return the canonical JSON schema for ControlDefinition.
-
-    Intentionally has no ``require_operation`` dependency: the schema is
-    static metadata derived from the model class and exposes no tenant
-    state. Routing it through the auth framework would force callers
-    (and the upstream authorizer) to handle a meta-only operation that
-    has no permission semantics.
-    """
+    """Return the canonical JSON schema for ControlDefinition."""
     return GetControlSchemaResponse(
         schema=ControlDefinition.model_json_schema(by_alias=True)
     )
@@ -777,6 +767,7 @@ async def set_control_data(
     summary="Validate control configuration",
     response_description="Validation result",
 )
+# Validation uses the authoring path, so require create access.
 async def validate_control_data(
     request: ValidateControlDataRequest,
     db: AsyncSession = Depends(get_async_db),
@@ -784,11 +775,6 @@ async def validate_control_data(
 ) -> ValidateControlDataResponse:
     """
     Validate control configuration data without saving it.
-
-    Authorized as ``controls.create`` rather than ``controls.read``:
-    validation exercises the full create / update materialization path
-    and exists to support authoring, so a caller who cannot create
-    controls has no use for the result.
 
     Args:
         request: Control configuration data to validate

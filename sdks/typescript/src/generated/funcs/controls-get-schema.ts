@@ -27,12 +27,6 @@ import { Result } from "../types/fp.js";
  *
  * @remarks
  * Return the canonical JSON schema for ControlDefinition.
- *
- * Intentionally has no ``require_operation`` dependency: the schema is
- * static metadata derived from the model class and exposes no tenant
- * state. Routing it through the auth framework would force callers
- * (and the upstream authorizer) to handle a meta-only operation that
- * has no permission semantics.
  */
 export function controlsGetSchema(
   client: AgentControlSDKCore,

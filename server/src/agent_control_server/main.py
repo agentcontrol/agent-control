@@ -273,12 +273,7 @@ app.include_router(
     dependencies=[Depends(require_api_key)],
 )
 app.include_router(
-    # ``/controls`` CRUD goes through the auth framework on each
-    # endpoint (``require_operation(Operation.CONTROLS_*)``); see the
-    # ``control_binding_router`` rationale below for the
-    # ``get_api_key_from_header`` mounting pattern. The single route on
-    # this router without ``require_operation`` is ``GET /controls/schema``,
-    # which is intentionally public meta — see its endpoint docstring.
+    # Endpoint dependencies handle auth; this advertises X-API-Key.
     control_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(get_api_key_from_header)],
@@ -306,9 +301,7 @@ app.include_router(
     dependencies=[Depends(get_api_key_from_header)],
 )
 app.include_router(
-    # Control templates: ``/render`` is on the auth framework via
-    # ``require_operation(Operation.CONTROLS_CREATE)``; same mounting
-    # pattern as the controls and control-bindings routers.
+    # Endpoint dependencies handle auth; this advertises X-API-Key.
     control_template_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(get_api_key_from_header)],
