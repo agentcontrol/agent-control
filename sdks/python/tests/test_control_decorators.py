@@ -3,9 +3,9 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from agent_control_telemetry import clear_trace_context_provider, set_trace_context_provider
 
-from agent_control.control_decorators import ControlViolationError, ControlSteerError, control
-
+from agent_control.control_decorators import ControlSteerError, ControlViolationError, control
 
 # =============================================================================
 # FIXTURES
@@ -254,6 +254,54 @@ class TestPolicyHandling:
 
 class TestPrePostExecution:
     """Tests for pre and post execution checks."""
+
+    @pytest.mark.asyncio
+    async def test_uses_external_provider_trace_context(self, mock_agent, mock_safe_response):
+        """Test that an external provider supplies both trace and span IDs."""
+        # Given: an external telemetry provider that owns the active trace/span IDs
+        provided_trace_id = "6c4e3f7e-4a9a-4e7e-8c1f-3a9a3a9a3a9d"
+        provided_span_id = "8d30272e-23f7-4a4c-80d8-2decb2f3f9f8"
+        captured_contexts = []
+
+        async def mock_evaluate(
+            agent_name,
+            step,
+            stage,
+            server_url,
+            trace_id=None,
+            span_id=None,
+            controls=None,
+            event_agent_name=None,
+        ):
+            captured_contexts.append((trace_id, span_id))
+            return mock_safe_response
+
+        set_trace_context_provider(
+            lambda: {"trace_id": provided_trace_id, "span_id": provided_span_id}
+        )
+        try:
+            with (
+                patch(
+                    "agent_control.control_decorators._get_current_agent",
+                    return_value=mock_agent,
+                ),
+                patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate),
+            ):
+
+                @control()
+                async def chat(message: str) -> str:
+                    return f"Response to: {message}"
+
+                # When: a protected function runs pre and post checks
+                await chat("Hello!")
+        finally:
+            clear_trace_context_provider()
+
+        # Then: Agent Control preserves the provider's concrete target span ID
+        assert captured_contexts == [
+            (provided_trace_id, provided_span_id),
+            (provided_trace_id, provided_span_id),
+        ]
 
     @pytest.mark.asyncio
     async def test_calls_pre_and_post(self, mock_agent, mock_safe_response):
