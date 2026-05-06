@@ -344,6 +344,8 @@ def test_refresh_controls_sync_without_running_loop_uses_refresh_endpoint() -> N
         "sync-refresh-agent",
         rendered_state="rendered",
         enabled_state="enabled",
+        target_type=None,
+        target_id=None,
     )
 
 
@@ -380,6 +382,8 @@ async def test_refresh_controls_sync_with_running_loop_uses_worker_thread() -> N
         "async-refresh-agent",
         rendered_state="rendered",
         enabled_state="enabled",
+        target_type=None,
+        target_id=None,
     )
 
 

@@ -61,12 +61,14 @@ class ErrorCode(StrEnum):
     POLICY_NOT_FOUND = "POLICY_NOT_FOUND"
     CONTROL_NOT_FOUND = "CONTROL_NOT_FOUND"
     CONTROL_VERSION_NOT_FOUND = "CONTROL_VERSION_NOT_FOUND"
+    CONTROL_BINDING_NOT_FOUND = "CONTROL_BINDING_NOT_FOUND"
     EVALUATOR_NOT_FOUND = "EVALUATOR_NOT_FOUND"
 
     # Conflict Errors (3xx pattern)
     AGENT_NAME_CONFLICT = "AGENT_NAME_CONFLICT"
     POLICY_NAME_CONFLICT = "POLICY_NAME_CONFLICT"
     CONTROL_NAME_CONFLICT = "CONTROL_NAME_CONFLICT"
+    CONTROL_BINDING_CONFLICT = "CONTROL_BINDING_CONFLICT"
     EVALUATOR_NAME_CONFLICT = "EVALUATOR_NAME_CONFLICT"
     CONTROL_IN_USE = "CONTROL_IN_USE"
     CONTROL_TEMPLATE_CONFLICT = "CONTROL_TEMPLATE_CONFLICT"
@@ -79,6 +81,7 @@ class ErrorCode(StrEnum):
     INVALID_SCHEMA = "INVALID_SCHEMA"
     CORRUPTED_DATA = "CORRUPTED_DATA"
     POLICY_CONTROL_INCOMPATIBLE = "POLICY_CONTROL_INCOMPATIBLE"
+    CONTROL_BINDING_INCOMPATIBLE = "CONTROL_BINDING_INCOMPATIBLE"
     TEMPLATE_PARAMETER_INVALID = "TEMPLATE_PARAMETER_INVALID"
     TEMPLATE_RENDER_ERROR = "TEMPLATE_RENDER_ERROR"
 
@@ -366,11 +369,13 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.POLICY_NOT_FOUND: "Policy Not Found",
     ErrorCode.CONTROL_NOT_FOUND: "Control Not Found",
     ErrorCode.CONTROL_VERSION_NOT_FOUND: "Control Version Not Found",
+    ErrorCode.CONTROL_BINDING_NOT_FOUND: "Control Binding Not Found",
     ErrorCode.EVALUATOR_NOT_FOUND: "Evaluator Not Found",
     # Conflict errors
     ErrorCode.AGENT_NAME_CONFLICT: "Agent Name Already Exists",
     ErrorCode.POLICY_NAME_CONFLICT: "Policy Name Already Exists",
     ErrorCode.CONTROL_NAME_CONFLICT: "Control Name Already Exists",
+    ErrorCode.CONTROL_BINDING_CONFLICT: "Control Binding Already Exists",
     ErrorCode.EVALUATOR_NAME_CONFLICT: "Evaluator Name Conflict",
     ErrorCode.CONTROL_IN_USE: "Control In Use",
     ErrorCode.CONTROL_TEMPLATE_CONFLICT: "Control Template Conflict",
@@ -382,6 +387,7 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.INVALID_SCHEMA: "Invalid Schema",
     ErrorCode.CORRUPTED_DATA: "Corrupted Data",
     ErrorCode.POLICY_CONTROL_INCOMPATIBLE: "Policy Control Incompatible",
+    ErrorCode.CONTROL_BINDING_INCOMPATIBLE: "Control Binding Incompatible",
     ErrorCode.TEMPLATE_PARAMETER_INVALID: "Template Parameter Invalid",
     ErrorCode.TEMPLATE_RENDER_ERROR: "Template Render Error",
     # Server errors

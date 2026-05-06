@@ -44,6 +44,7 @@ from ..errors import (
 from ..logging_utils import get_logger
 from ..models import Agent, AgentData
 from ..services.condition_traversal import iter_condition_leaves_with_paths
+from ..services.control_bindings import ControlBindingsService
 from ..services.control_definitions import parse_control_definition_or_api_error
 from ..services.control_templates import (
     can_render_template,
@@ -74,6 +75,7 @@ _logger = get_logger(__name__)
 _CONTROL_NAME_UNIQUE_CONSTRAINTS = {
     "controls_name_key",
     "idx_controls_name_active",
+    "idx_controls_namespace_name_active",
 }
 
 
@@ -916,13 +918,21 @@ async def delete_control(
         HTTPException 500: Database error during deletion
     """
     control_service = ControlService(db)
+    bindings_service = ControlBindingsService(db)
     control = await control_service.get_active_control_or_404(control_id, for_update=True)
 
     associations = await control_service.list_control_associations(control_id)
     associated_policy_ids = associations.policy_ids
     associated_agent_names = associations.agent_names
+    target_binding_ids = await bindings_service.list_binding_ids_for_control(
+        namespace_key=control.namespace_key, control_id=control_id
+    )
 
-    if (associated_policy_ids or associated_agent_names) and not force:
+    if (
+        associated_policy_ids
+        or associated_agent_names
+        or target_binding_ids
+    ) and not force:
         errors = [
             ValidationErrorItem(
                 resource="Policy",
@@ -941,17 +951,30 @@ async def delete_control(
                 value=agent_name,
             )
             for agent_name in associated_agent_names
+        ] + [
+            ValidationErrorItem(
+                resource="ControlBinding",
+                field="control_id",
+                code="control_in_use",
+                message=f"Control is attached to a target via binding ID {bid}",
+                value=bid,
+            )
+            for bid in target_binding_ids
         ]
         raise ConflictError(
             error_code=ErrorCode.CONTROL_IN_USE,
             detail=(
                 f"Control '{control.name}' is associated with "
-                f"{len(associated_policy_ids)} policy/policies and "
-                f"{len(associated_agent_names)} agent(s)"
+                f"{len(associated_policy_ids)} policy/policies, "
+                f"{len(associated_agent_names)} agent(s), and "
+                f"{len(target_binding_ids)} target binding(s)"
             ),
             resource="Control",
             resource_id=control.name,
-            hint="Use force=true to dissociate and delete, or remove associations manually first.",
+            hint=(
+                "Use force=true to dissociate and delete, or remove associations "
+                "and target bindings manually first."
+            ),
             errors=errors,
         )
 
@@ -962,13 +985,20 @@ async def delete_control(
         dissociated = await control_service.remove_all_control_associations(control_id)
         dissociated_from_policies = dissociated.policy_ids
         dissociated_from_agents = dissociated.agent_names
-    if dissociated_from_policies or dissociated_from_agents:
+    detached_target_bindings: list[int] = []
+    if target_binding_ids:
+        detached_target_bindings = await bindings_service.delete_bindings_for_control(
+            namespace_key=control.namespace_key, control_id=control_id
+        )
+    if dissociated_from_policies or dissociated_from_agents or detached_target_bindings:
         _logger.info(
-            "Dissociated control '%s' (%s) from %s policy/policies and %s agent(s)",
+            "Dissociated control '%s' (%s) from %s policy/policies, %s agent(s), "
+            "and %s target binding(s)",
             control.name,
             control_id,
             len(dissociated_from_policies),
             len(dissociated_from_agents),
+            len(detached_target_bindings),
         )
 
     # Tombstone the control so backfilled version history remains referentially intact.
@@ -999,6 +1029,7 @@ async def delete_control(
         dissociated_from=dissociated_from_policies,
         dissociated_from_policies=dissociated_from_policies,
         dissociated_from_agents=dissociated_from_agents,
+        detached_target_bindings=detached_target_bindings,
     )
 
 

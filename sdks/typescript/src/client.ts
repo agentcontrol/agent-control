@@ -1,4 +1,5 @@
 import { AgentControlSDK } from "./generated/sdk/sdk";
+import type { Logger } from "./generated/lib/logger";
 
 export interface StepSchema {
   name: string;
@@ -15,9 +16,12 @@ export interface AgentControlInitOptions {
   steps?: StepSchema[];
   timeoutMs?: number;
   userAgent?: string;
+  debugLogger?: Logger;
 }
 
 export type AgentsApi = AgentControlSDK["agents"];
+export type AuthApi = AgentControlSDK["auth"];
+export type ControlBindingsApi = AgentControlSDK["controlBindings"];
 export type ControlsApi = AgentControlSDK["controls"];
 export type EvaluationApi = AgentControlSDK["evaluation"];
 export type EvaluatorsApi = AgentControlSDK["evaluators"];
@@ -36,6 +40,7 @@ export class AgentControlClient {
       apiKeyHeader: options.apiKey,
       timeoutMs: options.timeoutMs,
       userAgent: options.userAgent,
+      debugLogger: options.debugLogger,
     });
   }
 
@@ -49,6 +54,14 @@ export class AgentControlClient {
 
   get agents(): AgentsApi {
     return this.requireSDK().agents;
+  }
+
+  get auth(): AuthApi {
+    return this.requireSDK().auth;
+  }
+
+  get controlBindings(): ControlBindingsApi {
+    return this.requireSDK().controlBindings;
   }
 
   get controls(): ControlsApi {

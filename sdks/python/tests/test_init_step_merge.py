@@ -252,5 +252,7 @@ async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
         agent_control.state.current_agent.agent_name,
         rendered_state="rendered",
         enabled_state="enabled",
+        target_type=None,
+        target_id=None,
     )
     assert register_agent_mock.await_count == 0

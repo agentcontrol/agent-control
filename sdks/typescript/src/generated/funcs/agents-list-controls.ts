@@ -31,11 +31,18 @@ import { Result } from "../types/fp.js";
  * List agent's associated controls
  *
  * @remarks
- * List protection controls associated with an agent.
+ * List protection controls effective for an agent.
  *
- * By default, the endpoint returns all associated controls, including rendered
- * controls, disabled controls, and unrendered template drafts. Callers can
- * narrow the response via the state filters on this endpoint. Filters
+ * The effective set is the de-duplicated union of the agent's direct
+ * controls, policy-derived controls, and (when ``target_type`` and
+ * ``target_id`` are both supplied) controls attached to that target via
+ * enabled bindings in the same namespace. The same merge applies on
+ * ``initAgent`` and ``POST /evaluation`` so all three surfaces return the
+ * same set for the same inputs.
+ *
+ * By default, the endpoint returns all effective controls, including
+ * rendered controls, disabled controls, and unrendered template drafts.
+ * Callers can narrow the response via the state filters. Filters
  * intersect, so unrendered drafts require rendered_state='unrendered'
  * together with enabled_state='all' or 'disabled'.
  *
@@ -43,12 +50,16 @@ import { Result } from "../types/fp.js";
  *     agent_name: Agent identifier
  *     rendered_state: Whether to return rendered controls, unrendered drafts, or both
  *     enabled_state: Whether to return enabled controls, disabled controls, or both
+ *     target_type: Optional opaque target kind (paired with target_id)
+ *     target_id: Optional opaque target identifier (paired with target_type)
  *     db: Database session (injected)
+ *     namespace_key: Namespace scoping for the resolution (injected)
  *
  * Returns:
  *     AgentControlsResponse with controls matching the requested state filters
  *
  * Raises:
+ *     HTTPException 400: target_type and target_id were not supplied together
  *     HTTPException 404: Agent not found
  */
 export function agentsListControls(
@@ -125,6 +136,8 @@ async function $do(
   const query = encodeFormQuery({
     "enabled_state": payload.enabled_state,
     "rendered_state": payload.rendered_state,
+    "target_id": payload.target_id,
+    "target_type": payload.target_type,
   });
 
   const headers = new Headers(compactMap({

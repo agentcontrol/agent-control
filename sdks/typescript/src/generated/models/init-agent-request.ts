@@ -51,6 +51,14 @@ export type InitAgentRequest = {
    * List of steps available to the agent
    */
   steps?: Array<StepSchema> | undefined;
+  /**
+   * Optional opaque target identifier. Required when target_type is supplied.
+   */
+  targetId?: string | null | undefined;
+  /**
+   * Optional opaque target kind. When supplied with target_id, the returned controls include controls bound to that target via control bindings, in addition to the agent's direct and policy-derived controls.
+   */
+  targetType?: string | null | undefined;
 };
 
 /** @internal */
@@ -60,6 +68,8 @@ export type InitAgentRequest$Outbound = {
   evaluators?: Array<EvaluatorSchema$Outbound> | undefined;
   force_replace: boolean;
   steps?: Array<StepSchema$Outbound> | undefined;
+  target_id?: string | null | undefined;
+  target_type?: string | null | undefined;
 };
 
 /** @internal */
@@ -73,11 +83,15 @@ export const InitAgentRequest$outboundSchema: z.ZodMiniType<
     evaluators: z.optional(z.array(EvaluatorSchema$outboundSchema)),
     forceReplace: z._default(z.boolean(), false),
     steps: z.optional(z.array(StepSchema$outboundSchema)),
+    targetId: z.optional(z.nullable(z.string())),
+    targetType: z.optional(z.nullable(z.string())),
   }),
   z.transform((v) => {
     return remap$(v, {
       conflictMode: "conflict_mode",
       forceReplace: "force_replace",
+      targetId: "target_id",
+      targetType: "target_type",
     });
   }),
 );

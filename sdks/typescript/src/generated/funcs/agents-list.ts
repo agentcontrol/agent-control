@@ -34,13 +34,15 @@ import { Result } from "../types/fp.js";
  * List all registered agents with cursor-based pagination.
  *
  * Returns a summary of each agent including identifier, policy associations,
- * and counts of registered steps and evaluators.
+ * and counts of registered steps and evaluators. Results are scoped to
+ * the request's namespace; agents in other namespaces are not visible.
  *
  * Args:
  *     cursor: Optional cursor for pagination (last agent name from previous page)
  *     limit: Pagination limit (default 20, max 100)
  *     name: Optional name filter (case-insensitive partial match)
  *     db: Database session (injected)
+ *     namespace_key: Resolved namespace for the request
  *
  * Returns:
  *     ListAgentsResponse with agent summaries and pagination info

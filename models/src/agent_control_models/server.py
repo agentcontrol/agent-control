@@ -1,7 +1,15 @@
+import datetime as dt
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
-from pydantic import BeforeValidator, ConfigDict, Field, StringConstraints, TypeAdapter
+from pydantic import (
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    TypeAdapter,
+    model_validator,
+)
 
 from .agent import Agent, StepSchema
 from .base import BaseModel
@@ -199,6 +207,34 @@ class InitAgentRequest(BaseModel):
             "'overwrite' applies latest-init-wins replacement for steps and evaluators."
         ),
     )
+    target_type: Annotated[
+        str | None, StringConstraints(min_length=1, max_length=255)
+    ] = Field(
+        default=None,
+        description=(
+            "Optional opaque target kind. When supplied with target_id, the "
+            "returned controls include controls bound to that target via "
+            "control bindings, in addition to the agent's direct and "
+            "policy-derived controls."
+        ),
+    )
+    target_id: Annotated[
+        str | None, StringConstraints(min_length=1, max_length=255)
+    ] = Field(
+        default=None,
+        description=(
+            "Optional opaque target identifier. Required when target_type is "
+            "supplied."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _check_target_pair(self) -> Self:
+        if (self.target_type is None) != (self.target_id is None):
+            raise ValueError(
+                "target_type and target_id must be supplied together."
+            )
+        return self
 
     model_config = {
         "json_schema_extra": {
@@ -565,6 +601,10 @@ class DeleteControlResponse(BaseModel):
         default_factory=list,
         description="Agent names the control was removed from before deletion",
     )
+    detached_target_bindings: list[int] = Field(
+        default_factory=list,
+        description="Control binding IDs that were removed before deletion",
+    )
 
 
 class PatchControlRequest(BaseModel):
@@ -585,3 +625,139 @@ class PatchControlResponse(BaseModel):
     enabled: bool | None = Field(
         None, description="Current enabled status (if control has data configured)"
     )
+
+
+# Control binding requests / responses.
+
+ControlBindingTargetField = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=255),
+]
+
+
+class CreateControlBindingRequest(BaseModel):
+    """Request to attach a control to an opaque external target."""
+
+    target_type: ControlBindingTargetField = Field(
+        ...,
+        description="Opaque attachment kind (caller-defined; e.g. 'env', 'log_stream').",
+    )
+    target_id: ControlBindingTargetField = Field(
+        ..., description="Opaque external identifier within the target_type."
+    )
+    control_id: int = Field(
+        ..., gt=0, description="ID of the control to attach."
+    )
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Whether the binding is active. Disabled bindings are preserved "
+            "but excluded from the effective control set at runtime."
+        ),
+    )
+
+
+class CreateControlBindingResponse(BaseModel):
+    """Response from creating a control binding."""
+
+    binding_id: int = Field(..., description="Identifier of the created binding.")
+
+
+class GetControlBindingResponse(BaseModel):
+    """Detail view of a single control binding."""
+
+    id: int
+    namespace_key: str
+    target_type: str
+    target_id: str
+    control_id: int
+    enabled: bool
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class ListControlBindingsResponse(BaseModel):
+    """Paginated/filtered list of control bindings."""
+
+    bindings: list[GetControlBindingResponse] = Field(default_factory=list)
+    pagination: PaginationInfo = Field(
+        ...,
+        description="Cursor-based pagination metadata.",
+    )
+
+
+class PatchControlBindingRequest(BaseModel):
+    """Request to update a control binding's enabled flag."""
+
+    enabled: bool = Field(..., description="New enabled value for the binding.")
+
+
+class PatchControlBindingResponse(BaseModel):
+    """Response from updating a control binding."""
+
+    success: bool = Field(..., description="Whether the update succeeded.")
+    enabled: bool = Field(..., description="Current enabled value.")
+
+
+class DeleteControlBindingResponse(BaseModel):
+    """Response from deleting a control binding."""
+
+    success: bool = Field(..., description="Whether the deletion succeeded.")
+
+
+class UpsertControlBindingRequest(BaseModel):
+    """Request to attach (or update) a control binding by natural key.
+
+    Idempotent: an existing binding with the same
+    ``(target_type, target_id, control_id)`` is updated in-place;
+    otherwise a new binding is created.
+    """
+
+    target_type: ControlBindingTargetField = Field(
+        ..., description="Opaque attachment kind."
+    )
+    target_id: ControlBindingTargetField = Field(
+        ..., description="Opaque external identifier within the target_type."
+    )
+    control_id: int = Field(
+        ..., gt=0, description="ID of the control to attach."
+    )
+    enabled: bool = Field(
+        default=True, description="Whether the binding is active."
+    )
+
+
+class UpsertControlBindingResponse(BaseModel):
+    """Response from a natural-key upsert."""
+
+    binding_id: int = Field(..., description="Identifier of the binding.")
+    created: bool = Field(
+        ...,
+        description=(
+            "True when a new binding was created; False when an existing "
+            "binding was updated in place."
+        ),
+    )
+    enabled: bool = Field(..., description="Current enabled value.")
+
+
+class DeleteControlBindingByKeyRequest(BaseModel):
+    """Request to detach a control binding by natural key (idempotent)."""
+
+    target_type: ControlBindingTargetField = Field(...)
+    target_id: ControlBindingTargetField = Field(...)
+    control_id: int = Field(..., gt=0)
+
+
+class DeleteControlBindingByKeyResponse(BaseModel):
+    """Response from a natural-key detach."""
+
+    deleted: bool = Field(
+        ...,
+        description=(
+            "True when a binding was deleted; False when no matching "
+            "binding existed."
+        ),
+    )
+
+

@@ -14,8 +14,10 @@ from sqlalchemy.orm import Session
 
 from agent_control_server.errors import APIValidationError
 from agent_control_server.models import (
+    DEFAULT_NAMESPACE_KEY,
     Agent,
     Control,
+    ControlBinding,
     ControlVersion,
     Policy,
     agent_controls,
@@ -319,7 +321,9 @@ async def test_list_controls_for_agent_returns_controls(async_db) -> None:
     await async_db.commit()
 
     # When: listing controls for the agent
-    controls = await ControlService(async_db).list_controls_for_agent(agent.name)
+    controls = await ControlService(async_db).list_controls_for_agent(
+        agent.name, namespace_key=DEFAULT_NAMESPACE_KEY
+    )
 
     # Then: both policy-derived and direct controls are returned
     assert len(controls) == 2
@@ -355,6 +359,7 @@ async def test_list_controls_for_agent_excludes_deleted_controls(async_db) -> No
     # When: listing controls for the agent
     controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
         rendered_state="all",
         enabled_state="all",
     )
@@ -399,7 +404,9 @@ async def test_list_controls_for_agent_filters_by_rendered_and_enabled_state(asy
     await async_db.commit()
 
     # When: listing controls with the default active-only behavior
-    default_controls = await ControlService(async_db).list_controls_for_agent(agent.name)
+    default_controls = await ControlService(async_db).list_controls_for_agent(
+        agent.name, namespace_key=DEFAULT_NAMESPACE_KEY
+    )
 
     # Then: only rendered and enabled controls are returned
     assert {control.name for control in default_controls} == {active_control.name}
@@ -407,6 +414,7 @@ async def test_list_controls_for_agent_filters_by_rendered_and_enabled_state(asy
     # When: requesting disabled rendered controls
     disabled_controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
         enabled_state="disabled",
     )
 
@@ -416,6 +424,7 @@ async def test_list_controls_for_agent_filters_by_rendered_and_enabled_state(asy
     # When: requesting unrendered controls
     unrendered_controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
         rendered_state="unrendered",
         enabled_state="all",
     )
@@ -426,6 +435,7 @@ async def test_list_controls_for_agent_filters_by_rendered_and_enabled_state(asy
     # When: requesting the full associated set
     all_controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
         rendered_state="all",
         enabled_state="all",
     )
@@ -440,6 +450,7 @@ async def test_list_controls_for_agent_filters_by_rendered_and_enabled_state(asy
     # When: requesting the impossible intersection of unrendered and enabled
     impossible_controls = await ControlService(async_db).list_controls_for_agent(
         agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
         rendered_state="unrendered",
         enabled_state="enabled",
     )
@@ -532,6 +543,7 @@ async def test_remove_control_from_agent_reports_policy_inheritance(async_db) ->
     first_result = await service.remove_control_from_agent(
         agent_name=agent.name,
         control_id=control.id,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
     )
 
     # Then: the direct link is removed but the control is still active via policy inheritance
@@ -542,6 +554,7 @@ async def test_remove_control_from_agent_reports_policy_inheritance(async_db) ->
     second_result = await service.remove_control_from_agent(
         agent_name=agent.name,
         control_id=control.id,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
     )
 
     # Then: the service reports that only the inherited policy link remains
@@ -622,9 +635,10 @@ async def test_create_version_allocates_sequential_numbers_under_concurrent_muta
         "updated",
         "updated",
     ]
-    assert {
-        version.snapshot["data"]["description"] for version in versions[1:]
-    } == {"Concurrent update A", "Concurrent update B"}
+    assert {version.snapshot["data"]["description"] for version in versions[1:]} == {
+        "Concurrent update A",
+        "Concurrent update B",
+    }
 
 
 @pytest.mark.asyncio
@@ -649,7 +663,9 @@ async def test_list_controls_for_agent_corrupted_data_raises(async_db) -> None:
 
     # When: listing controls for the agent
     with pytest.raises(APIValidationError) as exc_info:
-        await ControlService(async_db).list_controls_for_agent(agent.name)
+        await ControlService(async_db).list_controls_for_agent(
+            agent.name, namespace_key=DEFAULT_NAMESPACE_KEY
+        )
 
     # Then: corrupted data error is raised
     assert exc_info.value.error_code == ErrorCode.CORRUPTED_DATA
@@ -675,9 +691,198 @@ async def test_list_controls_for_agent_corrupted_unrendered_data_raises(async_db
     with pytest.raises(APIValidationError) as exc_info:
         await ControlService(async_db).list_controls_for_agent(
             agent.name,
+            namespace_key=DEFAULT_NAMESPACE_KEY,
             rendered_state="rendered",
             enabled_state="enabled",
         )
 
     # Then: corrupted data still fails fast
     assert exc_info.value.error_code == ErrorCode.CORRUPTED_DATA
+
+
+# ---------------------------------------------------------------------------
+# Merge semantics: target bindings unioned into the effective set.
+# ---------------------------------------------------------------------------
+
+
+async def _make_agent(async_db: AsyncSession, *, namespace_key: str = DEFAULT_NAMESPACE_KEY):
+    agent = Agent(
+        namespace_key=namespace_key,
+        name=f"agent-{uuid.uuid4().hex[:12]}",
+        data={},
+    )
+    async_db.add(agent)
+    await async_db.flush()
+    return agent
+
+
+async def _make_control(
+    async_db: AsyncSession,
+    *,
+    namespace_key: str = DEFAULT_NAMESPACE_KEY,
+    deleted: bool = False,
+):
+    control = Control(
+        namespace_key=namespace_key,
+        name=f"control-{uuid.uuid4().hex[:12]}",
+        data=VALID_CONTROL_PAYLOAD,
+        deleted_at=dt.datetime.now(dt.UTC) if deleted else None,
+    )
+    async_db.add(control)
+    await async_db.flush()
+    return control
+
+
+async def _bind_control_to_target(
+    async_db: AsyncSession,
+    *,
+    control_id: int,
+    namespace_key: str = DEFAULT_NAMESPACE_KEY,
+    target_type: str = "env",
+    target_id: str = "prod",
+    enabled: bool = True,
+) -> None:
+    async_db.add(
+        ControlBinding(
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+            control_id=control_id,
+            enabled=enabled,
+        )
+    )
+    await async_db.flush()
+
+
+@pytest.mark.asyncio
+async def test_target_bindings_merged_into_effective_set(async_db) -> None:
+    """When target context is supplied, target bindings union with direct/policy controls."""
+    agent = await _make_agent(async_db)
+    direct_control = await _make_control(async_db)
+    target_control = await _make_control(async_db)
+
+    await async_db.execute(
+        insert(agent_controls).values({"agent_name": agent.name, "control_id": direct_control.id})
+    )
+    await _bind_control_to_target(async_db, control_id=target_control.id)
+    await async_db.commit()
+
+    controls = await ControlService(async_db).list_controls_for_agent(
+        agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        target_type="env",
+        target_id="prod",
+        rendered_state="all",
+        enabled_state="all",
+    )
+    assert {c.name for c in controls} == {direct_control.name, target_control.name}
+
+
+@pytest.mark.asyncio
+async def test_target_bindings_deduplicated_against_direct_attachments(
+    async_db,
+) -> None:
+    """A control bound through both a direct attachment and a target binding appears once."""
+    agent = await _make_agent(async_db)
+    shared = await _make_control(async_db)
+
+    await async_db.execute(
+        insert(agent_controls).values({"agent_name": agent.name, "control_id": shared.id})
+    )
+    await _bind_control_to_target(async_db, control_id=shared.id)
+    await async_db.commit()
+
+    controls = await ControlService(async_db).list_controls_for_agent(
+        agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        target_type="env",
+        target_id="prod",
+        rendered_state="all",
+        enabled_state="all",
+    )
+    ids = [c.id for c in controls]
+    assert ids == [shared.id]
+
+
+@pytest.mark.asyncio
+async def test_disabled_binding_excluded_from_effective_set(async_db) -> None:
+    """Bindings with enabled=False are filtered out at the SQL layer."""
+    agent = await _make_agent(async_db)
+    target_control = await _make_control(async_db)
+    await _bind_control_to_target(async_db, control_id=target_control.id, enabled=False)
+    await async_db.commit()
+
+    controls = await ControlService(async_db).list_controls_for_agent(
+        agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        target_type="env",
+        target_id="prod",
+        rendered_state="all",
+        enabled_state="all",
+    )
+    assert controls == []
+
+
+@pytest.mark.asyncio
+async def test_soft_deleted_target_control_excluded(async_db) -> None:
+    """Soft-deleted controls are filtered out even when a binding still references them."""
+    agent = await _make_agent(async_db)
+    deleted = await _make_control(async_db, deleted=True)
+    await _bind_control_to_target(async_db, control_id=deleted.id)
+    await async_db.commit()
+
+    controls = await ControlService(async_db).list_controls_for_agent(
+        agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        target_type="env",
+        target_id="prod",
+        rendered_state="all",
+        enabled_state="all",
+    )
+    assert controls == []
+
+
+@pytest.mark.asyncio
+async def test_target_binding_namespace_isolated(async_db) -> None:
+    """A binding in another namespace must not appear when resolving for ours."""
+    other_ns = "other"
+    agent = await _make_agent(async_db, namespace_key=DEFAULT_NAMESPACE_KEY)
+    other_ns_control = await _make_control(async_db, namespace_key=other_ns)
+    await _bind_control_to_target(
+        async_db,
+        control_id=other_ns_control.id,
+        namespace_key=other_ns,
+    )
+    await async_db.commit()
+
+    controls = await ControlService(async_db).list_controls_for_agent(
+        agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        target_type="env",
+        target_id="prod",
+        rendered_state="all",
+        enabled_state="all",
+    )
+    assert controls == []
+
+
+@pytest.mark.asyncio
+async def test_no_target_context_omits_bindings(async_db) -> None:
+    """Without target params the resolver returns only direct/policy controls."""
+    agent = await _make_agent(async_db)
+    direct_control = await _make_control(async_db)
+    target_only = await _make_control(async_db)
+
+    await async_db.execute(
+        insert(agent_controls).values({"agent_name": agent.name, "control_id": direct_control.id})
+    )
+    await _bind_control_to_target(async_db, control_id=target_only.id)
+    await async_db.commit()
+
+    controls = await ControlService(async_db).list_controls_for_agent(
+        agent.name,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        rendered_state="all",
+        enabled_state="all",
+    )
+    assert {c.name for c in controls} == {direct_control.name}

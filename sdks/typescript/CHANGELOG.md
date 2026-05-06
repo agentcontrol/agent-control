@@ -1,3 +1,16 @@
+## [2.5.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.4.0...ts-sdk-v2.5.0) (2026-05-02)
+
+### Features
+
+* **sdk-ts:** expose debug logger option ([66aba97](https://github.com/agentcontrol/agent-control/commit/66aba97435dc2e4cdbcd43f37957384811c61ad1))
+* **sdk:** add config driven sink selection ([#176](https://github.com/agentcontrol/agent-control/issues/176)) ([64c169f](https://github.com/agentcontrol/agent-control/commit/64c169f15c0506043a76cd80fdc057bb3798fb32))
+* **server:** namespace scoping and control bindings ([#203](https://github.com/agentcontrol/agent-control/issues/203)) ([15ed4fd](https://github.com/agentcontrol/agent-control/commit/15ed4fd2bb90bba58c954bb1fc573639efdc30ef))
+* **server:** pluggable request-auth framework (management + runtime) ([#204](https://github.com/agentcontrol/agent-control/issues/204)) ([fae0ad3](https://github.com/agentcontrol/agent-control/commit/fae0ad31dd53f75a8a332ad887c5ac63f2b847d9)), closes [#203](https://github.com/agentcontrol/agent-control/issues/203)
+
+### Bug Fixes
+
+* **server:** add httpx to runtime dependencies ([#205](https://github.com/agentcontrol/agent-control/issues/205)) ([b4dff6f](https://github.com/agentcontrol/agent-control/commit/b4dff6f08d6cc35879b119c3d4218676253f22ae))
+
 ## [2.4.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.3.0...ts-sdk-v2.4.0) (2026-04-22)
 
 ### Features

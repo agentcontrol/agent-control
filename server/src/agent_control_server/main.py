@@ -17,10 +17,12 @@ from fastapi.openapi.utils import get_openapi
 from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from . import __version__ as server_version
-from .auth import require_api_key
+from .auth import get_api_key_from_header, require_api_key
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal
 from .endpoints.agents import router as agent_router
+from .endpoints.auth import router as auth_router
+from .endpoints.control_bindings import router as control_binding_router
 from .endpoints.controls import router as control_router
 from .endpoints.controls import template_router as control_template_router
 from .endpoints.evaluation import router as evaluation_router
@@ -120,6 +122,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup: Configure logging
     configure_logging(default_level=_default_log_level())
 
+    # Install the request-auth provider selected by environment variables.
+    from .auth_framework.config import configure_auth_from_env
+
+    configure_auth_from_env()
+
     # Discover evaluators at startup
     discover_evaluators()
     available = list(list_evaluators().keys())
@@ -157,8 +164,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         app.state.event_ingestor = ingestor
         logger.info(
-            "DirectEventIngestor initialized "
-            "(stdout=%s, sink=%s)",
+            "DirectEventIngestor initialized (stdout=%s, sink=%s)",
             observability_settings.stdout,
             sink_selection.name,
         )
@@ -166,6 +172,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Observability initialization complete")
 
     yield
+
+    # Shutdown: release auth provider resources (e.g., upstream HTTP clients)
+    from .auth_framework.config import teardown_auth
+
+    await teardown_auth()
 
     # Shutdown: Clean up observability
     if observability_settings.enabled and hasattr(app.state, "event_store"):
@@ -267,6 +278,28 @@ app.include_router(
     dependencies=[Depends(require_api_key)],
 )
 app.include_router(
+    # The auth framework on each endpoint owns authentication and
+    # authorization for control bindings, so this router is mounted
+    # without the legacy router-level gate. See ``auth_framework`` for
+    # the provider contract. ``get_api_key_from_header`` is a non-
+    # validating extractor (``auto_error=False``); it is attached purely
+    # so the generated OpenAPI spec advertises the X-API-Key requirement
+    # on these routes — without it, downstream SDK generators would treat
+    # the routes as unauthenticated.
+    control_binding_router,
+    prefix=api_v1_prefix,
+    dependencies=[Depends(get_api_key_from_header)],
+)
+
+# Auth endpoints (runtime token exchange). Same rationale as control
+# bindings: framework on each endpoint owns authn + authz, and the
+# header extractor is attached for OpenAPI advertisement only.
+app.include_router(
+    auth_router,
+    prefix=api_v1_prefix,
+    dependencies=[Depends(get_api_key_from_header)],
+)
+app.include_router(
     control_template_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(require_api_key)],
@@ -295,6 +328,7 @@ app.include_router(
     prefix=settings.api_prefix,
 )
 
+
 # Override OpenAPI to avoid recursive JSONValue schema issues in TS generators.
 def custom_openapi() -> dict[str, Any]:
     if app.openapi_schema:
@@ -316,6 +350,7 @@ def custom_openapi() -> dict[str, Any]:
 
 
 app.openapi = custom_openapi  # type: ignore[assignment]
+
 
 # Health check at root level (common convention)
 @app.get(

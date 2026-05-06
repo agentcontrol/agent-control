@@ -37,6 +37,8 @@ import { Result } from "../types/fp.js";
  *     agent_name: Agent identifier
  *     evaluator_name: Name of the evaluator
  *     db: Database session (injected)
+ *     namespace_key: Resolved namespace; agents in another namespace
+ *         return 404 (non-disclosing).
  *
  * Returns:
  *     EvaluatorSchemaItem with schema details

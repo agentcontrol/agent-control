@@ -14,6 +14,13 @@ export class Evaluation extends ClientSDK {
    * @remarks
    * Analyze content for safety and control violations.
    *
+   * The effective control set is the de-duplicated union of the agent's
+   * direct controls, policy-derived controls, and (when ``target_type`` and
+   * ``target_id`` are both supplied) controls attached to that target via
+   * enabled bindings in the same namespace. The same merge applies on
+   * ``initAgent`` and ``GET /agents/{name}/controls`` so all three surfaces
+   * return the same set for the same inputs.
+   *
    * This endpoint is intentionally evaluation-only. It returns the semantic
    * ``EvaluationResponse`` and does not build or ingest observability events
    * on the server; SDKs reconstruct and emit those events separately through

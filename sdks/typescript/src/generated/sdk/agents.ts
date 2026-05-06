@@ -31,13 +31,15 @@ export class Agents extends ClientSDK {
    * List all registered agents with cursor-based pagination.
    *
    * Returns a summary of each agent including identifier, policy associations,
-   * and counts of registered steps and evaluators.
+   * and counts of registered steps and evaluators. Results are scoped to
+   * the request's namespace; agents in other namespaces are not visible.
    *
    * Args:
    *     cursor: Optional cursor for pagination (last agent name from previous page)
    *     limit: Pagination limit (default 20, max 100)
    *     name: Optional name filter (case-insensitive partial match)
    *     db: Database session (injected)
+   *     namespace_key: Resolved namespace for the request
    *
    * Returns:
    *     ListAgentsResponse with agent summaries and pagination info
@@ -67,13 +69,20 @@ export class Agents extends ClientSDK {
    * - strict (default): preserve compatibility checks and conflict errors
    * - overwrite: latest init payload replaces steps/evaluators and returns change summary
    *
+   * The returned ``controls`` list is the de-duplicated union of the agent's
+   * direct controls, policy-derived controls, and (when ``target_type`` and
+   * ``target_id`` are both supplied on the request) controls attached to that
+   * target via enabled bindings in the same namespace. The same merge applies
+   * on ``GET /agents/{name}/controls`` and ``POST /evaluation``. Bindings can
+   * pre-exist the agent row, so a newly created agent that registers with
+   * target context can observe target controls immediately.
+   *
    * Args:
    *     request: Agent metadata and step schemas
    *     db: Database session (injected)
    *
    * Returns:
-   *     InitAgentResponse with created flag and active controls currently associated
-   *     through policies or direct links
+   *     InitAgentResponse with created flag and the effective controls
    */
   async init(
     request: models.InitAgentRequest,
@@ -97,6 +106,8 @@ export class Agents extends ClientSDK {
    * Args:
    *     agent_name: Agent identifier
    *     db: Database session (injected)
+   *     namespace_key: Resolved namespace; agents in another namespace
+   *         return 404 (non-disclosing).
    *
    * Returns:
    *     GetAgentResponse with agent metadata and step list
@@ -152,11 +163,18 @@ export class Agents extends ClientSDK {
    * List agent's associated controls
    *
    * @remarks
-   * List protection controls associated with an agent.
+   * List protection controls effective for an agent.
    *
-   * By default, the endpoint returns all associated controls, including rendered
-   * controls, disabled controls, and unrendered template drafts. Callers can
-   * narrow the response via the state filters on this endpoint. Filters
+   * The effective set is the de-duplicated union of the agent's direct
+   * controls, policy-derived controls, and (when ``target_type`` and
+   * ``target_id`` are both supplied) controls attached to that target via
+   * enabled bindings in the same namespace. The same merge applies on
+   * ``initAgent`` and ``POST /evaluation`` so all three surfaces return the
+   * same set for the same inputs.
+   *
+   * By default, the endpoint returns all effective controls, including
+   * rendered controls, disabled controls, and unrendered template drafts.
+   * Callers can narrow the response via the state filters. Filters
    * intersect, so unrendered drafts require rendered_state='unrendered'
    * together with enabled_state='all' or 'disabled'.
    *
@@ -164,12 +182,16 @@ export class Agents extends ClientSDK {
    *     agent_name: Agent identifier
    *     rendered_state: Whether to return rendered controls, unrendered drafts, or both
    *     enabled_state: Whether to return enabled controls, disabled controls, or both
+   *     target_type: Optional opaque target kind (paired with target_id)
+   *     target_id: Optional opaque target identifier (paired with target_type)
    *     db: Database session (injected)
+   *     namespace_key: Namespace scoping for the resolution (injected)
    *
    * Returns:
    *     AgentControlsResponse with controls matching the requested state filters
    *
    * Raises:
+   *     HTTPException 400: target_type and target_id were not supplied together
    *     HTTPException 404: Agent not found
    */
   async listControls(
@@ -234,6 +256,8 @@ export class Agents extends ClientSDK {
    *     cursor: Optional cursor for pagination (name of last evaluator from previous page)
    *     limit: Pagination limit (default 20, max 100)
    *     db: Database session (injected)
+   *     namespace_key: Resolved namespace; agents in another namespace
+   *         return 404 (non-disclosing).
    *
    * Returns:
    *     ListEvaluatorsResponse with evaluator schemas and pagination
@@ -263,6 +287,8 @@ export class Agents extends ClientSDK {
    *     agent_name: Agent identifier
    *     evaluator_name: Name of the evaluator
    *     db: Database session (injected)
+   *     namespace_key: Resolved namespace; agents in another namespace
+   *         return 404 (non-disclosing).
    *
    * Returns:
    *     EvaluatorSchemaItem with schema details

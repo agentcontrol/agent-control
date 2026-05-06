@@ -120,7 +120,7 @@ class TestAshutdownAsync:
         await agent_control.ashutdown()
 
     @pytest.mark.asyncio
-    async def test_ashutdown_stops_policy_refresh_off_thread(self):
+    async def test_ashutdown_stops_refresh_loops_off_thread(self):
         with patch(
             "agent_control.asyncio.to_thread",
             new=AsyncMock(return_value=None),
@@ -130,7 +130,8 @@ class TestAshutdownAsync:
         ) as shutdown_observability_mock:
             await agent_control.ashutdown()
 
-        to_thread_mock.assert_awaited_once_with(agent_control._stop_policy_refresh_loop)
+        awaited_targets = [call.args[0] for call in to_thread_mock.await_args_list]
+        assert awaited_targets == [agent_control._stop_policy_refresh_loop]
         shutdown_observability_mock.assert_awaited_once()
 
 

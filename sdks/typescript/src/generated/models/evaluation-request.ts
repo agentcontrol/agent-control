@@ -31,6 +31,12 @@ export type Stage = ClosedEnum<typeof Stage>;
  *     agent_name: Unique identifier of the agent making the request
  *     step: Step payload for evaluation
  *     stage: 'pre' (before execution) or 'post' (after execution)
+ *     target_type: Optional opaque target kind. When set together with
+ *         ``target_id``, the server merges controls bound to that target
+ *         into the effective set, in addition to the agent's direct and
+ *         policy-derived controls.
+ *     target_id: Optional opaque target identifier. Required when
+ *         ``target_type`` is set.
  */
 export type EvaluationRequest = {
   /**
@@ -45,6 +51,14 @@ export type EvaluationRequest = {
    * Runtime payload for an agent step invocation.
    */
   step: Step;
+  /**
+   * Optional opaque target identifier. Required when target_type is set.
+   */
+  targetId?: string | null | undefined;
+  /**
+   * Optional opaque target kind. When set together with target_id, the server merges controls bound to that target into the effective set, in addition to the agent's direct and policy-derived controls.
+   */
+  targetType?: string | null | undefined;
 };
 
 /** @internal */
@@ -55,6 +69,8 @@ export type EvaluationRequest$Outbound = {
   agent_name: string;
   stage: string;
   step: Step$Outbound;
+  target_id?: string | null | undefined;
+  target_type?: string | null | undefined;
 };
 
 /** @internal */
@@ -66,10 +82,14 @@ export const EvaluationRequest$outboundSchema: z.ZodMiniType<
     agentName: z.string(),
     stage: Stage$outboundSchema,
     step: Step$outboundSchema,
+    targetId: z.optional(z.nullable(z.string())),
+    targetType: z.optional(z.nullable(z.string())),
   }),
   z.transform((v) => {
     return remap$(v, {
       agentName: "agent_name",
+      targetId: "target_id",
+      targetType: "target_type",
     });
   }),
 );

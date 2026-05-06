@@ -42,6 +42,14 @@ export type ListAgentControlsApiV1AgentsAgentNameControlsGetRequest = {
    * Enabled-state filter. Default 'all' returns both enabled and disabled associated controls. Unrendered template drafts are disabled, so combine with rendered_state='rendered' to exclude them.
    */
   enabledState?: EnabledState | undefined;
+  /**
+   * Optional opaque target kind. When supplied with target_id, the response includes controls bound to that target via enabled bindings, in addition to the agent's direct and policy-derived controls.
+   */
+  targetType?: string | null | undefined;
+  /**
+   * Optional opaque target identifier. Required when target_type is supplied.
+   */
+  targetId?: string | null | undefined;
 };
 
 /** @internal */
@@ -57,6 +65,8 @@ export type ListAgentControlsApiV1AgentsAgentNameControlsGetRequest$Outbound = {
   agent_name: string;
   rendered_state: string;
   enabled_state: string;
+  target_type?: string | null | undefined;
+  target_id?: string | null | undefined;
 };
 
 /** @internal */
@@ -69,12 +79,16 @@ export const ListAgentControlsApiV1AgentsAgentNameControlsGetRequest$outboundSch
       agentName: z.string(),
       renderedState: z._default(RenderedState$outboundSchema, "all"),
       enabledState: z._default(EnabledState$outboundSchema, "all"),
+      targetType: z.optional(z.nullable(z.string())),
+      targetId: z.optional(z.nullable(z.string())),
     }),
     z.transform((v) => {
       return remap$(v, {
         agentName: "agent_name",
         renderedState: "rendered_state",
         enabledState: "enabled_state",
+        targetType: "target_type",
+        targetId: "target_id",
       });
     }),
   );

@@ -60,7 +60,13 @@ def _set_control_data(client: TestClient, control_id: int, data: dict) -> None:
     assert resp.status_code == 200, resp.text
 
 
-def test_create_control_integrity_error_returns_conflict(client: TestClient) -> None:
+@pytest.mark.parametrize(
+    "constraint_name",
+    ["idx_controls_name_active", "idx_controls_namespace_name_active"],
+)
+def test_create_control_integrity_error_returns_conflict(
+    client: TestClient, constraint_name: str
+) -> None:
     """DB uniqueness violations during create should be surfaced as 409 conflicts."""
 
     async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
@@ -72,7 +78,7 @@ def test_create_control_integrity_error_returns_conflict(client: TestClient) -> 
         mock_session.add = MagicMock()
         mock_session.refresh = AsyncMock()
         mock_session.commit = AsyncMock(
-            side_effect=_make_integrity_error("idx_controls_name_active")
+            side_effect=_make_integrity_error(constraint_name)
         )
         yield mock_session
 
@@ -89,7 +95,13 @@ def test_create_control_integrity_error_returns_conflict(client: TestClient) -> 
     assert resp.json()["error_code"] == "CONTROL_NAME_CONFLICT"
 
 
-def test_patch_control_rename_integrity_error_returns_conflict(client: TestClient) -> None:
+@pytest.mark.parametrize(
+    "constraint_name",
+    ["idx_controls_name_active", "idx_controls_namespace_name_active"],
+)
+def test_patch_control_rename_integrity_error_returns_conflict(
+    client: TestClient, constraint_name: str
+) -> None:
     """DB uniqueness violations during rename should be surfaced as 409 conflicts."""
     control_obj = SimpleNamespace(
         id=1,
@@ -120,7 +132,7 @@ def test_patch_control_rename_integrity_error_returns_conflict(client: TestClien
             ]
         )
         mock_session.commit = AsyncMock(
-            side_effect=_make_integrity_error("idx_controls_name_active")
+            side_effect=_make_integrity_error(constraint_name)
         )
         yield mock_session
 
@@ -682,6 +694,62 @@ def test_delete_control_force_dissociates_direct_agent_links(client: TestClient)
     assert list_resp.status_code == 200
     assert list_resp.json()["controls"] == []
     assert list_resp.json()["pagination"]["total"] == 0
+
+
+def _create_target_binding(client: TestClient, *, control_id: int) -> int:
+    resp = client.put(
+        "/api/v1/control-bindings",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return int(resp.json()["binding_id"])
+
+
+def test_delete_control_blocks_when_target_binding_exists(
+    client: TestClient,
+) -> None:
+    # Given: a control attached via a target binding
+    control_id, control_name = _create_control(client)
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    binding_id = _create_target_binding(client, control_id=control_id)
+
+    # When: deleting without force
+    resp = client.delete(f"/api/v1/controls/{control_id}")
+
+    # Then: 409 with the binding listed as the in-use cause
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["error_code"] == "CONTROL_IN_USE"
+    binding_messages = [
+        e for e in body.get("errors", []) if e.get("resource") == "ControlBinding"
+    ]
+    assert any(e.get("value") == binding_id for e in binding_messages)
+
+
+def test_delete_control_force_detaches_target_bindings(
+    client: TestClient,
+) -> None:
+    # Given: a control attached via a target binding
+    control_id, control_name = _create_control(client)
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    binding_id = _create_target_binding(client, control_id=control_id)
+
+    # When: force-deleting the control
+    resp = client.delete(f"/api/v1/controls/{control_id}?force=true")
+
+    # Then: success and the detached binding ID is returned
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body.get("detached_target_bindings", []) == [binding_id]
+
+    # And: the binding no longer exists
+    fetch = client.get(f"/api/v1/control-bindings/{binding_id}")
+    assert fetch.status_code == 404
 
 
 def test_create_control_allows_reusing_soft_deleted_name(client: TestClient) -> None:

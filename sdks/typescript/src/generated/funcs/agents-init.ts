@@ -40,13 +40,20 @@ import { Result } from "../types/fp.js";
  * - strict (default): preserve compatibility checks and conflict errors
  * - overwrite: latest init payload replaces steps/evaluators and returns change summary
  *
+ * The returned ``controls`` list is the de-duplicated union of the agent's
+ * direct controls, policy-derived controls, and (when ``target_type`` and
+ * ``target_id`` are both supplied on the request) controls attached to that
+ * target via enabled bindings in the same namespace. The same merge applies
+ * on ``GET /agents/{name}/controls`` and ``POST /evaluation``. Bindings can
+ * pre-exist the agent row, so a newly created agent that registers with
+ * target context can observe target controls immediately.
+ *
  * Args:
  *     request: Agent metadata and step schemas
  *     db: Database session (injected)
  *
  * Returns:
- *     InitAgentResponse with created flag and active controls currently associated
- *     through policies or direct links
+ *     InitAgentResponse with created flag and the effective controls
  */
 export function agentsInit(
   client: AgentControlSDKCore,

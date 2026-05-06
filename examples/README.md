@@ -16,6 +16,7 @@ This directory contains runnable examples for Agent Control. Each example has it
 | Galileo Luna-2 | Toxicity detection and content moderation with Galileo Protect. | https://docs.agentcontrol.dev/examples/galileo-luna2 |
 | LangChain SQL Agent | Protect a SQL agent from dangerous queries with server-side controls. | https://docs.agentcontrol.dev/examples/langchain-sql |
 | Steer Action Demo | Banking transfer agent showcasing observe, deny, and steer actions. | https://docs.agentcontrol.dev/examples/steer-action-demo |
+| Target Context | Bind controls to opaque external targets (e.g. `env=prod`) and let the SDK pin one target per session. | https://docs.agentcontrol.dev/examples/target-context |
 | AWS Strands | Guardrails for AWS Strands agent workflows and tool calls. | https://docs.agentcontrol.dev/examples/aws-strands |
 | TypeScript SDK | Consumer-style TypeScript example using the published npm package. | https://docs.agentcontrol.dev/examples/typescript_sdk |
 

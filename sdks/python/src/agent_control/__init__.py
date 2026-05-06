@@ -148,12 +148,20 @@ _session_generation = 0
 
 @dataclass(frozen=True)
 class _RefreshContext:
-    """Connection/session snapshot for a single refresh request."""
+    """Connection/session snapshot for a single refresh request.
+
+    The session-level target context, when set, is captured here so the
+    refresh worker forwards it on each ``GET /agents/{name}/controls``
+    call. The server returns the merged effective set, which is what
+    ``state.server_controls`` is published from.
+    """
 
     session_generation: int
     agent_name: str
     server_url: str
     api_key: str | None
+    target_type: str | None
+    target_id: str | None
 
 
 def get_server_controls() -> list[dict[str, Any]] | None:
@@ -213,6 +221,8 @@ def _snapshot_refresh_context() -> _RefreshContext:
         agent = state.current_agent
         server_url = state.server_url
         api_key = state.api_key
+        target_type = state.target_type
+        target_id = state.target_id
 
     if agent is None:
         raise RuntimeError("Agent not initialized. Call agent_control.init() first.")
@@ -224,6 +234,8 @@ def _snapshot_refresh_context() -> _RefreshContext:
         agent_name=agent.agent_name,
         server_url=server_url,
         api_key=api_key,
+        target_type=target_type,
+        target_id=target_id,
     )
 
 
@@ -238,6 +250,8 @@ async def _fetch_controls_for_context_async(context: _RefreshContext) -> list[di
             context.agent_name,
             rendered_state="rendered",
             enabled_state="enabled",
+            target_type=context.target_type,
+            target_id=context.target_id,
         )
         controls: list[dict[str, Any]] = response.get("controls", [])
         return controls
@@ -424,6 +438,8 @@ def init(
     observability_sink_config: JSONObject | None = None,
     log_config: dict[str, Any] | None = None,
     policy_refresh_interval_seconds: int = 60,
+    target_type: str | None = None,
+    target_id: str | None = None,
     **kwargs: object
 ) -> Agent:
     """
@@ -436,6 +452,14 @@ def init(
     3. Fetch controls from the server
     4. Auto-discover and load local controls.yaml as fallback
     5. Enable the @control decorator
+
+    Target context (``target_type`` and ``target_id``) is fixed for the
+    lifetime of the SDK session: it is sent on the registration call and
+    on every subsequent refresh of ``GET /agents/{name}/controls``. The
+    server returns the merged effective set (direct attachments,
+    policy-derived controls, and bindings for the supplied target). The
+    SDK does not support switching target context per-request; re-init to
+    change it.
 
     Args:
         agent_name: Unique identifier for your agent (will be normalized to lowercase)
@@ -451,12 +475,17 @@ def init(
             Defaults to "overwrite" in SDK flows.
         observability_enabled: Optional bool to enable/disable observability (defaults to env var)
         observability_sink_name: Optional sink selection name. Use "default" to preserve
-            SDK -> server OSS delivery or "registered" / a named sink factory for custom sinks.
+            SDK -> server delivery or "registered" / a named sink factory for custom sinks.
         observability_sink_config: Optional JSON config payload for the selected sink.
         log_config: Optional logging configuration dict:
                {"enabled": True, "span_start": True, "span_end": True, "control_eval": True}
         policy_refresh_interval_seconds: Interval for background policy refresh loop.
             Defaults to 60 seconds. Set to 0 to disable background refresh.
+        target_type: Optional opaque target kind. Required iff target_id is
+            also supplied. The server merges target-bound controls into the
+            returned set when both are present.
+        target_id: Optional opaque target identifier. Required iff target_type
+            is also supplied.
         **kwargs: Additional metadata to store with the agent
 
     Returns:
@@ -502,7 +531,13 @@ def init(
     if policy_refresh_interval_seconds < 0:
         raise ValueError("policy_refresh_interval_seconds must be >= 0")
 
-    # Re-init behavior: always stop existing loop before mutating shared agent/session globals.
+    if (target_type is None) != (target_id is None):
+        raise ValueError(
+            "target_type and target_id must be supplied together."
+        )
+
+    # Re-init behavior: always stop the existing refresh loop before mutating
+    # shared agent/session globals.
     _stop_policy_refresh_loop()
 
     # Configure logging if provided (do this early before any logging happens)
@@ -527,6 +562,8 @@ def init(
         state.current_agent = next_agent
         state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
         state.api_key = api_key
+        state.target_type = target_type
+        state.target_id = target_id
 
     # Merge auto-discovered steps from @control() decorators with explicit steps.
     # Explicit steps take precedence when (type, name) collides.
@@ -578,6 +615,8 @@ def init(
                         state.current_agent,
                         steps=registration_steps,
                         conflict_mode=conflict_mode,
+                        target_type=state.target_type,
+                        target_id=state.target_id,
                     )
                     created = response.get('created', False)
                     controls: list[dict[str, Any]] = response.get('controls', [])
@@ -676,6 +715,8 @@ def _reset_state() -> None:
         state.server_controls = None
         state.server_url = None
         state.api_key = None
+        state.target_type = None
+        state.target_id = None
 
 
 async def ashutdown() -> None:

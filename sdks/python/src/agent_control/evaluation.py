@@ -32,6 +32,47 @@ class _ControlAdapter:
     control: ControlDefinitionRuntime
 
 
+def _validate_target_pair(target_type: str | None, target_id: str | None) -> None:
+    """Reject half-supplied target pairs; both or neither must be present."""
+    if (target_type is None) != (target_id is None):
+        raise ValueError("target_type and target_id must be supplied together.")
+
+
+def _resolve_session_target(
+    target_type: str | None, target_id: str | None
+) -> tuple[str | None, str | None]:
+    """Default per-call target from state, and reject mismatches.
+
+    The SDK supports one target per session, fixed at ``init()`` time —
+    including no-target sessions, where the session target is
+    ``(None, None)``. The cached controls (``state.server_controls``) are
+    fetched for that session target. A per-call override that disagrees
+    with the session target — including supplying an explicit target on a
+    no-target session — would evaluate against the wrong cache and could
+    return safe without contacting the server. Reject the mismatch so
+    callers re-init when they need to change targets.
+
+    This rule applies to the session-bound entry point only
+    (``evaluate_controls``). Lower-level helpers that accept their own
+    client and controls are not session-bound and run the lighter
+    :func:`_validate_target_pair` check instead.
+
+    Returns the resolved ``(target_type, target_id)`` to forward.
+    """
+    if target_type is None and target_id is None:
+        return state.target_type, state.target_id
+    _validate_target_pair(target_type, target_id)
+    if state.current_agent is not None and (
+        target_type != state.target_type or target_id != state.target_id
+    ):
+        raise ValueError(
+            "Per-call target context must match the target context fixed at "
+            "init() time. The SDK supports one target per session "
+            "(including no-target sessions); re-init to change it."
+        )
+    return target_type, target_id
+
+
 def _get_applicable_controls(
     controls: list[_ControlAdapter],
     request: EvaluationRequest,
@@ -170,19 +211,33 @@ async def check_evaluation(
     agent_name: str,
     step: Step,
     stage: Literal["pre", "post"],
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
 ) -> EvaluationResult:
     """Check if agent interaction is safe through the public SDK helper.
 
     The server returns only evaluation semantics. When SDK observability is
     enabled, this helper reconstructs server-side control-execution events
     from the response and enqueues them through the built-in SDK batcher.
+
+    When ``target_type`` and ``target_id`` are both supplied, the request
+    is target-bearing and the server merges target bindings into the
+    effective control set. Both or neither must be provided; otherwise
+    the helper raises ``ValueError``. The caller owns the supplied
+    ``client`` and is responsible for any session-target consistency
+    rules at higher layers.
     """
+    _validate_target_pair(target_type, target_id)
+
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id, resolved_span_id = get_trace_and_span_ids()
     request = EvaluationRequest(
         agent_name=normalized_name,
         step=step,
         stage=stage,
+        target_type=target_type,
+        target_id=target_id,
     )
     request_payload = request.model_dump(mode="json")
 
@@ -218,8 +273,28 @@ async def check_evaluation_with_local(
     trace_id: str | None = None,
     span_id: str | None = None,
     event_agent_name: str | None = None,
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
 ) -> EvaluationResult:
-    """Evaluate controls with local-first execution and SDK-owned event emission."""
+    """Evaluate controls with local-first execution and SDK-owned event emission.
+
+    The supplied ``controls`` are the effective set returned by the server
+    for the active session (the merged result of the agent's direct
+    attachments, policy-derived controls, and target bindings when target
+    context is set). Controls with ``execution='sdk'`` run locally;
+    ``execution='server'`` controls are evaluated by the server through
+    ``/evaluation`` with the request's target context preserved.
+
+    Both ``target_type`` and ``target_id`` must be supplied together or
+    both omitted; otherwise the helper raises ``ValueError``. The caller
+    owns the supplied ``client`` and ``controls``; session-target
+    consistency is the caller's responsibility (e.g.,
+    :func:`evaluate_controls` resolves the session target before
+    invoking this helper).
+    """
+    _validate_target_pair(target_type, target_id)
+
     normalized_name = ensure_agent_name(agent_name)
     resolved_trace_id = trace_id
     resolved_span_id = span_id
@@ -299,6 +374,8 @@ async def check_evaluation_with_local(
         agent_name=normalized_name,
         step=step,
         stage=stage,
+        target_type=target_type,
+        target_id=target_id,
     )
 
     def _with_parse_errors(result: EvaluationResult) -> EvaluationResult:
@@ -400,12 +477,25 @@ async def evaluate_controls(
     step_type: Literal["tool", "llm"] = "llm",
     stage: Literal["pre", "post"] = "pre",
     agent_name: str,
+    target_type: str | None = None,
+    target_id: str | None = None,
     trace_id: str | None = None,
     span_id: str | None = None,
 ) -> EvaluationResult:
-    """Evaluate controls for a step."""
+    """Evaluate controls for a step.
+
+    When ``target_type`` and ``target_id`` are both supplied, the request
+    is target-bearing: the server merges target bindings into the
+    effective control set. If they are omitted, the SDK falls back to the
+    target context fixed at ``init()`` time when present. A per-call
+    override that disagrees with the session target is rejected because
+    the cached controls were fetched for the session target and would
+    otherwise drive stale local-first evaluation.
+    """
     if state.server_url is None:
         raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
+
+    target_type, target_id = _resolve_session_target(target_type, target_id)
 
     default_value = {} if step_type == "tool" else ""
     step_dict: dict[str, Any] = {
@@ -427,6 +517,8 @@ async def evaluate_controls(
             step=step_obj,
             stage=stage,
             controls=resolved_controls,
+            target_type=target_type,
+            target_id=target_id,
             trace_id=trace_id,
             span_id=span_id,
             event_agent_name=agent_name,

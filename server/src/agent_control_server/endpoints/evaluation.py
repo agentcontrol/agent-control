@@ -19,6 +19,7 @@ from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
+from ..namespace import get_namespace_key
 from ..services.controls import ControlService
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
@@ -127,8 +128,16 @@ async def evaluate(
     request: EvaluationRequest,
     client: RequireAPIKey,
     db: AsyncSession = Depends(get_async_db),
+    namespace_key: str = Depends(get_namespace_key),
 ) -> EvaluationResponse:
     """Analyze content for safety and control violations.
+
+    The effective control set is the de-duplicated union of the agent's
+    direct controls, policy-derived controls, and (when ``target_type`` and
+    ``target_id`` are both supplied) controls attached to that target via
+    enabled bindings in the same namespace. The same merge applies on
+    ``initAgent`` and ``GET /agents/{name}/controls`` so all three surfaces
+    return the same set for the same inputs.
 
     This endpoint is intentionally evaluation-only. It returns the semantic
     ``EvaluationResponse`` and does not build or ingest observability events
@@ -138,7 +147,10 @@ async def evaluate(
     del client  # Authentication is still required by dependency injection.
 
     agent_result = await db.execute(
-        select(Agent).where(Agent.name == request.agent_name)
+        select(Agent).where(
+            Agent.name == request.agent_name,
+            Agent.namespace_key == namespace_key,
+        )
     )
     agent = agent_result.scalar_one_or_none()
     if agent is None:
@@ -152,8 +164,12 @@ async def evaluate(
 
     runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
         request.agent_name,
+        namespace_key=namespace_key,
+        target_type=request.target_type,
+        target_id=request.target_id,
         allow_invalid_step_name_regex=True,
     )
+
     engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
 
     engine = ControlEngine(engine_controls)
