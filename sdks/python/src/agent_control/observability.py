@@ -57,7 +57,7 @@ import logging
 import threading
 import time
 from collections.abc import Awaitable, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -83,7 +83,6 @@ if TYPE_CHECKING:
 
 from .otel_sink import (
     OTEL_CONTROL_EVENT_SINK_NAME,
-    _resolve_otel_sink_config,
     create_otel_control_event_sink,
 )
 
@@ -951,9 +950,18 @@ def _sink_is_active(sink: ControlEventSink) -> bool:
 def _get_sink_selection() -> ControlEventSinkSelection:
     """Build the current sink-selection model from SDK settings."""
     settings = get_settings()
+    config: JSONObject = dict(settings.observability_sink_config or {})
+    if settings.observability_sink_name == OTEL_CONTROL_EVENT_SINK_NAME:
+        # Materialize OTEL-specific settings into the selection so that
+        # changes to otel_endpoint / otel_headers / otel_service_name /
+        # otel_enabled invalidate the cached sink instance.
+        config.setdefault("enabled", settings.otel_enabled)
+        config.setdefault("endpoint", settings.otel_endpoint)
+        config.setdefault("headers", dict(settings.otel_headers))
+        config.setdefault("service_name", settings.otel_service_name)
     return ControlEventSinkSelection(
         name=settings.observability_sink_name,
-        config=settings.observability_sink_config,
+        config=config,
     )
 
 
@@ -1099,8 +1107,6 @@ def init_observability(
 
     settings_updates: dict[str, object] = {}
     current_settings = get_settings()
-    if enabled is not None:
-        settings_updates["observability_enabled"] = enabled
     if sink_name is not None:
         settings_updates["observability_sink_name"] = sink_name
         if (
