@@ -92,7 +92,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: release-dists
-          path: .
+          path: release-dists
 
       - name: Publish agent-control-models to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -113,7 +113,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: release-dists
-          path: .
+          path: release-dists
 
       - name: Publish evaluator distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -137,7 +137,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: release-dists
-          path: .
+          path: release-dists
 
       - name: Publish agent-control-server to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -161,7 +161,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: release-dists
-          path: .
+          path: release-dists
 
       - name: Publish agent-control-sdk to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -184,7 +184,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: release-dists
-          path: .
+          path: release-dists
 
       - name: Upload to GitHub Release
         uses: python-semantic-release/upload-to-gh-release@main
