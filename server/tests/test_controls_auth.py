@@ -1,19 +1,4 @@
-"""HTTP-level coverage for the auth seam on ``/controls`` and
-``/control-templates``.
-
-These tests exercise the wiring of ``require_operation`` on each route
-through the default ``HeaderAuthProvider``: read operations require any
-valid credential (``CONTROLS_READ`` -> ``AUTHENTICATED``), write
-operations require an admin credential
-(``CONTROLS_CREATE`` / ``CONTROLS_UPDATE`` / ``CONTROLS_DELETE`` ->
-``ADMIN``), and ``GET /controls/schema`` is intentionally outside the
-framework so it stays publicly reachable.
-
-The provider primitives themselves are exercised in
-``tests/test_auth_framework.py``; this file focuses on each endpoint
-calling the right ``Operation`` so a future change to the operation
-mapping is caught at the route level.
-"""
+"""HTTP-level auth coverage for ``/controls`` and ``/control-templates``."""
 
 from __future__ import annotations
 
@@ -42,7 +27,7 @@ def _create_control(client: TestClient, name: str | None = None) -> int:
 
 
 # ---------------------------------------------------------------------------
-# /controls/schema is intentionally public meta — no require_operation.
+# /controls/schema is intentionally public metadata.
 # ---------------------------------------------------------------------------
 
 
@@ -165,7 +150,7 @@ def test_non_admin_cannot_create_control(non_admin_client: TestClient) -> None:
         },
     )
 
-    # Then: the request is forbidden by the auth seam
+    # Then: the request is forbidden
     assert resp.status_code == 403, resp.text
 
 
@@ -217,12 +202,7 @@ def test_non_admin_cannot_delete_control(
 def test_non_admin_cannot_validate_control_data(
     non_admin_client: TestClient,
 ) -> None:
-    """``/controls/validate`` is wired to ``CONTROLS_CREATE`` rather than
-    ``CONTROLS_READ`` because validation exercises the create / update
-    materialization path; a caller who cannot create has no use for the
-    result. This pins that decision so it can't drift to ``READ``
-    accidentally.
-    """
+    """``/controls/validate`` requires ``CONTROLS_CREATE``."""
     # When: a non-admin attempts to validate a draft payload
     resp = non_admin_client.post(
         f"{_CONTROLS_URL}/validate",
@@ -234,19 +214,14 @@ def test_non_admin_cannot_validate_control_data(
 
 
 def test_non_admin_cannot_render_template(non_admin_client: TestClient) -> None:
-    """``/control-templates/render`` is wired to ``CONTROLS_CREATE`` for
-    the same reason as ``/validate``: rendering is part of the authoring
-    flow. The 422 path is not exercised here — only the auth gate is
-    asserted, so the request shape need not validate.
-    """
+    """``/control-templates/render`` requires ``CONTROLS_CREATE``."""
     # When: a non-admin attempts to render a template
     resp = non_admin_client.post(
         f"{_TEMPLATES_URL}/render",
         json={"template": {}, "template_values": {}},
     )
 
-    # Then: rendering is admin-only — the auth gate fires before body
-    # validation reaches the materialization path
+    # Then: rendering is admin-only
     assert resp.status_code == 403, resp.text
 
 
@@ -337,29 +312,3 @@ def test_no_auth_mode_allows_writes_without_credentials(
     assert resp.status_code == 200, resp.text
     assert "control_id" in resp.json()
 
-
-# ---------------------------------------------------------------------------
-# Project-scoped API key deny — pending header forwarding follow-up.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skip(
-    reason=(
-        "Requires the upstream auth provider to forward an additional "
-        "configurable credential header. The default forward set is "
-        "fixed to (X-API-Key, Authorization, Cookie); deployments that "
-        "use a different credential header can't surface a "
-        "project-scoped credential to upstream until that becomes "
-        "configurable. Re-enable when the follow-up PR adds an "
-        "operator-configurable extra forward list."
-    )
-)
-def test_project_scoped_credential_denied_on_org_scoped_controls() -> None:
-    """Stub for the deny-test promised by the upstream provider's
-    response contract: a project-scoped credential calling an
-    org-scoped operation (``controls.*``) should resolve to a 403 from
-    the upstream. The end-to-end path is unreachable today because the
-    provider's credential-forward list is not configurable; tracked as
-    the next follow-up after this PR.
-    """
-    pytest.fail("test stub — see skip reason")
