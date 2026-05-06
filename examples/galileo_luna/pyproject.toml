@@ -1,0 +1,25 @@
+[project]
+name = "agent-control-galileo-luna-example"
+version = "0.1.0"
+description = "Agent Control direct Galileo Luna evaluator example"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-control-sdk",
+    "agent-control-evaluator-galileo",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.uv.sources]
+agent-control-sdk = { path = "../../sdks/python", editable = true }
+agent-control-evaluator-galileo = { path = "../../evaluators/contrib/galileo", editable = true }
+agent-control-engine = { path = "../../engine", editable = true }
+agent-control-evaluators = { path = "../../evaluators/builtin", editable = true }
+agent-control-models = { path = "../../models", editable = true }
+agent-control-telemetry = { path = "../../telemetry", editable = true }
