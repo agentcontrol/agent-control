@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import require_admin_key
+from ..auth_framework import Operation, Principal, require_operation
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
@@ -446,8 +446,14 @@ async def _validate_control_definition(
 async def render_control_template(
     request: RenderControlTemplateRequest,
     db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> RenderControlTemplateResponse:
-    """Render a template-backed control without persisting it."""
+    """Render a template-backed control without persisting it.
+
+    Authorized as ``controls.create``: rendering is part of the authoring
+    flow (the result feeds the create / update endpoints), so a caller
+    who cannot create controls has no use for the materialized output.
+    """
     control_def = await _render_and_validate_template_input(
         TemplateControlInput(
             template=request.template,
@@ -461,13 +467,14 @@ async def render_control_template(
 
 @router.put(
     "",
-    dependencies=[Depends(require_admin_key)],
     response_model=CreateControlResponse,
     summary="Create a new control",
     response_description="Created control ID",
 )
 async def create_control(
-    request: CreateControlRequest, db: AsyncSession = Depends(get_async_db)
+    request: CreateControlRequest,
+    db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> CreateControlResponse:
     """
     Create a new control with a unique name.
@@ -550,7 +557,14 @@ async def create_control(
     response_description="JSON schema for ControlDefinition",
 )
 async def get_control_schema() -> GetControlSchemaResponse:
-    """Return the canonical JSON schema for ControlDefinition."""
+    """Return the canonical JSON schema for ControlDefinition.
+
+    Intentionally has no ``require_operation`` dependency: the schema is
+    static metadata derived from the model class and exposes no tenant
+    state. Routing it through the auth framework would force callers
+    (and the upstream authorizer) to handle a meta-only operation that
+    has no permission semantics.
+    """
     return GetControlSchemaResponse(
         schema=ControlDefinition.model_json_schema(by_alias=True)
     )
@@ -563,7 +577,9 @@ async def get_control_schema() -> GetControlSchemaResponse:
     response_description="Control metadata and configuration",
 )
 async def get_control(
-    control_id: int, db: AsyncSession = Depends(get_async_db)
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> GetControlResponse:
     """
     Retrieve a control by ID including its name and configuration data.
@@ -600,7 +616,9 @@ async def get_control(
     response_description="Control data payload",
 )
 async def get_control_data(
-    control_id: int, db: AsyncSession = Depends(get_async_db)
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> GetControlDataResponse:
     """
     Retrieve the configuration data for a control.
@@ -640,6 +658,7 @@ async def list_control_versions(
     ),
     limit: int = Query(_DEFAULT_PAGINATION_LIMIT, ge=1, le=_MAX_PAGINATION_LIMIT),
     db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> ListControlVersionsResponse:
     """List control versions ordered newest-first using cursor-based pagination."""
     page = await ControlService(db).list_versions(control_id, cursor=cursor, limit=limit)
@@ -673,6 +692,7 @@ async def get_control_version(
     control_id: int,
     version_num: int,
     db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> GetControlVersionResponse:
     """Return a specific control version, including its raw persisted snapshot."""
     version = await ControlService(db).get_version_or_404(control_id, version_num)
@@ -687,7 +707,6 @@ async def get_control_version(
 
 @router.put(
     "/{control_id}/data",
-    dependencies=[Depends(require_admin_key)],
     response_model=SetControlDataResponse,
     summary="Update control configuration data",
     response_description="Success confirmation",
@@ -696,6 +715,7 @@ async def set_control_data(
     control_id: int,
     request: SetControlDataRequest,
     db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_UPDATE)),
 ) -> SetControlDataResponse:
     """
     Update the configuration data for a control.
@@ -758,10 +778,17 @@ async def set_control_data(
     response_description="Validation result",
 )
 async def validate_control_data(
-    request: ValidateControlDataRequest, db: AsyncSession = Depends(get_async_db)
+    request: ValidateControlDataRequest,
+    db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> ValidateControlDataResponse:
     """
     Validate control configuration data without saving it.
+
+    Authorized as ``controls.create`` rather than ``controls.read``:
+    validation exercises the full create / update materialization path
+    and exists to support authoring, so a caller who cannot create
+    controls has no use for the result.
 
     Args:
         request: Control configuration data to validate
@@ -798,6 +825,7 @@ async def list_controls(
     execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
     tag: str | None = Query(None, description="Filter by tag"),
     db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> ListControlsResponse:
     """
     List all controls with optional filtering and cursor-based pagination.
@@ -884,7 +912,6 @@ async def list_controls(
 
 @router.delete(
     "/{control_id}",
-    dependencies=[Depends(require_admin_key)],
     response_model=DeleteControlResponse,
     summary="Delete a control",
     response_description="Deletion confirmation with dissociation info",
@@ -897,6 +924,7 @@ async def delete_control(
         "If false, fail if control is associated with any policy or agent.",
     ),
     db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_DELETE)),
 ) -> DeleteControlResponse:
     """
     Delete a control by ID.
@@ -1035,7 +1063,6 @@ async def delete_control(
 
 @router.patch(
     "/{control_id}",
-    dependencies=[Depends(require_admin_key)],
     response_model=PatchControlResponse,
     summary="Update control metadata",
     response_description="Updated control information",
@@ -1044,6 +1071,7 @@ async def patch_control(
     control_id: int,
     request: PatchControlRequest,
     db: AsyncSession = Depends(get_async_db),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_UPDATE)),
 ) -> PatchControlResponse:
     """
     Update control metadata (name and/or enabled status).
