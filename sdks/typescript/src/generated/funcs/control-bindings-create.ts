@@ -32,8 +32,8 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Attach a control to an opaque external target.
  *
- * Each binding row is scoped to the request namespace as resolved by
- * the active authorizer.
+ * Each binding row is scoped to the namespace associated with the
+ * authenticated request.
  */
 export function controlBindingsCreate(
   client: AgentControlSDKCore,

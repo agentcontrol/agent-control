@@ -8,10 +8,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from agent_control_models.errors import ErrorCode
-from sqlalchemy import insert, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
-
 from agent_control_server.errors import APIValidationError
 from agent_control_server.models import (
     DEFAULT_NAMESPACE_KEY,
@@ -27,6 +23,9 @@ from agent_control_server.models import (
 from agent_control_server.services.controls import (
     ControlService,
 )
+from sqlalchemy import insert, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from .conftest import AsyncSessionTest, engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -70,7 +69,11 @@ async def _create_versioned_control(
 
     async with AsyncSessionTest() as session:
         service = ControlService(session)
-        control = service.create_control(name=control_name, data=control_data)
+        control = service.create_control(
+            namespace_key=DEFAULT_NAMESPACE_KEY,
+            name=control_name,
+            data=control_data,
+        )
         await service.create_version(
             control,
             event_type="created",
@@ -143,6 +146,7 @@ async def test_create_control_transaction_rollback_does_not_persist_control_or_v
     async with AsyncSessionTest() as session:
         service = ControlService(session)
         control = service.create_control(
+            namespace_key=DEFAULT_NAMESPACE_KEY,
             name=control_name,
             data=deepcopy(VALID_CONTROL_PAYLOAD),
         )
@@ -167,7 +171,10 @@ async def test_replace_control_data_transaction_rollback_preserves_prior_state()
 
     async with AsyncSessionTest() as session:
         service = ControlService(session)
-        control = await service.get_active_control_or_404(control_id)
+        control = await service.get_active_control_or_404(
+            control_id,
+            namespace_key=DEFAULT_NAMESPACE_KEY,
+        )
         updated_data = deepcopy(control.data)
         updated_data["description"] = "Should not persist"
         service.replace_control_data(control, data=updated_data)
@@ -194,7 +201,10 @@ async def test_patch_mutation_transaction_rollback_preserves_prior_state() -> No
 
     async with AsyncSessionTest() as session:
         service = ControlService(session)
-        control = await service.get_active_control_or_404(control_id)
+        control = await service.get_active_control_or_404(
+            control_id,
+            namespace_key=DEFAULT_NAMESPACE_KEY,
+        )
         service.rename_control(control, name=f"{control_name}-renamed")
         service.set_control_enabled(control, enabled=False)
         await service.create_version(
@@ -221,7 +231,10 @@ async def test_delete_control_transaction_rollback_preserves_active_state() -> N
 
     async with AsyncSessionTest() as session:
         service = ControlService(session)
-        control = await service.get_active_control_or_404(control_id)
+        control = await service.get_active_control_or_404(
+            control_id,
+            namespace_key=DEFAULT_NAMESPACE_KEY,
+        )
         service.mark_control_deleted(control, deleted_at=dt.datetime.now(dt.UTC))
         await service.create_version(
             control,
@@ -511,7 +524,10 @@ async def test_list_active_control_counts_by_agent_deduplicates_and_filters_inac
     await async_db.commit()
 
     # When: counting active controls for the agent
-    counts = await ControlService(async_db).list_active_control_counts_by_agent([agent.name])
+    counts = await ControlService(async_db).list_active_control_counts_by_agent(
+        [agent.name],
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+    )
 
     # Then: active controls are deduplicated and inactive controls are excluded
     assert counts == {agent.name: 2}
@@ -572,6 +588,7 @@ async def test_create_version_allocates_sequential_numbers_under_concurrent_muta
     async with AsyncSessionTest() as setup_session:
         setup_service = ControlService(setup_session)
         control = setup_service.create_control(
+            namespace_key=DEFAULT_NAMESPACE_KEY,
             name=f"control-{uuid.uuid4()}",
             data=deepcopy(VALID_CONTROL_PAYLOAD),
         )
@@ -592,7 +609,10 @@ async def test_create_version_allocates_sequential_numbers_under_concurrent_muta
 
         async with AsyncSessionTest() as session:
             service = ControlService(session)
-            control = await service.get_active_control_or_404(control_id)
+            control = await service.get_active_control_or_404(
+                control_id,
+                namespace_key=DEFAULT_NAMESPACE_KEY,
+            )
             updated_data = deepcopy(control.data)
             updated_data["description"] = description
             service.replace_control_data(control, data=updated_data)

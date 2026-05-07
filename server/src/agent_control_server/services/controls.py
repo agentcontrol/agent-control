@@ -20,7 +20,6 @@ from sqlalchemy.sql import Select
 
 from ..errors import APIValidationError, NotFoundError
 from ..models import (
-    DEFAULT_NAMESPACE_KEY,
     Control,
     ControlBinding,
     ControlVersion,
@@ -100,7 +99,7 @@ class ControlService:
     def create_control(
         self,
         *,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
         name: str,
         data: dict[str, Any],
     ) -> Control:
@@ -161,17 +160,19 @@ class ControlService:
         control_id: int,
         *,
         for_update: bool = False,
-        namespace_key: str | None = None,
+        namespace_key: str,
     ) -> Control:
         """Load an active control row or raise CONTROL_NOT_FOUND.
 
-        When ``namespace_key`` is supplied, the lookup is scoped to that
-        namespace; a control that exists only in another namespace
-        surfaces as 404 (non-disclosing).
+        The lookup is scoped to the supplied namespace; a control that
+        exists only in another namespace surfaces as 404
+        (non-disclosing).
         """
-        stmt = select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
-        if namespace_key is not None:
-            stmt = stmt.where(Control.namespace_key == namespace_key)
+        stmt = select(Control).where(
+            Control.id == control_id,
+            Control.namespace_key == namespace_key,
+            Control.deleted_at.is_(None),
+        )
         if for_update:
             stmt = stmt.with_for_update()
         result = await self._db.execute(stmt)
@@ -190,7 +191,7 @@ class ControlService:
         self,
         name: str,
         *,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
         exclude_control_id: int | None = None,
     ) -> bool:
         """Return whether an active control already uses the provided name."""
@@ -537,7 +538,7 @@ class ControlService:
         self,
         agent_names: Sequence[str],
         *,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
     ) -> dict[str, int]:
         """Return active control counts keyed by agent name."""
         if not agent_names:

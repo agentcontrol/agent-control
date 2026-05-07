@@ -102,8 +102,8 @@ async def create_control_binding(
 ) -> CreateControlBindingResponse:
     """Attach a control to an opaque external target.
 
-    Each binding row is scoped to the request namespace as resolved by
-    the active authorizer.
+    Each binding row is scoped to the namespace associated with the
+    authenticated request.
     """
     service = ControlBindingsService(db)
     binding = await service.create_binding(
@@ -153,7 +153,7 @@ async def list_control_bindings(
     cursor-based pagination. Bindings are ordered by ID descending
     (newest first). The cursor is opaque to clients: pass back the
     ``next_cursor`` value verbatim to fetch the following page. The
-    storage namespace is resolved by the active authorizer.
+    storage namespace is resolved from the authenticated request.
     """
     parsed_cursor: int | None
     if cursor is None:
@@ -201,12 +201,11 @@ async def get_control_binding(
     """Read a single control binding by surrogate ID.
 
     Authorization is namespace-wide: the binding's target identifiers
-    are not forwarded to the upstream because they are only discoverable
-    after the row is loaded, and ``require_operation`` is single-pass.
+    are not available until after the row is loaded.
     Callers whose authorization model requires per-target permissions
     should use the natural-key endpoints (``PUT /by-key``,
     ``POST /by-key:delete``) and the target-filtered list endpoint, all
-    of which forward ``(target_type, target_id)`` to the authorizer.
+    of which include ``(target_type, target_id)`` in the request context.
     """
     service = ControlBindingsService(db)
     binding = await service.get_binding_or_404(
@@ -232,7 +231,7 @@ async def patch_control_binding(
     See the GET-by-id docstring for the authorization scope: this route
     is namespace-wide because the target identifiers are not available
     before the binding is loaded. Use ``PUT /by-key`` for target-scoped
-    upserts that forward the target to the authorizer.
+    upserts that include the target in the request context.
     """
     service = ControlBindingsService(db)
     binding = await service.set_enabled(
@@ -260,7 +259,7 @@ async def delete_control_binding(
     See the GET-by-id docstring for the authorization scope: this route
     is namespace-wide because the target identifiers are not available
     before the binding is loaded. Use ``POST /by-key:delete`` for
-    target-scoped detach that forwards the target to the authorizer.
+    target-scoped detach that includes the target in the request context.
     """
     service = ControlBindingsService(db)
     await service.delete_binding(namespace_key=principal.namespace_key, binding_id=binding_id)
