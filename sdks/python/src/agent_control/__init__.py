@@ -562,6 +562,7 @@ def init(
         state.current_agent = next_agent
         state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
         state.api_key = api_key
+        state.runtime_token_cache.clear()
         state.target_type = target_type
         state.target_id = target_id
 
@@ -597,7 +598,8 @@ def init(
             assert state.current_agent is not None
 
             async with AgentControlClient(
-                base_url=state.server_url, api_key=state.api_key
+                base_url=state.server_url,
+                api_key=state.api_key,
             ) as client:
                 # Check server health first
                 try:
@@ -715,6 +717,7 @@ def _reset_state() -> None:
         state.server_controls = None
         state.server_url = None
         state.api_key = None
+        state.runtime_token_cache.clear()
         state.target_type = None
         state.target_id = None
 
