@@ -2,9 +2,8 @@
 
 The runtime auth flow is two-phase: this endpoint is phase one. The
 caller presents a long-lived credential plus ``(target_type,
-target_id)``; the default authorizer (typically
-:class:`HttpUpstreamAuthProvider` in production) authenticates the
-credential and authorizes the implied
+target_id)``; the default authorizer authenticates the credential and
+authorizes the implied
 :data:`Operation.RUNTIME_TOKEN_EXCHANGE`. On success, this endpoint
 mints a short-lived local runtime token bound to the supplied target
 and returns it. Subsequent target-bearing runtime calls present the
@@ -130,8 +129,8 @@ async def runtime_token_exchange(
 
     actor_id = principal.caller_id or "anonymous"
     # The exchange endpoint requires the authorizer to explicitly grant
-    # runtime.use. Providers that do not surface scopes (legacy local
-    # provider) supply a normalized grant for ``RUNTIME_TOKEN_EXCHANGE``;
+    # runtime.use. Local providers supply a normalized grant for
+    # ``RUNTIME_TOKEN_EXCHANGE``;
     # upstream providers that return an explicit empty scopes array fail
     # closed here rather than escalating to runtime.use.
     if Operation.RUNTIME_USE.value not in principal.scopes:
@@ -155,7 +154,7 @@ async def runtime_token_exchange(
         )
     except UpstreamGrantExpiredError as exc:
         # Upstream returned a grant whose ``expires_at`` is already in
-        # the past — minting would hand the caller a token that's dead
+        # the past - minting would hand the caller a token that's dead
         # on arrival. Distinguished from the misconfigured case so the
         # error code and status reflect "upstream returned bad data."
         raise APIError(

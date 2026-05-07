@@ -252,7 +252,7 @@ app.add_exception_handler(APIError, api_error_handler)  # type: ignore[arg-type]
 # Register handler for FastAPI's RequestValidationError (Pydantic validation)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
 
-# Register handler for standard HTTPException (legacy code, FastAPI internals)
+# Register handler for standard HTTPException (older routes, FastAPI internals)
 app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
 
 # Register catch-all handler for unexpected exceptions
@@ -261,16 +261,18 @@ app.add_exception_handler(Exception, generic_exception_handler)
 # API v1 prefix for all routes
 api_v1_prefix = f"{settings.api_prefix}/{settings.api_version}"
 
-# Protected routes (require valid API key)
+# API routers. Routers migrated to the auth framework mount the
+# non-validating header extractor only so OpenAPI advertises X-API-Key;
+# each endpoint's ``require_operation`` dependency owns authn + authz.
 app.include_router(
     agent_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 app.include_router(
     policy_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 app.include_router(
     # Endpoint dependencies handle auth; this advertises X-API-Key.
@@ -281,11 +283,11 @@ app.include_router(
 app.include_router(
     # The auth framework on each endpoint owns authentication and
     # authorization for control bindings, so this router is mounted
-    # without the legacy router-level gate. See ``auth_framework`` for
+    # without the router-level auth gate. See ``auth_framework`` for
     # the provider contract. ``get_api_key_from_header`` is a non-
     # validating extractor (``auto_error=False``); it is attached purely
     # so the generated OpenAPI spec advertises the X-API-Key requirement
-    # on these routes — without it, downstream SDK generators would treat
+    # on these routes - without it, downstream SDK generators would treat
     # the routes as unauthenticated.
     control_binding_router,
     prefix=api_v1_prefix,
@@ -309,9 +311,10 @@ app.include_router(
 app.include_router(
     evaluation_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 
+# Evaluator discovery still uses the local credential dependency.
 app.include_router(
     evaluator_router,
     prefix=api_v1_prefix,
@@ -324,7 +327,7 @@ app.include_router(
     prefix=api_v1_prefix,
 )
 
-# System routes (config, login, logout) — no auth required
+# System routes (config, login, logout) - no auth required
 app.include_router(
     system_router,
     prefix=settings.api_prefix,
