@@ -35,7 +35,7 @@ import { Result } from "../types/fp.js";
  * cursor-based pagination. Bindings are ordered by ID descending
  * (newest first). The cursor is opaque to clients: pass back the
  * ``next_cursor`` value verbatim to fetch the following page. The
- * storage namespace is resolved by the active authorizer.
+ * storage namespace is resolved from the authenticated request.
  */
 export function controlBindingsList(
   client: AgentControlSDKCore,

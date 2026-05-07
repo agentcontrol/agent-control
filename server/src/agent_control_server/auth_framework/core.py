@@ -52,11 +52,9 @@ class Operation(StrEnum):
     POLICIES_READ = "policies.read"
     POLICIES_CREATE = "policies.create"
     POLICIES_UPDATE = "policies.update"
-    POLICIES_DELETE = "policies.delete"
     AGENTS_READ = "agents.read"
     AGENTS_CREATE = "agents.create"
     AGENTS_UPDATE = "agents.update"
-    AGENTS_DELETE = "agents.delete"
     RUNTIME_USE = "runtime.use"
 
 

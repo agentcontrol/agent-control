@@ -2,13 +2,13 @@
 
 The runtime auth flow is two-phase: this endpoint is phase one. The
 caller presents a long-lived credential plus ``(target_type,
-target_id)``; the default authorizer authenticates the credential and
-authorizes the implied
-:data:`Operation.RUNTIME_TOKEN_EXCHANGE`. On success, this endpoint
+target_id)``; the configured authorization provider authenticates the
+credential and authorizes the implied
+``runtime.token_exchange`` operation. On success, this endpoint
 mints a short-lived local runtime token bound to the supplied target
 and returns it. Subsequent target-bearing runtime calls present the
 returned token, which is verified locally by
-:class:`LocalJwtVerifyProvider`.
+the runtime JWT provider.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ class RuntimeTokenExchangeResponse(BaseModel):
 
 
 async def _exchange_context(request: Request) -> dict[str, Any]:
-    """Surface target identifiers to the authorizer's context.
+    """Surface target identifiers to the authorization context.
 
     Reads the request body once. FastAPI caches the parsed body, so the
     endpoint's own Pydantic body model still binds normally.
@@ -89,11 +89,10 @@ async def runtime_token_exchange(
 ) -> RuntimeTokenExchangeResponse:
     """Mint a short-lived runtime token for the requested target.
 
-    The caller's credential is authenticated and authorized by the
-    installed default authorizer; the resulting :class:`Principal`
-    supplies the actor identity and (when the upstream surfaces it)
-    the grant scopes and expiry. This endpoint then mints a local HS256
-    token whose lifetime cannot outlive the upstream grant.
+    The caller's credential is authenticated and authorized before the
+    resolved principal supplies the actor identity, grant scopes, and
+    expiry. This endpoint then mints a local HS256 token whose lifetime
+    cannot outlive the grant.
 
     Runtime auth must be enabled via
     ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET``; otherwise the endpoint

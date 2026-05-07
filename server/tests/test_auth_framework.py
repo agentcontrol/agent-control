@@ -20,6 +20,7 @@ from agent_control_server.auth_framework.providers import (
     AccessLevel,
     HeaderAuthProvider,
     HttpUpstreamAuthProvider,
+    LocalJwtVerifyProvider,
     NoAuthProvider,
 )
 from agent_control_server.auth_framework.providers.header import (
@@ -1027,6 +1028,29 @@ def test_configure_runtime_api_key_ignores_jwt_secret(monkeypatch):
 
     assert isinstance(get_authorizer(Operation.RUNTIME_USE), HeaderAuthProvider)
     assert auth_config.runtime_auth_config() is None
+
+
+@pytest.mark.asyncio
+async def test_configure_http_upstream_management_with_jwt_runtime(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "jwt")
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
+
+    try:
+        auth_config.configure_auth_from_env()
+
+        assert isinstance(get_authorizer(Operation.CONTROLS_READ), HttpUpstreamAuthProvider)
+        assert isinstance(get_authorizer(Operation.RUNTIME_USE), LocalJwtVerifyProvider)
+        runtime_config = auth_config.runtime_auth_config()
+        assert runtime_config is not None
+        assert runtime_config.secret == _TEST_SECRET
+    finally:
+        await auth_config.teardown_auth()
 
 
 def test_configure_runtime_jwt_requires_secret(monkeypatch):

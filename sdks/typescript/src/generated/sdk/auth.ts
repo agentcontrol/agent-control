@@ -14,11 +14,10 @@ export class Auth extends ClientSDK {
    * @remarks
    * Mint a short-lived runtime token for the requested target.
    *
-   * The caller's credential is authenticated and authorized by the
-   * installed default authorizer; the resulting :class:`Principal`
-   * supplies the actor identity and (when the upstream surfaces it)
-   * the grant scopes and expiry. This endpoint then mints a local HS256
-   * token whose lifetime cannot outlive the upstream grant.
+   * The caller's credential is authenticated and authorized before the
+   * resolved principal supplies the actor identity, grant scopes, and
+   * expiry. This endpoint then mints a local HS256 token whose lifetime
+   * cannot outlive the grant.
    *
    * Runtime auth must be enabled via
    * ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET``; otherwise the endpoint

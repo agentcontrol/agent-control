@@ -787,12 +787,12 @@ async def set_control_data(
     summary="Validate control configuration",
     response_description="Validation result",
 )
-# Authorized as CONTROLS_READ: validate exercises the materialization
-# path but does not mutate stored control data.
+# Authorized as CONTROLS_CREATE: validate exercises the same materialization
+# path as create/update authoring flows, even though it does not save.
 async def validate_control_data(
     request: ValidateControlDataRequest,
     db: AsyncSession = Depends(get_async_db),
-    _principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
+    _principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> ValidateControlDataResponse:
     """
     Validate control configuration data without saving it.
