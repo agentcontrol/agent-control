@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi.testclient import TestClient
-
 from agent_control_server.auth_framework import set_authorizer
 from agent_control_server.auth_framework.providers import NoAuthProvider
+from fastapi.testclient import TestClient
 
 from .utils import VALID_CONTROL_PAYLOAD
 
@@ -233,19 +232,18 @@ def test_non_admin_cannot_delete_control(
     assert resp.status_code == 403, resp.text
 
 
-def test_non_admin_can_validate_control_data(
+def test_non_admin_cannot_validate_control_data(
     non_admin_client: TestClient,
 ) -> None:
-    """``/controls/validate`` requires ``CONTROLS_READ``."""
+    """``/controls/validate`` requires ``CONTROLS_CREATE``."""
     # When: a non-admin attempts to validate a draft payload
     resp = non_admin_client.post(
         f"{_CONTROLS_URL}/validate",
         json={"data": VALID_CONTROL_PAYLOAD},
     )
 
-    # Then: validation is allowed for authenticated non-admin callers
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["success"] is True
+    # Then: validation is admin-only
+    assert resp.status_code == 403, resp.text
 
 
 def test_non_admin_cannot_render_template(non_admin_client: TestClient) -> None:
