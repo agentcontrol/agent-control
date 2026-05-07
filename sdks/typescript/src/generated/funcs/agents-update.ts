@@ -40,6 +40,7 @@ import { Result } from "../types/fp.js";
  *     agent_name: Agent identifier
  *     request: Lists of step/evaluator identifiers to remove
  *     db: Database session (injected)
+ *     principal: Authorized request principal
  *
  * Returns:
  *     PatchAgentResponse with lists of actually removed items
