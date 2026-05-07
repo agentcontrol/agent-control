@@ -1,0 +1,194 @@
+"""Runtime-token cache helpers for the Agent Control SDK."""
+
+from __future__ import annotations
+
+import asyncio
+import threading
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Literal
+
+RuntimeAuthMode = Literal["auto", "none", "api_key", "jwt"]
+
+_TokenKey = tuple[str, str, str]
+_DEFAULT_MAX_CACHE_ENTRIES = 256
+
+
+@dataclass(frozen=True)
+class RuntimeToken:
+    """Short-lived runtime token bound to one target."""
+
+    token: str
+    expires_at: datetime
+    server_url: str
+    target_type: str
+    target_id: str
+    scopes: tuple[str, ...]
+
+    def is_fresh(self, *, refresh_margin_seconds: int) -> bool:
+        """Return whether the token is usable beyond the refresh margin."""
+        refresh_at = datetime.now(UTC) + timedelta(seconds=refresh_margin_seconds)
+        return self.expires_at > refresh_at
+
+
+class RuntimeTokenCache:
+    """Thread-safe runtime token cache keyed by server and target."""
+
+    def __init__(self, *, max_entries: int = _DEFAULT_MAX_CACHE_ENTRIES) -> None:
+        if max_entries < 1:
+            raise ValueError("max_entries must be >= 1.")
+        self._max_entries = max_entries
+        self._tokens: dict[_TokenKey, RuntimeToken] = {}
+        self._jwt_unavailable = False
+        self._jwt_unavailable_targets: set[_TokenKey] = set()
+        self._exchange_locks: dict[_TokenKey, asyncio.Lock] = {}
+        self._lock = threading.Lock()
+
+    def get(
+        self,
+        server_url: str,
+        target_type: str,
+        target_id: str,
+        *,
+        refresh_margin_seconds: int,
+    ) -> RuntimeToken | None:
+        """Return a fresh cached token for the target, if present."""
+        key = (server_url, target_type, target_id)
+        with self._lock:
+            token = self._tokens.get(key)
+            if token is None:
+                return None
+            if token.is_fresh(refresh_margin_seconds=refresh_margin_seconds):
+                return token
+            self._tokens.pop(key, None)
+            return None
+
+    def set(self, token: RuntimeToken) -> None:
+        """Store a token and clear any fallback marker for its target."""
+        key = (token.server_url, token.target_type, token.target_id)
+        with self._lock:
+            if key not in self._tokens and len(self._tokens) >= self._max_entries:
+                oldest_key = next(iter(self._tokens))
+                self._tokens.pop(oldest_key, None)
+                self._jwt_unavailable_targets.discard(oldest_key)
+                self._exchange_locks.pop(oldest_key, None)
+            self._tokens[key] = token
+            self._jwt_unavailable_targets.discard(key)
+
+    def remove(self, server_url: str, target_type: str, target_id: str) -> None:
+        """Drop the cached token for one target."""
+        with self._lock:
+            self._tokens.pop((server_url, target_type, target_id), None)
+
+    def mark_jwt_unavailable(
+        self,
+        *,
+        server_url: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        globally: bool = False,
+    ) -> None:
+        """Record that JWT runtime auth should not be attempted."""
+        with self._lock:
+            if globally:
+                self._jwt_unavailable = True
+                self._tokens.clear()
+                return
+            if server_url is not None and target_type is not None and target_id is not None:
+                key = (server_url, target_type, target_id)
+                if (
+                    key not in self._jwt_unavailable_targets
+                    and len(self._jwt_unavailable_targets) >= self._max_entries
+                ):
+                    evicted_key = self._jwt_unavailable_targets.pop()
+                    self._exchange_locks.pop(evicted_key, None)
+                self._jwt_unavailable_targets.add(key)
+                self._tokens.pop(key, None)
+
+    def is_jwt_unavailable(self, server_url: str, target_type: str, target_id: str) -> bool:
+        """Return whether JWT exchange is known unavailable for the target."""
+        key = (server_url, target_type, target_id)
+        with self._lock:
+            return self._jwt_unavailable or key in self._jwt_unavailable_targets
+
+    def clear(self) -> None:
+        """Clear every cached token and fallback marker."""
+        with self._lock:
+            self._tokens.clear()
+            self._jwt_unavailable = False
+            self._jwt_unavailable_targets.clear()
+            self._exchange_locks.clear()
+
+    def exchange_lock(self, server_url: str, target_type: str, target_id: str) -> asyncio.Lock:
+        """Return the async exchange lock for one server and target."""
+        key = (server_url, target_type, target_id)
+        with self._lock:
+            lock = self._exchange_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._exchange_locks[key] = lock
+            return lock
+
+
+def normalize_runtime_auth_mode(raw: str | None) -> RuntimeAuthMode:
+    """Normalize configured SDK runtime auth mode."""
+    if raw is None or not raw.strip():
+        return "auto"
+
+    mode = raw.strip().lower()
+    if mode in {"none", "no_auth"}:
+        return "none"
+    if mode in {"api_key", "header"}:
+        return "api_key"
+    if mode == "auto":
+        return "auto"
+    if mode == "jwt":
+        return "jwt"
+    raise ValueError("runtime_auth_mode must be one of 'auto', 'none', 'api_key', or 'jwt'.")
+
+
+def parse_runtime_token_exchange_response(
+    payload: Mapping[str, object],
+    *,
+    server_url: str,
+) -> RuntimeToken:
+    """Parse the runtime token exchange response payload."""
+    token = payload.get("token")
+    expires_at = payload.get("expires_at")
+    target_type = payload.get("target_type")
+    target_id = payload.get("target_id")
+    scopes = payload.get("scopes")
+
+    if not isinstance(token, str) or not token:
+        raise RuntimeError("Runtime token exchange response did not include a token.")
+    if not isinstance(expires_at, str) or not expires_at:
+        raise RuntimeError("Runtime token exchange response did not include expires_at.")
+    if not isinstance(target_type, str) or not target_type:
+        raise RuntimeError("Runtime token exchange response did not include target_type.")
+    if not isinstance(target_id, str) or not target_id:
+        raise RuntimeError("Runtime token exchange response did not include target_id.")
+    if not isinstance(scopes, Sequence) or isinstance(scopes, str):
+        raise RuntimeError("Runtime token exchange response did not include scopes.")
+
+    parsed_scopes: list[str] = []
+    for scope in scopes:
+        if not isinstance(scope, str):
+            raise RuntimeError("Runtime token exchange response included a non-string scope.")
+        parsed_scopes.append(scope)
+
+    normalized_expires_at = expires_at
+    if normalized_expires_at.endswith("Z"):
+        normalized_expires_at = f"{normalized_expires_at[:-1]}+00:00"
+    parsed_expires_at = datetime.fromisoformat(normalized_expires_at)
+    if parsed_expires_at.tzinfo is None:
+        parsed_expires_at = parsed_expires_at.replace(tzinfo=UTC)
+
+    return RuntimeToken(
+        token=token,
+        expires_at=parsed_expires_at.astimezone(UTC),
+        server_url=server_url,
+        target_type=target_type,
+        target_id=target_id,
+        scopes=tuple(parsed_scopes),
+    )
