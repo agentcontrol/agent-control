@@ -53,7 +53,7 @@ import { Result } from "../types/fp.js";
  *     target_type: Optional opaque target kind (paired with target_id)
  *     target_id: Optional opaque target identifier (paired with target_type)
  *     db: Database session (injected)
- *     namespace_key: Namespace scoping for the resolution (injected)
+ *     principal: Authorized request principal
  *
  * Returns:
  *     AgentControlsResponse with controls matching the requested state filters

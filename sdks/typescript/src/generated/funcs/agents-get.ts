@@ -38,8 +38,7 @@ import { Result } from "../types/fp.js";
  * Args:
  *     agent_name: Agent identifier
  *     db: Database session (injected)
- *     namespace_key: Resolved namespace; agents in another namespace
- *         return 404 (non-disclosing).
+ *     principal: Authorized request principal
  *
  * Returns:
  *     GetAgentResponse with agent metadata and step list
