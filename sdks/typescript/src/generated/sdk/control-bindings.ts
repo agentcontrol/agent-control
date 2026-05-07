@@ -23,8 +23,7 @@ export class ControlBindings extends ClientSDK {
    * cursor-based pagination. Bindings are ordered by ID descending
    * (newest first). The cursor is opaque to clients: pass back the
    * ``next_cursor`` value verbatim to fetch the following page. The
-   * storage namespace is resolved by ``get_namespace_key`` so this
-   * listing stays in lockstep with the rest of the server's reads.
+   * storage namespace is resolved by the active authorizer.
    */
   async list(
     request?:
@@ -46,11 +45,7 @@ export class ControlBindings extends ClientSDK {
    * Attach a control to an opaque external target.
    *
    * Each binding row is scoped to the request namespace as resolved by
-   * ``get_namespace_key``. The auth chain still runs via
-   * ``require_operation`` for authentication and authorization, but the
-   * storage namespace is taken from the same resolver the rest of the
-   * server uses so binding writes and runtime reads stay in lockstep
-   * until auth-derived namespace resolution lands across every endpoint.
+   * the active authorizer.
    */
   async create(
     request: models.CreateControlBindingRequest,

@@ -51,6 +51,7 @@ import { Result } from "../types/fp.js";
  * Args:
  *     request: Agent metadata and step schemas
  *     db: Database session (injected)
+ *     principal: Authorized request principal
  *
  * Returns:
  *     InitAgentResponse with created flag and the effective controls

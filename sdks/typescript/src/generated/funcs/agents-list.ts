@@ -42,7 +42,7 @@ import { Result } from "../types/fp.js";
  *     limit: Pagination limit (default 20, max 100)
  *     name: Optional name filter (case-insensitive partial match)
  *     db: Database session (injected)
- *     namespace_key: Resolved namespace for the request
+ *     principal: Authorized request principal
  *
  * Returns:
  *     ListAgentsResponse with agent summaries and pagination info
