@@ -329,6 +329,27 @@ def test_observability_uses_builtin_otel_sink_when_selected() -> None:
     assert result is True
 
 
+def test_init_disabled_persists_override_for_builtin_otel_sink() -> None:
+    configure_settings(
+        observability_sink_name=OTEL_CONTROL_EVENT_SINK_NAME,
+        otel_enabled=True,
+        otel_endpoint="http://collector:4318/v1/traces",
+    )
+
+    with patch(
+        "agent_control.otel_sink._load_otel_sdk_modules",
+        return_value=_fake_otel_sdk_modules(),
+    ) as load_otel_sdk_modules:
+        batcher = init_observability(enabled=False)
+
+        assert batcher is None
+        assert get_settings().observability_enabled is False
+        assert is_observability_enabled() is False
+        assert add_event(_make_event()) is False
+
+    load_otel_sdk_modules.assert_not_called()
+
+
 def test_observability_does_not_activate_inert_otel_sink() -> None:
     configure_settings(
         observability_sink_name=OTEL_CONTROL_EVENT_SINK_NAME,

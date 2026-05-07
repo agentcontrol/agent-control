@@ -1042,6 +1042,20 @@ def _shutdown_built_in_event_sink() -> None:
     _event_sink = None
 
 
+def _shutdown_configured_named_event_sink() -> None:
+    """Stop and clear the cached configured named sink if it is active."""
+    global _configured_named_event_sink, _configured_named_event_sink_selection
+
+    configured_named_sink: ControlEventSink | None = None
+    with _configured_named_event_sink_lock:
+        configured_named_sink = _configured_named_event_sink
+        _configured_named_event_sink = None
+        _configured_named_event_sink_selection = None
+
+    if configured_named_sink is not None:
+        _shutdown_custom_control_event_sink(configured_named_sink)
+
+
 def _shutdown_custom_control_event_sink(sink: ControlEventSink) -> None:
     """Flush and close a custom sink when it exposes lifecycle hooks."""
     flush = getattr(sink, "flush", None)
@@ -1107,6 +1121,8 @@ def init_observability(
 
     settings_updates: dict[str, object] = {}
     current_settings = get_settings()
+    if enabled is not None:
+        settings_updates["observability_enabled"] = enabled
     if sink_name is not None:
         settings_updates["observability_sink_name"] = sink_name
         if (
@@ -1119,11 +1135,12 @@ def init_observability(
     if settings_updates:
         configure_settings(**settings_updates)
 
-    is_enabled = enabled if enabled is not None else get_settings().observability_enabled
+    is_enabled = get_settings().observability_enabled
 
     if not is_enabled:
         logger.debug("Observability disabled")
         _shutdown_built_in_event_sink()
+        _shutdown_configured_named_event_sink()
         return None
 
     selection = _get_sink_selection()
@@ -1198,15 +1215,8 @@ def write_events(events: Sequence[ControlExecutionEvent]) -> SinkResult:
 
 def sync_shutdown_observability() -> None:
     """Synchronously shut down observability and flush remaining events."""
-    global _configured_named_event_sink, _configured_named_event_sink_selection
     _shutdown_built_in_event_sink()
-    configured_named_sink: ControlEventSink | None = None
-    with _configured_named_event_sink_lock:
-        configured_named_sink = _configured_named_event_sink
-        _configured_named_event_sink = None
-        _configured_named_event_sink_selection = None
-    if configured_named_sink is not None:
-        _shutdown_custom_control_event_sink(configured_named_sink)
+    _shutdown_configured_named_event_sink()
 
 
 async def shutdown_observability() -> None:
