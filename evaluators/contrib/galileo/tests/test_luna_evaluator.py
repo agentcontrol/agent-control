@@ -57,6 +57,32 @@ class TestGalileoLunaClient:
         # Then: the API URL is derived the same way
         assert client.api_base == "https://api.demo-v2.galileocloud.io"
 
+    def test_client_uses_galileo_api_url_when_set(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        # Given: an explicit devstack API URL
+        with patch.dict(
+            os.environ,
+            {
+                "GALILEO_API_KEY": "test-key",
+                "GALILEO_API_URL": "https://api-test-luna.gcp-dev.galileo.ai/",
+            },
+        ):
+            client = GalileoLunaClient(console_url="https://console-test-luna.gcp-dev.galileo.ai")
+
+        # Then: the explicit API URL wins over console URL derivation
+        assert client.api_base == "https://api-test-luna.gcp-dev.galileo.ai"
+
+    def test_client_derives_api_url_from_console_dash_hostname(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        # Given: a console-<stack> devstack hostname
+        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}, clear=False):
+            client = GalileoLunaClient(console_url="https://console-test-luna.gcp-dev.galileo.ai")
+
+        # Then: the matching api-<stack> hostname is used
+        assert client.api_base == "https://api-test-luna.gcp-dev.galileo.ai"
+
     @pytest.mark.asyncio
     async def test_client_posts_to_scorers_invoke_without_protect_fields(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient

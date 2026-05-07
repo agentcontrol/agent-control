@@ -113,6 +113,7 @@ class GalileoLunaClient:
         self,
         api_key: str | None = None,
         console_url: str | None = None,
+        api_url: str | None = None,
     ) -> None:
         """Initialize the Galileo Luna client.
 
@@ -120,6 +121,8 @@ class GalileoLunaClient:
             api_key: Galileo API key. If not provided, reads from GALILEO_API_KEY.
             console_url: Galileo Console URL. If not provided, reads from
                 GALILEO_CONSOLE_URL or uses the production console URL.
+            api_url: Galileo API URL. If not provided, reads from GALILEO_API_URL
+                before deriving from the console URL.
 
         Raises:
             ValueError: If no API key is provided or found in the environment.
@@ -135,7 +138,9 @@ class GalileoLunaClient:
         self.console_url = (
             console_url or os.getenv("GALILEO_CONSOLE_URL") or "https://console.galileo.ai"
         )
-        self.api_base = self._derive_api_url(self.console_url)
+        self.api_base = (api_url or os.getenv("GALILEO_API_URL") or "").rstrip(
+            "/"
+        ) or self._derive_api_url(self.console_url)
         self._client: httpx.AsyncClient | None = None
 
     def _derive_api_url(self, console_url: str) -> str:
@@ -144,6 +149,8 @@ class GalileoLunaClient:
 
         if "console." in url:
             return url.replace("console.", "api.")
+        if "console-" in url:
+            return url.replace("console-", "api-", 1)
 
         if url.startswith("https://"):
             return url.replace("https://", "https://api.")
