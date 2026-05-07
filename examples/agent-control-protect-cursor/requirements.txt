@@ -1,0 +1,3 @@
+agent-control-sdk
+agent-control-evaluators[galileo]
+python-dotenv>=1.0

@@ -27,6 +27,11 @@ env/
 ENV/
 .venv
 
+# Local env files (never commit real secrets; .env.example is fine to track)
+.env
+.env.local
+.env.*.local
+
 # UV
 .uv/
 uv.lock

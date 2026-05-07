@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": ".venv/bin/python3 .cursor/hooks/before_submit_protect_guardrails.py",
+        "timeout": 15
+      }
+    ]
+  }
+}

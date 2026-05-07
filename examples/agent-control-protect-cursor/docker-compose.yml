@@ -1,0 +1,66 @@
+# Agent Control + Galileo Luna-2 — local FDE stack
+#
+# Usage:
+#   docker compose up -d          # start
+#   docker compose down -v        # stop + wipe data
+#   curl http://localhost:8000/health
+#
+# Reads GALILEO_API_KEY and GALILEO_CONSOLE_URL from .env automatically.
+# Agent Control UI dashboard is available at http://localhost:4000.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent_control_postgres
+    ports:
+      - "${AGENT_CONTROL_DB_HOST_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: agent_control
+      POSTGRES_USER: agent_control
+      POSTGRES_PASSWORD: "${AGENT_CONTROL_POSTGRES_PASSWORD:-agent_control}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent_control -d agent_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  server:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    image: agent-control-server-galileo:local
+    container_name: agent_control_server
+    ports:
+      - "${AGENT_CONTROL_SERVER_HOST_PORT:-8000}:8000"
+    environment:
+      AGENT_CONTROL_DB_URL: "postgresql+psycopg://agent_control:${AGENT_CONTROL_POSTGRES_PASSWORD:-agent_control}@postgres:5432/agent_control"
+      AGENT_CONTROL_HOST: 0.0.0.0
+      AGENT_CONTROL_PORT: 8000
+      AGENT_CONTROL_API_KEY_ENABLED: "false"
+      AGENT_CONTROL_CORS_ORIGINS: "${AGENT_CONTROL_CORS_ORIGINS:-http://localhost:4000}"
+      # Galileo credentials — passed through so Luna-2 evaluator can call Galileo Protect
+      GALILEO_API_KEY: "${GALILEO_API_KEY:-}"
+      GALILEO_CONSOLE_URL: "${GALILEO_CONSOLE_URL:-https://console.demo-v2.galileocloud.io}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ui:
+    platform: linux/amd64
+    image: galileoai/agent-control-ui:latest
+    container_name: agent_control_ui
+    ports:
+      - "${AGENT_CONTROL_UI_HOST_PORT:-4000}:4000"
+    environment:
+      AGENT_CONTROL_SERVER_URL: "http://localhost:8000"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  pgdata:

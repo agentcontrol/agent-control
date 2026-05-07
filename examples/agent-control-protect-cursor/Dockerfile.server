@@ -1,0 +1,28 @@
+FROM galileoai/agent-control-server:latest
+
+# The base image ships the Galileo Luna-2 evaluator source at
+# /app/evaluators/contrib/galileo but does not install it into the venv,
+# so AC's evaluator registry never discovers it. Install it from that
+# in-image source with --no-deps — installing the PyPI package or its
+# extra pulls a newer agent-control-models that breaks the server.
+RUN /app/.venv/bin/python3 -m ensurepip --upgrade && \
+    /app/.venv/bin/python3 -m pip install --no-deps /app/evaluators/contrib/galileo
+
+# Galileo Protect's REST API uses metric "input_pii" with operator "not_empty";
+# AC's Luna2EvaluatorConfig pins both fields to Pydantic Literals that only
+# include "pii_detection" / "any" etc. Patch the Literals so a control with
+# metric=input_pii / operator=not_empty validates at PUT time and is forwarded
+# as-is to Protect.
+RUN CFG=/app/.venv/lib/python3.12/site-packages/agent_control_evaluator_galileo/luna2/config.py && \
+    sed -i 's/"pii_detection",/"pii_detection",\n    "input_pii",/' "$CFG" && \
+    sed -i 's/Luna2Operator = Literal\["gt", "lt", "gte", "lte", "eq", "contains", "any"\]/Luna2Operator = Literal["gt", "lt", "gte", "lte", "eq", "contains", "any", "not_empty"]/' "$CFG"
+
+# Galileo Protect requires a stage_name (the stage just hosts the project linkage;
+# rules come from the payload). AC's _evaluate_local_stage doesn't forward
+# stage_name from config — patch it in. The marker line is unique to local mode.
+# Also: AC sends `target_value: 0` for the rule (because Rule requires a value
+# and the config defaults to 0), but Protect's `not_empty` operator only
+# triggers when target_value is null. Send null instead for not_empty.
+RUN EVAL=/app/.venv/lib/python3.12/site-packages/agent_control_evaluator_galileo/luna2/evaluator.py && \
+    sed -i 's|prioritized_rulesets=\[ruleset\],|prioritized_rulesets=[ruleset],\n                stage_name=self.config.stage_name,|' "$EVAL" && \
+    sed -i 's|target_value=self._get_numeric_target_value() or 0,|target_value=None if self.config.operator == "not_empty" else (self._get_numeric_target_value() or 0),|' "$EVAL"
