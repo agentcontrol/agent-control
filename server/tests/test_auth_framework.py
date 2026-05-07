@@ -20,6 +20,7 @@ from agent_control_server.auth_framework.providers import (
     AccessLevel,
     HeaderAuthProvider,
     HttpUpstreamAuthProvider,
+    NoAuthProvider,
 )
 from agent_control_server.auth_framework.providers.header import (
     DEFAULT_OPERATION_ACCESS,
@@ -65,6 +66,35 @@ def test_default_operation_access_covers_every_operation():
 
 
 # ---------------------------------------------------------------------------
+# NoAuthProvider
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_no_auth_provider_allows_any_operation():
+    provider = NoAuthProvider(default_namespace_key="ns-local")
+
+    principal = await provider.authorize(
+        _build_request(),
+        Operation.CONTROLS_DELETE,
+    )
+
+    assert principal == Principal(namespace_key="ns-local")
+
+
+@pytest.mark.asyncio
+async def test_no_auth_provider_grants_runtime_exchange_scope():
+    provider = NoAuthProvider()
+
+    principal = await provider.authorize(
+        _build_request(),
+        Operation.RUNTIME_TOKEN_EXCHANGE,
+    )
+
+    assert principal.scopes == (Operation.RUNTIME_USE.value,)
+
+
+# ---------------------------------------------------------------------------
 # HeaderAuthProvider
 # ---------------------------------------------------------------------------
 
@@ -101,7 +131,7 @@ async def test_header_provider_public_returns_default_namespace():
 
 
 @pytest.mark.asyncio
-async def test_header_provider_authenticated_calls_legacy_validator():
+async def test_header_provider_authenticated_calls_local_validator():
     provider = HeaderAuthProvider()
     expected_client = MagicMock(is_admin=False, key_id="abc12345")
 
@@ -943,6 +973,70 @@ def test_runtime_ttl_loader_accepts_max(monkeypatch):
         auth_config._load_runtime_ttl_seconds()
         == auth_config._MAX_RUNTIME_TOKEN_TTL_SECONDS
     )
+
+
+def test_build_default_provider_accepts_none_mode(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "none")
+
+    assert isinstance(auth_config._build_default_provider(), NoAuthProvider)
+
+
+def test_resolve_runtime_mode_defaults_to_api_key_without_secret(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    assert auth_config._resolve_runtime_mode() == "api_key"
+
+
+def test_resolve_runtime_mode_defaults_to_jwt_with_secret(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", raising=False)
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
+
+    assert auth_config._resolve_runtime_mode() == "jwt"
+
+
+def test_configure_runtime_none_installs_no_auth_provider(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "none")
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    auth_config.configure_auth_from_env()
+
+    assert isinstance(get_authorizer(Operation.RUNTIME_USE), NoAuthProvider)
+    assert auth_config.runtime_auth_config() is None
+
+
+def test_configure_runtime_api_key_ignores_jwt_secret(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "api_key")
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
+
+    auth_config.configure_auth_from_env()
+
+    assert isinstance(get_authorizer(Operation.RUNTIME_USE), HeaderAuthProvider)
+    assert auth_config.runtime_auth_config() is None
+
+
+def test_configure_runtime_jwt_requires_secret(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "jwt")
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    with pytest.raises(RuntimeError, match="requires AGENT_CONTROL_RUNTIME_TOKEN_SECRET"):
+        auth_config.configure_auth_from_env()
 
 
 def test_configure_then_reconfigure_clears_runtime_override(monkeypatch):

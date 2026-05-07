@@ -67,8 +67,8 @@ class _UpstreamGrant(BaseModel):
     """Strict schema for the upstream authorization-service response.
 
     Unknown fields are tolerated (so the upstream can evolve), but every
-    *known* field is type-checked. A wrong type on any field — or a
-    half-supplied target binding — causes the provider to fail closed
+    *known* field is type-checked. A wrong type on any field - or a
+    half-supplied target binding - causes the provider to fail closed
     with a 502.
     """
 
@@ -108,7 +108,7 @@ class _UpstreamGrant(BaseModel):
         A target is meaningful only as a ``(target_type, target_id)``
         pair; allowing one side without the other would let a malformed
         grant pass and the exchange endpoint mint a token for the
-        request's value of the missing half — outside the upstream's
+        request's value of the missing half - outside the upstream's
         intended authorization.
         """
         if (self.target_type is None) != (self.target_id is None):

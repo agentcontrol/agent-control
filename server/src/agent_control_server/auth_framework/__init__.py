@@ -2,10 +2,9 @@
 
 Endpoints declare an :class:`Operation` they need; an installed
 :class:`RequestAuthorizer` decides whether the request is allowed and
-returns the resulting :class:`Principal`. Two providers ship in-tree:
-:class:`HeaderAuthProvider` (uses local credential checks) and
-:class:`HttpUpstreamAuthProvider` (delegates to a configurable
-upstream HTTP service).
+returns the resulting :class:`Principal`. Providers ship in-tree for
+disabled auth, local credential checks, upstream HTTP authorization,
+and local runtime-JWT verification.
 """
 
 from .core import (
