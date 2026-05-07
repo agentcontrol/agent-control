@@ -36,7 +36,7 @@ import { Result } from "../types/fp.js";
  * See the GET-by-id docstring for the authorization scope: this route
  * is namespace-wide because the target identifiers are not available
  * before the binding is loaded. Use ``POST /by-key:delete`` for
- * target-scoped detach that forwards the target to the authorizer.
+ * target-scoped detach that includes the target in the request context.
  */
 export function controlBindingsDelete(
   client: AgentControlSDKCore,

@@ -34,12 +34,11 @@ import { Result } from "../types/fp.js";
  * Read a single control binding by surrogate ID.
  *
  * Authorization is namespace-wide: the binding's target identifiers
- * are not forwarded to the upstream because they are only discoverable
- * after the row is loaded, and ``require_operation`` is single-pass.
+ * are not available until after the row is loaded.
  * Callers whose authorization model requires per-target permissions
  * should use the natural-key endpoints (``PUT /by-key``,
  * ``POST /by-key:delete``) and the target-filtered list endpoint, all
- * of which forward ``(target_type, target_id)`` to the authorizer.
+ * of which include ``(target_type, target_id)`` in the request context.
  */
 export function controlBindingsGet(
   client: AgentControlSDKCore,
