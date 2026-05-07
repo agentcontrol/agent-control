@@ -6,7 +6,7 @@ secret, checks the token's scope covers the requested operation, and
 returns a :class:`Principal` carrying the bound target. When a
 ``context_builder`` on the dependency surfaces ``target_type`` /
 ``target_id``, the provider also enforces that they match the token's
-binding — runtime endpoints get the request-target check for free.
+binding - runtime endpoints get the request-target check for free.
 """
 
 from __future__ import annotations

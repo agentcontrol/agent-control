@@ -232,9 +232,9 @@ def test_target_binding_de_duplicated_against_direct_attachment(
 async def _insert_agent_in_namespace(async_db, *, name: str, namespace_key: str) -> None:
     """Insert an Agent row directly so the test can simulate a foreign namespace.
 
-    The endpoint's ``get_namespace_key`` returns the default namespace; this
-    helper sidesteps the resolver to seed an agent that the request-time
-    code path should not be able to reach.
+    The default test authorizer returns the default namespace; this helper
+    sidesteps the authorizer to seed an agent that the request-time code
+    path should not be able to reach.
     """
     from agent_control_server.models import Agent
 
