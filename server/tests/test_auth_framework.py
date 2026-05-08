@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-
 from agent_control_server.auth_framework.core import (
     Operation,
     Principal,
@@ -700,7 +699,6 @@ def test_runtime_token_rejects_naive_upstream_expires_at():
 def test_runtime_token_rejects_management_token_passed_to_runtime_verify():
     """A token without ``domain=runtime`` must be rejected by runtime verify."""
     import jwt
-
     from agent_control_server.auth_framework.runtime_token import (
         RuntimeTokenError,
         verify_runtime_token,
@@ -1053,13 +1051,13 @@ def test_build_default_provider_accepts_none_mode(monkeypatch):
     assert isinstance(auth_config._build_default_provider(), NoAuthProvider)
 
 
-def test_resolve_runtime_mode_defaults_to_api_key_without_secret(monkeypatch):
+def test_resolve_runtime_mode_defaults_to_default_without_secret(monkeypatch):
     from agent_control_server.auth_framework import config as auth_config
 
     monkeypatch.delenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", raising=False)
     monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
 
-    assert auth_config._resolve_runtime_mode() == "api_key"
+    assert auth_config._resolve_runtime_mode() == "default"
 
 
 def test_resolve_runtime_mode_defaults_to_jwt_with_secret(monkeypatch):
@@ -1097,6 +1095,44 @@ def test_configure_runtime_api_key_ignores_jwt_secret(monkeypatch):
 
     assert isinstance(get_authorizer(Operation.RUNTIME_USE), HeaderAuthProvider)
     assert auth_config.runtime_auth_config() is None
+
+
+def test_configure_runtime_unset_preserves_no_auth_default(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "none")
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    auth_config.configure_auth_from_env()
+
+    assert isinstance(get_authorizer(Operation.RUNTIME_USE), NoAuthProvider)
+    assert auth_config.runtime_auth_config() is None
+
+
+@pytest.mark.asyncio
+async def test_configure_runtime_unset_preserves_http_upstream_default(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    try:
+        auth_config.configure_auth_from_env()
+
+        default_provider = get_authorizer(Operation.CONTROLS_READ)
+        runtime_provider = get_authorizer(Operation.RUNTIME_USE)
+        assert isinstance(default_provider, HttpUpstreamAuthProvider)
+        assert runtime_provider is default_provider
+        assert auth_config.runtime_auth_config() is None
+    finally:
+        await auth_config.teardown_auth()
 
 
 @pytest.mark.asyncio
