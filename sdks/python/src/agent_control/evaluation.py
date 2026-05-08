@@ -229,7 +229,7 @@ async def _post_evaluation_request(
 ) -> httpx.Response:
     """Send an evaluation request, using runtime auth when the client supports it."""
     runtime_post = None
-    if target_type is not None and target_id is not None:
+    if (target_type is not None and target_id is not None) or client.runtime_auth_mode == "jwt":
         runtime_post = _runtime_post_evaluation(client)
     if runtime_post is not None:
         return await runtime_post(
