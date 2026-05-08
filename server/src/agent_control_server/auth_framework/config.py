@@ -16,8 +16,8 @@ The framework supports two flows:
   :class:`NoAuthProvider`, ``api_key`` uses
   :class:`HeaderAuthProvider`, and ``jwt`` uses
   :class:`LocalJwtVerifyProvider`. When the mode is unset, startup
-  preserves historical behavior by selecting ``jwt`` if
-  ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET`` is set, otherwise ``api_key``.
+  selects ``jwt`` if ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET`` is set;
+  otherwise runtime falls through to the default authorizer.
   The ``runtime.token_exchange`` operation continues to flow through
   the default authorizer because the exchange itself is shaped like a
   management call (forward credential, get grant).
@@ -96,10 +96,11 @@ def configure_auth_from_env() -> None:
     Runtime flow:
 
     - ``AGENT_CONTROL_RUNTIME_AUTH_MODE=none``: :class:`NoAuthProvider`.
-    - ``AGENT_CONTROL_RUNTIME_AUTH_MODE=api_key`` (default when no runtime
-      token secret is configured): :class:`HeaderAuthProvider`.
+    - ``AGENT_CONTROL_RUNTIME_AUTH_MODE=api_key``: :class:`HeaderAuthProvider`.
     - ``AGENT_CONTROL_RUNTIME_AUTH_MODE=jwt`` (default when a runtime token
       secret is configured): :class:`LocalJwtVerifyProvider`.
+    - unset mode without a runtime token secret: fall through to the default
+      authorizer.
 
     Clears any previously-installed default and operation overrides
     before installing fresh ones, so reconfiguration cannot leave
@@ -121,20 +122,26 @@ def configure_auth_from_env() -> None:
     set_authorizer(default)
     _active_providers.append(default)
 
-    runtime_provider = _build_runtime_provider(runtime_mode, _runtime_auth_config)
-    set_authorizer(runtime_provider, operation=Operation.RUNTIME_USE)
-    _active_providers.append(runtime_provider)
-    if runtime_mode == "jwt":
+    if runtime_mode == "default":
         _logger.info(
-            "Runtime auth provider: jwt override installed for %s",
+            "Runtime auth provider: default authorizer handles %s",
             Operation.RUNTIME_USE.value,
         )
     else:
-        _logger.info(
-            "Runtime auth provider: %s override installed for %s",
-            runtime_mode,
-            Operation.RUNTIME_USE.value,
-        )
+        runtime_provider = _build_runtime_provider(runtime_mode, _runtime_auth_config)
+        set_authorizer(runtime_provider, operation=Operation.RUNTIME_USE)
+        _active_providers.append(runtime_provider)
+        if runtime_mode == "jwt":
+            _logger.info(
+                "Runtime auth provider: jwt override installed for %s",
+                Operation.RUNTIME_USE.value,
+            )
+        else:
+            _logger.info(
+                "Runtime auth provider: %s override installed for %s",
+                runtime_mode,
+                Operation.RUNTIME_USE.value,
+            )
 
 
 async def teardown_auth() -> None:
@@ -242,7 +249,7 @@ def _parse_extra_forward_headers(raw: str | None) -> tuple[str, ...]:
 def _resolve_runtime_mode() -> str:
     raw = os.environ.get(_RUNTIME_MODE_ENV)
     if raw is None or not raw.strip():
-        return "jwt" if os.environ.get(_RUNTIME_TOKEN_SECRET_ENV) else "api_key"
+        return "jwt" if os.environ.get(_RUNTIME_TOKEN_SECRET_ENV) else "default"
 
     mode = raw.strip().lower()
     if mode in {"none", "no_auth"}:
