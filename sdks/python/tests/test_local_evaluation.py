@@ -11,6 +11,7 @@ These tests verify the check_evaluation_with_local function:
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from agent_control.client import AgentControlClient
 from agent_control.evaluation import (
@@ -417,6 +418,41 @@ class TestCheckEvaluationWithLocal:
         assert result.is_safe is True
         client.post_runtime_evaluation.assert_awaited_once()
         client.http_client.post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_jwt_runtime_client_without_target_raises(
+        self,
+        agent_name,
+        llm_payload,
+    ) -> None:
+        """JWT runtime mode requires target context through local evaluation."""
+        controls = [
+            make_control_dict(1, "server_ctrl", execution="server"),
+        ]
+        sent_requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            sent_requests.append(request)
+            return httpx.Response(200, json={"is_safe": True, "confidence": 1.0})
+
+        transport = httpx.MockTransport(handler)
+
+        async with AgentControlClient(
+            base_url="https://agent-control.test",
+            api_key="test-key",
+            runtime_auth_mode="jwt",
+            transport=transport,
+        ) as client:
+            with pytest.raises(RuntimeError, match="requires target_type and target_id"):
+                await check_evaluation_with_local(
+                    client=client,
+                    agent_name=agent_name,
+                    step=llm_payload,
+                    stage="pre",
+                    controls=controls,
+                )
+
+        assert sent_requests == []
 
     @pytest.mark.asyncio
     async def test_server_only_template_backed_controls_still_call_server(
