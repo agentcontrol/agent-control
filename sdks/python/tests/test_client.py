@@ -79,6 +79,67 @@ async def test_client_adds_api_key_auth_to_regular_requests() -> None:
 
 
 @pytest.mark.asyncio
+async def test_client_uses_configured_api_key_header_name() -> None:
+    # Given: a client configured to send the API key on a custom header
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(handler)
+
+    async with AgentControlClient(
+        base_url="https://agent-control.test",
+        api_key="test-key",
+        api_key_header="X-Custom-API-Key",
+        transport=transport,
+    ) as client:
+        # When: making a request
+        response = await client.http_client.get("/api/v1/agents")
+
+    # Then: the key is on the configured header and the default is absent
+    assert response.status_code == 200
+    assert seen_requests[0].headers["X-Custom-API-Key"] == "test-key"
+    assert "X-API-Key" not in seen_requests[0].headers
+
+
+@pytest.mark.asyncio
+async def test_client_reads_api_key_header_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: AGENT_CONTROL_API_KEY_HEADER set in the environment
+    monkeypatch.setenv("AGENT_CONTROL_API_KEY_HEADER", "X-Custom-API-Key")
+    seen_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    transport = httpx.MockTransport(handler)
+
+    async with AgentControlClient(
+        base_url="https://agent-control.test",
+        api_key="test-key",
+        transport=transport,
+    ) as client:
+        # When: no api_key_header is passed to the constructor
+        response = await client.http_client.get("/api/v1/agents")
+
+    # Then: the env-var value is used
+    assert response.status_code == 200
+    assert seen_requests[0].headers["X-Custom-API-Key"] == "test-key"
+
+
+def test_client_exposes_default_api_key_header() -> None:
+    # Given: a client with no explicit header override
+    client = AgentControlClient(api_key="test-key")
+
+    # Then: the property reports the documented default
+    assert client.api_key_header == "X-API-Key"
+
+
+@pytest.mark.asyncio
 async def test_runtime_evaluation_exchanges_and_caches_bearer_token() -> None:
     exchange_calls = 0
     evaluation_authorization_headers: list[str | None] = []
