@@ -46,6 +46,7 @@ _UPSTREAM_URL_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_URL"
 _UPSTREAM_TIMEOUT_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_TIMEOUT_SECONDS"
 _UPSTREAM_TOKEN_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN"
 _UPSTREAM_TOKEN_HEADER_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN_HEADER"
+_UPSTREAM_EXTRA_FORWARD_HEADERS_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_EXTRA_FORWARD_HEADERS"
 
 # Runtime flow.
 _RUNTIME_MODE_ENV = "AGENT_CONTROL_RUNTIME_AUTH_MODE"
@@ -196,6 +197,9 @@ def _build_default_provider() -> RequestAuthorizer:
         timeout = float(os.environ.get(_UPSTREAM_TIMEOUT_ENV, "5.0"))
         token = os.environ.get(_UPSTREAM_TOKEN_ENV)
         token_header = os.environ.get(_UPSTREAM_TOKEN_HEADER_ENV, "X-Agent-Control-Service-Token")
+        extra_forward_headers = _parse_extra_forward_headers(
+            os.environ.get(_UPSTREAM_EXTRA_FORWARD_HEADERS_ENV)
+        )
         _logger.info("Default auth provider: http_upstream url=%s", url)
         return HttpUpstreamAuthProvider(
             HttpUpstreamConfig(
@@ -203,11 +207,36 @@ def _build_default_provider() -> RequestAuthorizer:
                 timeout_seconds=timeout,
                 service_token=token,
                 service_token_header=token_header,
+                extra_forward_headers=extra_forward_headers,
             )
         )
     raise RuntimeError(
         f"Unknown {_MODE_ENV}={mode!r}; expected 'none', 'api_key', or 'http_upstream'."
     )
+
+
+def _parse_extra_forward_headers(raw: str | None) -> tuple[str, ...]:
+    """Parse a comma-separated header list into a deduplicated tuple.
+
+    Empty / unset env var returns an empty tuple. Whitespace around each
+    name is stripped. Empty entries (e.g. ``"X-A,,X-B"``) are dropped.
+    Order is preserved; duplicates (case-insensitive) are dropped after
+    the first occurrence.
+    """
+    if not raw or not raw.strip():
+        return ()
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw_name in raw.split(","):
+        name = raw_name.strip()
+        if not name:
+            continue
+        lower = name.lower()
+        if lower in seen:
+            continue
+        seen.add(lower)
+        result.append(name)
+    return tuple(result)
 
 
 def _resolve_runtime_mode() -> str:

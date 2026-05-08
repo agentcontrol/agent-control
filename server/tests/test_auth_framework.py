@@ -262,6 +262,75 @@ async def test_http_upstream_forwards_service_token():
 
 
 @pytest.mark.asyncio
+async def test_http_upstream_forwards_extra_headers():
+    # Given: a provider configured with an extra header in its forward list
+    captured: dict[str, Any] = {}
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"namespace_key": "ns"})
+
+    provider = _build_upstream(
+        factory,
+        config_overrides={"extra_forward_headers": ("X-Deployer-Auth",)},
+    )
+
+    # When: the inbound request carries the extra header
+    inbound = _build_request(headers={"X-Deployer-Auth": "k_abc", "X-API-Key": "k1"})
+    await provider.authorize(inbound, Operation.CONTROL_BINDINGS_READ)
+
+    # Then: both the default and the extra header reach the upstream
+    assert captured["headers"]["x-deployer-auth"] == "k_abc"
+    assert captured["headers"]["x-api-key"] == "k1"
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_default_forward_set_unchanged():
+    # Given: a provider with no extra_forward_headers
+    captured: dict[str, Any] = {}
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"namespace_key": "ns"})
+
+    provider = _build_upstream(factory)
+
+    # When: the inbound carries an unlisted header alongside a default one
+    inbound = _build_request(
+        headers={"X-API-Key": "k1", "X-Deployer-Auth": "should-not-forward"}
+    )
+    await provider.authorize(inbound, Operation.CONTROL_BINDINGS_READ)
+
+    # Then: only the default-set header reaches the upstream
+    assert captured["headers"].get("x-api-key") == "k1"
+    assert "x-deployer-auth" not in captured["headers"]
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_extra_forward_dedupes_against_defaults():
+    # Given: extra list duplicates a default header (different case)
+    captured: dict[str, Any] = {}
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"namespace_key": "ns"})
+
+    provider = _build_upstream(
+        factory,
+        config_overrides={"extra_forward_headers": ("x-api-key", "Authorization")},
+    )
+
+    # When: inbound has both
+    inbound = _build_request(headers={"X-API-Key": "k1", "Authorization": "Bearer t"})
+    await provider.authorize(inbound, Operation.CONTROL_BINDINGS_READ)
+
+    # Then: each header appears exactly once on the upstream request
+    forwarded = captured["headers"]
+    assert sum(1 for k in forwarded if k.lower() == "x-api-key") == 1
+    assert sum(1 for k in forwarded if k.lower() == "authorization") == 1
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status, expected",
     [
@@ -1049,6 +1118,52 @@ async def test_configure_http_upstream_management_with_jwt_runtime(monkeypatch):
         runtime_config = auth_config.runtime_auth_config()
         assert runtime_config is not None
         assert runtime_config.secret == _TEST_SECRET
+    finally:
+        await auth_config.teardown_auth()
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (None, ()),
+        ("", ()),
+        ("   ", ()),
+        ("X-One", ("X-One",)),
+        ("X-One,X-Two", ("X-One", "X-Two")),
+        ("  X-One  ,  X-Two  ", ("X-One", "X-Two")),
+        ("X-One,,X-Two", ("X-One", "X-Two")),
+        ("X-One,x-one,X-One", ("X-One",)),
+        ("X-A,X-B,x-a,X-C,X-b", ("X-A", "X-B", "X-C")),
+    ],
+)
+def test_parse_extra_forward_headers(raw, expected):
+    from agent_control_server.auth_framework.config import _parse_extra_forward_headers
+
+    assert _parse_extra_forward_headers(raw) == expected
+
+
+@pytest.mark.asyncio
+async def test_configure_http_upstream_extra_forward_headers_env(monkeypatch):
+    """Setting the env var threads extra_forward_headers into the provider."""
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv(
+        "AGENT_CONTROL_AUTH_UPSTREAM_EXTRA_FORWARD_HEADERS",
+        "X-Deployer-Auth, X-Deployer-Trace",
+    )
+
+    try:
+        auth_config.configure_auth_from_env()
+        provider = get_authorizer(Operation.CONTROLS_READ)
+        assert isinstance(provider, HttpUpstreamAuthProvider)
+        assert provider._config.extra_forward_headers == (
+            "X-Deployer-Auth",
+            "X-Deployer-Trace",
+        )
     finally:
         await auth_config.teardown_auth()
 
