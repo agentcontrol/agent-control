@@ -26,6 +26,9 @@ Event Batching Usage:
     await shutdown_observability()
 
 Configuration (Environment Variables):
+    # Server connection
+    AGENT_CONTROL_API_KEY_HEADER: API key header name (default: X-API-Key)
+
     # Observability (event batching)
     AGENT_CONTROL_OBSERVABILITY_ENABLED: Enable observability (default: true)
     AGENT_CONTROL_OBSERVABILITY_SINK_NAME: Selected control-event sink (default: default)
@@ -286,6 +289,7 @@ class EventBatcher:
     Attributes:
         server_url: Base URL of the Agent Control server
         api_key: API key for authentication
+        api_key_header: HTTP header used to send the API key
         batch_size: Maximum events per batch
         flush_interval: Seconds between automatic flushes
     """
@@ -294,6 +298,7 @@ class EventBatcher:
         self,
         server_url: str | None = None,
         api_key: str | None = None,
+        api_key_header: str | None = None,
         batch_size: int | None = None,
         flush_interval: float | None = None,
     ):
@@ -303,11 +308,13 @@ class EventBatcher:
         Args:
             server_url: Server URL (defaults to get_settings().url)
             api_key: API key (defaults to get_settings().api_key)
+            api_key_header: API key header (defaults to get_settings().api_key_header)
             batch_size: Max events per batch (defaults to get_settings().batch_size)
             flush_interval: Seconds between flushes (defaults to get_settings().flush_interval)
         """
         self.server_url = server_url or get_settings().url
         self.api_key = api_key or get_settings().api_key
+        self.api_key_header = api_key_header or get_settings().api_key_header
         self.batch_size = batch_size if batch_size is not None else get_settings().batch_size
         if flush_interval is not None:
             self.flush_interval = flush_interval
@@ -424,7 +431,7 @@ class EventBatcher:
         url = f"{self.server_url}/api/v1/observability/events"
         headers = {"Content-Type": "application/json"}
         if self.api_key:
-            headers["X-API-Key"] = self.api_key
+            headers[self.api_key_header] = self.api_key
         payload = {"events": [event.model_dump(mode="json") for event in events]}
         return url, headers, payload
 
@@ -1098,6 +1105,7 @@ def _get_custom_control_event_sinks_to_shutdown() -> tuple[ControlEventSink, ...
 def init_observability(
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
     enabled: bool | None = None,
     sink_name: str | None = None,
     sink_config: JSONObject | None = None,
@@ -1110,6 +1118,7 @@ def init_observability(
     Args:
         server_url: Server URL for sending events
         api_key: API key for authentication
+        api_key_header: HTTP header used to send the API key
         enabled: Override AGENT_CONTROL_OBSERVABILITY_ENABLED
         sink_name: Override AGENT_CONTROL_OBSERVABILITY_SINK_NAME
         sink_config: Override AGENT_CONTROL_OBSERVABILITY_SINK_CONFIG
@@ -1157,7 +1166,11 @@ def init_observability(
         return _batcher
 
     # Create batcher
-    _batcher = EventBatcher(server_url=server_url, api_key=api_key)
+    _batcher = EventBatcher(
+        server_url=server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    )
     _batcher.start()
     _event_sink = _BatcherControlEventSink(_batcher)
 
