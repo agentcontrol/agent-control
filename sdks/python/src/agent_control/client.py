@@ -27,16 +27,17 @@ _GLOBAL_RUNTIME_TOKEN_FALLBACK_STATUSES = {404, 503}
 class _AgentControlAuth(httpx.Auth):
     """Attach local API-key credentials unless a request already has Bearer auth."""
 
-    def __init__(self, api_key: str | None) -> None:
+    def __init__(self, api_key: str | None, header_name: str = "X-API-Key") -> None:
         self._api_key = api_key
+        self._header_name = header_name
 
     def auth_flow(
         self,
         request: httpx.Request,
     ) -> Generator[httpx.Request, httpx.Response, None]:
         if self._api_key and "Authorization" not in request.headers:
-            if "X-API-Key" not in request.headers:
-                request.headers["X-API-Key"] = self._api_key
+            if self._header_name not in request.headers:
+                request.headers[self._header_name] = self._api_key
         yield request
 
 
@@ -49,7 +50,9 @@ class AgentControlClient:
     agents, policies, controls, evaluation.
 
     Authentication:
-        The client supports API key authentication via the X-API-Key header.
+        The client supports API key authentication. By default the key is
+        sent on the ``X-API-Key`` header; set ``api_key_header`` (or the
+        ``AGENT_CONTROL_API_KEY_HEADER`` environment variable) to override.
         API key can be provided:
         1. Directly via the `api_key` parameter
         2. Via the AGENT_CONTROL_API_KEY environment variable
@@ -63,10 +66,20 @@ class AgentControlClient:
         os.environ["AGENT_CONTROL_API_KEY"] = "my-secret-key"
         async with AgentControlClient() as client:
             await client.health_check()
+
+        # Custom header name (e.g., when the upstream auth expects something
+        # other than X-API-Key). The header name applies to every request
+        # this client sends.
+        async with AgentControlClient(
+            api_key="my-secret-key", api_key_header="X-Custom-API-Key"
+        ) as client:
+            await client.health_check()
     """
 
     # Environment variable name for API key
     API_KEY_ENV_VAR = "AGENT_CONTROL_API_KEY"
+    API_KEY_HEADER_ENV_VAR = "AGENT_CONTROL_API_KEY_HEADER"
+    DEFAULT_API_KEY_HEADER = "X-API-Key"
     BASE_URL_ENV_VAR = "AGENT_CONTROL_URL"
 
     def __init__(
@@ -74,6 +87,7 @@ class AgentControlClient:
         base_url: str | None = None,
         timeout: float = 30.0,
         api_key: str | None = None,
+        api_key_header: str | None = None,
         runtime_auth_mode: RuntimeAuthMode | str | None = None,
         runtime_token_cache: RuntimeTokenCache | None = None,
         runtime_token_refresh_margin_seconds: int = (_DEFAULT_RUNTIME_TOKEN_REFRESH_MARGIN_SECONDS),
@@ -88,6 +102,10 @@ class AgentControlClient:
             timeout: Request timeout in seconds
             api_key: API key for authentication. If not provided, will attempt
                      to read from AGENT_CONTROL_API_KEY environment variable.
+            api_key_header: HTTP header name to send the API key on. Defaults
+                     to ``X-API-Key``; the AGENT_CONTROL_API_KEY_HEADER
+                     environment variable overrides the default. Useful when
+                     the configured upstream auth expects a different header.
             runtime_auth_mode: Runtime auth mode for evaluation requests. ``auto``
                 attempts target-bound JWT exchange and falls back to normal
                 request auth when the exchange endpoint is unavailable. ``jwt``
@@ -104,6 +122,11 @@ class AgentControlClient:
         self.base_url = resolved_base_url.rstrip("/")
         self.timeout = timeout
         self._api_key = api_key or os.environ.get(self.API_KEY_ENV_VAR)
+        self._api_key_header = (
+            api_key_header
+            or os.environ.get(self.API_KEY_HEADER_ENV_VAR)
+            or self.DEFAULT_API_KEY_HEADER
+        )
         configured_runtime_mode = runtime_auth_mode or os.environ.get(_RUNTIME_AUTH_MODE_ENV_VAR)
         self._runtime_auth_mode = normalize_runtime_auth_mode(configured_runtime_mode)
         if runtime_token_refresh_margin_seconds < 0:
@@ -118,6 +141,11 @@ class AgentControlClient:
     def api_key(self) -> str | None:
         """Get the configured API key (read-only)."""
         return self._api_key
+
+    @property
+    def api_key_header(self) -> str:
+        """Get the header name the API key is sent on (read-only)."""
+        return self._api_key_header
 
     @property
     def runtime_auth_mode(self) -> RuntimeAuthMode:
@@ -159,7 +187,7 @@ class AgentControlClient:
             base_url=self.base_url,
             timeout=self.timeout,
             headers=self._get_headers(),
-            auth=_AgentControlAuth(self._api_key),
+            auth=_AgentControlAuth(self._api_key, self._api_key_header),
             transport=self._transport,
             event_hooks={"response": [self._check_server_version]},
         )
