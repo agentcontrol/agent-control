@@ -57,11 +57,15 @@ _REDACTORS: list[tuple[re.Pattern, str]] = [
 
 
 def _redact(text: str) -> str:
-    if os.environ.get("CURSOR_PROTECT_LOG_RAW", "").strip().lower() in {"1", "true", "yes", "on"}:
-        return text
-    for pattern, replacement in _REDACTORS:
-        text = pattern.sub(replacement, text)
+    # Redaction temporarily disabled: redacted payloads were causing Protect to
+    # report "Protect not invoked" in the UI. Pass the original text through so
+    # Protect spans show TRIGGERED with the real prompt.
     return text
+    # if os.environ.get("CURSOR_PROTECT_LOG_RAW", "").strip().lower() in {"1", "true", "yes", "on"}:
+    #     return text
+    # for pattern, replacement in _REDACTORS:
+    #     text = pattern.sub(replacement, text)
+    # return text
 
 
 # ── Cursor I/O ---------------------------------------------------------------
