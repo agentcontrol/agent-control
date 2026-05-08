@@ -36,13 +36,11 @@ _MAX_LIST_LIMIT = 100
 
 
 async def _binding_body_context(request: Request) -> dict[str, Any]:
-    """Surface ``(target_type, target_id)`` to the authorizer's context.
+    """Surface ``(target_type, target_id)`` to the authorization context.
 
     The body-bearing binding endpoints carry the target identifiers in
-    the request payload. Upstream authorizers that resolve the target's
-    owning project (e.g., Galileo's ``check_management_access``) need
-    those identifiers to make a project-level decision; without them the
-    upstream returns 400.
+    the request payload. Authorization providers can use those
+    identifiers when a request needs target-scoped access checks.
 
     FastAPI caches the parsed body, so the endpoint's own Pydantic
     request model still binds normally.
@@ -60,13 +58,12 @@ async def _binding_body_context(request: Request) -> dict[str, Any]:
 
 
 async def _binding_list_context(request: Request) -> dict[str, Any]:
-    """Surface optional target query parameters to the authorizer.
+    """Surface optional target query parameters to authorization context.
 
     When the GET list endpoint is called with ``target_type`` and
     ``target_id`` query params, the request is target-scoped and the
-    upstream needs the identifiers to make a project-level decision.
-    When neither is present the request is namespace-wide and forwards
-    no target context (upstream may then reject if it requires one).
+    request context includes those identifiers. When neither is present
+    the request is namespace-wide and forwards no target context.
     """
     target_type = request.query_params.get("target_type")
     target_id = request.query_params.get("target_id")
