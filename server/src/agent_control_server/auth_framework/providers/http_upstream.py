@@ -60,7 +60,7 @@ from ..core import Operation, Principal, RequestAuthorizer
 
 _logger = get_logger(__name__)
 
-_FORWARDED_HEADERS = ("X-API-Key", "Authorization", "Cookie")
+_DEFAULT_FORWARDED_HEADERS = ("X-API-Key", "Authorization", "Cookie")
 
 
 class _UpstreamGrant(BaseModel):
@@ -136,6 +136,17 @@ class HttpUpstreamConfig:
 
     service_token_header: str = "X-Agent-Control-Service-Token"
 
+    extra_forward_headers: tuple[str, ...] = ()
+    """Additional inbound request headers to forward to the upstream
+    on top of the default ``(X-API-Key, Authorization, Cookie)`` set.
+
+    Use this when the upstream authenticates via a header the provider
+    does not forward by default (e.g., a deployer-specific API-key
+    header). Header lookups against the inbound request are
+    case-insensitive; an empty or absent inbound header is silently
+    dropped. Names duplicating the default set or each other (after
+    case-folding) are deduplicated."""
+
 
 class HttpUpstreamAuthProvider(RequestAuthorizer):
     """Delegates authorization to an upstream HTTP service."""
@@ -190,7 +201,12 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
 
     def _forward_headers(self, request: Request) -> dict[str, str]:
         headers: dict[str, str] = {}
-        for name in _FORWARDED_HEADERS:
+        seen: set[str] = set()
+        for name in (*_DEFAULT_FORWARDED_HEADERS, *self._config.extra_forward_headers):
+            lower = name.lower()
+            if lower in seen:
+                continue
+            seen.add(lower)
             value = request.headers.get(name)
             if value is not None:
                 headers[name] = value
