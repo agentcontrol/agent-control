@@ -120,6 +120,7 @@ def reset_observability_state() -> None:
         observability_enabled=True,
         observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME,
         observability_sink_config={},
+        api_key_header="X-API-Key",
     )
     with obs._used_custom_event_sinks_lock:
         obs._used_custom_event_sinks.clear()
@@ -136,6 +137,7 @@ class TestEventBatcherInit:
     def test_init_default_values(self):
         """Test EventBatcher initializes with default values."""
         batcher = EventBatcher()
+        assert batcher.api_key_header == get_settings().api_key_header
         assert batcher.batch_size == get_settings().batch_size
         assert batcher.flush_interval == get_settings().flush_interval
         assert batcher.shutdown_join_timeout == get_settings().shutdown_join_timeout
@@ -149,11 +151,13 @@ class TestEventBatcherInit:
         batcher = EventBatcher(
             server_url="http://custom:9000",
             api_key="test-key",
+            api_key_header="X-Custom-API-Key",
             batch_size=50,
             flush_interval=5.0,
         )
         assert batcher.server_url == "http://custom:9000"
         assert batcher.api_key == "test-key"
+        assert batcher.api_key_header == "X-Custom-API-Key"
         assert batcher.batch_size == 50
         assert batcher.flush_interval == 5.0
 
@@ -161,20 +165,23 @@ class TestEventBatcherInit:
         """Test EventBatcher reads from settings."""
         from agent_control.settings import configure_settings
 
-        # Save original values
-        original_url = get_settings().url
-        original_api_key = get_settings().api_key
+        original_settings = get_settings().model_dump()
 
         try:
             # Configure settings programmatically
-            configure_settings(url="http://configured-server:8080", api_key="configured-api-key")
+            configure_settings(
+                url="http://configured-server:8080",
+                api_key="configured-api-key",
+                api_key_header="X-Custom-API-Key",
+            )
 
             batcher = EventBatcher()
             assert batcher.server_url == "http://configured-server:8080"
             assert batcher.api_key == "configured-api-key"
+            assert batcher.api_key_header == "X-Custom-API-Key"
         finally:
             # Restore original settings
-            configure_settings(url=original_url, api_key=original_api_key)
+            configure_settings(**original_settings)
 
 
 class TestEventBatcherStartStop:
@@ -557,6 +564,46 @@ class TestEventBatcherSendBatchSync:
         assert result is True
         client_ctor.assert_called_once_with(timeout=30.0)
         client.post.assert_called_once()
+        assert client.post.call_args.kwargs["headers"]["X-API-Key"] == "test-key"
+
+    def test_send_batch_sync_uses_configured_api_key_header(self):
+        batcher = EventBatcher(
+            server_url="http://test:8000",
+            api_key="test-key",
+            api_key_header="X-Custom-API-Key",
+        )
+        response = MagicMock(status_code=202, text="accepted")
+        client = MagicMock()
+        client.post.return_value = response
+        client_context = MagicMock()
+        client_context.__enter__.return_value = client
+
+        with patch(
+            "agent_control.observability.httpx.Client",
+            return_value=client_context,
+        ):
+            result = batcher._send_batch_sync([create_mock_event()])
+
+        assert result is True
+        headers = client.post.call_args.kwargs["headers"]
+        assert headers["X-Custom-API-Key"] == "test-key"
+        assert "X-API-Key" not in headers
+
+    def test_build_batch_request_uses_settings_api_key_header(self):
+        original_settings = get_settings().model_dump()
+        try:
+            configure_settings(
+                api_key="settings-key",
+                api_key_header="X-Custom-API-Key",
+            )
+            batcher = EventBatcher()
+
+            _, headers, _ = batcher._build_batch_request([create_mock_event()])
+
+            assert headers["X-Custom-API-Key"] == "settings-key"
+            assert "X-API-Key" not in headers
+        finally:
+            configure_settings(**original_settings)
 
     def test_send_batch_sync_returns_false_on_401_without_retry(self):
         batcher = EventBatcher()
@@ -1069,10 +1116,12 @@ class TestInitObservability:
             result = init_observability(
                 server_url="http://test:8000",
                 api_key="test-key",
+                api_key_header="X-Custom-API-Key",
                 enabled=True,
             )
             assert result is not None
             assert isinstance(result, EventBatcher)
+            assert result.api_key_header == "X-Custom-API-Key"
             assert result._running is True
             assert get_event_sink() is not None
 

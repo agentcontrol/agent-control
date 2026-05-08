@@ -56,6 +56,10 @@ class SDKSettings(BaseSettings):
         default="",
         description="API key for server authentication",
     )
+    api_key_header: str = Field(
+        default="X-API-Key",
+        description="HTTP header used to send the API key",
+    )
 
     # Observability (event batching)
     observability_enabled: bool = Field(
