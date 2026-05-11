@@ -640,7 +640,7 @@ class CreateControlBindingRequest(BaseModel):
 
     target_type: ControlBindingTargetField = Field(
         ...,
-        description="Opaque attachment kind (caller-defined; e.g. 'env', 'log_stream').",
+        description="Opaque attachment kind (caller-defined; e.g. 'environment', 'session').",
     )
     target_id: ControlBindingTargetField = Field(
         ..., description="Opaque external identifier within the target_type."
@@ -759,5 +759,4 @@ class DeleteControlBindingByKeyResponse(BaseModel):
             "binding existed."
         ),
     )
-
 
