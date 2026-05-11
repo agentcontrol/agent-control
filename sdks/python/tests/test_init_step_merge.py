@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Generator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import ANY, AsyncMock, patch
 from uuid import uuid4
 
@@ -219,6 +219,47 @@ def test_init_omits_merge_events_from_public_signature() -> None:
     assert "merge_events" not in signature.parameters
 
 
+def test_init_passes_api_key_header_to_client_and_state() -> None:
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+    client_init_kwargs: list[dict[str, Any]] = []
+    original_init = agent_control.AgentControlClient.__init__
+
+    def recording_init(
+        self: agent_control.AgentControlClient,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        client_init_kwargs.append(dict(kwargs))
+        original_init(self, *args, **kwargs)
+
+    with patch.object(
+        agent_control.AgentControlClient,
+        "__init__",
+        new=recording_init,
+    ), patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=health_check_mock,
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=register_agent_mock,
+    ), patch.object(
+        agent_control,
+        "init_observability",
+        return_value=None,
+    ) as observability_mock:
+        agent_control.init(
+            agent_name=f"agent-{uuid4().hex[:12]}",
+            api_key="test-key",
+            api_key_header="Galileo-API-Key",
+            policy_refresh_interval_seconds=0,
+        )
+
+    assert agent_control.state.api_key_header == "Galileo-API-Key"
+    assert client_init_kwargs[0]["api_key_header"] == "Galileo-API-Key"
+    assert observability_mock.call_args.kwargs["api_key_header"] == "Galileo-API-Key"
+
+
 @pytest.mark.asyncio
 async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
     # Given: an initialized SDK agent session with network-facing calls mocked.
@@ -238,6 +279,7 @@ async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
     ):
         agent_control.init(
             agent_name=f"agent-{uuid4().hex[:12]}",
+            api_key_header="Galileo-API-Key",
             policy_refresh_interval_seconds=0,
         )
 
@@ -255,4 +297,5 @@ async def test_refresh_controls_calls_agent_controls_endpoint() -> None:
         target_type=None,
         target_id=None,
     )
+    assert agent_control.state.api_key_header == "Galileo-API-Key"
     assert register_agent_mock.await_count == 0
