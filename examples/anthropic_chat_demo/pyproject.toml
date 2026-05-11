@@ -1,0 +1,28 @@
+[project]
+name = "agent-control-anthropic-chat-demo"
+version = "0.1.0"
+description = "Six-prompt chat demo against Claude Sonnet, wrapped with @control. Policy is created in the UI."
+requires-python = ">=3.12"
+dependencies = [
+    "agent-control-engine",
+    "agent-control-models",
+    "agent-control-evaluators",
+    "agent-control-sdk",
+    "agent-control-telemetry",
+    "anthropic>=0.40.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+include = ["*.py", ".env.example"]
+
+[tool.uv.sources]
+agent-control-sdk = { path = "../../sdks/python", editable = true }
+agent-control-models = { path = "../../models", editable = true }
+agent-control-engine = { path = "../../engine", editable = true }
+agent-control-evaluators = { path = "../../evaluators/builtin", editable = true }
+agent-control-telemetry = { path = "../../telemetry", editable = true }
