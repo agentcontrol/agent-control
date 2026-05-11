@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import require_admin_key
+from ..auth_framework import Operation, Principal, require_operation
 from ..db import get_async_db
 from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
@@ -23,13 +23,14 @@ _logger = get_logger(__name__)
 
 @router.put(
     "",
-    dependencies=[Depends(require_admin_key)],
     response_model=CreatePolicyResponse,
     summary="Create a new policy",
     response_description="Created policy ID",
 )
 async def create_policy(
-    request: CreatePolicyRequest, db: AsyncSession = Depends(get_async_db)
+    request: CreatePolicyRequest,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.POLICIES_CREATE)),
 ) -> CreatePolicyResponse:
     """
     Create a new empty policy with a unique name.
@@ -48,8 +49,14 @@ async def create_policy(
         HTTPException 409: Policy with this name already exists
         HTTPException 500: Database error during creation
     """
+    namespace_key = principal.namespace_key
     # Uniqueness check
-    existing = await db.execute(select(Policy.id).where(Policy.name == request.name))
+    existing = await db.execute(
+        select(Policy.id).where(
+            Policy.namespace_key == namespace_key,
+            Policy.name == request.name,
+        )
+    )
     if existing.first() is not None:
         raise ConflictError(
             error_code=ErrorCode.POLICY_NAME_CONFLICT,
@@ -59,7 +66,7 @@ async def create_policy(
             hint="Choose a different name or update the existing policy.",
         )
 
-    policy = Policy(name=request.name)
+    policy = Policy(namespace_key=namespace_key, name=request.name)
     db.add(policy)
     try:
         await db.commit()
@@ -80,13 +87,15 @@ async def create_policy(
 
 @router.post(
     "/{policy_id}/controls/{control_id}",
-    dependencies=[Depends(require_admin_key)],
     response_model=AssocResponse,
     summary="Add control to policy",
     response_description="Success confirmation",
 )
 async def add_control_to_policy(
-    policy_id: int, control_id: int, db: AsyncSession = Depends(get_async_db)
+    policy_id: int,
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.POLICIES_UPDATE)),
 ) -> AssocResponse:
     """
     Associate a control with a policy.
@@ -106,8 +115,14 @@ async def add_control_to_policy(
         HTTPException 404: Policy or control not found
         HTTPException 500: Database error
     """
+    namespace_key = principal.namespace_key
     # Find policy and control
-    pol_res = await db.execute(select(Policy).where(Policy.id == policy_id))
+    pol_res = await db.execute(
+        select(Policy).where(
+            Policy.namespace_key == namespace_key,
+            Policy.id == policy_id,
+        )
+    )
     policy = pol_res.scalars().first()
     if policy is None:
         raise NotFoundError(
@@ -119,11 +134,17 @@ async def add_control_to_policy(
         )
 
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(
+        control_id, namespace_key=namespace_key
+    )
 
     # Add association using INSERT ... ON CONFLICT DO NOTHING for idempotency
     try:
-        await control_service.add_control_to_policy(policy_id=policy_id, control_id=control_id)
+        await control_service.add_control_to_policy(
+            policy_id=policy_id,
+            control_id=control_id,
+            namespace_key=namespace_key,
+        )
         await db.commit()
     except Exception:
         await db.rollback()
@@ -149,13 +170,15 @@ async def add_control_to_policy(
 
 @router.delete(
     "/{policy_id}/controls/{control_id}",
-    dependencies=[Depends(require_admin_key)],
     response_model=AssocResponse,
     summary="Remove control from policy",
     response_description="Success confirmation",
 )
 async def remove_control_from_policy(
-    policy_id: int, control_id: int, db: AsyncSession = Depends(get_async_db)
+    policy_id: int,
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.POLICIES_UPDATE)),
 ) -> AssocResponse:
     """
     Remove a control from a policy.
@@ -175,7 +198,13 @@ async def remove_control_from_policy(
         HTTPException 404: Policy or control not found
         HTTPException 500: Database error
     """
-    pol_res = await db.execute(select(Policy).where(Policy.id == policy_id))
+    namespace_key = principal.namespace_key
+    pol_res = await db.execute(
+        select(Policy).where(
+            Policy.namespace_key == namespace_key,
+            Policy.id == policy_id,
+        )
+    )
     policy = pol_res.scalars().first()
     if policy is None:
         raise NotFoundError(
@@ -187,13 +216,16 @@ async def remove_control_from_policy(
         )
 
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id)
+    control = await control_service.get_active_control_or_404(
+        control_id, namespace_key=namespace_key
+    )
 
     # Remove association (idempotent - deleting non-existent is no-op)
     try:
         await control_service.remove_control_from_policy(
             policy_id=policy_id,
             control_id=control_id,
+            namespace_key=namespace_key,
         )
         await db.commit()
     except Exception:
@@ -222,7 +254,9 @@ async def remove_control_from_policy(
     response_description="List of control IDs",
 )
 async def list_policy_controls(
-    policy_id: int, db: AsyncSession = Depends(get_async_db)
+    policy_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.POLICIES_READ)),
 ) -> GetPolicyControlsResponse:
     """
     List all controls associated with a policy.
@@ -237,7 +271,13 @@ async def list_policy_controls(
     Raises:
         HTTPException 404: Policy not found
     """
-    pol_res = await db.execute(select(Policy.id).where(Policy.id == policy_id))
+    namespace_key = principal.namespace_key
+    pol_res = await db.execute(
+        select(Policy.id).where(
+            Policy.namespace_key == namespace_key,
+            Policy.id == policy_id,
+        )
+    )
     if pol_res.first() is None:
         raise NotFoundError(
             error_code=ErrorCode.POLICY_NOT_FOUND,
@@ -247,5 +287,8 @@ async def list_policy_controls(
             hint="Verify the policy ID is correct and the policy has been created.",
         )
 
-    control_ids = await ControlService(db).list_policy_control_ids(policy_id)
+    control_ids = await ControlService(db).list_policy_control_ids(
+        policy_id,
+        namespace_key=namespace_key,
+    )
     return GetPolicyControlsResponse(control_ids=control_ids)

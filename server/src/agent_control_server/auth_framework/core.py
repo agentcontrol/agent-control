@@ -42,14 +42,19 @@ class Operation(StrEnum):
     CONTROL_BINDINGS_READ = "control_bindings.read"
     CONTROL_BINDINGS_WRITE = "control_bindings.write"
 
-    # Runtime token exchange — wired on the exchange endpoint.
+    # Runtime token exchange - wired on the exchange endpoint.
     RUNTIME_TOKEN_EXCHANGE = "runtime.token_exchange"
 
-    # Reserved for follow-up migrations; not yet wired on endpoints.
     CONTROLS_READ = "controls.read"
     CONTROLS_CREATE = "controls.create"
     CONTROLS_UPDATE = "controls.update"
     CONTROLS_DELETE = "controls.delete"
+    POLICIES_READ = "policies.read"
+    POLICIES_CREATE = "policies.create"
+    POLICIES_UPDATE = "policies.update"
+    AGENTS_READ = "agents.read"
+    AGENTS_CREATE = "agents.create"
+    AGENTS_UPDATE = "agents.update"
     RUNTIME_USE = "runtime.use"
 
 
@@ -61,8 +66,7 @@ class Principal:
         namespace_key: The namespace the request runs in. Endpoints use
             this to scope every read and write.
         is_admin: Whether the caller has admin privileges in the
-            current namespace. Mostly informational for endpoints that
-            still gate on the legacy admin-key contract.
+            current namespace.
         caller_id: Opaque, provider-supplied identifier for the caller
             (e.g., a key fingerprint or user id). Useful for audit
             logging; never echo back to clients.
@@ -122,7 +126,7 @@ def set_authorizer(
 
     Without ``operation``, this becomes the default authorizer used by
     every operation that does not have a specific override. With
-    ``operation``, it overrides the default for that operation only —
+    ``operation``, it overrides the default for that operation only -
     used to route a different family (e.g., runtime) through a
     different provider.
 

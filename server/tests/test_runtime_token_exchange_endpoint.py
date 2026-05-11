@@ -11,8 +11,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
-
 from agent_control_server.auth_framework import Operation, Principal
 from agent_control_server.auth_framework.config import (
     RuntimeAuthConfig,
@@ -25,6 +23,7 @@ from agent_control_server.auth_framework.core import (
 from agent_control_server.auth_framework.providers import (
     LocalJwtVerifyProvider,
 )
+from fastapi.testclient import TestClient
 
 _TEST_SECRET = "test-runtime-secret-12345678901234567890"
 
@@ -178,6 +177,39 @@ async def test_exchange_then_verify_full_round_trip(client: TestClient, runtime_
     assert principal.target_type == "log_stream"
     assert principal.target_id == "ls-99"
     assert principal.caller_id == "actor-rt"
+
+
+def test_evaluation_rejects_runtime_jwt_for_wrong_target(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """A runtime JWT minted for one target cannot be used for another target."""
+    stub = _StubExchangeAuthorizer(actor_id="actor-rt", scopes=("runtime.use",))
+    clear_authorizers()
+    set_authorizer(stub)
+    set_authorizer(LocalJwtVerifyProvider(secret=_TEST_SECRET), operation=Operation.RUNTIME_USE)
+
+    exchange = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-allowed"},
+    )
+    assert exchange.status_code == 200, exchange.text
+    token = exchange.json()["token"]
+
+    response = client.post(
+        "/api/v1/evaluation",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "agent_name": "agent",
+            "step": {"type": "llm", "name": "step", "input": "hello"},
+            "stage": "pre",
+            "target_type": "log_stream",
+            "target_id": "ls-other",
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"] == "Runtime token target_id does not match the request."
 
 
 def test_exchange_endpoint_502_when_upstream_grant_already_expired(

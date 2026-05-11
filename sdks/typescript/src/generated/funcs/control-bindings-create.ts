@@ -32,12 +32,8 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Attach a control to an opaque external target.
  *
- * Each binding row is scoped to the request namespace as resolved by
- * ``get_namespace_key``. The auth chain still runs via
- * ``require_operation`` for authentication and authorization, but the
- * storage namespace is taken from the same resolver the rest of the
- * server uses so binding writes and runtime reads stay in lockstep
- * until auth-derived namespace resolution lands across every endpoint.
+ * Each binding row is scoped to the namespace associated with the
+ * authenticated request.
  */
 export function controlBindingsCreate(
   client: AgentControlSDKCore,
