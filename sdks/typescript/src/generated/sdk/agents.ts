@@ -80,7 +80,8 @@ export class Agents extends ClientSDK {
    * Args:
    *     request: Agent metadata and step schemas
    *     db: Database session (injected)
-   *     principal: Authorized request principal
+   *     principal: Authorized request principal for the agent create operation
+   *     target_principal: Optional principal from the target binding read check
    *
    * Returns:
    *     InitAgentResponse with created flag and the effective controls
@@ -186,7 +187,8 @@ export class Agents extends ClientSDK {
    *     target_type: Optional opaque target kind (paired with target_id)
    *     target_id: Optional opaque target identifier (paired with target_type)
    *     db: Database session (injected)
-   *     principal: Authorized request principal
+   *     principal: Authorized request principal for the agent read operation
+   *     target_principal: Optional principal from the target binding read check
    *
    * Returns:
    *     AgentControlsResponse with controls matching the requested state filters
