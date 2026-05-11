@@ -4,10 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
-from pydantic import ValidationError
-
 from agent_control import evaluation
 from agent_control.evaluation import EvaluationResult
+from pydantic import ValidationError
 
 
 @pytest.mark.asyncio
@@ -124,6 +123,27 @@ async def test_evaluate_controls_with_context(monkeypatch):
             )
 
     assert mock_check.call_args is not None
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_uses_session_api_key_header(monkeypatch):
+    """evaluate_controls should pass init's API-key header into the client."""
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_check = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    with patch("agent_control.state.server_url", "http://localhost:8000"), patch(
+        "agent_control.state.api_key", "test-key"
+    ), patch("agent_control.state.api_key_header", "Galileo-API-Key"):
+        await evaluation.evaluate_controls(
+            step_name="chat",
+            input="hello",
+            stage="pre",
+            agent_name="test-bot",
+        )
+
+    client = mock_check.call_args.kwargs["client"]
+    assert client.api_key_header == "Galileo-API-Key"
 
 
 @pytest.mark.asyncio

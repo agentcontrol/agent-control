@@ -853,7 +853,11 @@ class AgentControlPlugin(BasePlugin):
                 "with the same agent_name as AgentControlPlugin."
             )
 
-        async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
+        async with AgentControlClient(
+            base_url=state.server_url,
+            api_key=state.api_key,
+            api_key_header=state.api_key_header,
+        ) as client:
             response = await agents.get_agent(client, self.agent_name)
             existing = GetAgentResponse.model_validate(response)
             existing_keys = {(step.type, step.name) for step in existing.steps}
