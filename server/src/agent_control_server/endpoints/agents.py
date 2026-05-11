@@ -121,7 +121,20 @@ async def _authorize_target_read_if_present(
     request: Request,
     context: dict[str, str] | None,
 ) -> Principal | None:
-    """Require target read authorization before returning target-merged controls."""
+    """Require target read authorization before returning target-merged controls.
+
+    Agent endpoints that accept optional target context have two separate
+    authorization decisions:
+
+    - the endpoint operation itself (for example, ``agents.create``), whose
+      result is exposed to the route as ``principal``;
+    - the target binding read (``control_bindings.read``), whose result is
+      exposed as ``target_principal``.
+
+    Keeping the results separate lets the route verify that the caller's
+    namespace and the target's resolved namespace agree before merging
+    target-bound controls into the response.
+    """
     if context is None:
         return None
     return await get_authorizer(Operation.CONTROL_BINDINGS_READ).authorize(
@@ -545,7 +558,8 @@ async def init_agent(
     Args:
         request: Agent metadata and step schemas
         db: Database session (injected)
-        principal: Authorized request principal
+        principal: Authorized request principal for the agent create operation
+        target_principal: Optional principal from the target binding read check
 
     Returns:
         InitAgentResponse with created flag and the effective controls
@@ -1596,7 +1610,8 @@ async def list_agent_controls(
         target_type: Optional opaque target kind (paired with target_id)
         target_id: Optional opaque target identifier (paired with target_type)
         db: Database session (injected)
-        principal: Authorized request principal
+        principal: Authorized request principal for the agent read operation
+        target_principal: Optional principal from the target binding read check
 
     Returns:
         AgentControlsResponse with controls matching the requested state filters
