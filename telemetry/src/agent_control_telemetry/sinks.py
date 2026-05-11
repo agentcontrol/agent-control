@@ -32,6 +32,10 @@ class ControlEventSink(Protocol):
 class BaseControlEventSink(ControlEventSink):
     """Minimal helper base for sink implementations."""
 
+    def is_active(self) -> bool:
+        """Return whether the sink is currently able to deliver events."""
+        return True
+
     def write_event(self, event: ControlExecutionEvent) -> SinkResult:
         """Write a single control execution event."""
         return self.write_events([event])

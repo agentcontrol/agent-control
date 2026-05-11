@@ -28,6 +28,12 @@ Event Batching Usage:
 Configuration (Environment Variables):
     # Observability (event batching)
     AGENT_CONTROL_OBSERVABILITY_ENABLED: Enable observability (default: true)
+    AGENT_CONTROL_OBSERVABILITY_SINK_NAME: Selected control-event sink (default: default)
+    AGENT_CONTROL_OBSERVABILITY_SINK_CONFIG: JSON config for the selected sink
+    AGENT_CONTROL_OTEL_ENABLED: Enable the built-in OTEL sink (default: false)
+    AGENT_CONTROL_OTEL_ENDPOINT: OTLP HTTP endpoint for exported control-event spans
+    AGENT_CONTROL_OTEL_HEADERS: JSON object of OTLP exporter headers
+    AGENT_CONTROL_OTEL_SERVICE_NAME: OTEL service.name for emitted spans
     AGENT_CONTROL_BATCH_SIZE: Max events per batch (default: 100)
     AGENT_CONTROL_FLUSH_INTERVAL: Seconds between flushes (default: 5.0)
     AGENT_CONTROL_SHUTDOWN_JOIN_TIMEOUT: Seconds to wait for worker shutdown (default: 5.0)
@@ -74,6 +80,11 @@ from agent_control.settings import configure_settings, get_settings
 
 if TYPE_CHECKING:
     from agent_control_models import ControlExecutionEvent
+
+from .otel_sink import (
+    OTEL_CONTROL_EVENT_SINK_NAME,
+    create_otel_control_event_sink,
+)
 
 # =============================================================================
 # Logger Setup - Standard Library Pattern
@@ -816,6 +827,19 @@ _named_event_sink_factories: ControlEventSinkFactoryRegistry[ControlEventSink] =
 _configured_named_event_sink: ControlEventSink | None = None
 _configured_named_event_sink_selection: ControlEventSinkSelection | None = None
 _configured_named_event_sink_lock = threading.Lock()
+_used_custom_event_sinks: list[ControlEventSink] = []
+_used_custom_event_sinks_lock = threading.Lock()
+
+
+def _register_builtin_control_event_sink_factories() -> None:
+    """Ensure built-in named sink factories are available."""
+    _named_event_sink_factories.register(
+        OTEL_CONTROL_EVENT_SINK_NAME,
+        create_otel_control_event_sink,
+    )
+
+
+_register_builtin_control_event_sink_factories()
 
 
 class _BatcherControlEventSink(BaseControlEventSink):
@@ -907,12 +931,37 @@ def get_registered_control_event_sink_factory_names() -> tuple[str, ...]:
     return _named_event_sink_factories.registered_names()
 
 
+def _remember_custom_control_event_sinks(sinks: Sequence[ControlEventSink]) -> None:
+    """Track custom sink instances that should be cleaned up on shutdown."""
+    with _used_custom_event_sinks_lock:
+        for sink in sinks:
+            if not any(remembered_sink is sink for remembered_sink in _used_custom_event_sinks):
+                _used_custom_event_sinks.append(sink)
+
+
+def _sink_is_active(sink: ControlEventSink) -> bool:
+    """Return whether a sink instance is currently able to deliver events."""
+    is_active = getattr(sink, "is_active", None)
+    if callable(is_active):
+        return bool(is_active())
+    return True
+
+
 def _get_sink_selection() -> ControlEventSinkSelection:
     """Build the current sink-selection model from SDK settings."""
     settings = get_settings()
+    config: JSONObject = dict(settings.observability_sink_config or {})
+    if settings.observability_sink_name == OTEL_CONTROL_EVENT_SINK_NAME:
+        # Materialize OTEL-specific settings into the selection so that
+        # changes to otel_endpoint / otel_headers / otel_service_name /
+        # otel_enabled invalidate the cached sink instance.
+        config.setdefault("enabled", settings.otel_enabled)
+        config.setdefault("endpoint", settings.otel_endpoint)
+        config.setdefault("headers", dict(settings.otel_headers))
+        config.setdefault("service_name", settings.otel_service_name)
     return ControlEventSinkSelection(
         name=settings.observability_sink_name,
-        config=settings.observability_sink_config,
+        config=config,
     )
 
 
@@ -967,13 +1016,19 @@ def _get_active_control_event_sinks() -> tuple[ControlEventSink, ...]:
 
     selection = _get_sink_selection()
     if selection.name == DEFAULT_CONTROL_EVENT_SINK_NAME:
-        return (_event_sink,) if _event_sink is not None else ()
+        if _event_sink is None or not _sink_is_active(_event_sink):
+            return ()
+        return (_event_sink,)
     if selection.name == REGISTERED_CONTROL_EVENT_SINK_NAME:
-        return get_registered_control_event_sinks()
+        sinks = get_registered_control_event_sinks()
+        sinks = tuple(sink for sink in sinks if _sink_is_active(sink))
+        _remember_custom_control_event_sinks(sinks)
+        return sinks
 
     named_sink = _get_or_create_named_control_event_sink(selection)
-    if named_sink is None:
+    if named_sink is None or not _sink_is_active(named_sink):
         return ()
+    _remember_custom_control_event_sinks((named_sink,))
     return (named_sink,)
 
 
@@ -985,6 +1040,20 @@ def _shutdown_built_in_event_sink() -> None:
         _batcher.shutdown()
         _batcher = None
     _event_sink = None
+
+
+def _shutdown_configured_named_event_sink() -> None:
+    """Stop and clear the cached configured named sink if it is active."""
+    global _configured_named_event_sink, _configured_named_event_sink_selection
+
+    configured_named_sink: ControlEventSink | None = None
+    with _configured_named_event_sink_lock:
+        configured_named_sink = _configured_named_event_sink
+        _configured_named_event_sink = None
+        _configured_named_event_sink_selection = None
+
+    if configured_named_sink is not None:
+        _shutdown_custom_control_event_sink(configured_named_sink)
 
 
 def _shutdown_custom_control_event_sink(sink: ControlEventSink) -> None:
@@ -1020,6 +1089,12 @@ async def _run_awaitable_during_shutdown(result: Awaitable[Any]) -> None:
     await result
 
 
+def _get_custom_control_event_sinks_to_shutdown() -> tuple[ControlEventSink, ...]:
+    """Collect custom sink instances that should be cleaned up on shutdown."""
+    with _used_custom_event_sinks_lock:
+        return tuple(_used_custom_event_sinks)
+
+
 def init_observability(
     server_url: str | None = None,
     api_key: str | None = None,
@@ -1046,6 +1121,8 @@ def init_observability(
 
     settings_updates: dict[str, object] = {}
     current_settings = get_settings()
+    if enabled is not None:
+        settings_updates["observability_enabled"] = enabled
     if sink_name is not None:
         settings_updates["observability_sink_name"] = sink_name
         if (
@@ -1058,11 +1135,12 @@ def init_observability(
     if settings_updates:
         configure_settings(**settings_updates)
 
-    is_enabled = enabled if enabled is not None else get_settings().observability_enabled
+    is_enabled = get_settings().observability_enabled
 
     if not is_enabled:
         logger.debug("Observability disabled")
         _shutdown_built_in_event_sink()
+        _shutdown_configured_named_event_sink()
         return None
 
     selection = _get_sink_selection()
@@ -1137,15 +1215,8 @@ def write_events(events: Sequence[ControlExecutionEvent]) -> SinkResult:
 
 def sync_shutdown_observability() -> None:
     """Synchronously shut down observability and flush remaining events."""
-    global _configured_named_event_sink, _configured_named_event_sink_selection
     _shutdown_built_in_event_sink()
-    configured_named_sink: ControlEventSink | None = None
-    with _configured_named_event_sink_lock:
-        configured_named_sink = _configured_named_event_sink
-        _configured_named_event_sink = None
-        _configured_named_event_sink_selection = None
-    if configured_named_sink is not None:
-        _shutdown_custom_control_event_sink(configured_named_sink)
+    _shutdown_configured_named_event_sink()
 
 
 async def shutdown_observability() -> None:

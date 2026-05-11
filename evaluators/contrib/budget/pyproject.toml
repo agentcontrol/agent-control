@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-evaluator-budget"
-version = "7.5.0"
+version = "7.7.0"
 description = "Budget evaluator for agent-control -- cumulative LLM cost and token tracking"
 readme = "README.md"
 requires-python = ">=3.12"

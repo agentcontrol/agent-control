@@ -35,7 +35,14 @@ from agent_control.observability import (
     unregister_control_event_sink,
     write_events,
 )
+from agent_control.otel_sink import OTEL_CONTROL_EVENT_SINK_NAME
 from agent_control.settings import SDKSettings, configure_settings, get_settings
+from agent_control_models import ControlExecutionEvent
+from agent_control_telemetry import (
+    DEFAULT_CONTROL_EVENT_SINK_NAME,
+    REGISTERED_CONTROL_EVENT_SINK_NAME,
+)
+from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
 
 
 def create_mock_event():
@@ -114,10 +121,13 @@ def reset_observability_state() -> None:
         observability_sink_name=DEFAULT_CONTROL_EVENT_SINK_NAME,
         observability_sink_config={},
     )
+    with obs._used_custom_event_sinks_lock:
+        obs._used_custom_event_sinks.clear()
     with obs._external_event_sinks_lock:
         obs._external_event_sinks.clear()
     for name in obs.get_registered_control_event_sink_factory_names():
         obs.unregister_control_event_sink_factory(name)
+    obs._register_builtin_control_event_sink_factories()
 
 
 class TestEventBatcherInit:
@@ -933,7 +943,10 @@ class TestExternalControlEventSinks:
 
         assert result is True
         assert sink.received_batches
-        assert get_registered_control_event_sink_factory_names() == ("custom",)
+        assert get_registered_control_event_sink_factory_names() == (
+            "custom",
+            OTEL_CONTROL_EVENT_SINK_NAME,
+        )
 
     def test_named_sink_factory_failure_disables_delivery_without_raising(self):
         register_control_event_sink_factory(
@@ -1021,8 +1034,8 @@ class TestInitObservability:
             obs._batcher = old_batcher
             obs._event_sink = old_sink
 
-    def test_enabled_override_does_not_mutate_global_settings(self):
-        """Test that enabled= only affects the current init call."""
+    def test_enabled_override_updates_global_settings(self):
+        """Test that enabled= persists the observability setting."""
         import agent_control.observability as obs
 
         old_batcher = obs._batcher
@@ -1037,7 +1050,7 @@ class TestInitObservability:
             result = init_observability(enabled=False)
 
             assert result is None
-            assert get_settings().observability_enabled is True
+            assert get_settings().observability_enabled is False
             assert is_observability_enabled() is False
         finally:
             configure_settings(**original_settings)
@@ -1187,6 +1200,20 @@ def test_sdk_settings_parse_observability_sink_env(monkeypatch) -> None:
     assert settings.observability_enabled is True
     assert settings.observability_sink_name == "galileo"
     assert settings.observability_sink_config == {"project": "demo"}
+
+
+def test_sdk_settings_parse_otel_env(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_OTEL_ENABLED", "true")
+    monkeypatch.setenv("AGENT_CONTROL_OTEL_ENDPOINT", "http://collector:4318/v1/traces")
+    monkeypatch.setenv("AGENT_CONTROL_OTEL_HEADERS", '{"authorization":"Bearer demo"}')
+    monkeypatch.setenv("AGENT_CONTROL_OTEL_SERVICE_NAME", "agent-control-tests")
+
+    settings = SDKSettings()
+
+    assert settings.otel_enabled is True
+    assert settings.otel_endpoint == "http://collector:4318/v1/traces"
+    assert settings.otel_headers == {"authorization": "Bearer demo"}
+    assert settings.otel_service_name == "agent-control-tests"
 
 
 class TestShutdownObservability:

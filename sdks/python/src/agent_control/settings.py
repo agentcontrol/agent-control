@@ -70,6 +70,22 @@ class SDKSettings(BaseSettings):
         default_factory=dict,
         description="JSON config payload passed to the selected control-event sink",
     )
+    otel_enabled: bool = Field(
+        default=False,
+        description="Enable the built-in OpenTelemetry control-event sink",
+    )
+    otel_endpoint: str | None = Field(
+        default=None,
+        description="OTLP HTTP endpoint for OTEL control-event export",
+    )
+    otel_headers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Headers to pass to the OTLP exporter",
+    )
+    otel_service_name: str = Field(
+        default="agent-control-sdk",
+        description="service.name resource for OTEL control-event spans",
+    )
     batch_size: int = Field(
         default=100,
         ge=1,

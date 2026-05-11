@@ -2,6 +2,53 @@
 
 <!-- version list -->
 
+## v7.7.0 (2026-05-07)
+
+### Bug Fixes
+
+- **server**: Add httpx to runtime dependencies
+  ([#205](https://github.com/agentcontrol/agent-control/pull/205),
+  [`b4dff6f`](https://github.com/agentcontrol/agent-control/commit/b4dff6f08d6cc35879b119c3d4218676253f22ae))
+
+### Chores
+
+- **release**: Ts sdk v2.5.0 [skip ci]
+  ([`7da7bf1`](https://github.com/agentcontrol/agent-control/commit/7da7bf1f700f192dd21c0b08db041d7aa8d46e4f))
+
+### Continuous Integration
+
+- **server**: Publish agent-control-server to PyPI
+  ([#210](https://github.com/agentcontrol/agent-control/pull/210),
+  [`3b286ec`](https://github.com/agentcontrol/agent-control/commit/3b286ecaea19e87ac3d7300daba7ba3f79634879))
+
+### Features
+
+- **sdk**: Add config driven sink selection
+  ([#176](https://github.com/agentcontrol/agent-control/pull/176),
+  [`64c169f`](https://github.com/agentcontrol/agent-control/commit/64c169f15c0506043a76cd80fdc057bb3798fb32))
+
+- **sdk-ts**: Expose debug logger option
+  ([`66aba97`](https://github.com/agentcontrol/agent-control/commit/66aba97435dc2e4cdbcd43f37957384811c61ad1))
+
+- **server**: Bundle migrations in wheel and add agent-control-migrate
+  ([#209](https://github.com/agentcontrol/agent-control/pull/209),
+  [`8c5c35e`](https://github.com/agentcontrol/agent-control/commit/8c5c35ecbdc6b8d0fa98c8b7d3596a54ece022ad))
+
+- **server**: Namespace scoping and control bindings
+  ([#203](https://github.com/agentcontrol/agent-control/pull/203),
+  [`15ed4fd`](https://github.com/agentcontrol/agent-control/commit/15ed4fd2bb90bba58c954bb1fc573639efdc30ef))
+
+- **server**: Pluggable request-auth framework (management + runtime)
+  ([#204](https://github.com/agentcontrol/agent-control/pull/204),
+  [`fae0ad3`](https://github.com/agentcontrol/agent-control/commit/fae0ad31dd53f75a8a332ad887c5ac63f2b847d9))
+
+### Refactoring
+
+- **models**: Share control definition runtime fields
+  ([#202](https://github.com/agentcontrol/agent-control/pull/202),
+  [`09653e3`](https://github.com/agentcontrol/agent-control/commit/09653e38cfc2ad9986ff308affc7493f0e255566))
+
+
 ## v7.6.0 (2026-04-22)
 
 ### Bug Fixes

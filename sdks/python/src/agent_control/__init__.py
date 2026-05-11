@@ -112,6 +112,7 @@ from .observability import (
     unregister_control_event_sink_factory,
     write_events,
 )
+from .otel_sink import control_event_to_otel_span
 from .tracing import (
     get_current_span_id,
     get_current_trace_id,
@@ -1421,6 +1422,7 @@ __all__ = [
     "write_events",
     "shutdown_observability",
     "is_observability_enabled",
+    "control_event_to_otel_span",
     "get_event_batcher",
     "get_event_sink",
     "get_registered_control_event_sink_factory_names",
