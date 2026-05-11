@@ -14,7 +14,7 @@ export type RuntimeTokenExchangeRequest = {
    */
   targetId: string;
   /**
-   * Opaque target kind (e.g., ``log_stream``).
+   * Opaque target kind (e.g., ``session``).
    */
   targetType: string;
 };
