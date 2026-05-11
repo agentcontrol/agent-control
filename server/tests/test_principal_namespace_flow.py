@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from typing import Any
-
-from fastapi import FastAPI, Request
-from fastapi.testclient import TestClient
 
 from agent_control_server.auth_framework import (
     Operation,
     Principal,
     set_authorizer,
 )
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
 
 from .utils import VALID_CONTROL_PAYLOAD
 
@@ -139,3 +139,30 @@ def test_duplicate_control_names_allowed_across_principal_namespaces(app: FastAP
 
     assert ns_a.put("/api/v1/controls", json=payload).status_code == 200
     assert ns_b.put("/api/v1/controls", json=payload).status_code == 200
+
+
+def test_agent_scoped_evaluator_validation_uses_principal_namespace(app: FastAPI) -> None:
+    set_authorizer(HeaderNamespaceAuthorizer())
+
+    ns_a = _client(app, "ns-a")
+    ns_b = _client(app, "ns-b")
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+
+    register_b = ns_b.post(
+        "/api/v1/agents/initAgent",
+        json={
+            **_agent_payload(agent_name),
+            "evaluators": [{"name": "custom", "config_schema": {"type": "object"}}],
+        },
+    )
+    assert register_b.status_code == 200, register_b.text
+
+    control_data = deepcopy(VALID_CONTROL_PAYLOAD)
+    control_data["condition"]["evaluator"] = {
+        "name": f"{agent_name}:custom",
+        "config": {},
+    }
+
+    resp = ns_a.post("/api/v1/controls/validate", json={"data": control_data})
+    assert resp.status_code == 404, resp.text
+    assert resp.json()["detail"] == f"Agent '{agent_name}' not found"
