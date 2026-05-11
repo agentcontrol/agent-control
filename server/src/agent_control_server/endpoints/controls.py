@@ -195,12 +195,17 @@ async def _render_and_validate_template_input(
     template_input: TemplateControlInput,
     *,
     db: AsyncSession,
+    namespace_key: str,
     enabled: bool = True,
 ) -> ControlDefinition:
     """Render a template-backed input and validate evaluator config."""
     rendered = render_template_control_input(template_input, enabled=enabled)
     try:
-        await _validate_control_definition(rendered.control, db)
+        await _validate_control_definition(
+            rendered.control,
+            db,
+            namespace_key=namespace_key,
+        )
     except APIValidationError as exc:
         raise remap_template_api_error(
             exc,
@@ -214,6 +219,7 @@ async def _materialize_control_input(
     control_input: ControlDefinition | TemplateControlInput,
     *,
     db: AsyncSession,
+    namespace_key: str,
     current_payload: object | None = None,
     control_id: int | None = None,
 ) -> ControlDefinition | UnrenderedTemplateControl:
@@ -226,6 +232,7 @@ async def _materialize_control_input(
             return await _render_and_validate_template_input(
                 control_input,
                 db=db,
+                namespace_key=namespace_key,
                 enabled=enabled,
             )
 
@@ -244,6 +251,7 @@ async def _materialize_control_input(
             return await _render_and_validate_template_input(
                 control_input,
                 db=db,
+                namespace_key=namespace_key,
                 enabled=enabled,
             )
 
@@ -262,12 +270,19 @@ async def _materialize_control_input(
             raise RuntimeError("control_id is required for template-backed raw updates")
         raise _template_backed_raw_update_conflict(control_id)
 
-    await _validate_control_definition(control_input, db)
+    await _validate_control_definition(
+        control_input,
+        db,
+        namespace_key=namespace_key,
+    )
     return control_input
 
 
 async def _validate_control_definition(
-    control_def: ControlDefinition, db: AsyncSession
+    control_def: ControlDefinition,
+    db: AsyncSession,
+    *,
+    namespace_key: str,
 ) -> None:
     """Validate evaluator config for definitions referencing known global evaluators.
 
@@ -296,7 +311,10 @@ async def _validate_control_definition(
             agent_data = agent_data_by_name.get(agent_namespace)
             if agent_data is None:
                 agent_result = await db.execute(
-                    select(Agent).where(Agent.name == agent_namespace)
+                    select(Agent).where(
+                        Agent.name == agent_namespace,
+                        Agent.namespace_key == namespace_key,
+                    )
                 )
                 agent = agent_result.scalars().first()
                 if agent is None:
@@ -447,7 +465,7 @@ async def _validate_control_definition(
 async def render_control_template(
     request: RenderControlTemplateRequest,
     db: AsyncSession = Depends(get_async_db),
-    _principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> RenderControlTemplateResponse:
     """Render a template-backed control without persisting it."""
     control_def = await _render_and_validate_template_input(
@@ -456,6 +474,7 @@ async def render_control_template(
             template_values=request.template_values,
         ),
         db=db,
+        namespace_key=principal.namespace_key,
         enabled=True,
     )
     return RenderControlTemplateResponse(control=control_def)
@@ -504,7 +523,11 @@ async def create_control(
             hint="Choose a different name or update the existing control.",
         )
 
-    control_def = await _materialize_control_input(request.data, db=db)
+    control_def = await _materialize_control_input(
+        request.data,
+        db=db,
+        namespace_key=namespace_key,
+    )
     control_data = _serialize_control_data(control_def)
 
     control = control_service.create_control(
@@ -751,6 +774,7 @@ async def set_control_data(
     control_def = await _materialize_control_input(
         request.data,
         db=db,
+        namespace_key=principal.namespace_key,
         current_payload=control.data,
         control_id=control_id,
     )
@@ -791,7 +815,7 @@ async def set_control_data(
 async def validate_control_data(
     request: ValidateControlDataRequest,
     db: AsyncSession = Depends(get_async_db),
-    _principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> ValidateControlDataResponse:
     """
     Validate control configuration data without saving it.
@@ -805,7 +829,11 @@ async def validate_control_data(
     """
     # Validate mirrors create: complete template values trigger a full render,
     # incomplete values validate structure only (matching unrendered create).
-    await _materialize_control_input(request.data, db=db)
+    await _materialize_control_input(
+        request.data,
+        db=db,
+        namespace_key=principal.namespace_key,
+    )
     return ValidateControlDataResponse(success=True)
 
 
