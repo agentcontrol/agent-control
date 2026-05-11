@@ -9,10 +9,9 @@ import threading
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 import agent_control
 import agent_control.observability as obs_mod
+import pytest
 from agent_control._state import state
 from agent_control.observability import EventBatcher
 
@@ -64,6 +63,7 @@ class TestShutdownSync:
         state.server_controls = [{"name": "test"}]
         state.server_url = "http://localhost:8000"
         state.api_key = "key"
+        state.api_key_header = "X-Custom-API-Key"
 
         agent_control.shutdown()
 
@@ -72,6 +72,7 @@ class TestShutdownSync:
         assert state.server_controls is None
         assert state.server_url is None
         assert state.api_key is None
+        assert state.api_key_header is None
 
     def test_shutdown_idempotent(self):
         agent_control.shutdown()
