@@ -29,20 +29,21 @@ from agent_control_models.server import (
     SetPolicyResponse,
     StepKey,
 )
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth_framework import Operation, Principal, require_operation
+from ..auth_framework import Operation, Principal, get_authorizer, require_operation
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
     BadRequestError,
     ConflictError,
     DatabaseError,
+    ForbiddenError,
     NotFoundError,
 )
 from ..logging_utils import get_logger
@@ -83,6 +84,94 @@ _MAX_PAGINATION_LIMIT = 100
 _CORRUPTED_AGENT_DATA_MESSAGE = "Stored agent data is corrupted and cannot be parsed."
 
 type StepKeyTuple = tuple[str, str]
+
+
+def _complete_target_context(
+    target_type: object | None,
+    target_id: object | None,
+) -> dict[str, str] | None:
+    """Return target context only when both halves are present strings."""
+    if not isinstance(target_type, str) or not isinstance(target_id, str):
+        return None
+    if not target_type or not target_id:
+        return None
+    return {"target_type": target_type, "target_id": target_id}
+
+
+async def _init_agent_target_context(request: Request) -> dict[str, str] | None:
+    """Extract optional target context from an ``initAgent`` body."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001  malformed JSON, defer to endpoint validation
+        return None
+    if not isinstance(body, dict):
+        return None
+    return _complete_target_context(body.get("target_type"), body.get("target_id"))
+
+
+def _agent_controls_target_context(request: Request) -> dict[str, str] | None:
+    """Extract optional target context from ``GET /agents/{name}/controls``."""
+    return _complete_target_context(
+        request.query_params.get("target_type"),
+        request.query_params.get("target_id"),
+    )
+
+
+async def _authorize_target_read_if_present(
+    request: Request,
+    context: dict[str, str] | None,
+) -> Principal | None:
+    """Require target read authorization before returning target-merged controls.
+
+    Agent endpoints that accept optional target context have two separate
+    authorization decisions:
+
+    - the endpoint operation itself (for example, ``agents.create``), whose
+      result is exposed to the route as ``principal``;
+    - the target binding read (``control_bindings.read``), whose result is
+      exposed as ``target_principal``.
+
+    Keeping the results separate lets the route verify that the caller's
+    namespace and the target's resolved namespace agree before merging
+    target-bound controls into the response.
+    """
+    if context is None:
+        return None
+    return await get_authorizer(Operation.CONTROL_BINDINGS_READ).authorize(
+        request,
+        Operation.CONTROL_BINDINGS_READ,
+        context,
+    )
+
+
+async def _init_agent_target_principal(request: Request) -> Principal | None:
+    return await _authorize_target_read_if_present(
+        request,
+        await _init_agent_target_context(request),
+    )
+
+
+async def _agent_controls_target_principal(request: Request) -> Principal | None:
+    return await _authorize_target_read_if_present(
+        request,
+        _agent_controls_target_context(request),
+    )
+
+
+def _ensure_target_principal_matches_namespace(
+    principal: Principal,
+    target_principal: Principal | None,
+) -> None:
+    """Fail closed if the target authorization resolves to a different namespace."""
+    if target_principal is None:
+        return
+    if target_principal.namespace_key == principal.namespace_key:
+        return
+    raise ForbiddenError(
+        error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+        detail="Target authorization resolved to a different namespace.",
+        hint="Ensure the credential is scoped to the requested target and namespace.",
+    )
 
 
 # =============================================================================
@@ -445,6 +534,7 @@ async def init_agent(
     request: InitAgentRequest,
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.AGENTS_CREATE)),
+    target_principal: Principal | None = Depends(_init_agent_target_principal),
 ) -> InitAgentResponse:
     """
     Register a new agent or update an existing agent's steps and metadata.
@@ -468,12 +558,14 @@ async def init_agent(
     Args:
         request: Agent metadata and step schemas
         db: Database session (injected)
-        principal: Authorized request principal
+        principal: Authorized request principal for the agent create operation
+        target_principal: Optional principal from the target binding read check
 
     Returns:
         InitAgentResponse with created flag and the effective controls
     """
     namespace_key = principal.namespace_key
+    _ensure_target_principal_matches_namespace(principal, target_principal)
 
     # Check for evaluator name collisions with built-in evaluators
     builtin_names = _get_builtin_evaluator_names()
@@ -1493,6 +1585,7 @@ async def list_agent_controls(
     ),
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.AGENTS_READ)),
+    target_principal: Principal | None = Depends(_agent_controls_target_principal),
 ) -> AgentControlsResponse:
     """
     List protection controls effective for an agent.
@@ -1517,7 +1610,8 @@ async def list_agent_controls(
         target_type: Optional opaque target kind (paired with target_id)
         target_id: Optional opaque target identifier (paired with target_type)
         db: Database session (injected)
-        principal: Authorized request principal
+        principal: Authorized request principal for the agent read operation
+        target_principal: Optional principal from the target binding read check
 
     Returns:
         AgentControlsResponse with controls matching the requested state filters
@@ -1527,6 +1621,7 @@ async def list_agent_controls(
         HTTPException 404: Agent not found
     """
     namespace_key = principal.namespace_key
+    _ensure_target_principal_matches_namespace(principal, target_principal)
 
     if (target_type is None) != (target_id is None):
         raise BadRequestError(

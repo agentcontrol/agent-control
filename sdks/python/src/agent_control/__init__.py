@@ -160,6 +160,7 @@ class _RefreshContext:
     agent_name: str
     server_url: str
     api_key: str | None
+    api_key_header: str | None
     target_type: str | None
     target_id: str | None
 
@@ -221,6 +222,7 @@ def _snapshot_refresh_context() -> _RefreshContext:
         agent = state.current_agent
         server_url = state.server_url
         api_key = state.api_key
+        api_key_header = state.api_key_header
         target_type = state.target_type
         target_id = state.target_id
 
@@ -234,6 +236,7 @@ def _snapshot_refresh_context() -> _RefreshContext:
         agent_name=agent.agent_name,
         server_url=server_url,
         api_key=api_key,
+        api_key_header=api_key_header,
         target_type=target_type,
         target_id=target_id,
     )
@@ -244,6 +247,7 @@ async def _fetch_controls_for_context_async(context: _RefreshContext) -> list[di
     async with AgentControlClient(
         base_url=context.server_url,
         api_key=context.api_key,
+        api_key_header=context.api_key_header,
     ) as client:
         response = await agents.list_agent_controls(
             client,
@@ -430,6 +434,7 @@ def init(
     agent_version: str | None = None,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
     controls_file: str | None = None,
     steps: list[StepSchemaDict] | None = None,
     conflict_mode: Literal["strict", "overwrite"] = "overwrite",
@@ -468,6 +473,8 @@ def init(
         server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var
                    or http://localhost:8000)
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
+        api_key_header: Optional HTTP header name for API key authentication
+            (defaults to AGENT_CONTROL_API_KEY_HEADER env var or X-API-Key)
         controls_file: Optional explicit path to controls.yaml (auto-discovered if not provided)
         steps: Optional list of step schemas for registration:
                [{"type": "tool", "name": "search", "input_schema": {...}, "output_schema": {...}}]
@@ -562,6 +569,8 @@ def init(
         state.current_agent = next_agent
         state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
         state.api_key = api_key
+        state.api_key_header = api_key_header
+        state.runtime_token_cache.clear()
         state.target_type = target_type
         state.target_id = target_id
 
@@ -597,7 +606,9 @@ def init(
             assert state.current_agent is not None
 
             async with AgentControlClient(
-                base_url=state.server_url, api_key=state.api_key
+                base_url=state.server_url,
+                api_key=state.api_key,
+                api_key_header=state.api_key_header,
             ) as client:
                 # Check server health first
                 try:
@@ -684,6 +695,7 @@ def init(
     batcher = init_observability(
         server_url=state.server_url,
         api_key=state.api_key,
+        api_key_header=state.api_key_header,
         enabled=observability_enabled,
         sink_name=observability_sink_name,
         sink_config=observability_sink_config,
@@ -715,6 +727,8 @@ def _reset_state() -> None:
         state.server_controls = None
         state.server_url = None
         state.api_key = None
+        state.api_key_header = None
+        state.runtime_token_cache.clear()
         state.target_type = None
         state.target_id = None
 

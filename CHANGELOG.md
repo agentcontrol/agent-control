@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## Unreleased
+
+### Changed
+
+- **sdk**: Strict `runtime_auth_mode="jwt"` evaluation requests now require both
+  `target_type` and `target_id`; missing target context raises an error instead
+  of falling back to API-key auth.
+
 ## v7.7.0 (2026-05-07)
 
 ### Bug Fixes

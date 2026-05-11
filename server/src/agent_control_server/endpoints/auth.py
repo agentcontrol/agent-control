@@ -28,8 +28,10 @@ from ..auth_framework.runtime_token import (
     mint_runtime_token,
 )
 from ..errors import APIError, BadRequestError
+from ..logging_utils import get_logger
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_logger = get_logger(__name__)
 
 
 class RuntimeTokenExchangeRequest(BaseModel):
@@ -38,7 +40,7 @@ class RuntimeTokenExchangeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_type: str = Field(
-        ..., description="Opaque target kind (e.g., ``log_stream``).", min_length=1
+        ..., description="Opaque target kind (e.g., ``session``).", min_length=1
     )
     target_id: str = Field(..., description="Opaque target identifier.", min_length=1)
 
@@ -174,6 +176,19 @@ async def runtime_token_exchange(
             detail=str(exc),
             hint="Check the runtime token configuration.",
         ) from exc
+
+    _logger.info(
+        "Runtime token exchanged",
+        extra={
+            "namespace_key": claims.namespace_key,
+            "actor_id": claims.actor_id,
+            "target_type": claims.target_type,
+            "target_id": claims.target_id,
+            "scopes": list(claims.scopes),
+            "expires_at": claims.expires_at.isoformat(),
+            "jti": claims.jti,
+        },
+    )
 
     return RuntimeTokenExchangeResponse(
         token=token,
