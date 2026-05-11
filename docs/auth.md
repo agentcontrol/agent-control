@@ -120,7 +120,8 @@ Status handling:
 | `403` | Forbidden error. |
 | `404` | Not found error. |
 | `429` | `503` with a rate-limit detail and `Retry-After` hint when present. |
-| Other statuses or malformed JSON | Fail closed with `503` or `502`. |
+| Other statuses or upstream network errors | Fail closed with `503`. |
+| Malformed `200` principal response | Fail closed with `502`. |
 
 ## Runtime JWT Claims
 
