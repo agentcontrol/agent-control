@@ -55,7 +55,7 @@ import { applyApiErrorsToForms } from './utils';
 
 function isTemplateBacked(control: Control): boolean {
   const def = control.control as Record<string, unknown> | undefined;
-  return def?.template != null && def?.template_values != null;
+  return def?.template != null;
 }
 
 const EVALUATOR_CONFIG_HEIGHT = 450;

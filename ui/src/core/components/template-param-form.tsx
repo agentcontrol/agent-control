@@ -139,7 +139,7 @@ export function TemplateParamForm({
   errors,
 }: TemplateParamFormProps) {
   const paramEntries = useMemo(
-    () => Object.entries(template.parameters),
+    () => Object.entries(template.parameters ?? {}),
     [template.parameters]
   );
 
