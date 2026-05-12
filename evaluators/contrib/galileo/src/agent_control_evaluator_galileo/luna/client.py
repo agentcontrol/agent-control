@@ -10,10 +10,12 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
+from typing import Literal
 from uuid import UUID
 
 import httpx
 from agent_control_models import JSONObject, JSONValue
+from pydantic import BaseModel, Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -65,40 +67,37 @@ def _as_float_or_none(value: JSONValue) -> float | None:
     return None
 
 
-@dataclass(frozen=True)
-class ScorerInvokeRequest:
+ScorerStepType = Literal["session", "trace", "span"]
+
+
+class ScorerInvokeRequest(BaseModel):
     """Request payload for Galileo Luna scorer invocation.
 
     Attributes:
-        metric: Preset, registered, or fine-tuned scorer label.
+        step_type: Runtime step shape used by Galileo scorer input normalization.
         input: Optional user/system prompt text.
         output: Optional model response text.
-        luna_model: Optional Luna model override.
+        scorer_label: Preset, registered, or fine-tuned scorer label.
         project_id: Optional Galileo project UUID for project-scoped scorer resolution.
         config: Optional scorer-specific configuration.
     """
 
-    metric: str
-    input: str | None = None
-    output: str | None = None
+    step_type: ScorerStepType = Field(default="span")
+    input: JSONValue = None
+    output: JSONValue = None
+    scorer_label: str = Field(min_length=1)
     project_id: str | UUID | None = None
-    luna_model: str | None = None
     config: JSONObject | None = None
 
+    @model_validator(mode="after")
+    def ensure_input_or_output(self) -> ScorerInvokeRequest:
+        if self.input is None and self.output is None:
+            raise ValueError("Either input or output must be set.")
+        return self
+
     def to_dict(self) -> JSONObject:
-        """Convert to the public API request shape."""
-        body: JSONObject = {"scorer_label": self.metric}
-        if self.input is not None:
-            body["input"] = self.input
-        if self.output is not None:
-            body["output"] = self.output
-        if self.project_id is not None:
-            body["project_id"] = str(self.project_id)
-        if self.luna_model is not None:
-            body["luna_model"] = self.luna_model
-        if self.config is not None:
-            body["config"] = self.config
-        return body
+        """Convert to the Galileo scorer invoke API request shape."""
+        return self.model_dump(mode="json", exclude_none=True)
 
 
 @dataclass
@@ -239,10 +238,10 @@ class GalileoLunaClient:
         self,
         *,
         metric: str,
-        input: str | None = None,
-        output: str | None = None,
+        input: JSONValue = None,
+        output: JSONValue = None,
+        step_type: ScorerStepType = "span",
         project_id: str | UUID | None = None,
-        luna_model: str | None = None,
         config: JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
@@ -253,8 +252,8 @@ class GalileoLunaClient:
             metric: Preset, registered, or fine-tuned scorer label.
             input: Optional user/system prompt text.
             output: Optional model response text.
+            step_type: Runtime step shape used by Galileo scorer input normalization.
             project_id: Optional Galileo project UUID for project-scoped scorer resolution.
-            luna_model: Optional Luna model override.
             config: Optional scorer-specific configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
@@ -272,11 +271,11 @@ class GalileoLunaClient:
             raise ValueError("At least one of input or output must be provided.")
 
         request_body = ScorerInvokeRequest(
-            metric=metric,
+            scorer_label=metric,
             input=input,
             output=output,
+            step_type=step_type,
             project_id=project_id,
-            luna_model=luna_model,
             config=config,
         ).to_dict()
         endpoint, request_headers = self._endpoint_and_headers(project_id, headers)

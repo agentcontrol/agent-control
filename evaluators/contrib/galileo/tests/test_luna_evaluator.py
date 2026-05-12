@@ -31,7 +31,6 @@ class TestLunaEvaluatorConfig:
             project_id="12345678-1234-5678-1234-567812345678",
             threshold=0.7,
             operator="gte",
-            luna_model="luna-2",
             config={"temperature": 0},
         )
 
@@ -40,7 +39,6 @@ class TestLunaEvaluatorConfig:
         assert str(config.project_id) == "12345678-1234-5678-1234-567812345678"
         assert config.threshold == 0.7
         assert config.operator == "gte"
-        assert config.luna_model == "luna-2"
         assert config.scorer_config == {"temperature": 0}
 
     def test_numeric_operator_requires_numeric_threshold(self) -> None:
@@ -53,6 +51,33 @@ class TestLunaEvaluatorConfig:
 
 class TestGalileoLunaClient:
     """Tests for the GalileoLunaClient HTTP contract."""
+
+    def test_scorer_invoke_request_matches_orbit_schema_shape(self) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeRequest
+
+        # Given: a scorer request with project context and scorer config
+        request = ScorerInvokeRequest(
+            scorer_label="toxicity",
+            input={"messages": [{"role": "user", "content": "hello"}]},
+            project_id="12345678-1234-5678-1234-567812345678",
+            config={"top_k": 1},
+        )
+
+        # Then: the serialized payload uses the Orbit scorer invoke fields
+        assert request.to_dict() == {
+            "step_type": "span",
+            "input": {"messages": [{"role": "user", "content": "hello"}]},
+            "scorer_label": "toxicity",
+            "project_id": "12345678-1234-5678-1234-567812345678",
+            "config": {"top_k": 1},
+        }
+
+    def test_scorer_invoke_request_requires_input_or_output(self) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeRequest
+
+        # Given/When/Then: the request mirrors Orbit validation
+        with pytest.raises(ValidationError, match="Either input or output must be set"):
+            ScorerInvokeRequest(scorer_label="toxicity")
 
     def test_client_uses_protect_api_url_derivation(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
@@ -128,7 +153,6 @@ class TestGalileoLunaClient:
                 input="user prompt",
                 output="model answer",
                 project_id="12345678-1234-5678-1234-567812345678",
-                luna_model="luna-2",
                 config={"top_k": 1},
             )
         finally:
@@ -142,7 +166,7 @@ class TestGalileoLunaClient:
             "output": "model answer",
             "scorer_label": "toxicity",
             "project_id": "12345678-1234-5678-1234-567812345678",
-            "luna_model": "luna-2",
+            "step_type": "span",
             "config": {"top_k": 1},
         }
         assert "stage_name" not in captured["body"]
@@ -193,6 +217,7 @@ class TestGalileoLunaClient:
             "output": "model answer",
             "scorer_label": "toxicity",
             "project_id": "12345678-1234-5678-1234-567812345678",
+            "step_type": "span",
         }
         headers = captured["headers"]
         assert isinstance(headers, dict)
@@ -301,7 +326,6 @@ class TestLunaEvaluator:
             input="user prompt",
             output="model answer",
             project_id=evaluator.config.project_id,
-            luna_model=None,
             config=None,
             timeout=5.0,
         )
@@ -335,7 +359,6 @@ class TestLunaEvaluator:
             input="hello",
             output=None,
             project_id=None,
-            luna_model=None,
             config=None,
             timeout=10.0,
         )

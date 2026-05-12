@@ -36,7 +36,6 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         project_id: Optional Galileo project UUID for project-scoped scorer resolution.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
-        luna_model: Optional Luna model override sent to Galileo.
         scorer_config: Optional scorer-specific config sent as ``config``.
         timeout_ms: Request timeout in milliseconds.
         on_error: Error policy: allow=fail open, deny=fail closed.
@@ -58,7 +57,6 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         default="gte",
         description="Local comparison operator applied to the raw Luna score.",
     )
-    luna_model: str | None = Field(default=None, description="Optional Luna model override")
     scorer_config: JSONObject | None = Field(
         default=None,
         alias="config",

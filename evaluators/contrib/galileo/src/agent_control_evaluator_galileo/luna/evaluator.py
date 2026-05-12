@@ -199,7 +199,6 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 input=input_text if _has_text(input_text) else None,
                 output=output_text if _has_text(output_text) else None,
                 project_id=self.config.project_id,
-                luna_model=self.config.luna_model,
                 config=self.config.scorer_config,
                 timeout=self.get_timeout_seconds(),
             )
