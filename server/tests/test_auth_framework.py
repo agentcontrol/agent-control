@@ -742,7 +742,11 @@ async def test_local_jwt_provider_returns_target_bound_principal():
     provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
     request = _build_request(headers={"Authorization": f"Bearer {token}"})
 
-    principal = await provider.authorize(request, Operation.RUNTIME_USE)
+    principal = await provider.authorize(
+        request,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-42"},
+    )
 
     assert principal.target_type == "log_stream"
     assert principal.target_id == "ls-42"
@@ -815,8 +819,37 @@ async def test_local_jwt_provider_carries_token_namespace_to_principal():
     provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
     request = _build_request(headers={"Authorization": f"Bearer {token}"})
 
-    principal = await provider.authorize(request, Operation.RUNTIME_USE)
+    principal = await provider.authorize(
+        request,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls"},
+    )
     assert principal.namespace_key == "org-7"
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_rejects_missing_target_context():
+    """A target-bound runtime token requires matching request target context."""
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.auth_framework.runtime_token import (
+        mint_runtime_token,
+    )
+    from agent_control_server.errors import ForbiddenError
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="a",
+        target_type="log_stream",
+        target_id="bound-target",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
+    request = _build_request(headers={"Authorization": f"Bearer {token}"})
+
+    with pytest.raises(ForbiddenError, match="target_type does not match"):
+        await provider.authorize(request, Operation.RUNTIME_USE)
 
 
 @pytest.mark.asyncio

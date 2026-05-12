@@ -129,6 +129,80 @@ def test_principal_namespace_scopes_management_and_runtime(app: FastAPI) -> None
     assert eval_b.json()["is_safe"] is True
 
 
+def test_principal_namespace_scopes_cross_namespace_writes(app: FastAPI) -> None:
+    set_authorizer(HeaderNamespaceAuthorizer())
+
+    ns_a = _client(app, "ns-a")
+    ns_b = _client(app, "ns-b")
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+
+    assert ns_a.post("/api/v1/agents/initAgent", json=_agent_payload(agent_name)).status_code == 200
+    assert ns_b.post("/api/v1/agents/initAgent", json=_agent_payload(agent_name)).status_code == 200
+
+    create_control = ns_a.put(
+        "/api/v1/controls",
+        json={
+            "name": f"control-{uuid.uuid4().hex[:12]}",
+            "data": VALID_CONTROL_PAYLOAD,
+        },
+    )
+    assert create_control.status_code == 200, create_control.text
+    control_id = int(create_control.json()["control_id"])
+
+    policy = ns_a.put(
+        "/api/v1/policies",
+        json={"name": f"policy-{uuid.uuid4().hex[:12]}"},
+    )
+    assert policy.status_code == 200, policy.text
+    policy_id = int(policy.json()["policy_id"])
+
+    binding = ns_a.put(
+        "/api/v1/control-bindings/by-key",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+            "enabled": True,
+        },
+    )
+    assert binding.status_code == 200, binding.text
+
+    assert ns_b.patch(f"/api/v1/controls/{control_id}", json={"enabled": False}).status_code == 404
+    assert (
+        ns_b.put(
+            f"/api/v1/controls/{control_id}/data",
+            json={"data": VALID_CONTROL_PAYLOAD},
+        ).status_code
+        == 404
+    )
+    assert (
+        ns_b.put(
+            "/api/v1/control-bindings/by-key",
+            json={
+                "target_type": "env",
+                "target_id": "prod",
+                "control_id": control_id,
+                "enabled": False,
+            },
+        ).status_code
+        == 404
+    )
+    delete_binding = ns_b.post(
+        "/api/v1/control-bindings/by-key:delete",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+        },
+    )
+    assert delete_binding.status_code == 200, delete_binding.text
+    assert delete_binding.json()["deleted"] is False
+    assert ns_a.get("/api/v1/control-bindings").json()["bindings"]
+
+    assert ns_b.post(f"/api/v1/agents/{agent_name}/policies/{policy_id}").status_code == 404
+    assert ns_b.post(f"/api/v1/agents/{agent_name}/controls/{control_id}").status_code == 404
+
+
 def test_duplicate_control_names_allowed_across_principal_namespaces(app: FastAPI) -> None:
     set_authorizer(HeaderNamespaceAuthorizer())
 

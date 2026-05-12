@@ -134,13 +134,14 @@ class ControlService:
         self,
         control_id: int,
         *,
-        namespace_key: str | None = None,
+        namespace_key: str,
         for_update: bool = False,
     ) -> Control:
         """Load any control row, including soft-deleted controls."""
-        stmt = select(Control).where(Control.id == control_id)
-        if namespace_key is not None:
-            stmt = stmt.where(Control.namespace_key == namespace_key)
+        stmt = select(Control).where(
+            Control.id == control_id,
+            Control.namespace_key == namespace_key,
+        )
         if for_update:
             stmt = stmt.with_for_update()
         result = await self._db.execute(stmt)

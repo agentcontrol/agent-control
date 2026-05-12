@@ -218,7 +218,8 @@ def _build_default_provider() -> RequestAuthorizer:
             )
         )
     raise RuntimeError(
-        f"Unknown {_MODE_ENV}={mode!r}; expected 'none', 'api_key', or 'http_upstream'."
+        f"Unknown {_MODE_ENV}={mode!r}; expected 'none', 'api_key', 'header', "
+        "or 'http_upstream'."
     )
 
 
@@ -259,7 +260,8 @@ def _resolve_runtime_mode() -> str:
     if mode == "jwt":
         return mode
     raise RuntimeError(
-        f"Unknown {_RUNTIME_MODE_ENV}={mode!r}; expected 'none', 'api_key', or 'jwt'."
+        f"Unknown {_RUNTIME_MODE_ENV}={mode!r}; expected 'none', 'api_key', "
+        "'header', or 'jwt'."
     )
 
 

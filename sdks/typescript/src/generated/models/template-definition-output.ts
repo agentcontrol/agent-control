@@ -9,10 +9,6 @@ import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
-  JsonValueOutput1,
-  JsonValueOutput1$inboundSchema,
-} from "./json-value-output1.js";
-import {
   TemplateParameterDefinition,
   TemplateParameterDefinition$inboundSchema,
 } from "./template-parameter-definition.js";
@@ -21,7 +17,10 @@ import {
  * Reusable template with typed parameters and a JSON definition template.
  */
 export type TemplateDefinitionOutput = {
-  definitionTemplate: JsonValueOutput1 | null;
+  /**
+   * Any JSON value
+   */
+  definitionTemplate: any;
   /**
    * Metadata describing the template itself
    */
@@ -38,7 +37,7 @@ export const TemplateDefinitionOutput$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    definition_template: types.nullable(JsonValueOutput1$inboundSchema),
+    definition_template: z.any(),
     description: z.optional(z.nullable(types.string())),
     parameters: types.optional(
       z.record(z.string(), TemplateParameterDefinition$inboundSchema),

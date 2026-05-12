@@ -5,11 +5,6 @@
 import * as z from "zod/v4-mini";
 import { remap as remap$ } from "../lib/primitives.js";
 import {
-  JsonValueInput1,
-  JsonValueInput1$Outbound,
-  JsonValueInput1$outboundSchema,
-} from "./json-value-input1.js";
-import {
   TemplateParameterDefinition,
   TemplateParameterDefinition$Outbound,
   TemplateParameterDefinition$outboundSchema,
@@ -19,7 +14,10 @@ import {
  * Reusable template with typed parameters and a JSON definition template.
  */
 export type TemplateDefinitionInput = {
-  definitionTemplate: JsonValueInput1 | null;
+  /**
+   * Any JSON value
+   */
+  definitionTemplate: any;
   /**
    * Metadata describing the template itself
    */
@@ -32,7 +30,7 @@ export type TemplateDefinitionInput = {
 
 /** @internal */
 export type TemplateDefinitionInput$Outbound = {
-  definition_template: JsonValueInput1$Outbound | null;
+  definition_template: any;
   description?: string | null | undefined;
   parameters?:
     | { [k: string]: TemplateParameterDefinition$Outbound }
@@ -45,7 +43,7 @@ export const TemplateDefinitionInput$outboundSchema: z.ZodMiniType<
   TemplateDefinitionInput
 > = z.pipe(
   z.object({
-    definitionTemplate: z.nullable(JsonValueInput1$outboundSchema),
+    definitionTemplate: z.any(),
     description: z.optional(z.nullable(z.string())),
     parameters: z.optional(
       z.record(z.string(), TemplateParameterDefinition$outboundSchema),
