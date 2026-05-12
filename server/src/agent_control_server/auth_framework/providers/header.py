@@ -48,6 +48,9 @@ DEFAULT_OPERATION_ACCESS: dict[Operation, AccessLevel] = {
     Operation.AGENTS_READ: AccessLevel.AUTHENTICATED,
     Operation.AGENTS_CREATE: AccessLevel.AUTHENTICATED,
     Operation.AGENTS_UPDATE: AccessLevel.ADMIN,
+    Operation.EVALUATORS_READ: AccessLevel.AUTHENTICATED,
+    Operation.OBSERVABILITY_READ: AccessLevel.AUTHENTICATED,
+    Operation.OBSERVABILITY_WRITE: AccessLevel.AUTHENTICATED,
     Operation.RUNTIME_TOKEN_EXCHANGE: AccessLevel.AUTHENTICATED,
     Operation.RUNTIME_USE: AccessLevel.AUTHENTICATED,
 }

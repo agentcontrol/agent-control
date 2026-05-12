@@ -55,6 +55,9 @@ class Operation(StrEnum):
     AGENTS_READ = "agents.read"
     AGENTS_CREATE = "agents.create"
     AGENTS_UPDATE = "agents.update"
+    EVALUATORS_READ = "evaluators.read"
+    OBSERVABILITY_READ = "observability.read"
+    OBSERVABILITY_WRITE = "observability.write"
     RUNTIME_USE = "runtime.use"
 
 
@@ -109,8 +112,7 @@ class RequestAuthorizer(Protocol):
         request: Request,
         operation: Operation,
         context: dict[str, Any] | None = None,
-    ) -> Principal:
-        ...
+    ) -> Principal: ...
 
 
 _default_authorizer: RequestAuthorizer | None = None

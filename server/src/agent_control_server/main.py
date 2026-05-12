@@ -17,7 +17,7 @@ from fastapi.openapi.utils import get_openapi
 from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from . import __version__ as server_version
-from .auth import get_api_key_from_header, require_api_key
+from .auth import get_api_key_from_header
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal
 from .endpoints.agents import router as agent_router
@@ -314,17 +314,16 @@ app.include_router(
     dependencies=[Depends(get_api_key_from_header)],
 )
 
-# Evaluator discovery still uses the local credential dependency.
 app.include_router(
     evaluator_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 
-# Observability routes (already has auth dependency in router)
 app.include_router(
     observability_router,
     prefix=api_v1_prefix,
+    dependencies=[Depends(get_api_key_from_header)],
 )
 
 # System routes (config, login, logout) - no auth required

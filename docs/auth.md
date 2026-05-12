@@ -17,6 +17,9 @@ policies.update
 agents.read
 agents.create
 agents.update
+evaluators.read
+observability.read
+observability.write
 control_bindings.read
 control_bindings.write
 runtime.token_exchange
