@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 from agent_control_server import main as main_module
 from agent_control_server.config import observability_settings, settings
 from agent_control_server.main import lifespan
@@ -8,8 +11,6 @@ from agent_control_server.observability.sinks import (
     register_control_event_sink_factory,
     unregister_control_event_sink_factory,
 )
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 
 def test_lifespan_initializes_observability_when_enabled(monkeypatch) -> None:
@@ -156,11 +157,22 @@ def test_lifespan_skips_observability_when_disabled(monkeypatch) -> None:
         assert not hasattr(app.state, "event_ingestor")
 
 
-def test_custom_openapi_replaces_jsonvalue(monkeypatch) -> None:
-    # Given: a custom openapi generator that includes JSONValue
+def test_custom_openapi_replaces_jsonvalue_variants(monkeypatch) -> None:
+    # Given: a custom openapi generator that includes Pydantic JSONValue schemas
+    json_value_schema_names = (
+        "JSONValue",
+        "JSONValue-Input",
+        "JSONValue-Output",
+        "JsonValue",
+        "JsonValue-Input",
+        "JsonValue-Output",
+    )
+
     def fake_get_openapi(*, title, version, description, routes):
         return {
-            "components": {"schemas": {"JSONValue": {"type": "object"}}},
+            "components": {
+                "schemas": {name: {"type": "object"} for name in json_value_schema_names}
+            },
             "info": {"title": title, "version": version, "description": description},
             "paths": {},
         }
@@ -171,8 +183,10 @@ def test_custom_openapi_replaces_jsonvalue(monkeypatch) -> None:
     # When: generating openapi
     schema = main_module.app.openapi()
 
-    # Then: JSONValue is replaced with safe description
-    assert schema["components"]["schemas"]["JSONValue"]["description"] == "Any JSON value"
+    # Then: JSONValue schemas are replaced with a non-recursive schema
+    schemas = schema["components"]["schemas"]
+    for schema_name in json_value_schema_names:
+        assert schemas[schema_name] == {"description": "Any JSON value"}
 
 
 def test_custom_openapi_is_cached(monkeypatch) -> None:

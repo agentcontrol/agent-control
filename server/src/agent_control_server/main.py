@@ -334,6 +334,16 @@ app.include_router(
 )
 
 
+JSON_VALUE_SCHEMA_NAMES = (
+    "JSONValue",
+    "JSONValue-Input",
+    "JSONValue-Output",
+    "JsonValue",
+    "JsonValue-Input",
+    "JsonValue-Output",
+)
+
+
 # Override OpenAPI to avoid recursive JSONValue schema issues in TS generators.
 def custom_openapi() -> dict[str, Any]:
     if app.openapi_schema:
@@ -347,8 +357,9 @@ def custom_openapi() -> dict[str, Any]:
     )
 
     schemas = openapi_schema.get("components", {}).get("schemas", {})
-    if "JSONValue" in schemas:
-        schemas["JSONValue"] = {"description": "Any JSON value"}
+    for schema_name in JSON_VALUE_SCHEMA_NAMES:
+        if schema_name in schemas:
+            schemas[schema_name] = {"description": "Any JSON value"}
 
     # This route is intentionally public metadata. FastAPI still emits inherited
     # API-key security for it, so patch only this operation in the generated spec.
