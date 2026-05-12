@@ -227,7 +227,7 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
 
     def _metadata(self, response: ScorerInvokeResponse) -> dict[str, Any]:
         metadata: dict[str, Any] = {
-            "metric": response.metric or self.config.metric,
+            "metric": response.scorer_label or self.config.metric,
             "project_id": str(self.config.project_id) if self.config.project_id else None,
             "score": response.score,
             "threshold": self.config.threshold,
