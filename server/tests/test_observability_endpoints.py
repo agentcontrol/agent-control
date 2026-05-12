@@ -2,17 +2,20 @@
 
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import text
-
 from agent_control_models import (
     BatchEventsRequest,
     ControlExecutionEvent,
     EventQueryRequest,
 )
+from fastapi import Request
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.main import app
 from agent_control_server.observability.ingest.base import IngestResult
 
@@ -40,6 +43,64 @@ def create_test_event(
         timestamp=timestamp or datetime.now(timezone.utc),
         execution_duration_ms=execution_duration_ms,
     )
+
+
+class _RecordingAuthorizer:
+    """Test authorizer that records the operation requested by a route."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request
+        self.calls.append((operation, context))
+        return Principal(namespace_key="default")
+
+
+class TestObservabilityAuthFramework:
+    """Tests observability routes declare operation-based authorization."""
+
+    def test_status_uses_read_operation(self, app: object) -> None:
+        """Given a custom authorizer, when getting status, then read is authorized."""
+        # Given:
+        authorizer = _RecordingAuthorizer()
+        set_authorizer(authorizer)
+        client = TestClient(app, raise_server_exceptions=True)
+
+        # When:
+        response = client.get("/api/v1/observability/status")
+
+        # Then:
+        assert response.status_code == 200
+        assert authorizer.calls == [(Operation.OBSERVABILITY_READ, None)]
+
+    def test_ingest_events_uses_write_operation(
+        self,
+        app: object,
+        setup_observability: object,
+    ) -> None:
+        """Given a custom authorizer, when ingesting events, then write is authorized."""
+        # Given:
+        _ = setup_observability
+        authorizer = _RecordingAuthorizer()
+        set_authorizer(authorizer)
+        client = TestClient(app, raise_server_exceptions=True)
+        request = BatchEventsRequest(events=[create_test_event()])
+
+        # When:
+        response = client.post(
+            "/api/v1/observability/events",
+            json=request.model_dump(mode="json"),
+        )
+
+        # Then:
+        assert response.status_code == 202
+        assert authorizer.calls == [(Operation.OBSERVABILITY_WRITE, None)]
 
 
 class TestEventIngestion:
@@ -155,7 +216,7 @@ class TestControlExecutionEvent:
         event = ControlExecutionEvent(
             trace_id="a" * 32,
             span_id="b" * 16,
-                agent_name="test-agent",
+            agent_name="test-agent",
             control_id=1,
             control_name="test-control",
             check_stage="post",
@@ -441,9 +502,7 @@ class TestStatsTimeseries:
         total_exec = sum(b["execution_count"] for b in buckets_with_events)
         total_match = sum(b["match_count"] for b in buckets_with_events)
         total_non_match = sum(b["non_match_count"] for b in buckets_with_events)
-        total_observe = sum(
-            b["action_counts"].get("observe", 0) for b in buckets_with_events
-        )
+        total_observe = sum(b["action_counts"].get("observe", 0) for b in buckets_with_events)
         total_deny = sum(b["action_counts"].get("deny", 0) for b in buckets_with_events)
 
         assert total_exec == 3
@@ -453,9 +512,7 @@ class TestStatsTimeseries:
         assert total_deny == 1
 
     @pytest.mark.asyncio
-    async def test_timeseries_empty_buckets_included(
-        self, client: TestClient, setup_observability
-    ):
+    async def test_timeseries_empty_buckets_included(self, client: TestClient, setup_observability):
         """Empty buckets are included with zero counts."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
@@ -594,9 +651,7 @@ class TestControlStats:
         assert data["stats"]["execution_count"] == 2
 
         # Sum timeseries buckets should equal total
-        total_from_buckets = sum(
-            b["execution_count"] for b in data["stats"]["timeseries"]
-        )
+        total_from_buckets = sum(b["execution_count"] for b in data["stats"]["timeseries"])
         assert total_from_buckets == 2
 
     @pytest.mark.asyncio
@@ -797,6 +852,7 @@ class TestObservabilityIngestStatus:
 
     def test_ingest_events_partial_status(self, client: TestClient, setup_observability):
         """Test partial status when some events are dropped."""
+
         # Given: a stub ingestor that drops some events
         class StubIngestor:
             async def ingest(self, events):
@@ -826,6 +882,7 @@ class TestObservabilityIngestStatus:
 
     def test_ingest_events_failed_status(self, client: TestClient, setup_observability):
         """Test failed status when all events are dropped."""
+
         # Given: a stub ingestor that drops all events
         class StubIngestor:
             async def ingest(self, events):

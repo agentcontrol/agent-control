@@ -5,7 +5,7 @@ This module provides endpoints for:
 2. Event queries (POST /events/query) - Query raw events by trace_id, etc.
 3. Stats (GET /stats) - Aggregated statistics for dashboards
 
-All endpoints require API key authentication.
+All endpoints declare operation-based auth dependencies.
 
 Dependencies are stored on app.state during server lifespan (see main.py):
 - app.state.event_ingestor: EventIngestor
@@ -27,7 +27,7 @@ from agent_control_models import (
 )
 from fastapi import APIRouter, Depends, Request
 
-from ..auth import require_api_key
+from ..auth_framework import Operation, require_operation
 from ..observability.ingest.base import EventIngestor
 from ..observability.store.base import (
     EventStore,
@@ -42,7 +42,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/observability",
     tags=["observability"],
-    dependencies=[Depends(require_api_key)],
 )
 
 
@@ -72,7 +71,12 @@ def get_event_store(request: Request) -> EventStore:
 # =============================================================================
 
 
-@router.post("/events", status_code=202, response_model=BatchEventsResponse)
+@router.post(
+    "/events",
+    status_code=202,
+    response_model=BatchEventsResponse,
+    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_WRITE))],
+)
 async def ingest_events(
     request: BatchEventsRequest,
     ingestor: EventIngestor = Depends(get_event_ingestor),
@@ -121,7 +125,11 @@ async def ingest_events(
 # =============================================================================
 
 
-@router.post("/events/query", response_model=EventQueryResponse)
+@router.post(
+    "/events/query",
+    response_model=EventQueryResponse,
+    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_READ))],
+)
 async def query_events(
     request: EventQueryRequest,
     store: EventStore = Depends(get_event_store),
@@ -158,7 +166,11 @@ async def query_events(
 # =============================================================================
 
 
-@router.get("/stats", response_model=StatsResponse)
+@router.get(
+    "/stats",
+    response_model=StatsResponse,
+    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_READ))],
+)
 async def get_stats(
     agent_name: str,
     time_range: TimeRange = "5m",
@@ -207,7 +219,11 @@ async def get_stats(
     )
 
 
-@router.get("/stats/controls/{control_id}", response_model=ControlStatsResponse)
+@router.get(
+    "/stats/controls/{control_id}",
+    response_model=ControlStatsResponse,
+    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_READ))],
+)
 async def get_control_stats(
     control_id: int,
     agent_name: str,
@@ -266,7 +282,10 @@ async def get_control_stats(
 # =============================================================================
 
 
-@router.get("/status")
+@router.get(
+    "/status",
+    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_READ))],
+)
 async def get_status(request: Request) -> dict:
     """
     Get observability system status.
