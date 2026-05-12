@@ -79,6 +79,44 @@ class TestGalileoLunaClient:
         with pytest.raises(ValidationError, match="Either input or output must be set"):
             ScorerInvokeRequest(scorer_label="toxicity")
 
+    def test_scorer_invoke_response_matches_orbit_schema_shape(self) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeResponse
+
+        # Given: an API scorer invoke response
+        response = ScorerInvokeResponse.from_dict(
+            {
+                "scorer_label": "toxicity",
+                "score": 0.82,
+                "status": "success",
+                "execution_time": 0.12,
+                "error_message": None,
+            }
+        )
+
+        # Then: the model exposes the Orbit/API response fields
+        assert response.model_dump() == {
+            "scorer_label": "toxicity",
+            "score": 0.82,
+            "status": "success",
+            "execution_time": 0.12,
+            "error_message": None,
+        }
+        assert response.scorer_label == "toxicity"
+        assert response.metric == "toxicity"
+        assert response.raw_response["scorer_label"] == "toxicity"
+
+    def test_scorer_invoke_response_accepts_legacy_metric_field(self) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeResponse
+
+        # Given/When: an older API response uses metric instead of scorer_label
+        response = ScorerInvokeResponse.from_dict(
+            {"metric": "toxicity", "score": 0.82, "status": "success"}
+        )
+
+        # Then: the client still normalizes it to the current response contract
+        assert response.scorer_label == "toxicity"
+        assert response.model_dump()["scorer_label"] == "toxicity"
+
     def test_client_uses_protect_api_url_derivation(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
@@ -293,7 +331,7 @@ class TestLunaEvaluator:
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value = ScorerInvokeResponse(
-                metric="toxicity",
+                scorer_label="toxicity",
                 score=0.82,
                 status="success",
                 execution_time=0.1,
@@ -343,7 +381,7 @@ class TestLunaEvaluator:
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value = ScorerInvokeResponse(
-                metric="toxicity",
+                scorer_label="toxicity",
                 score=0.2,
                 status="success",
             )

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 from base64 import urlsafe_b64encode
-from dataclasses import dataclass, field
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
@@ -15,7 +14,7 @@ from uuid import UUID
 
 import httpx
 from agent_control_models import JSONObject, JSONValue
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -100,41 +99,48 @@ class ScorerInvokeRequest(BaseModel):
         return self.model_dump(mode="json", exclude_none=True)
 
 
-@dataclass
-class ScorerInvokeResponse:
+class ScorerInvokeResponse(BaseModel):
     """Response from Galileo Luna scorer invocation.
 
     Attributes:
-        metric: Echoed scorer metric.
+        scorer_label: Echoed scorer label.
         score: Raw scorer value.
         status: Invocation status.
         execution_time: Execution time in seconds, when returned.
         error_message: Error detail for non-success statuses.
-        raw_response: Full response body for diagnostics.
     """
 
-    metric: str
+    scorer_label: str
     score: JSONValue
     status: str = "unknown"
     execution_time: float | None = None
     error_message: str | None = None
-    raw_response: JSONObject = field(default_factory=dict)
+    _raw_response: JSONObject = PrivateAttr(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def allow_legacy_metric_response(cls, data: object) -> object:
+        if isinstance(data, dict) and "scorer_label" not in data and "metric" in data:
+            return data | {"scorer_label": data["metric"]}
+        return data
+
+    @property
+    def metric(self) -> str:
+        """Backward-compatible alias for existing evaluator metadata code."""
+        return self.scorer_label
+
+    @property
+    def raw_response(self) -> JSONObject:
+        return self._raw_response
 
     @classmethod
     def from_dict(cls, data: JSONObject) -> ScorerInvokeResponse:
         """Create a response model from the API JSON object."""
-        metric_value = data.get("scorer_label", data.get("metric", ""))
-        status_value = data.get("status", "unknown")
-        error_value = data.get("error_message")
-
-        return cls(
-            metric=str(metric_value) if metric_value is not None else "",
-            score=data.get("score"),
-            status=str(status_value) if status_value is not None else "unknown",
-            execution_time=_as_float_or_none(data.get("execution_time")),
-            error_message=str(error_value) if error_value is not None else None,
-            raw_response=data,
+        response = cls.model_validate(
+            data | {"execution_time": _as_float_or_none(data.get("execution_time"))}
         )
+        response._raw_response = data
+        return response
 
 
 class GalileoLunaClient:
