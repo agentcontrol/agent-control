@@ -101,12 +101,18 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             config: Validated LunaEvaluatorConfig instance.
 
         Raises:
-            ValueError: If GALILEO_API_KEY is not set.
+            ValueError: If neither GALILEO_API_SECRET_KEY nor GALILEO_API_KEY is set.
         """
-        if not os.getenv("GALILEO_API_KEY"):
+        has_auth = (
+            os.getenv("GALILEO_API_SECRET_KEY")
+            or os.getenv("GALILEO_API_SECRET")
+            or os.getenv("GALILEO_API_KEY")
+        )
+        if not has_auth:
             raise ValueError(
-                "GALILEO_API_KEY environment variable must be set. "
-                "Set it to a Galileo API key before using galileo.luna."
+                "GALILEO_API_SECRET_KEY or GALILEO_API_KEY environment variable must be set. "
+                "Set an API secret for internal auth or a Galileo API key before using "
+                "galileo.luna."
             )
 
         super().__init__(config)

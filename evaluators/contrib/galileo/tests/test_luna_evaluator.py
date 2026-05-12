@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import json
 import os
+from base64 import urlsafe_b64decode
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 from agent_control_models import EvaluatorResult
 from pydantic import ValidationError
+
+
+def _decode_jwt_payload(token: str) -> dict[str, object]:
+    payload_segment = token.split(".")[1]
+    padded = payload_segment + ("=" * (-len(payload_segment) % 4))
+    return json.loads(urlsafe_b64decode(padded.encode()).decode())
 
 
 class TestLunaEvaluatorConfig:
@@ -96,7 +103,7 @@ class TestGalileoLunaClient:
             return httpx.Response(
                 200,
                 json={
-                    "metric": "toxicity",
+                    "scorer_label": "toxicity",
                     "score": 0.82,
                     "status": "success",
                     "execution_time": 0.12,
@@ -133,7 +140,7 @@ class TestGalileoLunaClient:
         assert captured["body"] == {
             "input": "user prompt",
             "output": "model answer",
-            "metric": "toxicity",
+            "scorer_label": "toxicity",
             "project_id": "12345678-1234-5678-1234-567812345678",
             "luna_model": "luna-2",
             "config": {"top_k": 1},
@@ -143,6 +150,72 @@ class TestGalileoLunaClient:
         headers = captured["headers"]
         assert isinstance(headers, dict)
         assert headers["galileo-api-key"] == "test-key"
+
+    @pytest.mark.asyncio
+    async def test_client_uses_internal_jwt_when_api_secret_is_set(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            captured["headers"] = dict(request.headers)
+            captured["body"] = json.loads(request.content.decode())
+            return httpx.Response(
+                200,
+                json={
+                    "scorer_label": "toxicity",
+                    "score": 0.82,
+                    "status": "success",
+                    "execution_time": 0.12,
+                },
+            )
+
+        # Given: a Luna client configured with the Galileo API internal secret
+        with patch.dict(os.environ, {"GALILEO_API_SECRET_KEY": "test-secret"}, clear=True):
+            client = GalileoLunaClient(api_url="https://api.default.svc.cluster.local:8088")
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        try:
+            # When: invoking a scorer with project context
+            response = await client.invoke(
+                metric="toxicity",
+                output="model answer",
+                project_id="12345678-1234-5678-1234-567812345678",
+            )
+        finally:
+            await client.close()
+
+        # Then: the internal scorer endpoint is called with a project-bound JWT
+        assert response.score == 0.82
+        assert captured["url"] == "https://api.default.svc.cluster.local:8088/internal/scorers/invoke"
+        assert captured["body"] == {
+            "output": "model answer",
+            "scorer_label": "toxicity",
+            "project_id": "12345678-1234-5678-1234-567812345678",
+        }
+        headers = captured["headers"]
+        assert isinstance(headers, dict)
+        assert "galileo-api-key" not in headers
+        auth_header = headers["authorization"]
+        assert isinstance(auth_header, str)
+        assert auth_header.startswith("Bearer ")
+        token_payload = _decode_jwt_payload(auth_header.removeprefix("Bearer "))
+        assert token_payload["internal"] is True
+        assert token_payload["project_id"] == "12345678-1234-5678-1234-567812345678"
+        assert token_payload["scope"] == "scorers.invoke"
+
+    @pytest.mark.asyncio
+    async def test_client_requires_project_id_for_internal_jwt(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        # Given: a Luna client configured with internal JWT auth
+        with patch.dict(os.environ, {"GALILEO_API_SECRET_KEY": "test-secret"}, clear=True):
+            client = GalileoLunaClient(api_url="https://api.default.svc.cluster.local:8088")
+
+        # When/Then: project_id is required because API uses it as the internal auth context
+        with pytest.raises(ValueError, match="project_id is required"):
+            await client.invoke(metric="toxicity", output="model answer")
 
 
 class TestLunaEvaluator:
@@ -156,11 +229,25 @@ class TestLunaEvaluator:
         assert LunaEvaluator.metadata.requires_api_key is True
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_evaluator_init_without_api_key_raises(self) -> None:
+    def test_evaluator_init_without_auth_raises(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluator
 
-        with pytest.raises(ValueError, match="GALILEO_API_KEY"):
+        with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY or GALILEO_API_KEY"):
             LunaEvaluator.from_dict({"metric": "toxicity", "threshold": 0.5})
+
+    @patch.dict(os.environ, {"GALILEO_API_SECRET_KEY": "test-secret"}, clear=True)
+    def test_evaluator_init_accepts_api_secret(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator
+
+        evaluator = LunaEvaluator.from_dict(
+            {
+                "metric": "toxicity",
+                "project_id": "12345678-1234-5678-1234-567812345678",
+                "threshold": 0.5,
+            }
+        )
+
+        assert str(evaluator.config.project_id) == "12345678-1234-5678-1234-567812345678"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @pytest.mark.asyncio

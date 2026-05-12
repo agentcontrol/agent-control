@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import logging
 import os
+from base64 import urlsafe_b64encode
 from dataclasses import dataclass, field
+from hashlib import sha256
+from hmac import new as hmac_new
+from json import dumps
+from time import time
 from uuid import UUID
 
 import httpx
@@ -13,6 +18,38 @@ from agent_control_models import JSONObject, JSONValue
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECS = 10.0
+DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
+PUBLIC_SCORER_INVOKE_PATH = "/scorers/invoke"
+INTERNAL_SCORER_INVOKE_PATH = "/internal/scorers/invoke"
+
+
+def _b64url(data: bytes) -> str:
+    return urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _internal_auth_token(
+    api_secret: str,
+    project_id: str | UUID,
+    ttl_seconds: int = DEFAULT_INTERNAL_TOKEN_TTL_SECS,
+) -> str:
+    """Create the internal JWT expected by Galileo API internal routes."""
+    now = int(time())
+    header = {"alg": "HS256", "typ": "JWT"}
+    payload = {
+        "internal": True,
+        "project_id": str(project_id),
+        "scope": "scorers.invoke",
+        "iat": now,
+        "exp": now + ttl_seconds,
+    }
+    signing_input = ".".join(
+        [
+            _b64url(dumps(header, separators=(",", ":")).encode("utf-8")),
+            _b64url(dumps(payload, separators=(",", ":")).encode("utf-8")),
+        ]
+    )
+    signature = hmac_new(api_secret.encode("utf-8"), signing_input.encode("ascii"), sha256).digest()
+    return f"{signing_input}.{_b64url(signature)}"
 
 
 def _as_float_or_none(value: JSONValue) -> float | None:
@@ -33,7 +70,7 @@ class ScorerInvokeRequest:
     """Request payload for Galileo Luna scorer invocation.
 
     Attributes:
-        metric: Preset, registered, or fine-tuned scorer name.
+        metric: Preset, registered, or fine-tuned scorer label.
         input: Optional user/system prompt text.
         output: Optional model response text.
         luna_model: Optional Luna model override.
@@ -50,7 +87,7 @@ class ScorerInvokeRequest:
 
     def to_dict(self) -> JSONObject:
         """Convert to the public API request shape."""
-        body: JSONObject = {"metric": self.metric}
+        body: JSONObject = {"scorer_label": self.metric}
         if self.input is not None:
             body["input"] = self.input
         if self.output is not None:
@@ -87,7 +124,7 @@ class ScorerInvokeResponse:
     @classmethod
     def from_dict(cls, data: JSONObject) -> ScorerInvokeResponse:
         """Create a response model from the API JSON object."""
-        metric_value = data.get("metric", "")
+        metric_value = data.get("scorer_label", data.get("metric", ""))
         status_value = data.get("status", "unknown")
         error_value = data.get("error_message")
 
@@ -105,13 +142,15 @@ class GalileoLunaClient:
     """Thin HTTP client for Galileo Luna direct scorer invocation.
 
     Environment Variables:
-        GALILEO_API_KEY: Galileo API key (required).
+        GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: Galileo API internal JWT signing secret.
+        GALILEO_API_KEY: Galileo API key fallback for public scorer invocation.
         GALILEO_CONSOLE_URL: Galileo Console URL (optional, defaults to production).
     """
 
     def __init__(
         self,
         api_key: str | None = None,
+        api_secret: str | None = None,
         console_url: str | None = None,
         api_url: str | None = None,
     ) -> None:
@@ -119,22 +158,28 @@ class GalileoLunaClient:
 
         Args:
             api_key: Galileo API key. If not provided, reads from GALILEO_API_KEY.
+            api_secret: Galileo API secret for internal JWT auth. If not provided,
+                reads from GALILEO_API_SECRET_KEY or GALILEO_API_SECRET.
             console_url: Galileo Console URL. If not provided, reads from
                 GALILEO_CONSOLE_URL or uses the production console URL.
             api_url: Galileo API URL. If not provided, reads from GALILEO_API_URL
                 before deriving from the console URL.
 
         Raises:
-            ValueError: If no API key is provided or found in the environment.
+            ValueError: If neither API secret nor API key is provided.
         """
+        resolved_api_secret = (
+            api_secret or os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
+        )
         resolved_api_key = api_key or os.getenv("GALILEO_API_KEY")
-        if not resolved_api_key:
+        if not resolved_api_secret and not resolved_api_key:
             raise ValueError(
-                "GALILEO_API_KEY is required. "
-                "Set it as an environment variable or pass it to the constructor."
+                "GALILEO_API_SECRET_KEY or GALILEO_API_KEY is required. "
+                "Set one as an environment variable or pass it to the constructor."
             )
 
         self.api_key = resolved_api_key
+        self.api_secret = resolved_api_secret
         self.console_url = (
             console_url or os.getenv("GALILEO_CONSOLE_URL") or "https://console.galileo.ai"
         )
@@ -162,14 +207,33 @@ class GalileoLunaClient:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""
         if self._client is None or self._client.is_closed:
+            headers = {"Content-Type": "application/json"}
+            if self.api_secret is None and self.api_key is not None:
+                headers["Galileo-API-Key"] = self.api_key
             self._client = httpx.AsyncClient(
-                headers={
-                    "Galileo-API-Key": self.api_key,
-                    "Content-Type": "application/json",
-                },
+                headers=headers,
                 timeout=httpx.Timeout(DEFAULT_TIMEOUT_SECS),
             )
         return self._client
+
+    def _endpoint_and_headers(
+        self,
+        project_id: str | UUID | None,
+        headers: dict[str, str] | None,
+    ) -> tuple[str, dict[str, str]]:
+        request_headers = dict(headers or {})
+        if self.api_secret is None:
+            return f"{self.api_base}{PUBLIC_SCORER_INVOKE_PATH}", request_headers
+
+        if project_id is None:
+            raise ValueError(
+                "project_id is required when using GALILEO_API_SECRET_KEY internal auth."
+            )
+
+        request_headers["Authorization"] = (
+            f"Bearer {_internal_auth_token(self.api_secret, project_id)}"
+        )
+        return f"{self.api_base}{INTERNAL_SCORER_INVOKE_PATH}", request_headers
 
     async def invoke(
         self,
@@ -186,7 +250,7 @@ class GalileoLunaClient:
         """Invoke a Galileo Luna scorer.
 
         Args:
-            metric: Preset, registered, or fine-tuned scorer name.
+            metric: Preset, registered, or fine-tuned scorer label.
             input: Optional user/system prompt text.
             output: Optional model response text.
             project_id: Optional Galileo project UUID for project-scoped scorer resolution.
@@ -215,8 +279,7 @@ class GalileoLunaClient:
             luna_model=luna_model,
             config=config,
         ).to_dict()
-        request_headers = dict(headers or {})
-        endpoint = f"{self.api_base}/scorers/invoke"
+        endpoint, request_headers = self._endpoint_and_headers(project_id, headers)
 
         logger.debug("[GalileoLunaClient] POST %s", endpoint)
         logger.debug("[GalileoLunaClient] Request body: %s", request_body)
