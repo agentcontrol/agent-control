@@ -172,7 +172,11 @@ async def test_exchange_then_verify_full_round_trip(client: TestClient, runtime_
     verify_provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
     request = MagicMock()
     request.headers = {"Authorization": f"Bearer {token}"}
-    principal = await verify_provider.authorize(request, Operation.RUNTIME_USE)
+    principal = await verify_provider.authorize(
+        request,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-99"},
+    )
 
     assert principal.target_type == "log_stream"
     assert principal.target_id == "ls-99"
@@ -210,6 +214,37 @@ def test_evaluation_rejects_runtime_jwt_for_wrong_target(
 
     assert response.status_code == 403, response.text
     assert response.json()["detail"] == "Runtime token target_id does not match the request."
+
+
+def test_evaluation_rejects_runtime_jwt_without_bound_target_context(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """A target-bound runtime JWT must not authorize a target-less evaluation."""
+    stub = _StubExchangeAuthorizer(actor_id="actor-rt", scopes=("runtime.use",))
+    clear_authorizers()
+    set_authorizer(stub)
+    set_authorizer(LocalJwtVerifyProvider(secret=_TEST_SECRET), operation=Operation.RUNTIME_USE)
+
+    exchange = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-allowed"},
+    )
+    assert exchange.status_code == 200, exchange.text
+    token = exchange.json()["token"]
+
+    response = client.post(
+        "/api/v1/evaluation",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "agent_name": "agent",
+            "step": {"type": "llm", "name": "step", "input": "hello"},
+            "stage": "pre",
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"] == "Runtime token target_type does not match the request."
 
 
 def test_exchange_endpoint_502_when_upstream_grant_already_expired(
@@ -316,7 +351,11 @@ async def test_exchange_propagates_non_default_namespace_into_token(
     verify_provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
     req = MagicMock()
     req.headers = {"Authorization": f"Bearer {token}"}
-    principal = await verify_provider.authorize(req, Operation.RUNTIME_USE)
+    principal = await verify_provider.authorize(
+        req,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-org-a"},
+    )
 
     assert principal.namespace_key == "org-A"
     assert principal.target_id == "ls-org-a"

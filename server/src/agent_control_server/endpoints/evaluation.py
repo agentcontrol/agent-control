@@ -1,5 +1,6 @@
 """Evaluation analysis endpoints."""
 
+import json
 from dataclasses import dataclass
 
 from agent_control_engine.core import ControlEngine
@@ -121,7 +122,8 @@ async def _evaluation_context(request: Request) -> dict[str, object]:
     """Surface target identifiers to the runtime authorizer."""
     try:
         body = await request.json()
-    except Exception:  # noqa: BLE001  malformed JSON, defer to endpoint validation
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _logger.debug("Unable to decode evaluation request body for auth context")
         return {}
     if not isinstance(body, dict):
         return {}
