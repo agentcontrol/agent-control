@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "agent-control-sdk[strands-agents]>=6.3.0",
+    "agent-control-telemetry>=6.3.0",
     "openai>=1.0.0",
     "python-dotenv>=1.0.0",
     "httpx>=0.24.0",
@@ -41,3 +42,4 @@ python_files = ["*_test.py", "test_*.py"]
 
 [tool.uv.sources]
 agent-control-sdk = { path = "../../sdks/python", editable = true }
+agent-control-telemetry = { path = "../../telemetry", editable = true }

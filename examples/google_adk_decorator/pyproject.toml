@@ -8,6 +8,7 @@ dependencies = [
     "agent-control-engine",
     "agent-control-evaluators",
     "agent-control-models",
+    "agent-control-telemetry",
     "agent-control-sdk",
     "google-adk>=1.0.0,<2.0.0",
     "google-genai>=1.0.0",
@@ -26,3 +27,4 @@ agent-control-sdk = { path = "../../sdks/python", editable = true }
 agent-control-models = { path = "../../models", editable = true }
 agent-control-engine = { path = "../../engine", editable = true }
 agent-control-evaluators = { path = "../../evaluators/builtin", editable = true }
+agent-control-telemetry = { path = "../../telemetry", editable = true }

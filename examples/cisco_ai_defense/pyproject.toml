@@ -8,10 +8,11 @@ dependencies = [
     "httpx>=0.24.0",
     # Use the local SDK for decorator-based example
     "agent-control-sdk>=5.2.0",
-    # When using SDK from path/editable, engine and models are not vendored
+    # When using SDK from path/editable, engine, models, and telemetry are not vendored
     "agent-control-engine>=5.2.0",
     "agent-control-models>=5.2.0",
     "agent-control-evaluators>=5.2.0",
+    "agent-control-telemetry>=5.2.0",
 ]
 
 [project.optional-dependencies]
@@ -38,3 +39,4 @@ agent-control-sdk = { path = "../../sdks/python", editable = true }
 agent-control-models = { path = "../../models", editable = true }
 agent-control-engine = { path = "../../engine", editable = true }
 agent-control-evaluators = { path = "../../evaluators/builtin", editable = true }
+agent-control-telemetry = { path = "../../telemetry", editable = true }
