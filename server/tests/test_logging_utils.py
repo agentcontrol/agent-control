@@ -8,6 +8,7 @@ from agent_control_server.logging_utils import (
     configure_logging,
     get_log_level_name,
     get_uvicorn_log_level_name,
+    should_configure_logging,
 )
 
 
@@ -75,6 +76,26 @@ def test_parse_json_treats_blank_env_value_as_false(monkeypatch) -> None:
 
     # Then: the blank env var is treated as false instead of raising
     assert parsed is False
+
+
+def test_should_configure_logging_defaults_to_true() -> None:
+    assert should_configure_logging() is True
+
+
+def test_should_configure_logging_reads_host_override(monkeypatch) -> None:
+    # Given: the embedding host opts out of Agent Control's logging setup
+    monkeypatch.setenv("AGENT_CONTROL_CONFIGURE_LOGGING", "false")
+
+    # When/then: Agent Control should leave logging handlers to the host
+    assert should_configure_logging() is False
+
+
+def test_should_configure_logging_supports_log_prefixed_alias(monkeypatch) -> None:
+    # Given: the logging-prefixed alias is used
+    monkeypatch.setenv("AGENT_CONTROL_LOG_CONFIGURE", "false")
+
+    # When/then: the alias disables Agent Control logging setup
+    assert should_configure_logging() is False
 
 
 def test_get_log_level_name_falls_back_to_default_for_invalid_env(monkeypatch) -> None:

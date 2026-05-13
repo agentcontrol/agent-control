@@ -156,6 +156,35 @@ def test_lifespan_skips_observability_when_disabled(monkeypatch) -> None:
         assert not hasattr(app.state, "event_ingestor")
 
 
+def test_configure_process_logging_respects_host_override(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    def fake_configure_logging(*, default_level: str) -> None:
+        calls["count"] += 1
+
+    monkeypatch.setattr(main_module, "should_configure_logging", lambda: False)
+    monkeypatch.setattr(main_module, "configure_logging", fake_configure_logging)
+
+    main_module._configure_process_logging()
+
+    assert calls["count"] == 0
+
+
+def test_configure_process_logging_uses_default_level(monkeypatch) -> None:
+    calls = {}
+
+    def fake_configure_logging(*, default_level: str) -> None:
+        calls["default_level"] = default_level
+
+    monkeypatch.setattr(main_module, "should_configure_logging", lambda: True)
+    monkeypatch.setattr(main_module, "configure_logging", fake_configure_logging)
+    monkeypatch.setattr(settings, "debug", True)
+
+    main_module._configure_process_logging()
+
+    assert calls == {"default_level": "DEBUG"}
+
+
 def test_custom_openapi_replaces_jsonvalue(monkeypatch) -> None:
     # Given: a custom openapi generator that includes JSONValue
     def fake_get_openapi(*, title, version, description, routes):
