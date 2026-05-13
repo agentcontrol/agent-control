@@ -66,6 +66,11 @@ def _parse_json(json_flag: bool | None) -> bool:
     return LoggingSettings().json_logs
 
 
+def should_configure_logging() -> bool:
+    """Return whether Agent Control should install its own logging handlers."""
+    return LoggingSettings().configure
+
+
 def configure_logging(
     *,
     level: str | int | None = None,

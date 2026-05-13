@@ -244,6 +244,11 @@ class LoggingSettings(BaseSettings):
 
     model_config = SettingsConfigDict(**_COMMON_SETTINGS_CONFIG, env_prefix="AGENT_CONTROL_LOG_")
 
+    configure: bool = _env_alias_field(
+        True,
+        "AGENT_CONTROL_CONFIGURE_LOGGING",
+        "AGENT_CONTROL_LOG_CONFIGURE",
+    )
     level: str | None = None
     json_logs: bool = _env_alias_field(False, "AGENT_CONTROL_LOG_JSON")
 
