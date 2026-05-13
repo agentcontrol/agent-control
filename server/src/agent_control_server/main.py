@@ -37,7 +37,7 @@ from .errors import (
     http_exception_handler,
     validation_exception_handler,
 )
-from .logging_utils import configure_logging, get_uvicorn_log_level_name
+from .logging_utils import configure_logging, get_uvicorn_log_level_name, should_configure_logging
 from .observability.ingest import DirectEventIngestor
 from .observability.sinks import (
     EventStoreControlEventSink,
@@ -88,6 +88,11 @@ def add_prometheus_metrics(app: FastAPI, metrics_prefix: str) -> None:
     app.add_route(METRICS_PATH, handle_metrics)
 
 
+def _configure_process_logging() -> None:
+    if should_configure_logging():
+        configure_logging(default_level=_default_log_level())
+
+
 async def _shutdown_observability_sink(sink: object) -> None:
     """Flush and close a custom async sink when it exposes lifecycle hooks."""
     flush = getattr(sink, "flush", None)
@@ -120,7 +125,7 @@ async def _shutdown_observability_sink(sink: object) -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager for FastAPI app startup and shutdown."""
     # Startup: Configure logging
-    configure_logging(default_level=_default_log_level())
+    _configure_process_logging()
 
     # Install the request-auth provider selected by environment variables.
     from .auth_framework.config import configure_auth_from_env
@@ -231,7 +236,7 @@ app.add_middleware(
 )
 
 # Configure logging
-configure_logging(default_level=_default_log_level())
+_configure_process_logging()
 
 
 @app.middleware("http")
