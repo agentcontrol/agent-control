@@ -33,7 +33,7 @@ export GALILEO_PROJECT_ID="00000000-0000-0000-0000-000000000000"
 Optional scorer settings:
 
 ```bash
-export GALILEO_LUNA_METRIC="toxicity"
+export GALILEO_LUNA_SCORER_LABEL="toxicity"
 export GALILEO_LUNA_THRESHOLD="0.5"
 ```
 

@@ -139,7 +139,7 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 return input_text, output_text
 
         text = _coerce_payload_text(data)
-        if "output" in self.config.metric:
+        if "output" in self.config.scorer_label:
             return None, text
         return text, None
 
@@ -190,12 +190,12 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 matched=False,
                 confidence=1.0,
                 message="No data to score with Luna",
-                metadata={"metric": self.config.metric},
+                metadata={"scorer_label": self.config.scorer_label},
             )
 
         try:
             response = await self._get_client().invoke(
-                metric=self.config.metric,
+                scorer_label=self.config.scorer_label,
                 input=input_text if _has_text(input_text) else None,
                 output=output_text if _has_text(output_text) else None,
                 project_id=self.config.project_id,
@@ -227,7 +227,7 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
 
     def _metadata(self, response: ScorerInvokeResponse) -> dict[str, Any]:
         metadata: dict[str, Any] = {
-            "metric": response.scorer_label or self.config.metric,
+            "scorer_label": response.scorer_label or self.config.scorer_label,
             "project_id": str(self.config.project_id) if self.config.project_id else None,
             "score": response.score,
             "threshold": self.config.threshold,
@@ -251,7 +251,7 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             metadata={
                 "error": error_detail,
                 "error_type": type(error).__name__,
-                "metric": self.config.metric,
+                "scorer_label": self.config.scorer_label,
                 "fallback_action": fallback,
             },
             error=None if matched else error_detail,

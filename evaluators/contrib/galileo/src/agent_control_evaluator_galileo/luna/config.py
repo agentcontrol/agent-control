@@ -32,7 +32,7 @@ class LunaEvaluatorConfig(EvaluatorConfig):
     """Configuration for direct Luna scorer evaluation.
 
     Attributes:
-        metric: Preset, registered, or fine-tuned scorer name.
+        scorer_label: Preset, registered, or fine-tuned scorer label.
         project_id: Optional Galileo project UUID for project-scoped scorer resolution.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
@@ -40,11 +40,11 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         timeout_ms: Request timeout in milliseconds.
         on_error: Error policy: allow=fail open, deny=fail closed.
         payload_field: Force selected data into input or output. If omitted, root step
-            payloads with input/output use both fields; scalar data is inferred from metric name.
+            payloads with input/output use both fields; scalar data is inferred from scorer label.
         include_raw_response: Include the raw API response in EvaluatorResult metadata.
     """
 
-    metric: str = Field(..., min_length=1, description="Luna metric/scorer name to evaluate")
+    scorer_label: str = Field(..., min_length=1, description="Luna scorer label to invoke")
     project_id: UUID | None = Field(
         default=None,
         description="Optional Galileo project UUID for project-scoped scorer resolution.",

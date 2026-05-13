@@ -66,14 +66,14 @@ def _as_float_or_none(value: JSONValue) -> float | None:
     return None
 
 
-ScorerStepType = Literal["session", "trace", "span"]
+RootType = Literal["session", "trace", "span"]
 
 
 class ScorerInvokeRequest(BaseModel):
     """Request payload for Galileo Luna scorer invocation.
 
     Attributes:
-        step_type: Runtime step shape used by Galileo scorer input normalization.
+        root_type: Runtime step shape used by Galileo scorer input normalization.
         input: Optional user/system prompt text.
         output: Optional model response text.
         scorer_label: Preset, registered, or fine-tuned scorer label.
@@ -81,7 +81,7 @@ class ScorerInvokeRequest(BaseModel):
         config: Optional scorer-specific configuration.
     """
 
-    step_type: ScorerStepType = Field(default="span")
+    root_type: RootType = Field(default="span")
     input: JSONValue = None
     output: JSONValue = None
     scorer_label: str = Field(min_length=1)
@@ -116,18 +116,6 @@ class ScorerInvokeResponse(BaseModel):
     execution_time: float | None = None
     error_message: str | None = None
     _raw_response: JSONObject = PrivateAttr(default_factory=dict)
-
-    @model_validator(mode="before")
-    @classmethod
-    def allow_legacy_metric_response(cls, data: object) -> object:
-        if isinstance(data, dict) and "scorer_label" not in data and "metric" in data:
-            return data | {"scorer_label": data["metric"]}
-        return data
-
-    @property
-    def metric(self) -> str:
-        """Backward-compatible alias for existing evaluator metadata code."""
-        return self.scorer_label
 
     @property
     def raw_response(self) -> JSONObject:
@@ -243,10 +231,10 @@ class GalileoLunaClient:
     async def invoke(
         self,
         *,
-        metric: str,
+        scorer_label: str,
         input: JSONValue = None,
         output: JSONValue = None,
-        step_type: ScorerStepType = "span",
+        root_type: RootType = "span",
         project_id: str | UUID | None = None,
         config: JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
@@ -255,10 +243,10 @@ class GalileoLunaClient:
         """Invoke a Galileo Luna scorer.
 
         Args:
-            metric: Preset, registered, or fine-tuned scorer label.
+            scorer_label: Preset, registered, or fine-tuned scorer label.
             input: Optional user/system prompt text.
             output: Optional model response text.
-            step_type: Runtime step shape used by Galileo scorer input normalization.
+            root_type: Runtime step shape used by Galileo scorer input normalization.
             project_id: Optional Galileo project UUID for project-scoped scorer resolution.
             config: Optional scorer-specific configuration.
             timeout: Request timeout in seconds.
@@ -277,10 +265,10 @@ class GalileoLunaClient:
             raise ValueError("At least one of input or output must be provided.")
 
         request_body = ScorerInvokeRequest(
-            scorer_label=metric,
+            scorer_label=scorer_label,
             input=input,
             output=output,
-            step_type=step_type,
+            root_type=root_type,
             project_id=project_id,
             config=config,
         ).to_dict()

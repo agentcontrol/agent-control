@@ -27,7 +27,7 @@ class TestLunaEvaluatorConfig:
 
         # Given: a direct scorer config with local thresholding
         config = LunaEvaluatorConfig(
-            metric="toxicity",
+            scorer_label="toxicity",
             project_id="12345678-1234-5678-1234-567812345678",
             threshold=0.7,
             operator="gte",
@@ -35,7 +35,7 @@ class TestLunaEvaluatorConfig:
         )
 
         # Then: config is retained without Protect concepts
-        assert config.metric == "toxicity"
+        assert config.scorer_label == "toxicity"
         assert str(config.project_id) == "12345678-1234-5678-1234-567812345678"
         assert config.threshold == 0.7
         assert config.operator == "gte"
@@ -46,7 +46,7 @@ class TestLunaEvaluatorConfig:
 
         # Given/When/Then: numeric local comparison rejects non-numeric thresholds
         with pytest.raises(ValidationError, match="numeric threshold"):
-            LunaEvaluatorConfig(metric="toxicity", threshold="high", operator="gte")
+            LunaEvaluatorConfig(scorer_label="toxicity", threshold="high", operator="gte")
 
 
 class TestGalileoLunaClient:
@@ -65,7 +65,7 @@ class TestGalileoLunaClient:
 
         # Then: the serialized payload uses the Orbit scorer invoke fields
         assert request.to_dict() == {
-            "step_type": "span",
+            "root_type": "span",
             "input": {"messages": [{"role": "user", "content": "hello"}]},
             "scorer_label": "toxicity",
             "project_id": "12345678-1234-5678-1234-567812345678",
@@ -102,20 +102,7 @@ class TestGalileoLunaClient:
             "error_message": None,
         }
         assert response.scorer_label == "toxicity"
-        assert response.metric == "toxicity"
         assert response.raw_response["scorer_label"] == "toxicity"
-
-    def test_scorer_invoke_response_accepts_legacy_metric_field(self) -> None:
-        from agent_control_evaluator_galileo.luna import ScorerInvokeResponse
-
-        # Given/When: an older API response uses metric instead of scorer_label
-        response = ScorerInvokeResponse.from_dict(
-            {"metric": "toxicity", "score": 0.82, "status": "success"}
-        )
-
-        # Then: the client still normalizes it to the current response contract
-        assert response.scorer_label == "toxicity"
-        assert response.model_dump()["scorer_label"] == "toxicity"
 
     def test_client_uses_protect_api_url_derivation(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
@@ -187,7 +174,7 @@ class TestGalileoLunaClient:
         try:
             # When: invoking a scorer
             response = await client.invoke(
-                metric="toxicity",
+                scorer_label="toxicity",
                 input="user prompt",
                 output="model answer",
                 project_id="12345678-1234-5678-1234-567812345678",
@@ -204,7 +191,7 @@ class TestGalileoLunaClient:
             "output": "model answer",
             "scorer_label": "toxicity",
             "project_id": "12345678-1234-5678-1234-567812345678",
-            "step_type": "span",
+            "root_type": "span",
             "config": {"top_k": 1},
         }
         assert "stage_name" not in captured["body"]
@@ -241,7 +228,7 @@ class TestGalileoLunaClient:
         try:
             # When: invoking a scorer with project context
             response = await client.invoke(
-                metric="toxicity",
+                scorer_label="toxicity",
                 output="model answer",
                 project_id="12345678-1234-5678-1234-567812345678",
             )
@@ -255,7 +242,7 @@ class TestGalileoLunaClient:
             "output": "model answer",
             "scorer_label": "toxicity",
             "project_id": "12345678-1234-5678-1234-567812345678",
-            "step_type": "span",
+            "root_type": "span",
         }
         headers = captured["headers"]
         assert isinstance(headers, dict)
@@ -278,7 +265,7 @@ class TestGalileoLunaClient:
 
         # When/Then: project_id is required because API uses it as the internal auth context
         with pytest.raises(ValueError, match="project_id is required"):
-            await client.invoke(metric="toxicity", output="model answer")
+            await client.invoke(scorer_label="toxicity", output="model answer")
 
 
 class TestLunaEvaluator:
@@ -296,7 +283,7 @@ class TestLunaEvaluator:
         from agent_control_evaluator_galileo.luna import LunaEvaluator
 
         with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY or GALILEO_API_KEY"):
-            LunaEvaluator.from_dict({"metric": "toxicity", "threshold": 0.5})
+            LunaEvaluator.from_dict({"scorer_label": "toxicity", "threshold": 0.5})
 
     @patch.dict(os.environ, {"GALILEO_API_SECRET_KEY": "test-secret"}, clear=True)
     def test_evaluator_init_accepts_api_secret(self) -> None:
@@ -304,7 +291,7 @@ class TestLunaEvaluator:
 
         evaluator = LunaEvaluator.from_dict(
             {
-                "metric": "toxicity",
+                "scorer_label": "toxicity",
                 "project_id": "12345678-1234-5678-1234-567812345678",
                 "threshold": 0.5,
             }
@@ -321,7 +308,7 @@ class TestLunaEvaluator:
         # Given: a direct Luna evaluator and a raw successful scorer response
         evaluator = LunaEvaluator.from_dict(
             {
-                "metric": "toxicity",
+                "scorer_label": "toxicity",
                 "project_id": "12345678-1234-5678-1234-567812345678",
                 "threshold": 0.7,
                 "operator": "gte",
@@ -350,7 +337,7 @@ class TestLunaEvaluator:
         assert result.matched is True
         assert result.confidence == 0.82
         assert result.metadata == {
-            "metric": "toxicity",
+            "scorer_label": "toxicity",
             "project_id": "12345678-1234-5678-1234-567812345678",
             "score": 0.82,
             "threshold": 0.7,
@@ -360,7 +347,7 @@ class TestLunaEvaluator:
             "error_message": None,
         }
         mock_invoke.assert_awaited_once_with(
-            metric="toxicity",
+            scorer_label="toxicity",
             input="user prompt",
             output="model answer",
             project_id=evaluator.config.project_id,
@@ -376,7 +363,7 @@ class TestLunaEvaluator:
 
         # Given: a raw scorer value below the local threshold
         evaluator = LunaEvaluator.from_dict(
-            {"metric": "toxicity", "threshold": 0.7, "operator": "gte"}
+            {"scorer_label": "toxicity", "threshold": 0.7, "operator": "gte"}
         )
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
@@ -393,7 +380,7 @@ class TestLunaEvaluator:
         assert result.matched is False
         assert result.confidence == 0.2
         mock_invoke.assert_awaited_once_with(
-            metric="toxicity",
+            scorer_label="toxicity",
             input="hello",
             output=None,
             project_id=None,
@@ -408,7 +395,7 @@ class TestLunaEvaluator:
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
         # Given: an evaluator and empty selected data
-        evaluator = LunaEvaluator.from_dict({"metric": "toxicity", "threshold": 0.5})
+        evaluator = LunaEvaluator.from_dict({"scorer_label": "toxicity", "threshold": 0.5})
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
             # When: evaluating empty data
@@ -427,7 +414,7 @@ class TestLunaEvaluator:
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
         # Given: default fail-open behavior
-        evaluator = LunaEvaluator.from_dict({"metric": "toxicity", "threshold": 0.5})
+        evaluator = LunaEvaluator.from_dict({"scorer_label": "toxicity", "threshold": 0.5})
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.side_effect = RuntimeError("service unavailable")
@@ -449,7 +436,7 @@ class TestLunaEvaluator:
 
         # Given: fail-closed behavior for scorer errors
         evaluator = LunaEvaluator.from_dict(
-            {"metric": "toxicity", "threshold": 0.5, "on_error": "deny"}
+            {"scorer_label": "toxicity", "threshold": 0.5, "on_error": "deny"}
         )
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:

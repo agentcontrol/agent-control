@@ -23,7 +23,7 @@ AGENT_NAME = "galileo-luna-agent"
 AGENT_DESCRIPTION = "Demo agent protected by direct Galileo Luna scorer controls"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
-LUNA_METRIC = os.getenv("GALILEO_LUNA_METRIC", "toxicity")
+LUNA_SCORER_LABEL = os.getenv("GALILEO_LUNA_SCORER_LABEL", "toxicity")
 LUNA_THRESHOLD = float(os.getenv("GALILEO_LUNA_THRESHOLD", "0.5"))
 GALILEO_PROJECT_ID = os.getenv("GALILEO_PROJECT_ID")
 
@@ -41,7 +41,7 @@ DEMO_STEPS = [
 def luna_config() -> dict[str, Any]:
     """Build the direct Luna evaluator config used by the composite control."""
     config: dict[str, Any] = {
-        "metric": LUNA_METRIC,
+        "scorer_label": LUNA_SCORER_LABEL,
         "threshold": LUNA_THRESHOLD,
         "operator": "gte",
         "payload_field": "output",
@@ -158,7 +158,7 @@ async def setup_demo() -> None:
     print("Setting up direct Galileo Luna demo controls")
     print(f"Server: {SERVER_URL}")
     print(f"Agent:  {AGENT_NAME}")
-    print(f"Luna:   metric={LUNA_METRIC!r}, threshold={LUNA_THRESHOLD}")
+    print(f"Luna:   scorer_label={LUNA_SCORER_LABEL!r}, threshold={LUNA_THRESHOLD}")
     if GALILEO_PROJECT_ID:
         print(f"Project ID: {GALILEO_PROJECT_ID}")
 
