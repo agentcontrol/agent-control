@@ -52,22 +52,24 @@ class TestLunaEvaluatorConfig:
 class TestGalileoLunaClient:
     """Tests for the GalileoLunaClient HTTP contract."""
 
-    def test_scorer_invoke_request_matches_orbit_schema_shape(self) -> None:
-        from agent_control_evaluator_galileo.luna import ScorerInvokeRequest
+    def test_scorer_invoke_request_matches_api_schema_shape(self) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeInputs, ScorerInvokeRequest
 
         # Given: a scorer request with project context and scorer config
         request = ScorerInvokeRequest(
             scorer_label="toxicity",
-            input={"messages": [{"role": "user", "content": "hello"}]},
+            inputs=ScorerInvokeInputs(query={"messages": [{"role": "user", "content": "hello"}]}),
             project_id="12345678-1234-5678-1234-567812345678",
             config={"top_k": 1},
         )
 
-        # Then: the serialized payload uses the Orbit scorer invoke fields
+        # Then: the serialized payload uses the API-owned scorer invoke fields
         assert request.to_dict() == {
-            "root_type": "span",
-            "input": {"messages": [{"role": "user", "content": "hello"}]},
             "scorer_label": "toxicity",
+            "inputs": {
+                "query": {"messages": [{"role": "user", "content": "hello"}]},
+                "response": "",
+            },
             "project_id": "12345678-1234-5678-1234-567812345678",
             "config": {"top_k": 1},
         }
@@ -75,11 +77,13 @@ class TestGalileoLunaClient:
     def test_scorer_invoke_request_requires_input_or_output(self) -> None:
         from agent_control_evaluator_galileo.luna import ScorerInvokeRequest
 
-        # Given/When/Then: the request mirrors Orbit validation
-        with pytest.raises(ValidationError, match="Either input or output must be set"):
-            ScorerInvokeRequest(scorer_label="toxicity")
+        # Given/When/Then: the request mirrors API validation
+        with pytest.raises(
+            ValidationError, match="Either inputs.query or inputs.response must be set"
+        ):
+            ScorerInvokeRequest(scorer_label="toxicity", inputs={})
 
-    def test_scorer_invoke_response_matches_orbit_schema_shape(self) -> None:
+    def test_scorer_invoke_response_matches_api_schema_shape(self) -> None:
         from agent_control_evaluator_galileo.luna import ScorerInvokeResponse
 
         # Given: an API scorer invoke response
@@ -93,7 +97,7 @@ class TestGalileoLunaClient:
             }
         )
 
-        # Then: the model exposes the Orbit/API response fields
+        # Then: the model exposes the API response fields
         assert response.model_dump() == {
             "scorer_label": "toxicity",
             "score": 0.82,
@@ -187,11 +191,9 @@ class TestGalileoLunaClient:
         assert response.score == 0.82
         assert captured["url"] == "https://api.demo-v2.galileocloud.io/scorers/invoke"
         assert captured["body"] == {
-            "input": "user prompt",
-            "output": "model answer",
             "scorer_label": "toxicity",
+            "inputs": {"query": "user prompt", "response": "model answer"},
             "project_id": "12345678-1234-5678-1234-567812345678",
-            "root_type": "span",
             "config": {"top_k": 1},
         }
         assert "stage_name" not in captured["body"]
@@ -237,12 +239,13 @@ class TestGalileoLunaClient:
 
         # Then: the internal scorer endpoint is called with a project-bound JWT
         assert response.score == 0.82
-        assert captured["url"] == "https://api.default.svc.cluster.local:8088/internal/scorers/invoke"
+        assert (
+            captured["url"] == "https://api.default.svc.cluster.local:8088/internal/scorers/invoke"
+        )
         assert captured["body"] == {
-            "output": "model answer",
             "scorer_label": "toxicity",
+            "inputs": {"query": "", "response": "model answer"},
             "project_id": "12345678-1234-5678-1234-567812345678",
-            "root_type": "span",
         }
         headers = captured["headers"]
         assert isinstance(headers, dict)

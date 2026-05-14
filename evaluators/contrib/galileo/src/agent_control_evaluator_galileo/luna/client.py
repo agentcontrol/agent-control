@@ -9,7 +9,6 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
-from typing import Literal
 from uuid import UUID
 
 import httpx
@@ -66,32 +65,38 @@ def _as_float_or_none(value: JSONValue) -> float | None:
     return None
 
 
-RootType = Literal["session", "trace", "span"]
+def _has_value(value: JSONValue) -> bool:
+    return value is not None and value != ""
+
+
+class ScorerInvokeInputs(BaseModel):
+    """Input values sent to Galileo's scorer invoke API."""
+
+    query: JSONValue = ""
+    response: JSONValue = ""
+    ground_truth: JSONValue = None
+    tools: JSONValue = None
 
 
 class ScorerInvokeRequest(BaseModel):
     """Request payload for Galileo Luna scorer invocation.
 
     Attributes:
-        root_type: Runtime step shape used by Galileo scorer input normalization.
-        input: Optional user/system prompt text.
-        output: Optional model response text.
+        inputs: Selected scorer input values.
         scorer_label: Preset, registered, or fine-tuned scorer label.
         project_id: Optional Galileo project UUID for project-scoped scorer resolution.
         config: Optional scorer-specific configuration.
     """
 
-    root_type: RootType = Field(default="span")
-    input: JSONValue = None
-    output: JSONValue = None
     scorer_label: str = Field(min_length=1)
+    inputs: ScorerInvokeInputs
     project_id: str | UUID | None = None
     config: JSONObject | None = None
 
     @model_validator(mode="after")
     def ensure_input_or_output(self) -> ScorerInvokeRequest:
-        if self.input is None and self.output is None:
-            raise ValueError("Either input or output must be set.")
+        if not (_has_value(self.inputs.query) or _has_value(self.inputs.response)):
+            raise ValueError("Either inputs.query or inputs.response must be set.")
         return self
 
     def to_dict(self) -> JSONObject:
@@ -234,7 +239,6 @@ class GalileoLunaClient:
         scorer_label: str,
         input: JSONValue = None,
         output: JSONValue = None,
-        root_type: RootType = "span",
         project_id: str | UUID | None = None,
         config: JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
@@ -246,7 +250,6 @@ class GalileoLunaClient:
             scorer_label: Preset, registered, or fine-tuned scorer label.
             input: Optional user/system prompt text.
             output: Optional model response text.
-            root_type: Runtime step shape used by Galileo scorer input normalization.
             project_id: Optional Galileo project UUID for project-scoped scorer resolution.
             config: Optional scorer-specific configuration.
             timeout: Request timeout in seconds.
@@ -266,9 +269,9 @@ class GalileoLunaClient:
 
         request_body = ScorerInvokeRequest(
             scorer_label=scorer_label,
-            input=input,
-            output=output,
-            root_type=root_type,
+            inputs=ScorerInvokeInputs(
+                query="" if input is None else input, response="" if output is None else output
+            ),
             project_id=project_id,
             config=config,
         ).to_dict()
