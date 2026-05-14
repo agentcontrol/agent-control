@@ -44,19 +44,23 @@ try:
         LunaEvaluator,
         LunaEvaluatorConfig,
         LunaOperator,
+        ScorerInvokeInputs,
         ScorerInvokeRequest,
         ScorerInvokeResponse,
     )
 
-    __all__.extend([
-        "GalileoLunaClient",
-        "ScorerInvokeRequest",
-        "ScorerInvokeResponse",
-        "LunaEvaluator",
-        "LunaEvaluatorConfig",
-        "LunaOperator",
-        "LUNA_AVAILABLE",
-    ])
+    __all__.extend(
+        [
+            "GalileoLunaClient",
+            "ScorerInvokeInputs",
+            "ScorerInvokeRequest",
+            "ScorerInvokeResponse",
+            "LunaEvaluator",
+            "LunaEvaluatorConfig",
+            "LunaOperator",
+            "LUNA_AVAILABLE",
+        ]
+    )
 except ImportError:
     pass
 
@@ -69,12 +73,14 @@ try:
         Luna2Operator,
     )
 
-    __all__.extend([
-        "Luna2Evaluator",
-        "Luna2EvaluatorConfig",
-        "Luna2Metric",
-        "Luna2Operator",
-        "LUNA2_AVAILABLE",
-    ])
+    __all__.extend(
+        [
+            "Luna2Evaluator",
+            "Luna2EvaluatorConfig",
+            "Luna2Metric",
+            "Luna2Operator",
+            "LUNA2_AVAILABLE",
+        ]
+    )
 except ImportError:
     pass
