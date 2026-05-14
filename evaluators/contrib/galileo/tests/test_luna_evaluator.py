@@ -435,7 +435,7 @@ class TestLunaEvaluator:
         from agent_control_evaluator_galileo.luna import LunaEvaluator
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-        # Given: default fail-open behavior
+        # Given: fixed fail-open behavior for scorer errors
         evaluator = LunaEvaluator.from_dict({"scorer_label": "toxicity", "threshold": 0.5})
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
@@ -448,27 +448,4 @@ class TestLunaEvaluator:
         assert result.matched is False
         assert result.error == "service unavailable"
         assert result.metadata is not None
-        assert result.metadata["fallback_action"] == "allow"
-
-    @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @pytest.mark.asyncio
-    async def test_evaluator_fail_closed_matches_without_error_field(self) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        # Given: fail-closed behavior for scorer errors
-        evaluator = LunaEvaluator.from_dict(
-            {"scorer_label": "toxicity", "threshold": 0.5, "on_error": "deny"}
-        )
-
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            mock_invoke.side_effect = RuntimeError("service unavailable")
-
-            # When: the scorer call fails
-            result = await evaluator.evaluate("hello")
-
-        # Then: the control matches so deny/steer actions can be applied by the engine
-        assert result.matched is True
-        assert result.error is None
-        assert result.metadata is not None
-        assert result.metadata["fallback_action"] == "deny"
+        assert "fallback_action" not in result.metadata
