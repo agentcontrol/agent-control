@@ -38,10 +38,6 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         operator: Local comparison operator. Numeric operators use threshold as a number.
         scorer_config: Optional scorer-specific config sent as ``config``.
         timeout_ms: Request timeout in milliseconds.
-        on_error: Error policy: allow=fail open, deny=fail closed.
-        payload_field: Force selected data into input or output. If omitted, root step
-            payloads with input/output use both fields; scalar data is inferred from scorer label.
-        include_raw_response: Include the raw API response in EvaluatorResult metadata.
     """
 
     scorer_label: str = Field(..., min_length=1, description="Luna scorer label to invoke")
@@ -68,18 +64,6 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         ge=1000,
         le=60000,
         description="Request timeout in milliseconds (1-60 seconds)",
-    )
-    on_error: Literal["allow", "deny"] = Field(
-        default="allow",
-        description="Action on error: 'allow' (fail open) or 'deny' (fail closed)",
-    )
-    payload_field: Literal["input", "output"] | None = Field(
-        default=None,
-        description="Explicitly set which scorer payload field receives scalar selected data.",
-    )
-    include_raw_response: bool = Field(
-        default=False,
-        description="Include the raw scorer response in result metadata.",
     )
 
     @model_validator(mode="after")

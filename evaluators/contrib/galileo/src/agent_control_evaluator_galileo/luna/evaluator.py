@@ -126,12 +126,6 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
 
     def _prepare_payload(self, data: Any) -> tuple[str | None, str | None]:
         """Prepare scorer input/output fields from selected data."""
-        if self.config.payload_field is not None:
-            text = _coerce_payload_text(data)
-            if self.config.payload_field == "output":
-                return None, text
-            return text, None
-
         if isinstance(data, dict):
             input_text = _extract_dict_text(data, "input")
             output_text = _extract_dict_text(data, "output")
@@ -236,25 +230,20 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             "execution_time_seconds": response.execution_time,
             "error_message": response.error_message,
         }
-        if self.config.include_raw_response:
-            metadata["raw_response"] = response.raw_response
         return metadata
 
     def _handle_error(self, error: Exception) -> EvaluatorResult:
-        fallback = self.config.on_error
-        matched = fallback == "deny"
         error_detail = str(error)
         return EvaluatorResult(
-            matched=matched,
+            matched=False,
             confidence=0.0,
             message=f"Luna evaluation error: {error_detail}",
             metadata={
                 "error": error_detail,
                 "error_type": type(error).__name__,
                 "scorer_label": self.config.scorer_label,
-                "fallback_action": fallback,
             },
-            error=None if matched else error_detail,
+            error=error_detail,
         )
 
     async def aclose(self) -> None:
