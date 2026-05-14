@@ -16,6 +16,34 @@ _CONTROLS_URL = "/api/v1/controls"
 _TEMPLATES_URL = "/api/v1/control-templates"
 
 
+def _valid_template_render_payload() -> dict[str, object]:
+    return {
+        "template": {
+            "description": "Regex denial template",
+            "parameters": {
+                "pattern": {
+                    "type": "regex_re2",
+                    "label": "Pattern",
+                },
+            },
+            "definition_template": {
+                "description": "Template-backed control",
+                "execution": "server",
+                "scope": {"step_types": ["llm"], "stages": ["pre"]},
+                "condition": {
+                    "selector": {"path": "input"},
+                    "evaluator": {
+                        "name": "regex",
+                        "config": {"pattern": {"$param": "pattern"}},
+                    },
+                },
+                "action": {"decision": "deny"},
+            },
+        },
+        "template_values": {"pattern": "hello"},
+    }
+
+
 def _create_control(client: TestClient, name: str | None = None) -> int:
     payload = {
         "name": name or f"control-{uuid.uuid4().hex[:12]}",
@@ -63,6 +91,13 @@ def test_schema_endpoint_reachable_with_non_admin_key(
 
     # Then: the schema is returned
     assert resp.status_code == 200, resp.text
+
+
+def test_schema_endpoint_openapi_is_public(client: TestClient) -> None:
+    schema = client.app.openapi()
+
+    operation = schema["paths"][f"{_CONTROLS_URL}/schema"]["get"]
+    assert operation.get("security") == []
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +244,7 @@ def test_non_admin_cannot_validate_control_data(
         json={"data": VALID_CONTROL_PAYLOAD},
     )
 
-    # Then: validation is admin-only
+    # Then: validation requires CONTROLS_CREATE.
     assert resp.status_code == 403, resp.text
 
 
@@ -218,10 +253,10 @@ def test_non_admin_cannot_render_template(non_admin_client: TestClient) -> None:
     # When: a non-admin attempts to render a template
     resp = non_admin_client.post(
         f"{_TEMPLATES_URL}/render",
-        json={"template": {}, "template_values": {}},
+        json=_valid_template_render_payload(),
     )
 
-    # Then: rendering is admin-only
+    # Then: rendering requires CONTROLS_CREATE.
     assert resp.status_code == 403, resp.text
 
 
@@ -275,7 +310,7 @@ def test_unauthenticated_cannot_render_template(
     # When: a client without credentials attempts to render
     resp = unauthenticated_client.post(
         f"{_TEMPLATES_URL}/render",
-        json={"template": {}, "template_values": {}},
+        json=_valid_template_render_payload(),
     )
 
     # Then: the request is rejected
@@ -311,4 +346,3 @@ def test_no_auth_mode_allows_writes_without_credentials(
     # Then: the create succeeds because auth is disabled at the provider
     assert resp.status_code == 200, resp.text
     assert "control_id" in resp.json()
-

@@ -347,6 +347,15 @@ def custom_openapi() -> dict[str, Any]:
     if "JSONValue" in schemas:
         schemas["JSONValue"] = {"description": "Any JSON value"}
 
+    controls_schema_path = f"{api_v1_prefix}/controls/schema"
+    controls_schema_operation = (
+        openapi_schema.get("paths", {})
+        .get(controls_schema_path, {})
+        .get("get")
+    )
+    if isinstance(controls_schema_operation, dict):
+        controls_schema_operation["security"] = []
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
