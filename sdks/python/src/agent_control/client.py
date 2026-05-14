@@ -20,8 +20,8 @@ _logger = logging.getLogger(__name__)
 
 _RUNTIME_AUTH_MODE_ENV_VAR = "AGENT_CONTROL_RUNTIME_AUTH_MODE"
 _DEFAULT_RUNTIME_TOKEN_REFRESH_MARGIN_SECONDS = 30
-_AUTO_RUNTIME_TOKEN_FALLBACK_STATUSES = {404, 503}
-_GLOBAL_RUNTIME_TOKEN_FALLBACK_STATUSES = {404, 503}
+_AUTO_RUNTIME_TOKEN_FALLBACK_STATUSES = {404, 500, 502, 503, 504}
+_GLOBAL_RUNTIME_TOKEN_FALLBACK_STATUSES = {404}
 
 
 class _AgentControlAuth(httpx.Auth):
@@ -248,8 +248,10 @@ class AgentControlClient:
             headers=request_headers,
         )
 
-        if response.status_code == 401 and runtime_authorization is not None:
+        if _should_refresh_runtime_token(response) and runtime_authorization is not None:
             await response.aread()
+            if target_type is not None and target_id is not None:
+                self._runtime_token_cache.remove(self.base_url, target_type, target_id)
             runtime_authorization = await self._runtime_authorization(
                 target_type=target_type,
                 target_id=target_id,
@@ -262,6 +264,13 @@ class AgentControlClient:
                 json=json,
                 headers=request_headers,
             )
+            if (
+                _should_refresh_runtime_token(response)
+                and target_type is not None
+                and target_id is not None
+            ):
+                await response.aread()
+                self._runtime_token_cache.remove(self.base_url, target_type, target_id)
 
         return response
 
@@ -320,6 +329,14 @@ class AgentControlClient:
             target_id,
         )
         async with exchange_lock:
+            if (
+                self._runtime_auth_mode == "auto"
+                and not force_refresh
+                and self._runtime_token_cache.is_jwt_unavailable(
+                    self.base_url, target_type, target_id
+                )
+            ):
+                return None
             if not force_refresh:
                 cached = self._runtime_token_cache.get(
                     self.base_url,
@@ -347,10 +364,20 @@ class AgentControlClient:
         allow_auto_fallback: bool = True,
     ) -> str | None:
         """Exchange the configured credential for a target-bound runtime token."""
-        response = await self.http_client.post(
-            "/api/v1/auth/runtime-token-exchange",
-            json={"target_type": target_type, "target_id": target_id},
-        )
+        try:
+            response = await self.http_client.post(
+                "/api/v1/auth/runtime-token-exchange",
+                json={"target_type": target_type, "target_id": target_id},
+            )
+        except httpx.RequestError:
+            if self._runtime_auth_mode == "auto" and allow_auto_fallback:
+                self._runtime_token_cache.mark_jwt_unavailable(
+                    server_url=self.base_url,
+                    target_type=target_type,
+                    target_id=target_id,
+                )
+                return None
+            raise
 
         if (
             self._runtime_auth_mode == "auto"
@@ -373,5 +400,18 @@ class AgentControlClient:
             cast(dict[str, object], payload),
             server_url=self.base_url,
         )
+        if token.target_type != target_type or token.target_id != target_id:
+            raise RuntimeError(
+                "Runtime token exchange response target did not match the requested target."
+            )
         self._runtime_token_cache.set(token)
         return token.token
+
+
+def _should_refresh_runtime_token(response: httpx.Response) -> bool:
+    if response.status_code == 401:
+        return True
+    if response.status_code != 403:
+        return False
+    authenticate = response.headers.get("WWW-Authenticate", "")
+    return "invalid_token" in authenticate.lower()

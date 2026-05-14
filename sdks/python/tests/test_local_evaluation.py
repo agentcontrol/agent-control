@@ -13,16 +13,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from agent_control.client import AgentControlClient
-from agent_control.evaluation import (
-    _merge_results,
-    check_evaluation_with_local,
-)
 from agent_control_models import (
     ControlMatch,
     EvaluationResponse,
     EvaluatorResult,
     Step,
+)
+
+from agent_control.client import AgentControlClient
+from agent_control.evaluation import (
+    _merge_results,
+    check_evaluation_with_local,
 )
 
 # =============================================================================
@@ -58,6 +59,19 @@ class _RuntimeAuthDuckClient:
             }
         )
         return self.response
+
+
+class _HttpOnlyDuckClient:
+    """Minimal custom client that exposes the normal HTTP evaluation path."""
+
+    base_url = "https://agent-control.test"
+
+    def __init__(self) -> None:
+        self.response = MagicMock()
+        self.response.json.return_value = {"is_safe": True, "confidence": 1.0}
+        self.response.raise_for_status = MagicMock()
+        self.http_client = MagicMock()
+        self.http_client.post = AsyncMock(return_value=self.response)
 
 
 @pytest.fixture
@@ -386,6 +400,26 @@ class TestCheckEvaluationWithLocal:
         assert client.runtime_requests[0]["target_id"] == "ls-1"
         assert client.runtime_requests[0]["json"]["target_type"] == "log_stream"
         assert client.runtime_requests[0]["json"]["target_id"] == "ls-1"
+
+    @pytest.mark.asyncio
+    async def test_custom_http_client_without_runtime_mode_uses_normal_path(
+        self, agent_name, llm_payload
+    ) -> None:
+        controls = [
+            make_control_dict(1, "server_ctrl", execution="server"),
+        ]
+        client = _HttpOnlyDuckClient()
+
+        result = await check_evaluation_with_local(
+            client=client,  # type: ignore[arg-type]
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+        )
+
+        assert result.is_safe is True
+        client.http_client.post.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_mock_client_with_runtime_method_uses_runtime_auth_path(

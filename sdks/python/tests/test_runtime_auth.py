@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -49,6 +50,12 @@ def test_runtime_token_cache_is_keyed_by_server_and_target() -> None:
     )
 
 
+def test_runtime_token_repr_redacts_jwt() -> None:
+    token = _runtime_token(token="raw-jwt-value")
+
+    assert "raw-jwt-value" not in repr(token)
+
+
 def test_runtime_token_cache_drops_stale_tokens() -> None:
     cache = RuntimeTokenCache()
     cache.set(_runtime_token(expires_at=datetime.now(UTC) + timedelta(seconds=5)))
@@ -74,6 +81,19 @@ def test_runtime_token_cache_tracks_jwt_unavailable_by_server_and_target() -> No
     assert not cache.is_jwt_unavailable("https://server-b.test", "log_stream", "ls-1")
 
     cache.set(_runtime_token())
+
+    assert not cache.is_jwt_unavailable("https://server-a.test", "log_stream", "ls-1")
+
+
+def test_runtime_token_cache_target_unavailable_marker_expires() -> None:
+    cache = RuntimeTokenCache()
+
+    cache.mark_jwt_unavailable(
+        server_url="https://server-a.test",
+        target_type="log_stream",
+        target_id="ls-1",
+        ttl_seconds=0,
+    )
 
     assert not cache.is_jwt_unavailable("https://server-a.test", "log_stream", "ls-1")
 
@@ -126,6 +146,33 @@ def test_runtime_token_cache_evicts_oldest_token_when_full() -> None:
         cache.get("https://server-a.test", "log_stream", "ls-2", refresh_margin_seconds=0)
         == token_2
     )
+
+
+@pytest.mark.asyncio
+async def test_runtime_token_cache_token_eviction_preserves_exchange_lock() -> None:
+    cache = RuntimeTokenCache(max_entries=1)
+    lock = cache.exchange_lock("https://server-a.test", "log_stream", "ls-1")
+
+    cache.set(_runtime_token(target_id="ls-1"))
+    cache.set(_runtime_token(token="token-2", target_id="ls-2"))
+
+    assert cache.exchange_lock("https://server-a.test", "log_stream", "ls-1") is lock
+
+
+def test_runtime_token_cache_exchange_locks_are_loop_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = RuntimeTokenCache()
+    loop_1 = object()
+    loop_2 = object()
+
+    monkeypatch.setattr(asyncio, "get_running_loop", lambda: loop_1)
+    first = cache.exchange_lock("https://server-a.test", "log_stream", "ls-1")
+
+    monkeypatch.setattr(asyncio, "get_running_loop", lambda: loop_2)
+    second = cache.exchange_lock("https://server-a.test", "log_stream", "ls-1")
+
+    assert first != second
 
 
 def test_runtime_token_cache_rejects_empty_capacity() -> None:

@@ -40,7 +40,11 @@ from agent_control_telemetry import get_trace_context_from_provider
 
 from agent_control import AgentControlClient
 from agent_control._state import state
-from agent_control.evaluation import _resolve_session_target, check_evaluation_with_local
+from agent_control.evaluation import (
+    _post_evaluation_request,
+    _resolve_session_target,
+    check_evaluation_with_local,
+)
 from agent_control.observability import (
     get_logger,
     log_control_evaluation,
@@ -388,10 +392,12 @@ async def _evaluate(
             payload["target_type"] = target_type
             payload["target_id"] = target_id
 
-        response = await client.http_client.post(
-            "/api/v1/evaluation",
-            json=payload,
+        response = await _post_evaluation_request(
+            client,
+            request_payload=payload,
             headers=headers,
+            target_type=target_type,
+            target_id=target_id,
         )
         response.raise_for_status()
         result_dict: dict[str, Any] = response.json()

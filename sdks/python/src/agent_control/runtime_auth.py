@@ -5,21 +5,23 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 RuntimeAuthMode = Literal["auto", "none", "api_key", "jwt"]
 
 _TokenKey = tuple[str, str, str]
+_LockKey = tuple[str, str, str, int]
 _DEFAULT_MAX_CACHE_ENTRIES = 256
+_DEFAULT_JWT_UNAVAILABLE_TTL_SECONDS = 30
 
 
 @dataclass(frozen=True)
 class RuntimeToken:
     """Short-lived runtime token bound to one target."""
 
-    token: str
+    token: str = field(repr=False)
     expires_at: datetime
     server_url: str
     target_type: str
@@ -41,8 +43,8 @@ class RuntimeTokenCache:
         self._max_entries = max_entries
         self._tokens: dict[_TokenKey, RuntimeToken] = {}
         self._jwt_unavailable = False
-        self._jwt_unavailable_targets: set[_TokenKey] = set()
-        self._exchange_locks: dict[_TokenKey, asyncio.Lock] = {}
+        self._jwt_unavailable_targets: dict[_TokenKey, datetime] = {}
+        self._exchange_locks: dict[_LockKey, asyncio.Lock] = {}
         self._lock = threading.Lock()
 
     def get(
@@ -71,10 +73,9 @@ class RuntimeTokenCache:
             if key not in self._tokens and len(self._tokens) >= self._max_entries:
                 oldest_key = next(iter(self._tokens))
                 self._tokens.pop(oldest_key, None)
-                self._jwt_unavailable_targets.discard(oldest_key)
-                self._exchange_locks.pop(oldest_key, None)
+                self._jwt_unavailable_targets.pop(oldest_key, None)
             self._tokens[key] = token
-            self._jwt_unavailable_targets.discard(key)
+            self._jwt_unavailable_targets.pop(key, None)
 
     def remove(self, server_url: str, target_type: str, target_id: str) -> None:
         """Drop the cached token for one target."""
@@ -88,6 +89,7 @@ class RuntimeTokenCache:
         target_type: str | None = None,
         target_id: str | None = None,
         globally: bool = False,
+        ttl_seconds: int = _DEFAULT_JWT_UNAVAILABLE_TTL_SECONDS,
     ) -> None:
         """Record that JWT runtime auth should not be attempted."""
         with self._lock:
@@ -101,16 +103,25 @@ class RuntimeTokenCache:
                     key not in self._jwt_unavailable_targets
                     and len(self._jwt_unavailable_targets) >= self._max_entries
                 ):
-                    evicted_key = self._jwt_unavailable_targets.pop()
-                    self._exchange_locks.pop(evicted_key, None)
-                self._jwt_unavailable_targets.add(key)
+                    self._jwt_unavailable_targets.pop(next(iter(self._jwt_unavailable_targets)))
+                self._jwt_unavailable_targets[key] = datetime.now(UTC) + timedelta(
+                    seconds=ttl_seconds
+                )
                 self._tokens.pop(key, None)
 
     def is_jwt_unavailable(self, server_url: str, target_type: str, target_id: str) -> bool:
         """Return whether JWT exchange is known unavailable for the target."""
         key = (server_url, target_type, target_id)
         with self._lock:
-            return self._jwt_unavailable or key in self._jwt_unavailable_targets
+            if self._jwt_unavailable:
+                return True
+            expires_at = self._jwt_unavailable_targets.get(key)
+            if expires_at is None:
+                return False
+            if expires_at > datetime.now(UTC):
+                return True
+            self._jwt_unavailable_targets.pop(key, None)
+            return False
 
     def clear(self) -> None:
         """Clear every cached token and fallback marker."""
@@ -118,11 +129,10 @@ class RuntimeTokenCache:
             self._tokens.clear()
             self._jwt_unavailable = False
             self._jwt_unavailable_targets.clear()
-            self._exchange_locks.clear()
 
     def exchange_lock(self, server_url: str, target_type: str, target_id: str) -> asyncio.Lock:
         """Return the async exchange lock for one server and target."""
-        key = (server_url, target_type, target_id)
+        key = (server_url, target_type, target_id, id(asyncio.get_running_loop()))
         with self._lock:
             lock = self._exchange_locks.get(key)
             if lock is None:

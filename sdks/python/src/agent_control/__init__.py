@@ -542,6 +542,11 @@ def init(
         raise ValueError(
             "target_type and target_id must be supplied together."
         )
+    resolved_api_key_header = (
+        api_key_header
+        or os.getenv(AgentControlClient.API_KEY_HEADER_ENV_VAR)
+        or AgentControlClient.DEFAULT_API_KEY_HEADER
+    )
 
     # Re-init behavior: always stop the existing refresh loop before mutating
     # shared agent/session globals.
@@ -569,7 +574,7 @@ def init(
         state.current_agent = next_agent
         state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
         state.api_key = api_key
-        state.api_key_header = api_key_header
+        state.api_key_header = resolved_api_key_header
         state.runtime_token_cache.clear()
         state.target_type = target_type
         state.target_id = target_id

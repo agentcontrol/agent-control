@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import ANY, AsyncMock, patch
 from uuid import uuid4
 
-import agent_control
 import pytest
+
+import agent_control
 from agent_control._control_registry import clear, register
 
 if TYPE_CHECKING:
@@ -258,6 +259,48 @@ def test_init_passes_api_key_header_to_client_and_state() -> None:
     assert agent_control.state.api_key_header == "Galileo-API-Key"
     assert client_init_kwargs[0]["api_key_header"] == "Galileo-API-Key"
     assert observability_mock.call_args.kwargs["api_key_header"] == "Galileo-API-Key"
+
+
+def test_init_stores_resolved_default_api_key_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AGENT_CONTROL_API_KEY_HEADER", raising=False)
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+    client_init_kwargs: list[dict[str, Any]] = []
+    original_init = agent_control.AgentControlClient.__init__
+
+    def recording_init(
+        self: agent_control.AgentControlClient,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        client_init_kwargs.append(dict(kwargs))
+        original_init(self, *args, **kwargs)
+
+    with patch.object(
+        agent_control.AgentControlClient,
+        "__init__",
+        new=recording_init,
+    ), patch(
+        "agent_control.__init__.AgentControlClient.health_check",
+        new=health_check_mock,
+    ), patch(
+        "agent_control.__init__.agents.register_agent",
+        new=register_agent_mock,
+    ), patch.object(
+        agent_control,
+        "init_observability",
+        return_value=None,
+    ):
+        agent_control.init(
+            agent_name=f"agent-{uuid4().hex[:12]}",
+            api_key="test-key",
+            policy_refresh_interval_seconds=0,
+        )
+
+    assert agent_control.state.api_key_header == "X-API-Key"
+    assert client_init_kwargs[0]["api_key_header"] == "X-API-Key"
 
 
 @pytest.mark.asyncio
