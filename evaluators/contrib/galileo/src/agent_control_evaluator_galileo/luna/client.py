@@ -66,7 +66,13 @@ def _as_float_or_none(value: JSONValue) -> float | None:
 
 
 def _has_value(value: JSONValue) -> bool:
-    return value is not None and value != ""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip() != ""
+    if isinstance(value, (list, dict)):
+        return len(value) > 0
+    return True
 
 
 class ScorerInvokeInputs(BaseModel):
@@ -264,7 +270,7 @@ class GalileoLunaClient:
             httpx.HTTPStatusError: If the API returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
         """
-        if input is None and output is None:
+        if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
 
         request_body = ScorerInvokeRequest(

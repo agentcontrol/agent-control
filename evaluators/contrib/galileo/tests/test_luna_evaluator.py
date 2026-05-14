@@ -74,14 +74,18 @@ class TestGalileoLunaClient:
             "config": {"top_k": 1},
         }
 
-    def test_scorer_invoke_request_requires_input_or_output(self) -> None:
+    @pytest.mark.parametrize("empty_value", ["", " ", {}, []])
+    def test_scorer_invoke_request_requires_input_or_output(self, empty_value: object) -> None:
         from agent_control_evaluator_galileo.luna import ScorerInvokeRequest
 
         # Given/When/Then: the request mirrors API validation
         with pytest.raises(
             ValidationError, match="Either inputs.query or inputs.response must be set"
         ):
-            ScorerInvokeRequest(scorer_label="toxicity", inputs={})
+            ScorerInvokeRequest(
+                scorer_label="toxicity",
+                inputs={"query": empty_value, "response": empty_value},
+            )
 
     def test_scorer_invoke_response_matches_api_schema_shape(self) -> None:
         from agent_control_evaluator_galileo.luna import ScorerInvokeResponse
@@ -269,6 +273,19 @@ class TestGalileoLunaClient:
         # When/Then: project_id is required because API uses it as the internal auth context
         with pytest.raises(ValueError, match="project_id is required"):
             await client.invoke(scorer_label="toxicity", output="model answer")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("empty_value", ["", " ", {}, []])
+    async def test_client_rejects_missing_input_and_output_values(self, empty_value: object) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        # Given: a Luna client and scorer input values that API treats as missing
+        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}, clear=True):
+            client = GalileoLunaClient(api_url="https://api.default.svc.cluster.local:8088")
+
+        # When/Then: the client rejects the request before calling API
+        with pytest.raises(ValueError, match="At least one of input or output must be provided"):
+            await client.invoke(scorer_label="toxicity", input=empty_value, output=empty_value)
 
 
 class TestLunaEvaluator:
