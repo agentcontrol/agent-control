@@ -327,7 +327,7 @@ class TestLunaEvaluator:
 
         evaluator = LunaEvaluator.from_dict(
             {
-                "metric": "toxicity",
+                "scorer_label": "toxicity",
                 "project_id": "12345678-1234-5678-1234-567812345678",
                 "threshold": 0.5,
             }
