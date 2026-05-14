@@ -9,7 +9,6 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
-from uuid import UUID
 
 import httpx
 from agent_control_models import JSONObject, JSONValue
@@ -29,7 +28,6 @@ def _b64url(data: bytes) -> str:
 
 def _internal_auth_token(
     api_secret: str,
-    project_id: str | UUID,
     ttl_seconds: int = DEFAULT_INTERNAL_TOKEN_TTL_SECS,
 ) -> str:
     """Create the internal JWT expected by Galileo API internal routes."""
@@ -37,7 +35,6 @@ def _internal_auth_token(
     header = {"alg": "HS256", "typ": "JWT"}
     payload = {
         "internal": True,
-        "project_id": str(project_id),
         "scope": "scorers.invoke",
         "iat": now,
         "exp": now + ttl_seconds,
@@ -90,13 +87,11 @@ class ScorerInvokeRequest(BaseModel):
     Attributes:
         inputs: Selected scorer input values.
         scorer_label: Preset, registered, or fine-tuned scorer label.
-        project_id: Optional Galileo project UUID for project-scoped scorer resolution.
         config: Optional scorer-specific configuration.
     """
 
     scorer_label: str = Field(min_length=1)
     inputs: ScorerInvokeInputs
-    project_id: str | UUID | None = None
     config: JSONObject | None = None
 
     @model_validator(mode="after")
@@ -222,21 +217,13 @@ class GalileoLunaClient:
 
     def _endpoint_and_headers(
         self,
-        project_id: str | UUID | None,
         headers: dict[str, str] | None,
     ) -> tuple[str, dict[str, str]]:
         request_headers = dict(headers or {})
         if self.api_secret is None:
             return f"{self.api_base}{PUBLIC_SCORER_INVOKE_PATH}", request_headers
 
-        if project_id is None:
-            raise ValueError(
-                "project_id is required when using GALILEO_API_SECRET_KEY internal auth."
-            )
-
-        request_headers["Authorization"] = (
-            f"Bearer {_internal_auth_token(self.api_secret, project_id)}"
-        )
+        request_headers["Authorization"] = f"Bearer {_internal_auth_token(self.api_secret)}"
         return f"{self.api_base}{INTERNAL_SCORER_INVOKE_PATH}", request_headers
 
     async def invoke(
@@ -245,7 +232,6 @@ class GalileoLunaClient:
         scorer_label: str,
         input: JSONValue = None,
         output: JSONValue = None,
-        project_id: str | UUID | None = None,
         config: JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
@@ -256,7 +242,6 @@ class GalileoLunaClient:
             scorer_label: Preset, registered, or fine-tuned scorer label.
             input: Optional user/system prompt text.
             output: Optional model response text.
-            project_id: Optional Galileo project UUID for project-scoped scorer resolution.
             config: Optional scorer-specific configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
@@ -278,10 +263,9 @@ class GalileoLunaClient:
             inputs=ScorerInvokeInputs(
                 query="" if input is None else input, response="" if output is None else output
             ),
-            project_id=project_id,
             config=config,
         ).to_dict()
-        endpoint, request_headers = self._endpoint_and_headers(project_id, headers)
+        endpoint, request_headers = self._endpoint_and_headers(headers)
 
         logger.debug("[GalileoLunaClient] POST %s", endpoint)
         logger.debug("[GalileoLunaClient] Request body: %s", request_body)

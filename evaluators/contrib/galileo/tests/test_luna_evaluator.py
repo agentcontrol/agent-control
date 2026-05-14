@@ -28,7 +28,6 @@ class TestLunaEvaluatorConfig:
         # Given: a direct scorer config with local thresholding
         config = LunaEvaluatorConfig(
             scorer_label="toxicity",
-            project_id="12345678-1234-5678-1234-567812345678",
             threshold=0.7,
             operator="gte",
             config={"temperature": 0},
@@ -36,7 +35,6 @@ class TestLunaEvaluatorConfig:
 
         # Then: config is retained without Protect concepts
         assert config.scorer_label == "toxicity"
-        assert str(config.project_id) == "12345678-1234-5678-1234-567812345678"
         assert config.threshold == 0.7
         assert config.operator == "gte"
         assert config.scorer_config == {"temperature": 0}
@@ -55,11 +53,10 @@ class TestGalileoLunaClient:
     def test_scorer_invoke_request_matches_api_schema_shape(self) -> None:
         from agent_control_evaluator_galileo.luna import ScorerInvokeInputs, ScorerInvokeRequest
 
-        # Given: a scorer request with project context and scorer config
+        # Given: a scorer request with scorer config
         request = ScorerInvokeRequest(
             scorer_label="toxicity",
             inputs=ScorerInvokeInputs(query={"messages": [{"role": "user", "content": "hello"}]}),
-            project_id="12345678-1234-5678-1234-567812345678",
             config={"top_k": 1},
         )
 
@@ -70,7 +67,6 @@ class TestGalileoLunaClient:
                 "query": {"messages": [{"role": "user", "content": "hello"}]},
                 "response": "",
             },
-            "project_id": "12345678-1234-5678-1234-567812345678",
             "config": {"top_k": 1},
         }
 
@@ -185,7 +181,6 @@ class TestGalileoLunaClient:
                 scorer_label="toxicity",
                 input="user prompt",
                 output="model answer",
-                project_id="12345678-1234-5678-1234-567812345678",
                 config={"top_k": 1},
             )
         finally:
@@ -197,7 +192,6 @@ class TestGalileoLunaClient:
         assert captured["body"] == {
             "scorer_label": "toxicity",
             "inputs": {"query": "user prompt", "response": "model answer"},
-            "project_id": "12345678-1234-5678-1234-567812345678",
             "config": {"top_k": 1},
         }
         assert "stage_name" not in captured["body"]
@@ -232,16 +226,12 @@ class TestGalileoLunaClient:
         client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
         try:
-            # When: invoking a scorer with project context
-            response = await client.invoke(
-                scorer_label="toxicity",
-                output="model answer",
-                project_id="12345678-1234-5678-1234-567812345678",
-            )
+            # When: invoking a scorer with internal JWT auth
+            response = await client.invoke(scorer_label="toxicity", output="model answer")
         finally:
             await client.close()
 
-        # Then: the internal scorer endpoint is called with a project-bound JWT
+        # Then: the internal scorer endpoint is called with an internal JWT
         assert response.score == 0.82
         assert (
             captured["url"] == "https://api.default.svc.cluster.local:8088/internal/scorers/invoke"
@@ -249,7 +239,6 @@ class TestGalileoLunaClient:
         assert captured["body"] == {
             "scorer_label": "toxicity",
             "inputs": {"query": "", "response": "model answer"},
-            "project_id": "12345678-1234-5678-1234-567812345678",
         }
         headers = captured["headers"]
         assert isinstance(headers, dict)
@@ -259,20 +248,41 @@ class TestGalileoLunaClient:
         assert auth_header.startswith("Bearer ")
         token_payload = _decode_jwt_payload(auth_header.removeprefix("Bearer "))
         assert token_payload["internal"] is True
-        assert token_payload["project_id"] == "12345678-1234-5678-1234-567812345678"
         assert token_payload["scope"] == "scorers.invoke"
 
     @pytest.mark.asyncio
-    async def test_client_requires_project_id_for_internal_jwt(self) -> None:
+    async def test_client_uses_internal_jwt_without_api_key(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
         # Given: a Luna client configured with internal JWT auth
         with patch.dict(os.environ, {"GALILEO_API_SECRET_KEY": "test-secret"}, clear=True):
             client = GalileoLunaClient(api_url="https://api.default.svc.cluster.local:8088")
 
-        # When/Then: project_id is required because API uses it as the internal auth context
-        with pytest.raises(ValueError, match="project_id is required"):
-            await client.invoke(scorer_label="toxicity", output="model answer")
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["headers"] = dict(request.headers)
+            return httpx.Response(
+                200,
+                json={"scorer_label": "toxicity", "score": 0.82, "status": "success"},
+            )
+
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            # When: invoking without project context
+            response = await client.invoke(scorer_label="toxicity", output="model answer")
+        finally:
+            await client.close()
+
+        # Then: internal JWT auth still works
+        assert response.score == 0.82
+        headers = captured["headers"]
+        assert isinstance(headers, dict)
+        auth_header = headers["authorization"]
+        assert isinstance(auth_header, str)
+        token_payload = _decode_jwt_payload(auth_header.removeprefix("Bearer "))
+        assert token_payload["internal"] is True
+        assert token_payload["scope"] == "scorers.invoke"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("empty_value", ["", " ", {}, []])
@@ -314,12 +324,11 @@ class TestLunaEvaluator:
         evaluator = LunaEvaluator.from_dict(
             {
                 "scorer_label": "toxicity",
-                "project_id": "12345678-1234-5678-1234-567812345678",
                 "threshold": 0.5,
             }
         )
 
-        assert str(evaluator.config.project_id) == "12345678-1234-5678-1234-567812345678"
+        assert evaluator.config.scorer_label == "toxicity"
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @pytest.mark.asyncio
@@ -331,7 +340,6 @@ class TestLunaEvaluator:
         evaluator = LunaEvaluator.from_dict(
             {
                 "scorer_label": "toxicity",
-                "project_id": "12345678-1234-5678-1234-567812345678",
                 "threshold": 0.7,
                 "operator": "gte",
                 "timeout_ms": 5000,
@@ -360,7 +368,6 @@ class TestLunaEvaluator:
         assert result.confidence == 0.82
         assert result.metadata == {
             "scorer_label": "toxicity",
-            "project_id": "12345678-1234-5678-1234-567812345678",
             "score": 0.82,
             "threshold": 0.7,
             "operator": "gte",
@@ -372,7 +379,6 @@ class TestLunaEvaluator:
             scorer_label="toxicity",
             input="user prompt",
             output="model answer",
-            project_id=evaluator.config.project_id,
             config=None,
             timeout=5.0,
         )
@@ -405,7 +411,6 @@ class TestLunaEvaluator:
             scorer_label="toxicity",
             input="hello",
             output=None,
-            project_id=None,
             config=None,
             timeout=10.0,
         )

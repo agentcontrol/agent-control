@@ -192,7 +192,6 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 scorer_label=self.config.scorer_label,
                 input=input_text if _has_text(input_text) else None,
                 output=output_text if _has_text(output_text) else None,
-                project_id=self.config.project_id,
                 config=self.config.scorer_config,
                 timeout=self.get_timeout_seconds(),
             )
@@ -222,7 +221,6 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
     def _metadata(self, response: ScorerInvokeResponse) -> dict[str, Any]:
         metadata: dict[str, Any] = {
             "scorer_label": response.scorer_label or self.config.scorer_label,
-            "project_id": str(self.config.project_id) if self.config.project_id else None,
             "score": response.score,
             "threshold": self.config.threshold,
             "operator": self.config.operator,

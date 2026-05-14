@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Literal
-from uuid import UUID
 
 from agent_control_evaluators import EvaluatorConfig
 from agent_control_models import JSONObject, JSONValue
@@ -33,7 +32,6 @@ class LunaEvaluatorConfig(EvaluatorConfig):
 
     Attributes:
         scorer_label: Preset, registered, or fine-tuned scorer label.
-        project_id: Optional Galileo project UUID for project-scoped scorer resolution.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
         scorer_config: Optional scorer-specific config sent as ``config``.
@@ -41,10 +39,6 @@ class LunaEvaluatorConfig(EvaluatorConfig):
     """
 
     scorer_label: str = Field(..., min_length=1, description="Luna scorer label to invoke")
-    project_id: UUID | None = Field(
-        default=None,
-        description="Optional Galileo project UUID for project-scoped scorer resolution.",
-    )
     threshold: JSONValue = Field(
         default=0.5,
         description="Local threshold used to decide whether the control matches.",
