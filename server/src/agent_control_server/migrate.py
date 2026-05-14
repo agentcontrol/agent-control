@@ -15,15 +15,15 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
+from alembic import command
 from alembic.config import Config
 
 import agent_control_server
-from alembic import command
 
 
-@contextmanager
-def _bundled_config() -> Iterator[Config]:
+def _bundled_config() -> Config:
     pkg_dir = Path(agent_control_server.__file__).parent
     ini_path = pkg_dir / "_alembic.ini"
     alembic_dir = pkg_dir / "_alembic"
@@ -33,13 +33,27 @@ def _bundled_config() -> Iterator[Config]:
             f"{ini_path} and {alembic_dir}. The installed wheel is missing "
             "migration assets."
         )
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("script_location", str(alembic_dir).replace("%", "%%"))
+    return cfg
+
+
+@contextmanager
+def _runtime_bundled_config() -> Iterator[Config]:
+    cfg = _bundled_config()
+    if not isinstance(cfg, Config):
+        yield cast(Config, cfg)
+        return
+
+    bundled_script_location = cfg.get_main_option("script_location")
+    if bundled_script_location is None:
+        raise RuntimeError("Bundled Alembic script_location is not configured.")
+
     with tempfile.TemporaryDirectory(prefix="agent-control-alembic-") as tmp:
         script_location = Path(tmp) / "_alembic"
-        shutil.copytree(alembic_dir, script_location)
+        shutil.copytree(bundled_script_location, script_location)
         for injected_init in (script_location / "versions").rglob("__init__.py"):
             injected_init.unlink()
-
-        cfg = Config(str(ini_path))
         cfg.set_main_option("script_location", str(script_location).replace("%", "%%"))
         yield cfg
 
@@ -89,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     _configure_logging()
 
     try:
-        with _bundled_config() as cfg:
+        with _runtime_bundled_config() as cfg:
             if parsed.command == "upgrade":
                 command.upgrade(cfg, parsed.revision, sql=parsed.sql)
             elif parsed.command == "downgrade":

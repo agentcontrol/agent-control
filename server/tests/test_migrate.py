@@ -24,7 +24,7 @@ def test_bundled_config_omits_injected_version_init(
 
     monkeypatch.setattr(agent_control_server, "__file__", str(package_dir / "__init__.py"))
 
-    with migrate._bundled_config() as cfg:
+    with migrate._runtime_bundled_config() as cfg:
         script_location = Path(cfg.get_main_option("script_location"))
         assert script_location.exists()
         assert (script_location / "versions" / "abc123_example.py").exists()
