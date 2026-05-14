@@ -8,9 +8,12 @@ end-to-end exchange-then-verify path: a token minted via
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from fastapi.testclient import TestClient
+
 from agent_control_server.auth_framework import Operation, Principal
 from agent_control_server.auth_framework.config import (
     RuntimeAuthConfig,
@@ -23,7 +26,6 @@ from agent_control_server.auth_framework.core import (
 from agent_control_server.auth_framework.providers import (
     LocalJwtVerifyProvider,
 )
-from fastapi.testclient import TestClient
 
 _TEST_SECRET = "test-runtime-secret-12345678901234567890"
 
@@ -105,6 +107,38 @@ def test_exchange_endpoint_mints_token_when_configured(client: TestClient, runti
     assert "runtime.use" in body["scopes"]
     assert body["token"]
     assert body["expires_at"]
+
+
+def test_exchange_audit_log_redacts_actor_id(
+    client: TestClient,
+    runtime_config_enabled,
+    caplog: pytest.LogCaptureFixture,
+):
+    stub = _StubExchangeAuthorizer(
+        actor_id="user@example.test",
+        scopes=("runtime.use",),
+        target_type="log_stream",
+        target_id="ls-42",
+    )
+    clear_authorizers()
+    set_authorizer(stub)
+
+    with caplog.at_level(logging.INFO):
+        response = client.post(
+            "/api/v1/auth/runtime-token-exchange",
+            json={"target_type": "log_stream", "target_id": "ls-42"},
+        )
+
+    assert response.status_code == 200, response.text
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "Runtime token exchanged"
+    ]
+    assert records
+    record = records[-1]
+    assert "actor_id" not in record.__dict__
+    assert record.__dict__["actor_id_hash"]
 
 
 def test_exchange_endpoint_rejects_target_mismatch(client: TestClient, runtime_config_enabled):

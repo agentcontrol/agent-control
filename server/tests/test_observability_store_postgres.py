@@ -5,11 +5,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from agent_control_models.observability import ControlExecutionEvent, EventQueryRequest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agent_control_models.observability import ControlExecutionEvent, EventQueryRequest
 from agent_control_server.observability.store.postgres import PostgresEventStore
+
 from .conftest import async_engine, engine
 
 
@@ -120,6 +121,50 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
     # Then: only the requested control is returned
     assert len(filtered_stats.stats) == 1
     assert filtered_stats.stats[0].control_id == 1
+
+
+@pytest.mark.asyncio
+async def test_postgres_event_store_scopes_queries_by_namespace() -> None:
+    session_maker = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    store = PostgresEventStore(session_maker)
+
+    agent_name = f"agent-{uuid4().hex[:12]}"
+    now = datetime.now(UTC)
+    event_a = _event(
+        agent_name=agent_name,
+        control_id=1,
+        action="observe",
+        matched=True,
+        timestamp=now,
+        trace_id="a" * 32,
+    )
+    event_b = _event(
+        agent_name=agent_name,
+        control_id=2,
+        action="deny",
+        matched=True,
+        timestamp=now,
+        trace_id="b" * 32,
+    )
+
+    await store.store([event_a], namespace_key="tenant-a")
+    await store.store([event_b], namespace_key="tenant-b")
+
+    query = EventQueryRequest(agent_name=agent_name, limit=10, offset=0)
+    events_a = await store.query_events(query, namespace_key="tenant-a")
+    stats_a = await store.query_stats(
+        agent_name,
+        timedelta(hours=1),
+        namespace_key="tenant-a",
+    )
+
+    assert [event.control_id for event in events_a.events] == [1]
+    assert stats_a.total_executions == 1
+    assert stats_a.stats[0].control_id == 1
 
 
 @pytest.mark.asyncio

@@ -127,10 +127,13 @@ async def _evaluation_context(request: Request) -> dict[str, object]:
         return {}
     if not isinstance(body, dict):
         return {}
-    return {
-        "target_type": body.get("target_type"),
-        "target_id": body.get("target_id"),
-    }
+    target_type = body.get("target_type")
+    target_id = body.get("target_id")
+    if not isinstance(target_type, str) or not isinstance(target_id, str):
+        return {}
+    if not target_type or not target_id:
+        return {}
+    return {"target_type": target_type, "target_id": target_id}
 
 
 @router.post(

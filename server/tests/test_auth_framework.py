@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+
 from agent_control_server.auth_framework.core import (
     Operation,
     Principal,
@@ -28,6 +29,7 @@ from agent_control_server.auth_framework.providers.header import (
 from agent_control_server.auth_framework.providers.http_upstream import (
     HttpUpstreamConfig,
 )
+from agent_control_server.config import auth_settings
 from agent_control_server.errors import (
     APIError,
     AuthenticationError,
@@ -47,6 +49,16 @@ def _build_request(
     request.headers = headers or {}
     request.cookies = cookies or {}
     return request
+
+
+def _clear_auth_settings_cache() -> None:
+    for attr in (
+        "_parsed_api_keys",
+        "_parsed_admin_api_keys",
+        "_all_valid_keys",
+        "_all_admin_keys",
+    ):
+        auth_settings.__dict__.pop(attr, None)
 
 
 # 32-byte test secret (HS256 wants >= 32 bytes; shorter raises a warning).
@@ -258,6 +270,25 @@ async def test_http_upstream_forwards_service_token():
     await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_READ)
 
     assert captured["headers"]["x-custom-token"] == "shh"
+
+
+def test_http_upstream_rejects_service_token_header_collision():
+    with pytest.raises(ValueError, match="service_token_header"):
+        HttpUpstreamConfig(
+            url="https://upstream.example/check",
+            service_token="shh",
+            service_token_header="Authorization",
+        )
+
+
+def test_http_upstream_rejects_extra_forwarded_service_token_header_collision():
+    with pytest.raises(ValueError, match="service_token_header"):
+        HttpUpstreamConfig(
+            url="https://upstream.example/check",
+            service_token="shh",
+            service_token_header="X-Custom-Auth",
+            extra_forward_headers=("x-custom-auth",),
+        )
 
 
 @pytest.mark.asyncio
@@ -696,9 +727,39 @@ def test_runtime_token_rejects_naive_upstream_expires_at():
         )
 
 
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"actor_id": ""}, "actor_id is required"),
+        ({"target_type": ""}, "target_type is required"),
+        ({"target_id": ""}, "target_id is required"),
+    ],
+)
+def test_runtime_token_rejects_empty_required_claims(kwargs, message):
+    from agent_control_server.auth_framework.runtime_token import (
+        RuntimeTokenError,
+        mint_runtime_token,
+    )
+
+    token_kwargs = {
+        "namespace_key": "default",
+        "actor_id": "actor",
+        "target_type": "target",
+        "target_id": "target-id",
+        "scopes": ("runtime.use",),
+        "secret": _TEST_SECRET,
+        "ttl_seconds": 60,
+    }
+    token_kwargs.update(kwargs)
+
+    with pytest.raises(RuntimeTokenError, match=message):
+        mint_runtime_token(**token_kwargs)
+
+
 def test_runtime_token_rejects_management_token_passed_to_runtime_verify():
     """A token without ``domain=runtime`` must be rejected by runtime verify."""
     import jwt
+
     from agent_control_server.auth_framework.runtime_token import (
         RuntimeTokenError,
         verify_runtime_token,
@@ -1025,6 +1086,27 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
     assert principal.grant_expires_at.isoformat() == iso_expiry
 
 
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_target_grant_mismatch():
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "namespace_key": "org-1",
+                "target_type": "log_stream",
+                "target_id": "different",
+            },
+        )
+    )
+
+    with pytest.raises(ForbiddenError, match="does not match"):
+        await provider.authorize(
+            _build_request(),
+            Operation.RUNTIME_TOKEN_EXCHANGE,
+            context={"target_type": "log_stream", "target_id": "requested"},
+        )
+
+
 # ---------------------------------------------------------------------------
 # configure_auth_from_env / teardown_auth lifecycle
 # ---------------------------------------------------------------------------
@@ -1082,6 +1164,42 @@ def test_build_default_provider_accepts_none_mode(monkeypatch):
     monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "none")
 
     assert isinstance(auth_config._build_default_provider(), NoAuthProvider)
+
+
+def test_build_default_provider_defaults_to_none_when_api_keys_disabled(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.delenv("AGENT_CONTROL_AUTH_MODE", raising=False)
+    monkeypatch.setattr(auth_settings, "api_key_enabled", False)
+
+    assert isinstance(auth_config._build_default_provider(), NoAuthProvider)
+
+
+def test_build_default_provider_rejects_explicit_api_key_without_validator(
+    monkeypatch,
+):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "api_key")
+    monkeypatch.setattr(auth_settings, "api_key_enabled", False)
+
+    with pytest.raises(RuntimeError, match="AGENT_CONTROL_API_KEY_ENABLED=true"):
+        auth_config._build_default_provider()
+
+
+def test_build_default_provider_rejects_explicit_api_key_without_keys(
+    monkeypatch,
+):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "api_key")
+    monkeypatch.setattr(auth_settings, "api_key_enabled", True)
+    monkeypatch.setattr(auth_settings, "api_keys", "")
+    monkeypatch.setattr(auth_settings, "admin_api_keys", "")
+    _clear_auth_settings_cache()
+
+    with pytest.raises(RuntimeError, match="AGENT_CONTROL_API_KEYS"):
+        auth_config._build_default_provider()
 
 
 def test_resolve_runtime_mode_defaults_to_default_without_secret(monkeypatch):

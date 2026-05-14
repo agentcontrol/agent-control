@@ -15,6 +15,7 @@ import logging
 from agent_control_models.observability import ControlExecutionEvent
 from agent_control_telemetry.sinks import AsyncControlEventSink
 
+from ...models import DEFAULT_NAMESPACE_KEY
 from ..sinks import EventStoreControlEventSink
 from ..store.base import EventStore
 from .base import EventIngestor, IngestResult
@@ -53,11 +54,17 @@ class DirectEventIngestor(EventIngestor):
             self.sink = store
         self.log_to_stdout = log_to_stdout
 
-    async def ingest(self, events: list[ControlExecutionEvent]) -> IngestResult:
+    async def ingest(
+        self,
+        events: list[ControlExecutionEvent],
+        *,
+        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+    ) -> IngestResult:
         """Ingest events by writing them directly to the configured sink.
 
         Args:
             events: List of control execution events to ingest
+            namespace_key: Namespace that owns the events
 
         Returns:
             IngestResult with counts of received, processed, and dropped events
@@ -70,7 +77,13 @@ class DirectEventIngestor(EventIngestor):
         dropped = 0
 
         try:
-            sink_result = await self.sink.write_events(events)
+            if isinstance(self.sink, EventStoreControlEventSink):
+                sink_result = await self.sink.write_events(
+                    events,
+                    namespace_key=namespace_key,
+                )
+            else:
+                sink_result = await self.sink.write_events(events)
             processed = sink_result.accepted
             dropped = sink_result.dropped
 

@@ -10,6 +10,8 @@ from typing import Protocol, runtime_checkable
 from agent_control_models.observability import ControlExecutionEvent
 from pydantic import BaseModel, Field
 
+from ...models import DEFAULT_NAMESPACE_KEY
+
 
 class IngestResult(BaseModel):
     """Result of an event ingestion operation.
@@ -40,11 +42,17 @@ class EventIngestor(Protocol):
         - KafkaEventIngestor: Pushes to Kafka topic
     """
 
-    async def ingest(self, events: list[ControlExecutionEvent]) -> IngestResult:
+    async def ingest(
+        self,
+        events: list[ControlExecutionEvent],
+        *,
+        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+    ) -> IngestResult:
         """Ingest events. Returns counts of received/processed/dropped.
 
         Args:
             events: List of control execution events to ingest
+            namespace_key: Namespace that owns the events
 
         Returns:
             IngestResult with counts of received, processed, and dropped events

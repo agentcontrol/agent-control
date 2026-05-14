@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from ..config import auth_settings
 from ..logging_utils import get_logger
 from .core import Operation, RequestAuthorizer, clear_authorizers, set_authorizer
 from .providers import (
@@ -88,8 +89,10 @@ def configure_auth_from_env() -> None:
     Default flow:
 
     - ``AGENT_CONTROL_AUTH_MODE=none``: :class:`NoAuthProvider`.
-    - ``AGENT_CONTROL_AUTH_MODE=api_key`` (default): :class:`HeaderAuthProvider`.
-      ``header`` remains accepted as a backwards-compatible alias.
+    - ``AGENT_CONTROL_AUTH_MODE=api_key``: :class:`HeaderAuthProvider`.
+      ``header`` remains accepted as a backwards-compatible alias. When the mode
+      is unset, startup selects ``api_key`` only if local API-key validation is
+      enabled; otherwise it selects ``none``.
     - ``AGENT_CONTROL_AUTH_MODE=http_upstream``: :class:`HttpUpstreamAuthProvider`
       pointed at ``AGENT_CONTROL_AUTH_UPSTREAM_URL``.
 
@@ -190,11 +193,17 @@ def set_runtime_auth_config(config: RuntimeAuthConfig | None) -> None:
 
 
 def _build_default_provider() -> RequestAuthorizer:
-    mode = os.environ.get(_MODE_ENV, "api_key").strip().lower()
+    raw_mode = os.environ.get(_MODE_ENV)
+    mode = (
+        raw_mode
+        if raw_mode is not None
+        else ("api_key" if auth_settings.api_key_enabled else "none")
+    ).strip().lower()
     if mode in {"none", "no_auth"}:
         _logger.info("Default auth provider: none")
         return NoAuthProvider()
     if mode in {"api_key", "header"}:
+        _validate_local_api_key_mode()
         _logger.info("Default auth provider: api_key (local credentials)")
         return HeaderAuthProvider()
     if mode == "http_upstream":
@@ -221,6 +230,20 @@ def _build_default_provider() -> RequestAuthorizer:
         f"Unknown {_MODE_ENV}={mode!r}; expected 'none', 'api_key', 'header', "
         "or 'http_upstream'."
     )
+
+
+def _validate_local_api_key_mode() -> None:
+    """Fail startup when local API-key mode has no local key validator."""
+    if not auth_settings.api_key_enabled:
+        raise RuntimeError(
+            f"{_MODE_ENV}=api_key requires AGENT_CONTROL_API_KEY_ENABLED=true. "
+            f"Use {_MODE_ENV}=none for deployments without credential enforcement."
+        )
+    if not auth_settings.get_api_keys() and not auth_settings.get_admin_api_keys():
+        raise RuntimeError(
+            f"{_MODE_ENV}=api_key requires AGENT_CONTROL_API_KEYS or "
+            "AGENT_CONTROL_ADMIN_API_KEYS to be configured."
+        )
 
 
 def _parse_extra_forward_headers(raw: str | None) -> tuple[str, ...]:

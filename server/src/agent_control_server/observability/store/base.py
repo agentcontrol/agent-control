@@ -25,6 +25,8 @@ from agent_control_models.observability import (
 )
 from pydantic import BaseModel, Field
 
+from ...models import DEFAULT_NAMESPACE_KEY
+
 # Type alias for time range literals
 TimeRange = Literal["1m", "5m", "15m", "1h", "24h", "7d", "30d", "180d", "365d"]
 
@@ -119,11 +121,17 @@ class EventStore(ABC):
     """
 
     @abstractmethod
-    async def store(self, events: list[ControlExecutionEvent]) -> int:
+    async def store(
+        self,
+        events: list[ControlExecutionEvent],
+        *,
+        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+    ) -> int:
         """Store raw events.
 
         Args:
             events: List of control execution events to store
+            namespace_key: Namespace that owns the stored events
 
         Returns:
             Number of events successfully stored
@@ -138,6 +146,7 @@ class EventStore(ABC):
         control_id: int | None = None,
         include_timeseries: bool = False,
         bucket_size: timedelta | None = None,
+        namespace_key: str = DEFAULT_NAMESPACE_KEY,
     ) -> StatsResult:
         """Query stats (aggregated at query time from raw events).
 
@@ -147,6 +156,7 @@ class EventStore(ABC):
             control_id: Optional control ID to filter by
             include_timeseries: Whether to include time-series data
             bucket_size: Bucket size for time-series (required if include_timeseries=True)
+            namespace_key: Namespace whose events should be queried
 
         Returns:
             StatsResult with per-control and total statistics
@@ -154,11 +164,17 @@ class EventStore(ABC):
         pass
 
     @abstractmethod
-    async def query_events(self, query: EventQuery) -> EventQueryResult:
+    async def query_events(
+        self,
+        query: EventQuery,
+        *,
+        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+    ) -> EventQueryResult:
         """Query raw events with filters and pagination.
 
         Args:
             query: Query parameters (filters, pagination)
+            namespace_key: Namespace whose events should be queried
 
         Returns:
             EventQueryResult with matching events and pagination info

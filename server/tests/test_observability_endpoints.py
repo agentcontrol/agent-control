@@ -1,7 +1,7 @@
 """Tests for observability API endpoints."""
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -40,7 +40,7 @@ def create_test_event(
         action=action,
         matched=matched,
         confidence=0.95,
-        timestamp=timestamp or datetime.now(timezone.utc),
+        timestamp=timestamp or datetime.now(UTC),
         execution_duration_ms=execution_duration_ms,
     )
 
@@ -60,6 +60,20 @@ class _RecordingAuthorizer:
         del request
         self.calls.append((operation, context))
         return Principal(namespace_key="default")
+
+
+class _NamespaceAuthorizer:
+    def __init__(self, namespace_key: str) -> None:
+        self.namespace_key = namespace_key
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request, operation, context
+        return Principal(namespace_key=self.namespace_key)
 
 
 class TestObservabilityAuthFramework:
@@ -101,6 +115,40 @@ class TestObservabilityAuthFramework:
         # Then:
         assert response.status_code == 202
         assert authorizer.calls == [(Operation.OBSERVABILITY_WRITE, None)]
+
+    def test_events_are_scoped_to_authorized_namespace(
+        self,
+        app: object,
+        setup_observability: object,
+    ) -> None:
+        _ = setup_observability
+        client = TestClient(app, raise_server_exceptions=True)
+        agent_name = f"agent-{uuid4().hex[:12]}"
+        request = BatchEventsRequest(events=[create_test_event(agent_name=agent_name)])
+
+        set_authorizer(_NamespaceAuthorizer("tenant-a"))
+        ingest = client.post(
+            "/api/v1/observability/events",
+            json=request.model_dump(mode="json"),
+        )
+        assert ingest.status_code == 202
+
+        query = EventQueryRequest(agent_name=agent_name, limit=10, offset=0)
+        set_authorizer(_NamespaceAuthorizer("tenant-b"))
+        tenant_b = client.post(
+            "/api/v1/observability/events/query",
+            json=query.model_dump(mode="json"),
+        )
+        assert tenant_b.status_code == 200
+        assert tenant_b.json()["total"] == 0
+
+        set_authorizer(_NamespaceAuthorizer("tenant-a"))
+        tenant_a = client.post(
+            "/api/v1/observability/events/query",
+            json=query.model_dump(mode="json"),
+        )
+        assert tenant_a.status_code == 200
+        assert tenant_a.json()["total"] == 1
 
 
 class TestEventIngestion:
@@ -224,7 +272,7 @@ class TestControlExecutionEvent:
             action="deny",
             matched=True,
             confidence=0.99,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             execution_duration_ms=15.5,
             evaluator_name="regex",
             selector_path="input",
@@ -330,7 +378,7 @@ class TestStatsTimeseries:
         """With include_timeseries=true, returns buckets."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create events spread across time
         events = [
@@ -387,7 +435,7 @@ class TestStatsTimeseries:
         """Verify reasonable number of buckets for 1h time range (5m buckets)."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create a single event
         event = create_test_event(
@@ -418,7 +466,7 @@ class TestStatsTimeseries:
         """Verify reasonable number of buckets for 5m time range (30s buckets)."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create a single event
         event = create_test_event(
@@ -451,7 +499,7 @@ class TestStatsTimeseries:
         """Events in the same bucket are aggregated."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create multiple events in the same 5-minute bucket
         base_time = now - timedelta(minutes=10)
@@ -516,7 +564,7 @@ class TestStatsTimeseries:
         """Empty buckets are included with zero counts."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create events only at the start of the time range
         event = create_test_event(
@@ -602,7 +650,7 @@ class TestControlStats:
         """Test control stats with timeseries."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create events for control 1 at different times
         events = [
@@ -855,7 +903,7 @@ class TestObservabilityIngestStatus:
 
         # Given: a stub ingestor that drops some events
         class StubIngestor:
-            async def ingest(self, events):
+            async def ingest(self, events, *, namespace_key="default"):
                 return IngestResult(received=len(events), processed=1, dropped=len(events) - 1)
 
         original = app.state.event_ingestor
@@ -885,7 +933,7 @@ class TestObservabilityIngestStatus:
 
         # Given: a stub ingestor that drops all events
         class StubIngestor:
-            async def ingest(self, events):
+            async def ingest(self, events, *, namespace_key="default"):
                 return IngestResult(received=len(events), processed=0, dropped=len(events))
 
         original = app.state.event_ingestor

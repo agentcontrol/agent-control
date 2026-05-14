@@ -51,8 +51,10 @@ Management auth is selected by `AGENT_CONTROL_AUTH_MODE`.
 | Mode | Meaning |
 | --- | --- |
 | `none` | No credentials required. Intended for local development only. |
-| `api_key` | Validate caller credentials locally with `AGENT_CONTROL_API_KEYS`. This is the default. `header` is accepted as a backwards-compatible alias. |
+| `api_key` | Validate caller credentials locally with `AGENT_CONTROL_API_KEYS` and/or `AGENT_CONTROL_ADMIN_API_KEYS`. Requires `AGENT_CONTROL_API_KEY_ENABLED=true`. `header` is accepted as a backwards-compatible alias. |
 | `http_upstream` | POST each management authorization decision to `AGENT_CONTROL_AUTH_UPSTREAM_URL`. |
+
+When `AGENT_CONTROL_AUTH_MODE` is unset, startup selects `api_key` if local API-key validation is enabled and `none` otherwise.
 
 Runtime auth is selected by `AGENT_CONTROL_RUNTIME_AUTH_MODE`.
 
@@ -68,7 +70,7 @@ Common combinations:
 | Management | Runtime | Use case |
 | --- | --- | --- |
 | `api_key` | unset | Existing standalone deployments. |
-| `api_key` | `jwt` | Local management keys with short-lived target-bound runtime tokens. |
+| `api_key` | `jwt` | Local management keys with short-lived target-bound runtime tokens. This does not perform per-target authorization; any valid local API key can exchange for any target in the local namespace. |
 | `http_upstream` | `jwt` | External identity or authorization service for management, local token verify for high-volume runtime calls. |
 | `none` | `none` | Single-process local development. Do not use in production. |
 
@@ -125,6 +127,7 @@ Status handling:
 | `429` | `503` with a rate-limit detail and `Retry-After` hint when present. |
 | Other statuses or upstream network errors | Fail closed with `503`. |
 | Malformed `200` principal response | Fail closed with `502`. |
+| `200` target grant that conflicts with request context | Fail closed with `403`. |
 
 ## Runtime JWT Claims
 

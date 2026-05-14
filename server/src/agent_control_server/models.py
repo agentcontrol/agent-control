@@ -341,12 +341,12 @@ class ControlExecutionEventDB(Base):
     Raw control execution events with minimal indexed columns + JSONB.
 
     Schema designed for simplicity and flexibility:
-    - Only 4 columns: control_execution_id, timestamp, agent_name, data
+    - Indexed columns: namespace_key, control_execution_id, timestamp, agent_name
     - Full event stored in JSONB 'data' column
     - Query-time aggregation from JSONB fields
     - No migrations needed for new event fields
 
-    Primary access pattern: (agent_name, timestamp DESC) for stats queries.
+    Primary access pattern: (namespace_key, agent_name, timestamp DESC) for stats queries.
     Expression index on (data->>'control_id') for grouping.
     """
 
@@ -358,6 +358,11 @@ class ControlExecutionEventDB(Base):
     )
 
     # Minimal indexed columns for efficient queries
+    namespace_key: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        server_default=_NAMESPACE_SERVER_DEFAULT,
+    )
     timestamp: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("CURRENT_TIMESTAMP"),
@@ -372,6 +377,7 @@ class ControlExecutionEventDB(Base):
 
     # Composite index for agent + time queries (primary access pattern)
     __table_args__ = (
+        Index("ix_events_namespace_agent_time", "namespace_key", "agent_name", timestamp.desc()),
         Index("ix_events_agent_time", "agent_name", timestamp.desc()),
         Index("ix_events_data_control_id", text("(data ->> 'control_id'::text)")),
     )

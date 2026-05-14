@@ -17,6 +17,7 @@ from agent_control_telemetry import (
 )
 from agent_control_telemetry.sink_selection import SinkSelectionError
 
+from ..models import DEFAULT_NAMESPACE_KEY
 from .store.base import EventStore
 
 _named_event_sink_factories: ControlEventSinkFactoryRegistry[ResolvedControlEventBackend] = (
@@ -30,9 +31,14 @@ class EventStoreControlEventSink:
     def __init__(self, store: EventStore):
         self.store = store
 
-    async def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkResult:
+    async def write_events(
+        self,
+        events: Sequence[ControlExecutionEvent],
+        *,
+        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+    ) -> SinkResult:
         """Write events to the underlying store and report accepted/dropped counts."""
-        stored = await self.store.store(list(events))
+        stored = await self.store.store(list(events), namespace_key=namespace_key)
         dropped = max(len(events) - stored, 0)
         return SinkResult(accepted=stored, dropped=dropped)
 

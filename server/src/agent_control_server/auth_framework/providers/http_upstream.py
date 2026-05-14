@@ -147,6 +147,18 @@ class HttpUpstreamConfig:
     dropped. Names duplicating the default set or each other (after
     case-folding) are deduplicated."""
 
+    def __post_init__(self) -> None:
+        if self.service_token is None:
+            return
+        forwarded = {
+            name.lower()
+            for name in (*_DEFAULT_FORWARDED_HEADERS, *self.extra_forward_headers)
+        }
+        if self.service_token_header.lower() in forwarded:
+            raise ValueError(
+                "service_token_header must not match a forwarded caller credential header"
+            )
+
 
 class HttpUpstreamAuthProvider(RequestAuthorizer):
     """Delegates authorization to an upstream HTTP service."""
@@ -197,7 +209,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 hint="Retry the request; if the failure persists, contact the operator.",
             ) from exc
 
-        return self._handle_response(response, operation)
+        return self._handle_response(response, operation, context)
 
     def _forward_headers(self, request: Request) -> dict[str, str]:
         headers: dict[str, str] = {}
@@ -215,11 +227,16 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         return headers
 
     def _handle_response(
-        self, response: httpx.Response, operation: Operation
+        self,
+        response: httpx.Response,
+        operation: Operation,
+        context: dict[str, Any] | None,
     ) -> Principal:
         status = response.status_code
         if status == 200:
-            return self._parse_principal(response)
+            principal = self._parse_principal(response)
+            _ensure_target_context_matches_grant(context, principal)
+            return principal
         if status == 401:
             raise AuthenticationError(
                 error_code=ErrorCode.AUTH_INVALID_KEY,
@@ -309,3 +326,27 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             scopes=grant.scopes,
             grant_expires_at=grant.expires_at,
         )
+
+
+def _ensure_target_context_matches_grant(
+    context: dict[str, Any] | None,
+    principal: Principal,
+) -> None:
+    """Reject target-bound grants that do not match the requested target."""
+    if principal.target_type is None and principal.target_id is None:
+        return
+    if context is None:
+        return
+
+    expected_type = context.get("target_type")
+    expected_id = context.get("target_id")
+    if not isinstance(expected_type, str) or not isinstance(expected_id, str):
+        return
+    if principal.target_type == expected_type and principal.target_id == expected_id:
+        return
+
+    raise ForbiddenError(
+        error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+        detail="Authorization grant target does not match the requested target.",
+        hint="Retry with credentials authorized for the requested target.",
+    )

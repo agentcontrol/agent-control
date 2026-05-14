@@ -9,16 +9,21 @@ from __future__ import annotations
 
 import argparse
 import logging
+import shutil
 import sys
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 
 import agent_control_server
+from alembic import command
 
 
-def _bundled_config() -> Config:
+@contextmanager
+def _bundled_config() -> Iterator[Config]:
     pkg_dir = Path(agent_control_server.__file__).parent
     ini_path = pkg_dir / "_alembic.ini"
     alembic_dir = pkg_dir / "_alembic"
@@ -28,9 +33,15 @@ def _bundled_config() -> Config:
             f"{ini_path} and {alembic_dir}. The installed wheel is missing "
             "migration assets."
         )
-    cfg = Config(str(ini_path))
-    cfg.set_main_option("script_location", str(alembic_dir).replace("%", "%%"))
-    return cfg
+    with tempfile.TemporaryDirectory(prefix="agent-control-alembic-") as tmp:
+        script_location = Path(tmp) / "_alembic"
+        shutil.copytree(alembic_dir, script_location)
+        for injected_init in (script_location / "versions").rglob("__init__.py"):
+            injected_init.unlink()
+
+        cfg = Config(str(ini_path))
+        cfg.set_main_option("script_location", str(script_location).replace("%", "%%"))
+        yield cfg
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -78,19 +89,19 @@ def main(argv: list[str] | None = None) -> int:
     _configure_logging()
 
     try:
-        cfg = _bundled_config()
-        if parsed.command == "upgrade":
-            command.upgrade(cfg, parsed.revision, sql=parsed.sql)
-        elif parsed.command == "downgrade":
-            command.downgrade(cfg, parsed.revision, sql=parsed.sql)
-        elif parsed.command == "current":
-            command.current(cfg)
-        elif parsed.command == "history":
-            command.history(cfg)
-        elif parsed.command == "heads":
-            command.heads(cfg)
-        else:  # pragma: no cover - argparse guarantees this cannot happen.
-            parser.error("missing command")
+        with _bundled_config() as cfg:
+            if parsed.command == "upgrade":
+                command.upgrade(cfg, parsed.revision, sql=parsed.sql)
+            elif parsed.command == "downgrade":
+                command.downgrade(cfg, parsed.revision, sql=parsed.sql)
+            elif parsed.command == "current":
+                command.current(cfg)
+            elif parsed.command == "history":
+                command.history(cfg)
+            elif parsed.command == "heads":
+                command.heads(cfg)
+            else:  # pragma: no cover - argparse guarantees this cannot happen.
+                parser.error("missing command")
     except Exception as exc:
         print(f"agent-control-migrate: {exc}", file=sys.stderr)
         return 1

@@ -27,7 +27,7 @@ from agent_control_models import (
 )
 from fastapi import APIRouter, Depends, Request
 
-from ..auth_framework import Operation, require_operation
+from ..auth_framework import Operation, Principal, require_operation
 from ..observability.ingest.base import EventIngestor
 from ..observability.store.base import (
     EventStore,
@@ -75,11 +75,11 @@ def get_event_store(request: Request) -> EventStore:
     "/events",
     status_code=202,
     response_model=BatchEventsResponse,
-    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_WRITE))],
 )
 async def ingest_events(
     request: BatchEventsRequest,
     ingestor: EventIngestor = Depends(get_event_ingestor),
+    principal: Principal = Depends(require_operation(Operation.OBSERVABILITY_WRITE)),
 ) -> BatchEventsResponse:
     """
     Ingest batched control execution events.
@@ -95,7 +95,10 @@ async def ingest_events(
     """
     start_time = time.perf_counter()
 
-    result = await ingestor.ingest(request.events)
+    result = await ingestor.ingest(
+        request.events,
+        namespace_key=principal.namespace_key,
+    )
 
     duration_ms = (time.perf_counter() - start_time) * 1000
     logger.debug(
@@ -128,11 +131,11 @@ async def ingest_events(
 @router.post(
     "/events/query",
     response_model=EventQueryResponse,
-    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_READ))],
 )
 async def query_events(
     request: EventQueryRequest,
     store: EventStore = Depends(get_event_store),
+    principal: Principal = Depends(require_operation(Operation.OBSERVABILITY_READ)),
 ) -> EventQueryResponse:
     """
     Query raw control execution events.
@@ -158,7 +161,7 @@ async def query_events(
     Returns:
         EventQueryResponse with matching events and pagination info
     """
-    return await store.query_events(request)
+    return await store.query_events(request, namespace_key=principal.namespace_key)
 
 
 # =============================================================================
@@ -169,13 +172,13 @@ async def query_events(
 @router.get(
     "/stats",
     response_model=StatsResponse,
-    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_READ))],
 )
 async def get_stats(
     agent_name: str,
     time_range: TimeRange = "5m",
     include_timeseries: bool = False,
     store: EventStore = Depends(get_event_store),
+    principal: Principal = Depends(require_operation(Operation.OBSERVABILITY_READ)),
 ) -> StatsResponse:
     """
     Get agent-level aggregated statistics.
@@ -202,6 +205,7 @@ async def get_stats(
         control_id=None,
         include_timeseries=include_timeseries,
         bucket_size=bucket_size,
+        namespace_key=principal.namespace_key,
     )
 
     return StatsResponse(
@@ -222,7 +226,6 @@ async def get_stats(
 @router.get(
     "/stats/controls/{control_id}",
     response_model=ControlStatsResponse,
-    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_READ))],
 )
 async def get_control_stats(
     control_id: int,
@@ -230,6 +233,7 @@ async def get_control_stats(
     time_range: TimeRange = "5m",
     include_timeseries: bool = False,
     store: EventStore = Depends(get_event_store),
+    principal: Principal = Depends(require_operation(Operation.OBSERVABILITY_READ)),
 ) -> ControlStatsResponse:
     """
     Get statistics for a single control.
@@ -256,6 +260,7 @@ async def get_control_stats(
         control_id=control_id,
         include_timeseries=include_timeseries,
         bucket_size=bucket_size,
+        namespace_key=principal.namespace_key,
     )
 
     # Get control name from the stats (should be exactly one)

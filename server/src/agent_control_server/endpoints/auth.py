@@ -13,6 +13,7 @@ the runtime JWT provider.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Any
 
@@ -32,6 +33,10 @@ from ..logging_utils import get_logger
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _logger = get_logger(__name__)
+
+
+def _log_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
 
 
 class RuntimeTokenExchangeRequest(BaseModel):
@@ -181,7 +186,7 @@ async def runtime_token_exchange(
         "Runtime token exchanged",
         extra={
             "namespace_key": claims.namespace_key,
-            "actor_id": claims.actor_id,
+            "actor_id_hash": _log_hash(claims.actor_id),
             "target_type": claims.target_type,
             "target_id": claims.target_id,
             "scopes": list(claims.scopes),
