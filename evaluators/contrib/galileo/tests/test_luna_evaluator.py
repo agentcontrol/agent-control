@@ -276,7 +276,9 @@ class TestGalileoLunaClient:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("empty_value", ["", " ", {}, []])
-    async def test_client_rejects_missing_input_and_output_values(self, empty_value: object) -> None:
+    async def test_client_rejects_missing_input_and_output_values(
+        self, empty_value: object
+    ) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
         # Given: a Luna client and scorer input values that API treats as missing
