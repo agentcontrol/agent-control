@@ -98,18 +98,37 @@ def test_runtime_token_cache_target_unavailable_marker_expires() -> None:
     assert not cache.is_jwt_unavailable("https://server-a.test", "log_stream", "ls-1")
 
 
-def test_runtime_token_cache_global_unavailable_clears_cache() -> None:
+def test_runtime_token_cache_server_unavailable_clears_server_cache() -> None:
     cache = RuntimeTokenCache()
     cache.set(_runtime_token())
+    token_2 = _runtime_token(
+        token="token-2",
+        server_url="https://server-b.test",
+        target_id="ls-2",
+    )
+    cache.set(token_2)
 
-    cache.mark_jwt_unavailable(globally=True)
+    cache.mark_jwt_unavailable(server_url="https://server-a.test", globally=True)
 
     assert cache.is_jwt_unavailable("https://server-a.test", "log_stream", "ls-1")
+    assert not cache.is_jwt_unavailable("https://server-b.test", "log_stream", "ls-2")
     assert (
         cache.get("https://server-a.test", "log_stream", "ls-1", refresh_margin_seconds=0) is None
     )
+    assert (
+        cache.get("https://server-b.test", "log_stream", "ls-2", refresh_margin_seconds=0)
+        == token_2
+    )
 
     cache.clear()
+
+    assert not cache.is_jwt_unavailable("https://server-a.test", "log_stream", "ls-1")
+
+
+def test_runtime_token_cache_server_unavailable_marker_expires() -> None:
+    cache = RuntimeTokenCache(jwt_unavailable_ttl_seconds=0)
+
+    cache.mark_jwt_unavailable(server_url="https://server-a.test", globally=True)
 
     assert not cache.is_jwt_unavailable("https://server-a.test", "log_stream", "ls-1")
 
@@ -159,6 +178,16 @@ async def test_runtime_token_cache_token_eviction_preserves_exchange_lock() -> N
     assert cache.exchange_lock("https://server-a.test", "log_stream", "ls-1") is lock
 
 
+@pytest.mark.asyncio
+async def test_runtime_token_cache_evicts_idle_exchange_locks() -> None:
+    cache = RuntimeTokenCache(max_entries=1)
+    first = cache.exchange_lock("https://server-a.test", "log_stream", "ls-1")
+
+    cache.exchange_lock("https://server-a.test", "log_stream", "ls-2")
+
+    assert cache.exchange_lock("https://server-a.test", "log_stream", "ls-1") is not first
+
+
 def test_runtime_token_cache_exchange_locks_are_loop_scoped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -178,6 +207,18 @@ def test_runtime_token_cache_exchange_locks_are_loop_scoped(
 def test_runtime_token_cache_rejects_empty_capacity() -> None:
     with pytest.raises(ValueError, match="max_entries"):
         RuntimeTokenCache(max_entries=0)
+
+
+def test_runtime_token_cache_rejects_negative_unavailable_ttl() -> None:
+    with pytest.raises(ValueError, match="jwt_unavailable_ttl_seconds"):
+        RuntimeTokenCache(jwt_unavailable_ttl_seconds=-1)
+
+
+def test_runtime_token_cache_rejects_negative_marker_ttl() -> None:
+    cache = RuntimeTokenCache()
+
+    with pytest.raises(ValueError, match="ttl_seconds"):
+        cache.mark_jwt_unavailable(ttl_seconds=-1)
 
 
 @pytest.mark.parametrize(

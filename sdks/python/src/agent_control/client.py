@@ -371,6 +371,12 @@ class AgentControlClient:
             )
         except httpx.RequestError:
             if self._runtime_auth_mode == "auto" and allow_auto_fallback:
+                _logger.debug(
+                    "Runtime token exchange request failed; falling back to normal request auth "
+                    "for %s/%s.",
+                    target_type,
+                    target_id,
+                )
                 self._runtime_token_cache.mark_jwt_unavailable(
                     server_url=self.base_url,
                     target_type=target_type,
@@ -384,6 +390,13 @@ class AgentControlClient:
             and allow_auto_fallback
             and response.status_code in _AUTO_RUNTIME_TOKEN_FALLBACK_STATUSES
         ):
+            _logger.debug(
+                "Runtime token exchange returned HTTP %s; falling back to normal request auth "
+                "for %s/%s.",
+                response.status_code,
+                target_type,
+                target_id,
+            )
             self._runtime_token_cache.mark_jwt_unavailable(
                 server_url=self.base_url,
                 target_type=target_type,

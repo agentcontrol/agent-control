@@ -370,6 +370,57 @@ async def test_runtime_evaluation_auto_falls_back_to_api_key_when_exchange_unava
 
 
 @pytest.mark.asyncio
+async def test_runtime_evaluation_auto_404_fallback_recovers_after_ttl() -> None:
+    exchange_calls = 0
+    evaluation_authorization_headers: list[str | None] = []
+    evaluation_api_key_headers: list[str | None] = []
+    expires_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+    cache = RuntimeTokenCache(jwt_unavailable_ttl_seconds=0)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal exchange_calls
+        if request.url.path == "/api/v1/auth/runtime-token-exchange":
+            exchange_calls += 1
+            if exchange_calls == 1:
+                return httpx.Response(404, json={"detail": "not found"})
+            return httpx.Response(
+                200,
+                json={
+                    "token": "runtime-token",
+                    "expires_at": expires_at,
+                    "target_type": "log_stream",
+                    "target_id": "ls-1",
+                    "scopes": ["runtime.use"],
+                },
+            )
+
+        evaluation_authorization_headers.append(request.headers.get("Authorization"))
+        evaluation_api_key_headers.append(request.headers.get("X-API-Key"))
+        return httpx.Response(200, json={"is_safe": True, "confidence": 1.0})
+
+    transport = httpx.MockTransport(handler)
+
+    async with AgentControlClient(
+        base_url="https://agent-control.test",
+        api_key="test-key",
+        runtime_auth_mode="auto",
+        runtime_token_cache=cache,
+        transport=transport,
+    ) as client:
+        for _ in range(2):
+            response = await client.post_runtime_evaluation(
+                json={"target_type": "log_stream", "target_id": "ls-1"},
+                target_type="log_stream",
+                target_id="ls-1",
+            )
+            assert response.status_code == 200
+
+    assert exchange_calls == 2
+    assert evaluation_authorization_headers == [None, "Bearer runtime-token"]
+    assert evaluation_api_key_headers == ["test-key", None]
+
+
+@pytest.mark.asyncio
 async def test_runtime_evaluation_auto_503_fallback_is_target_scoped() -> None:
     exchange_targets: list[str] = []
     evaluation_authorization_headers: list[str | None] = []
