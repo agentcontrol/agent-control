@@ -215,6 +215,19 @@ def _run_coro_in_new_loop[T](coro: Coroutine[Any, Any, T]) -> T:
         asyncio.set_event_loop(None)
 
 
+def _ad_hoc_client(
+    *,
+    server_url: str,
+    api_key: str | None,
+    api_key_header: str | None,
+) -> AgentControlClient:
+    return AgentControlClient(
+        base_url=server_url,
+        api_key=api_key,
+        api_key_header=api_key_header if api_key_header is not None else state.api_key_header,
+    )
+
+
 def _snapshot_refresh_context() -> _RefreshContext:
     """Capture a consistent session snapshot for a refresh request."""
     with _session_lock:
@@ -770,6 +783,7 @@ async def get_agent(
     agent_name: str,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Get agent details from the server by name.
@@ -809,7 +823,11 @@ async def get_agent(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await agents.get_agent(client, agent_name)
 
 
@@ -833,6 +851,7 @@ def current_agent() -> Agent | None:
 async def list_agents(
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
     cursor: str | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
@@ -873,7 +892,11 @@ async def list_agents(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await agents.list_agents(client, cursor=cursor, limit=limit)
 
 
@@ -887,10 +910,15 @@ async def add_agent_policy(
     policy_id: int,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """Associate a policy with an agent (idempotent)."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await agents.add_agent_policy(client, agent_name, policy_id)
 
 
@@ -898,10 +926,15 @@ async def get_agent_policies(
     agent_name: str,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """List policy IDs associated with an agent."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await agents.get_agent_policies(client, agent_name)
 
 
@@ -910,10 +943,15 @@ async def remove_agent_policy_association(
     policy_id: int,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """Remove one policy association from an agent (idempotent)."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await agents.remove_agent_policy_association(client, agent_name, policy_id)
 
 
@@ -921,10 +959,15 @@ async def remove_all_agent_policies(
     agent_name: str,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """Remove all policy associations from an agent."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await agents.remove_all_agent_policies(client, agent_name)
 
 
@@ -933,10 +976,15 @@ async def add_agent_control(
     control_id: int,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """Associate a control with an agent (idempotent)."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await agents.add_agent_control(client, agent_name, control_id)
 
 
@@ -945,10 +993,15 @@ async def remove_agent_control(
     control_id: int,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """Remove a direct control association from an agent (idempotent)."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await agents.remove_agent_control(client, agent_name, control_id)
 
 
@@ -960,6 +1013,7 @@ async def remove_agent_control(
 async def list_controls(
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
     cursor: int | None = None,
     limit: int = 20,
     name: str | None = None,
@@ -1013,7 +1067,11 @@ async def list_controls(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await controls.list_controls(
             client,
             cursor=cursor,
@@ -1033,6 +1091,7 @@ async def create_control(
     data: dict[str, Any] | ControlDefinition | TemplateControlInput,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Create a new control with configuration.
@@ -1080,7 +1139,11 @@ async def create_control(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await controls.create_control(client, name, data=data)
 
 
@@ -1088,11 +1151,16 @@ async def validate_control_data(
     data: dict[str, Any] | ControlDefinition | TemplateControlInput,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """Validate raw or template-backed control data without saving it."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await controls.validate_control_data(client, data=data)
 
 
@@ -1101,11 +1169,16 @@ async def render_control_template(
     template_values: dict[str, TemplateValue],
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """Render a template-backed control preview without persisting it."""
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await controls.render_control_template(
             client,
             template=template,
@@ -1117,6 +1190,7 @@ async def get_control(
     control_id: int,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Get a control by ID from the server.
@@ -1147,7 +1221,11 @@ async def get_control(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await controls.get_control(client, control_id)
 
 
@@ -1156,6 +1234,7 @@ async def delete_control(
     force: bool = False,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Delete a control from the server.
@@ -1192,7 +1271,11 @@ async def delete_control(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await controls.delete_control(client, control_id, force=force)
 
 
@@ -1202,6 +1285,7 @@ async def update_control(
     enabled: bool | None = None,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Update control metadata (name and/or enabled status).
@@ -1242,7 +1326,11 @@ async def update_control(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await controls.update_control(client, control_id, name=name, enabled=enabled)
 
 
@@ -1256,6 +1344,7 @@ async def add_control_to_policy(
     control_id: int,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Add a control to a policy.
@@ -1289,7 +1378,11 @@ async def add_control_to_policy(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await policies.add_control_to_policy(client, policy_id, control_id)
 
 
@@ -1298,6 +1391,7 @@ async def remove_control_from_policy(
     control_id: int,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Remove a control from a policy.
@@ -1331,7 +1425,11 @@ async def remove_control_from_policy(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await policies.remove_control_from_policy(client, policy_id, control_id)
 
 
@@ -1339,6 +1437,7 @@ async def list_policy_controls(
     policy_id: int,
     server_url: str | None = None,
     api_key: str | None = None,
+    api_key_header: str | None = None,
 ) -> dict[str, Any]:
     """
     List all controls associated with a policy.
@@ -1368,7 +1467,11 @@ async def list_policy_controls(
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
-    async with AgentControlClient(base_url=_final_server_url, api_key=api_key) as client:
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
         return await policies.list_policy_controls(client, policy_id)
 
 

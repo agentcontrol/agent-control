@@ -50,6 +50,54 @@ def test_runtime_token_cache_is_keyed_by_server_and_target() -> None:
     )
 
 
+def test_runtime_token_cache_is_keyed_by_client_identity() -> None:
+    cache = RuntimeTokenCache()
+    token = _runtime_token()
+
+    cache.set(token, cache_identity="client-a")
+
+    assert (
+        cache.get(
+            "https://server-a.test",
+            "log_stream",
+            "ls-1",
+            cache_identity="client-a",
+            refresh_margin_seconds=0,
+        )
+        == token
+    )
+    assert (
+        cache.get(
+            "https://server-a.test",
+            "log_stream",
+            "ls-1",
+            cache_identity="client-b",
+            refresh_margin_seconds=0,
+        )
+        is None
+    )
+
+    cache.mark_jwt_unavailable(
+        server_url="https://server-a.test",
+        target_type="log_stream",
+        target_id="ls-1",
+        cache_identity="client-b",
+    )
+
+    assert not cache.is_jwt_unavailable(
+        "https://server-a.test",
+        "log_stream",
+        "ls-1",
+        cache_identity="client-a",
+    )
+    assert cache.is_jwt_unavailable(
+        "https://server-a.test",
+        "log_stream",
+        "ls-1",
+        cache_identity="client-b",
+    )
+
+
 def test_runtime_token_repr_redacts_jwt() -> None:
     token = _runtime_token(token="raw-jwt-value")
 

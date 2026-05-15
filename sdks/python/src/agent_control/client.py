@@ -1,5 +1,6 @@
 """Base HTTP client for Agent Control server communication."""
 
+import hashlib
 import logging
 import os
 from collections.abc import Generator
@@ -22,6 +23,15 @@ _RUNTIME_AUTH_MODE_ENV_VAR = "AGENT_CONTROL_RUNTIME_AUTH_MODE"
 _DEFAULT_RUNTIME_TOKEN_REFRESH_MARGIN_SECONDS = 30
 _AUTO_RUNTIME_TOKEN_FALLBACK_STATUSES = {404, 500, 502, 503, 504}
 _GLOBAL_RUNTIME_TOKEN_FALLBACK_STATUSES = {404}
+
+
+def _runtime_cache_identity(api_key: str | None, api_key_header: str) -> str:
+    """Return a stable cache identity without storing the raw credential."""
+    normalized_header = api_key_header.lower()
+    if not api_key:
+        return f"api_key:{normalized_header}:anonymous"
+    digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    return f"api_key:{normalized_header}:{digest}"
 
 
 class _AgentControlAuth(httpx.Auth):
@@ -127,6 +137,7 @@ class AgentControlClient:
             or os.environ.get(self.API_KEY_HEADER_ENV_VAR)
             or self.DEFAULT_API_KEY_HEADER
         )
+        self._runtime_cache_identity = _runtime_cache_identity(self._api_key, self._api_key_header)
         configured_runtime_mode = runtime_auth_mode or os.environ.get(_RUNTIME_AUTH_MODE_ENV_VAR)
         self._runtime_auth_mode = normalize_runtime_auth_mode(configured_runtime_mode)
         if runtime_token_refresh_margin_seconds < 0:
@@ -251,7 +262,12 @@ class AgentControlClient:
         if _should_refresh_runtime_token(response) and runtime_authorization is not None:
             await response.aread()
             if target_type is not None and target_id is not None:
-                self._runtime_token_cache.remove(self.base_url, target_type, target_id)
+                self._runtime_token_cache.remove(
+                    self.base_url,
+                    target_type,
+                    target_id,
+                    cache_identity=self._runtime_cache_identity,
+                )
             runtime_authorization = await self._runtime_authorization(
                 target_type=target_type,
                 target_id=target_id,
@@ -270,7 +286,12 @@ class AgentControlClient:
                 and target_id is not None
             ):
                 await response.aread()
-                self._runtime_token_cache.remove(self.base_url, target_type, target_id)
+                self._runtime_token_cache.remove(
+                    self.base_url,
+                    target_type,
+                    target_id,
+                    cache_identity=self._runtime_cache_identity,
+                )
 
         return response
 
@@ -308,8 +329,15 @@ class AgentControlClient:
                 )
             return None
 
-        if self._runtime_auth_mode == "auto" and self._runtime_token_cache.is_jwt_unavailable(
-            self.base_url, target_type, target_id
+        if (
+            self._runtime_auth_mode == "auto"
+            and not force_refresh
+            and self._runtime_token_cache.is_jwt_unavailable(
+                self.base_url,
+                target_type,
+                target_id,
+                cache_identity=self._runtime_cache_identity,
+            )
         ):
             return None
 
@@ -318,6 +346,7 @@ class AgentControlClient:
                 self.base_url,
                 target_type,
                 target_id,
+                cache_identity=self._runtime_cache_identity,
                 refresh_margin_seconds=self._runtime_token_refresh_margin_seconds,
             )
             if cached is not None:
@@ -327,13 +356,17 @@ class AgentControlClient:
             self.base_url,
             target_type,
             target_id,
+            cache_identity=self._runtime_cache_identity,
         )
         async with exchange_lock:
             if (
                 self._runtime_auth_mode == "auto"
                 and not force_refresh
                 and self._runtime_token_cache.is_jwt_unavailable(
-                    self.base_url, target_type, target_id
+                    self.base_url,
+                    target_type,
+                    target_id,
+                    cache_identity=self._runtime_cache_identity,
                 )
             ):
                 return None
@@ -342,6 +375,7 @@ class AgentControlClient:
                     self.base_url,
                     target_type,
                     target_id,
+                    cache_identity=self._runtime_cache_identity,
                     refresh_margin_seconds=self._runtime_token_refresh_margin_seconds,
                 )
                 if cached is not None:
@@ -381,6 +415,7 @@ class AgentControlClient:
                     server_url=self.base_url,
                     target_type=target_type,
                     target_id=target_id,
+                    cache_identity=self._runtime_cache_identity,
                 )
                 return None
             raise
@@ -401,6 +436,7 @@ class AgentControlClient:
                 server_url=self.base_url,
                 target_type=target_type,
                 target_id=target_id,
+                cache_identity=self._runtime_cache_identity,
                 globally=response.status_code in _GLOBAL_RUNTIME_TOKEN_FALLBACK_STATUSES,
             )
             return None
@@ -417,7 +453,7 @@ class AgentControlClient:
             raise RuntimeError(
                 "Runtime token exchange response target did not match the requested target."
             )
-        self._runtime_token_cache.set(token)
+        self._runtime_token_cache.set(token, cache_identity=self._runtime_cache_identity)
         return token.token
 
 
