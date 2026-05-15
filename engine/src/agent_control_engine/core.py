@@ -18,7 +18,6 @@ from agent_control_models import (
     ControlAction,
     ControlMatch,
     ControlScope,
-    EvaluationContext,
     EvaluationRequest,
     EvaluationResponse,
     EvaluatorResult,
@@ -189,14 +188,8 @@ class ControlEngine:
                 if timeout <= 0:
                     timeout = DEFAULT_EVALUATOR_TIMEOUT
 
-                context = EvaluationContext(
-                    target_type=request.target_type,
-                    target_id=request.target_id,
-                    agent_name=request.agent_name,
-                    step_type=request.step.type,
-                )
                 result = await asyncio.wait_for(
-                    evaluator.evaluate_with_context(data, context),
+                    evaluator.evaluate(data),
                     timeout=timeout,
                 )
         except TimeoutError:

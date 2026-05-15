@@ -61,7 +61,6 @@ from .errors import (
     make_error_type,
 )
 from .evaluation import (
-    EvaluationContext,
     EvaluationRequest,
     EvaluationResponse,
     EvaluationResult,
@@ -133,7 +132,6 @@ __all__ = [
     # Policy
     "Policy",
     # Evaluation
-    "EvaluationContext",
     "EvaluationRequest",
     "EvaluationResponse",
     "EvaluationResult",

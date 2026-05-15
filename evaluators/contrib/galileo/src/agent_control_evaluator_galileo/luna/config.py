@@ -31,7 +31,6 @@ class LunaEvaluatorConfig(EvaluatorConfig):
     """Configuration for direct Luna scorer evaluation.
 
     Attributes:
-        logstream_id: Optional Galileo log stream identifier used as runtime context.
         scorer_label: Preset, registered, or fine-tuned scorer label.
         scorer_id: Optional Galileo scorer identifier.
         scorer_version_id: Optional Galileo scorer version identifier.
@@ -41,11 +40,6 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         timeout_ms: Request timeout in milliseconds.
     """
 
-    logstream_id: str | None = Field(
-        default=None,
-        min_length=1,
-        description="Optional Galileo log stream identifier used as scorer runtime context.",
-    )
     scorer_label: str | None = Field(
         default=None,
         min_length=1,

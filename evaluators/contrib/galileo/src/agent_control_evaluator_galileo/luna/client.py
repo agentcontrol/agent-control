@@ -86,7 +86,6 @@ class ScorerInvokeRequest(BaseModel):
 
     Attributes:
         inputs: Selected scorer input values.
-        logstream_id: Optional Galileo log stream identifier for runtime context.
         scorer_label: Preset, registered, or fine-tuned scorer label.
         scorer_id: Optional Galileo scorer identifier.
         scorer_version_id: Optional Galileo scorer version identifier.
@@ -94,7 +93,6 @@ class ScorerInvokeRequest(BaseModel):
     """
 
     inputs: ScorerInvokeInputs
-    logstream_id: str | None = Field(default=None, min_length=1)
     scorer_label: str | None = Field(default=None, min_length=1)
     scorer_id: str | None = Field(default=None, min_length=1)
     scorer_version_id: str | None = Field(default=None, min_length=1)
@@ -242,7 +240,6 @@ class GalileoLunaClient:
         scorer_label: str | None = None,
         scorer_id: str | None = None,
         scorer_version_id: str | None = None,
-        logstream_id: str | None = None,
         input: JSONValue = None,
         output: JSONValue = None,
         config: JSONObject | None = None,
@@ -255,7 +252,6 @@ class GalileoLunaClient:
             scorer_label: Preset, registered, or fine-tuned scorer label.
             scorer_id: Optional Galileo scorer identifier.
             scorer_version_id: Optional Galileo scorer version identifier.
-            logstream_id: Optional Galileo log stream identifier for runtime context.
             input: Optional user/system prompt text.
             output: Optional model response text.
             config: Optional scorer-specific configuration.
@@ -280,7 +276,6 @@ class GalileoLunaClient:
             scorer_label=scorer_label,
             scorer_id=scorer_id,
             scorer_version_id=scorer_version_id,
-            logstream_id=logstream_id,
             inputs=ScorerInvokeInputs(
                 query="" if input is None else input, response="" if output is None else output
             ),

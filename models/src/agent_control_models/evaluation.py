@@ -1,5 +1,4 @@
 """Evaluation-related models."""
-from dataclasses import dataclass
 from typing import Annotated, Literal, Self
 
 from pydantic import Field, StringConstraints, field_validator, model_validator
@@ -12,22 +11,6 @@ _TARGET_FIELD = Annotated[
     str | None,
     StringConstraints(min_length=1, max_length=255),
 ]
-
-
-@dataclass
-class EvaluationContext:
-    """Runtime context available while evaluating a control.
-
-    This is intentionally small and mutable by normal dataclass semantics so
-    downstream users can subclass it with richer runtime context when needed.
-    Only fields the engine actually populates today are declared here; add new
-    fields only when there is a populator on every supported call path.
-    """
-
-    target_type: str | None = None
-    target_id: str | None = None
-    agent_name: str | None = None
-    step_type: str | None = None
 
 
 class EvaluationRequest(BaseModel):

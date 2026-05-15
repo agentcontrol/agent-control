@@ -1,21 +1,12 @@
 """Tests for evaluator base classes.
 
-Architecture:
-    - ``evaluate(data)`` is the abstract entry point every subclass implements.
-    - ``evaluate_with_context(data, context)`` is the context-aware entry the
-      engine uses; the default delegates to ``evaluate(data)`` so legacy
-      subclasses keep working without modification.
+Architecture: Evaluators take config at __init__, evaluate() only takes data.
 """
 
 import pytest
 from typing import Any
 
-from agent_control_evaluators import (
-    EvaluationContext,
-    Evaluator,
-    EvaluatorConfig,
-    EvaluatorMetadata,
-)
+from agent_control_evaluators import Evaluator, EvaluatorConfig, EvaluatorMetadata
 from agent_control_models import EvaluatorResult
 
 
@@ -147,110 +138,3 @@ class TestEvaluator:
         """Test that Evaluator cannot be instantiated directly."""
         with pytest.raises(TypeError, match="abstract"):
             Evaluator({})  # type: ignore
-
-
-class TestEvaluateWithContext:
-    """Tests for the context-aware entry point on the base Evaluator."""
-
-    @pytest.mark.asyncio
-    async def test_default_evaluate_with_context_delegates_to_evaluate(self):
-        """A subclass that only implements ``evaluate`` is still reachable
-        through ``evaluate_with_context``.
-        """
-        evaluator = MockEvaluator.from_dict({"should_match": True})
-
-        result = await evaluator.evaluate_with_context("payload")
-
-        # The legacy ``evaluate`` returns matched=True and stores the data
-        # in metadata. If the default fallback worked, those carry through.
-        assert result.matched is True
-        assert result.metadata["data"] == "payload"
-
-    @pytest.mark.asyncio
-    async def test_default_evaluate_with_context_ignores_context(self):
-        """The default forwarder drops the context when it calls ``evaluate``
-        — this is by design so legacy implementations are unaffected.
-        """
-        evaluator = MockEvaluator.from_dict({"should_match": False})
-
-        context = EvaluationContext(
-            target_type="log_stream",
-            target_id="ls-123",
-            agent_name="acme",
-            step_type="llm",
-        )
-
-        # Should not raise, even though MockEvaluator.evaluate has no kwargs
-        # for context. The default forwarder strips it.
-        result = await evaluator.evaluate_with_context("data", context)
-
-        assert result.matched is False
-        assert result.metadata["data"] == "data"
-
-    @pytest.mark.asyncio
-    async def test_subclass_can_override_evaluate_with_context(self):
-        """A subclass override of ``evaluate_with_context`` is preferred over
-        the default fallback when the engine calls it.
-        """
-
-        class ContextAwareConfig(EvaluatorConfig):
-            pass
-
-        class ContextAware(Evaluator[ContextAwareConfig]):
-            metadata = EvaluatorMetadata(
-                name="ctx-aware",
-                version="1.0.0",
-                description="",
-            )
-            config_model = ContextAwareConfig
-
-            async def evaluate(self, data: Any) -> EvaluatorResult:
-                # Canonical "no-context" delegate pattern.
-                return await self.evaluate_with_context(data, context=None)
-
-            async def evaluate_with_context(
-                self,
-                data: Any,
-                context: EvaluationContext | None = None,
-            ) -> EvaluatorResult:
-                target_id = context.target_id if context else "no-target"
-                return EvaluatorResult(
-                    matched=True,
-                    confidence=1.0,
-                    message=f"saw {target_id}",
-                )
-
-        evaluator = ContextAware.from_dict({})
-
-        ctx = EvaluationContext(target_type="log_stream", target_id="ls-7")
-        result = await evaluator.evaluate_with_context("data", ctx)
-        assert result.message == "saw ls-7"
-
-        # The Luna-pattern ``evaluate`` should also work as the no-context path.
-        result_no_ctx = await evaluator.evaluate("data")
-        assert result_no_ctx.message == "saw no-target"
-
-    @pytest.mark.asyncio
-    async def test_evaluation_context_defaults_are_none(self):
-        """All EvaluationContext fields default to None and the dataclass is
-        constructible with no arguments. Regression guard against orphan
-        fields that have no populator on the engine side.
-        """
-        ctx = EvaluationContext()
-        assert ctx.target_type is None
-        assert ctx.target_id is None
-        assert ctx.agent_name is None
-        assert ctx.step_type is None
-        # Confirm we did not silently keep namespace_key around; reading an
-        # unknown attribute should fail.
-        with pytest.raises(AttributeError):
-            _ = ctx.namespace_key  # type: ignore[attr-defined]
-
-    def test_evaluation_context_is_importable_from_evaluators_package(self):
-        """EvaluationContext is re-exported from agent_control_evaluators so
-        subclasses can colocate their imports.
-        """
-        from agent_control_evaluators import EvaluationContext as Reexported
-        from agent_control_models import EvaluationContext as Canonical
-
-        assert Reexported is Canonical

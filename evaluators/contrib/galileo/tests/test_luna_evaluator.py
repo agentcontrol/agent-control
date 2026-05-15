@@ -27,7 +27,6 @@ class TestLunaEvaluatorConfig:
 
         # Given: a direct scorer config with local thresholding
         config = LunaEvaluatorConfig(
-            logstream_id="logstream-123",
             scorer_label="toxicity",
             scorer_id="scorer-123",
             scorer_version_id="version-123",
@@ -37,7 +36,6 @@ class TestLunaEvaluatorConfig:
         )
 
         # Then: config is retained without Protect concepts
-        assert config.logstream_id == "logstream-123"
         assert config.scorer_label == "toxicity"
         assert config.scorer_id == "scorer-123"
         assert config.scorer_version_id == "version-123"
@@ -75,7 +73,6 @@ class TestGalileoLunaClient:
 
         # Given: a scorer request with scorer config
         request = ScorerInvokeRequest(
-            logstream_id="logstream-123",
             scorer_label="toxicity",
             scorer_id="scorer-123",
             scorer_version_id="version-123",
@@ -85,7 +82,6 @@ class TestGalileoLunaClient:
 
         # Then: the serialized payload uses the API-owned scorer invoke fields
         assert request.to_dict() == {
-            "logstream_id": "logstream-123",
             "scorer_label": "toxicity",
             "scorer_id": "scorer-123",
             "scorer_version_id": "version-123",
@@ -407,46 +403,6 @@ class TestLunaEvaluator:
             output="model answer",
             config=None,
             timeout=5.0,
-        )
-
-    @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
-    @pytest.mark.asyncio
-    async def test_evaluator_passes_logstream_id_from_runtime_context(self) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-        from agent_control_models import EvaluationContext
-
-        evaluator = LunaEvaluator.from_dict(
-            {
-                "logstream_id": "config-logstream",
-                "scorer_label": "toxicity",
-                "scorer_id": "scorer-123",
-                "scorer_version_id": "version-123",
-            }
-        )
-
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            mock_invoke.return_value = ScorerInvokeResponse(
-                scorer_label="toxicity",
-                score=0.82,
-                status="success",
-            )
-
-            result = await evaluator.evaluate_with_context(
-                "hello",
-                EvaluationContext(target_type="log_stream", target_id="runtime-logstream"),
-            )
-
-        assert result.metadata["logstream_id"] == "runtime-logstream"
-        mock_invoke.assert_awaited_once_with(
-            logstream_id="runtime-logstream",
-            scorer_label="toxicity",
-            scorer_id="scorer-123",
-            scorer_version_id="version-123",
-            input="hello",
-            output=None,
-            config=None,
-            timeout=10.0,
         )
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})

@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
-from agent_control_models import EvaluationContext, EvaluatorResult
+from agent_control_models import EvaluatorResult
 from agent_control_models.base import BaseModel
 
 if TYPE_CHECKING:
@@ -91,25 +91,7 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046 - need Python 3.10 compat
             async def evaluate(self, data):
                 self.call_count += 1  # BAD: race condition, leaks between requests
 
-    Runtime Context:
-        Most evaluators only need the selected ``data`` to decide. Some need
-        request-scoped context (the bound target, agent name, step type, etc.)
-        to call out to an external service or change behavior per call. The
-        contract is:
-
-        - ``evaluate(data)`` is the abstract entry point. Every subclass must
-          implement it. It is called by direct callers (tests, examples) and
-          serves as the canonical "no-context" path.
-        - ``evaluate_with_context(data, context)`` is what the engine calls.
-          Its default implementation delegates to ``evaluate(data)``, so
-          existing context-free evaluators work unchanged.
-
-        Evaluators that need context override ``evaluate_with_context`` and
-        either (a) reimplement ``evaluate`` as a delegate to the new method
-        with ``context=None`` (the Luna pattern, recommended for symmetry) or
-        (b) leave ``evaluate`` as a no-context fallback.
-
-    Example (context-free evaluator):
+    Example:
         ```python
         from agent_control_evaluators import (
             Evaluator,
@@ -139,32 +121,6 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046 - need Python 3.10 compat
                 )
         ```
 
-    Example (context-aware evaluator):
-        ```python
-        from agent_control_evaluators import (
-            EvaluationContext,
-            Evaluator,
-            EvaluatorConfig,
-            EvaluatorMetadata,
-            register_evaluator,
-        )
-        from agent_control_models import EvaluatorResult
-
-        @register_evaluator
-        class TargetAwareEvaluator(Evaluator[MyConfig]):
-            metadata = EvaluatorMetadata(name="target-aware", version="1.0.0", description="")
-            config_model = MyConfig
-
-            async def evaluate(self, data: Any) -> EvaluatorResult:
-                return await self.evaluate_with_context(data, context=None)
-
-            async def evaluate_with_context(
-                self, data: Any, context: EvaluationContext | None = None
-            ) -> EvaluatorResult:
-                target_id = context.target_id if context else None
-                # ... use target_id in the decision ...
-                return EvaluatorResult(matched=False, confidence=1.0, message="ok")
-        ```
     """
 
     metadata: ClassVar[EvaluatorMetadata]
@@ -204,19 +160,6 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046 - need Python 3.10 compat
             EvaluatorResult with matched status, confidence, and message
         """
         pass
-
-    async def evaluate_with_context(
-        self,
-        data: Any,
-        context: EvaluationContext | None = None,
-    ) -> EvaluatorResult:
-        """Evaluate data with optional runtime context.
-
-        Evaluators that need request-scoped metadata may override this method.
-        The default keeps existing evaluators source-compatible by delegating to
-        the original ``evaluate(data)`` contract.
-        """
-        return await self.evaluate(data)
 
     def get_timeout_seconds(self) -> float:
         """Get timeout in seconds from config or metadata default."""
