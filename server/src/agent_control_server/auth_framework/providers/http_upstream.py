@@ -339,7 +339,10 @@ def _ensure_target_context_matches_grant(
         raise ForbiddenError(
             error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
             detail="Authorization grant is target-bound but the request target is unavailable.",
-            hint="Use an endpoint that includes target_type and target_id in the authorization context.",
+            hint=(
+                "Use an endpoint that includes target_type and target_id "
+                "in the authorization context."
+            ),
         )
 
     expected_type = context.get("target_type")
