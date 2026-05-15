@@ -15,7 +15,6 @@ import logging
 from agent_control_models.observability import ControlExecutionEvent
 from agent_control_telemetry.sinks import AsyncControlEventSink
 
-from ...models import DEFAULT_NAMESPACE_KEY
 from ..sinks import EventStoreControlEventSink
 from ..store.base import EventStore
 from .base import EventIngestor, IngestResult
@@ -39,7 +38,7 @@ class DirectEventIngestor(EventIngestor):
 
     def __init__(
         self,
-        store: EventStore | AsyncControlEventSink,
+        store: EventStore | AsyncControlEventSink | EventStoreControlEventSink,
         log_to_stdout: bool = False,
     ):
         """Initialize the ingestor.
@@ -49,7 +48,9 @@ class DirectEventIngestor(EventIngestor):
             log_to_stdout: Whether to log events as structured JSON (default: False)
         """
         if isinstance(store, EventStore):
-            self.sink: AsyncControlEventSink = EventStoreControlEventSink(store)
+            self.sink: AsyncControlEventSink | EventStoreControlEventSink = (
+                EventStoreControlEventSink(store)
+            )
         else:
             self.sink = store
         self.log_to_stdout = log_to_stdout
@@ -58,7 +59,7 @@ class DirectEventIngestor(EventIngestor):
         self,
         events: list[ControlExecutionEvent],
         *,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
     ) -> IngestResult:
         """Ingest events by writing them directly to the configured sink.
 

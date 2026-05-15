@@ -25,8 +25,6 @@ from agent_control_models.observability import (
 )
 from pydantic import BaseModel, Field
 
-from ...models import DEFAULT_NAMESPACE_KEY
-
 # Type alias for time range literals
 TimeRange = Literal["1m", "5m", "15m", "1h", "24h", "7d", "30d", "180d", "365d"]
 
@@ -125,7 +123,7 @@ class EventStore(ABC):
         self,
         events: list[ControlExecutionEvent],
         *,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
     ) -> int:
         """Store raw events.
 
@@ -143,10 +141,11 @@ class EventStore(ABC):
         self,
         agent_name: str,
         time_range: timedelta,
+        *,
         control_id: int | None = None,
         include_timeseries: bool = False,
         bucket_size: timedelta | None = None,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
     ) -> StatsResult:
         """Query stats (aggregated at query time from raw events).
 
@@ -168,7 +167,7 @@ class EventStore(ABC):
         self,
         query: EventQuery,
         *,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
     ) -> EventQueryResult:
         """Query raw events with filters and pagination.
 

@@ -17,6 +17,7 @@ from sqlalchemy import text
 
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.main import app
+from agent_control_server.models import DEFAULT_NAMESPACE_KEY
 from agent_control_server.observability.ingest.base import IngestResult
 
 
@@ -298,7 +299,7 @@ class TestPostgresEventStore:
         store = setup_observability
         events = [create_test_event(i) for i in range(5)]
 
-        stored = await store.store(events)
+        stored = await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
         assert stored == 5
 
     @pytest.mark.asyncio
@@ -307,9 +308,9 @@ class TestPostgresEventStore:
         store = setup_observability
         event = create_test_event()
 
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
         # Storing same event again should not raise, but also not duplicate
-        stored = await store.store([event])
+        stored = await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
         # ON CONFLICT DO NOTHING returns the batch size, not actual inserts
         assert stored == 1
 
@@ -322,7 +323,7 @@ class TestPostgresEventStore:
         ingestor = DirectEventIngestor(store)
 
         events = [create_test_event(i) for i in range(3)]
-        result = await ingestor.ingest(events)
+        result = await ingestor.ingest(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         assert result.received == 3
         assert result.processed == 3
@@ -341,7 +342,7 @@ class TestStatsTimeseries:
         normalized_name = "agent-statsnorm01"
 
         event = create_test_event(agent_name=normalized_name, matched=True)
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -361,7 +362,7 @@ class TestStatsTimeseries:
 
         # Create and store an event
         event = create_test_event(agent_name=agent_name, matched=True)
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -403,7 +404,7 @@ class TestStatsTimeseries:
             ),
         ]
 
-        await store.store(events)
+        await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -444,7 +445,7 @@ class TestStatsTimeseries:
             timestamp=now - timedelta(minutes=30),
         )
 
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -475,7 +476,7 @@ class TestStatsTimeseries:
             timestamp=now - timedelta(minutes=2),
         )
 
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -526,7 +527,7 @@ class TestStatsTimeseries:
             ),
         ]
 
-        await store.store(events)
+        await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -573,7 +574,7 @@ class TestStatsTimeseries:
             timestamp=now - timedelta(minutes=55),
         )
 
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -621,7 +622,7 @@ class TestControlStats:
             create_test_event(control_id=1, agent_name=agent_name, matched=True, action="deny"),
             create_test_event(control_id=2, agent_name=agent_name, matched=True, action="observe"),
         ]
-        await store.store(events)
+        await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         # Get stats for control 1 only
         response = client.get(
@@ -677,7 +678,7 @@ class TestControlStats:
                 timestamp=now - timedelta(minutes=20),
             ),
         ]
-        await store.store(events)
+        await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats/controls/1",
@@ -710,7 +711,7 @@ class TestControlStats:
 
         # Create event for control 1 only
         event = create_test_event(control_id=1, agent_name=agent_name, matched=True)
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         # Query for control 2 (no events)
         response = client.get(
@@ -903,7 +904,7 @@ class TestObservabilityIngestStatus:
 
         # Given: a stub ingestor that drops some events
         class StubIngestor:
-            async def ingest(self, events, *, namespace_key="default"):
+            async def ingest(self, events, *, namespace_key: str):
                 return IngestResult(received=len(events), processed=1, dropped=len(events) - 1)
 
         original = app.state.event_ingestor
@@ -933,7 +934,7 @@ class TestObservabilityIngestStatus:
 
         # Given: a stub ingestor that drops all events
         class StubIngestor:
-            async def ingest(self, events, *, namespace_key="default"):
+            async def ingest(self, events, *, namespace_key: str):
                 return IngestResult(received=len(events), processed=0, dropped=len(events))
 
         original = app.state.event_ingestor

@@ -6,6 +6,7 @@ import pytest
 from agent_control_models.observability import ControlExecutionEvent
 from agent_control_telemetry.sinks import SinkResult
 
+from agent_control_server.models import DEFAULT_NAMESPACE_KEY
 from agent_control_server.observability.ingest.direct import DirectEventIngestor
 from agent_control_server.observability.store.base import EventStore
 
@@ -15,7 +16,7 @@ class FailingStore(EventStore):
         self,
         events: list[ControlExecutionEvent],
         *,
-        namespace_key: str = "default",
+        namespace_key: str,
     ) -> int:
         raise RuntimeError("boom")
 
@@ -23,14 +24,15 @@ class FailingStore(EventStore):
         self,
         agent_name,
         time_range,
+        *,
         control_id=None,
         include_timeseries=False,
         bucket_size=None,
-        namespace_key="default",
+        namespace_key,
     ):  # pragma: no cover - not used
         raise NotImplementedError
 
-    async def query_events(self, query, *, namespace_key="default"):  # pragma: no cover - not used
+    async def query_events(self, query, *, namespace_key):  # pragma: no cover - not used
         raise NotImplementedError
 
 
@@ -42,7 +44,7 @@ class CountingStore(EventStore):
         self,
         events: list[ControlExecutionEvent],
         *,
-        namespace_key: str = "default",
+        namespace_key: str,
     ) -> int:
         self.calls.append(events)
         return len(events)
@@ -51,14 +53,15 @@ class CountingStore(EventStore):
         self,
         agent_name,
         time_range,
+        *,
         control_id=None,
         include_timeseries=False,
         bucket_size=None,
-        namespace_key="default",
+        namespace_key,
     ):  # pragma: no cover - not used
         raise NotImplementedError
 
-    async def query_events(self, query, *, namespace_key="default"):  # pragma: no cover - not used
+    async def query_events(self, query, *, namespace_key):  # pragma: no cover - not used
         raise NotImplementedError
 
 
@@ -91,7 +94,7 @@ async def test_direct_ingestor_drops_on_store_error() -> None:
     ]
 
     # When: ingesting events
-    result = await ingestor.ingest(events)
+    result = await ingestor.ingest(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
     # Then: all events are dropped
     assert result.received == 1
@@ -119,7 +122,7 @@ async def test_direct_ingestor_logs_when_enabled(caplog: pytest.LogCaptureFixtur
 
     # When: ingesting events
     with caplog.at_level(logging.INFO):
-        result = await ingestor.ingest([event])
+        result = await ingestor.ingest([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
     # Then: event is stored and a log line is emitted
     assert result.processed == 1
@@ -133,7 +136,7 @@ async def test_direct_ingestor_empty_events_returns_zeroes() -> None:
     ingestor = DirectEventIngestor(store=CountingStore())
 
     # When: ingesting an empty list
-    result = await ingestor.ingest([])
+    result = await ingestor.ingest([], namespace_key=DEFAULT_NAMESPACE_KEY)
 
     # Then: counts are zeroed
     assert result.received == 0
@@ -172,7 +175,7 @@ async def test_direct_ingestor_accepts_control_event_sink() -> None:
         )
     ]
 
-    result = await ingestor.ingest(events)
+    result = await ingestor.ingest(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
     assert result.received == 1
     assert result.processed == 1

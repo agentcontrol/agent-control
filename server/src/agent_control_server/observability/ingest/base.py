@@ -10,8 +10,6 @@ from typing import Protocol, runtime_checkable
 from agent_control_models.observability import ControlExecutionEvent
 from pydantic import BaseModel, Field
 
-from ...models import DEFAULT_NAMESPACE_KEY
-
 
 class IngestResult(BaseModel):
     """Result of an event ingestion operation.
@@ -46,7 +44,7 @@ class EventIngestor(Protocol):
         self,
         events: list[ControlExecutionEvent],
         *,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
     ) -> IngestResult:
         """Ingest events. Returns counts of received/processed/dropped.
 

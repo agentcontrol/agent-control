@@ -24,7 +24,6 @@ from agent_control_models.observability import (
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ...models import DEFAULT_NAMESPACE_KEY
 from .base import EventStore, StatsResult
 
 logger = logging.getLogger(__name__)
@@ -111,7 +110,7 @@ class PostgresEventStore(EventStore):
         self,
         events: list[ControlExecutionEvent],
         *,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
     ) -> int:
         """Store raw events in PostgreSQL.
 
@@ -170,10 +169,11 @@ class PostgresEventStore(EventStore):
         self,
         agent_name: str,
         time_range: timedelta,
+        *,
         control_id: int | None = None,
         include_timeseries: bool = False,
         bucket_size: timedelta | None = None,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
     ) -> StatsResult:
         """Query stats aggregated at query time from raw events.
 
@@ -398,7 +398,7 @@ class PostgresEventStore(EventStore):
         self,
         query: EventQueryRequest,
         *,
-        namespace_key: str = DEFAULT_NAMESPACE_KEY,
+        namespace_key: str,
     ) -> EventQueryResponse:
         """Query raw events with filters and pagination.
 
