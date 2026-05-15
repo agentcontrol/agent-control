@@ -137,7 +137,7 @@ def _serialized_migration(cfg: Config, *, enabled: bool) -> Iterator[None]:
         yield
         return
 
-    engine = create_engine(url, future=True, poolclass=NullPool)
+    engine = create_engine(url, future=True, poolclass=NullPool, isolation_level="AUTOCOMMIT")
     try:
         with engine.connect() as connection:
             _acquire_migration_lock(connection, _migration_lock_timeout_seconds())

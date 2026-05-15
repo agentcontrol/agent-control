@@ -94,13 +94,19 @@ def test_serialized_migration_acquires_and_releases_postgres_lock(monkeypatch) -
     connection = _FakeConnection([False, True])
     engine = _FakeEngine(connection)
     sleeps: list[float] = []
+    create_engine_kwargs: dict[str, object] = {}
 
-    monkeypatch.setattr(migrate, "create_engine", lambda *args, **kwargs: engine)
+    def fake_create_engine(*args: object, **kwargs: object) -> _FakeEngine:
+        create_engine_kwargs.update(kwargs)
+        return engine
+
+    monkeypatch.setattr(migrate, "create_engine", fake_create_engine)
     monkeypatch.setattr(migrate.time, "sleep", lambda seconds: sleeps.append(seconds))
 
     with migrate._serialized_migration(cfg, enabled=True):
         pass
 
+    assert create_engine_kwargs["isolation_level"] == "AUTOCOMMIT"
     assert connection.statements == [
         "SELECT pg_try_advisory_lock(:class_id, :object_id)",
         "SELECT pg_try_advisory_lock(:class_id, :object_id)",
