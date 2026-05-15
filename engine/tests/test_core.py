@@ -2353,3 +2353,195 @@ class TestInvalidRegexHandling:
         assert selector_errors[0].result.error is not None
         assert "Invalid step_name_regex" in selector_errors[0].result.error
         assert "[invalid(regex" in selector_errors[0].result.message
+
+
+# =============================================================================
+# Test: EvaluationContext Propagation
+# =============================================================================
+
+
+_observed_contexts: list[Any] = []
+
+
+def _reset_observed_contexts() -> None:
+    _observed_contexts.clear()
+
+
+class ContextRecordingEvaluator(Evaluator[SimpleConfig]):
+    """Evaluator that overrides evaluate_with_context to record the context.
+
+    Verifies that the engine populates EvaluationContext correctly. Records
+    every (data, context) pair it observes so concurrent invocations on a
+    shared instance can be inspected.
+    """
+
+    metadata = EvaluatorMetadata(
+        name="test-context-recorder",
+        version="1.0.0",
+        description="Records EvaluationContext",
+    )
+    config_model = SimpleConfig
+
+    async def evaluate(self, data: Any) -> EvaluatorResult:
+        # Should not be hit when the engine routes through evaluate_with_context.
+        _observed_contexts.append(("evaluate-fallback", data, None))
+        return EvaluatorResult(matched=False, confidence=1.0, message="fallback")
+
+    async def evaluate_with_context(
+        self,
+        data: Any,
+        context: Any = None,
+    ) -> EvaluatorResult:
+        _observed_contexts.append(("with-context", data, context))
+        return EvaluatorResult(matched=False, confidence=1.0, message="ok")
+
+
+class LegacyOnlyEvaluator(Evaluator[SimpleConfig]):
+    """Evaluator that overrides only evaluate(data), proving the default
+    evaluate_with_context fallback routes back to it.
+    """
+
+    metadata = EvaluatorMetadata(
+        name="test-legacy-only",
+        version="1.0.0",
+        description="Legacy signature only",
+    )
+    config_model = SimpleConfig
+
+    async def evaluate(self, data: Any) -> EvaluatorResult:
+        _observed_contexts.append(("legacy-evaluate", data, None))
+        return EvaluatorResult(matched=False, confidence=1.0, message="legacy")
+
+
+class TestEvaluationContextPropagation:
+    """Verify the engine populates and forwards EvaluationContext correctly."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        _reset_observed_contexts()
+        # Register the local fixtures (idempotent).
+        for cls in (ContextRecordingEvaluator, LegacyOnlyEvaluator):
+            try:
+                register_evaluator(cls)
+            except ValueError:
+                pass
+        yield
+        _reset_observed_contexts()
+
+    @pytest.mark.asyncio
+    async def test_engine_populates_context_from_request(self):
+        """Engine builds an EvaluationContext from the request and passes it
+        to ``evaluate_with_context``.
+        """
+        from agent_control_models import EvaluationContext
+
+        controls = [
+            make_control(1, "ctx1", "test-context-recorder", action="observe"),
+        ]
+        engine = ControlEngine(controls)
+
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="step-x", input="hello", output=None),
+            stage="pre",
+            target_type="log_stream",
+            target_id="ls-42",
+        )
+        await engine.process(request)
+
+        with_context_observations = [
+            entry for entry in _observed_contexts if entry[0] == "with-context"
+        ]
+        assert len(with_context_observations) == 1, _observed_contexts
+        _, _, context = with_context_observations[0]
+        assert isinstance(context, EvaluationContext)
+        assert context.target_type == "log_stream"
+        assert context.target_id == "ls-42"
+        assert context.agent_name == "00000000-0000-0000-0000-000000000001"
+        assert context.step_type == "llm"
+
+    @pytest.mark.asyncio
+    async def test_engine_passes_context_with_none_target_when_unbound(self):
+        """When the request carries no target binding, target_* on the
+        context are None but the context object is still supplied.
+        """
+        from agent_control_models import EvaluationContext
+
+        controls = [
+            make_control(1, "ctx1", "test-context-recorder", action="observe"),
+        ]
+        engine = ControlEngine(controls)
+
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="step-y", input="x", output=None),
+            stage="pre",
+            # No target_type / target_id.
+        )
+        await engine.process(request)
+
+        with_context = [e for e in _observed_contexts if e[0] == "with-context"]
+        assert len(with_context) == 1
+        context = with_context[0][2]
+        assert isinstance(context, EvaluationContext)
+        assert context.target_type is None
+        assert context.target_id is None
+        assert context.step_type == "llm"
+
+    @pytest.mark.asyncio
+    async def test_legacy_evaluator_still_works_via_default_fallback(self):
+        """Subclasses overriding only ``evaluate(data)`` keep working: the
+        base ``evaluate_with_context`` default routes back to them.
+        """
+        controls = [
+            make_control(1, "ctx1", "test-legacy-only", action="observe"),
+        ]
+        engine = ControlEngine(controls)
+
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="step-z", input="hello", output=None),
+            stage="pre",
+            target_type="log_stream",
+            target_id="ls-99",
+        )
+        await engine.process(request)
+
+        legacy_calls = [e for e in _observed_contexts if e[0] == "legacy-evaluate"]
+        assert len(legacy_calls) == 1, _observed_contexts
+        # The legacy entry point receives data only; no context object is
+        # observed because the default forwarder drops it to call ``evaluate``.
+        _, data, _ = legacy_calls[0]
+        assert data == "hello"
+
+    @pytest.mark.asyncio
+    async def test_concurrent_requests_receive_distinct_contexts(self):
+        """A cached instance must observe per-call context, not a shared one."""
+        from agent_control_models import EvaluationContext
+
+        controls = [
+            make_control(1, "ctx1", "test-context-recorder", action="observe"),
+        ]
+        engine = ControlEngine(controls)
+
+        async def fire(target_id: str) -> None:
+            request = EvaluationRequest(
+                agent_name="00000000-0000-0000-0000-000000000001",
+                step=Step(
+                    type="llm", name=f"step-{target_id}", input="hi", output=None
+                ),
+                stage="pre",
+                target_type="log_stream",
+                target_id=target_id,
+            )
+            await engine.process(request)
+
+        await asyncio.gather(*(fire(f"ls-{i}") for i in range(5)))
+
+        with_context = [e for e in _observed_contexts if e[0] == "with-context"]
+        assert len(with_context) == 5
+        observed_target_ids = sorted(
+            context.target_id for _, _, context in with_context
+            if isinstance(context, EvaluationContext)
+        )
+        assert observed_target_ids == ["ls-0", "ls-1", "ls-2", "ls-3", "ls-4"]

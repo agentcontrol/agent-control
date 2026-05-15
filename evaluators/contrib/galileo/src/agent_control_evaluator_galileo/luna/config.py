@@ -31,14 +31,36 @@ class LunaEvaluatorConfig(EvaluatorConfig):
     """Configuration for direct Luna scorer evaluation.
 
     Attributes:
+        logstream_id: Optional Galileo log stream identifier used as runtime context.
         scorer_label: Preset, registered, or fine-tuned scorer label.
+        scorer_id: Optional Galileo scorer identifier.
+        scorer_version_id: Optional Galileo scorer version identifier.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
         scorer_config: Optional scorer-specific config sent as ``config``.
         timeout_ms: Request timeout in milliseconds.
     """
 
-    scorer_label: str = Field(..., min_length=1, description="Luna scorer label to invoke")
+    logstream_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Optional Galileo log stream identifier used as scorer runtime context.",
+    )
+    scorer_label: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Luna scorer label to invoke.",
+    )
+    scorer_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Optional Galileo scorer identifier to invoke.",
+    )
+    scorer_version_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Optional Galileo scorer version identifier to invoke.",
+    )
     threshold: JSONValue = Field(
         default=0.5,
         description="Local threshold used to decide whether the control matches.",
@@ -63,6 +85,10 @@ class LunaEvaluatorConfig(EvaluatorConfig):
     @model_validator(mode="after")
     def validate_threshold(self) -> LunaEvaluatorConfig:
         """Validate threshold compatibility with the configured operator."""
+        if not (self.scorer_label or self.scorer_id or self.scorer_version_id):
+            raise ValueError(
+                "one of scorer_label, scorer_id, or scorer_version_id is required"
+            )
         if self.operator in _NUMERIC_OPERATORS and coerce_number(self.threshold) is None:
             raise ValueError(f"operator '{self.operator}' requires a numeric threshold")
         if self.operator != "any" and self.threshold is None:

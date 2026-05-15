@@ -28,7 +28,12 @@ except PackageNotFoundError:
     __version__ = "0.0.0.dev"
 
 # Core infrastructure - export from _base and _registry
-from agent_control_evaluators._base import Evaluator, EvaluatorConfig, EvaluatorMetadata
+from agent_control_evaluators._base import (
+    EvaluationContext,
+    Evaluator,
+    EvaluatorConfig,
+    EvaluatorMetadata,
+)
 from agent_control_evaluators._discovery import (
     discover_evaluators,
     ensure_evaluators_discovered,
@@ -51,6 +56,7 @@ from agent_control_evaluators.sql import SQLEvaluator, SQLEvaluatorConfig
 
 __all__ = [
     # Core infrastructure
+    "EvaluationContext",
     "Evaluator",
     "EvaluatorConfig",
     "EvaluatorMetadata",

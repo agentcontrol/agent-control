@@ -27,17 +27,37 @@ class TestLunaEvaluatorConfig:
 
         # Given: a direct scorer config with local thresholding
         config = LunaEvaluatorConfig(
+            logstream_id="logstream-123",
             scorer_label="toxicity",
+            scorer_id="scorer-123",
+            scorer_version_id="version-123",
             threshold=0.7,
             operator="gte",
             config={"temperature": 0},
         )
 
         # Then: config is retained without Protect concepts
+        assert config.logstream_id == "logstream-123"
         assert config.scorer_label == "toxicity"
+        assert config.scorer_id == "scorer-123"
+        assert config.scorer_version_id == "version-123"
         assert config.threshold == 0.7
         assert config.operator == "gte"
         assert config.scorer_config == {"temperature": 0}
+
+    def test_config_accepts_scorer_id_without_label(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluatorConfig
+
+        config = LunaEvaluatorConfig(scorer_id="scorer-123")
+
+        assert config.scorer_id == "scorer-123"
+        assert config.scorer_label is None
+
+    def test_config_requires_a_scorer_identifier(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluatorConfig
+
+        with pytest.raises(ValidationError, match="one of scorer_label"):
+            LunaEvaluatorConfig(threshold=0.5)
 
     def test_numeric_operator_requires_numeric_threshold(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluatorConfig
@@ -55,14 +75,20 @@ class TestGalileoLunaClient:
 
         # Given: a scorer request with scorer config
         request = ScorerInvokeRequest(
+            logstream_id="logstream-123",
             scorer_label="toxicity",
+            scorer_id="scorer-123",
+            scorer_version_id="version-123",
             inputs=ScorerInvokeInputs(query={"messages": [{"role": "user", "content": "hello"}]}),
             config={"top_k": 1},
         )
 
         # Then: the serialized payload uses the API-owned scorer invoke fields
         assert request.to_dict() == {
+            "logstream_id": "logstream-123",
             "scorer_label": "toxicity",
+            "scorer_id": "scorer-123",
+            "scorer_version_id": "version-123",
             "inputs": {
                 "query": {"messages": [{"role": "user", "content": "hello"}]},
                 "response": "",
@@ -381,6 +407,46 @@ class TestLunaEvaluator:
             output="model answer",
             config=None,
             timeout=5.0,
+        )
+
+    @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
+    @pytest.mark.asyncio
+    async def test_evaluator_passes_logstream_id_from_runtime_context(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
+        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+        from agent_control_models import EvaluationContext
+
+        evaluator = LunaEvaluator.from_dict(
+            {
+                "logstream_id": "config-logstream",
+                "scorer_label": "toxicity",
+                "scorer_id": "scorer-123",
+                "scorer_version_id": "version-123",
+            }
+        )
+
+        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = ScorerInvokeResponse(
+                scorer_label="toxicity",
+                score=0.82,
+                status="success",
+            )
+
+            result = await evaluator.evaluate_with_context(
+                "hello",
+                EvaluationContext(target_type="log_stream", target_id="runtime-logstream"),
+            )
+
+        assert result.metadata["logstream_id"] == "runtime-logstream"
+        mock_invoke.assert_awaited_once_with(
+            logstream_id="runtime-logstream",
+            scorer_label="toxicity",
+            scorer_id="scorer-123",
+            scorer_version_id="version-123",
+            input="hello",
+            output=None,
+            config=None,
+            timeout=10.0,
         )
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})

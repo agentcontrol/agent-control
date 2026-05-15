@@ -9,7 +9,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
-from agent_control_models import EvaluatorResult, JSONValue
+from agent_control_models import EvaluationContext, EvaluatorResult, JSONValue
 
 from .client import GalileoLunaClient, ScorerInvokeResponse
 from .config import LunaEvaluatorConfig, coerce_number
@@ -76,6 +76,10 @@ def _confidence_from_score(score: JSONValue) -> float:
     return 1.0
 
 
+def _is_logstream_target(target_type: str | None) -> bool:
+    return (target_type or "").lower() in {"logstream", "log_stream", "log-stream"}
+
+
 @register_evaluator
 class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
     """Galileo Luna evaluator using the direct scorer invocation API."""
@@ -133,7 +137,8 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 return input_text, output_text
 
         text = _coerce_payload_text(data)
-        if "output" in self.config.scorer_label:
+        scorer_label = self.config.scorer_label or ""
+        if "output" in scorer_label:
             return None, text
         return text, None
 
@@ -170,26 +175,37 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         raise ValueError(f"Unsupported Luna operator: {operator}")
 
     async def evaluate(self, data: Any) -> EvaluatorResult:
+        """Evaluate selected data without runtime context."""
+        return await self.evaluate_with_context(data, context=None)
+
+    async def evaluate_with_context(
+        self,
+        data: Any,
+        context: EvaluationContext | None = None,
+    ) -> EvaluatorResult:
         """Evaluate selected data with Galileo Luna direct scorer invocation.
 
         Args:
             data: The data selected from the runtime step.
+            context: Optional runtime context from the engine.
 
         Returns:
             EvaluatorResult with local threshold decision and scorer metadata.
         """
         input_text, output_text = self._prepare_payload(data)
+        logstream_id = self._resolve_logstream_id(context)
         if not (_has_text(input_text) or _has_text(output_text)):
             return EvaluatorResult(
                 matched=False,
                 confidence=1.0,
                 message="No data to score with Luna",
-                metadata={"scorer_label": self.config.scorer_label},
+                metadata=self._base_metadata(logstream_id=logstream_id),
             )
 
         try:
+            scorer_kwargs = self._scorer_kwargs(logstream_id=logstream_id)
             response = await self._get_client().invoke(
-                scorer_label=self.config.scorer_label,
+                **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,
                 output=output_text if _has_text(output_text) else None,
                 config=self.config.scorer_config,
@@ -201,7 +217,7 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 raise RuntimeError(message)
 
             matched = self._score_matches(response.score)
-            metadata = self._metadata(response)
+            metadata = self._metadata(response, logstream_id=logstream_id)
             operator = self.config.operator
             threshold = self.config.threshold
             state = "triggered" if matched else "not triggered"
@@ -216,10 +232,39 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             )
         except Exception as exc:
             logger.error("Luna evaluation error: %s", exc, exc_info=True)
-            return self._handle_error(exc)
+            return self._handle_error(exc, logstream_id=logstream_id)
 
-    def _metadata(self, response: ScorerInvokeResponse) -> dict[str, Any]:
-        metadata: dict[str, Any] = {
+    def _resolve_logstream_id(self, context: EvaluationContext | None) -> str | None:
+        if context is not None and _is_logstream_target(context.target_type):
+            return context.target_id
+        return self.config.logstream_id
+
+    def _base_metadata(self, *, logstream_id: str | None = None) -> dict[str, Any]:
+        metadata = {
+            "logstream_id": logstream_id,
+            "scorer_label": self.config.scorer_label,
+            "scorer_id": self.config.scorer_id,
+            "scorer_version_id": self.config.scorer_version_id,
+        }
+        return {key: value for key, value in metadata.items() if value is not None}
+
+    def _scorer_kwargs(self, *, logstream_id: str | None = None) -> dict[str, Any]:
+        kwargs = {
+            "logstream_id": logstream_id,
+            "scorer_label": self.config.scorer_label,
+            "scorer_id": self.config.scorer_id,
+            "scorer_version_id": self.config.scorer_version_id,
+        }
+        return {key: value for key, value in kwargs.items() if value is not None}
+
+    def _metadata(
+        self,
+        response: ScorerInvokeResponse,
+        *,
+        logstream_id: str | None = None,
+    ) -> dict[str, Any]:
+        metadata: dict[str, Any] = self._base_metadata(logstream_id=logstream_id)
+        metadata.update({
             "scorer_label": response.scorer_label or self.config.scorer_label,
             "score": response.score,
             "threshold": self.config.threshold,
@@ -227,10 +272,15 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             "status": response.status,
             "execution_time_seconds": response.execution_time,
             "error_message": response.error_message,
-        }
+        })
         return metadata
 
-    def _handle_error(self, error: Exception) -> EvaluatorResult:
+    def _handle_error(
+        self,
+        error: Exception,
+        *,
+        logstream_id: str | None = None,
+    ) -> EvaluatorResult:
         error_detail = str(error)
         return EvaluatorResult(
             matched=False,
@@ -240,6 +290,9 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 "error": error_detail,
                 "error_type": type(error).__name__,
                 "scorer_label": self.config.scorer_label,
+                "scorer_id": self.config.scorer_id,
+                "scorer_version_id": self.config.scorer_version_id,
+                "logstream_id": logstream_id,
             },
             error=error_detail,
         )

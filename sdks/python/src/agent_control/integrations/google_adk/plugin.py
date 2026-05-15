@@ -22,11 +22,18 @@ from agent_control.integrations._core import _evaluate_and_enforce
 from agent_control.validation import ensure_agent_name
 
 try:
-    from google.adk.agents.callback_context import CallbackContext  # type: ignore[import-not-found]
-    from google.adk.models import LlmRequest, LlmResponse  # type: ignore[import-not-found]
-    from google.adk.plugins import BasePlugin  # type: ignore[import-not-found]
-    from google.adk.tools import BaseTool  # type: ignore[import-not-found]
-    from google.adk.tools.tool_context import ToolContext  # type: ignore[import-not-found]
+    from google.adk.agents.callback_context import (  # type: ignore[import-not-found,import-untyped]
+        CallbackContext,
+    )
+    from google.adk.models import (  # type: ignore[import-not-found,import-untyped]
+        LlmRequest,
+        LlmResponse,
+    )
+    from google.adk.plugins import BasePlugin  # type: ignore[import-not-found,import-untyped]
+    from google.adk.tools import BaseTool  # type: ignore[import-not-found,import-untyped]
+    from google.adk.tools.tool_context import (  # type: ignore[import-not-found,import-untyped]
+        ToolContext,
+    )
 except Exception as exc:  # pragma: no cover - optional dependency
     raise RuntimeError(
         "Google ADK integration requires google-adk. "

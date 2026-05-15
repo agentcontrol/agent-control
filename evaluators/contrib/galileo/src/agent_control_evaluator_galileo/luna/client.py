@@ -86,16 +86,26 @@ class ScorerInvokeRequest(BaseModel):
 
     Attributes:
         inputs: Selected scorer input values.
+        logstream_id: Optional Galileo log stream identifier for runtime context.
         scorer_label: Preset, registered, or fine-tuned scorer label.
+        scorer_id: Optional Galileo scorer identifier.
+        scorer_version_id: Optional Galileo scorer version identifier.
         config: Optional scorer-specific configuration.
     """
 
-    scorer_label: str = Field(min_length=1)
     inputs: ScorerInvokeInputs
+    logstream_id: str | None = Field(default=None, min_length=1)
+    scorer_label: str | None = Field(default=None, min_length=1)
+    scorer_id: str | None = Field(default=None, min_length=1)
+    scorer_version_id: str | None = Field(default=None, min_length=1)
     config: JSONObject | None = None
 
     @model_validator(mode="after")
-    def ensure_input_or_output(self) -> ScorerInvokeRequest:
+    def ensure_required_values(self) -> ScorerInvokeRequest:
+        if not (self.scorer_label or self.scorer_id or self.scorer_version_id):
+            raise ValueError(
+                "One of scorer_label, scorer_id, or scorer_version_id must be set."
+            )
         if not (_has_value(self.inputs.query) or _has_value(self.inputs.response)):
             raise ValueError("Either inputs.query or inputs.response must be set.")
         return self
@@ -109,14 +119,14 @@ class ScorerInvokeResponse(BaseModel):
     """Response from Galileo Luna scorer invocation.
 
     Attributes:
-        scorer_label: Echoed scorer label.
+        scorer_label: Echoed scorer label, when returned.
         score: Raw scorer value.
         status: Invocation status.
         execution_time: Execution time in seconds, when returned.
         error_message: Error detail for non-success statuses.
     """
 
-    scorer_label: str
+    scorer_label: str | None = None
     score: JSONValue
     status: str = "unknown"
     execution_time: float | None = None
@@ -229,7 +239,10 @@ class GalileoLunaClient:
     async def invoke(
         self,
         *,
-        scorer_label: str,
+        scorer_label: str | None = None,
+        scorer_id: str | None = None,
+        scorer_version_id: str | None = None,
+        logstream_id: str | None = None,
         input: JSONValue = None,
         output: JSONValue = None,
         config: JSONObject | None = None,
@@ -240,6 +253,9 @@ class GalileoLunaClient:
 
         Args:
             scorer_label: Preset, registered, or fine-tuned scorer label.
+            scorer_id: Optional Galileo scorer identifier.
+            scorer_version_id: Optional Galileo scorer version identifier.
+            logstream_id: Optional Galileo log stream identifier for runtime context.
             input: Optional user/system prompt text.
             output: Optional model response text.
             config: Optional scorer-specific configuration.
@@ -255,11 +271,16 @@ class GalileoLunaClient:
             httpx.HTTPStatusError: If the API returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
         """
+        if not (scorer_label or scorer_id or scorer_version_id):
+            raise ValueError("At least one scorer identifier must be provided.")
         if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
 
         request_body = ScorerInvokeRequest(
             scorer_label=scorer_label,
+            scorer_id=scorer_id,
+            scorer_version_id=scorer_version_id,
+            logstream_id=logstream_id,
             inputs=ScorerInvokeInputs(
                 query="" if input is None else input, response="" if output is None else output
             ),
