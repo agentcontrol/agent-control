@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from alembic.config import Config
-
 import agent_control_server
 from agent_control_server import migrate
+from alembic.config import Config
 
 
 class _FakeResult:
